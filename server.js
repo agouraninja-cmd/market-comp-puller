@@ -4146,10 +4146,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // tests. normalizeSourceTypes takes the corpus-audit rule as an argument
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
-const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+const normalizeSourceTypes = (parsed, propertyType) =>
+  RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
         normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
-        normalizeConditions } = RPARSE;
+        normalizeSubjectSize, normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -5005,7 +5006,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
-    const parsed = normalizeSubjectAssessed(
+    const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
       normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
@@ -5014,8 +5015,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                 normalizeCurrency(
                   normalizeSourceTypes(
                     normalizeConditions(
-                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
-      new Date());
+                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+      new Date()));
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };

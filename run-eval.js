@@ -147,9 +147,14 @@ function selectTargets(all) {
   return picked;
 }
 const targets = selectTargets(set.targets);
-const targetSelection = perType > 0
+// The COUNT is part of the selection, not decoration: eval-set.json is
+// designed to be added to over time, so two runs can both say "full set" and
+// still be over different targets. Without the count the --compare guard
+// below would pass them as comparable.
+const selectionName = perType > 0
   ? `per-type ${perType}${only > 0 ? `, capped at ${only}` : ""}`
   : (only > 0 ? `first ${only}` : "full set");
+const targetSelection = `${selectionName} (${targets.length} targets)`;
 
 // Database preflight. Isolation (SUPABASE_URL blank on the server under
 // test) is enforced only by whoever launched that server, and there is no

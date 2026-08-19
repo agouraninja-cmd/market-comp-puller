@@ -38,11 +38,41 @@ function isAggregateAddress(address) {
 // direction, so the audit COUNTS these rather than widening the rule here.
 const STREET_NUMBERED_RE = /^\s*\d+\s+\S/;
 
+// LAND ONLY. An unimproved parcel has no building to number, so the market
+// identifies it by its corner instead: "NEC 159th & Brentwood St" names one
+// specific 0.55-acre parcel as precisely as a street number names a
+// warehouse. The street-number rule above was written for BUILDINGS, and on
+// the 2026-08-19 eval it demoted three real priced Olathe land listings to
+// "estimate" -- 38% of that report's comps -- which is not padding being
+// caught but real provenance being thrown away: "estimate" is excluded from
+// corpus retrieval and from the accuracy backtest, so those rows are lost
+// rather than merely mislabeled.
+//
+// Deliberately narrow. It requires an ampersand between two non-empty tokens,
+// or an explicit corner designator, and it is tested against the STREET LINE
+// (the text before the first comma) so a "&" in a city or company suffix
+// cannot qualify one. " and " is NOT accepted: it appears inside ordinary
+// names ("Land and Cattle Co") where "&" between two street names does not.
+// The aggregate test still applies on top of this, so a genuine market-level
+// row is still forced to estimate however it is punctuated.
+const INTERSECTION_RE = /\S\s*&\s*\S/;
+const CORNER_DESIGNATOR_RE =
+  /\b(n[ew]c|s[ew]c|(north|south)(east|west) corner|n[ew] corner|s[ew] corner)\b/i;
+
+function isIntersectionAddress(address) {
+  const streetLine = String(address || "").split(",")[0] || "";
+  return INTERSECTION_RE.test(streetLine) || CORNER_DESIGNATOR_RE.test(streetLine);
+}
+
 // The single badge rule. Coerces a model-supplied source_type onto the enum,
 // then enforces the individual-property requirement. Unknown maps to
 // "estimate": the label may under-claim a comp's provenance, never over-claim
 // it.
-function enforcedSourceType(claimed, address) {
+// `propertyType` is OPTIONAL and only ever widens what counts as an
+// individual property, never narrows it: omit it and this behaves exactly as
+// it did before Land was given its corner-address exemption, which is what
+// keeps every existing caller and every harvested row scored the same way.
+function enforcedSourceType(claimed, address, propertyType) {
   const raw = String(claimed || "").toLowerCase();
   let type =
     SOURCE_TYPES.find((t) => raw === t) ||
@@ -50,8 +80,10 @@ function enforcedSourceType(claimed, address) {
       : /list|broker|flyer|loopnet|crexi|costar/.test(raw) ? "listing"
         : /news|article|press|announc/.test(raw) ? "news"
           : "estimate");
-  if (type !== "estimate" &&
-      (!STREET_NUMBERED_RE.test(String(address || "")) || isAggregateAddress(address))) {
+  const identifiesOneProperty =
+    STREET_NUMBERED_RE.test(String(address || "")) ||
+    (String(propertyType || "") === "Land" && isIntersectionAddress(address));
+  if (type !== "estimate" && (!identifiesOneProperty || isAggregateAddress(address))) {
     type = "estimate";
   }
   return type;
@@ -203,7 +235,7 @@ function auditCorpus(rows, opts) {
     // Drift: the row claims stronger provenance than today's rule would grant.
     const stored = String(r.source_type || "").toLowerCase();
     if (SOURCE_TYPES.includes(stored) &&
-        rankOf(stored) < rankOf(enforcedSourceType(stored, r.address))) {
+        rankOf(stored) < rankOf(enforcedSourceType(stored, r.address, r.property_type))) {
       found.push("badge_drift");
     }
 
@@ -248,6 +280,7 @@ function auditCorpus(rows, opts) {
 module.exports = {
   auditCorpus,
   enforcedSourceType,
+  isIntersectionAddress,
   isAggregateAddress,
   urlIdentifiesProperty,
   hostOf,

@@ -191,11 +191,15 @@ function normalizeCurrency(parsed) {
 // the caller — the prompt already forbids market-level rows as comps, but in
 // thin markets the model pads anyway, and a prompt rule is a request while
 // normalization is a guarantee.
-function normalizeSourceTypes(parsed, enforcedSourceType) {
+// `propertyType` is passed through to the rule because what counts as an
+// address identifying ONE property is type-dependent: a vacant parcel is
+// identified by its corner, having no building to number. Omitted, the rule
+// falls back to the street-number test alone.
+function normalizeSourceTypes(parsed, enforcedSourceType, propertyType) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    c.source_type = enforcedSourceType(c.source_type, c.address);
+    c.source_type = enforcedSourceType(c.source_type, c.address, propertyType);
   }
   return parsed;
 }
@@ -485,7 +489,32 @@ function normalizeSubjectYearBuilt(parsed) {
   return parsed;
 }
 
+// The subject's size and the PROVENANCE of that size travel as two separate
+// model-written fields, and nothing tied them together: the 2026-08-19 eval's
+// Atlanta multifamily report came back with subject_size_sqft "" and
+// subject_size_source "public_record", a provenance claim attached to no
+// value. index.html happens to read the source only inside its `found > 0`
+// branch, so this never reached a screen, but the orphan is written into the
+// cache, the harvest and every share, where the next reader of that payload
+// has no reason to expect it. A source with nothing to source is not a
+// smaller truth than a missing size, it is a different and false one.
+//
+// Same shape as normalizeSubjectLastSale's "no date drops the whole field":
+// the pair is kept or dropped together, never half-populated. The size is
+// normalized to "" rather than deleted, because it is a documented key of the
+// report shape that callers test for emptiness.
+function normalizeSubjectSize(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const size = Number(String(parsed.subject_size_sqft == null ? "" : parsed.subject_size_sqft)
+    .replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(size) && size > 0) return parsed;
+  if ("subject_size_sqft" in parsed) parsed.subject_size_sqft = "";
+  delete parsed.subject_size_source;
+  return parsed;
+}
+
 module.exports = {
+  normalizeSubjectSize,
   extractFirstJsonObject,
   parseCompJson,
   stripEmDashes,

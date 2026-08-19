@@ -10859,6 +10859,51 @@ async function linkVaultProperties(userId, comps) {
   }
 }
 
+// How often each published comp has been cited in a report, read from the
+// count comp_submissions has kept since migration 003 and bumpCitedCounts has
+// been incrementing all along.
+//
+// The number was already public on /broker/<slug> ("Report citations · times
+// used in valuation reports") and was visible NOWHERE to the broker who earned
+// it -- and only reachable there at all by opting the profile into being
+// public, which broker-directory.js's two-consents rule keeps false by default.
+// So a vault-first broker published comps and got no signal back whatsoever.
+// This is a read of an existing figure onto the page of the person it is
+// about; nothing new is counted and no hot path changes.
+//
+// MUTATES rows in place, and NEVER THROWS: the count is a reward, not part of
+// the book. A broker whose vault would not open because a citation read failed
+// would rightly consider that worse than a missing number.
+async function attachCitedCounts(rows) {
+  try {
+    if (!DB_CONFIGURED) return;
+    const ids = [];
+    for (const r of rows || []) {
+      const id = r && r.published_submission_id;
+      if (id != null && String(id).trim() !== "" && ids.indexOf(id) < 0) ids.push(id);
+    }
+    if (!ids.length) return;
+    // Chunked: a broker with hundreds of published comps would otherwise build
+    // an in.() list long enough to be refused as a URL, and the failure would
+    // be silent because this whole function swallows its errors.
+    const counts = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const slice = ids.slice(i, i + 200);
+      const subs = await sbRequest("GET",
+        `comp_submissions?id=in.(${slice.map((v) => encodeURIComponent(v)).join(",")})` +
+        "&select=id,cited_count");
+      for (const sub of subs || []) counts.set(String(sub.id), Number(sub.cited_count) || 0);
+    }
+    for (const r of rows || []) {
+      if (!r || r.published_submission_id == null) continue;
+      const n = counts.get(String(r.published_submission_id));
+      if (n != null) r.cited_count = n;
+    }
+  } catch (err) {
+    console.error("cited_count read failed:", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -10905,6 +10950,7 @@ async function vaultReadPayload(req, params) {
   if (compsR.status === "rejected") throw compsR.reason;
   if (uploadsR.status === "rejected") throw uploadsR.reason;
   const rows = compsR.value || [];
+  await attachCitedCounts(rows);
 
   return { status: 200, body: {
     // Through the API's own shape, never the raw storage rows. This is the

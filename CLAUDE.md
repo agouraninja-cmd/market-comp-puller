@@ -1834,6 +1834,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **What publishing gave back** (2026-08-17). `comp_submissions.cited_count`
+      has existed since migration 003 and `bumpCitedCounts` has incremented it
+      on every earned badge ever since — and it was rendered in exactly one
+      place, the "Report citations" tile on the PUBLIC `/broker/<slug>`, which
+      exists at all only once a broker opts `broker_profiles.public` to true
+      (false by default, per broker-directory.js's two-consents rule). So the
+      one person who could not see the credit was the broker who earned it, and
+      a vault-first broker published comps and got no signal back whatsoever.
+      This surfaces the existing number: per comp beside the Published chip,
+      and summed under the ledger's Published cell. **Nothing new is counted
+      and no hot path changed** — `attachCitedCounts` is a read, chunked at 200
+      ids because the in.() list would otherwise outgrow a URL, and it **never
+      throws**, because a citation count is a reward and a vault that would not
+      open without one would be a strictly worse trade. Two honesty rules: the
+      count is **omitted at zero** rather than shown as "0" beside every
+      freshly published comp, and the tooltip says it is counted **when a
+      report is generated**, since a cache hit serves the stored report without
+      re-running `attachVerifiedAttribution` and therefore does not bump it —
+      the figure is a floor, not an impression count. `cited_count` reaches the
+      browser through `vault-api.js`'s **`SUBMISSION_FIELDS`**, a third checked
+      list beside `PROPERTY_FIELDS` for the same reason that one exists: it is
+      not a `broker_comps` column, so putting it in `API_COMP_FIELDS` would
+      correctly fail the both-ways schema test.
     - **Bulk publish** (`POST /api/vault/publish-many`, 2026-08-17). Publishing
       is how the public corpus grows and it was one button plus one identical
       confirm per comp, so in practice nobody published a book — they published

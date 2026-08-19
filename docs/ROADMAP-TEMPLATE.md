@@ -8,14 +8,44 @@ There are two PowerPoint companions to this file, both CompNinja-branded
 and organised as milestones on a week-by-week calendar:
 
 - **`docs/CompNinja-Roadmap-12-Weeks.pptx`** — the same plan filled in for
-  the twelve weeks from 2026-08-17, six milestones, one slide per four-week
-  block.
+  the twelve weeks from 2026-08-17: four tracks, twelve milestones, one
+  landing each week, one slide per four-week block.
 - **`docs/CompNinja-Roadmap-Template.pptx`** — the blank version of that
   deck. Every slot carries a dashed outline and a grey italic prompt; a
   prompt left in place is the tell that the section was never thought about.
 
 The deck is how the plan is read out loud. This file stays the source of
 truth — when the two disagree, the file is right.
+
+## The four tracks
+
+Milestones are sorted into four lanes, and the point of the split is that a
+quarter cannot be declared a success on code alone. A roadmap with one lane
+measures effort; these four measure whether the effort landed.
+
+| Lane | Question it answers | A milestone here looks like |
+|---|---|---|
+| **DEV** — Development | What must exist? | A capability that now exists and did not before — never a ticket closed. |
+| **USE** — Users | Who is actually using it? | People outside the company doing the thing unprompted. Signups are not use; a second visit is. |
+| **REL** — Relationships | Who is in the room? | Brokers, partners, advisers, counsel — the answers you cannot write yourself. |
+| **PRO** — Profit | What is it worth? | Money from somebody who was free to keep it, and the decisions that let more follow. |
+
+Four rules for the lanes:
+
+- **Only one lane is about building.** DEV is deliberately the small one.
+  Everything in the other three is what the building was *for*, and a
+  quarter where only DEV lands is a quarter that shipped a great deal and
+  proved nothing.
+- **Three milestones a lane over twelve weeks** is the working default — one
+  landing a week. The lanes are unequal in effort by nature (REL is mostly
+  conversations, PRO is often a switch and a wait); effort is not what they
+  measure, so do not try to balance it.
+- **A dependency between lanes is stated in the week, not hidden.** If a DEV
+  milestone must land before a REL one — a licence gate before a broker holds
+  a vault — put them in adjacent weeks and say so on the slide.
+- **Rename a lane if the business genuinely has a different fourth thing,
+  but keep four.** Three collapses back into "build, then hope"; five starts
+  double-counting the same milestone in two lanes.
 
 Why a template at all: the CompNinja roadmap earns its keep because its
 entries carry the *reasoning*, not just the intent — what is blocked and
@@ -62,9 +92,12 @@ intent, the devlog states history.
      roadmap can assert, and it is the first thing a new session gets
      wrong. -->
 
-- **<Item>** (<code / no code>, ~<effort>). <Current state, with the date it
-  was last checked.> **<What is left.>** The re-check is: <the specific
-  question to answer>. <Where the full findings live.>
+- **`[DEV|USE|REL|PRO]` <Item>** (<code / no code>, ~<effort>). <Current
+  state, with the date it was last checked.> **<What is left.>** The
+  re-check is: <the specific question to answer>. <Where the full findings
+  live.>
+<!-- Tag each entry with the lane it moves. An untaggable entry is usually
+     two entries, or busywork. -->
 
 ## Next
 

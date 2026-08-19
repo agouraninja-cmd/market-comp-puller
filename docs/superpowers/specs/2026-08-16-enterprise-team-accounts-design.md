@@ -1,6 +1,7 @@
 # Enterprise accounts: a firm as an account, not a login everyone shares
 
-Status: **SLICES 1-2 SHIPPED 2026-08-16, plus auto-share.** Written the same
+Status: **ALL FOUR SLICES SHIPPED 2026-08-16**, plus auto-share; slice 4 is
+dark until its Stripe price is set. Written the same
 day in answer to Chuck's email, as a design; what shipped is recorded against
 each slice in §10 and against decision #2 in §1. Slice 2 landed in a shape
 this document did not predict — no `org_shelf_items` table — and §4/§5 are
@@ -93,9 +94,12 @@ These gate the build. Recommended answers in brackets; each is argued below.
    "share this file" is a decision a broker cannot check before making. Per
    comp is one row, one confirm, one Undo, and it is the version that can
    honestly be called opt-in.
-4. **Is enterprise sold per seat now, or granted by hand?** [Recommended:
-   granted by hand, the `vault_beta` precedent, until a real firm asks. See
-   §9.]
+4. **Is enterprise sold per seat now, or granted by hand?** **BOTH, as of
+   2026-08-16** (migration 031). Per-seat billing is built and is INERT until
+   `STRIPE_PRICE_FIRM_MONTHLY` is set; with it unset a firm has hand-granted
+   seats and a status of `"none"`, which is the recommendation above, still
+   standing. Building it early cost the recommendation nothing — what it buys
+   is that saying yes to a firm is a config change rather than a project.
 5. **Do firm-shared reports carry the sender's private financials?**
    [Recommended: no by default, with an explicit per-report include that
    mirrors invited sharing's `includePrivate`.]
@@ -345,7 +349,8 @@ Build the seat billing when a firm asks to pay for seats. Not before.
 - **Slice 3 — the shared vault.** §7, opt-in, attributed, with the conditional
   vault copy from §2. **SHIPPED 2026-08-16** (migration 030), opt-in per comp
   rather than per import — see §1 #3.
-- **Slice 4 — seats.** §9, when someone asks to pay.
+- **Slice 4 — seats.** §9, when someone asks to pay. **SHIPPED 2026-08-16**
+  (migration 031), dark behind an unset price — see §1 #4.
 
 Slices 1 and 2 are worth building on their own evidence. Slice 3 should wait
 for a real firm with a real book, for the same reason import-time geocoding

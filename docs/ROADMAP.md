@@ -29,7 +29,7 @@ intent, the devlog states history.
 
 ## Next
 
-- **Enterprise (firm) accounts — slice 4 (billing) only.** Design in
+- **Enterprise (firm) accounts — BUILT, awaiting a customer.** Design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
   from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,
   invites, `org-access.js`, the firm branch in `canReadShare`, a "My firm"
@@ -54,8 +54,15 @@ intent, the devlog states history.
   the vault's "Visible only to you" copy correcting itself the moment it
   stops being true. Opt-in per comp rather than per import, which is
   narrower than the spec proposed and is the version worth defending.
-  What is left: **slice 4**, per-seat billing — until a firm asks to pay,
-  seats are granted by hand, the `vault_beta` precedent.
+  **Slice 4 shipped 2026-08-16** (migration 031): per-seat firm billing, the
+  firm as the Stripe customer, seats enforced at the invitation, and a
+  colleague on a seat told whose plan covers them. **It is inert until
+  `STRIPE_PRICE_FIRM_MONTHLY` is set** — unset, firm checkout 503s and the buy
+  control never renders, so seats stay hand-granted exactly as before.
+  Standing recommendation, unchanged by having built it: do not set that price
+  until a firm asks to pay. Nothing about the product is worse for the plan
+  existing unsold, and pricing it before a real firm has used the shelf is a
+  guess.
   Slice 3's central question — do brokers at one firm want each other's
   comps *in their reports*, or only a shelf they can search — is now
   ANSWERABLE rather than answered: both exist, and the first real firm's
@@ -65,9 +72,10 @@ intent, the devlog states history.
   `user_id=eq.` filter is widened to an org** — firm reads are new functions
   against new tables, migration 013's separate-tables rule (a test fails the
   build if the widened form appears).
-  Two of the five decisions in the spec's §1 are still open — how a firm is
-  sold, and the attorney question below. Slices 1-3 were built because
-  neither changes any of them.
+  ONE of the five decisions in the spec's §1 is still open: the attorney
+  question below, sharpened by slice 3 — a departing broker's comps may now
+  be sitting in colleagues' reports as well as on the shelf. It gates launch,
+  not development, and none of the four slices depended on it.
 - **`/api/geocode` should take a POST, not a query string.** The two
   follow-ons left by the private-comp geocoding work, in the order Owen set
   when he answered section 7 — this one ABOVE import-time geocoding, not

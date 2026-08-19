@@ -293,6 +293,11 @@ const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
   singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // The per-seat firm plan (2026-08-16). Unset means firm checkout 503s and
+  // the buy control never renders — the same "a button that can only fail is
+  // worse than no button" rule the individual plans follow, and it is how
+  // seats stay hand-granted until somebody actually asks to pay.
+  firmMonthly: (process.env.STRIPE_PRICE_FIRM_MONTHLY || "").trim(),
   // No broker price. One subscription (2026-08-05): the vault is a Pro
   // capability, so STRIPE_PRICE_BROKER_MONTHLY is gone rather than unset. If a
   // second tier is ever revived it needs a deliberate decision, not a dormant
@@ -1677,9 +1682,87 @@ async function getEntitlements(user, reportId, admin = false) {
   // Per-account vault grant (migration 023) — the broker-onboarding door.
   // Reads as undefined until the column exists, which Boolean()s to false.
   const vaultBeta = Boolean(user && user.vault_beta);
-  return ENT.computeEntitlements({
+  const own = ENT.computeEntitlements({
     user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
   });
+  // The firm's seat, as a FALLBACK (migration 031). Their own plan always
+  // wins; the firm is consulted only when nothing else already grants Pro, so
+  // a member who pays for themselves keeps their own billing portal and their
+  // own renewal date, and a firm seat can never quietly take over an
+  // individual subscription.
+  //
+  // entitlements.js learns NOTHING about firms — spec §8, and the division
+  // this whole file already follows: server.js owns the reads, that file owns
+  // the rules. A firm seat is handed in as an ordinary subscription row, and
+  // the rules that then apply to it (lapse, grace, the 24h renewal slack) are
+  // the same ones a personal subscription gets, which is exactly what should
+  // be true of it.
+  if (own.pro) return own;
+  const seat = await firmSeatSubscriptionFor(user);
+  if (!seat) return own;
+  const viaFirm = ENT.computeEntitlements({
+    user, subscription: seat.subscription, purchase, usage, reportId, now,
+    enabled: true, tester, vaultBeta,
+  });
+  if (!viaFirm.pro) return own;
+  // `viaFirm` is presentation only and the reason it exists is one concrete
+  // wrong answer: the plan card offers the Stripe billing portal off
+  // `status !== "none"`, and sending a colleague who has never paid us
+  // anything to a portal for their firm's card would be both confusing and,
+  // if it worked, wrong. It rides here rather than in entitlements.js because
+  // it is a fact about the READ, not a rule.
+  return { ...viaFirm, viaFirm: { id: seat.orgId, name: seat.name, canManage: seat.canManage } };
+}
+
+// Does this person hold a seat on a firm's subscription?
+//
+// Three things decide it, and the third is the one worth reading twice:
+//
+//   1. An ACTIVE membership — org-access.js's own predicate, so a pending
+//      invite and a removed colleague are both nobody.
+//   2. A firm subscription row.
+//   3. A SEAT. Members are ordered by joined_at ascending and the first
+//      `orgs.seats` of them hold the seats. Invites are refused past the cap,
+//      so this only bites when a firm SHRINKS its plan in the Stripe portal —
+//      something we cannot prevent and must therefore have a defined answer
+//      for. Oldest-first means the answer is stable and explicable ("the two
+//      most recently added lost access") rather than arbitrary.
+//
+// Never throws: a failure here resolves to no seat, i.e. the member's own
+// tier, which is the fail-closed direction.
+async function firmSeatSubscriptionFor(user) {
+  try {
+    if (!DB_CONFIGURED || !user || !user.email) return null;
+    const memberships = await orgMembershipsFor(user.email);
+    const mine = memberships.filter(ORG.isActive);
+    if (!mine.length) return null;
+    for (const membership of mine) {
+      const orgId = String(membership.org_id);
+      const [subRows, org, roster] = await Promise.all([
+        sbRequest("GET", `org_subscriptions?org_id=eq.${encodeURIComponent(orgId)}&limit=1`),
+        orgsByIds([orgId]).then((m) => m.get(orgId) || null),
+        orgMemberRows(orgId),
+      ]);
+      const subscription = (subRows && subRows[0]) || null;
+      if (!subscription) continue;
+      const seats = seatCapOf(org);
+      const holders = roster
+        .filter(ORG.isActive)
+        .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")))
+        .slice(0, seats)
+        .map((r) => String(r.id));
+      if (!holders.includes(String(membership.id))) continue;
+      return {
+        subscription, orgId,
+        name: (org && org.name) || "your firm",
+        canManage: ORG.roleOf(membership) === "owner",
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error("Firm seat lookup failed (falling back to the member's own tier):", err.message);
+    return null;
+  }
 }
 
 // --- Stripe writes -----------------------------------------------------------
@@ -1904,6 +1987,16 @@ async function handleStripeEvent(evt) {
 
       if (obj.mode !== "subscription" || !obj.subscription) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
+      // A FIRM checkout (migration 031). Checked before the user path and
+      // returned from, because the two write different tables and a firm
+      // session must never land a row in `subscriptions` keyed on whoever
+      // happened to click Buy — that would give one person a personal
+      // subscription their firm is paying for and leave the firm with none.
+      const orgId = obj.metadata && obj.metadata.org_id;
+      if (orgId) {
+        await applyOrgSubscription(sub, { orgId, label: "✅ Firm subscription active" });
+        return;
+      }
       const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
       if (!row) return console.error(`Checkout ${obj.id} completed for a price we don't sell — ignored.`);
       await upsertSubscription(row);
@@ -1927,6 +2020,19 @@ async function handleStripeEvent(evt) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
+      // The firm path first, by metadata and then by customer — the second
+      // matters because a portal cancellation of an old subscription can
+      // arrive with metadata Stripe never had.
+      const orgId = (obj.metadata && obj.metadata.org_id)
+        || await orgIdForStripeCustomer(typeof obj.customer === "string" ? obj.customer : obj.customer && obj.customer.id);
+      if (orgId) {
+        await applyOrgSubscription(obj, {
+          orgId,
+          statusOverride: evt.type === "customer.subscription.deleted" ? "canceled" : null,
+          label: `Firm subscription ${evt.type.split(".").pop()}`,
+        });
+        return;
+      }
       const userId = (obj.metadata && obj.metadata.user_id)
         || await userIdForStripeCustomer(typeof obj.customer === "string" ? obj.customer : obj.customer && obj.customer.id);
       if (!userId) return console.error(`Subscription ${obj.id} has no user we recognize — ignored.`);
@@ -1947,6 +2053,13 @@ async function handleStripeEvent(evt) {
         && obj.parent.subscription_details.subscription);
       if (!subId) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const orgId = (sub.metadata && sub.metadata.org_id) || await orgIdForStripeCustomer(sub.customer);
+      if (orgId) {
+        // A renewal is also where a seat-count change lands, since a firm
+        // that adds seats mid-cycle is invoiced for them.
+        await applyOrgSubscription(sub, { orgId, label: "💳 Firm payment succeeded" });
+        return;
+      }
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
       const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
@@ -1962,6 +2075,22 @@ async function handleStripeEvent(evt) {
         && obj.parent.subscription_details.subscription);
       if (!subId) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const failedOrgId = (sub.metadata && sub.metadata.org_id) || await orgIdForStripeCustomer(sub.customer);
+      if (failedOrgId) {
+        const orgRow = await applyOrgSubscription(sub, {
+          orgId: failedOrgId, statusOverride: "past_due", label: "⚠ Firm payment failed",
+        });
+        // Owner-facing only, like the individual path: dunning mail to the
+        // customer is Stripe's job. Named as a FIRM because the consequence is
+        // wider — every colleague on that plan loses Pro at the same moment.
+        if (orgRow) {
+          sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a firm subscription payment failed",
+            `A firm payment failed for org ${failedOrgId} (${orgRow.plan}).\n` +
+            `Every member on that plan keeps access until ${orgRow.grace_until}, then downgrades.\n` +
+            `Stripe will retry automatically.`);
+        }
+        return;
+      }
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
       const existing = await findSubscription(userId);
@@ -3080,7 +3209,11 @@ async function findOrg(orgId) {
 // no accept step, because they are the one who asked for it.
 async function createOrgWithOwner(name, user) {
   const rows = await sbRequest("POST", "orgs",
-    [{ name, created_by: user.id }], { prefer: "return=representation" });
+    // `seats` is written explicitly rather than left to 028's column default.
+    // A hand-granted firm is the ordinary case (§9: seats are granted by hand
+    // until somebody asks to pay), and code that reads this column should
+    // never have to distinguish "not set" from "set to the structural cap".
+    [{ name, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
   const org = rows && rows[0];
   if (!org) throw new Error("Firm row was not returned.");
   await sbRequest("POST", "org_members", [{
@@ -3136,6 +3269,94 @@ async function removeOrgMember(orgId, memberId) {
   return sbRequest("PATCH",
     `org_members?id=eq.${encodeURIComponent(memberId)}&org_id=eq.${encodeURIComponent(orgId)}`,
     { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+}
+
+// How many people this firm may hold. One definition, because the invite gate
+// and the entitlement read must never disagree about it — one refusing a
+// colleague the other would have given Pro to is a support ticket nobody can
+// reproduce. See the note at the invite gate for why an unreadable count
+// resolves to the structural cap rather than to zero or one.
+function seatCapOf(org) {
+  const n = Number(org && org.seats);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : ORG.MAX_MEMBERS;
+}
+
+// Firm billing (migration 031). Upsert on org_id, 008's rule keyed on the
+// firm: a second checkout must UPDATE the row, never insert a rival one that
+// could out-rank it.
+async function upsertOrgSubscription(row) {
+  if (!DB_CONFIGURED || !row || !row.org_id) return false;
+  await sbRequest("POST", "org_subscriptions?on_conflict=org_id", [row],
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return true;
+}
+
+async function findOrgSubscription(orgId) {
+  if (!DB_CONFIGURED || !orgId) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `org_subscriptions?org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (err) {
+    console.error("Firm subscription lookup failed:", err.message);
+    return null;
+  }
+}
+
+// Which firm a Stripe customer belongs to, for the events that carry no
+// metadata of ours (a portal change on an older subscription, mostly).
+async function orgIdForStripeCustomer(customerId) {
+  if (!DB_CONFIGURED || !customerId) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `org_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=org_id&limit=1`);
+    return (rows && rows[0] && rows[0].org_id) || null;
+  } catch (err) {
+    console.error("Firm customer lookup failed:", err.message);
+    return null;
+  }
+}
+
+// Seats bought = seats enforced. Written from the SUBSCRIPTION rather than
+// from the checkout request, so the number a firm can actually use is always
+// the number Stripe is billing them for — including after a portal change we
+// never saw the request for.
+//
+// NEVER LOWERS BELOW THE PEOPLE ALREADY IN THE FIRM by deleting anybody: it
+// only writes the count. Members past the cap lose their SEAT (oldest-first,
+// see firmSeatSubscriptionFor) and keep their membership, so a firm that
+// downgrades and then upgrades again finds its people still there.
+async function setOrgSeats(orgId, seats) {
+  if (!DB_CONFIGURED || !orgId) return;
+  try {
+    await sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+      { seats: Math.max(1, Number(seats) || 1) }, { prefer: "return=minimal" });
+  } catch (err) {
+    console.error("Firm seat count write failed:", err.message);
+  }
+}
+
+// One firm subscription event, applied. Mirrors the individual path's shape
+// including its grace rule: a second failed payment inside the window must not
+// buy another seven days.
+async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
+  const source = statusOverride ? { ...sub, status: statusOverride } : sub;
+  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, { graceDays: ENT.GRACE_DAYS });
+  if (!row) {
+    console.error(`Firm subscription ${sub && sub.id} carries a price we do not sell — ignored.`);
+    return null;
+  }
+  row.org_id = orgId;
+  if (row.status === "grace") {
+    const existing = await findOrgSubscription(orgId);
+    if (existing && existing.status === "grace" && existing.grace_until) {
+      row.grace_until = existing.grace_until;
+    }
+  }
+  await upsertOrgSubscription(row);
+  await setOrgSeats(orgId, STRIPE.seatsOf(sub));
+  console.log(`${label}: ${row.plan} -> ${row.status}, ${STRIPE.seatsOf(sub)} seat(s) (firm ${orgId})`);
+  return row;
 }
 
 // THE SHELF: every report anybody has shared with this firm.
@@ -15503,7 +15724,7 @@ const server = http.createServer((req, res) =>
         if (!proEnabledFor(user)) {
           return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
         }
-        const { plan, address, type, months } = JSON.parse(body || "{}");
+        const { plan, address, type, months, orgId, seats } = JSON.parse(body || "{}");
 
         // An EXPLICIT table with no fallthrough. This used to read "founding ?
         // annual : monthly", which mapped every unrecognized plan onto the
@@ -15515,6 +15736,10 @@ const server = http.createServer((req, res) =>
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
           single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // Per-seat, and the ONLY plan whose quantity is not 1. It buys a
+          // FIRM's subscription, so it needs an orgId and the caller must own
+          // that firm — both checked below, before Stripe is ever called.
+          firm_monthly:        { price: STRIPE_PRICES.firmMonthly,    mode: "subscription", firm: true },
           // NO broker plan. One subscription (2026-08-05): the private vault is
           // a Pro capability, so there is nothing separate to sell. The old
           // broker_monthly entry never had a price set and so could never be
@@ -15553,6 +15778,45 @@ const server = http.createServer((req, res) =>
           }
         }
 
+        // --- firm specifics -------------------------------------------------
+        // The firm is the customer, so everything here is about proving the
+        // caller may spend that firm's money and that the seat count is not
+        // smaller than the firm already is.
+        let firmSeats = 0;
+        let firmCustomer = null;
+        if (chosen.firm) {
+          const memberships = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === String(orgId || "")), user.email);
+          if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
+          // OWNER only, deliberately narrower than canManageMembers. An admin
+          // manages people; committing a firm to a recurring charge is not the
+          // same act, and the person who created the firm is the one who can
+          // be assumed to have authority over its card.
+          if (ORG.roleOf(membership) !== "owner") {
+            return sendJson(res, 403, { error: "Only a firm's owner can set up billing." });
+          }
+          const roster = (await orgMemberRows(String(orgId))).filter((r) => !r.removed_at);
+          const asked = Math.floor(Number(seats) || 0);
+          if (!Number.isFinite(asked) || asked < 1 || asked > ORG.MAX_MEMBERS) {
+            return sendJson(res, 400, { error: `Choose between 1 and ${ORG.MAX_MEMBERS} seats.` });
+          }
+          // Refused rather than silently accepted, because the consequence of
+          // buying too few is that named colleagues lose Pro the moment the
+          // webhook lands — a downgrade nobody asked for, applied to people
+          // who are not in the room. Say the number instead.
+          if (asked < roster.length) {
+            return sendJson(res, 400, {
+              error: `${roster.length} people are in this firm, including invitations. Buy at least ${roster.length} seats, or remove somebody first.`,
+              code: "seats_below_headcount",
+              headcount: roster.length,
+            });
+          }
+          firmSeats = asked;
+          const existingOrgSub = await findOrgSubscription(String(orgId));
+          firmCustomer = (existingOrgSub && existingOrgSub.stripe_customer_id) || null;
+        }
+
         // Seat check at checkout CREATION. There is a small race here — two
         // people can pass the check within the same second and both reach 51 —
         // so the webhook re-checks and logs loudly. Deliberate: a hard
@@ -15581,20 +15845,35 @@ const server = http.createServer((req, res) =>
         const returnOrigin = returnOriginFor(req);
         const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
           mode: chosen.mode,
-          line_items: [{ price: priceId, quantity: 1 }],
+          line_items: [{ price: priceId, quantity: chosen.firm ? firmSeats : 1 }],
           success_url: `${returnOrigin}${returnPath}=success`,
           cancel_url: `${returnOrigin}${returnPath}=cancelled`,
           client_reference_id: user.id,
           // Both: metadata rides on the session, and the subscription's or
           // payment intent's own copy lands on the object itself so later
           // events can be traced back to a user without a DB round trip.
-          metadata: { user_id: user.id, ...(reportId ? { report_id: reportId } : {}) },
+          // org_id is what routes every later event to the firm's table
+          // instead of to the buyer's own. It rides on BOTH the session and
+          // the subscription, for the reason user_id already does: a webhook
+          // arriving months later must be traceable without a DB round trip.
+          metadata: {
+            user_id: user.id,
+            ...(chosen.firm ? { org_id: String(orgId) } : {}),
+            ...(reportId ? { report_id: reportId } : {}),
+          },
           ...(chosen.mode === "subscription"
-            ? { subscription_data: { metadata: { user_id: user.id } } }
+            ? { subscription_data: { metadata: {
+                user_id: user.id, ...(chosen.firm ? { org_id: String(orgId) } : {}),
+              } } }
             : { payment_intent_data: { metadata: { user_id: user.id, report_id: reportId } } }),
-          ...(existing && existing.stripe_customer_id
-            ? { customer: existing.stripe_customer_id }
-            : { customer_email: user.email }),
+          // A firm's own customer record, never the buyer's: the card belongs
+          // to the firm, and reusing the owner's personal customer would put
+          // both subscriptions on one invoice and one payment method.
+          ...(chosen.firm
+            ? (firmCustomer ? { customer: firmCustomer } : { customer_email: user.email })
+            : (existing && existing.stripe_customer_id
+              ? { customer: existing.stripe_customer_id }
+              : { customer_email: user.email })),
         },
         // Idempotent per user+report, so a double-click cannot become two
         // sessions and two charges for the same report. Stripe returns the
@@ -15613,8 +15892,13 @@ const server = http.createServer((req, res) =>
   }
 
   // --- Stripe: Customer Portal (cancel, payment method, invoices) ---
+  // Takes an optional { orgId } body: the same route opens a FIRM's portal for
+  // its owner. One route, because the alternative is two places that must
+  // agree about PRO_ENABLED, the audience check, and what to do with a member
+  // who has no customer record — and the difference between them is one lookup.
   if (req.method === "POST" && req.url === "/api/billing-portal") {
-    req.on("data", () => {});
+    let portalBody = "";
+    req.on("data", (c) => { portalBody += c; if (portalBody.length > 1e4) req.destroy(); });
     req.on("end", async () => {
       try {
         if (!PRO_ENABLED || !STRIPE_CONFIGURED) {
@@ -15625,7 +15909,25 @@ const server = http.createServer((req, res) =>
         if (!proEnabledFor(user)) {
           return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
         }
-        const sub = await findSubscription(user.id);
+        let orgId = "";
+        try { orgId = String((JSON.parse(portalBody || "{}") || {}).orgId || "").trim(); }
+        catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+
+        let sub;
+        if (orgId) {
+          const memberships = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
+          // OWNER only, matching checkout: the portal can cancel the plan and
+          // change the card, so it is the same authority as buying.
+          if (ORG.roleOf(membership) !== "owner") {
+            return sendJson(res, 403, { error: "Only a firm's owner can manage its billing." });
+          }
+          sub = await findOrgSubscription(orgId);
+        } else {
+          sub = await findSubscription(user.id);
+        }
         const customer = sub && sub.stripe_customer_id;
         if (!customer) return sendJson(res, 400, { error: "No billing account found for you yet." });
         const portal = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "billing_portal/sessions", {
@@ -15771,6 +16073,13 @@ const server = http.createServer((req, res) =>
           // the routes re-resolve entitlements server-side, so editing this
           // response relabels a plan card and unlocks nothing.
           tester: ent.tester === true,
+          // Pro that arrives through a firm's seat (migration 031). The plan
+          // card reads it to say "Pro — through Colliers Boise" and, more
+          // importantly, to keep the personal "Manage billing" button away
+          // from somebody who has never paid us anything: that button opens a
+          // Stripe portal for a customer record they do not have, so it 400s.
+          // Presentation only, like every field in this block.
+          viaFirm: ent.viaFirm || null,
           // Whether this deployment has a tester passkey at all, so the pricing
           // modal can hide a redeem row that could only ever fail. NOT a secret and
           // not an entitlement: it says a door exists, never what opens it.
@@ -16578,7 +16887,32 @@ const server = http.createServer((req, res) =>
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
         const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
+        // Billing state, only for a firm this caller actually belongs to, and
+        // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
+        // is why an invite refusal makes sense when it comes, rather than
+        // arriving as a surprise from an owner-only number they never saw.
+        const billing = {};
+        for (const r of mine) {
+          const orgId = String(r.org_id);
+          const [sub, roster] = await Promise.all([
+            findOrgSubscription(orgId),
+            orgMemberRows(orgId),
+          ]);
+          const used = roster.filter((m) => !m.removed_at).length;
+          billing[orgId] = {
+            seats: seatCapOf(firms.get(orgId)),
+            used,
+            // Only the owner is offered the buy and portal controls, matching
+            // both routes. Anyone else sees the seat count and nothing to click.
+            canBill: ORG.roleOf(r) === "owner" && PRO_ENABLED && STRIPE_CONFIGURED
+              && Boolean(STRIPE_PRICES.firmMonthly),
+            plan: (sub && sub.plan) || null,
+            status: (sub && sub.status) || "none",
+            currentPeriodEnd: (sub && sub.current_period_end) || null,
+          };
+        }
         return sendJson(res, 200, {
+          billing,
           // Whether this account may CREATE one. The browser uses it to decide
           // between an invitation to start a firm and the paywall; it is
           // presentation only, and POST /api/org checks it again.
@@ -16758,6 +17092,31 @@ const server = http.createServer((req, res) =>
         if (!clean.ok) return sendJson(res, 400, { error: clean.error });
         if (live.length + clean.emails.length > ORG.MAX_MEMBERS) {
           return sendJson(res, 400, { error: `A firm can hold up to ${ORG.MAX_MEMBERS} people.` });
+        }
+        // The seat cap (migration 031). `orgs.seats` is what the firm pays
+        // for — or, for a hand-granted firm, what was granted — and it is
+        // enforced HERE rather than at accept: refusing an invitation is a
+        // sentence the inviter can act on, while refusing an accept punishes
+        // the wrong person for a decision they had no part in.
+        //
+        // Pending invitations count. A seat is committed the moment somebody
+        // is asked, or a firm could invite its way past the cap and only
+        // discover it as colleagues arrived.
+        const orgRow = (await orgsByIds([orgId])).get(String(orgId));
+        // FALLS BACK TO THE STRUCTURAL CAP, never to 1. A seat count is a
+        // COMMERCIAL limit, not an access-control gate — membership is the
+        // gate, and it lives elsewhere — so when the number cannot be read the
+        // failure worth choosing is an unbilled invitation, not a paying firm
+        // locked out of adding the colleague they just hired.
+        const seats = seatCapOf(orgRow);
+        if (live.length + clean.emails.length > seats) {
+          const room = Math.max(0, seats - live.length);
+          return sendJson(res, 409, {
+            error: room
+              ? `Your firm has ${seats} seats and ${room} left. Add seats to invite more people.`
+              : `Your firm's ${seats} seats are all taken. Add seats to invite more people.`,
+            code: "no_seats", seats, used: live.length,
+          });
         }
         await inviteOrgMembers(orgId, clean.emails, user.id);
         const org = await findOrg(orgId);

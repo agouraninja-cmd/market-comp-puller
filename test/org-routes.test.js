@@ -132,6 +132,31 @@ test("firm routes on a bare server (no database)", async (t) => {
     assert.match(fn, /return \[\];/, "and it must fail closed to nothing");
   });
 
+  await t.test("a firm session writes the firm's table, never the buyer's own", () => {
+    // The failure worth a test rather than a comment: without the org_id
+    // branch returning, a firm checkout would land a row in `subscriptions`
+    // keyed on whoever clicked Buy — giving one person a personal
+    // subscription their firm is paying for, and leaving the firm with none.
+    const i = SERVER.indexOf('case "checkout.session.completed": {');
+    assert.ok(i > 0);
+    const branch = SERVER.slice(i, i + 4000);
+    const orgAt = branch.indexOf("applyOrgSubscription");
+    const userAt = branch.indexOf("await upsertSubscription(row)");
+    assert.ok(orgAt > 0 && userAt > 0, "both paths should exist");
+    assert.ok(orgAt < userAt, "the firm branch must be reached — and returned from — first");
+  });
+
+  await t.test("seat enforcement and the seat entitlement read one definition", () => {
+    // One refusing a colleague the other would have granted Pro to is a
+    // support ticket nobody can reproduce.
+    assert.match(SERVER, /function seatCapOf\(org\)/);
+    const uses = (SERVER.match(/seatCapOf\(/g) || []).length;
+    assert.ok(uses >= 3, "declared once, used by both the invite gate and the seat read");
+    assert.doesNotMatch(SERVER.replace(/function seatCapOf[\s\S]*?\n}/, ""),
+      /Number\(org(Row)? && org(Row)?\.seats\)/,
+      "nothing may read orgs.seats except that function");
+  });
+
   await t.test("the firm share write is refused without a database, never written to the file store", () => {
     // The file store has no column for org_id, so a firm share landing there
     // would come back out of getShareRecord as a PUBLIC link. storeSharedReport

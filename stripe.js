@@ -114,10 +114,30 @@ function planForPrice(priceId, priceMap) {
   const is = (candidate) => Boolean(candidate) && priceId === candidate;
   if (is(map.monthly)) return "pro_monthly";
   if (is(map.annualFounding)) return "pro_annual_founding";
+  // The firm plan (2026-08-16). A SEPARATE price rather than the monthly one
+  // bought N times: it is billed per seat with a quantity, and sharing a price
+  // id with the individual plan would make the two indistinguishable in every
+  // webhook that arrives afterwards.
+  if (is(map.firmMonthly)) return "firm_monthly";
   // No broker price: one subscription (2026-08-05). A webhook carrying a price
   // we do not sell still resolves to null and writes no row, which is the same
   // fail-closed behaviour as before.
   return null;
+}
+
+/**
+ * How many seats a subscription is billed for.
+ *
+ * Stripe puts the quantity on the subscription item, not on the subscription,
+ * and the shape has moved across API versions — so read both, and fall back to
+ * 1 rather than to 0. Zero would read as "a firm with no seats", which
+ * org-access.js would then enforce as "nobody may be in this firm", turning a
+ * shape change at Stripe into a lockout.
+ */
+function seatsOf(sub) {
+  const item = sub && sub.items && Array.isArray(sub.items.data) ? sub.items.data[0] : null;
+  const n = Number((item && item.quantity) != null ? item.quantity : sub && sub.quantity);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 1;
 }
 
 // Stripe's status vocabulary is wider than ours and fails closed on both ends:
@@ -221,6 +241,7 @@ module.exports = {
   planForPrice,
   statusForStripe,
   subscriptionRowFrom,
+  seatsOf,
   periodEndIso,
   priceIdOf,
   refundOf,

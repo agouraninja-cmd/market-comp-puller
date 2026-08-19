@@ -1003,8 +1003,44 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     a broker who has shared nothing really does have a vault visible only to
     them. The default text stays in the MARKUP so a page whose script failed
     still makes the true statement rather than none.
-  Also not built: per-seat
-  billing. Seats are granted by hand, the `vault_beta` precedent.
+  **Per-seat billing** (migration 031, 2026-08-16). `STRIPE_PRICE_FIRM_MONTHLY`
+  + `plan: "firm_monthly"` on `/api/checkout` (with `orgId` and `seats`), the
+  firm's own Stripe customer, and `org_subscriptions` keyed on `org_id`.
+  `POST /api/billing-portal` takes an optional `orgId` and opens the firm's
+  portal. Unset price = the plan 503s and the buy control never renders, which
+  is how seats stay hand-granted until somebody asks to pay. Six rules:
+  - **`orgs.seats` is the one cap**, read only through `seatCapOf()`, which the
+    invite gate and the entitlement read share — one refusing a colleague the
+    other would have granted Pro to is a support ticket nobody can reproduce.
+    An unreadable count falls back to `MAX_MEMBERS`, never to 0 or 1: a seat
+    count is a COMMERCIAL limit (membership is the access gate, elsewhere), so
+    the failure worth choosing is an unbilled invitation, not a paying firm
+    locked out of adding the colleague they just hired.
+  - **The webhook writes seats from the SUBSCRIPTION**, not from the checkout
+    request, so the number a firm can use is always what Stripe bills them for
+    — including after a portal change we never saw the request for.
+  - **A firm session must reach `applyOrgSubscription` and RETURN before the
+    user path.** Otherwise a firm checkout lands a row in `subscriptions` keyed
+    on whoever clicked Buy: one person with a personal subscription their firm
+    is paying for, and the firm with none. Pinned by test.
+  - **Owner only** for checkout and the portal, deliberately narrower than
+    `canManageMembers`: an admin manages people, committing a firm to a
+    recurring charge is not the same act.
+  - **Seats below the current headcount are refused by name and number**
+    (`seats_below_headcount`), because buying too few drops named colleagues to
+    free the moment the webhook lands — a downgrade applied to people who are
+    not in the room. Pending invitations count toward the headcount.
+  - **The firm is a FALLBACK in `getEntitlements`**, consulted only when
+    nothing already grants Pro, and handed to `entitlements.js` as an ordinary
+    subscription row — so that file still knows nothing about firms (spec §8)
+    and the lapse, grace and renewal-slack rules apply unchanged. `viaFirm` on
+    `/api/config` is presentation only, and exists for one concrete wrong
+    answer: the plan card offers the Stripe portal off `status !== "none"`, and
+    a colleague on a firm seat has a real status belonging to a customer record
+    that is not theirs. Seats are held oldest-first by `joined_at`, so a portal
+    downgrade has a defined, explicable result instead of an arbitrary one.
+  Seats can still be granted by hand, the `vault_beta` precedent — a firm with
+  no subscription has `seats` and a `status` of `"none"`, and everything works.
   `orgs.share_default` and `orgs.seats` ship as unwritten columns so both are
   code changes rather than migrations — the same reason `hub_items.status`
   shipped early in 024. The shelf needed **no** `org_shelf_items` table in the

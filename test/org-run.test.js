@@ -46,7 +46,7 @@ function seedTables() {
   };
 }
 
-async function bootWithDb(tables) {
+async function bootWithDb(tables, extraEnv) {
   const db = await fake.start({ tables });
   const srv = await shared.boot({
     ACCOUNT_WALL: "off",
@@ -54,6 +54,7 @@ async function bootWithDb(tables) {
     SUPABASE_URL: db.url,
     SUPABASE_SERVICE_KEY: "service-key",
     SITE_URL: "https://compninja.co",
+    ...extraEnv,
   });
   return { db, srv, stop: async () => { srv.stop(); await db.stop(); } };
 }
@@ -541,6 +542,140 @@ test("the shared vault: a comp's whole life on the firm's shelf", async (t) => {
     const r = await firm("POST", { orgId: org.id, compIds: ["22222222-2222-4222-8222-222222222222"] });
     assert.equal(r.status, 200, "not an error — there was simply nothing of theirs to share");
     assert.equal(tables.org_comps.length, 0);
+  });
+});
+
+test("per-seat firm billing", async (t) => {
+  // The seat rules and the entitlement fallback, against real database paths.
+  // Stripe itself is never called: checkout is refused before the network on
+  // every case below, and the subscription row is written directly, which is
+  // exactly what the webhook does.
+  const tables = seedTables();
+  tables.org_subscriptions = [];
+  // Stripe keys, because /api/checkout and /api/billing-portal 503 before any
+  // of their own checks without them. Nothing here reaches Stripe's API: every
+  // checkout case below is a refusal that returns first, and the subscription
+  // row is written directly — which is exactly what the webhook does.
+  const ctx = await bootWithDb(tables, {
+    STRIPE_SECRET_KEY: "sk_test_not_used",
+    STRIPE_PRICE_PRO_MONTHLY: "price_pro",
+    STRIPE_PRICE_FIRM_MONTHLY: "price_firm",
+  });
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  const org = await (await fetch(srv.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+  const orgRow = tables.orgs[0];
+  const buy = (user, body) => fetch(srv.base + "/api/checkout",
+    as(user, { method: "POST", body: JSON.stringify({ plan: "firm_monthly", orgId: org.id, ...body }) }));
+  const invite = (emails) => fetch(srv.base + "/api/org/invite",
+    as(BRAD, { method: "POST", body: JSON.stringify({ orgId: org.id, emails }) }));
+
+  await t.test("a new firm starts at the structural cap, not at one seat", async () => {
+    // The failure direction that matters: an unreadable or unwritten seat
+    // count must never resolve to "nobody may be in this firm".
+    assert.equal(orgRow.seats, 200);
+    const me = await (await fetch(srv.base + "/api/org", as(BRAD))).json();
+    assert.equal(me.billing[org.id].seats, 200);
+    assert.equal(me.billing[org.id].used, 1);
+    assert.equal(me.billing[org.id].status, "none", "hand-granted, no subscription");
+  });
+
+  await t.test("invitations are refused once the seats are full, by name and number", async () => {
+    orgRow.seats = 2;
+    assert.equal((await invite([MIKE.email])).status, 200, "the second seat is free");
+    const full = await invite([OUTSIDER.email]);
+    assert.equal(full.status, 409);
+    const body = await full.json();
+    assert.equal(body.code, "no_seats");
+    assert.equal(body.seats, 2);
+    assert.match(body.error, /all taken/);
+  });
+
+  await t.test("a PENDING invitation holds its seat", async () => {
+    // Mike has not accepted. If pending rows did not count, a firm could
+    // invite its way past the cap and only discover it as people arrived.
+    const mike = tables.org_members.find((m) => m.email === MIKE.email);
+    assert.equal(mike.joined_at, undefined);
+    assert.equal((await invite([OUTSIDER.email])).status, 409);
+  });
+
+  await t.test("only the owner can buy seats, and never fewer than the headcount", async () => {
+    await fetch(srv.base + "/api/org/accept",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId: org.id }) }));
+    const notOwner = await buy(MIKE, { seats: 5 });
+    assert.equal(notOwner.status, 403);
+    assert.match((await notOwner.json()).error, /owner/);
+    const stranger = await buy(OUTSIDER, { seats: 5 });
+    assert.equal(stranger.status, 403);
+    // Two people are in the firm, so one seat would drop a named colleague to
+    // free the moment the webhook landed.
+    const tooFew = await buy(BRAD, { seats: 1 });
+    assert.equal(tooFew.status, 400);
+    const body = await tooFew.json();
+    assert.equal(body.code, "seats_below_headcount");
+    assert.equal(body.headcount, 2);
+  });
+
+  await t.test("checkout refuses a firm the caller is not in", async () => {
+    const r = await fetch(srv.base + "/api/checkout", as(BRAD, {
+      method: "POST",
+      body: JSON.stringify({ plan: "firm_monthly", orgId: "some-other-firm", seats: 5 }),
+    }));
+    assert.equal(r.status, 403);
+  });
+
+  await t.test("a firm subscription grants Pro to its seat holders", async () => {
+    // Written directly, which is what applyOrgSubscription does on the
+    // webhook. Mike pays for nothing and holds a seat.
+    tables.org_subscriptions.push({
+      org_id: org.id, stripe_subscription_id: "sub_firm", stripe_customer_id: "cus_firm",
+      plan: "firm_monthly", status: "active", current_period_end: YEAR_OUT,
+      cancel_at_period_end: false, grace_until: null,
+    });
+    const cfg = await (await fetch(srv.base + "/api/config", as(MIKE))).json();
+    assert.equal(cfg.pro.isPro, true, "a free colleague on a paid seat is Pro");
+    assert.equal(cfg.pro.viaFirm.name, "Colliers Boise");
+    assert.equal(cfg.pro.viaFirm.canManage, false, "and is not the payer");
+  });
+
+  await t.test("a member past the seat cap does NOT get the firm's Pro", async () => {
+    // The defined answer for a portal downgrade, which we cannot prevent.
+    // Oldest-first, so the result is explicable rather than arbitrary.
+    orgRow.seats = 1;
+    const mike = await (await fetch(srv.base + "/api/config", as(MIKE))).json();
+    assert.equal(mike.pro.isPro, false, "the most recently joined loses the seat");
+    const brad = await (await fetch(srv.base + "/api/config", as(BRAD))).json();
+    assert.equal(brad.pro.isPro, true, "the owner joined first and keeps it");
+    orgRow.seats = 2;
+  });
+
+  await t.test("a member's OWN subscription wins over the firm's", async () => {
+    // Brad has his own row from seedTables. He must keep his own plan name and
+    // his own billing portal rather than being folded onto the firm's.
+    const cfg = await (await fetch(srv.base + "/api/config", as(BRAD))).json();
+    assert.equal(cfg.pro.plan, "pro_monthly");
+    assert.equal(cfg.pro.viaFirm, null, "so the personal Manage billing stays offered");
+  });
+
+  await t.test("a lapsed firm plan takes the seat with it, and grants nothing", async () => {
+    tables.org_subscriptions[0].status = "cancelled";
+    tables.org_subscriptions[0].current_period_end = "2020-01-01T00:00:00Z";
+    const cfg = await (await fetch(srv.base + "/api/config", as(MIKE))).json();
+    assert.equal(cfg.pro.isPro, false);
+    assert.equal(cfg.pro.viaFirm, null);
+    // And nothing was deleted: the firm, its people and its shelf survive a
+    // lapse, exactly as a lapsed vault survives.
+    assert.equal(tables.org_members.filter((m) => !m.removed_at).length, 2);
+  });
+
+  await t.test("an outsider cannot open a firm's billing portal", async () => {
+    for (const user of [MIKE, OUTSIDER]) {
+      const r = await fetch(srv.base + "/api/billing-portal",
+        as(user, { method: "POST", body: JSON.stringify({ orgId: org.id }) }));
+      assert.equal(r.status, 403, user.email);
+    }
   });
 });
 

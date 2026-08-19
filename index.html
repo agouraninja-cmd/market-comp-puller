@@ -2158,6 +2158,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
             </div>
           </div>
+          <!-- Seats. Shown to every member (the count explains an invite
+               refusal before it happens), but only the owner is offered the
+               controls — checkout and the portal both refuse anyone else, and
+               a button that can only fail is worse than no button. Rendered by
+               renderFirmBilling(). -->
+          <div id="firmBilling" class="hidden mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <span id="firmSeats" class="text-[#4C5665]"></span>
+            <button id="firmBuySeatsBtn" type="button"
+              class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add seats</button>
+            <button id="firmPortalBtn" type="button"
+              class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
+            <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
+          </div>
           <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
@@ -10891,6 +10904,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           canCreate: data.canCreate === true,
           orgs: Array.isArray(data.orgs) ? data.orgs : [],
           invites: Array.isArray(data.invites) ? data.invites : [],
+          billing: (data.billing && typeof data.billing === "object") ? data.billing : {},
         };
         return firmState;
       } catch (_) {
@@ -11073,6 +11087,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
     renderFirmAutoShare(firm);
+    renderFirmBilling(firm);
   }
 
   // The two auto-share switches. Presentation only — the server re-decides
@@ -11097,6 +11112,72 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? `On — new reports go to ${firm.name}`
       : "Off — nothing is shared unless you share it";
   }
+
+  // Seats and the firm's plan. Everything here is presentation: /api/checkout
+  // and /api/billing-portal both re-check ownership, so a browser that unhides
+  // these buttons gets two buttons and a 403.
+  function renderFirmBilling(firm) {
+    const box = document.getElementById("firmBilling");
+    const b = firm && firmState && firmState.billing ? firmState.billing[firm.id] : null;
+    if (!b) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const left = Math.max(0, b.seats - b.used);
+    document.getElementById("firmSeats").textContent =
+      `${b.used} of ${b.seats} seats used` + (left ? ` · ${left} free` : " · none free") +
+      // The plan, named only when there is one. A hand-granted firm has seats
+      // and no subscription, which is the ordinary case until somebody buys.
+      (b.status && b.status !== "none" ? ` · ${b.status}` : "");
+    document.getElementById("firmBuySeatsBtn").classList.toggle("hidden", !b.canBill);
+    // Offered only once a subscription exists: the portal 400s without a
+    // Stripe customer, and a firm that has never paid has none.
+    document.getElementById("firmPortalBtn").classList
+      .toggle("hidden", !(b.canBill && b.status && b.status !== "none"));
+  }
+
+  document.getElementById("firmBuySeatsBtn").addEventListener("click", async () => {
+    const firm = myFirm();
+    const b = firm && firmState.billing ? firmState.billing[firm.id] : null;
+    const msg = document.getElementById("firmBillingMsg");
+    if (!firm || !b) return;
+    // Defaulted to the headcount, never below it: buying fewer seats than the
+    // firm already has would drop named colleagues to free the moment the
+    // webhook lands, which is a downgrade nobody in the room asked for. The
+    // server refuses it too, by name and with the number.
+    const asked = prompt(`How many seats? Your firm has ${b.used} people, including invitations.`, String(Math.max(b.used, b.seats === 200 ? b.used : b.seats)));
+    if (asked == null) return;
+    const seats = Math.floor(Number(asked));
+    if (!seats || seats < 1) { msg.textContent = "Enter a number of seats."; return; }
+    msg.textContent = "Opening checkout…";
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan: "firm_monthly", orgId: firm.id, seats }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      location.href = body.url;
+    } catch (e) {
+      msg.textContent = e.message || "That didn't go through.";
+    }
+  });
+
+  document.getElementById("firmPortalBtn").addEventListener("click", async () => {
+    const firm = myFirm();
+    const msg = document.getElementById("firmBillingMsg");
+    if (!firm) return;
+    msg.textContent = "Opening…";
+    try {
+      const res = await fetch("/api/billing-portal", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      location.href = body.url;
+    } catch (e) {
+      msg.textContent = e.message || "That didn't go through.";
+    }
+  });
 
   async function saveFirmSetting(patch) {
     const firm = myFirm();
@@ -12715,9 +12796,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // portal would 400. Any other state means there is something to manage —
   // except "admin"/"tester", which are comped and likewise have no customer
   // to manage.
+  // Pro that arrives through a firm's seat (migration 031).
+  function isFirmPro() {
+    return Boolean(proConfig && proConfig.viaFirm && proConfig.viaFirm.id);
+  }
+
   function hasBillingHistory() {
+    // `!isFirmPro()` is the same exclusion admins and testers already get, and
+    // for the same reason stated one level up: `status` is what decides
+    // whether "Manage billing" is offered, and a colleague on their firm's
+    // seat has a real Stripe status belonging to a customer record that is not
+    // theirs. The button would open a portal for their firm's card, or — since
+    // they have no customer of their own — 400. The firm's OWNER manages that
+    // plan from the firm section on the desk, where the seat count is.
     return Boolean(currentUser) && proConfig && proConfig.status
-      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro();
+      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro() && !isFirmPro();
   }
 
   function showPricingError(msg) {
@@ -12902,6 +12995,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       return {
         title: "Pro — comped (beta tester)",
         detail: "Full Pro access as a beta tester. Nothing is billed, and there's no subscription behind it. The private broker vault isn't included.",
+      };
+    }
+    // Before the Stripe states, like the two comped branches above it and for
+    // the same reason: a colleague on their firm's seat has a real status
+    // ("active"), so saying "Pro" flat would leave them believing they hold a
+    // subscription they could cancel — and looking for a billing button that
+    // is deliberately not there.
+    if (p.viaFirm && p.viaFirm.name) {
+      return {
+        title: `Pro — through ${p.viaFirm.name}`,
+        detail: p.viaFirm.canManage
+          ? "Your firm's plan covers your seat. Manage it in the firm section on this page."
+          : "Your firm's plan covers your seat. Its owner manages the plan and the seats.",
       };
     }
     if (p.isPro && p.status === "grace") {

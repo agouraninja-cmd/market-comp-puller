@@ -97,6 +97,14 @@ const COLUMNS = [
   // nothing looks broken and the dimension just stays empty. Exactly the
   // silent-failure shape 004 taught this folder to check for.
   ["broker_comps",      ["property_id"],                         "016-broker-comps-star.sql"],
+  // 029 is the lease half of the vault, and its shape is the WRITE-path kind
+  // this list exists for: normalizeRow puts all four keys on the row server.js
+  // inserts wholesale, so a missing one makes PostgREST 400 the insert and
+  // refuse the broker's ENTIRE spreadsheet, lease rows and sale rows alike.
+  // Louder than the silent failures above, but still worth naming here — this
+  // file is how "the owner said they ran it" becomes a fact.
+  ["broker_comps",      ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"],
+                                                                "029-vault-lease-rent.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

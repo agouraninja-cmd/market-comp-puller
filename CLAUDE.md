@@ -152,6 +152,25 @@ starts nothing (`require.main` guard).
 favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
 `-StartMenu` for a Start Menu copy).
 
+**Users install the app from the site itself** (2026-08-20) — `desktop.js`
+is the owner/dev door; customers get the installable web app (PWA).
+`manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the
+`STATIC_FILES` allowlist, served without a session so the wall never blocks
+install) make Chrome/Edge offer "Install CompNinja" from the address bar,
+and index.html's footer carries an "Install the desktop app" button that
+ships `hidden` and is revealed only by `beforeinstallprompt` — the
+Buy-button rule: a control that can only fail (already installed,
+Safari/Firefox) never renders. There is **deliberately NO service worker**:
+installability no longer requires one, and a SW cache could serve
+`/valuation.js` stale relative to index.html — the exact failure that
+file's `max-age: 0` rule exists to prevent; `test/manifest.test.js` pins
+that, the manifest fields, the icon sizes against their real PNG bytes, and
+the allowlist entries. There is no installer to host or code-sign anywhere:
+"where do users download it" is answered by compninja.co, and installed
+copies update themselves because the app IS the live site. (A Microsoft
+Store listing can wrap this same manifest via PWABuilder later; nothing
+here would change.)
+
 ### Restart rule (important)
 
 - Editing **`index.html`** needs no restart — `server.js` reads it from disk on

@@ -46,6 +46,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <!-- Installable app (PWA): this manifest is what makes Chrome/Edge offer
+       "Install CompNinja" (address-bar icon, and the footer's Install button
+       once the browser fires beforeinstallprompt). Deliberately NO service
+       worker: a SW is not required for install any more, and a cache layer
+       here could serve /valuation.js stale relative to this HTML — the exact
+       failure the max-age:0 rule on that file exists to prevent. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -3218,6 +3225,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
               <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
+              <!-- Hidden until the browser fires beforeinstallprompt: an
+                   install button that could only fail (already installed,
+                   unsupported browser) is worse than no button — the same
+                   rule the Buy button follows. -->
+              <li id="installAppItem" hidden><button type="button" id="installAppBtn" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Install the desktop app</button></li>
             </ul>
           </div>
           <div>
@@ -12614,6 +12626,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Straight to the submission modal — the same one /brokers links to via
   // /#submit-comp. openCompModal is a hoisted declaration further down.
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
+
+  // ----------------------------------------------------------------------------
+  // Install the app (PWA). The manifest alone makes Chrome/Edge show their own
+  // install icon in the address bar; this adds a visible door in the footer.
+  // preventDefault is deliberate — it suppresses the mobile mini-infobar, not
+  // the desktop omnibox icon — and the button only APPEARS once the browser
+  // has handed us a working prompt, so it can never be a control that does
+  // nothing (already installed, Safari/Firefox, iOS all simply never fire it).
+  // ----------------------------------------------------------------------------
+  let deferredInstallPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    document.getElementById("installAppItem").hidden = false;
+  });
+  document.getElementById("installAppBtn").addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    const prompt = deferredInstallPrompt;
+    deferredInstallPrompt = null; // a prompt() object is single-use
+    document.getElementById("installAppItem").hidden = true;
+    prompt.prompt();
+    try { await prompt.userChoice; } catch { /* dismissed */ }
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    document.getElementById("installAppItem").hidden = true;
+  });
 
   // ----------------------------------------------------------------------------
   // Escape closes the topmost open modal, by clicking that modal's own cancel

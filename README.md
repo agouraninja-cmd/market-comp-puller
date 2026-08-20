@@ -47,6 +47,15 @@ There are no `npm install` dependencies — it runs on plain Node.
 
 ## Run it as a desktop app
 
+**For users:** the deployed site is an installable app (PWA) — open
+compninja.co in Chrome or Edge and click the Install icon in the address
+bar (or the footer's "Install the desktop app" button). It lands on the
+desktop/taskbar/Start Menu with the CompNinja icon, opens in its own
+window, and stays current automatically because the app is the live site.
+Nothing to download or host.
+
+**For the owner/dev**, there is also a local launcher:
+
 ```bash
 npm run desktop
 ```

@@ -18628,6 +18628,15 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The desktop/mobile install identity (PWA). Users "download" the app
+    // from the site itself — Chrome/Edge offer Install once this manifest is
+    // reachable — so there is no installer to host or code-sign anywhere.
+    // Short max-age like the CSS: a renamed app or swapped icon should reach
+    // installed copies on their next launch, not a day later.
+    "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json", maxAge: 300 },
+    "/icon-192.png": { file: "icon-192.png", type: "image/png", maxAge: 86400 },
+    "/icon-512.png": { file: "icon-512.png", type: "image/png", maxAge: 86400 },
+    "/icon-maskable-512.png": { file: "icon-maskable-512.png", type: "image/png", maxAge: 86400 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },

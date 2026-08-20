@@ -1063,8 +1063,6 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -1073,13 +1071,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   here and deliberately nowhere else (GUARD 2 of the private-comp contract).
   The GET alias was removed rather than deprecated, because a door left open
   is one stale caller away from putting addresses back in URLs and nothing
-  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model
+  no longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
-  pin from
-  geocoding (this proxy, then browser-direct Nominatim as fallback, results
-  cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+  pin from geocoding (this proxy, then browser-direct Nominatim as fallback,
+  results cached in localStorage under `geoCache.v1`). Rate-limited per IP.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
   client no longer sends it — address aiming showed the road on unmapped
   parcels) — Street View photo proxy for the map pin popups. The client

@@ -29,16 +29,10 @@ intent, the devlog states history.
 
 ## Next
 
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
-- **Import-time geocoding for vault comps** (step 2 of the same spec).
+- **Import-time geocoding for vault comps** (step 2 of
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
+  follow-on from that spec, the `/api/geocode` POST move Owen ranked above
+  this one, shipped 2026-08-17 and is in the log below).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
   answered because there were **no vault uploads at all** yet. It is work that

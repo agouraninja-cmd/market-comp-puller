@@ -29,16 +29,10 @@ intent, the devlog states history.
 
 ## Next
 
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
-- **Import-time geocoding for vault comps** (step 2 of the same spec).
+- **Import-time geocoding for vault comps** (step 2 of
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
+  follow-on from that spec, the `/api/geocode` POST move Owen ranked above
+  this one, shipped 2026-08-17 and is in the log below).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
   answered because there were **no vault uploads at all** yet. It is work that
@@ -70,7 +64,11 @@ subscription benefit.
 ## Engineering track (no product decisions needed)
 
 - Deploy-checklist project skill (tests → tailwind regen if needed →
-  pending migrations → push → verify live → devlog).
+  pending migrations → push → verify live → devlog). **Shipped 2026-08-04**
+  (`96bab16`): `.claude/skills/deploy/SKILL.md`, which carries the whole
+  chain plus the two things this line did not think to ask for — the
+  shared-checkout rules (stage explicit paths, never amend) and the Supabase
+  project to run migrations against.
 - Extract tested pure modules out of server.js as they're touched. Shipped
   2026-08-08: `marketOf` → market.js (+ the Canada fix); the ENTIRE
   /api/comps parse pipeline → report-parse.js (parse, salvage, compact-key
@@ -80,13 +78,22 @@ subscription benefit.
   same way: when touched, with tests first.
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
-- Market pages restyle onto the `rd-*` Research Desk tokens; regenerate
-  og-image.png from the cut-card logo.
+- Market pages restyle onto the `rd-*` Research Desk tokens. Still
+  outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
+  own header — /how-it-works took the `rd-*` system "rather than the older
+  market-page skin". (The og-image half of this line is done: regenerated
+  from the cut-card mark 2026-07-15 in `660b563`, and byte-identical today,
+  the Sliced Tower attempt having been reverted whole in `017f2c5`.)
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
-- Fix `marketOf()` yielding "Canada" for Canadian addresses before
-  non-USD reports are ever harvested.
-  (Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
-  owner's yes — both now say "Comps in". See the Shipped log.)
+- Fix `marketOf()` yielding "Canada" for Canadian addresses before non-USD
+  reports are ever harvested. **Shipped 2026-08-08** (`fb190aa`), in the same
+  commit as the `marketOf` extraction the bullet above already credits —
+  which is why it sat here unnoticed. `market.js` reads Canadian
+  provinces, so "123 King St W, Toronto, ON, Canada" keys as "Toronto, ON"
+  rather than collapsing to the literal "Canada"; pinned by
+  `test/market.test.js`.
+- Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
+  owner's yes — both now say "Comps in". See the Shipped log.
 
 ## Open business questions (not code)
 

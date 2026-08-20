@@ -45,6 +45,43 @@ Copy-Item .env.example .env
 
 There are no `npm install` dependencies — it runs on plain Node.
 
+## Run it as a desktop app
+
+**For users:** the deployed site is an installable app (PWA) — open
+compninja.co in Chrome or Edge and click the Install icon in the address
+bar (or the footer's "Install the desktop app" button). It lands on the
+desktop/taskbar/Start Menu with the CompNinja icon, opens in its own
+window, and stays current automatically because the app is the live site.
+Nothing to download or host.
+
+**For the owner/dev**, there is also a local launcher:
+
+```bash
+npm run desktop
+```
+
+This boots the local server on a free port and opens CompNinja in a
+chromeless app window (Chromium/Edge/Chrome/Brave `--app` mode, with its own
+profile so sign-in persists like a desktop app's). Closing the window stops
+the server. It is a zero-dependency launcher, same as the rest of the repo —
+no Electron, no `npm install`.
+
+To open the **hosted** site as an app window instead (no local server, no
+API key needed):
+
+```bash
+node desktop.js --url https://compninja.co
+```
+
+On Windows, install a desktop shortcut (uses the CompNinja icon, and finds a
+portable Node install even when it's not on PATH):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-desktop-shortcut.ps1
+# or, pointed at the hosted site:
+powershell -ExecutionPolicy Bypass -File scripts\install-desktop-shortcut.ps1 -Url https://compninja.co
+```
+
 ## Deploy it so others can use it
 
 The app is a standard Node web server, so it runs on most hosts. The only

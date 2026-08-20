@@ -1,5 +1,6 @@
 {
   "note": "Fixed targets for run-eval.js. Each entry states what it is here to catch. Changing this list breaks comparability with older runs in docs/evals, so add rather than edit, and say why in `why`.",
+  "reading_subject_size_found": "subjectSizeFoundRate is a property of these ADDRESSES at least as much as of the model, so do not tune the prompt against it. Across the 2026-08-10 (Gemini 3.6 Flash) and 2026-08-19 (3.7 Flash) runs it agreed on 9 of the 10 shared targets and the same four missed in both, which is what a target-set property looks like and not what a model difference looks like. A miss is frequently the CORRECT answer: the prompt tells the model to return an empty string rather than guess a size it cannot source for that exact address, so a target whose size is not on the open web can never score here however good the model is.",
   "targets": [
     { "address": "1200 W Industrial Blvd, Dallas, TX", "type": "Industrial", "months": 24, "maxComps": 12, "why": "dense metro, the easy case; a regression here is unambiguous" },
     { "address": "4050 E Franklin Rd, Nampa, ID", "type": "Industrial", "months": 24, "maxComps": 12, "why": "mid market, the product's home turf" },

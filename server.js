@@ -185,7 +185,10 @@ const SEARCH_PROVIDERS = {
 // Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
 // measured it better on every scored metric of the 12-target eval AND 3.9x
 // cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
-// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// docs/evals/2026-08-10-gemini-pipeline-validation.md. That $0.092 used
+// USD_PER_MTOK's standard rate; billed today at Google's introductory rate
+// (in effect through 2026-12-31) the same measured tokens cost ~$0.045 — see
+// search-provider-gemini.js.
 // Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
 // deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
 // PAID-tier Google project: a free-tier key authenticates and runs the model
@@ -370,6 +373,23 @@ function allMarketPages() {
     out[slug] = getMarketPage(slug);
   }
   return out;
+}
+
+// The standing /market/<slug> page covering a market + property type, if one
+// exists (seeded or explorer-published) — { slug, market } or null. This is
+// the cross-link between the report surfaces and the market pages: /api/comps
+// attaches it to every served report, /api/portfolio and the watchlist feed
+// attach it per item, so My Desk and every report can offer a door into the
+// standing page. Pure in-memory lookups (MARKET_PAGES / DYNAMIC_MARKET_PAGES),
+// so it costs nothing on those hot paths, and it re-resolves per serve — a
+// market page published after a report was cached still lights the link up.
+// Presentation only: absence hides a link and nothing else, so a miss (a
+// non-"City, ST" market, a type with no page) just returns null.
+function marketPageInfo(marketKey, propertyType) {
+  const mm = String(marketKey || "").match(/^(.+),\s([A-Z]{2})$/);
+  if (!mm || !propertyType) return null;
+  const slug = slugifyMarket(String(propertyType), mm[1], mm[2]);
+  return getMarketPage(slug) ? { slug, market: marketKey } : null;
 }
 
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
@@ -1427,9 +1447,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
     const median_trend = curWin.length >= 3 && priWin.length >= 3
       ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    // The watched market's standing /market/<slug> page, when one exists —
+    // the desk's feed section links each market it reports on to the page
+    // that covers it. Absent key = no page = no link; the digest builder
+    // ignores keys it does not read, so this rides the shared feed shape
+    // harmlessly.
+    const marketPage = marketPageInfo(w.market, w.property_type);
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
+      ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
@@ -3193,6 +3220,16 @@ async function orgMembershipsFor(email) {
 // needs both, and a second read for the setting would be a second thing to
 // keep in step with membership.
 //
+// AND `seats`, which is not optional: every caller of seatCapOf() is fed by
+// this function, and seatCapOf() falls back to MAX_MEMBERS when the column is
+// absent. Omitting it here does not read as zero seats, it reads as 200 — so
+// the invite gate, the billing display and the entitlement read all silently
+// stop enforcing what a firm bought, and `orgs.seats` becomes a column the
+// webhook writes and nothing reads. Shipped that way on 2026-08-16 and found
+// on 2026-08-19 by a firm whose seats were 2 accepting a third member without
+// a word. MAX_MEMBERS and 030's column default are both 200, which is what
+// hid it. If a column is added to this select, add it to findOrg() too.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3204,7 +3241,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);
@@ -4697,10 +4734,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // tests. normalizeSourceTypes takes the corpus-audit rule as an argument
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
-const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+const normalizeSourceTypes = (parsed, propertyType) =>
+  RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
         normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
-        normalizeConditions } = RPARSE;
+        normalizeSubjectSize, normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -5556,7 +5594,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
-    const parsed = normalizeSubjectAssessed(
+    const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
       normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
@@ -5565,8 +5603,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                 normalizeCurrency(
                   normalizeSourceTypes(
                     normalizeConditions(
-                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
-      new Date());
+                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+      new Date()));
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };
@@ -6351,6 +6389,16 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
 button.btn{border:0;cursor:pointer;font-family:inherit}
+/* "Value a property here" mini-form in the market-page CTA — the door back
+   into a pre-filled search on /. 16px input, or iOS Safari zooms on focus and
+   stays zoomed (the .mfilter rule, restated because the two are unrelated
+   selectors). */
+.vform{display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+.vform input{flex:1;min-width:220px;font-size:16px;padding:9px 12px;border:1px solid var(--edge);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+.vform input::placeholder{color:var(--ink-3)}
+.vform input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.cta p.vform-lead{margin:18px auto 10px}
 .cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
   text-decoration:underline;text-decoration-color:var(--edge)}
 .cta button.alt:hover{color:var(--ink)}
@@ -6445,9 +6493,45 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 ${ACCOUNT_NAV_CSS}`;
 
-// The shared header for every server-rendered page. Takes `signedIn` for the
-// same reason renderHowItWorksHTML does, and the rule recorded there governs
-// here too: these pages are the site's entry points from Google, so an
+// The Explore menu's browse links — ONE list for every header on the site
+// (2026-08-20; this menu used to live as three hand-copied lists that CLAUDE.md
+// told editors to "keep in step", and they drifted more than once). Consumers:
+//   - marketBar() below, the header of every server-rendered page — including
+//     /how-it-works, whose own hand-copied header was retired for marketBar.
+//   - index.html's #exploreMenu, which carries a NAV_LINKS_MARKER comment that
+//     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
+//     file holds no copy of the list any more.
+// Order is the owner's (2026-08-09): Pricing first (rendered separately —
+// it is a door to index.html's pricing modal, not a page), then these four.
+const NAV_LINKS = [
+  ["/brokers", "Brokers"],
+  ["/markets", "Markets"],
+  ["/how-it-works", "How it works"],
+  ["/1031-exchange", "1031 Guide"],
+];
+// `current` is the path of the page being rendered: its own link gets the
+// `.on` style and aria-current so the menu shows where the reader already is.
+const navLinksHtml = (current = "") =>
+  NAV_LINKS.map(([href, label]) =>
+    href === current
+      ? `<a href="${href}" class="on" aria-current="page">${label}</a>`
+      : `<a href="${href}">${label}</a>`).join("");
+// index.html's rendering of the same list. The class string must be made of
+// classes index.html ALREADY uses (#pricingLink, one line above the marker,
+// carries this identical set): tailwind.css is purged against index.html
+// alone, so a utility that existed only in this server-side string would
+// silently stop styling on the next regen. The dark-mode literal-hex bridge
+// in index.html's <style> covers these classes for the same reason.
+const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
+const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label]) =>
+  `<a href="${href}" class="${APP_NAV_LINK_CLASS}">${label}</a>`).join("");
+
+// The shared header for every server-rendered page — since 2026-08-20 that
+// includes /how-it-works, which used to render its own hand-kept copy of this
+// exact markup (the two drifted by an `aria-current` and nothing else, which
+// is how close they were to being one function). Takes `signedIn` because
+// these pages are the site's entry points from Google, so an
 // anonymous visitor needs both auth doors (before 2026-08-08 there were none
 // at all, and a returning customer landing on a market page had nowhere to
 // click), while a member must not be told to create an account they have.
@@ -6456,18 +6540,13 @@ ${ACCOUNT_NAV_CSS}`;
 // a forged cookie changes which buttons are drawn and nothing else.
 // Callers must pair this with sendShellPage()'s headers, or the cached
 // anonymous copy is re-served to someone who has just signed in.
-const marketBar = (signedIn = false) =>
+const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  // Owner's order (2026-08-09): Pricing, Brokers, Markets, How it works, 1031
-  // Guide — mirrored in index.html's menu and /how-it-works'; keep the three
-  // in step.
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
-  `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
-  `<a href="/1031-exchange">1031 Guide</a></div></details>` +
+  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -6870,14 +6949,26 @@ const MARKET_FOOTER =
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first — a POST since 2026-08-17, so the address stays out
 // of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
-// localStorage geoCache.v1 — same key shape, so the app and these pages share a
-// cache). Comps geocode sequentially, not in a burst, to stay friendly to
-// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// localStorage). Comps geocode sequentially, not in a burst, to stay friendly
+// to /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
 // card hides rather than showing an empty map — which is also what a market
 // page cached from before that deploy does for its last hour of life.
+//
+// --- This cache is DELIBERATELY NOT the app's, and must not be re-joined to
+// it. The two stores held the same key until 2026-08-04, when index.html went
+// to geoCache.v2 so every entry carries the geocoder's echoed label; photos
+// and footprint sizing gate on that label through geoLabelMatches, which
+// returns false when it is missing. This script has no use for labels — it
+// draws pins and nothing else — so it stores {lat, lng} alone. Sharing one
+// key again would let a market-page visit write a label-less entry that the
+// app then reads for the same address, silently costing that property its
+// subject photo and its footprint size estimate, and costing it persistently,
+// because the miss is what got cached. A separate NAME rather than a lower
+// version number: version numbers invite being re-synced by anyone who reads
+// the two as having drifted apart, which is exactly how this comes back. ---
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
-  var CACHE_KEY = "geoCache.v1";
+  var CACHE_KEY = "mktGeoCache.v1";
   var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
   function save(k, v) {
     cache[k] = v;
@@ -6955,6 +7046,25 @@ const MARKET_MAP_JS = `(function(){
     });
     chain.then(function () {
       if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+    });
+  });
+})();`;
+
+// The market-page CTA's "value a property here" form(s): store the typed
+// address under the key index.html's startup already consumes (the
+// /how-it-works landing form's exact mechanism), then navigate to the
+// form's data-dest — /?type=<type> for a member, the signup door otherwise.
+// Inlined like MARKET_MAP_JS so the page stays self-contained. No ${} — this
+// string is interpolated into a <script>.
+const MARKET_VALUE_FORM_JS = `(function(){
+  [].forEach.call(document.querySelectorAll("form.vform"), function (f) {
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = f.querySelector("input");
+      var addr = ((input && input.value) || "").trim();
+      if (!addr) return;
+      try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+      location.href = f.getAttribute("data-dest") || "/";
     });
   });
 })();`;
@@ -7141,7 +7251,7 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
@@ -7164,7 +7274,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
-    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn)}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -7201,6 +7311,18 @@ function sendNotFound(req, res, message) {
     body,
     signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
   }));
+}
+
+// Coarse on purpose: this only keeps the obvious non-humans (search
+// crawlers, link previewers, monitoring curls, the test suite's bare
+// fetches) out of a human-traffic count — it is not bot defense, and a
+// count it feeds should be read as "roughly people". An empty UA counts as
+// a bot: every real browser sends one, and undici/curl by default do not
+// send a browser-shaped one.
+function isCrawlerUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return /bot|crawl|spider|slurp|preview|headless|curl|wget|python|monitor|undici|node/i.test(s);
 }
 
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
@@ -7551,8 +7673,9 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
   // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
-  // under the same localStorage geoCache.v1 the app uses so the two share
-  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // in localStorage under this page's own key, never the app's (see
+  // MARKET_MAP_JS for why the two must stay apart). Only street-numbered
+  // addresses get pins: submarket/aggregate rows
   // geocode to a district point, which reads as a wrong pin (same rule as the
   // report's street-view gate). A rough city-distance gate drops geocoder
   // mismatches that would land a pin in another state. The leading number
@@ -7709,6 +7832,25 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     + "&type=" + encodeURIComponent(p.type);
   const exploreLink =
     `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  // "Value a property here" — the door back into a pre-filled search
+  // (2026-08-20). The address rides sessionStorage's pendingLandingAddress.v1
+  // (the /how-it-works landing form's exact mechanism, so index.html already
+  // consumes it) and the type rides ?type=, which startup marks as an
+  // explicit resolution. Anonymous visitors go through the signup door —
+  // auth=signup is the one query form ACCOUNT_WALL never 302s — and members
+  // land straight on the form. The script is MARKET_VALUE_FORM_JS, emitted
+  // with the body below; it degrades to a plain navigation with the type
+  // still prefilled if JS never runs (the submit falls through to data-dest
+  // only via JS, so the no-JS fallback is the required-input form simply not
+  // submitting — same as the /how-it-works landing form).
+  const valDest = signedIn
+    ? "/?type=" + encodeURIComponent(p.type)
+    : "/?auth=signup&type=" + encodeURIComponent(p.type);
+  const valForm = (btnLabel) =>
+    `<form class="vform" data-dest="${escHtml(valDest)}">` +
+    `<input type="text" required autocomplete="street-address" aria-label="Property address" ` +
+    `placeholder="e.g. 1200 W Main St, ${escHtml(p.city)}, ${escHtml(p.state)}"/>` +
+    `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
       `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
@@ -7716,6 +7858,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
+      `<p class="vform-lead">Or value a property in ${escHtml(p.city)} — comps found live, in about a minute:</p>` +
+      valForm("Value it &rarr;") +
       exploreLink + `</div>`
     : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
       // The BOV half of this promise is made ONLY where a broker actually
@@ -7726,10 +7870,18 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
           `from a licensed local broker who covers ${escHtml(p.city)}.`
         : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
-      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      valForm("Get my free valuation &rarr;") +
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
+  // Contextual door into the 1031 guide: someone reading a replacement
+  // market's numbers mid-exchange is exactly who that page serves, and the
+  // footer link alone is invisible at the moment it matters. One line, after
+  // the CTA so it never competes with the conversion ask above it.
+  const guide1031 =
+    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
+    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
+    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
     cityHero.intro +
     bovLead +
@@ -7744,6 +7896,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    `<script>${MARKET_VALUE_FORM_JS}</script>` +
+    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -7841,7 +7995,7 @@ function renderMarketDirectoryHTML(signedIn) {
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn, current: "/markets" });
 }
 
 
@@ -8272,7 +8426,7 @@ function renderBrokersPageHTML(signedIn) {
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
 }
 
 // ---------------------------------------------------------------------------
@@ -8627,56 +8781,15 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ],
   });
 
+  // The header IS marketBar since 2026-08-20 — this page carried a hand-kept
+  // copy of the identical markup (the diff was one aria-current, now
+  // marketBar's `current` argument), and two copies of a nav drift.
+  // Everything recorded on marketBar holds here: auth chrome on cookie
+  // presence, desk:false slots so My Desk renders exactly once, and the
+  // caching split (no-store + vary: cookie) that keeps the signed-in
+  // variant honest.
   const body = `
-<header class="hdr">
-  <div class="wrap">
-    <div class="hleft">
-      <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-    </div>
-    <nav>
-      <details>
-        <summary>Explore<span class="car">▾</span></summary>
-        <div class="dd">
-          ${ACCOUNT_NAV_PRICING}
-          <a href="/brokers">Brokers</a>
-          <a href="/markets">Markets</a>
-          <a href="/how-it-works" class="on" aria-current="page">How it works</a>
-          <a href="/1031-exchange">1031 Guide</a>
-        </div>
-      </details>
-      ${signedIn
-        ? `<a href="/desk">My Desk</a>
-      <a class="btn sm" href="/">Run a report</a>`
-        : `<a href="/?auth=signin">Log in</a>
-      <a class="btn sm" href="/?auth=signup">Create account</a>`}
-      ${/* This page renders My Desk / Log in server-side already (2026-08-08),
-            so it takes the circle and Pricing only — desk:false, or a member
-            would see My Desk twice. */ ""}
-      ${accountNavSlots({ desk: false })}
-    </nav>
-  </div>
-</header>
-<script>document.addEventListener("click",function(e){
-  document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-    if(!d.contains(e.target))d.open=false;});});
-(function(){
-  // Escape = the page you came from when that was CompNinja; otherwise home.
-  // The visible back button was removed 2026-08-03 at the owner's request;
-  // the key stayed. Same logic as MARKET_BAR — keep the two in step.
-  function goBack(){
-    try{
-      if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
-    }catch(err){}
-    location.href="/";
-  }
-  document.addEventListener("keydown",function(e){
-    if(e.key!=="Escape")return;
-    var dd=document.querySelector(".hdr nav details[open]");
-    if(dd){dd.open=false;return;}
-    goBack();
-  });
-})();</script>
-${ACCOUNT_NAV_JS}
+${marketBar(signedIn, "/how-it-works")}
 
 <main>
   <div class="wrap">
@@ -9215,6 +9328,27 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
+    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
+    // skipped at the route, so this is roughly people) against the BOV leads
+    // the guide produced (source "1031" — the localStorage marker the
+    // widget stamps). The split by `source` says which audience is reading:
+    // "visitor" is the SEO traffic the page exists for, "member" is people
+    // already here. Conversion is left for the card to phrase, because the
+    // two counts age out of the 10k-row window at different rates and a
+    // hard percentage would look more solid than it is.
+    guide1031: (() => {
+      const views = rows.filter((r) => r.kind === "guide_1031");
+      const day30 = Date.now() - 30 * 86400000;
+      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
+      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
+      return {
+        views: views.length,
+        views30d: in30(views),
+        members: views.filter((r) => (r.source || "") === "member").length,
+        leads: leads1031.length,
+        leads30d: in30(leads1031),
+      };
+    })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
     // from outside this process, which buys a schedule somebody chose and
     // costs the thing every external scheduler eventually does: it stops, and
@@ -9652,6 +9786,22 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
+  // before this shipped. No computed conversion percentage on purpose: the
+  // counts are small and age out of the event window at different rates, so
+  // the honest read is both numbers side by side.
+  var g31=d.guide1031;
+  var guideCard=(g31===undefined)?"":
+    "<div class=card><h2>1031 guide funnel</h2>"+
+    (!g31.views&&!g31.leads
+      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
+        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
+      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
+        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
+        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
+        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
+        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
+    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -9742,6 +9892,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
+    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -12390,6 +12541,14 @@ const server = http.createServer((req, res) =>
           // Serialization-time like everything else here, so the cached object
           // never carries one visitor's entitlement to the next.
           const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+          // Cross-link to the standing /market/<slug> page for this market +
+          // type, when one exists. Serialization-time like everything else in
+          // this closure, so the cached object never carries it and a market
+          // page published later lights up older cached reports too. In-memory
+          // lookup, no I/O. It rides the report payload, so a saved or shared
+          // report keeps its door into the market page.
+          const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+          if (marketPage) withExports.market_page = marketPage;
           // LAST, and only here. Every caller of gate() is an exit — the cache
           // hit, the derived-window hit, the SSE result and the plain JSON
           // result — so this is the one place a private comp can enter, and it
@@ -12830,10 +12989,17 @@ const server = http.createServer((req, res) =>
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
           ...(sizeClean ? { size_sqft: sizeClean } : {}),
-          // "bov" = the owner-mode Broker Opinion of Value request; anything
-          // else is the export-unlock form.
-          source: ["export", "bov"].includes(source) ? source : "export",
+          // "bov" = the owner-mode Broker Opinion of Value request; "1031" =
+          // the same request from a browser that recently read the
+          // /1031-exchange guide (index.html tags it — a bov-class lead on
+          // the 45/180-day clock, the highest-intent source the site has);
+          // anything else is the export-unlock form.
+          source: ["export", "bov", "1031"].includes(source) ? source : "export",
         };
+        // Everything BOV-shaped (broker matching, alerts, the follow-up
+        // email) treats "1031" as a bov: the tag is attribution and urgency,
+        // never a different funnel.
+        const bovClass = lead.source === "bov" || lead.source === "1031";
         // Share link for the lead's report. Validated hard against our own
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
@@ -12856,7 +13022,7 @@ const server = http.createServer((req, res) =>
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
-        if (lead.source === "bov") {
+        if (bovClass) {
           const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
@@ -12864,7 +13030,7 @@ const server = http.createServer((req, res) =>
           }
         }
         notifyByEmail(
-          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          `${lead.source === "1031" ? "New BOV request (1031 exchange)" : bovClass ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
             ["Name", lead.name],
             ["Email", lead.email],
@@ -12872,7 +13038,9 @@ const server = http.createServer((req, res) =>
             ["Company", lead.company],
             ["Property", lead.address],
             ["Property type", lead.type],
-            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Came from", lead.source === "1031"
+              ? "Broker Opinion of Value request (read the 1031 guide — likely on the 45/180-day clock)"
+              : bovClass ? "Broker Opinion of Value request" : "Export unlock form"],
             ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
@@ -12886,7 +13054,7 @@ const server = http.createServer((req, res) =>
         // Gated on dest === "db": the inbox is DB-only, so a lead that fell
         // back to the local file is invisible there, and mailing brokers
         // about a lead they can never see would be worse than saying nothing.
-        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+        if (bovClass && DB_CONFIGURED && dest === "db") {
           (async () => {
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
@@ -12910,7 +13078,10 @@ const server = http.createServer((req, res) =>
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
-              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null,
+              // The one extra fact a broker acts on immediately: this seller
+              // is inside a 1031 window and must transact.
+              lead.source === "1031" ? "1031 exchange" : null]
               .filter(Boolean).join(" · ");
             const now = Date.now();
             for (const u of users || []) {
@@ -12939,7 +13110,7 @@ const server = http.createServer((req, res) =>
         }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
-        if (lead.source === "bov") {
+        if (bovClass) {
           sendOutboundEmail(
             lead.email,
             "Your CompNinja report + what happens next",
@@ -13310,7 +13481,16 @@ const server = http.createServer((req, res) =>
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
+        // Each saved property carries its door into the standing market page,
+        // when one exists — the desk is the hub, so a portfolio row links out
+        // to /market/<slug> as well as back into its report. Pure in-memory
+        // decoration (marketPageInfo reads the loaded page stores), applied
+        // after withMarketMovement so its fail-safe copy is what gets marked.
+        const items = (await withMarketMovement(await listPortfolio(user.id))).map((item) => {
+          const mp = marketPageInfo(marketOf(item.address), item.property_type);
+          return mp ? { ...item, market_page: mp } : item;
+        });
+        return sendJson(res, 200, { items });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }
@@ -14031,9 +14211,11 @@ const server = http.createServer((req, res) =>
         if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const [leads, intros] = await Promise.all([
+          // in.(bov,1031): a 1031-tagged lead is a BOV request with a clock
+          // on it — it must be at least as visible as an ordinary one.
           sbRequest("GET",
-            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+            `leads?source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft,source&order=ts.desc&limit=200`),
           sbRequest("GET",
             `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
             `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
@@ -14285,8 +14467,8 @@ const server = http.createServer((req, res) =>
         // leads outside the product's own contract.
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft,source&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
@@ -14349,6 +14531,7 @@ const server = http.createServer((req, res) =>
           ["Property", lead.address],
           ["Property type", lead.type],
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
@@ -18512,9 +18695,15 @@ const server = http.createServer((req, res) =>
         "cache-control": "no-store",
         ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
-      // Canonical/og/JSON-LD URLs in index.html are written against the default
-      // origin; rewrite them when SITE_URL is overridden (custom domain).
-      res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
+      // Two serve-time rewrites. The Explore menu's browse links are injected
+      // from NAV_LINKS (declared above marketBar) in place of the marker
+      // comment index.html authors — the app header reads from the same list
+      // as every server-rendered header, so the menus cannot drift. Then
+      // canonical/og/JSON-LD URLs, written against the default origin, are
+      // rewritten when SITE_URL is overridden (custom domain).
+      let html = data.toString("utf8").replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML);
+      if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
+      res.end(html);
     });
     return;
   }
@@ -18540,6 +18729,15 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The desktop/mobile install identity (PWA). Users "download" the app
+    // from the site itself — Chrome/Edge offer Install once this manifest is
+    // reachable — so there is no installer to host or code-sign anywhere.
+    // Short max-age like the CSS: a renamed app or swapped icon should reach
+    // installed copies on their next launch, not a day later.
+    "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json", maxAge: 300 },
+    "/icon-192.png": { file: "icon-192.png", type: "image/png", maxAge: 86400 },
+    "/icon-512.png": { file: "icon-512.png", type: "image/png", maxAge: 86400 },
+    "/icon-maskable-512.png": { file: "icon-maskable-512.png", type: "image/png", maxAge: 86400 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
@@ -18652,6 +18850,19 @@ const server = http.createServer((req, res) =>
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
+    // funnel's exit, and until this event nothing counted anyone ENTERING —
+    // "does the guide produce leads" had a numerator with no denominator.
+    // PII-free like every event. Crawler UAs are skipped because this page
+    // is public and sitemapped, so bots would otherwise be most of the
+    // count (vault_visit never needed this — that page is auth-shaped).
+    // `source` = which audience is reading, on cookie PRESENCE (the wall's
+    // cheap rule; getSessionUser is a DB read and this renders per request).
+    if (!isCrawlerUA(req.headers["user-agent"])) {
+      logEvent("guide_1031", {
+        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
+      });
+    }
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
@@ -18663,6 +18874,7 @@ const server = http.createServer((req, res) =>
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
       signedIn,
+      current: "/1031-exchange",
     }));
   }
 

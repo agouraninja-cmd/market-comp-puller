@@ -29,8 +29,33 @@ function freePort() {
 
 // `env` REPLACES rather than extends the parent environment for the keys that
 // matter, so a developer's local .env cannot change what these tests prove.
+//
+// freePort() is inherently a race: the probe socket closes before the child
+// binds, so anything else on the machine can take the port in that window and
+// the child dies on EADDRINUSE with exit code 1. Rare locally, real on CI
+// runners (it failed the main build after passing the identical tree twice,
+// 2026-08-20) — and because `prestart` runs this suite, the same race can
+// block a production deploy. So boot() retries on a NEW port, but only when
+// the child's stderr proves it was the port race: a deterministic boot crash
+// (e.g. the bogus-SEARCH_PROVIDER test, which asserts on "exited early") must
+// still fail on the first attempt, loudly, with its stderr in the message —
+// the CI failure this fixes was undiagnosable precisely because stderr went
+// to stdio: "ignore".
 let bootSeq = 0;
 async function boot(env) {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await bootOnce(env);
+    } catch (err) {
+      lastErr = err;
+      if (!err.portRace) throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function bootOnce(env) {
   const port = await freePort();
   // The responder-identity nonce: /healthz echoes TEST_BOOT_ID, and this boot
   // accepts only a responder echoing ITS nonce. "Something answers on my
@@ -70,11 +95,25 @@ async function boot(env) {
       VAULT_PASSKEY: "",
       ...env,
     },
-    stdio: "ignore",
+    // stderr is piped (stdout stays ignored: the startup banner is noise)
+    // so an early exit can say WHY — and so the EADDRINUSE race is
+    // distinguishable from a real crash. Capped: a crash message is small,
+    // and this must never buffer a runaway log.
+    stdio: ["ignore", "ignore", "pipe"],
   });
+  let stderr = "";
+  child.stderr.on("data", (c) => { if (stderr.length < 8192) stderr += c; });
   const base = `http://localhost:${port}`;
   for (let i = 0; i < 60; i++) {
-    if (child.exitCode !== null) throw new Error("server exited early, code " + child.exitCode);
+    if (child.exitCode !== null) {
+      const excerpt = stderr.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300);
+      const err = new Error("server exited early, code " + child.exitCode
+        + (excerpt ? " — " + excerpt : ""));
+      // Only this one failure retries (see boot()): the port was stolen in
+      // freePort()'s close-to-bind window, which says nothing about the code.
+      err.portRace = /EADDRINUSE/.test(stderr);
+      throw err;
+    }
     try {
       const r = await fetch(base + "/healthz");
       if (r.ok) {

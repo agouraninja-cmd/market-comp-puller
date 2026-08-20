@@ -239,14 +239,23 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
+  // Every CTA door off a market page: primary <a class="btn"> links AND the
+  // "value a property here" form (2026-08-20), whose data-dest is the URL it
+  // navigates to after stashing the typed address for the search form.
+  const ctaDoors = (html) => [
+    ...[...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<form class="vform" data-dest="([^"]*)"/g)].map((m) => m[1]),
+  ];
+
   await t.test("the primary button is at least as smart as the link below it", async () => {
     // The loudest CTA was a bare href="/", which under the wall answers with
     // a generic explainer: the visitor asks to value their building and gets
     // another marketing page. The secondary link beneath it already carried
     // the market and type, so the pattern existed and the big button ignored
-    // it.
+    // it. Since 2026-08-20 the loudest CTA is the vform, which carries the
+    // ADDRESS as well — the same rules hold for its destination.
     const html = await (await fetch(srv.base + MARKET_PAGE)).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     assert.ok(ctas.length > 0, "the market page must still have a primary CTA");
     for (const href of ctas) {
       assert.ok(href !== "/", "a bare / bounces an anonymous visitor back into marketing");
@@ -257,10 +266,13 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
 
   await t.test("a signed-in visitor is not shown a signup CTA either", async () => {
     const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     for (const href of ctas) {
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);
     }
+    // The member's value-a-property door still carries the type it was read on.
+    assert.match(html, /<form class="vform" data-dest="\/\?type=Industrial"/,
+      "a member's vform lands straight on the prefilled search");
   });
 
   await t.test("the comps table is a research set, not only a teaser", async () => {
@@ -420,8 +432,9 @@ test("a market page with no brokers does not promise a Broker Opinion of Value",
     "with no broker covering this market, the page must not promise one");
   assert.match(html, /with the source cited on every one/,
     "the fallback should sell the report, which is the thing that exists");
-  // The hand-raise itself is unaffected: the CTA still opens the app.
-  assert.match(html, /<a class="btn" href="[^"]*auth=signup/,
+  // The hand-raise itself is unaffected: the CTA (the value-a-property form
+  // since 2026-08-20) still opens the app through the wall-honored door.
+  assert.match(html, /<form class="vform" data-dest="[^"]*auth=signup/,
     "the primary CTA must still be there");
 });
 

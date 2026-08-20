@@ -127,6 +127,50 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
 & "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
 ```
 
+### Desktop app (`desktop.js`)
+
+```bash
+npm run desktop                          # local server + chromeless app window
+node desktop.js --url https://compninja.co   # hosted site as an app window, no local server
+```
+
+A zero-dependency launcher, **deliberately not Electron** — the no-npm-deps
+rule covers it, and every target machine already ships a Chromium (Edge is
+preinstalled on Windows). It boots the ordinary `server.js` on a **free
+port, never 3000** (so it can run beside `npm start`), waits for `/healthz`,
+then opens a Chromium-family browser in `--app` mode. Three rules from its
+header comment: children spawn from `process.execPath`, never the string
+`"node"` (the owner's portable Node is not on PATH); the app window gets its
+**own `--user-data-dir`** (`~/.compninja/desktop-profile`) — without one
+Chromium hands the URL to an existing instance and exits, leaving no process
+to wait on, so the server would die under an open window; and closing the
+window stops the server. Flags are refused, never guessed (`--ur`, a
+non-http `--url`, `--port` combined with `--url` are all errors). Pure
+helpers are tested in `test/desktop.test.js`, and requiring the module
+starts nothing (`require.main` guard).
+`scripts/install-desktop-shortcut.ps1` creates the Windows shortcut (repo
+favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
+`-StartMenu` for a Start Menu copy).
+
+**Users install the app from the site itself** (2026-08-20) — `desktop.js`
+is the owner/dev door; customers get the installable web app (PWA).
+`manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the
+`STATIC_FILES` allowlist, served without a session so the wall never blocks
+install) make Chrome/Edge offer "Install CompNinja" from the address bar,
+and index.html's footer carries an "Install the desktop app" button that
+ships `hidden` and is revealed only by `beforeinstallprompt` — the
+Buy-button rule: a control that can only fail (already installed,
+Safari/Firefox) never renders. There is **deliberately NO service worker**:
+installability no longer requires one, and a SW cache could serve
+`/valuation.js` stale relative to index.html — the exact failure that
+file's `max-age: 0` rule exists to prevent; `test/manifest.test.js` pins
+that, the manifest fields, the icon sizes against their real PNG bytes, and
+the allowlist entries. There is no installer to host or code-sign anywhere:
+"where do users download it" is answered by compninja.co, and installed
+copies update themselves because the app IS the live site. (A Microsoft
+Store listing can wrap this same manifest via PWABuilder later; nothing
+here would change.)
+
 ### Restart rule (important)
 
 - Editing **`index.html`** needs no restart — `server.js` reads it from disk on
@@ -678,6 +722,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
   normalization is a guarantee.
+  **Market-page cross-link (2026-08-20).** Every served report also carries
+  `market_page` (`{ slug, market }`) when a standing `/market/<slug>` page
+  covers the subject's market + type — attached at SERIALIZATION inside
+  `gate()` via `marketPageInfo()` (pure in-memory reads of the loaded page
+  stores, so it costs nothing and a page published later lights up older
+  cached reports), never written into the cache. index.html renders it as
+  the "See the {market} market page →" line under the Market Summary
+  (`renderMarketPageLink`; `no-print`/`no-capture` — navigation, not report
+  content). The reverse door is the market page's own CTA: a "value a
+  property here" mini-form (`vform` / `MARKET_VALUE_FORM_JS`) that stores
+  the typed address under `pendingLandingAddress.v1` — the landing form's
+  exact mechanism, already consumed at startup — and navigates to
+  `/?type=<type>` (member) or `/?auth=signup&type=<type>` (anonymous, the
+  wall-honored door). The same `marketPageInfo` decorates `GET
+  /api/portfolio` items and the watchlist feed, so My Desk links each saved
+  property and watched market to its market page.
   **"Verified" is a reserved word (2026-08-10).** It names a badge only the
   server awards (a broker vouched, our team reviewed), so the model must
   never write it. Two layers, the same requests-vs-guarantee split: the
@@ -763,12 +823,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
-  `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
-  a matching `source` column). Also takes an optional `size_sqft`, cleaned by
+  `"bov"` for Broker Opinion of Value requests, `"1031"` for a BOV request
+  from a browser that recently read `/1031-exchange` (the guide's widget
+  stamps localStorage `cnRef1031.v1`, index.html reads it at submit, 7-day
+  TTL); the Supabase `leads` table has a matching `source` column. `"1031"`
+  is bov-CLASS everywhere behavior branches (`bovClass` in the handler, and
+  the inbox/intro queries use `source=in.(bov,1031)`) — the tag is
+  attribution and urgency, never a separate funnel, and it surfaces as an
+  anonymized `is_1031` boolean in the broker inbox (never the raw tag).
+  Also takes an optional `size_sqft`, cleaned by
   `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
   so a lead with no size never touches the column — protects the file
   fallback if migration 015 has not run). A durably-stored (`dest === "db"`)
-  `bov` lead fires a fire-and-forget alert to every broker covering that
+  bov-class lead fires a fire-and-forget alert to every broker covering that
   market + property type: the same four anonymized facts the inbox shows,
   never the owner's name/email/phone/company/address, throttled to one email
   per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
@@ -1056,8 +1123,6 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -1066,13 +1131,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   here and deliberately nowhere else (GUARD 2 of the private-comp contract).
   The GET alias was removed rather than deprecated, because a door left open
   is one stale caller away from putting addresses back in URLs and nothing
-  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model
+  no longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
-  pin from
-  geocoding (this proxy, then browser-direct Nominatim as fallback, results
-  cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+  pin from geocoding (this proxy, then browser-direct Nominatim as fallback,
+  results cached in localStorage under `geoCache.v2`). Rate-limited per IP.
+  The market pages' own comp map runs the same stack but caches under
+  `mktGeoCache.v1`, and **the two stores must never be re-joined**: the market
+  map needs pins only, so it stores no geocoder label, and a label-less entry
+  read back by the app fails `geoLabelMatches` — the gate on subject photos
+  and footprint sizing. They shared a key until 2026-08-04; a test in
+  `test/routes.test.js` now holds the names apart.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
   client no longer sends it — address aiming showed the road on unmapped
   parcels) — Street View photo proxy for the map pin popups. The client
@@ -1276,14 +1347,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `refreshBillingUI` once `live`/`pro` are known, cleared either way).
   Sign-out reloads the page rather than re-hydrating, because the page
   around the bar may itself be signed-in-shaped (the vault above all).
-  Traps: /how-it-works takes `accountNavSlots({ desk: false })` or a member
-  sees TWO My Desk links (it renders its own); and `.hdr nav .dd a` sets
+  Traps: `.hdr nav .dd a` sets
   `display:block`, which out-specifies `[hidden]`, so the
   `.hdr nav [hidden]{display:none!important}` line in ACCOUNT_NAV_CSS is
   load-bearing — without it every page shows both auth states at once.
-  There are now THREE headers to keep in step (index.html, MARKET_BAR,
-  /how-it-works'). `test/routes.test.js` pins presence on all seven pages
+  `test/routes.test.js` pins presence on all seven pages
   and the no-double-desk rule.
+  **The headers unified (2026-08-20).** `/how-it-works`' hand-kept header is
+  gone: `marketBar(signedIn, current)` is THE header for every server-rendered
+  page (the two copies had drifted to within one `aria-current`, which is what
+  the new `current` argument renders — pass the page's own path from its
+  `marketShell` call and the Explore menu marks where the reader is). The
+  Explore menu's browse links themselves live in **`NAV_LINKS`**, one list
+  beside marketBar with three consumers: `navLinksHtml()` for marketBar,
+  and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
+  `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
+  index.html authors no copy of the menu any more, so adding a nav link is a
+  one-line edit to NAV_LINKS. Two traps: `APP_NAV_LINK_CLASS` must stay
+  identical to `#pricingLink`'s class string, because tailwind.css is purged
+  against index.html alone and a utility that existed only in the server-side
+  string would silently stop styling on a regen; and the marker must survive
+  in index.html, or the app quietly loses its browse links —
+  `test/routes.test.js` pins both the replacement and link parity with the
+  server-rendered headers. index.html's header ELEMENT still lives in
+  index.html (its auth chrome, account menu and pricing button are SPA
+  behavior owned by `refreshBillingUI()`); what is single-sourced is the
+  markup every header shares.
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on
@@ -1318,12 +1407,27 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   precedent) — FAQ array feeding both the accordions and the FAQPage
   JSON-LD, the education-not-advice compliance box, and a client-side
   45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server). server.js only dresses it in
+  dollars; nothing is sent to a server — since 2026-08-20 the widget also
+  hands both deadlines over as an `.ics` calendar file, built as a `data:`
+  URI in the browser under the same promise, and deterministic for a given
+  closing date because its DTSTAMP derives from the closing, never the
+  clock). server.js only dresses it in
   `marketShell` and spreads the module's JSON-LD nodes into the shared
   `brandGraph()` @graph. Education, never advice — the compliance strings
   are test-pinned in both directions (must-appear and must-never-appear).
-  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
-  footer, and `/brokers`.
+  The widget script also stamps localStorage `cnRef1031.v1` (guarded — no
+  storage, no marker), which is how a later BOV request gets tagged
+  `source: "1031"` — see `POST /api/lead`; the key is test-pinned because
+  index.html reads the identical string. The route logs a PII-free
+  `guide_1031` event per read (`source`: member/visitor on cookie presence;
+  crawler UAs skipped via `isCrawlerUA` — coarse on purpose, the page is
+  public and sitemapped so bots would otherwise dominate), feeding the
+  "1031 guide funnel" card on `/admin` (reads beside 1031-tagged leads;
+  deliberately no computed conversion %, the counts age out of the event
+  window at different rates). Listed in `sitemap.xml`; linked
+  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
+  contextual one-liner after the CTA on every `/market/<slug>` page
+  (`guide1031` in `renderMarketPageHTML`).
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

@@ -186,11 +186,12 @@ test("bare environment", async (t) => {
   // account circle in one go and read as having been logged out mid-browse.
   // Nothing touched the session — the bar just stopped mentioning it.
   //
-  // There are now FOUR headers that have to agree (index.html's, MARKET_BAR,
-  // /how-it-works', and /vault) and the site's own convention is that two
-  // copies of a nav drift. This is what catches a fifth server-rendered page
-  // shipping without the chrome: accountNavSlots() is one call, so forgetting
-  // it is the easy mistake, not getting it subtly wrong.
+  // Since 2026-08-20 marketBar IS the header for every server-rendered page
+  // (/how-it-works' hand-kept copy retired) and the Explore links come from
+  // one NAV_LINKS list, index.html included — but /vault still composes its
+  // own bar from the shared slots. This is what catches a server-rendered
+  // page shipping without the chrome: accountNavSlots() is one call, so
+  // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
       "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
@@ -207,6 +208,24 @@ test("bare environment", async (t) => {
       // signed-out and signed-in chrome at the same time.
       assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/,
         p + " can't actually hide the slots it ships");
+    }
+  });
+
+  // One nav, no copies (2026-08-20). index.html authors only a marker comment
+  // in its Explore menu; the `/` handler replaces it at serve time with the
+  // same NAV_LINKS list marketBar renders on every server-rendered header.
+  // Two failure modes, both pinned: an unreplaced marker (the injection
+  // broke, or the marker string drifted) leaves the app with no browse links
+  // at all, and a link present in one header but not the other is exactly
+  // the hand-sync drift this replaced.
+  await t.test("the app's Explore menu is injected from the shared nav list", async () => {
+    const app = await (await fetch(srv.base + "/")).text();
+    assert.ok(!app.includes("<!--NAV_LINKS-->"),
+      "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    for (const href of ["/brokers", "/markets", "/how-it-works", "/1031-exchange"]) {
+      assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
+      assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
   });
 
@@ -793,6 +812,39 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+    // The 1031 guide funnel block must be present even at zero — /admin
+    // treats a missing key as a stale pre-feature response and hides the
+    // card, so a dropped key here silently blinds the funnel.
+    for (const k of ["views", "views30d", "members", "leads", "leads30d"]) {
+      assert.equal(typeof body.guide1031[k], "number", `guide1031.${k}`);
+    }
+  });
+
+  // The guide-read event is the 1031 funnel's denominator, and the page is
+  // public + sitemapped, so the count is only meaningful if crawlers stay
+  // out of it. One browser read must count exactly once; Googlebot and the
+  // suite's own bare fetch (no browser UA) must count zero. Events are
+  // fire-and-forget file appends, hence the short poll.
+  await t.test("a guide read is counted once, and crawlers are not", async () => {
+    const views = async () => (await (await fetch(srv.base + "/api/stats",
+      { headers: { "x-admin-key": ADMIN } })).json()).guide1031.views;
+    const before = await views();
+    const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    for (const ua of [browserUA, "Googlebot/2.1 (+http://www.google.com/bot.html)", null]) {
+      const r = await fetch(srv.base + "/1031-exchange",
+        ua ? { headers: { "user-agent": ua } } : undefined);
+      assert.equal(r.status, 200);
+    }
+    let after = before;
+    for (let i = 0; i < 40 && after < before + 1; i++) {
+      await new Promise((res) => setTimeout(res, 50));
+      after = await views();
+    }
+    assert.equal(after, before + 1, "one browser read = one view");
+    // Settle, then re-read: a late-landing bot event would pass the check
+    // above and only show here.
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(await views(), before + 1, "bot reads must not land late");
   });
 
   await t.test("market-hero review is gated like the other admin APIs", async () => {
@@ -2163,4 +2215,55 @@ test("the geocode proxy is POST-only and no caller builds a query string", async
       );
     }
   });
+});
+
+// --- The two geocode caches keep separate localStorage names ----------------
+//
+// The app (index.html) and the market pages' map (MARKET_MAP_JS in server.js)
+// run the same geocoding stack against the same addresses, and until
+// 2026-08-04 they shared one localStorage key on purpose, to share hits. They
+// must not any more, and nothing at runtime would say so if they did.
+//
+// index.html went to geoCache.v2 that day so every entry carries the
+// geocoder's echoed label. geoLabelMatches returns false when the label is
+// missing, and it is the gate on subject photos and footprint sizing — the
+// two claims a report makes about a specific building. MARKET_MAP_JS draws
+// pins only, so it stores {lat, lng} with no label.
+//
+// Share one key again and a market-page visit writes a label-less entry for
+// an address the app later reads, which costs that property its photo and its
+// size estimate — silently, and persistently, since the entry is cached. The
+// harm runs one way and shows up nowhere near the change that caused it,
+// which is why it is worth a test rather than a comment alone.
+//
+// Names, not version numbers, and the test checks the names really differ:
+// two keys that differ only by a digit read as drift, and the obvious tidy-up
+// is to re-sync them.
+
+test("the app's geocode cache and the market map's stay separate stores", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+
+  const appKey = read("index.html").match(/GEO_CACHE_KEY = "([^"]+)"/);
+  const mktKey = read("server.js").match(/var CACHE_KEY = "([^"]+)"/);
+
+  assert.ok(appKey, "index.html no longer declares GEO_CACHE_KEY — update this test with it");
+  assert.ok(mktKey, "MARKET_MAP_JS no longer declares CACHE_KEY — update this test with it");
+
+  assert.notEqual(
+    appKey[1],
+    mktKey[1],
+    "the market map and the app share a localStorage geocode key again: the market map "
+      + "caches no geocoder label, and a label-less entry read by the app fails "
+      + "geoLabelMatches, costing that address its subject photo and footprint size"
+  );
+
+  // A market-page entry must stay recognisable as one from its name alone,
+  // so a future reader does not take the pair for accidental drift.
+  assert.ok(
+    /^mkt/.test(mktKey[1]),
+    "the market map's cache key should name itself a market-page store, not sit one "
+      + "version number away from the app's"
+  );
 });

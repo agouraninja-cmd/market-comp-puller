@@ -46,6 +46,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+  <!-- Installable app (PWA): this manifest is what makes Chrome/Edge offer
+       "Install CompNinja" (address-bar icon, and the footer's Install button
+       once the browser fires beforeinstallprompt). Deliberately NO service
+       worker: a SW is not required for install any more, and a cache layer
+       here could serve /valuation.js stale relative to this HTML — the exact
+       failure the max-age:0 rule on that file exists to prevent. -->
+  <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -392,6 +399,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
+    /* Hovering a comp's table row lights its map pin, and hovering the pin
+       lights the row. Before this the two carried the same number and were
+       otherwise strangers: on a dense block you counted roundels by eye to
+       find out which dot was the $116/SF sale.
+
+       The scale is on the inner dot, never on .comp-pin itself — Leaflet owns
+       that element's transform for positioning, and animating it makes every
+       lit pin drift off its building as the map pans.
+
+       No transition on the row: the table repaints on sort, filter and
+       curation, and a fading background on 40 rows at once reads as lag. */
+    .comp-pin-dot { transition: transform .12s ease, box-shadow .12s ease; }
+    .comp-pin.lit .comp-pin-dot {
+      transform: scale(1.45);
+      box-shadow: 0 0 0 3px rgb(255 255 255 / .85), 0 2px 8px rgb(0 0 0 / .45);
+    }
+    tr.comp-row-lit > td { background: var(--wash); }
+    /* The roundel is the thing both ends share, so it is what brightens. */
+    tr.comp-row-lit .comp-num {
+      background: var(--ink); color: var(--paper); border-color: var(--ink);
+    }
+
     /* Info cards lift gently on hover. */
     .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
     .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgb(15 23 42 / .18); }
@@ -1578,8 +1607,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
         <!-- The browse links live behind one dropdown so the bar stays three
              items on every screen; My Desk and Sign in are actions and stay
-             visible. Mirrored (as a no-JS <details>) on the server-rendered
-             market / brokers / how-it-works headers in server.js. -->
+             visible. The dropdown's links are injected at serve time from
+             server.js's NAV_LINKS — the same list marketBar renders (as a
+             no-JS <details>) on every server-rendered page — so there is no
+             second copy of the menu here to keep in step. -->
         <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
           aria-label="Switch colour theme" title="Switch colour theme">
           <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
@@ -1593,17 +1624,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <!-- Order is the owner's (2026-08-09): Pricing, Brokers, Markets,
-               How it works, 1031 Guide — money first. Mirrored in server.js's
-               two headers (marketBar and /how-it-works'); keep the three in
-               step. -->
+               How it works, 1031 Guide — money first. The browse links are
+               NOT authored here: server.js injects them at serve time from
+               NAV_LINKS (the same list marketBar renders on every
+               server-rendered page), replacing the NAV_LINKS_MARKER comment
+               below — one list, no hand-copied menu left to drift. Their
+               class string (APP_NAV_LINK_CLASS in server.js) must stay
+               identical to #pricingLink's, which is what keeps every one of
+               those utilities in index.html for the tailwind purge. -->
           <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
             <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
                  unset there is nothing to sell and the link would dead-end. -->
             <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Pricing</button>
-            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Brokers</a>
-            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Markets</a>
-            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">How it works</a>
-            <a href="/1031-exchange" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">1031 Guide</a>
+            <!--NAV_LINKS-->
           </div>
         </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
@@ -2889,6 +2922,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             </button>
           </div>
           <p id="summaryText" class="text-[15px] text-[#374253] leading-relaxed max-w-4xl"></p>
+          <!-- Cross-link to the standing /market/<slug> page for this market +
+               type. The server attaches `market_page` to the report only when
+               such a page exists, so absence simply keeps this hidden.
+               no-print/no-capture: navigation, not report content. Visibility
+               toggles on the wrapper <p>, never the <a> — an inline-display
+               anchor can't carry mt-3, and `inline-block` is not in the
+               vendored tailwind.css. -->
+          <p id="marketPageLine" class="hidden no-print no-capture mt-3">
+            <a id="marketPageLink" class="text-sm font-medium text-[#B91C1C] hover:text-[#991B1B]"></a>
+          </p>
         </div>
 
         <!-- What's driving your number (owner mode only) — the market trend and
@@ -3196,6 +3239,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
               <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
+              <!-- Hidden until the browser fires beforeinstallprompt: an
+                   install button that could only fail (already installed,
+                   unsupported browser) is worse than no button — the same
+                   rule the Buy button follows. -->
+              <li id="installAppItem" hidden><button type="button" id="installAppBtn" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Install the desktop app</button></li>
             </ul>
           </div>
           <div>
@@ -4271,6 +4319,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
     document.getElementById("summaryText").textContent = "";
+    document.getElementById("marketPageLine").classList.add("hidden");
     const card = document.getElementById("compsCard");
     for (const child of card.children) {
       if (child.id === "scrollBody" || child.id === "cardList" || child.querySelector("h2")) continue;
@@ -4380,6 +4429,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById(id).innerHTML = "";
     });
     document.getElementById("summaryText").textContent = "";
+    document.getElementById("marketPageLine").classList.add("hidden");
     document.getElementById("compCount").textContent = "";
     document.getElementById("ownerBasis").textContent = "";
     document.getElementById("loadingSkeletons").classList.remove("hidden");
@@ -7087,6 +7137,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // geoLabelMatches below — and any wrong-street result cached under v1
   // (the poisoned entry behind a wrong-house subject photo) retires with
   // the bump. A re-geocode per address, once, is the whole cost.
+  //
+  // This key belongs to the app alone. The market pages' map keeps its own
+  // store (mktGeoCache.v1 in server.js's MARKET_MAP_JS) because it caches
+  // {lat, lng} with no label, and a label-less entry read back here fails
+  // geoLabelMatches — which is the gate on subject photos and footprint
+  // sizing, so the cost of merging the two would be paid silently, by the
+  // report. A test holds the names apart.
   const GEO_CACHE_KEY = "geoCache.v2";
   let geoCache = (() => { try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
 
@@ -8440,6 +8497,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // then move to geocoded positions as lookups resolve.
   // ----------------------------------------------------------------------------
   let mapInstance = null;
+  // Module scope, NOT local to renderMap, so the comp table can reach a pin.
+  // It was a const inside renderMap, which is why hovering a row could never
+  // do anything to the map: the only handle on a marker died with the call
+  // that made it. renderMap resets it rather than reassigning a fresh object,
+  // so any listener holding this reference keeps looking at the live set.
+  const compMarkersByNum = {};
+
+  // Both directions of the table <-> map link, kept next to the marker index
+  // so the halves cannot drift. Each is a no-op when the other end is absent,
+  // which is the ordinary case rather than an error: an excluded comp has a
+  // row and no pin, and so does a comp the geocoder could not place.
+  function setPinLit(num, on) {
+    const m = compMarkersByNum[num];
+    if (!m) return;
+    const el = m.getElement();
+    if (el) el.classList.toggle("lit", on);
+    // Ask Leaflet to restack rather than fighting it with CSS z-index: a lit
+    // pin sitting under its neighbour is the exact case this exists for. 900
+    // stays below the subject marker's 1000, which should never be covered.
+    m.setZIndexOffset(on ? 900 : 0);
+  }
+  function setRowLit(num, on) {
+    const body = document.getElementById("tableBody");
+    const tr = body && body.querySelector('tr[data-comp-num="' + num + '"]');
+    if (tr) tr.classList.toggle("comp-row-lit", on);
+  }
   // Pins preview on hover only where there's a real pointer. Touch devices
   // have no hover state (and emulate mouseover on tap), so they keep
   // Leaflet's default tap-to-open and nothing changes for them.
@@ -8628,7 +8711,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Marker builders double as refinement hooks: refinePins() moves existing
     // markers to geocoded spots, or creates ones the model gave no coords for.
     let subjMarker = null;
-    const compMarkersByNum = {};
+    // Reset in place: see the declaration. The markers themselves are gone
+    // with the old map instance, so leaving stale entries here would hand a
+    // hover a detached marker.
+    Object.keys(compMarkersByNum).forEach((k) => delete compMarkersByNum[k]);
 
     // Which included comps ended up with no pin, and why it is worth saying so.
     // Deliberately reads the marker map rather than re-testing the addresses:
@@ -8844,8 +8930,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Each pin carries the comp's report-wide number, matching its table row.
       const p = pinColors();
       const dotIcon = L.divIcon({
-        className: "",
-        html: `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
+        // Classes so a table row can light this pin up. The scale lives on the
+        // INNER div: Leaflet positions the outer element with its own
+        // transform, so transforming that would fight the map on every pan.
+        className: "comp-pin",
+        html: `<div class="comp-pin-dot" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
@@ -8862,6 +8951,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           SOURCE_TIERS[tier].label + "</span>" : "";
       };
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
+      // The map half of the link. wireHoverPreview below already listens for
+      // mouseover on this marker for the Street View preview; Leaflet's `on`
+      // adds handlers rather than replacing them, so both run.
+      if (CAN_HOVER) {
+        m.on("mouseover", () => setRowLit(c._num, true));
+        m.on("mouseout", () => setRowLit(c._num, false));
+      }
       m._aerialZoom = aerialZoomFor(c.size_sqft);
       m.bindPopup(() => svPhoto(m, m._aerialZoom, c.address) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + popupBadge(),
@@ -9385,6 +9481,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : `Prices in ${reportCurrency.code} (local currency)`;
   }
 
+  // The report's door into the standing /market/<slug> page for its market +
+  // type. The server attaches `market_page` ({slug, market}) at serialization
+  // only when such a page exists — seeded or explorer-published — so absence
+  // hides the line and nothing here needs a list of pages. The slug is
+  // server-derived but rides through saves and shares, so it is shape-checked
+  // before it becomes an href.
+  function renderMarketPageLink(parsed, meta) {
+    const line = document.getElementById("marketPageLine");
+    const a = document.getElementById("marketPageLink");
+    if (!line || !a) return;
+    const mp = parsed && parsed.market_page;
+    const slug = mp && typeof mp.slug === "string" && /^[a-z0-9-]{1,120}$/.test(mp.slug) ? mp.slug : "";
+    if (!slug) {
+      line.classList.add("hidden");
+      a.removeAttribute("href");
+      return;
+    }
+    a.href = "/market/" + slug;
+    const noun = String(meta && meta.type || "").toLowerCase() || "market";
+    a.textContent = "See the " + (mp.market || "local") + " " + noun + " market page →";
+    line.classList.remove("hidden");
+  }
+
   function renderResults(parsed, meta) {
     if (!parsed || !Array.isArray(parsed.comps)) {
       throw new Error("Parsed response is missing a 'comps' array.");
@@ -9427,6 +9546,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderReportBrand();
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
+    renderMarketPageLink(parsed, meta);
 
     // Search radius (makes the market-radius calibration visible): the geographic
     // scope the model used. Hidden when the model didn't return one.
@@ -10597,6 +10717,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const sub = document.createElement("div");
         sub.className = "text-[10.5px] text-[#68707E]";
         sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
+        // Door to the standing market page for this property's market + type.
+        // The server attaches `market_page` only when such a page exists
+        // (marketPageInfo), so absence renders nothing — same contract as
+        // `movement` below. Slug is shape-checked before it becomes an href,
+        // like the report's own market-page link.
+        if (item.market_page && typeof item.market_page.slug === "string"
+            && /^[a-z0-9-]{1,120}$/.test(item.market_page.slug)) {
+          sub.appendChild(document.createTextNode(" · "));
+          const mk = document.createElement("a");
+          mk.href = "/market/" + item.market_page.slug;
+          mk.className = "underline hover:text-[#1A2433]";
+          mk.textContent = "market page";
+          mk.title = `The standing ${item.market_page.market || ""} ${String(item.property_type || "").toLowerCase()} market page — medians, cap rates, recent comps`;
+          sub.appendChild(mk);
+        }
         tdA.appendChild(sub);
         // What the MARKET did since this property was last checked, which is
         // the one number on this page that moves without the owner re-running
@@ -10793,9 +10928,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       box.className = "dk-mkt";
       const head = document.createElement("div");
       head.className = "flex items-baseline justify-between gap-3 flex-wrap";
-      const title = document.createElement("div");
+      // The market's name links to its standing /market/<slug> page when one
+      // exists (the server attaches `market_page` via the same marketPageInfo
+      // the portfolio rows use); a market with no page keeps the plain div.
+      const hasPage = w.market_page && typeof w.market_page.slug === "string"
+        && /^[a-z0-9-]{1,120}$/.test(w.market_page.slug);
+      const title = document.createElement(hasPage ? "a" : "div");
       title.className = "dk-mname";
       title.textContent = `${w.property_type} · ${w.market}`;
+      if (hasPage) {
+        title.href = "/market/" + w.market_page.slug;
+        title.classList.add("hover:text-[#B91C1C]");
+        title.title = "Open this market's page — medians, cap rates, recent comps";
+      }
       const right = document.createElement("div");
       right.className = "flex items-baseline gap-3 text-[11px] text-[#68707E]";
       if (w.median_psf) {
@@ -12546,6 +12691,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Straight to the submission modal — the same one /brokers links to via
   // /#submit-comp. openCompModal is a hoisted declaration further down.
   document.getElementById("footerSubmitComp").addEventListener("click", openCompModal);
+
+  // ----------------------------------------------------------------------------
+  // Install the app (PWA). The manifest alone makes Chrome/Edge show their own
+  // install icon in the address bar; this adds a visible door in the footer.
+  // preventDefault is deliberate — it suppresses the mobile mini-infobar, not
+  // the desktop omnibox icon — and the button only APPEARS once the browser
+  // has handed us a working prompt, so it can never be a control that does
+  // nothing (already installed, Safari/Firefox, iOS all simply never fire it).
+  // ----------------------------------------------------------------------------
+  let deferredInstallPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    document.getElementById("installAppItem").hidden = false;
+  });
+  document.getElementById("installAppBtn").addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    const prompt = deferredInstallPrompt;
+    deferredInstallPrompt = null; // a prompt() object is single-use
+    document.getElementById("installAppItem").hidden = true;
+    prompt.prompt();
+    try { await prompt.userChoice; } catch { /* dismissed */ }
+  });
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    document.getElementById("installAppItem").hidden = true;
+  });
 
   // ----------------------------------------------------------------------------
   // Escape closes the topmost open modal, by clicking that modal's own cancel
@@ -14547,6 +14719,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderAutoShareNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
+    // A row removed from under the cursor never fires mouseout, so its pin
+    // would stay lit for the rest of the report. Sort, filter, exclude and
+    // add-a-comp all land here, so clearing once at the top covers them all.
+    Object.keys(compMarkersByNum).forEach((n) => setPinLit(n, false));
+    // Delegated ONCE, on the element that survives the innerHTML below. Rows
+    // are rebuilt on every sort, filter and curation change, so per-row
+    // listeners would be re-attached dozens of times in a single sitting.
+    if (CAN_HOVER && !body.dataset.mapLinkWired) {
+      body.dataset.mapLinkWired = "1";
+      // mouseover/mouseout bubble (mouseenter/mouseleave do not, so they
+      // cannot be delegated), which means they also fire when the pointer
+      // crosses between two cells of the SAME row. relatedTarget says where
+      // the pointer came from or went to; when that is the same row, this is
+      // an internal move and the pin must not flicker off and on again.
+      const rowOf = (n) => (n && n.closest ? n.closest("tr[data-comp-num]") : null);
+      body.addEventListener("mouseover", (e) => {
+        const tr = rowOf(e.target);
+        if (tr && rowOf(e.relatedTarget) !== tr) setPinLit(tr.dataset.compNum, true);
+      });
+      body.addEventListener("mouseout", (e) => {
+        const tr = rowOf(e.target);
+        if (tr && rowOf(e.relatedTarget) !== tr) setPinLit(tr.dataset.compNum, false);
+      });
+    }
     body.innerHTML = "";
     const comps = visibleComps();
     const showCuration = curationControlsAllowed();
@@ -14567,6 +14763,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
+      // The comp's report-wide number is what the map pin carries, so it is
+      // also the handle the hover link uses to find one from the other.
+      if (comp._num != null) tr.dataset.compNum = comp._num;
       // Re-sorts skip the entrance cascade — rows FLIP to their new spots instead.
       // A vault row is screen-only: no-print drops it from a printed report and
       // no-capture from the PNG (html2canvas honours the same class the
@@ -15504,6 +15703,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     catch (_) { return true; }      // storage unavailable — don't dead-end exports
   }
 
+  // The /1031-exchange guide stamps this marker on every read (its widget
+  // script owns the key — keep the two strings identical). A BOV request from
+  // a browser that read the guide recently is tagged source "1031" instead of
+  // "bov", which is the only attribution the funnel has: the guide, the
+  // account wall, and the report live on separate pages, so a URL param
+  // cannot survive the journey. 7 days, then it is just a lead again.
+  function ref1031Active() {
+    try {
+      const t = Number(localStorage.getItem("cnRef1031.v1"));
+      return Number.isFinite(t) && t > 0 && Date.now() - t < 7 * 24 * 3600 * 1000;
+    } catch (_) { return false; }
+  }
+
   // One CTA, two audiences. Same lead funnel (source: "bov"), same "we
   // connect you with a licensed local broker, we are not one" rule. A house
   // buyer bouncing off "Broker Opinion of Value" is why Residential gets
@@ -15689,7 +15901,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       company: document.getElementById("leadCompany").value.trim(),
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
-      source: leadContext,
+      // "1031" is a bov-class source: same funnel, same broker alert — the
+      // tag tells the owner and the broker inbox this seller is on the
+      // 45/180-day clock. Export unlocks are never tagged.
+      source: leadContext === "bov" && ref1031Active() ? "1031" : leadContext,
       size_sqft: leadContext === "bov" && currentMeta && currentMeta.subject && currentMeta.subject.sizeMin
         ? (currentMeta.subject.sizeMax ? (currentMeta.subject.sizeMin + currentMeta.subject.sizeMax) / 2 : currentMeta.subject.sizeMin)
         : undefined,

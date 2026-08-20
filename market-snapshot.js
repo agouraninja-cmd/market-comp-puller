@@ -225,7 +225,16 @@ function distillMarketSnapshot(t, data) {
   const trend = trendPctFrom(data);
   if (trend != null) snapshot.annual_price_trend_pct = trend;
   const direction = directionFrom(data);
-  if (direction) snapshot.direction = direction;
+  if (direction) {
+    snapshot.direction = direction;
+    // Provenance. A direction can also be DERIVED from a page's own
+    // market_trend sentence for pages built before this field existed
+    // (scripts/derive-market-direction.js, which stamps "market_trend").
+    // Recording which is which is what lets that script skip a page whose read
+    // came from the search itself, and what stops a second-hand read being
+    // mistaken for a first-hand one months from now.
+    snapshot.direction_source = "price_discovery";
+  }
   const rent = rentFromComps(comps);
   if (rent) snapshot.rent = rent;
   return { snapshot, pricedSaleCount: ppsfVals.length };

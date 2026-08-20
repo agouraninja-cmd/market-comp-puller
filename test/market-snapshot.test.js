@@ -217,6 +217,9 @@ test("distillMarketSnapshot keeps a citable URL and drops the rest", () => {
   assert.deepEqual(snapshot.market_opex_range, { low: "28%", high: "34%", note: "assumes NNN" });
   assert.equal(snapshot.annual_price_trend_pct, 4.5);
   assert.equal(snapshot.direction, "expanding");
+  // Provenance: a search-supplied read is marked as one, so the backfill script
+  // can tell it apart from a direction derived off the market_trend sentence.
+  assert.equal(snapshot.direction_source, "price_discovery");
   // The note stays out: the Explorer shows a word, and storing prose would
   // put a second, unrendered market narrative into every committed snapshot.
   assert.equal("price_discovery" in snapshot, false);
@@ -232,5 +235,6 @@ test("distillMarketSnapshot omits analyst extras when the search did not earn th
   assert.equal("market_opex_range" in snapshot, false);
   assert.equal("annual_price_trend_pct" in snapshot, false);
   assert.equal("direction" in snapshot, false);
+  assert.equal("direction_source" in snapshot, false);
   assert.equal("rent" in snapshot, false);
 });

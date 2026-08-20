@@ -87,7 +87,9 @@
         "price_per_sqft": "$13.80",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "industrial-dallas-tx": {
     "type": "Industrial",
@@ -186,7 +188,9 @@
         "price_per_sqft": "$143",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "industrial-atlanta-ga": {
     "type": "Industrial",
@@ -276,7 +280,9 @@
         "price_per_sqft": "$122",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "industrial-phoenix-az": {
     "type": "Industrial",
@@ -375,7 +381,9 @@
         "price_per_sqft": "$227.08",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "industrial-columbus-oh": {
     "type": "Industrial",
@@ -465,7 +473,9 @@
         "price_per_sqft": "",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "office-dallas-tx": {
     "type": "Office",
@@ -564,7 +574,9 @@
         "price_per_sqft": "~$48",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "office-atlanta-ga": {
     "type": "Office",
@@ -654,7 +666,9 @@
         "price_per_sqft": "",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "retail-phoenix-az": {
     "type": "Retail",
@@ -744,7 +758,9 @@
         "price_per_sqft": "$434",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "industrial-fontana-ca": {
     "type": "Industrial",
@@ -987,7 +1003,9 @@
         "price_per_sqft": "$10.50",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "office-austin-tx": {
     "type": "Office",
@@ -1086,7 +1104,9 @@
         "price_per_sqft": "$42-$45/SF/yr",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "office-nashville-tn": {
     "type": "Office",
@@ -1167,7 +1187,9 @@
         "price_per_sqft": "",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "office-charlotte-nc": {
     "type": "Office",
@@ -1257,7 +1279,9 @@
         "price_per_sqft": "",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "office-tampa-fl": {
     "type": "Office",
@@ -1347,7 +1371,9 @@
         "price_per_sqft": "$187",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "flat",
+    "direction_source": "market_trend"
   },
   "office-denver-co": {
     "type": "Office",
@@ -1608,7 +1634,9 @@
         "price_per_sqft": "$29.77",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "retail-las-vegas-nv": {
     "type": "Retail",
@@ -1689,7 +1717,9 @@
         "price_per_sqft": "~$400",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "retail-san-antonio-tx": {
     "type": "Retail",
@@ -1788,7 +1818,9 @@
         "price_per_sqft": "",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "retail-sacramento-ca": {
     "type": "Retail",
@@ -1878,7 +1910,9 @@
         "price_per_sqft": "$347",
         "source_type": "listing"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "multifamily-atlanta-ga": {
     "type": "Multifamily",
@@ -2040,7 +2074,9 @@
         "price_per_sqft": "$296",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "contracting",
+    "direction_source": "market_trend"
   },
   "multifamily-dallas-tx": {
     "type": "Multifamily",
@@ -2130,7 +2166,9 @@
         "price_per_sqft": "~$110",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "multifamily-austin-tx": {
     "type": "Multifamily",
@@ -2220,7 +2258,9 @@
         "price_per_sqft": "",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "multifamily-charlotte-nc": {
     "type": "Multifamily",
@@ -2310,7 +2350,9 @@
         "price_per_sqft": "$184",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   },
   "multifamily-las-vegas-nv": {
     "type": "Multifamily",
@@ -2400,6 +2442,8 @@
         "price_per_sqft": "$207",
         "source_type": "news"
       }
-    ]
+    ],
+    "direction": "expanding",
+    "direction_source": "market_trend"
   }
 }

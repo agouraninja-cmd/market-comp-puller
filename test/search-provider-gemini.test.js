@@ -73,8 +73,11 @@ test("normalizeUsage folds thought tokens into output, because Gemini bills them
 });
 
 test("costOf reproduces the measured per-report figure within a cent", () => {
+  // $0.0618 was USD_PER_MTOK's standard rate ($1.50/$7.50); the constant now
+  // holds Google's introductory rate ($0.75/$3.75, in effect through
+  // 2026-12-31), which is exactly half.
   const cost = P.costOf(P.normalizeUsage(FIXTURE.usage));
-  assert.ok(Math.abs(cost - 0.0618) < 0.01, `expected about $0.0618, got $${cost.toFixed(4)}`);
+  assert.ok(Math.abs(cost - 0.0309) < 0.01, `expected about $0.0309, got $${cost.toFixed(4)}`);
 });
 
 test("deadlineTokens returns a fixed figure, never max_output_tokens", () => {

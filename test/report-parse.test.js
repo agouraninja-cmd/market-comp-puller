@@ -617,3 +617,62 @@ test("condition has a short key that collides with nothing", () => {
   const longs = Object.keys(RP.SHORT_COMP_KEYS);
   shorts.forEach((s) => assert.equal(longs.includes(s), false, `short ${s} shadows a long key`));
 });
+
+// --- normalizeSubjectSize (2026-08-19) --------------------------------------
+// The 2026-08-19 eval's Atlanta multifamily report came back with
+// subject_size_sqft "" and subject_size_source "public_record": a provenance
+// claim attached to no value, written into the cache, the harvest and shares.
+
+test("normalizeSubjectSize drops a source that has no size to source", () => {
+  const p = { subject_size_sqft: "", subject_size_source: "public_record" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_sqft, "");
+  assert.ok(!("subject_size_source" in p), "an orphaned source must be removed, not blanked");
+});
+
+test("normalizeSubjectSize keeps a real size and its source together", () => {
+  const p = { subject_size_sqft: "25000", subject_size_source: "listing" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_sqft, "25000");
+  assert.equal(p.subject_size_source, "listing");
+});
+
+test("normalizeSubjectSize treats a zero, a non-number and a missing size alike", () => {
+  for (const v of ["0", "0 SF", "not known", null, undefined]) {
+    const p = { subject_size_sqft: v, subject_size_source: "public_record" };
+    RP.normalizeSubjectSize(p);
+    assert.ok(!("subject_size_source" in p), `source must be dropped for ${JSON.stringify(v)}`);
+  }
+});
+
+test("normalizeSubjectSize tolerates a formatted size", () => {
+  const p = { subject_size_sqft: "25,000 SF", subject_size_source: "public_record" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_source, "public_record");
+});
+
+test("normalizeSubjectSize leaves a report that never mentioned size alone", () => {
+  const p = { comps: [] };
+  RP.normalizeSubjectSize(p);
+  assert.ok(!("subject_size_sqft" in p), "must not invent the key on a report that lacks it");
+  assert.deepEqual(p, { comps: [] });
+});
+
+test("normalizeSubjectSize is safe on junk input", () => {
+  assert.equal(RP.normalizeSubjectSize(null), null);
+  const p = {};
+  assert.equal(RP.normalizeSubjectSize(p), p);
+});
+
+test("normalizeSourceTypes threads the property type through to the rule", () => {
+  const parsed = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, "Land");
+  assert.equal(parsed.comps[0].source_type, "listing");
+  const parsed2 = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed2, AUDIT.enforcedSourceType, "Office");
+  assert.equal(parsed2.comps[0].source_type, "estimate");
+  // Omitting the type must behave exactly as before it was threaded.
+  const parsed3 = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed3, AUDIT.enforcedSourceType);
+  assert.equal(parsed3.comps[0].source_type, "estimate");
+});

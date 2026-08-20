@@ -372,6 +372,23 @@ function allMarketPages() {
   return out;
 }
 
+// The standing /market/<slug> page covering a market + property type, if one
+// exists (seeded or explorer-published) — { slug, market } or null. This is
+// the cross-link between the report surfaces and the market pages: /api/comps
+// attaches it to every served report, /api/portfolio and the watchlist feed
+// attach it per item, so My Desk and every report can offer a door into the
+// standing page. Pure in-memory lookups (MARKET_PAGES / DYNAMIC_MARKET_PAGES),
+// so it costs nothing on those hot paths, and it re-resolves per serve — a
+// market page published after a report was cached still lights the link up.
+// Presentation only: absence hides a link and nothing else, so a miss (a
+// non-"City, ST" market, a type with no page) just returns null.
+function marketPageInfo(marketKey, propertyType) {
+  const mm = String(marketKey || "").match(/^(.+),\s([A-Z]{2})$/);
+  if (!mm || !propertyType) return null;
+  const slug = slugifyMarket(String(propertyType), mm[1], mm[2]);
+  return getMarketPage(slug) ? { slug, market: marketKey } : null;
+}
+
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
 //
@@ -1427,9 +1444,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
     const median_trend = curWin.length >= 3 && priWin.length >= 3
       ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    // The watched market's standing /market/<slug> page, when one exists —
+    // the desk's feed section links each market it reports on to the page
+    // that covers it. Absent key = no page = no link; the digest builder
+    // ignores keys it does not read, so this rides the shared feed shape
+    // harmlessly.
+    const marketPage = marketPageInfo(w.market, w.property_type);
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
+      ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
@@ -6361,6 +6385,16 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
 button.btn{border:0;cursor:pointer;font-family:inherit}
+/* "Value a property here" mini-form in the market-page CTA — the door back
+   into a pre-filled search on /. 16px input, or iOS Safari zooms on focus and
+   stays zoomed (the .mfilter rule, restated because the two are unrelated
+   selectors). */
+.vform{display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+.vform input{flex:1;min-width:220px;font-size:16px;padding:9px 12px;border:1px solid var(--edge);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+.vform input::placeholder{color:var(--ink-3)}
+.vform input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.cta p.vform-lead{margin:18px auto 10px}
 .cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
   text-decoration:underline;text-decoration-color:var(--edge)}
 .cta button.alt:hover{color:var(--ink)}
@@ -6455,9 +6489,45 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 ${ACCOUNT_NAV_CSS}`;
 
-// The shared header for every server-rendered page. Takes `signedIn` for the
-// same reason renderHowItWorksHTML does, and the rule recorded there governs
-// here too: these pages are the site's entry points from Google, so an
+// The Explore menu's browse links — ONE list for every header on the site
+// (2026-08-20; this menu used to live as three hand-copied lists that CLAUDE.md
+// told editors to "keep in step", and they drifted more than once). Consumers:
+//   - marketBar() below, the header of every server-rendered page — including
+//     /how-it-works, whose own hand-copied header was retired for marketBar.
+//   - index.html's #exploreMenu, which carries a NAV_LINKS_MARKER comment that
+//     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
+//     file holds no copy of the list any more.
+// Order is the owner's (2026-08-09): Pricing first (rendered separately —
+// it is a door to index.html's pricing modal, not a page), then these four.
+const NAV_LINKS = [
+  ["/brokers", "Brokers"],
+  ["/markets", "Markets"],
+  ["/how-it-works", "How it works"],
+  ["/1031-exchange", "1031 Guide"],
+];
+// `current` is the path of the page being rendered: its own link gets the
+// `.on` style and aria-current so the menu shows where the reader already is.
+const navLinksHtml = (current = "") =>
+  NAV_LINKS.map(([href, label]) =>
+    href === current
+      ? `<a href="${href}" class="on" aria-current="page">${label}</a>`
+      : `<a href="${href}">${label}</a>`).join("");
+// index.html's rendering of the same list. The class string must be made of
+// classes index.html ALREADY uses (#pricingLink, one line above the marker,
+// carries this identical set): tailwind.css is purged against index.html
+// alone, so a utility that existed only in this server-side string would
+// silently stop styling on the next regen. The dark-mode literal-hex bridge
+// in index.html's <style> covers these classes for the same reason.
+const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
+const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label]) =>
+  `<a href="${href}" class="${APP_NAV_LINK_CLASS}">${label}</a>`).join("");
+
+// The shared header for every server-rendered page — since 2026-08-20 that
+// includes /how-it-works, which used to render its own hand-kept copy of this
+// exact markup (the two drifted by an `aria-current` and nothing else, which
+// is how close they were to being one function). Takes `signedIn` because
+// these pages are the site's entry points from Google, so an
 // anonymous visitor needs both auth doors (before 2026-08-08 there were none
 // at all, and a returning customer landing on a market page had nowhere to
 // click), while a member must not be told to create an account they have.
@@ -6466,18 +6536,13 @@ ${ACCOUNT_NAV_CSS}`;
 // a forged cookie changes which buttons are drawn and nothing else.
 // Callers must pair this with sendShellPage()'s headers, or the cached
 // anonymous copy is re-served to someone who has just signed in.
-const marketBar = (signedIn = false) =>
+const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  // Owner's order (2026-08-09): Pricing, Brokers, Markets, How it works, 1031
-  // Guide — mirrored in index.html's menu and /how-it-works'; keep the three
-  // in step.
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
-  `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
-  `<a href="/1031-exchange">1031 Guide</a></div></details>` +
+  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -6966,6 +7031,25 @@ const MARKET_MAP_JS = `(function(){
   });
 })();`;
 
+// The market-page CTA's "value a property here" form(s): store the typed
+// address under the key index.html's startup already consumes (the
+// /how-it-works landing form's exact mechanism), then navigate to the
+// form's data-dest — /?type=<type> for a member, the signup door otherwise.
+// Inlined like MARKET_MAP_JS so the page stays self-contained. No ${} — this
+// string is interpolated into a <script>.
+const MARKET_VALUE_FORM_JS = `(function(){
+  [].forEach.call(document.querySelectorAll("form.vform"), function (f) {
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = f.querySelector("input");
+      var addr = ((input && input.value) || "").trim();
+      if (!addr) return;
+      try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+      location.href = f.getAttribute("data-dest") || "/";
+    });
+  });
+})();`;
+
 // Sort / Sale-Lease filter / CSV / Watch on the market-page comps table.
 // Inlined like MARKET_MAP_JS so the page stays self-contained (no extra asset,
 // no tailwind). No ${} — this string is interpolated into a <script>.
@@ -7148,7 +7232,7 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
@@ -7171,7 +7255,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
-    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn)}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -7728,6 +7812,25 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     + "&type=" + encodeURIComponent(p.type);
   const exploreLink =
     `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  // "Value a property here" — the door back into a pre-filled search
+  // (2026-08-20). The address rides sessionStorage's pendingLandingAddress.v1
+  // (the /how-it-works landing form's exact mechanism, so index.html already
+  // consumes it) and the type rides ?type=, which startup marks as an
+  // explicit resolution. Anonymous visitors go through the signup door —
+  // auth=signup is the one query form ACCOUNT_WALL never 302s — and members
+  // land straight on the form. The script is MARKET_VALUE_FORM_JS, emitted
+  // with the body below; it degrades to a plain navigation with the type
+  // still prefilled if JS never runs (the submit falls through to data-dest
+  // only via JS, so the no-JS fallback is the required-input form simply not
+  // submitting — same as the /how-it-works landing form).
+  const valDest = signedIn
+    ? "/?type=" + encodeURIComponent(p.type)
+    : "/?auth=signup&type=" + encodeURIComponent(p.type);
+  const valForm = (btnLabel) =>
+    `<form class="vform" data-dest="${escHtml(valDest)}">` +
+    `<input type="text" required autocomplete="street-address" aria-label="Property address" ` +
+    `placeholder="e.g. 1200 W Main St, ${escHtml(p.city)}, ${escHtml(p.state)}"/>` +
+    `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
       `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
@@ -7735,6 +7838,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
+      `<p class="vform-lead">Or value a property in ${escHtml(p.city)} — comps found live, in about a minute:</p>` +
+      valForm("Value it &rarr;") +
       exploreLink + `</div>`
     : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
       // The BOV half of this promise is made ONLY where a broker actually
@@ -7745,7 +7850,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
           `from a licensed local broker who covers ${escHtml(p.city)}.`
         : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
-      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      valForm("Get my free valuation &rarr;") +
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
@@ -7771,6 +7876,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    `<script>${MARKET_VALUE_FORM_JS}</script>` +
     guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
@@ -7869,7 +7975,7 @@ function renderMarketDirectoryHTML(signedIn) {
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn, current: "/markets" });
 }
 
 
@@ -8300,7 +8406,7 @@ function renderBrokersPageHTML(signedIn) {
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
 }
 
 // ---------------------------------------------------------------------------
@@ -8655,56 +8761,15 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ],
   });
 
+  // The header IS marketBar since 2026-08-20 — this page carried a hand-kept
+  // copy of the identical markup (the diff was one aria-current, now
+  // marketBar's `current` argument), and two copies of a nav drift.
+  // Everything recorded on marketBar holds here: auth chrome on cookie
+  // presence, desk:false slots so My Desk renders exactly once, and the
+  // caching split (no-store + vary: cookie) that keeps the signed-in
+  // variant honest.
   const body = `
-<header class="hdr">
-  <div class="wrap">
-    <div class="hleft">
-      <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-    </div>
-    <nav>
-      <details>
-        <summary>Explore<span class="car">▾</span></summary>
-        <div class="dd">
-          ${ACCOUNT_NAV_PRICING}
-          <a href="/brokers">Brokers</a>
-          <a href="/markets">Markets</a>
-          <a href="/how-it-works" class="on" aria-current="page">How it works</a>
-          <a href="/1031-exchange">1031 Guide</a>
-        </div>
-      </details>
-      ${signedIn
-        ? `<a href="/desk">My Desk</a>
-      <a class="btn sm" href="/">Run a report</a>`
-        : `<a href="/?auth=signin">Log in</a>
-      <a class="btn sm" href="/?auth=signup">Create account</a>`}
-      ${/* This page renders My Desk / Log in server-side already (2026-08-08),
-            so it takes the circle and Pricing only — desk:false, or a member
-            would see My Desk twice. */ ""}
-      ${accountNavSlots({ desk: false })}
-    </nav>
-  </div>
-</header>
-<script>document.addEventListener("click",function(e){
-  document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-    if(!d.contains(e.target))d.open=false;});});
-(function(){
-  // Escape = the page you came from when that was CompNinja; otherwise home.
-  // The visible back button was removed 2026-08-03 at the owner's request;
-  // the key stayed. Same logic as MARKET_BAR — keep the two in step.
-  function goBack(){
-    try{
-      if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
-    }catch(err){}
-    location.href="/";
-  }
-  document.addEventListener("keydown",function(e){
-    if(e.key!=="Escape")return;
-    var dd=document.querySelector(".hdr nav details[open]");
-    if(dd){dd.open=false;return;}
-    goBack();
-  });
-})();</script>
-${ACCOUNT_NAV_JS}
+${marketBar(signedIn, "/how-it-works")}
 
 <main>
   <div class="wrap">
@@ -12449,6 +12514,14 @@ const server = http.createServer((req, res) =>
           // Serialization-time like everything else here, so the cached object
           // never carries one visitor's entitlement to the next.
           const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+          // Cross-link to the standing /market/<slug> page for this market +
+          // type, when one exists. Serialization-time like everything else in
+          // this closure, so the cached object never carries it and a market
+          // page published later lights up older cached reports too. In-memory
+          // lookup, no I/O. It rides the report payload, so a saved or shared
+          // report keeps its door into the market page.
+          const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+          if (marketPage) withExports.market_page = marketPage;
           // LAST, and only here. Every caller of gate() is an exit — the cache
           // hit, the derived-window hit, the SSE result and the plain JSON
           // result — so this is the one place a private comp can enter, and it
@@ -13381,7 +13454,16 @@ const server = http.createServer((req, res) =>
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
+        // Each saved property carries its door into the standing market page,
+        // when one exists — the desk is the hub, so a portfolio row links out
+        // to /market/<slug> as well as back into its report. Pure in-memory
+        // decoration (marketPageInfo reads the loaded page stores), applied
+        // after withMarketMovement so its fail-safe copy is what gets marked.
+        const items = (await withMarketMovement(await listPortfolio(user.id))).map((item) => {
+          const mp = marketPageInfo(marketOf(item.address), item.property_type);
+          return mp ? { ...item, market_page: mp } : item;
+        });
+        return sendJson(res, 200, { items });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }
@@ -18583,9 +18665,15 @@ const server = http.createServer((req, res) =>
         "cache-control": "no-store",
         ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
-      // Canonical/og/JSON-LD URLs in index.html are written against the default
-      // origin; rewrite them when SITE_URL is overridden (custom domain).
-      res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
+      // Two serve-time rewrites. The Explore menu's browse links are injected
+      // from NAV_LINKS (declared above marketBar) in place of the marker
+      // comment index.html authors — the app header reads from the same list
+      // as every server-rendered header, so the menus cannot drift. Then
+      // canonical/og/JSON-LD URLs, written against the default origin, are
+      // rewritten when SITE_URL is overridden (custom domain).
+      let html = data.toString("utf8").replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML);
+      if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
+      res.end(html);
     });
     return;
   }
@@ -18747,6 +18835,7 @@ const server = http.createServer((req, res) =>
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
       signedIn,
+      current: "/1031-exchange",
     }));
   }
 

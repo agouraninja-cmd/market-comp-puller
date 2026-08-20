@@ -186,11 +186,12 @@ test("bare environment", async (t) => {
   // account circle in one go and read as having been logged out mid-browse.
   // Nothing touched the session — the bar just stopped mentioning it.
   //
-  // There are now FOUR headers that have to agree (index.html's, MARKET_BAR,
-  // /how-it-works', and /vault) and the site's own convention is that two
-  // copies of a nav drift. This is what catches a fifth server-rendered page
-  // shipping without the chrome: accountNavSlots() is one call, so forgetting
-  // it is the easy mistake, not getting it subtly wrong.
+  // Since 2026-08-20 marketBar IS the header for every server-rendered page
+  // (/how-it-works' hand-kept copy retired) and the Explore links come from
+  // one NAV_LINKS list, index.html included — but /vault still composes its
+  // own bar from the shared slots. This is what catches a server-rendered
+  // page shipping without the chrome: accountNavSlots() is one call, so
+  // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
       "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
@@ -207,6 +208,24 @@ test("bare environment", async (t) => {
       // signed-out and signed-in chrome at the same time.
       assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/,
         p + " can't actually hide the slots it ships");
+    }
+  });
+
+  // One nav, no copies (2026-08-20). index.html authors only a marker comment
+  // in its Explore menu; the `/` handler replaces it at serve time with the
+  // same NAV_LINKS list marketBar renders on every server-rendered header.
+  // Two failure modes, both pinned: an unreplaced marker (the injection
+  // broke, or the marker string drifted) leaves the app with no browse links
+  // at all, and a link present in one header but not the other is exactly
+  // the hand-sync drift this replaced.
+  await t.test("the app's Explore menu is injected from the shared nav list", async () => {
+    const app = await (await fetch(srv.base + "/")).text();
+    assert.ok(!app.includes("<!--NAV_LINKS-->"),
+      "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    for (const href of ["/brokers", "/markets", "/how-it-works", "/1031-exchange"]) {
+      assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
+      assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
   });
 

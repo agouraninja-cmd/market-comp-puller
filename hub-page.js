@@ -891,7 +891,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   }
 
   el("peopleSave").addEventListener("click", function(){
-    var typed = el("peopleEmails").value.split(/[,;\s]+/).filter(Boolean);
+    // DOUBLE backslash, and it is load-bearing: this whole page is one
+    // template literal, so a single-backslash escape is eaten before the
+    // browser sees it. Written with ONE, this class emitted as comma,
+    // semicolon and the LETTER s, which split "okb336+hubtest@gmail.com" into
+    // "okb336+hubte" and "t@gmail.com" and invited the second one. The first
+    // failed normalizeEmail and vanished; the second is a real address, so a
+    // stranger got the invite and the broker was told it was sent. Same trap
+    // documented at vault-page.js:1231. It still PARSES, which is why 1,432
+    // tests and a syntax check all passed.
+    var typed = el("peopleEmails").value.split(/[,;\\s]+/).filter(Boolean);
     if (!typed.length) return peopleMsg("Type an email address first.", true);
     el("peopleSave").disabled = true;
     peopleMsg("");

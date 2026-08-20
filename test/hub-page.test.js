@@ -384,6 +384,47 @@ test("hub-page.js and vault-page.js contain exactly two backticks", () => {
   }
 });
 
+test("no single-backslash escape hides inside either template literal", () => {
+  // The sibling of the backtick guard above, and the general form of the
+  // invite-splitter bug. Inside a template literal JavaScript keeps \\n, \\t,
+  // \\r, \\\\, \\", \\', \\`, \\x.., \\u.... and \\$ — every OTHER backslash is
+  // dropped before the browser sees the source. So /\\s+/ ships as /s+/ and
+  // /\\d/ as /d/: still valid JavaScript, still passes `node --check`, and
+  // now matches a letter instead of a class.
+  //
+  // Escapes inside a ${} interpolation are ordinary code and are NOT at risk,
+  // so those spans are skipped.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const KEPT = new Set(["n", "t", "r", "\\", '"', "'", "`", "x", "u", "0", "$", "\n"]);
+  for (const f of ["hub-page.js", "vault-page.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const found = [];
+    let inTemplate = false, depth = 0, line = 1;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (c === "\n") { line++; continue; }
+      if (c === "\\") {
+        if (inTemplate && depth === 0 && !KEPT.has(src[i + 1])) {
+          found.push(`${f}:${line} eats \\${src[i + 1]}`);
+        }
+        i++;
+        continue;
+      }
+      if (inTemplate && depth === 0 && c === "$" && src[i + 1] === "{") { depth = 1; i++; continue; }
+      if (inTemplate && depth > 0) {
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+        continue;
+      }
+      if (c === "`") inTemplate = !inTemplate;
+    }
+    assert.deepStrictEqual(found, [],
+      `${f} carries an escape the template literal will eat before the browser sees it. ` +
+      `Write it with TWO backslashes.`);
+  }
+});
+
 // --- who is in a hub, and closing it (2026-08-14) -------------------------
 
 test("the People card is the OWNER's, and its presence is the server's answer", () => {
@@ -403,6 +444,36 @@ test("editing the guest list sends the WHOLE list, because the route replaces it
   const js = pageScript(html);
   assert.match(js, /var all = people\.map\(function\(p\)\{ return p\.email; \}\)\.concat\(typed\)/);
   assert.match(js, /people\.filter\(function\(p\)\{ return p\.email !== email; \}\)/);
+});
+
+test("the invite splitter survives the template literal, and keeps plus-addresses whole", () => {
+  // The bug this test exists for, found by inviting a real address on
+  // production 2026-08-19. The source said /[,;\\s]+/ with ONE backslash, so
+  // the template literal ate it and the page shipped /[,;s]+/ — a class
+  // matching the LETTER s. "okb336+hubtest@gmail.com" split at the s in
+  // "hubtest" into "okb336+hubte" and "t@gmail.com"; normalizeEmail dropped
+  // the first for having no @ and accepted the second, so the invitation went
+  // to a stranger while the broker was told it was sent, with the link hidden
+  // because emailed was true.
+  //
+  // The existing guard above compiles the script, and /[,;s]+/ compiles
+  // perfectly. So this asserts BEHAVIOUR on the emitted regex, not that the
+  // page parses: any escape the template eats changes what it matches.
+  const js = pageScript(html);
+  const m = js.match(/el\("peopleEmails"\)\.value\.split\((\/[^/]+\/)\)/);
+  assert.ok(m, "the invite input must still be split before it is sent");
+
+  const emitted = new RegExp(m[1].slice(1, -1));
+  const split = (v) => v.split(emitted).filter(Boolean);
+
+  assert.deepStrictEqual(split("okb336+hubtest@gmail.com"), ["okb336+hubtest@gmail.com"],
+    "a plus-address is ONE recipient; splitting it invents a second one");
+  assert.deepStrictEqual(split("sam@shore.com"), ["sam@shore.com"],
+    "an address full of the letter s is still one address");
+  assert.deepStrictEqual(split("a@x.com, b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com; b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com b@y.com"), ["a@x.com", "b@y.com"],
+    "whitespace still separates, which is the whole reason for the escape");
 });
 
 test("invite links are shown only when the server could NOT email them", () => {

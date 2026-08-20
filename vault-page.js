@@ -1386,11 +1386,12 @@ if(dd)dd.open=false;});</script>
   // table, none in the spreadsheet) while swapping the save state, so a
   // className assignment cannot quietly strip the styling off the cell.
   // split(" "), NOT a regex: this whole page is one template literal, where a
-  // single-backslash escape is eaten before the browser ever sees it — /\s+/
-  // in this source emits as /s+/, which splits "saving" into ["","aving"] and
-  // leaves the state class stuck on the cell forever. Class names here are
-  // written by this file and are single-space separated, so a plain split is
-  // both correct and immune to that.
+  // single-backslash escape is eaten before the browser ever sees it — a
+  // whitespace class written with one emits as the LETTER s, which would
+  // split "saving" into ["", "aving"] and leave the state class stuck on the
+  // cell forever. Class names here are written by this file and are
+  // single-space separated, so a plain split is both correct and immune to
+  // that.
   function cellState(el,state){
     var base=String(el.className||"").split(" ").filter(function(c){
       return c&&c!=="saving"&&c!=="saved"&&c!=="err";

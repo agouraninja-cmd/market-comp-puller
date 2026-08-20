@@ -793,6 +793,39 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+    // The 1031 guide funnel block must be present even at zero — /admin
+    // treats a missing key as a stale pre-feature response and hides the
+    // card, so a dropped key here silently blinds the funnel.
+    for (const k of ["views", "views30d", "members", "leads", "leads30d"]) {
+      assert.equal(typeof body.guide1031[k], "number", `guide1031.${k}`);
+    }
+  });
+
+  // The guide-read event is the 1031 funnel's denominator, and the page is
+  // public + sitemapped, so the count is only meaningful if crawlers stay
+  // out of it. One browser read must count exactly once; Googlebot and the
+  // suite's own bare fetch (no browser UA) must count zero. Events are
+  // fire-and-forget file appends, hence the short poll.
+  await t.test("a guide read is counted once, and crawlers are not", async () => {
+    const views = async () => (await (await fetch(srv.base + "/api/stats",
+      { headers: { "x-admin-key": ADMIN } })).json()).guide1031.views;
+    const before = await views();
+    const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    for (const ua of [browserUA, "Googlebot/2.1 (+http://www.google.com/bot.html)", null]) {
+      const r = await fetch(srv.base + "/1031-exchange",
+        ua ? { headers: { "user-agent": ua } } : undefined);
+      assert.equal(r.status, 200);
+    }
+    let after = before;
+    for (let i = 0; i < 40 && after < before + 1; i++) {
+      await new Promise((res) => setTimeout(res, 50));
+      after = await views();
+    }
+    assert.equal(after, before + 1, "one browser read = one view");
+    // Settle, then re-read: a late-landing bot event would pass the check
+    // above and only show here.
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(await views(), before + 1, "bot reads must not land late");
   });
 
   await t.test("market-hero review is gated like the other admin APIs", async () => {

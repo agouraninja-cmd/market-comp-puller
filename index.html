@@ -392,6 +392,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       font-size: 10px; font-weight: 600; line-height: 1;
       font-variant-numeric: normal;
     }
+    /* Hovering a comp's table row lights its map pin, and hovering the pin
+       lights the row. Before this the two carried the same number and were
+       otherwise strangers: on a dense block you counted roundels by eye to
+       find out which dot was the $116/SF sale.
+
+       The scale is on the inner dot, never on .comp-pin itself — Leaflet owns
+       that element's transform for positioning, and animating it makes every
+       lit pin drift off its building as the map pans.
+
+       No transition on the row: the table repaints on sort, filter and
+       curation, and a fading background on 40 rows at once reads as lag. */
+    .comp-pin-dot { transition: transform .12s ease, box-shadow .12s ease; }
+    .comp-pin.lit .comp-pin-dot {
+      transform: scale(1.45);
+      box-shadow: 0 0 0 3px rgb(255 255 255 / .85), 0 2px 8px rgb(0 0 0 / .45);
+    }
+    tr.comp-row-lit > td { background: var(--wash); }
+    /* The roundel is the thing both ends share, so it is what brightens. */
+    tr.comp-row-lit .comp-num {
+      background: var(--ink); color: var(--paper); border-color: var(--ink);
+    }
+
     /* Info cards lift gently on hover. */
     .card-hover { transition: transform .2s ease, box-shadow .2s ease; }
     .card-hover:hover { transform: translateY(-3px); box-shadow: 0 12px 28px -12px rgb(15 23 42 / .18); }
@@ -8440,6 +8462,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // then move to geocoded positions as lookups resolve.
   // ----------------------------------------------------------------------------
   let mapInstance = null;
+  // Module scope, NOT local to renderMap, so the comp table can reach a pin.
+  // It was a const inside renderMap, which is why hovering a row could never
+  // do anything to the map: the only handle on a marker died with the call
+  // that made it. renderMap resets it rather than reassigning a fresh object,
+  // so any listener holding this reference keeps looking at the live set.
+  const compMarkersByNum = {};
+
+  // Both directions of the table <-> map link, kept next to the marker index
+  // so the halves cannot drift. Each is a no-op when the other end is absent,
+  // which is the ordinary case rather than an error: an excluded comp has a
+  // row and no pin, and so does a comp the geocoder could not place.
+  function setPinLit(num, on) {
+    const m = compMarkersByNum[num];
+    if (!m) return;
+    const el = m.getElement();
+    if (el) el.classList.toggle("lit", on);
+    // Ask Leaflet to restack rather than fighting it with CSS z-index: a lit
+    // pin sitting under its neighbour is the exact case this exists for. 900
+    // stays below the subject marker's 1000, which should never be covered.
+    m.setZIndexOffset(on ? 900 : 0);
+  }
+  function setRowLit(num, on) {
+    const body = document.getElementById("tableBody");
+    const tr = body && body.querySelector('tr[data-comp-num="' + num + '"]');
+    if (tr) tr.classList.toggle("comp-row-lit", on);
+  }
   // Pins preview on hover only where there's a real pointer. Touch devices
   // have no hover state (and emulate mouseover on tap), so they keep
   // Leaflet's default tap-to-open and nothing changes for them.
@@ -8628,7 +8676,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Marker builders double as refinement hooks: refinePins() moves existing
     // markers to geocoded spots, or creates ones the model gave no coords for.
     let subjMarker = null;
-    const compMarkersByNum = {};
+    // Reset in place: see the declaration. The markers themselves are gone
+    // with the old map instance, so leaving stale entries here would hand a
+    // hover a detached marker.
+    Object.keys(compMarkersByNum).forEach((k) => delete compMarkersByNum[k]);
 
     // Which included comps ended up with no pin, and why it is worth saying so.
     // Deliberately reads the marker map rather than re-testing the addresses:
@@ -8844,8 +8895,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Each pin carries the comp's report-wide number, matching its table row.
       const p = pinColors();
       const dotIcon = L.divIcon({
-        className: "",
-        html: `<div style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
+        // Classes so a table row can light this pin up. The scale lives on the
+        // INNER div: Leaflet positions the outer element with its own
+        // transform, so transforming that would fight the map on every pan.
+        className: "comp-pin",
+        html: `<div class="comp-pin-dot" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${p.pinInk};color:${p.pinInkText};font:600 11px Inter,sans-serif;border:2px solid ${p.pinEdge};box-shadow:0 1px 3px rgb(0 0 0/.35)">` + (c._num || "") + '</div>',
         iconSize: [20, 20], iconAnchor: [10, 10],
       });
       const line2 = [c.price_or_rate, c.transaction].filter(Boolean).map(escMap).join(" · ");
@@ -8862,6 +8916,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           SOURCE_TIERS[tier].label + "</span>" : "";
       };
       const m = L.marker([lat, lng], { icon: dotIcon }).addTo(mapInstance);
+      // The map half of the link. wireHoverPreview below already listens for
+      // mouseover on this marker for the Street View preview; Leaflet's `on`
+      // adds handlers rather than replacing them, so both run.
+      if (CAN_HOVER) {
+        m.on("mouseover", () => setRowLit(c._num, true));
+        m.on("mouseout", () => setRowLit(c._num, false));
+      }
       m._aerialZoom = aerialZoomFor(c.size_sqft);
       m.bindPopup(() => svPhoto(m, m._aerialZoom, c.address) +
         `<strong>${escMap(title)}</strong>${line2 ? "<br>" + line2 : ""}` + popupBadge(),
@@ -14547,6 +14608,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderAutoShareNotice();
     renderSubjectRow();
     const body = document.getElementById("tableBody");
+    // A row removed from under the cursor never fires mouseout, so its pin
+    // would stay lit for the rest of the report. Sort, filter, exclude and
+    // add-a-comp all land here, so clearing once at the top covers them all.
+    Object.keys(compMarkersByNum).forEach((n) => setPinLit(n, false));
+    // Delegated ONCE, on the element that survives the innerHTML below. Rows
+    // are rebuilt on every sort, filter and curation change, so per-row
+    // listeners would be re-attached dozens of times in a single sitting.
+    if (CAN_HOVER && !body.dataset.mapLinkWired) {
+      body.dataset.mapLinkWired = "1";
+      // mouseover/mouseout bubble (mouseenter/mouseleave do not, so they
+      // cannot be delegated), which means they also fire when the pointer
+      // crosses between two cells of the SAME row. relatedTarget says where
+      // the pointer came from or went to; when that is the same row, this is
+      // an internal move and the pin must not flicker off and on again.
+      const rowOf = (n) => (n && n.closest ? n.closest("tr[data-comp-num]") : null);
+      body.addEventListener("mouseover", (e) => {
+        const tr = rowOf(e.target);
+        if (tr && rowOf(e.relatedTarget) !== tr) setPinLit(tr.dataset.compNum, true);
+      });
+      body.addEventListener("mouseout", (e) => {
+        const tr = rowOf(e.target);
+        if (tr && rowOf(e.relatedTarget) !== tr) setPinLit(tr.dataset.compNum, false);
+      });
+    }
     body.innerHTML = "";
     const comps = visibleComps();
     const showCuration = curationControlsAllowed();
@@ -14567,6 +14652,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     comps.forEach((comp, idx) => {
       const tr = document.createElement("tr");
+      // The comp's report-wide number is what the map pin carries, so it is
+      // also the handle the hover link uses to find one from the other.
+      if (comp._num != null) tr.dataset.compNum = comp._num;
       // Re-sorts skip the entrance cascade — rows FLIP to their new spots instead.
       // A vault row is screen-only: no-print drops it from a printed report and
       // no-capture from the PNG (html2canvas honours the same class the
@@ -15504,6 +15592,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     catch (_) { return true; }      // storage unavailable — don't dead-end exports
   }
 
+  // The /1031-exchange guide stamps this marker on every read (its widget
+  // script owns the key — keep the two strings identical). A BOV request from
+  // a browser that read the guide recently is tagged source "1031" instead of
+  // "bov", which is the only attribution the funnel has: the guide, the
+  // account wall, and the report live on separate pages, so a URL param
+  // cannot survive the journey. 7 days, then it is just a lead again.
+  function ref1031Active() {
+    try {
+      const t = Number(localStorage.getItem("cnRef1031.v1"));
+      return Number.isFinite(t) && t > 0 && Date.now() - t < 7 * 24 * 3600 * 1000;
+    } catch (_) { return false; }
+  }
+
   // One CTA, two audiences. Same lead funnel (source: "bov"), same "we
   // connect you with a licensed local broker, we are not one" rule. A house
   // buyer bouncing off "Broker Opinion of Value" is why Residential gets
@@ -15689,7 +15790,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       company: document.getElementById("leadCompany").value.trim(),
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
-      source: leadContext,
+      // "1031" is a bov-class source: same funnel, same broker alert — the
+      // tag tells the owner and the broker inbox this seller is on the
+      // 45/180-day clock. Export unlocks are never tagged.
+      source: leadContext === "bov" && ref1031Active() ? "1031" : leadContext,
       size_sqft: leadContext === "bov" && currentMeta && currentMeta.subject && currentMeta.subject.sizeMin
         ? (currentMeta.subject.sizeMax ? (currentMeta.subject.sizeMin + currentMeta.subject.sizeMax) / 2 : currentMeta.subject.sizeMin)
         : undefined,

@@ -1143,3 +1143,51 @@ test("askFit and conditionFit share one direction vocabulary", () => {
   assert.equal(V.askFit(1000000, 2000000).dir, "above");
   assert.equal(V.askFit(2000000, 1000000).dir, "below");
 });
+
+// --- the comp table <-> map hover link (2026-08-19) -----------------------
+
+test("the marker index is module-scoped, so the table can reach a pin", () => {
+  // It used to be `const compMarkersByNum = {}` INSIDE renderMap, which is
+  // precisely why hovering a row could never do anything to the map: the only
+  // handle on a marker died with the call that created it. If this regresses
+  // the feature goes silently dead -- setPinLit just stops finding markers,
+  // and nothing throws.
+  const decl = html.match(/^\s*(const|let|var)\s+compMarkersByNum\s*=/gm) || [];
+  assert.equal(decl.length, 1, "compMarkersByNum must be declared exactly once");
+  const i = html.indexOf("compMarkersByNum =");
+  const renderMapAt = html.indexOf("function renderMap(");
+  assert.ok(i < renderMapAt,
+    "compMarkersByNum must be declared BEFORE renderMap, not inside it");
+});
+
+test("every comp row carries the number its pin carries", () => {
+  // data-comp-num is the handle both directions of the link use. The roundel
+  // in the cell is not enough: it is inside the row, and the delegated
+  // listener needs the identity ON the row it matched.
+  assert.match(html, /tr\.dataset\.compNum = comp\._num/);
+  assert.match(html, /tr\[data-comp-num\]/);
+});
+
+test("the row hover listener is delegated once, not re-attached per render", () => {
+  // renderTableBody runs on every sort, filter, exclude and added comp. A
+  // listener attached per row, or per render on the body, would stack up
+  // dozens deep in one sitting and fire the handler once per copy.
+  assert.match(html, /body\.dataset\.mapLinkWired/);
+});
+
+test("a re-render clears every lit pin", () => {
+  // A row removed from under the cursor -- excluded, filtered out, sorted
+  // away -- never fires mouseout, so its pin would stay lit for the rest of
+  // the report. renderTableBody clears them all at the top.
+  const at = html.indexOf("function renderTableBody(");
+  const body = html.slice(at, at + 2500);
+  assert.match(body, /setPinLit\(n, false\)/,
+    "renderTableBody must clear lit pins before rebuilding rows");
+});
+
+test("the pin scale is on the inner dot, never on the Leaflet-positioned element", () => {
+  // Leaflet owns .comp-pin's transform for positioning. Animating that makes
+  // every lit pin drift off its building as the map pans.
+  assert.match(html, /\.comp-pin\.lit \.comp-pin-dot \{[^}]*transform: scale/);
+  assert.doesNotMatch(html, /\.comp-pin\.lit \{[^}]*transform:/);
+});

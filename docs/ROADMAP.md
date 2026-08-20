@@ -29,63 +29,10 @@ intent, the devlog states history.
 
 ## Next
 
-- **Enterprise (firm) accounts — BUILT, awaiting a customer.** Design in
-  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`,
-  from Chuck's email of 2026-08-16. **Slice 1 shipped the same day**: firms,
-  invites, `org-access.js`, the firm branch in `canReadShare`, a "My firm"
-  audience on Share, and both firm surfaces on `/desk`. **Migration 028 must
-  be run before that code deploys** — it adds `shared_reports.org_id`, which
-  every share read SELECTs by name.
-  **Slice 2 shipped the same day too**, in the form the design did not
-  predict: the shelf needed no `org_shelf_items` table, because reports
-  already live in `shared_reports` with `visibility='org'` and a second copy
-  would be two sources of truth for one thing. `GET /api/org/shelf` is the
-  firm's whole record — searchable, attributed, everyone's own shares
-  included. That table becomes worth building when the shelf holds something
-  a share cannot: a BOV pipeline row, or an individual vault comp.
-  **Auto-share shipped 2026-08-16** on the owner's yes (decision #2 in the
-  spec's §1, now answered): a firm can share members' new reports
-  automatically, off by default, never retroactive, disclosed on the
-  invitation, undoable per report, and with a member-level `never` that an
-  admin cannot override — migration 029. **Slice 3 shipped 2026-08-16**
-  (migration 032): a broker opts ONE COMP AT A TIME into their firm, and it
-  appears in colleagues' own reports attributed, deduped against deals they
-  already hold, still stripped from every client link and download — with
-  the vault's "Visible only to you" copy correcting itself the moment it
-  stops being true. Opt-in per comp rather than per import, which is
-  narrower than the spec proposed and is the version worth defending.
-  **Slice 4 shipped 2026-08-16** (migration 033): per-seat firm billing, the
-  firm as the Stripe customer, seats enforced at the invitation, and a
-  colleague on a seat told whose plan covers them. **It is inert until
-  `STRIPE_PRICE_FIRM_MONTHLY` is set** — unset, firm checkout 503s and the buy
-  control never renders, so seats stay hand-granted exactly as before.
-  Standing recommendation, unchanged by having built it: do not set that price
-  until a firm asks to pay. Nothing about the product is worse for the plan
-  existing unsold, and pricing it before a real firm has used the shelf is a
-  guess.
-  Slice 3's central question — do brokers at one firm want each other's
-  comps *in their reports*, or only a shelf they can search — is now
-  ANSWERABLE rather than answered: both exist, and the first real firm's
-  usage decides which one earns further work.
-  Two refusals in that spec are load-bearing and should not be re-litigated
-  casually: **no auto-join by email domain**, and **no existing
-  `user_id=eq.` filter is widened to an org** — firm reads are new functions
-  against new tables, migration 013's separate-tables rule (a test fails the
-  build if the widened form appears).
-  ONE of the five decisions in the spec's §1 is still open: the attorney
-  question below, sharpened by slice 3 — a departing broker's comps may now
-  be sitting in colleagues' reports as well as on the shelf. It gates launch,
-  not development, and none of the four slices depended on it.
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
-- **Import-time geocoding for vault comps** (step 2 of the same spec).
+- **Import-time geocoding for vault comps** (step 2 of
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
+  follow-on from that spec, the `/api/geocode` POST move Owen ranked above
+  this one, shipped 2026-08-17 and is in the log below).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
   answered because there were **no vault uploads at all** yet. It is work that
@@ -135,7 +82,11 @@ subscription benefit.
 ## Engineering track (no product decisions needed)
 
 - Deploy-checklist project skill (tests → tailwind regen if needed →
-  pending migrations → push → verify live → devlog).
+  pending migrations → push → verify live → devlog). **Shipped 2026-08-04**
+  (`96bab16`): `.claude/skills/deploy/SKILL.md`, which carries the whole
+  chain plus the two things this line did not think to ask for — the
+  shared-checkout rules (stage explicit paths, never amend) and the Supabase
+  project to run migrations against.
 - Extract tested pure modules out of server.js as they're touched. Shipped
   2026-08-08: `marketOf` → market.js (+ the Canada fix); the ENTIRE
   /api/comps parse pipeline → report-parse.js (parse, salvage, compact-key
@@ -145,13 +96,22 @@ subscription benefit.
   same way: when touched, with tests first.
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
-- Market pages restyle onto the `rd-*` Research Desk tokens; regenerate
-  og-image.png from the cut-card logo.
+- Market pages restyle onto the `rd-*` Research Desk tokens. Still
+  outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
+  own header — /how-it-works took the `rd-*` system "rather than the older
+  market-page skin". (The og-image half of this line is done: regenerated
+  from the cut-card mark 2026-07-15 in `660b563`, and byte-identical today,
+  the Sliced Tower attempt having been reverted whole in `017f2c5`.)
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
-- Fix `marketOf()` yielding "Canada" for Canadian addresses before
-  non-USD reports are ever harvested.
-  (Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
-  owner's yes — both now say "Comps in". See the Shipped log.)
+- Fix `marketOf()` yielding "Canada" for Canadian addresses before non-USD
+  reports are ever harvested. **Shipped 2026-08-08** (`fb190aa`), in the same
+  commit as the `marketOf` extraction the bullet above already credits —
+  which is why it sat here unnoticed. `market.js` reads Canadian
+  provinces, so "123 King St W, Toronto, ON, Canada" keys as "Toronto, ON"
+  rather than collapsing to the literal "Canada"; pinned by
+  `test/market.test.js`.
+- Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
+  owner's yes — both now say "Comps in". See the Shipped log.
 
 ## Open business questions (not code)
 
@@ -191,6 +151,29 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-19: enterprise (firm) accounts, all four slices.** From Chuck's
+  email of 2026-08-16; design in
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`.
+  A firm is an account with a shelf on it: colleagues share reports to it
+  (manually, or automatically if an owner switches that on), search the
+  firm's whole record, and opt individual vault comps into each other's
+  reports. Migrations 030-033, run and verified on production the same day.
+  Slice 2 landed WITHOUT the `org_shelf_items` table the design assumed —
+  reports already live in `shared_reports` with `visibility='org'`, and a
+  second copy would have been two sources of truth. Slice 3 is opt-in per
+  COMP rather than per import, narrower than the spec proposed and the
+  version worth defending. Slice 4 (per-seat billing) is live but DARK:
+  `STRIPE_PRICE_FIRM_MONTHLY` is unset, so checkout 503s, the buy control
+  never renders, and seats stay hand-granted at 200 per firm. Standing
+  recommendation: leave that price unset until a firm asks to pay.
+  **What has NOT happened: a real firm.** Everything is proved against a
+  stand-in PostgREST and in a real browser, and the live database has never
+  held one. The first outside firm is the evidence that decides whether the
+  shelf or the shared vault earns further work — and the attorney question
+  below (whose comps are they when the broker who uploaded them leaves) is
+  now sharper, because a departing broker's comps can sit in colleagues'
+  reports as well as on the shelf.
 
 - **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
   higher-ranked of the two follow-ons from the private-comp geocoding work

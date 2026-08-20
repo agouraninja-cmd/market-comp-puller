@@ -120,26 +120,61 @@ function runWidget(closingDateValue) {
   assert.ok(input && input.handlers.input, "script must listen on #q1031close");
   input.value = closingDateValue;
   input.handlers.input();
-  return els["q1031out"];
+  return els;
 }
 
 test("45 and 180 day dates: month and year rollover", () => {
-  const out = runWidget("2026-08-20");
+  const out = runWidget("2026-08-20")["q1031out"];
   assert.match(out.innerHTML, /Oct 4, 2026/);   // +45 crosses a month
   assert.match(out.innerHTML, /Feb 16, 2027/);  // +180 crosses the year
 });
 
 test("45 and 180 day dates: leap year", () => {
-  const out = runWidget("2027-12-17");
+  const out = runWidget("2027-12-17")["q1031out"];
   assert.match(out.innerHTML, /Jan 31, 2028/);
   assert.match(out.innerHTML, /Jun 14, 2028/);  // counts Feb 29, 2028
 });
 
 test("an empty or invalid date clears the output rather than guessing", () => {
-  assert.equal(runWidget("").innerHTML, "");
-  assert.equal(runWidget("not-a-date").innerHTML, "");
+  assert.equal(runWidget("")["q1031out"].innerHTML, "");
+  assert.equal(runWidget("not-a-date")["q1031out"].innerHTML, "");
   // Trailing garbage past a valid-looking prefix must not parse: the widget
   // has no regex end anchor (a literal $ is banned from the script by the
   // no-money test above), so it guards on exact length instead.
-  assert.equal(runWidget("2026-08-20x").innerHTML, "");
+  assert.equal(runWidget("2026-08-20x")["q1031out"].innerHTML, "");
+});
+
+// --- the calendar export -----------------------------------------------------
+
+test("the deadlines export as a calendar file built from the typed date", () => {
+  const ics = runWidget("2026-08-20")["q1031ics"];
+  assert.equal(ics.hidden, false, "link must show once a valid date is typed");
+  assert.match(String(ics.href), /^data:text\/calendar/,
+    "a data: URI, so the date never touches a server");
+  const cal = decodeURIComponent(String(ics.href).split(",").slice(1).join(","));
+  assert.ok(cal.includes("BEGIN:VCALENDAR"));
+  assert.equal((cal.match(/BEGIN:VEVENT/g) || []).length, 2, "both deadlines");
+  // All-day events on the same dates the visible output shows.
+  assert.ok(cal.includes("DTSTART;VALUE=DATE:20261004"), "day 45");
+  assert.ok(cal.includes("DTSTART;VALUE=DATE:20270216"), "day 180");
+  assert.ok(cal.includes("\r\n"), "RFC 5545 wants CRLF line endings");
+  // Deterministic: same closing date, same file (DTSTAMP derives from the
+  // closing, never the clock).
+  assert.equal(String(ics.href), String(runWidget("2026-08-20")["q1031ics"].href));
+});
+
+test("an invalid date hides the calendar link rather than serving a stale file", () => {
+  assert.equal(runWidget("not-a-date")["q1031ics"].hidden, true);
+  assert.equal(runWidget("")["q1031ics"].hidden, true);
+});
+
+// --- the 1031 lead marker ----------------------------------------------------
+
+test("reading the guide leaves the marker lead attribution reads", () => {
+  const script = scriptOf(G.renderGuide1031Body());
+  // index.html reads this exact key at BOV submit to tag the lead's source
+  // "1031"; the two must not drift.
+  assert.ok(script.includes("cnRef1031.v1"));
+  assert.ok(/try\{localStorage/.test(script.replace(/\s/g, "")),
+    "the marker write must be guarded — the harness has no localStorage");
 });

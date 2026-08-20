@@ -40,6 +40,11 @@ details.faq summary{cursor:pointer;font-weight:600}
 details.faq p{color:#4C5665;margin:8px 0 0}
 #q1031out{font-size:18px;font-weight:600;margin-top:10px}
 #q1031out span{display:block;margin-top:4px}
+#q1031ics{display:inline-block;margin-top:10px;font-size:13.5px;color:#4C5665;
+  text-decoration:underline;text-decoration-color:#D8D4C9}
+/* display:inline-block out-specifies the UA's [hidden] rule (the same trap
+   ACCOUNT_NAV_CSS documents), so the hidden state needs its own line. */
+#q1031ics[hidden]{display:none}
 .datebox label{font-weight:600}
 .datebox input{padding:6px 8px;border:1px solid #D8D4C9;border-radius:4px;
   font-family:inherit;font-size:16px;margin-left:8px}
@@ -97,22 +102,51 @@ function escGuide(s) {
 // are spelled here (not toLocaleDateString) so tests and visitors see the
 // same string on every OS locale.
 const WIDGET_JS = `(function(){
+  // Reading this guide is the one signal the app has that a later BOV request
+  // is 1031-driven; index.html reads this marker at lead submit and tags the
+  // lead's source. A timestamp, not a flag, so the signal can expire. Guarded:
+  // no localStorage (the Node test harness, a locked-down browser) = no marker,
+  // and the widget still works.
+  try{localStorage.setItem("cnRef1031.v1",String(Date.now()))}catch(e){}
   var MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   var DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   var input=document.getElementById("q1031close");
   var out=document.getElementById("q1031out");
+  var ics=document.getElementById("q1031ics");
   function fmt(d){
     return DAYS[d.getDay()]+", "+MONTHS[d.getMonth()]+" "+d.getDate()+", "+d.getFullYear();
   }
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function icsDate(d){ return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
+  // All-day VEVENTs (VALUE=DATE), so no timezone can shift a deadline. The
+  // DTSTAMP is derived from the closing date rather than the clock — the file
+  // is deterministic for a given closing, which is also what the test pins.
+  function icsEvent(d,dayN,summary){
+    var next=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1);
+    return ["BEGIN:VEVENT",
+      "UID:1031-day"+dayN+"-"+icsDate(d)+"@compninja.co",
+      "DTSTAMP:"+icsDate(d)+"T000000Z",
+      "DTSTART;VALUE=DATE:"+icsDate(d),
+      "DTEND;VALUE=DATE:"+icsDate(next),
+      "SUMMARY:"+summary,
+      "DESCRIPTION:Counted in calendar days from your closing. No extensions assumed. Confirm your dates with your tax advisor.",
+      "END:VEVENT"];
+  }
   function update(){
     var raw=String(input.value||"");
-    if(raw.length!==10){ out.innerHTML=""; return; }
+    if(raw.length!==10){ out.innerHTML=""; ics.hidden=true; return; }
     var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(raw);
-    if(!m){ out.innerHTML=""; return; }
+    if(!m){ out.innerHTML=""; ics.hidden=true; return; }
     var y=+m[1], mo=+m[2]-1, day=+m[3];
     var d45=new Date(y,mo,day+45), d180=new Date(y,mo,day+180);
     out.innerHTML="<span>Day 45 \\u2014 identify in writing by: "+fmt(d45)+"</span>"+
       "<span>Day 180 \\u2014 close your replacement by: "+fmt(d180)+"</span>";
+    var cal=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CompNinja//1031 deadlines//EN"]
+      .concat(icsEvent(d45,45,"1031 exchange \\u2014 day 45: identify replacements in writing"))
+      .concat(icsEvent(d180,180,"1031 exchange \\u2014 day 180: close on the replacement"))
+      .concat(["END:VCALENDAR"]).join("\\r\\n");
+    ics.href="data:text/calendar;charset=utf-8,"+encodeURIComponent(cal);
+    ics.hidden=false;
   }
   input.addEventListener("input",update);
 })();`;
@@ -157,12 +191,17 @@ function renderGuide1031Body() {
 
     `<div class="card datebox" id="deadlines"><h2>Your 45- and 180-day dates</h2>` +
     `<p>Enter your sale's closing date to see the two deadlines. This runs entirely in ` +
-    `your browser — the date is not sent anywhere.</p>` +
+    `your browser — the date is not sent anywhere, and the calendar file below is ` +
+    `built in your browser too.</p>` +
     `<label for="q1031close">Closing date</label> <input type="date" id="q1031close"/>` +
     // aria-live: the computed 45/180-day dates replace this div's content on
     // every input change, and without a live region a screen-reader user who
     // just typed a closing date hears nothing back.
     `<div id="q1031out" aria-live="polite"></div>` +
+    // A data: URI the widget fills in — the deadlines leave as an .ics file
+    // without the date ever touching a server. Hidden until a valid date is
+    // typed: a download link over nothing is a control that does nothing.
+    `<a id="q1031ics" download="1031-deadlines.ics" hidden>Add both deadlines to your calendar (.ics)</a>` +
     `<p class="disc">Calendar days, no extensions assumed. The 180-day period can end ` +
     `sooner if your tax-return due date arrives first and you do not file an extension — ` +
     `confirm your dates with your tax advisor.</p></div>` +

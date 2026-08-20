@@ -763,12 +763,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
-  `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
-  a matching `source` column). Also takes an optional `size_sqft`, cleaned by
+  `"bov"` for Broker Opinion of Value requests, `"1031"` for a BOV request
+  from a browser that recently read `/1031-exchange` (the guide's widget
+  stamps localStorage `cnRef1031.v1`, index.html reads it at submit, 7-day
+  TTL); the Supabase `leads` table has a matching `source` column. `"1031"`
+  is bov-CLASS everywhere behavior branches (`bovClass` in the handler, and
+  the inbox/intro queries use `source=in.(bov,1031)`) — the tag is
+  attribution and urgency, never a separate funnel, and it surfaces as an
+  anonymized `is_1031` boolean in the broker inbox (never the raw tag).
+  Also takes an optional `size_sqft`, cleaned by
   `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
   so a lead with no size never touches the column — protects the file
   fallback if migration 015 has not run). A durably-stored (`dest === "db"`)
-  `bov` lead fires a fire-and-forget alert to every broker covering that
+  bov-class lead fires a fire-and-forget alert to every broker covering that
   market + property type: the same four anonymized facts the inbox shows,
   never the owner's name/email/phone/company/address, throttled to one email
   per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
@@ -1318,12 +1325,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   precedent) — FAQ array feeding both the accordions and the FAQPage
   JSON-LD, the education-not-advice compliance box, and a client-side
   45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server). server.js only dresses it in
+  dollars; nothing is sent to a server — since 2026-08-20 the widget also
+  hands both deadlines over as an `.ics` calendar file, built as a `data:`
+  URI in the browser under the same promise, and deterministic for a given
+  closing date because its DTSTAMP derives from the closing, never the
+  clock). server.js only dresses it in
   `marketShell` and spreads the module's JSON-LD nodes into the shared
   `brandGraph()` @graph. Education, never advice — the compliance strings
   are test-pinned in both directions (must-appear and must-never-appear).
-  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
-  footer, and `/brokers`.
+  The widget script also stamps localStorage `cnRef1031.v1` (guarded — no
+  storage, no marker), which is how a later BOV request gets tagged
+  `source: "1031"` — see `POST /api/lead`; the key is test-pinned because
+  index.html reads the identical string. Listed in `sitemap.xml`; linked
+  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
+  contextual one-liner after the CTA on every `/market/<slug>` page
+  (`guide1031` in `renderMarketPageHTML`).
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

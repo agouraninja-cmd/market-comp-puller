@@ -7727,6 +7727,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
+  // Contextual door into the 1031 guide: someone reading a replacement
+  // market's numbers mid-exchange is exactly who that page serves, and the
+  // footer link alone is invisible at the moment it matters. One line, after
+  // the CTA so it never competes with the conversion ask above it.
+  const guide1031 =
+    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
+    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
+    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
     cityHero.intro +
     bovLead +
@@ -7741,6 +7749,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -12820,10 +12829,17 @@ const server = http.createServer((req, res) =>
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
           ...(sizeClean ? { size_sqft: sizeClean } : {}),
-          // "bov" = the owner-mode Broker Opinion of Value request; anything
-          // else is the export-unlock form.
-          source: ["export", "bov"].includes(source) ? source : "export",
+          // "bov" = the owner-mode Broker Opinion of Value request; "1031" =
+          // the same request from a browser that recently read the
+          // /1031-exchange guide (index.html tags it — a bov-class lead on
+          // the 45/180-day clock, the highest-intent source the site has);
+          // anything else is the export-unlock form.
+          source: ["export", "bov", "1031"].includes(source) ? source : "export",
         };
+        // Everything BOV-shaped (broker matching, alerts, the follow-up
+        // email) treats "1031" as a bov: the tag is attribution and urgency,
+        // never a different funnel.
+        const bovClass = lead.source === "bov" || lead.source === "1031";
         // Share link for the lead's report. Validated hard against our own
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
@@ -12846,7 +12862,7 @@ const server = http.createServer((req, res) =>
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
-        if (lead.source === "bov") {
+        if (bovClass) {
           const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
@@ -12854,7 +12870,7 @@ const server = http.createServer((req, res) =>
           }
         }
         notifyByEmail(
-          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          `${lead.source === "1031" ? "New BOV request (1031 exchange)" : bovClass ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
             ["Name", lead.name],
             ["Email", lead.email],
@@ -12862,7 +12878,9 @@ const server = http.createServer((req, res) =>
             ["Company", lead.company],
             ["Property", lead.address],
             ["Property type", lead.type],
-            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Came from", lead.source === "1031"
+              ? "Broker Opinion of Value request (read the 1031 guide — likely on the 45/180-day clock)"
+              : bovClass ? "Broker Opinion of Value request" : "Export unlock form"],
             ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
@@ -12876,7 +12894,7 @@ const server = http.createServer((req, res) =>
         // Gated on dest === "db": the inbox is DB-only, so a lead that fell
         // back to the local file is invisible there, and mailing brokers
         // about a lead they can never see would be worse than saying nothing.
-        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+        if (bovClass && DB_CONFIGURED && dest === "db") {
           (async () => {
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
@@ -12900,7 +12918,10 @@ const server = http.createServer((req, res) =>
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
-              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null,
+              // The one extra fact a broker acts on immediately: this seller
+              // is inside a 1031 window and must transact.
+              lead.source === "1031" ? "1031 exchange" : null]
               .filter(Boolean).join(" · ");
             const now = Date.now();
             for (const u of users || []) {
@@ -12929,7 +12950,7 @@ const server = http.createServer((req, res) =>
         }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
-        if (lead.source === "bov") {
+        if (bovClass) {
           sendOutboundEmail(
             lead.email,
             "Your CompNinja report + what happens next",
@@ -14021,9 +14042,11 @@ const server = http.createServer((req, res) =>
         if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const [leads, intros] = await Promise.all([
+          // in.(bov,1031): a 1031-tagged lead is a BOV request with a clock
+          // on it — it must be at least as visible as an ordinary one.
           sbRequest("GET",
-            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+            `leads?source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft,source&order=ts.desc&limit=200`),
           sbRequest("GET",
             `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
             `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
@@ -14275,8 +14298,8 @@ const server = http.createServer((req, res) =>
         // leads outside the product's own contract.
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft,source&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
@@ -14339,6 +14362,7 @@ const server = http.createServer((req, res) =>
           ["Property", lead.address],
           ["Property type", lead.type],
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });

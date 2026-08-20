@@ -105,6 +105,56 @@ function opexRangeFrom(data) {
   return { low, high, note: String(r.note || "").trim().slice(0, 120) };
 }
 
+// The market's momentum as ONE of three words, or null. The model already
+// answers this on every search — `price_discovery.direction` is constrained to
+// exactly "expanding" / "flat" / "contracting" by the prompt (server.js), and
+// fills on roughly 5 searches in 6 — but the snapshot shape dropped it, so no
+// market page has ever carried a direction. Read here so the Explorer can show
+// one without a second question to the model.
+//
+// An unrecognized word is null, never passed through: this string reaches the
+// Explorer dropdown as a COLOR (green / grey / red), and a colour is a claim.
+// Null renders no badge at all, which is the same under-claim rule the rent
+// band and the opex range already follow.
+const DIRECTIONS = new Set(["expanding", "flat", "contracting"]);
+function directionFrom(data) {
+  const pd = data && data.price_discovery;
+  if (!pd || typeof pd !== "object") return null;
+  const d = String(pd.direction || "").trim().toLowerCase();
+  return DIRECTIONS.has(d) ? d : null;
+}
+
+// How long a stored direction is allowed to speak for the market it names.
+//
+// "Expanding" is a claim about RIGHT NOW — a direction of travel — while a
+// median $/SF is a claim about a stated window of past sales. So the two age
+// differently, and the badge is the one that needs an expiry. The market page
+// can afford to show July's medians because it prints "Updated <date>" directly
+// above them; the Explorer dropdown, which is where this badge renders, shows
+// no date at all.
+//
+// 90 days rather than 30: these pages only move when someone deliberately
+// regenerates them, and the seeded set routinely sits well over a month between
+// runs, so a tighter window would leave the badge dark on most markets most of
+// the time. An expired direction renders NOTHING, which is what an Explorer row
+// already looks like — it degrades to the familiar, not to a warning.
+const DIRECTION_MAX_AGE_DAYS = 90;
+
+// The direction a page may still show today, or null. Pure and clock-free —
+// `nowMs` is passed in, the same way isBetterSnapshot compares two stamps
+// rather than reading a clock — so `npm test` can pin the boundary exactly.
+//
+// A snapshot with no readable `generatedAt` has an UNKNOWN age, and unknown is
+// not young: it returns null rather than assuming the read is current.
+function freshDirection(snapshot, nowMs) {
+  const d = String((snapshot && snapshot.direction) || "").trim().toLowerCase();
+  if (!DIRECTIONS.has(d)) return null;
+  const stamp = Date.parse(`${String((snapshot && snapshot.generatedAt) || "").trim()}T00:00:00Z`);
+  if (!Number.isFinite(stamp)) return null;
+  const ageDays = (nowMs - stamp) / 86400000;
+  return ageDays > DIRECTION_MAX_AGE_DAYS ? null : d;
+}
+
 // Same bounds as report-parse.js normalizeTrendPct (±30%/yr, refuse 0). Copied
 // rather than imported so this file stays dependency-free for gen-market-seed.
 function trendPctFrom(data) {
@@ -174,6 +224,8 @@ function distillMarketSnapshot(t, data) {
   if (opex) snapshot.market_opex_range = opex;
   const trend = trendPctFrom(data);
   if (trend != null) snapshot.annual_price_trend_pct = trend;
+  const direction = directionFrom(data);
+  if (direction) snapshot.direction = direction;
   const rent = rentFromComps(comps);
   if (rent) snapshot.rent = rent;
   return { snapshot, pricedSaleCount: ppsfVals.length };
@@ -206,5 +258,6 @@ function isBetterSnapshot(candidate, current) {
 module.exports = {
   MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot,
   dateKey, safeHttpUrl, isLease, leaseRentPsfYr, rentFromComps,
-  opexRangeFrom, trendPctFrom,
+  opexRangeFrom, trendPctFrom, directionFrom, DIRECTIONS,
+  freshDirection, DIRECTION_MAX_AGE_DAYS,
 };

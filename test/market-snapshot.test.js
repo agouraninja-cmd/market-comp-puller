@@ -13,7 +13,8 @@ const test = require("node:test");
 const assert = require("node:assert");
 const {
   isBetterSnapshot, distillMarketSnapshot, safeHttpUrl, leaseRentPsfYr,
-  rentFromComps, opexRangeFrom, trendPctFrom,
+  rentFromComps, opexRangeFrom, trendPctFrom, directionFrom,
+  freshDirection, DIRECTION_MAX_AGE_DAYS,
 } = require("../market-snapshot");
 
 const snap = (generatedAt, count) => ({ generatedAt, ppsf: { count } });
@@ -127,6 +128,45 @@ test("opex and trend omit rather than invent", () => {
   assert.equal(trendPctFrom({ annual_price_trend_pct: "4" }), 4);
 });
 
+test("directionFrom takes only the three words, and omits otherwise", () => {
+  assert.equal(directionFrom({}), null);
+  assert.equal(directionFrom({ price_discovery: null }), null);
+  assert.equal(directionFrom({ price_discovery: { direction: "" } }), null);
+  assert.equal(directionFrom({ price_discovery: { direction: "  Contracting " } }), "contracting");
+  assert.equal(directionFrom({ price_discovery: { direction: "EXPANDING" } }), "expanding");
+  assert.equal(directionFrom({ price_discovery: { direction: "flat" } }), "flat");
+  // A near-miss is dropped, not passed through: this string becomes a colour
+  // in the Explorer dropdown, and a colour is a claim.
+  assert.equal(directionFrom({ price_discovery: { direction: "booming" } }), null);
+  assert.equal(directionFrom({ price_discovery: { direction: "expanding slightly" } }), null);
+  // Inherited keys are not a direction.
+  assert.equal(directionFrom({ price_discovery: { direction: "constructor" } }), null);
+});
+
+test("a direction speaks for 90 days and then goes quiet", () => {
+  const now = Date.parse("2026-08-20T00:00:00Z");
+  const page = (generatedAt, direction = "expanding") => ({ direction, generatedAt });
+  assert.equal(DIRECTION_MAX_AGE_DAYS, 90);
+  assert.equal(freshDirection(page("2026-08-20"), now), "expanding");
+  assert.equal(freshDirection(page("2026-08-19", "contracting"), now), "contracting");
+  // The boundary itself is INCLUSIVE — exactly 90 days still speaks, 91 does not.
+  assert.equal(freshDirection(page("2026-05-22"), now), "expanding");
+  assert.equal(freshDirection(page("2026-05-21"), now), null);
+  // Unknown age is not young. A snapshot with no readable stamp cannot show a
+  // read of "right now", so it shows nothing.
+  assert.equal(freshDirection({ direction: "flat" }, now), null);
+  assert.equal(freshDirection(page(""), now), null);
+  assert.equal(freshDirection(page("last Tuesday"), now), null);
+  // The word is still validated here, not just at write time: these payloads
+  // come back out of a database that a hand-edit can reach.
+  assert.equal(freshDirection(page("2026-08-19", "booming"), now), null);
+  assert.equal(freshDirection(page("2026-08-19", "constructor"), now), null);
+  assert.equal(freshDirection(null, now), null);
+  // Every seeded page was stamped the same July day; none of them has aged out
+  // yet, so turning the gate on changes nothing that is live today.
+  assert.equal(freshDirection(page("2026-07-14"), now), "expanding");
+});
+
 const sale = (over = {}) => ({
   address: "100 Main St, Boise, ID", date: "Mar 2026", transaction: "Sale",
   size_sqft: "20000", price_or_rate: "$2,000,000", price_per_sqft: "$100",
@@ -143,6 +183,7 @@ test("distillMarketSnapshot keeps a citable URL and drops the rest", () => {
       market_cap_rate_range: { low: "5.5%", high: "6.5%" },
       market_opex_range: { low: "28%", high: "34%", note: "assumes NNN" },
       annual_price_trend_pct: "4.5",
+      price_discovery: { direction: "expanding", note: "Buyers are paying up." },
       comps: [
         sale({
           source_url: "https://example.com/deal",
@@ -175,6 +216,10 @@ test("distillMarketSnapshot keeps a citable URL and drops the rest", () => {
   assert.equal(snapshot.comps[2].source_url, "");
   assert.deepEqual(snapshot.market_opex_range, { low: "28%", high: "34%", note: "assumes NNN" });
   assert.equal(snapshot.annual_price_trend_pct, 4.5);
+  assert.equal(snapshot.direction, "expanding");
+  // The note stays out: the Explorer shows a word, and storing prose would
+  // put a second, unrendered market narrative into every committed snapshot.
+  assert.equal("price_discovery" in snapshot, false);
   assert.equal(snapshot.rent.count, 2);
   assert.equal(snapshot.rent.median, 13);
 });
@@ -186,5 +231,6 @@ test("distillMarketSnapshot omits analyst extras when the search did not earn th
   );
   assert.equal("market_opex_range" in snapshot, false);
   assert.equal("annual_price_trend_pct" in snapshot, false);
+  assert.equal("direction" in snapshot, false);
   assert.equal("rent" in snapshot, false);
 });

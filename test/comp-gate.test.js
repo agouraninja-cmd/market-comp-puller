@@ -120,6 +120,14 @@ test("year_built rides along so vintage weighting still applies to locked comps"
     "absent year_built stays off the allow-list, matching price_per_unit");
 });
 
+test("distance_mi rides along so pocket weighting still applies to locked comps", () => {
+  assert.equal(basisRow(comp({ distance_mi: "5.0 mi" })).distance_mi, 5);
+  assert.equal("distance_mi" in basisRow(comp()), false,
+    "absent distance stays off the allow-list");
+  assert.ok(!("lat" in basisRow(comp({ distance_mi: 5, lat: "43.6", lng: "-116.2" }))));
+  assert.ok(!("lng" in basisRow(comp({ distance_mi: 5, lat: "43.6", lng: "-116.2" }))));
+});
+
 test("a broker-verified locked comp keeps its tier but not its identity", () => {
   const row = basisRow(comp({ verified: true, address: "1 Broker Rd" }));
   assert.equal(row.verified, true, "provenance drives its weight in the range");
@@ -174,6 +182,24 @@ test("a wildly different size class loses to a similar-size comp", () => {
   assert.equal(visible[0].address, "FITS");
 });
 
+test("a nearby sale wins the slot over an otherwise identical far one", () => {
+  const comps = [
+    comp({ address: "FAR", distance_mi: 9, date: "Jul 2026" }),
+    comp({ address: "NEAR", distance_mi: 0.4, date: "Jul 2026" }),
+  ];
+  const { visible } = selectVisible(comps, 1, { asOfMs: NOW, subjectSqft: 50000 });
+  assert.equal(visible[0].address, "NEAR");
+});
+
+test("Residential ranking down-weights a 5-mile house more than CRE does", () => {
+  const far = comp({ address: "FAR", distance_mi: 5, date: "Jul 2026" });
+  assert.ok(
+    compWeight(far, NOW, 50000, { propertyType: "Residential" }) <
+      compWeight(far, NOW, 50000),
+    "the 4 shown house comps must be the nearby ones, not CRE's 4-mile curve"
+  );
+});
+
 test("selection is stable — re-gating a cached report picks the same comps", () => {
   const comps = Array.from({ length: 9 }, (_, i) => comp({ address: `A${i}` }));
   const a = selectVisible(comps, 4, { asOfMs: NOW, subjectSqft: 50000 });
@@ -212,7 +238,7 @@ test("free and Pro compute the same $/SF set from the same report", () => {
 });
 
 test("weights match between a visible comp and its basis row", () => {
-  const c = comp({ date: "Jan 2025", size_sqft: "50,000", source_type: "listing" });
+  const c = comp({ date: "Jan 2025", size_sqft: "50,000", source_type: "listing", distance_mi: 5 });
   assert.equal(
     compWeight(c, NOW, 50000),
     compWeight(basisRow(c), NOW, 50000),

@@ -36,6 +36,15 @@
 const ROLES = ["broker", "tenant", "observer"];
 const WRITE_ROLES = ["broker", "tenant"];
 
+// The comp pipeline, in the order it is shown. This list is the vocabulary,
+// and it must agree with the CHECK constraint in migration 024 — the
+// constraint stops a bad row, this stops the request before it becomes one,
+// with copy a person can read instead of a PostgREST 400.
+//
+// 'new' is where every comp lands and is deliberately not a verdict: a comp
+// nobody has ruled on yet is not the same as one that was passed on.
+const ITEM_STATUSES = ["new", "shortlist", "toured", "passed"];
+
 // Copied in shape from report-access.js on purpose: an invite and an account
 // must agree on what "the same person" means, and these two files decide that
 // for the two halves of the same sharing story.
@@ -167,6 +176,28 @@ function canWriteHub({ hub, participant, user, tokenValid } = {}) {
 }
 
 /**
+ * May this caller set a comp's STATUS?
+ *
+ * Any participant who can write, which deliberately includes the TENANT and
+ * is not the owner-only answer `canAddItems` gives. The shortlist is the
+ * tenant's answer to "where are we", and a pipeline only the broker can move
+ * is a report, not a shared workspace — it would also make the status say
+ * what the broker hopes rather than what the client decided.
+ *
+ * It is its own function rather than a bare canWriteHub call at the route,
+ * because that reasoning is a decision this module owns, and a call site
+ * cannot state it.
+ */
+function canSetStatus(ctx) {
+  return canWriteHub(ctx);
+}
+
+/** Is this a status the pipeline actually has? Mirrors 024's CHECK. */
+function isItemStatus(s) {
+  return ITEM_STATUSES.includes(String(s == null ? "" : s).trim().toLowerCase());
+}
+
+/**
  * May this caller ADD comps to the hub?
  *
  * Slice 1: the owner, and nobody else. A tenant adding a comp they found is a
@@ -187,8 +218,11 @@ module.exports = {
   canReadHub,
   canWriteHub,
   canAddItems,
+  canSetStatus,
+  isItemStatus,
   normalizeEmail,
   roleOf,
   ROLES,
   WRITE_ROLES,
+  ITEM_STATUSES,
 };

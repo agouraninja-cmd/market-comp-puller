@@ -147,3 +147,19 @@ test("junk in does not throw", () => {
 test("an empty market lists nobody rather than erroring", () => {
   assert.deepEqual(brokersForMarket([], new Map()), []);
 });
+
+test("a license number never reaches a public broker listing", () => {
+  // 034 put a license number on broker_profiles to back the Verified badge.
+  // It is a real-world identifier the broker gave us to gate publishing, not
+  // something to publish. publicBrokerRow is an allowlist, so this holds by
+  // construction today; the test is here so that adding the field to
+  // PUBLIC_BROKER_FIELDS has to be a deliberate act with a failing test in
+  // front of it.
+  const row = publicBrokerRow({
+    public: true, slug: "hawkins-ridge-cre", display_name: "Dana Reyes",
+    company: "Hawkins Ridge CRE", license_number: "01899123", email: "d@hr.com",
+  });
+  assert.ok(row, "an opted-in profile with a name must still list");
+  assert.equal(row.license_number, undefined);
+  assert.doesNotMatch(JSON.stringify(row), /01899123/);
+});

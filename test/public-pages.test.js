@@ -14,6 +14,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const { boot } = require("./helpers/boot");
+const MARKETHERO = require("../market-hero");
 
 // The shared chrome is served to logged-out and logged-in visitors alike, so
 // both states have to be exercised on every page that carries it. Presence is
@@ -96,6 +97,42 @@ test("the broker contribution path is not a dead end", async (t) => {
     assert.match(html, /href="\/\?submit=comp"/, "the CTA needs a query the wall can see");
   });
 
+  await t.test("/brokers is two stacked ledgers, not two cards", async () => {
+    // Spec: docs/superpowers/specs/2026-08-13-brokers-page-ledger-design.md
+    // Contribute vs Pro must stay two statements. One list makes the vault
+    // look like it comes with a submitted comp.
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    const offer = html.split("<h1>")[1].split('class="cta"')[0];
+    assert.equal((offer.match(/class="bk"/g) || []).length, 2,
+      "/brokers should show two ledgers");
+    const contribute = offer.split("For submitting a comp.")[1].split("With Pro.")[0];
+    const pro = offer.split("With Pro.")[1];
+    assert.ok(contribute && pro, "both ledger headings must exist");
+    assert.equal((contribute.match(/class="bkrow"/g) || []).length, 3,
+      "contribute ledger is three trades");
+    assert.match(contribute, /class="bklag">CREDIT</);
+    assert.match(contribute, /class="bklag">INTROS</);
+    assert.match(contribute, /class="bklag">PROFILE</);
+    assert.equal((contribute.match(/Verified &middot; via Your Firm/g) || []).length, 1,
+      "the credit chip is shown on Credit, once");
+    assert.ok(!/class="badge v"/.test(contribute),
+      "MARKET_CSS .v collides with .tile .v; the chip stays inline-styled");
+    assert.equal((pro.match(/class="bkrow"/g) || []).length, 3,
+      "Pro ledger is three trades");
+    assert.match(pro, /class="bklag">BOOK</);
+    assert.match(pro, /class="bklag">PIPELINE</);
+    assert.match(pro, /class="bklag">PRIVATE</);
+    assert.ok(!/Verified &middot; via Your Firm/.test(pro),
+      "the chip belongs on Credit, not on the vault");
+    assert.equal((html.match(/href="\/\?submit=comp"/g) || []).length, 1,
+      "exactly one Submit door");
+    assert.ok(!/class="steps"/.test(html), "do not reuse Method's 3-up");
+    assert.ok(!/class="grid"/.test(offer), "the offer is not a two-card grid");
+    assert.match(html, /Working a 1031 exchange\?/);
+    assert.match(html, /CompNinja is not a licensed brokerage/);
+    assert.match(html, /id="upgradeProLink"/);
+  });
+
   await t.test("that door serves the app, not the landing page", async () => {
     const r = await fetch(srv.base + "/?submit=comp", { redirect: "manual" });
     assert.equal(r.status, 200);
@@ -153,6 +190,30 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  await t.test("the brokers trades are a ledger, not a paragraph or a Method clone", async () => {
+    // Homepage-look collapsed this to one .sub paragraph, which still named
+    // the three trades but read as Method's leftover. The trades are not a
+    // sequence: they are a statement, drawn as hairline rows like the report
+    // ledger, with the Verified chip shown on Credit rather than described.
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const chunk = html.split('kicker">Brokers')[1];
+      assert.ok(chunk, p + " must still have a Brokers kicker");
+      const brokers = chunk.split("See it on your own building")[0];
+      assert.equal((brokers.match(/class="bkrow"/g) || []).length, 3,
+        p + " should show three trades as rows");
+      assert.match(brokers, /class="bklag">Private</, p + " should label the privacy trade");
+      assert.match(brokers, /class="bklag">Credit</, p + " should label the credit trade");
+      assert.match(brokers, /class="bklag">Leads</, p + " should label the leads trade");
+      assert.match(brokers, /Verified &middot; via Your Firm/,
+        p + " should show the credit chip, not only describe it");
+      assert.ok(!/class="steps"/.test(brokers),
+        p + " must not reuse Method's three-up");
+    }
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.match(html, /class="steps"/, "Method still uses .steps");
+  });
+
   await t.test("it still leads with the free tier, because that is true", async () => {
     const html = await (await fetch(srv.base + "/how-it-works")).text();
     assert.match(html, /free/i, "reports genuinely are free with an account; that is the offer");
@@ -178,14 +239,23 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
+  // Every CTA door off a market page: primary <a class="btn"> links AND the
+  // "value a property here" form (2026-08-20), whose data-dest is the URL it
+  // navigates to after stashing the typed address for the search form.
+  const ctaDoors = (html) => [
+    ...[...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<form class="vform" data-dest="([^"]*)"/g)].map((m) => m[1]),
+  ];
+
   await t.test("the primary button is at least as smart as the link below it", async () => {
     // The loudest CTA was a bare href="/", which under the wall answers with
     // a generic explainer: the visitor asks to value their building and gets
     // another marketing page. The secondary link beneath it already carried
     // the market and type, so the pattern existed and the big button ignored
-    // it.
+    // it. Since 2026-08-20 the loudest CTA is the vform, which carries the
+    // ADDRESS as well — the same rules hold for its destination.
     const html = await (await fetch(srv.base + MARKET_PAGE)).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     assert.ok(ctas.length > 0, "the market page must still have a primary CTA");
     for (const href of ctas) {
       assert.ok(href !== "/", "a bare / bounces an anonymous visitor back into marketing");
@@ -196,10 +266,13 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
 
   await t.test("a signed-in visitor is not shown a signup CTA either", async () => {
     const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     for (const href of ctas) {
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);
     }
+    // The member's value-a-property door still carries the type it was read on.
+    assert.match(html, /<form class="vform" data-dest="\/\?type=Industrial"/,
+      "a member's vform lands straight on the prefilled search");
   });
 
   await t.test("the comps table is a research set, not only a teaser", async () => {
@@ -292,12 +365,13 @@ test("the landing names the real search cost without a stat strip", async (t) =>
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/3&ndash;6/.test(html), p + " must not undersell the comp count");
       assert.ok(!/~40s/.test(html), p + " must not promise a 40-second report");
+      assert.ok(!/Up to 12/.test(html), p + " must not cap the table at 12; nearby deals join it");
     }
   });
 
   await t.test("the replacements match what the product does", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /Up to 12/, "the comp ask is 12; say so");
+    assert.match(html, /Cited comps/, "name the comps without inventing a count");
     assert.match(html, /minute/i, "a minute is the honest unit for a live search");
   });
 
@@ -358,8 +432,9 @@ test("a market page with no brokers does not promise a Broker Opinion of Value",
     "with no broker covering this market, the page must not promise one");
   assert.match(html, /with the source cited on every one/,
     "the fallback should sell the report, which is the thing that exists");
-  // The hand-raise itself is unaffected: the CTA still opens the app.
-  assert.match(html, /<a class="btn" href="[^"]*auth=signup/,
+  // The hand-raise itself is unaffected: the CTA (the value-a-property form
+  // since 2026-08-20) still opens the app through the wall-honored door.
+  assert.match(html, /<form class="vform" data-dest="[^"]*auth=signup/,
     "the primary CTA must still be there");
 });
 
@@ -398,8 +473,8 @@ test("the BOV lead band is governed by the same broker list, and never renders o
   assert.ok(end > start, "could not bound the band");
   const band = src.slice(start, end);
 
-  assert.match(band, /brokerList\.length && !opts\.preview/,
-    "the band must require a covering broker AND a real published page");
+  assert.match(band, /!signedIn && brokerList\.length && !opts\.preview/,
+    "the band must require an anonymous visitor, a covering broker, AND a real published page");
   assert.equal(/contact|phone|email/i.test(band), false,
     "the band names a broker but must never carry contact details (routing is owner-mediated)");
   assert.match(band, /auth=signup/, "its CTA must open a door the account wall honors");
@@ -410,4 +485,46 @@ test("a market page with no brokers renders no lead band at all", async (t) => {
   t.after(() => srv.stop());
   const html = await (await fetch(srv.base + MARKET_PAGE)).text();
   assert.ok(!/cta lead/.test(html), "no broker covers this market, so there is nothing to lead with");
+});
+
+test("a market page header is a photograph of that city, or a satellite aerial if the file failed QA", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + MARKET_PAGE)).text();
+  assert.equal(MARKETHERO.cityKey(MARKET.city, MARKET.state), "ontario, ca",
+    "this fixture is Ontario, CA — the city whose Commons file is too small");
+  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipKeys: ["ontario, ca"] });
+  assert.ok(live, "the seeded fixture city must still have a header picture");
+  assert.match(html, /class="mkt-hero"/);
+  assert.match(html, /class="mkt-hero-img"/);
+  assert.match(html, /srcset="/);
+  assert.match(html, /sizes="100vw"/);
+  assert.match(html, new RegExp(`width="${MARKETHERO.HERO_WIDTH}"`));
+  assert.match(html, new RegExp(`height="${MARKETHERO.HERO_HEIGHT}"`));
+  assert.match(html, new RegExp(`<h1>${MARKET.type} Comps in ${MARKET.city}, ${MARKET.state}</h1>`));
+  assert.equal((html.match(/<h1>/g) || []).length, 1);
+
+  // The committed industrial fixture is Ontario, CA: its Commons file is too
+  // small, so the live header must be Esri of Ontario, CA — not the blurry JPEG.
+  assert.equal(live.kind, "satellite");
+  assert.match(html, /World_Imagery/);
+  assert.match(html, /Esri, Maxar/);
+  assert.doesNotMatch(html, /\/market-heroes\/ontario-ca\.jpg/);
+  assert.match(html, /og:image" content="[^"]*og-image\.png"/);
+
+  const img = await fetch(srv.base + "/market-heroes/dallas-tx.jpg");
+  assert.equal(img.status, 200);
+  assert.match(img.headers.get("content-type") || "", /image\/jpeg/);
+  const bytes = Buffer.from(await img.arrayBuffer());
+  assert.ok(bytes.length > 20 * 1024, "hero JPEG looks empty");
+  assert.equal(bytes[0], 0xff);
+  assert.equal(bytes[1], 0xd8);
+
+  const img1x = await fetch(srv.base + "/market-heroes/dallas-tx-1920.jpg");
+  assert.equal(img1x.status, 200, "1920w sibling must be served");
+  const bytes1x = Buffer.from(await img1x.arrayBuffer());
+  assert.ok(bytes1x.length > 10 * 1024, "1920w JPEG looks empty");
+
+  const sneak = await fetch(srv.base + "/market-heroes/../server.js");
+  assert.equal(sneak.status, 404);
 });

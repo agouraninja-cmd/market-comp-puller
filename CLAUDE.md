@@ -40,7 +40,8 @@ plain Node (uses the built-in `fetch`, so **Node 18+ is required**).
 There is one small test suite: `npm test` (`node --test`, no dependencies)
 covers the nine pure modules — **`entitlements.js`** (the Pro tier's
 decision table), **`comp-gate.js`**, **`stripe.js`**, **`broker-vault.js`**,
-**`corpus-audit.js`**, **`broker-leads.js`** (the broker lead inbox's
+**`corpus-audit.js`**, **`blend-corpus.js`** (saved deals within 10 miles
+join the report at serialization, before the paywall), **`broker-leads.js`** (the broker lead inbox's
 rules: coverage matching, lead anonymization allowlist, coverage seeding,
 notify dedupe), **`valuation.js`** (the value-range math shared by the
 browser and the accuracy backtest — the one pure module here that loads in a
@@ -48,14 +49,22 @@ browser too, via a dual Node/global export), **`backtest.js`** (the
 hold-one-out accuracy scorer built on it, requiring nothing but
 `valuation.js`) and **`branding.js`** (report branding's decision table: what
 mark a render uses, and the rule that a shared report is decided entirely by
-its own snapshot) and **`watchlist-digest.js`** (the digest's copy and its
+its own snapshot) and **`account-avatar.js`** (what may be stored as a
+profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-digest.js`** (the digest's copy and its
 "is this worth sending?" rule — the only email this product sends on its own
 initiative, so every judgment in it is about what a person is worth
 interrupting for), **`deal-date.js`** (the deal-date parser, including the
 Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
 the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
-treated as invited, never public) and **`test/routes.test.js`**, which boots a real
+treated as invited, never public) and **`org-access.js`** (who is in a firm
+and what their membership allows — an unknown role is a `member`,
+`removed_at` beats ownership, and an invite is not a membership until the
+invited person accepts it) and **`market-hero.js`** (which city's
+photograph heads a market page, and the rule that a missing city gets no
+picture rather than someone else's skyline) and **`market-hero-quality.js`**
+(whether a stored hero JPEG is the right size and dense enough to not be an
+upscale) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -119,6 +128,50 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
 ```powershell
 & "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
 ```
+
+### Desktop app (`desktop.js`)
+
+```bash
+npm run desktop                          # local server + chromeless app window
+node desktop.js --url https://compninja.co   # hosted site as an app window, no local server
+```
+
+A zero-dependency launcher, **deliberately not Electron** — the no-npm-deps
+rule covers it, and every target machine already ships a Chromium (Edge is
+preinstalled on Windows). It boots the ordinary `server.js` on a **free
+port, never 3000** (so it can run beside `npm start`), waits for `/healthz`,
+then opens a Chromium-family browser in `--app` mode. Three rules from its
+header comment: children spawn from `process.execPath`, never the string
+`"node"` (the owner's portable Node is not on PATH); the app window gets its
+**own `--user-data-dir`** (`~/.compninja/desktop-profile`) — without one
+Chromium hands the URL to an existing instance and exits, leaving no process
+to wait on, so the server would die under an open window; and closing the
+window stops the server. Flags are refused, never guessed (`--ur`, a
+non-http `--url`, `--port` combined with `--url` are all errors). Pure
+helpers are tested in `test/desktop.test.js`, and requiring the module
+starts nothing (`require.main` guard).
+`scripts/install-desktop-shortcut.ps1` creates the Windows shortcut (repo
+favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
+`-StartMenu` for a Start Menu copy).
+
+**Users install the app from the site itself** (2026-08-20) — `desktop.js`
+is the owner/dev door; customers get the installable web app (PWA).
+`manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the
+`STATIC_FILES` allowlist, served without a session so the wall never blocks
+install) make Chrome/Edge offer "Install CompNinja" from the address bar,
+and index.html's footer carries an "Install the desktop app" button that
+ships `hidden` and is revealed only by `beforeinstallprompt` — the
+Buy-button rule: a control that can only fail (already installed,
+Safari/Firefox) never renders. There is **deliberately NO service worker**:
+installability no longer requires one, and a SW cache could serve
+`/valuation.js` stale relative to index.html — the exact failure that
+file's `max-age: 0` rule exists to prevent; `test/manifest.test.js` pins
+that, the manifest fields, the icon sizes against their real PNG bytes, and
+the allowlist entries. There is no installer to host or code-sign anywhere:
+"where do users download it" is answered by compninja.co, and installed
+copies update themselves because the app IS the live site. (A Microsoft
+Store listing can wrap this same manifest via PWABuilder later; nothing
+here would change.)
 
 ### Restart rule (important)
 
@@ -484,6 +537,14 @@ dependency. `.env` is git-ignored — never commit it.
   the same easy comps. Re-measure on real traffic before flipping it on.
   Each search logs `Anthropic call [lane]: Ns · N search(es) · N out / N in
   tokens`, which is how any of this gets re-measured.
+- `LEAD_METRO` — optional `on`/`off`, **default ON**. Matches broker lead
+  coverage across `market.js`'s curated `METRO_GROUPS`, so a Boise-covering
+  broker sees Meridian leads. Reads the same table as `CORPUS_METRO` and is
+  switched separately on purpose — one decides which comps a search may draw
+  on, the other decides who sees a stranger's enquiry, and rolling back one is
+  no reason to roll back the other. `off` restores exact-market matching in
+  the inbox, the intro gate and the new-lead alert together. Rules live in
+  `broker-leads.js`, so `npm test` covers them.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -562,7 +623,7 @@ column. So "is this an admin?" is answered by **possession of that key**, which
 2. the **`cn_admin` cookie** — how a browser carries it. The dashboards keep the
    key in `sessionStorage`, which is scoped to **one tab**; `POST
    /api/admin-access` trades the key for this cookie, and all four dashboards
-   (`/hq`, `/admin`, `/dev`, `/contacts`) call it (`grantAdminAccess()`) the
+   (`/hq`, `/admin`, `/dev`, `/contacts`) plus `/admin/heroes` call it (`grantAdminAccess()`) the
    moment their own key check passes. Since 2026-08-04 **every dashboard
    endpoint accepts the cookie** (via `isAdminRequest`) as an alternative to
    the header, so a new tab within the 30-day cookie window opens unlocked
@@ -663,6 +724,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
   normalization is a guarantee.
+  **Market-page cross-link (2026-08-20).** Every served report also carries
+  `market_page` (`{ slug, market }`) when a standing `/market/<slug>` page
+  covers the subject's market + type — attached at SERIALIZATION inside
+  `gate()` via `marketPageInfo()` (pure in-memory reads of the loaded page
+  stores, so it costs nothing and a page published later lights up older
+  cached reports), never written into the cache. index.html renders it as
+  the "See the {market} market page →" line under the Market Summary
+  (`renderMarketPageLink`; `no-print`/`no-capture` — navigation, not report
+  content). The reverse door is the market page's own CTA: a "value a
+  property here" mini-form (`vform` / `MARKET_VALUE_FORM_JS`) that stores
+  the typed address under `pendingLandingAddress.v1` — the landing form's
+  exact mechanism, already consumed at startup — and navigates to
+  `/?type=<type>` (member) or `/?auth=signup&type=<type>` (anonymous, the
+  wall-honored door). The same `marketPageInfo` decorates `GET
+  /api/portfolio` items and the watchlist feed, so My Desk links each saved
+  property and watched market to its market page.
   **"Verified" is a reserved word (2026-08-10).** It names a badge only the
   server awards (a broker vouched, our team reviewed), so the model must
   never write it. Two layers, the same requests-vs-guarantee split: the
@@ -748,12 +825,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
-  `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
-  a matching `source` column). Also takes an optional `size_sqft`, cleaned by
+  `"bov"` for Broker Opinion of Value requests, `"1031"` for a BOV request
+  from a browser that recently read `/1031-exchange` (the guide's widget
+  stamps localStorage `cnRef1031.v1`, index.html reads it at submit, 7-day
+  TTL); the Supabase `leads` table has a matching `source` column. `"1031"`
+  is bov-CLASS everywhere behavior branches (`bovClass` in the handler, and
+  the inbox/intro queries use `source=in.(bov,1031)`) — the tag is
+  attribution and urgency, never a separate funnel, and it surfaces as an
+  anonymized `is_1031` boolean in the broker inbox (never the raw tag).
+  Also takes an optional `size_sqft`, cleaned by
   `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
   so a lead with no size never touches the column — protects the file
   fallback if migration 015 has not run). A durably-stored (`dest === "db"`)
-  `bov` lead fires a fire-and-forget alert to every broker covering that
+  bov-class lead fires a fire-and-forget alert to every broker covering that
   market + property type: the same four anonymized facts the inbox shows,
   never the owner's name/email/phone/company/address, throttled to one email
   per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
@@ -838,15 +922,230 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /r/<id>` — serves `index.html`; the SPA reads the id off the path and
   fetches the report from `/api/shared`. (server.js allow-lists this path
   alongside `/` and `/index.html`.)
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
-  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+- **Firms — enterprise accounts, slice 1** (2026-08-16; migration
+  `030-enterprise-orgs.sql`, **run before deploying — see below**; spec
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`).
+  Colleagues at one brokerage share a shelf: a report shared with the firm
+  lands on every member's desk, while each of them keeps their own reports,
+  portfolio, watchlist, BOV pipeline and private vault. Rules live in the
+  pure, tested **`org-access.js`**; server.js owns the reads.
+  `GET|POST /api/org` (my firms + pending invites / create one),
+  `GET /api/org/members?id=`, `GET /api/org/shelf?id=`, `POST /api/org/invite`,
+  `POST /api/org/accept`,
+  `DELETE /api/org/member?org=&id=` (removing somebody and leaving are the
+  SAME route under different permissions, so the last-owner rule has one
+  home). `POST /api/share` takes `visibility: "org"` + `orgId`; `/desk`
+  renders the shelf plus the firm section.
+  **The shelf** (`GET /api/org/shelf`) is every report anybody has shared with
+  the firm, up to 1000, fetched WHOLE and filtered in the browser — `/vault`'s
+  rule, for its reasons: the header count describes the whole shelf, so a
+  server-side filter would leave the page unable to say how much it was not
+  showing, and a search box that re-queries per keystroke is a request per
+  keystroke. Past 1000 it SAYS it is truncated rather than under-reporting.
+  It includes **the caller's own** shares, attributed and marked "shared by
+  you" — slice 1 excluded them, which is right for a "shared with you" list
+  and wrong for a shelf, since a record missing your own work cannot answer
+  "has anybody here valued this building". `market` is computed with
+  `marketOf()` so the filter matches the corpus and vault vocabulary.
+  `GET /api/shares` is otherwise back to its pre-firm shape; its `mine` rows
+  gained `firm` so a firm share's status line can say "Shared with Colliers
+  Boise" and never "Anyone with the link" (it read as the latter before that
+  field existed, which is the one wrong answer there that could make somebody
+  forward a firm-only report).
+  **The reader's half of that same rule**: `GET /api/shared` adds
+  `meta.firmShare` (`firm`, `sharedBy`, `mine`, `sharedAt`) so a colleague
+  opening the link is told it is a firm link and by whom —
+  `renderFirmShareNotice()` in index.html, `no-print`/`no-capture` because it
+  is context about the LINK, not report content, and a printed copy handed to
+  a client has no business carrying a firm's routing. Three rules: it is sent
+  ONLY to a reader entitled by the firm or its owner (an outside client named
+  on a firm share's viewer list is not owed the firm's internals); the payload
+  is **copied, never mutated**, because `sharedReportsMem` holds that object
+  for the life of the process and writing into it would stamp one reader's
+  context onto every later reader's copy; and the two extra reads are paid
+  only on that path.
+  **"org" is the internal noun and "firm" is the word on screen** — tables,
+  columns, routes and identifiers all say org, every string a person reads
+  says firm. One translation point, at the copy layer.
+  Rules a future editor will otherwise break:
+  - **No existing `user_id=eq.` read is ever widened to an org.** There are
+    60-odd of them in server.js and they are the wall; a firm read is a new
+    query against the new tables, migration 013's separate-tables rule. The
+    one-line version of the shared vault is `or=(user_id.eq.X,org_id.eq.Y)`
+    on `vaultCompsForReport`, which looks correct in review and fails
+    silently because that path returns `[]` on error. `test/org-routes.test.js`
+    fails the build if that pattern appears.
+  - **No auto-join by email domain, ever.** `gmail.com` is a company by that
+    logic, and even a real corporate domain proves only that somebody can
+    receive mail there. A domain may one day SUGGEST an invite to an admin;
+    it may never grant one, which is why `orgs` has no domain column.
+    `broker_profiles.company` is free text a broker typed about themselves —
+    two people typing "Colliers" are not verified colleagues.
+  - **An invite is not a membership.** `joined_at` is null until the invited
+    person accepts. Identity is the EMAIL (018's decision, adopted by 024 and
+    again here), so anyone can type anyone's address into their own firm;
+    without the accept step that would put a firm's reports on a stranger's
+    desk and offer their next report a "share with my firm" button for a firm
+    they have never heard of.
+  - **`canReadShare` requires BOTH `visibility === "org"` AND a non-null
+    `org_id`** before it consults membership, so a mistake in either column
+    fails toward the viewer list — toward LESS access. The firm branch sits
+    INSIDE the invited path, below revocation and below the sign-in check, so
+    a firm share inherits every protection an invited one has.
+  - **A firm share can never carry whole vault comps** (400, not a silent
+    strip). Private comps are anonymized into the valuation basis exactly as
+    on an invited share, so a colleague's range matches to the dollar with no
+    address or price travelling. Sharing a broker's own book across their
+    firm is the spec's §7 and is deliberately NOT built: it needs the opt-in,
+    the attribution, and the vault's "Visible only to you" copy rewritten to
+    match.
+  - **`canUseOrg` gates creating and inviting, never accepting or reading.**
+    It tracks `broker` (one subscription), so it is false on a dark
+    deployment and for a tester without `vault_beta` — the invite route sends
+    email, so a widely-shared passkey must not open it. A colleague on the
+    receiving end needs no plan at all: they are exactly an invited share's
+    viewer, and a firm that could only share with people who had already
+    bought the product would not solve the problem it exists for.
+  - **Migration 028 must be run BEFORE the code deploys**, like 018 and 026
+    and unlike most: it adds `shared_reports.org_id`, which `getShareRecord`
+    SELECTs by name on EVERY share read, and PostgREST 400s an unknown
+    column. Deploy-first breaks every legacy public link — including ones
+    already mailed to property owners with no account — not just the new
+    feature.
+  **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
+  029, owner's yes 2026-08-16). An owner or admin can set the firm to share
+  members' NEW reports automatically; `POST /api/org/settings` carries both
+  switches. It ships with the safeguards the spec made a condition of building
+  it at all, and each one is load-bearing:
+  - **Off by default**, and an unrecognized `share_default` reads as `none`.
+    The failure that matters is publishing work somebody did not mean to
+    publish, and unlike a missing share it cannot be undone by trying again.
+  - **Never retroactive.** It fires from the same three-part guard
+    `saveHistory` uses (not sample, not `fromHistory`, not `shared`), so
+    opening an old report never publishes it.
+  - **The member has a veto that beats the firm.** `org_members.auto_share` is
+    NULLABLE for three states — null follow, true always, false never — and
+    `false` survives an admin switching the firm off and on again. A boolean
+    with a default would collapse "has not chosen" into one of the other two,
+    and a broker who said "not my client work" would start publishing again
+    the next time an admin changed their mind.
+  - **Disclosed before the accept, not after.** A pending invite carries the
+    firm's `shareDefault`, because joining a firm whose default is on changes
+    what happens to work not yet run.
+  - **Per-report opt-out on the report itself.** `renderAutoShareNotice()`
+    says it happened and offers Undo (which revokes), because the moment
+    somebody wants this off is the moment they are looking at the report.
+    Guarded on `meta.autoShared`, or every subject-field repaint would
+    re-publish — including something just undone.
+  **The shared vault** (§7, migration 030, 2026-08-16). A broker can opt one
+  comp at a time into their firm; colleagues see it inside their OWN reports,
+  attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
+  `/vault`'s comps table, shown only to a broker who is in a firm. Rules in
+  `blend-comps.js`, the read in `orgCompsForReport`. Seven things hold it up:
+  - **`org_comps` is a separate table**, never a column on `broker_comps` and
+    never a widened read — 013's rule a third time. The one-line version of
+    this feature is `or=(user_id.eq.X,org_id.eq.Y)` on `vaultCompsForReport`,
+    which looks right in review and fails silently because that path returns
+    `[]` on error.
+  - **A firm comp keeps `source_type: "broker_vault"` and `private: true`.**
+    Whose it is, is ATTRIBUTION (`firm` + `shared_by` on the comp), not a
+    provenance tier — so `/api/share` strips or anonymizes it, exports and the
+    PNG and the print drop it, and the valuation weights it at 1, all by
+    construction. A fifth tier would mean `TIER_WEIGHT` (twice, a pair that
+    already carries a keep-in-step ⚠), `SOURCE_TIERS` and `eval-score.js` all
+    agreeing about a weight that is 1 in every one of them.
+  - **The stored payload comes from `FIELD_MAP` itself** (`firmCompPayload`),
+    so `user_id`, `dedupe_key`, `address_key`, `upload_id` and the publish
+    flags cannot reach another account's table by being forgotten — and a new
+    per-type field needs no migration here, which is why 030 stores jsonb
+    where 013 stores columns.
+  - **One deal is one row.** `dedupeFirmComps` drops a colleague's copy of a
+    deal the reader already holds, the caller's own winning. Two brokers at
+    one firm are routinely on opposite sides of the same transaction, and
+    without this it is counted twice in the valuation with nothing on screen
+    explaining the shift. This is the one place a private comp IS deduped.
+  - **The blend is gated on `canUseVault`, not on membership**, and excludes
+    the caller's own shared comps (they already arrive through
+    `vaultCompsForReport`). A free colleague reads the firm's shared REPORTS,
+    like any invited viewer, but does not get a paid capability by invitation.
+  - **The owner's edit refreshes the copy and their delete pulls it** —
+    `refreshSharedComp` runs AFTER validation, the scar `retractPublishedComp`
+    carries, so a rejected edit never disturbs what colleagues hold. Unlike a
+    shared report (018's set-null rule) the copy CASCADES on delete: a report
+    is a record of what was sent, a comp is a live copy of a row in the
+    broker's book.
+  - **"Visible only to you" corrects itself** (spec §2). `renderFirmPrivacy()`
+    rewrites the deck subtitle and the trust line the moment something is
+    actually shared — keyed on having shared, not on being in a firm, because
+    a broker who has shared nothing really does have a vault visible only to
+    them. The default text stays in the MARKUP so a page whose script failed
+    still makes the true statement rather than none.
+  **Per-seat billing** (migration 033, 2026-08-16). `STRIPE_PRICE_FIRM_MONTHLY`
+  + `plan: "firm_monthly"` on `/api/checkout` (with `orgId` and `seats`), the
+  firm's own Stripe customer, and `org_subscriptions` keyed on `org_id`.
+  `POST /api/billing-portal` takes an optional `orgId` and opens the firm's
+  portal. Unset price = the plan 503s and the buy control never renders, which
+  is how seats stay hand-granted until somebody asks to pay. Six rules:
+  - **`orgs.seats` is the one cap**, read only through `seatCapOf()`, which the
+    invite gate and the entitlement read share — one refusing a colleague the
+    other would have granted Pro to is a support ticket nobody can reproduce.
+    An unreadable count falls back to `MAX_MEMBERS`, never to 0 or 1: a seat
+    count is a COMMERCIAL limit (membership is the access gate, elsewhere), so
+    the failure worth choosing is an unbilled invitation, not a paying firm
+    locked out of adding the colleague they just hired.
+  - **The webhook writes seats from the SUBSCRIPTION**, not from the checkout
+    request, so the number a firm can use is always what Stripe bills them for
+    — including after a portal change we never saw the request for.
+  - **A firm session must reach `applyOrgSubscription` and RETURN before the
+    user path.** Otherwise a firm checkout lands a row in `subscriptions` keyed
+    on whoever clicked Buy: one person with a personal subscription their firm
+    is paying for, and the firm with none. Pinned by test.
+  - **Owner only** for checkout and the portal, deliberately narrower than
+    `canManageMembers`: an admin manages people, committing a firm to a
+    recurring charge is not the same act.
+  - **Seats below the current headcount are refused by name and number**
+    (`seats_below_headcount`), because buying too few drops named colleagues to
+    free the moment the webhook lands — a downgrade applied to people who are
+    not in the room. Pending invitations count toward the headcount.
+  - **The firm is a FALLBACK in `getEntitlements`**, consulted only when
+    nothing already grants Pro, and handed to `entitlements.js` as an ordinary
+    subscription row — so that file still knows nothing about firms (spec §8)
+    and the lapse, grace and renewal-slack rules apply unchanged. `viaFirm` on
+    `/api/config` is presentation only, and exists for one concrete wrong
+    answer: the plan card offers the Stripe portal off `status !== "none"`, and
+    a colleague on a firm seat has a real status belonging to a customer record
+    that is not theirs. Seats are held oldest-first by `joined_at`, so a portal
+    downgrade has a defined, explicable result instead of an arbitrary one.
+  Seats can still be granted by hand, the `vault_beta` precedent — a firm with
+  no subscription has `seats` and a `status` of `"none"`, and everything works.
+  `orgs.share_default` and `orgs.seats` ship as unwritten columns so both are
+  code changes rather than migrations — the same reason `hub_items.status`
+  shipped early in 024. The shelf needed **no** `org_shelf_items` table in the
+  end: reports already live in `shared_reports` with `visibility='org'`, and a
+  second copy would have been two sources of truth for one thing. That table
+  becomes worth building when the shelf holds something a share cannot — a
+  BOV pipeline row, or an individual vault comp.
+- `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
+  Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
+  string lands in the platform's access logs and in every outbound Referer,
+  and this route sees more addresses than any other — the subject plus every
+  comp of every report — including the private vault comps that are geocoded
+  here and deliberately nowhere else (GUARD 2 of the private-comp contract).
+  The GET alias was removed rather than deprecated, because a door left open
+  is one stale caller away from putting addresses back in URLs and nothing
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model
+  no longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
-  pin from
-  geocoding (this proxy, then browser-direct Nominatim as fallback, results
-  cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+  pin from geocoding (this proxy, then browser-direct Nominatim as fallback,
+  results cached in localStorage under `geoCache.v2`). Rate-limited per IP.
+  The market pages' own comp map runs the same stack but caches under
+  `mktGeoCache.v1`, and **the two stores must never be re-joined**: the market
+  map needs pins only, so it stores no geocoder label, and a label-less entry
+  read back by the app fails `geoLabelMatches` — the gate on subject photos
+  and footprint sizing. They shared a key until 2026-08-04; a test in
+  `test/routes.test.js` now holds the names apart.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
   client no longer sends it — address aiming showed the road on unmapped
   parcels) — Street View photo proxy for the map pin popups. The client
@@ -897,6 +1196,28 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
   per-type columns).
   `GET /api/comp-corpus` downloads it as CSV (requires `ADMIN_KEY`).
+  **Radius blend (2026-08-14).** At serialization, inside `gate()` and
+  **before** `gateReport()`, `blendNearbyComps` folds in harvested deals of
+  the same property type whose date is inside the lookback, that have
+  coordinates, and that sit within **10 miles** of the subject for CRE —
+  **1 mile for Residential** unless the market note names a radius in miles
+  (a typed "2.5 miles" is the neighborhood for that search; shrinking it to
+  one mile would fight the instruction the owner just gave). Houses trade by
+  neighborhood; the 10-mile CRE circle priced a $2M home off cheaper sales
+  from the next pocket over (19 comps, ~$1M headline). When the 19 comps
+  already sit inside that named circle, distance cannot separate them —
+  Residential extras more than 1.5× the subject's implied $/SF (ask ÷ size)
+  are dropped, and `compWeight` floors the same miss so the IQR cannot be
+  outvoted by the cheaper majority. Missing ask is neutral. They join
+  the table and the Low / Likely / High math; a free report turns extras
+  into `locked_basis` so the dollar range still matches Pro.
+  Harvest Census-geocodes new rows before the insert (fire-and-forget with
+  the rest of harvest); unlocated existing rows backfill up to 8 per request
+  and join the *next* search. A deal with no point is skipped, not guessed as
+  same-city. Cache, harvest, and market snapshots still see the search-only
+  report, so a later search in the area picks up deals saved after the cache
+  write. Rollback is `CORPUS_RADIUS=off`. Vault rows are never read. Spec:
+  `docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md`.
   **Corpus health (`CORPUS_HEALTH` + `noteCorpusFailure()`).** Fire-and-forget
   means both the write (`harvestComps`) and the read (`corpusRowsForMarket`)
   swallow their errors, which once hid a total outage: ten per-comp columns
@@ -1036,14 +1357,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `refreshBillingUI` once `live`/`pro` are known, cleared either way).
   Sign-out reloads the page rather than re-hydrating, because the page
   around the bar may itself be signed-in-shaped (the vault above all).
-  Traps: /how-it-works takes `accountNavSlots({ desk: false })` or a member
-  sees TWO My Desk links (it renders its own); and `.hdr nav .dd a` sets
+  Traps: `.hdr nav .dd a` sets
   `display:block`, which out-specifies `[hidden]`, so the
   `.hdr nav [hidden]{display:none!important}` line in ACCOUNT_NAV_CSS is
   load-bearing — without it every page shows both auth states at once.
-  There are now THREE headers to keep in step (index.html, MARKET_BAR,
-  /how-it-works'). `test/routes.test.js` pins presence on all seven pages
+  `test/routes.test.js` pins presence on all seven pages
   and the no-double-desk rule.
+  **The headers unified (2026-08-20).** `/how-it-works`' hand-kept header is
+  gone: `marketBar(signedIn, current)` is THE header for every server-rendered
+  page (the two copies had drifted to within one `aria-current`, which is what
+  the new `current` argument renders — pass the page's own path from its
+  `marketShell` call and the Explore menu marks where the reader is). The
+  Explore menu's browse links themselves live in **`NAV_LINKS`**, one list
+  beside marketBar with three consumers: `navLinksHtml()` for marketBar,
+  and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
+  `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
+  index.html authors no copy of the menu any more, so adding a nav link is a
+  one-line edit to NAV_LINKS. Two traps: `APP_NAV_LINK_CLASS` must stay
+  identical to `#pricingLink`'s class string, because tailwind.css is purged
+  against index.html alone and a utility that existed only in the server-side
+  string would silently stop styling on a regen; and the marker must survive
+  in index.html, or the app quietly loses its browse links —
+  `test/routes.test.js` pins both the replacement and link parity with the
+  server-rendered headers. index.html's header ELEMENT still lives in
+  index.html (its auth chrome, account menu and pricing button are SPA
+  behavior owned by `refreshBillingUI()`); what is single-sourced is the
+  markup every header shares.
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on
@@ -1063,29 +1402,42 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
 - `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Holds the contribute-for-credit pitch, the owner-introduction
-  offer, and what the Verified badge means — content that used to be a
-  `#for-brokers` section on the landing page reachable only by a scroll-to
-  button, with no URL of its own. Unlike `/how-it-works` it carries no CSS of
-  its own: it renders through `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` /
-  `MARKET_FOOTER` style it and it likewise does NOT depend on `tailwind.css`.
-  Listed in `sitemap.xml`. Its "Submit a comp" CTA links to **`/#submit-comp`**,
-  a deep link `index.html` handles by opening the existing comp-submission
-  modal and then clearing the hash — deliberately one form, not a second copy
-  of it on this page. Do not confuse this with `GET /broker/<slug>`, the
-  per-contributor public profile.
+  **"Brokers"**. Hero payoff, then two stacked ledgers: Contribute (CREDIT /
+  INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
+  PRIVATE). One Submit door at the bottom (`/?submit=comp` — a query the
+  account wall can see; a `/#submit-comp` hash never reaches the server).
+  Unlike `/how-it-works` it carries no CSS of its own: it renders through
+  `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` / `MARKET_FOOTER` style it
+  and it likewise does NOT depend on `tailwind.css`. Listed in `sitemap.xml`.
+  Do not confuse this with `GET /broker/<slug>`, the per-contributor public
+  profile.
 - `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
   spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
   content lives in the pure **`guide-1031.js`** (the vault-page.js
   precedent) — FAQ array feeding both the accordions and the FAQPage
   JSON-LD, the education-not-advice compliance box, and a client-side
   45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server). server.js only dresses it in
+  dollars; nothing is sent to a server — since 2026-08-20 the widget also
+  hands both deadlines over as an `.ics` calendar file, built as a `data:`
+  URI in the browser under the same promise, and deterministic for a given
+  closing date because its DTSTAMP derives from the closing, never the
+  clock). server.js only dresses it in
   `marketShell` and spreads the module's JSON-LD nodes into the shared
   `brandGraph()` @graph. Education, never advice — the compliance strings
   are test-pinned in both directions (must-appear and must-never-appear).
-  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
-  footer, and `/brokers`.
+  The widget script also stamps localStorage `cnRef1031.v1` (guarded — no
+  storage, no marker), which is how a later BOV request gets tagged
+  `source: "1031"` — see `POST /api/lead`; the key is test-pinned because
+  index.html reads the identical string. The route logs a PII-free
+  `guide_1031` event per read (`source`: member/visitor on cookie presence;
+  crawler UAs skipped via `isCrawlerUA` — coarse on purpose, the page is
+  public and sitemapped so bots would otherwise dominate), feeding the
+  "1031 guide funnel" card on `/admin` (reads beside 1031-tagged leads;
+  deliberately no computed conversion %, the counts age out of the event
+  window at different rates). Listed in `sitemap.xml`; linked
+  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
+  contextual one-liner after the CTA on every `/market/<slug>` page
+  (`guide1031` in `renderMarketPageHTML`).
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real
@@ -1109,7 +1461,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
-  instantly with no DB. Each page: median/quartile $/SF, cap-rate range, a
+  instantly with no DB. Each page opens with an aerial photograph of the
+  city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
+  in the pure, tested `market-hero.js` — 3840×800 plus a 1920w `srcset`
+  sibling so a full-bleed retina header is not upscaled; `/admin/heroes`
+  is the visual QA, with a file-size/dimension grade in the tested
+  `market-hero-quality.js`. A curated file that fails that grade is skipped
+  on the live header in favour of an Esri aerial of the same city. Explorer markets
+  without a photo fall through to an Esri aerial when we have coordinates,
+  and to no photo rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,
   Sale/Lease filter; address links to `source_url` when the snapshot has a
   sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,
@@ -1230,7 +1590,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - **Accounts + My Desk** (added 2026-07-19; spec/plan in `docs/superpowers/`):
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose
-  updates feed reads the comp corpus. Auth is built into server.js — scrypt
+  updates feed reads the comp corpus. Signed-in searches auto-save to
+  `portfolio_items` (upsert on address + type); Free My Desk is an address
+  list, Pro is the book of values, and the caps (100 / 500) live in
+  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The `$20`
+  unlock does not auto-save. Auth is built into server.js — scrypt
   (Node built-in) password hashes, 90-day session tokens stored as SHA-256
   hashes, `cn_session` httpOnly cookie. Routes: `POST /api/account/signup|
   login|logout|forgot|reset`, `GET /api/account/me`, `DELETE /api/account`,
@@ -1244,6 +1608,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+  **Profile photo** (2026-08-14; migration `027-account-avatar.sql`). A
+  signed-in account can upload a picture that replaces the initial in the
+  account circle (app header, every server-rendered page, My Desk). Rules
+  in the pure, tested **`account-avatar.js`**: data URI only (png/jpeg/webp),
+  bytes sniffed so a PDF labeled as a PNG is refused, 80KB save cap. The
+  bytes live in `user_avatars`, not on `users`, so the session lookup that
+  runs on every authenticated request never pulls them; `users.avatar_rev`
+  is a short content hash that `/api/account/me` carries so the circle
+  knows to fetch `GET /api/account/avatar`. File fallback stores both on
+  the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
+  empty body is how Remove works. Not Pro-gated.
 - **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
   **run before deploying**). `POST /api/watchlist/digest` mails each watcher
   the markets of theirs that have new comps. It is **the only thing this
@@ -1363,7 +1738,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   regardless of plan, so a longer free window grows output — the cost and
   wall-clock driver — on the majority of traffic. The numbers live in
   `entitlements.js`; the pricing modal and both plan-card strings hard-code
-  them in prose and must be edited together.
+  them in prose and must be edited together. The desk split belongs with
+  those numbers: Free My Desk is an address list (cap 100), Pro is the book
+  of values (cap 500), and the pricing compare table's Portfolio row restates
+  it.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the
@@ -1614,7 +1992,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
     should not have to author a CSV); `GET /api/vault/export.csv` downloads
-    the whole book. **`EDITABLE_FIELDS` in `broker-vault.js` is an
+    the whole book. **Every cell on `/vault` is typed into directly**
+    (2026-08-16): one field per cell, saved on leaving it, so Tab/Enter work
+    like a spreadsheet and Esc restores the stored value. There is no Edit
+    button — the compact table's own cells are the editor, and the inline
+    edit form it used to open is gone. Three rules the compact table adds
+    over the spreadsheet, all in `vault-page.js`. **`CELL_FIELDS` excludes
+    the two derived columns**: `market` is parsed from the address by
+    `marketOf()` server-side and `price_per_sqft` is computed by
+    `normalizeRow` for priced sales only, so offering either as an input
+    would let a broker type a figure the very next save silently overwrites;
+    they render as `td.ro` cells and are **refreshed from the row the PATCH
+    returns**, because a price edit that left the old $/SF sitting beside it
+    is a wrong number in a priced column. **A cell shows the formatted figure
+    and swaps to the raw one on focus** (`data-raw` + `cellDisplay`), since a
+    book of business is read far more often than edited and every price
+    becoming `1250000` is not an acceptable cost of making it editable; the
+    value put back after a save is the SERVER's normalized one, never the
+    string that was typed. And **a save that lands after the table was
+    rebuilt** (a sort, a filter, a delete's reload) re-renders instead of
+    writing into the detached input, or the row would show the pre-save value
+    with a refreshed $/SF next to it. Spreadsheet mode (`Open spreadsheet`,
+    or Open on that import) stays as the other door: it is the only place
+    `cap_rate`/`tenancy`/`year_built`/`notes` and the per-type extras have
+    columns, and its cells deliberately show STORED values with no
+    formatting, because it is the view a broker opens to check what an import
+    actually landed. **`EDITABLE_FIELDS` in `broker-vault.js` is an
     allowlist**, not a second validator — `validateEdit(existing, patch)`
     merges the patch over the stored row and reruns it through
     `normalizeRow`, the same function every imported row goes through, so a
@@ -1752,6 +2155,77 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     through the module-level `lastGut`/`lastReps` rather than a changed return
     type, because the return value is the outlier map the table reads. Four
     further rules:
+    - **What publishing gave back** (2026-08-17). `comp_submissions.cited_count`
+      has existed since migration 003 and `bumpCitedCounts` has incremented it
+      on every earned badge ever since — and it was rendered in exactly one
+      place, the "Report citations" tile on the PUBLIC `/broker/<slug>`, which
+      exists at all only once a broker opts `broker_profiles.public` to true
+      (false by default, per broker-directory.js's two-consents rule). So the
+      one person who could not see the credit was the broker who earned it, and
+      a vault-first broker published comps and got no signal back whatsoever.
+      This surfaces the existing number: per comp beside the Published chip,
+      and summed under the ledger's Published cell. **Nothing new is counted
+      and no hot path changed** — `attachCitedCounts` is a read, chunked at 200
+      ids because the in.() list would otherwise outgrow a URL, and it **never
+      throws**, because a citation count is a reward and a vault that would not
+      open without one would be a strictly worse trade. Two honesty rules: the
+      count is **omitted at zero** rather than shown as "0" beside every
+      freshly published comp, and the tooltip says it is counted **when a
+      report is generated**, since a cache hit serves the stored report without
+      re-running `attachVerifiedAttribution` and therefore does not bump it —
+      the figure is a floor, not an impression count. `cited_count` reaches the
+      browser through `vault-api.js`'s **`SUBMISSION_FIELDS`**, a third checked
+      list beside `PROPERTY_FIELDS` for the same reason that one exists: it is
+      not a `broker_comps` column, so putting it in `API_COMP_FIELDS` would
+      correctly fail the both-ways schema test.
+    - **Bulk publish** (`POST /api/vault/publish-many`, 2026-08-17). Publishing
+      is how the public corpus grows and it was one button plus one identical
+      confirm per comp, so in practice nobody published a book — they published
+      a comp. The button counts the UNPUBLISHED comps in the current view and
+      deliberately does not decide eligibility: `VAULT.canPublish` is the rule,
+      a browser copy would be a second one, and the route reports what it
+      skipped and why (naming the first reason, since they repeat). Its own
+      route rather than an `ids` array on the single one — that contract's
+      404/400 are right for one comp and wrong for fifty, where "some of these
+      are not ready" is the normal answer. Same `openVault` gate, same
+      `user_id` scoping, same credit-name refusal, asked ONCE before anything
+      is written. Insert and PATCH stay **paired inside one task** at
+      concurrency 6, never one bulk insert with ids read back positionally:
+      repeat properties are real here, so returned rows could not be re-paired
+      by address even in principle. A PATCH that fails after its insert
+      **deletes the submission back out**, or the comp sits in the public
+      records crediting a row the vault still calls unpublished and a re-run
+      credits it twice. Capped at `VAULT_PUBLISH_BATCH` (100) per request,
+      reporting `remaining` rather than refusing, which is safe because
+      publishing is idempotent.
+    - **Undo a delete** (2026-08-17). A hard delete behind one confirm sat
+      oddly against a codebase that refuses a file fallback rather than risk
+      losing a broker's book. The message now carries an Undo that re-posts the
+      comp through **`POST /api/vault/comp`**, the ordinary add route, so a
+      restore goes through `normalizeRow` like every other written comp and
+      cannot put back something the vault would refuse to be told today.
+      Three rules: it is held **in memory only** — this catches the misclick
+      noticed immediately, not a deletion regretted tomorrow, and a store that
+      emptied on reload would promise more than it keeps; the restore is a
+      **new entry** belonging to no import, said plainly rather than left to be
+      discovered; and a comp that was published **is not republished** by
+      putting it back, because publishing is a deliberate public act and
+      undoing a delete is not consent to repeat it. The confirm no longer says
+      "this cannot be undone", since that stopped being true.
+    - **Four filters, and only one of them is a search.** Market and Type
+      narrow to a slice; Deal (Sale/Lease) exists because the two are priced
+      in different units and a view holding both can state no median; and the
+      Find box searches address, notes, market, type and tenancy, ANDing its
+      terms so two words mean both rather than the phrase. All four compose,
+      all four are cleared together, and **opening one import clears every one
+      of them** — a search left over from the previous view would hide the
+      comps that import just landed. **An empty result names which of the two
+      empty states it is**: "No comps match this filter" with a Clear link
+      when the book is non-empty, and the upload invitation only when it is
+      genuinely empty. Telling a broker who searched for a deal they own that
+      there is "nothing here yet" reads as the vault having lost their book —
+      the same misreport-an-outage-as-absence trap the hub list and the lead
+      inbox each had to fix.
     - **The page fetches `?limit=1000` and filters in the BROWSER.** It used to
       re-query with `market=`/`type=` params, which cannot work now: the rollup
       counts the whole book, and server-side filtering leaves the browser
@@ -1759,11 +2233,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       defaults to `limit=200`, so a broker with 400 comps was shown half their
       vault with nothing saying so. Past 1,000 the page says it is truncated
       rather than under-reporting silently.
-    - **Every $/SF figure comes from the stored `price_per_sqft`, never derived
-      here.** `broker-vault.js` writes that column for **sales only** and
-      leaves it null on a lease, because an annual rent ÷ size is $/SF/yr and
-      would corrupt any median it entered. A card with no priced sales shows
+    - **Every rate figure comes from a stored column, never derived here.**
+      `broker-vault.js` writes `price_per_sqft` for **sales only** and leaves
+      it null on a lease, because an annual rent ÷ size is $/SF/yr and would
+      corrupt any median it entered; it writes `rent_psf_yr` for **leases
+      only**, from the broker's `rent_psf` × their stated `rent_basis`. The
+      page reads both and never recomputes either. A bucket with neither shows
       its comp count instead of a fabricated number.
+    - **Lease rent (migration 029, 2026-08-17).** Until then the vault only
+      really worked for investment sales: the template said to leave `price`
+      blank on a lease and put the rent in `notes` as prose, so a leasing book
+      carried no figure any median could read and every card said "no priced
+      sales yet". Four rules.
+      **`rent_basis` is required with a rent and has no default** — California
+      industrial and retail quote rent MONTHLY while most of the country
+      quotes annually, so $1.35/SF is an ordinary monthly rent and an
+      impossible annual one; defaulting either way stores a figure 12× wrong
+      in a broker's own records, which is the class of error this module
+      refuses "1.2M" to avoid. **`lease_type` (NNN/FS/MG) is optional and
+      disclosed**, the deliberate asymmetry: mixing bases makes a median
+      WRONG, mixing structures makes it WEAKER, and those get different
+      answers — the footer says "mixed lease types" rather than refusing.
+      **Sales and leases are never averaged together**: a view holding both
+      states no median and names the Deal filter, which is why that filter
+      had to ship first, and the rate column heading changes with the unit
+      rather than labelling annual rents "$/SF". **The gut check abstains on
+      leases** — corpus quartiles and market-page figures are sale $/SF and
+      there is no public rent benchmark — which holds by construction because
+      leases carry no `price_per_sqft`; a rent fallback in `psfOf` would break
+      it, and a test pins that.
+      Rent is deliberately **not carried into the public corpus**:
+      `comp_corpus` has no rent column and `submissionRowFrom` is an explicit
+      allowlist, so a published lease carries what it always did. Giving the
+      corpus a rent column is its own decision with its own provenance
+      questions, not a side effect of this one.
     - **Repeat properties group on `market` + address, never address alone.**
       Street names repeat across a metro; on the first test book that merged a
       Boise building and a Meridian building at the same house number into one
@@ -2051,6 +2554,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   live in the pure, tested **`broker-leads.js`** (coverage matching, the lead
   anonymization allowlist, coverage seeding, notify dedupe); server.js owns
   every read/write and computes `market` with `marketOf()` before calling in.
+  **Metro matching (2026-08-17).** Coverage matching reads the same curated
+  `METRO_GROUPS` corpus retrieval does, so a broker covering Boise industrial
+  also sees Meridian industrial leads — those cities trade as one market, and
+  until this shipped that table was read by retrieval and by nothing else.
+  Four rules. **The adjacency function is INJECTED, never required**:
+  `broker-leads.js` does not know what an address or a metro is (its header
+  rule), so `filterLeadsForCoverage(leads, cov, siblingsOf)` takes it as an
+  optional third argument and behaves exactly as it did before when omitted —
+  which is what keeps every other caller and the whole test file safe by
+  default. **The property type is never widened with the geography**: an
+  industrial broker one suburb over is still an industrial broker, and
+  crossing types would put a retail enquiry in their inbox on the strength of
+  a shared postcode. **All THREE call sites move together or none do** — the
+  inbox, the intro gate (`filterLeadsForCoverage` again, so a visible lead is
+  always actionable) and the new-lead alert, which starts from one lead and
+  therefore widens from the other end via `coverageMarketsFor` into a
+  PostgREST `market=in.(...)`; a broker emailed about a lead the inbox hides,
+  or shown one they were never told about, is a bug either way, and a test
+  states the two as one rule. **And the reach is disclosed**: the API adds
+  `nearby` per coverage row and the chip reads "+7 nearby", because a lead
+  from a city the broker never typed otherwise reads as a bug in the one
+  surface whose whole job is to be trusted about where their business is.
+  Rollback is `LEAD_METRO=off`, deliberately separate from `CORPUS_METRO`:
+  the two read one table but answer different questions — which comps a
+  search may draw on, versus which PEOPLE see a stranger's enquiry.
   `GET|POST|DELETE /api/broker/coverage` — the broker's list of market +
   property-type pairs to watch. `GET` lists it; `POST` adds one pair
   (validated against `LEADSVC.isCanonicalMarket` and `VAULT.PROPERTY_TYPES`,
@@ -2087,10 +2615,35 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
-CSV / PNG / Print-to-PDF exporters. The main form's second slot is the
-Building size (SF) field; the property type is chosen at the verification
-step, and the confirm dialog blocks the run until a type is resolved.
-Contains **no secrets**.
+CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
+cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
+It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
+cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
+call) and the row went back to one line, so `.rd-row-2up` and its
+wrapped-grid border rules are gone from the style block rather than left
+sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
+to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
+what the deleted rules existed to patch. **Asking price is a Refine field
+now**, sitting immediately before `#subjectTypeFields` so it reads beside the
+per-type facts about the subject (beds/baths on a house, unit count on a
+multifamily) — same id, same single input, so `targetRange()`,
+`askingRangeFrom` and every report restore are untouched; only its parent
+element and its styling changed. The property
+type is chosen at the verification step, and the confirm dialog blocks the run
+until a type is resolved. Contains **no secrets**.
+**The size field is one figure, not a range** (2026-08-16, owner's call).
+`#targetSizeMax` no longer exists; `targetRange()` is called with a null
+`maxId` for both size and price, so `meta.subject.sizeMax` now always equals
+`sizeMin` on a new report. The key it is stored under is deliberately kept:
+`sizeMax` survives in `meta.subject` exactly as `priceMax` has since
+2026-08-10, so reports saved while the range existed still render it on the
+subject row and in exports — the two restore paths (`loadSharedReport`,
+`rerunHistory`) simply no longer write it into an input. Do not add a second
+size box to Refine "to bring the range back": `#targetSize` is a single id
+read by the footprint estimate, `targetRange()` and every report restore, and
+a duplicate would either break those or silently disagree with the figure the
+search actually sends.
 
 **Private comps in the front end** (the display half of blended comps, 2026-08-06;
 server half and spec are under the broker vault above). A comp the server flags
@@ -2133,8 +2686,9 @@ private row has not earned. Two rules matter when editing anything down here:
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
   `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**, and moving `/api/geocode` to POST ranks above it
-  when this is picked up again.
+  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  **shipped 2026-08-17** — see that route's entry above; the address a private
+  comp sends to our own proxy no longer lands in a URL.
 
 ### Non-obvious flows to know before editing
 
@@ -2213,11 +2767,19 @@ private row has not earned. Two rules matter when editing anything down here:
    range, while `property` is also the unit the report already prices on
    (`ALT_BASIS`). Retail is `property` for the same both-shapes reason —
    "building" fits only a single-tenant pad, "center" only an anchored center.
-   Three rules: **it is related to `SIZE_LABELS` but deliberately not equal to
-   it** — Multifamily and Retail keep "Building size (SF)" as the FIELD label
-   because that really is the building square footage the valuation divides
-   by, even though the asset above it is called a property; check both when
-   adding a type, and expect them to differ; **plurals come from
+   Three rules: **`SIZE_LABELS` no longer names the FORM field at all**
+   (changed 2026-08-16) — that input is labelled **"Property SF" for every
+   type**, one term true of a warehouse, a parcel and a house alike, and
+   `syncSubjectFieldsToType` deliberately does not touch `#targetSizeLabel`
+   any more, so the label cannot shift under a visitor when detection resolves
+   the type a moment after they start typing. `SIZE_LABELS` is NOT dead: it
+   still names the hero's basis line ("Building size" / "Lot size" / "Living
+   area"), which is where the per-type nuance now lives along with the hint
+   under the input; adding a type still means adding its entry. Read the rest
+   of this rule with that split in mind — the old wording had Multifamily and
+   Retail keeping "Building size (SF)" as the field label while the asset above
+   was called a property, and that reconciliation is now the basis line's job
+   alone; **plurals come from
    `ASSET_NOUN_PLURAL`, never `noun + "s"`**
    (that shipped "propertys" on Land); and **the hero heading is set at TWO
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
@@ -2295,13 +2857,22 @@ private row has not earned. Two rules matter when editing anything down here:
    evidence, not a fourth figure** — `renderSubjectAsking` draws one line
    under the approaches; `askFit` (pure, in `valuation.js`, same 25% rule as
    `outlierOf`) names a gap of more than 25% on the trust line and never
-   changes the range. **Vintage is a fourth `compWeight` factor** — free pass
+   becomes a fourth ledger figure. On houses it IS a `compWeight` factor:
+   more than 1.5× off the asking $/SF floors the weight, so cheaper sales
+   inside a typed 2.5-mile circle cannot set a $2M home to $1M. **Vintage
+   is a `compWeight` factor** — free pass
    within 15 years of `subject_year_built`, then halving per further 15
    years — so a 2024 teardown-rebuild does not price a 1994 resale at full
-   weight. `year_built` rides `locked_basis` so free and Pro ranges still
-   match. **User-typed asking price wins** (`askingRangeFrom`); the looked-up
-   listing is the fallback that lights the comparison card when the visitor
-   never typed one.
+   weight. **Distance is the fifth** — free pass within 1 mile, then a
+   4-mile half-life for CRE and a **2-mile half-life for Residential**, with
+   the free pass widened to a market-note radius when one was typed (so a
+   "2.5 miles" note does not then punish comps at 2.4 miles). `distance_mi`
+   rides `locked_basis` (never lat/lng). `year_built` rides `locked_basis` so
+   free and Pro ranges still match. When the estimate sits well below the
+   ask, the trust line names a cheaper pocket (the 19-comp / $1M-vs-$2M
+   failure), not an ambitious list price. **User-typed
+   asking price wins** (`askingRangeFrom`); the looked-up listing is the
+   fallback that lights the comparison card when the visitor never typed one.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

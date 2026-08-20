@@ -62,6 +62,11 @@ const TABLES = [
   ["hub_participants",    "024-messaging-hub.sql"],
   ["hub_items",           "024-messaging-hub.sql"],
   ["hub_messages",        "024-messaging-hub.sql"],
+  ["user_avatars",        "027-account-avatar.sql"],
+  ["orgs",                "030-enterprise-orgs.sql"],
+  ["org_members",         "030-enterprise-orgs.sql"],
+  ["org_comps",           "032-org-shared-comps.sql"],
+  ["org_subscriptions",   "033-org-billing.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -77,6 +82,10 @@ const COLUMNS = [
   ["comp_corpus",       ["building_class", "floor_plate", "center_type", "anchor_tenant",
                          "units", "price_per_unit", "lot_acres", "price_per_acre",
                          "zoning", "beds_baths"],               "004-comp-corpus-per-type-columns.sql"],
+  // Named here for the same reason as 004's ten: harvest and corpus retrieval
+  // both name every per-type column, so a missing one silently freezes the
+  // corpus rather than raising anything.
+  ["comp_corpus",       ["condition"],                          "028-comp-condition.sql"],
   ["users",             ["stripe_customer_id"],                 "008-pro-billing.sql"],
   ["analytics_events",  ["duration_ms", "searches", "out_tokens", "rescue"],
                                                                 "012-search-timings.sql"],
@@ -92,6 +101,20 @@ const COLUMNS = [
   // nothing looks broken and the dimension just stays empty. Exactly the
   // silent-failure shape 004 taught this folder to check for.
   ["broker_comps",      ["property_id"],                         "016-broker-comps-star.sql"],
+  // 029 is the lease half of the vault, and its shape is the WRITE-path kind
+  // this list exists for: normalizeRow puts all four keys on the row server.js
+  // inserts wholesale, so a missing one makes PostgREST 400 the insert and
+  // refuse the broker's ENTIRE spreadsheet, lease rows and sale rows alike.
+  // Louder than the silent failures above, but still worth naming here — this
+  // file is how "the owner said they ran it" becomes a fact.
+  ["broker_comps",      ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"],
+                                                                "029-vault-lease-rent.sql"],
+  // 034 gates publishing on a license number. Its absence is the silent kind:
+  // canPublishAs reads the column off the profile row, PostgREST 400s the
+  // whole SELECT when a listed column does not exist, so findBrokerProfile
+  // returns nothing and EVERY broker is told to add a credit name they can
+  // see on their own screen.
+  ["broker_profiles",   ["license_number"],                     "034-broker-license.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which
@@ -146,6 +169,25 @@ const COLUMNS = [
   // than during it.
   ["watchlist_items",   ["last_digest_at"],                     "025-watchlist-digest.sql"],
   ["users",             ["digest_optout"],                      "025-watchlist-digest.sql"],
+  // 027 keeps the photo bytes off `users` so getSessionUser's SELECT * never
+  // pulls them. A missing table makes PUT fail (loud); a missing avatar_rev
+  // reads as undefined → "" and every visitor is simply without a photo
+  // (quiet). Checking both here is what turns "the migration was run" from
+  // a report into a fact — same standing as 025/026 until a machine holding
+  // the service key actually runs this.
+  ["users",             ["avatar_rev"],                         "027-account-avatar.sql"],
+  // 028 is 018's hazard again, and worse: getShareRecord SELECTs org_id by
+  // name on EVERY share read, so without this column PostgREST 400s and the
+  // deliberately fail-closed catch turns every legacy public link — including
+  // ones already mailed to property owners with no account — into a 503. The
+  // membership columns only cost the new feature; this one costs the old one.
+  ["shared_reports",    ["org_id"],                             "030-enterprise-orgs.sql"],
+  ["org_members",       ["joined_at", "removed_at", "role"],    "030-enterprise-orgs.sql"],
+  // 029 is the member's half of the firm's auto-share default. Its absence is
+  // quiet rather than fatal — every member reads as "has not chosen" and
+  // follows the firm — which is exactly why it is named here: a member who
+  // said NO would silently start following the firm again.
+  ["org_members",       ["auto_share"],                         "031-org-auto-share.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

@@ -238,6 +238,7 @@ function score(rows, opts) {
         subjectSF: VALUATION.numericValue(subj.row.size_sqft),
         asOf: Date.parse(subj.comp.date),
         trendPct: null,
+        propertyType: subj.row.property_type,
       });
       if (!v || !(v.psfMid > 0)) { thinPeers += 1; return; }
       claimed.push(subj);

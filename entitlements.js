@@ -64,6 +64,8 @@ const ANON_EXPORTS_PER_MONTH = 0;
 // /api/comps already clamps `months` to 1..120; Pro simply gets the whole
 // range rather than an unlimited sentinel, so callers can compare numbers.
 const PRO_MAX_LOOKBACK_MONTHS = 120;
+const FREE_PORTFOLIO_MAX_ITEMS = 100;
+const PRO_PORTFOLIO_MAX_ITEMS = 500;
 
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
@@ -255,9 +257,12 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // `pro: true` is already handled on this branch.
       broker: true,
       canUseVault: true,
+      canUseOrg: true,
       graceUntil: null,
       admin: true,
       tester: false,
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro is comped for the CompNinja team.",
     };
   }
@@ -290,9 +295,21 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // broker plan or by the comped-admin branch above. There is no third door.
       broker: false,
       canUseVault: false,
+      // FALSE for the vault's exact reason, restated because it is the same
+      // trap: creating a firm did not exist before the tier either, and it is
+      // a multi-tenant access surface with an endpoint that MAILS PEOPLE.
+      // Granting it on a dark deployment would hand both to every anonymous
+      // visitor. Reading a firm's shares needs no entitlement (a colleague may
+      // be on the free plan, exactly like an invited share's viewer); this
+      // flag governs creating one and inviting to it.
+      canUseOrg: false,
       graceUntil: null,
       admin: false,
       tester: false,
+      // Same pattern as canExploreAddresses: today's desk already showed likely
+      // value to everyone before Pro, so dark restores that — unlike the vault.
+      portfolioMaxItems: FREE_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro tier is switched off (PRO_ENABLED is not 'on').",
     };
   }
@@ -343,9 +360,16 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // people toward.
       broker: vaultBeta === true,
       canUseVault: vaultBeta === true,
+      // Tracks `broker` here too, and the vault's argument covers it twice
+      // over: a passkey handed to a wider group must not also hand out an
+      // endpoint that sends email to any address typed into it. A tester who
+      // holds the vault_beta grant gets both.
+      canUseOrg: vaultBeta === true,
       graceUntil: null,
       admin: false,
       tester: true,
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
       reason: "Pro is comped for a beta tester.",
     };
   }
@@ -429,9 +453,26 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // entitlement one (see the spec's open questions); this flag only answers
     // "may they open it today", and after a lapse the answer is no.
     canUseVault: broker,
+    // Creating a firm and inviting colleagues to it (migration 030). Tracks
+    // `broker` for the same reason canUseVault does — one subscription, and
+    // the firm is a Pro capability rather than a second tier's.
+    //
+    // It governs the CREATE and INVITE side only. Accepting an invite and
+    // reading what a firm has shared needs no entitlement at all: the
+    // colleague on the receiving end is exactly an invited share's viewer,
+    // who has never needed a plan, and requiring one would mean a firm could
+    // only share with people who had already bought the product.
+    //
+    // It rides the lapse rules, so a lapsed firm cannot invite anyone new.
+    // Nothing here deletes a firm or evicts its members — same stance as the
+    // vault, and for the same reason: access lapsing is honest, data
+    // vanishing is not.
+    canUseOrg: broker,
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,
     tester: false,
+    portfolioMaxItems: pro ? PRO_PORTFOLIO_MAX_ITEMS : FREE_PORTFOLIO_MAX_ITEMS,
+    portfolioValues: pro,
     reason: reasonFor({ state, pro, broker, reportUnlocked, user }),
   };
 }
@@ -487,4 +528,6 @@ module.exports = {
   RENEWAL_SLACK_MS,
   PRO_PLANS,
   PAID_PLANS,
+  FREE_PORTFOLIO_MAX_ITEMS,
+  PRO_PORTFOLIO_MAX_ITEMS,
 };

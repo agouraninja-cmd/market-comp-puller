@@ -20,9 +20,20 @@ name: Desktop release
 on:
   push:
     tags: ["desktop-v*"]
+  # The remote-session git proxy only pushes branches, so a Claude session
+  # cutting a release fires this with the tag name instead; softprops then
+  # creates the tag at the dispatched commit. Same release either way.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. desktop-v1.0.0)"
+        required: true
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   # Create the release once, before the matrix — three jobs racing to create
@@ -32,7 +43,8 @@ jobs:
     steps:
       - uses: softprops/action-gh-release@v2
         with:
-          name: CompNinja Desktop ${{ github.ref_name }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: CompNinja Desktop ${{ inputs.tag || github.ref_name }}
           body: |
             The CompNinja desktop app — installs like any program, opens compninja.co in its own window, and stays current automatically (the app is the live site).
 
@@ -71,4 +83,5 @@ jobs:
       - name: Attach to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
           files: ${{ matrix.asset }}

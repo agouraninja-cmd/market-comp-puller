@@ -1304,6 +1304,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   prompt block; they do not count toward `coverage` or shrink the budget;
   dated listing comps still do. Rollback is `CORPUS_LISTED=off`. The harvest
   filter has no flag.
+  **An asking price is not a comparable sale, and `comp_corpus` now holds
+  both** — so EVERY aggregate over corpus rows must exclude the on-market
+  ones, and the test for "is this a closed deal" is that `parseDealDate`
+  returns non-null (`Active` and `Listed Mon YYYY` are both deliberately
+  unparseable). Most consumers got this free because they already required a
+  parseable date — the radius blend (`blend-corpus.js`), the backtest, the
+  market-page trend, and portfolio movement all filter on one, so the
+  VALUATION was never exposed. **Two did not, and both were fixed in the
+  shipping commit rather than found later**: `gut-check.js`'s `corpusStats`
+  (the broker's own benchmark — measured, one listing at $160 against four
+  closed sales near $100 moved the median 101 → 102 and Q3 102.5 → 104, so
+  every book looked cheap against it) and `buildWatchlistFeed`'s
+  `median_psf`, which windows on `ts` — when the row was HARVESTED, not when
+  the deal closed — and so had nothing at all to exclude an asking price
+  with; that median is quoted on My Desk and in the digest email. Both are
+  test-pinned, and the gut-check gate only trusts an INJECTED parser because
+  its fallback returns null for everything and would otherwise empty every
+  benchmark. `/api/corpus-comps` deliberately still offers these rows: they
+  carry a visible `date` of `Active`, and a comp a visitor reads and chooses
+  to add is not a silent aggregate. This is the cost of one table holding two
+  kinds of row — CLAUDE.md's own separate-tables rule (the vault privacy
+  wall) is the alternative that was not taken here, so a new corpus reader
+  must be checked against this rule by hand.
 - `GET /how-it-works` — the account-wall front door, reached from the header
   nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +

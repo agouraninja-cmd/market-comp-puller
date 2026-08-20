@@ -2289,6 +2289,6 @@
     "date": "2026-08-13",
     "type": "improvement",
     "title": "The corpus stores public listings, not guesses",
-    "details": "New harvests keep only public-record and listing comps. Estimate and news still appear in the report that found them but no longer enter the permanent store. A priced listing with no close date is saved as Active (or Listed Mar 2025 when the page shows a post date) and offered to later searches in that market as an extra candidate, the same shape as nearby-metro rows: the model can use it, and it cannot make the market corpus-strong. Dated listing comps still count toward coverage. Rollback for the extra prompt block is CORPUS_LISTED=off."
+    "details": "New harvests keep only public-record and listing comps. Estimate and news still appear in the report that found them but no longer enter the permanent store. A priced listing with no close date is saved as Active (or Listed Mar 2025 when the page shows a post date) and offered to later searches in that market as an extra candidate, the same shape as nearby-metro rows: the model can use it, and it cannot make the market corpus-strong. Dated listing comps still count toward coverage. Rollback for the extra prompt block is CORPUS_LISTED=off. An asking price is not a sale, so nothing that averages your numbers is allowed to count one: the benchmark your vault checks your book against, and the median $/SF on My Desk and in the watchlist email, both take closed deals only. Your report valuation was never affected either way."
   }
 ]

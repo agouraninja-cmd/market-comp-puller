@@ -2284,3 +2284,28 @@ test("the app's geocode cache and the market map's stay separate stores", () => 
       + "version number away from the app's"
   );
 });
+
+// --- the watchlist feed's median is closed sales only (2026-08-20) ---------
+//
+// The corpus began storing on-market listings in the same commit as this
+// test. buildWatchlistFeed's median_psf windows on `ts` — when we HARVESTED
+// the row, not when the deal closed — and filters only leases out, so a
+// freshly harvested asking price would land straight in the median with
+// nothing to exclude it. That median is quoted on My Desk and again in the
+// watchlist digest email, the one message this product sends on its own
+// initiative, so a contaminated one is mailed to people unprompted.
+//
+// A source scan rather than a booted feed: the median needs a database, a
+// signed-in user and a populated corpus, and the invariant is one line.
+test("the watchlist feed's median $/SF requires a parseable deal date", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const salePsf = rows");
+  assert.ok(start >= 0, "buildWatchlistFeed's salePsf chain is gone or renamed");
+  const chain = src.slice(start, src.indexOf(".sort(", start));
+  assert.match(chain, /parseDealDate\([^)]*\)\s*!=\s*null/,
+    "salePsf must drop rows whose deal_date does not parse — an on-market " +
+    "listing is stored with deal_date \"Active\"/\"Listed Mon YYYY\" and is an " +
+    "ASKING price, not a comparable sale");
+});

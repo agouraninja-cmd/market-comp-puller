@@ -1433,9 +1433,18 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     unseen += fresh.length;
     // Median $/SF: sale rows only, trailing ~6 months — matches the
     // client-side rule that lease $/SF never mixes into valuation.
+    // parseDealDate != null is the CLOSED-DEAL gate, and it is load-bearing
+    // since the corpus began storing on-market listings (2026-08-20): those
+    // carry deal_date "Active" or "Listed Mon YYYY", neither of which parses.
+    // Note this list is windowed on `ts` — when we HARVESTED the row, not when
+    // the deal closed — so a freshly harvested asking price would otherwise
+    // land straight in the median with nothing to exclude it. That median is
+    // quoted on My Desk and again in the watchlist digest email, which is the
+    // one message this product sends on its own initiative.
     const salePsf = rows
       .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
       .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .filter((r) => parseDealDate(r.deal_date) != null)
       .map((r) => corpusNum(r.price_per_sqft))
       .filter(Boolean)
       .sort((a, b) => a - b);

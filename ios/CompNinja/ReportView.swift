@@ -48,11 +48,26 @@ struct ReportView: View {
                 }
             }
 
-            if !mappableComps.isEmpty {
-                Section("Where they are") {
+            // Shown whenever ANYTHING can be placed, including the subject
+            // property on its own. Comp coordinates are inconsistent in
+            // practice — one report came back with 8 of 10 comps placed and
+            // another with 0 of 6 — and hiding the map on the thin ones threw
+            // away the subject pin too. Saying "these could not be placed" is
+            // the same stance the report takes everywhere else.
+            if hasSomethingToMap {
+                Section {
                     CompMapView(report: report, comps: mappableComps)
                         .frame(height: 260)
                         .listRowInsets(EdgeInsets())
+                } header: {
+                    Text("Where they are")
+                } footer: {
+                    if mappableComps.isEmpty {
+                        Text("These comparables came back without coordinates, so only the subject property is shown. Their addresses are in the table below.")
+                    } else if mappableComps.count < report.comps.count {
+                        let missing = report.comps.count - mappableComps.count
+                        Text("\(missing) of \(report.comps.count) comparables came back without coordinates and are not on the map.")
+                    }
                 }
             }
 
@@ -86,6 +101,11 @@ struct ReportView: View {
 
     private var mappableComps: [Comp] {
         report.comps.filter { $0.lat.number != nil && $0.lng.number != nil }
+    }
+
+    private var hasSomethingToMap: Bool {
+        !mappableComps.isEmpty
+            || (report.subjectLat.number != nil && report.subjectLng.number != nil)
     }
 
     private struct Fact { let label: String; let value: String }

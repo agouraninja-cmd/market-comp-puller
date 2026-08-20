@@ -1,10 +1,13 @@
 import SwiftUI
 import CoreLocation
+import MapKit
 import CompNinjaKit
 
 struct SearchView: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var locator = NearMeLocator()
+    @StateObject private var completer = AddressCompleter()
+    @FocusState private var addressFocused: Bool
 
     @State private var address = ""
     @State private var type: PropertyType = .industrial
@@ -30,6 +33,29 @@ struct SearchView: View {
                         .autocorrectionDisabled()
                         .font(.body)          // never below 16pt
                         .submitLabel(.search)
+                        .focused($addressFocused)
+                        .onChange(of: address) { _, typed in completer.update(query: typed) }
+
+                    // Only while the field is being edited: once an address is
+                    // chosen the list has done its job and would just push the
+                    // rest of the form down.
+                    if addressFocused {
+                        ForEach(completer.suggestions, id: \.self) { suggestion in
+                            Button { choose(suggestion) } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(suggestion.title)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.primary)
+                                    if !suggestion.subtitle.isEmpty {
+                                        Text(suggestion.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
 
                     Button {
                         locator.request()
@@ -110,6 +136,13 @@ struct SearchView: View {
                 .environmentObject(model)
             }
         }
+    }
+
+    /// Take a suggestion, and with it the city and state the server needs.
+    private func choose(_ suggestion: MKLocalSearchCompletion) {
+        completer.clear()
+        addressFocused = false
+        Task { address = await completer.resolve(suggestion) }
     }
 
     /// Runs after the progress screen has finished dismissing.
@@ -221,14 +254,9 @@ final class NearMeLocator: NSObject, ObservableObject, CLLocationManagerDelegate
         Task { @MainActor in isWorking = false }
     }
 
-    /// The server needs a full street address ending in city and two-letter
-    /// state — a bare street geocodes to the wrong state.
+    /// Shared with the address suggestions, so a location-derived address and
+    /// a typed one reach the server in exactly the same shape.
     static func streetAddress(from placemark: CLPlacemark) -> String? {
-        let street = [placemark.subThoroughfare, placemark.thoroughfare]
-            .compactMap { $0 }.joined(separator: " ")
-        let tail = [placemark.locality, placemark.administrativeArea]
-            .compactMap { $0 }.joined(separator: ", ")
-        let parts = [street, tail].filter { !$0.isEmpty }
-        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+        AddressFormat.street(from: placemark)
     }
 }

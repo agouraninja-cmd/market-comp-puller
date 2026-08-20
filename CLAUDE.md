@@ -1336,7 +1336,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   The widget script also stamps localStorage `cnRef1031.v1` (guarded — no
   storage, no marker), which is how a later BOV request gets tagged
   `source: "1031"` — see `POST /api/lead`; the key is test-pinned because
-  index.html reads the identical string. Listed in `sitemap.xml`; linked
+  index.html reads the identical string. The route logs a PII-free
+  `guide_1031` event per read (`source`: member/visitor on cookie presence;
+  crawler UAs skipped via `isCrawlerUA` — coarse on purpose, the page is
+  public and sitemapped so bots would otherwise dominate), feeding the
+  "1031 guide funnel" card on `/admin` (reads beside 1031-tagged leads;
+  deliberately no computed conversion %, the counts age out of the event
+  window at different rates). Listed in `sitemap.xml`; linked
   from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
   contextual one-liner after the CTA on every `/market/<slug>` page
   (`guide1031` in `renderMarketPageHTML`).

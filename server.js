@@ -7200,6 +7200,18 @@ function sendNotFound(req, res, message) {
   }));
 }
 
+// Coarse on purpose: this only keeps the obvious non-humans (search
+// crawlers, link previewers, monitoring curls, the test suite's bare
+// fetches) out of a human-traffic count — it is not bot defense, and a
+// count it feeds should be read as "roughly people". An empty UA counts as
+// a bot: every real browser sends one, and undici/curl by default do not
+// send a browser-shaped one.
+function isCrawlerUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return /bot|crawl|spider|slurp|preview|headless|curl|wget|python|monitor|undici|node/i.test(s);
+}
+
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
   const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
   res.writeHead(200, {
@@ -9221,6 +9233,27 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
+    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
+    // skipped at the route, so this is roughly people) against the BOV leads
+    // the guide produced (source "1031" — the localStorage marker the
+    // widget stamps). The split by `source` says which audience is reading:
+    // "visitor" is the SEO traffic the page exists for, "member" is people
+    // already here. Conversion is left for the card to phrase, because the
+    // two counts age out of the 10k-row window at different rates and a
+    // hard percentage would look more solid than it is.
+    guide1031: (() => {
+      const views = rows.filter((r) => r.kind === "guide_1031");
+      const day30 = Date.now() - 30 * 86400000;
+      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
+      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
+      return {
+        views: views.length,
+        views30d: in30(views),
+        members: views.filter((r) => (r.source || "") === "member").length,
+        leads: leads1031.length,
+        leads30d: in30(leads1031),
+      };
+    })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
     // from outside this process, which buys a schedule somebody chose and
     // costs the thing every external scheduler eventually does: it stops, and
@@ -9658,6 +9691,22 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
+  // before this shipped. No computed conversion percentage on purpose: the
+  // counts are small and age out of the event window at different rates, so
+  // the honest read is both numbers side by side.
+  var g31=d.guide1031;
+  var guideCard=(g31===undefined)?"":
+    "<div class=card><h2>1031 guide funnel</h2>"+
+    (!g31.views&&!g31.leads
+      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
+        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
+      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
+        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
+        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
+        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
+        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
+    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -9748,6 +9797,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
+    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -18663,6 +18713,19 @@ const server = http.createServer((req, res) =>
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
+    // funnel's exit, and until this event nothing counted anyone ENTERING —
+    // "does the guide produce leads" had a numerator with no denominator.
+    // PII-free like every event. Crawler UAs are skipped because this page
+    // is public and sitemapped, so bots would otherwise be most of the
+    // count (vault_visit never needed this — that page is auth-shaped).
+    // `source` = which audience is reading, on cookie PRESENCE (the wall's
+    // cheap rule; getSessionUser is a DB read and this renders per request).
+    if (!isCrawlerUA(req.headers["user-agent"])) {
+      logEvent("guide_1031", {
+        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
+      });
+    }
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,

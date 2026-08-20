@@ -1077,7 +1077,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
   pin from geocoding (this proxy, then browser-direct Nominatim as fallback,
-  results cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+  results cached in localStorage under `geoCache.v2`). Rate-limited per IP.
+  The market pages' own comp map runs the same stack but caches under
+  `mktGeoCache.v1`, and **the two stores must never be re-joined**: the market
+  map needs pins only, so it stores no geocoder label, and a label-less entry
+  read back by the app fails `geoLabelMatches` — the gate on subject photos
+  and footprint sizing. They shared a key until 2026-08-04; a test in
+  `test/routes.test.js` now holds the names apart.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
   client no longer sends it — address aiming showed the road on unmapped
   parcels) — Street View photo proxy for the map pin popups. The client

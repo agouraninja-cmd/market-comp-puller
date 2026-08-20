@@ -46,3 +46,39 @@ struct ReportFormatTests {
         #expect(ReportFormat.money(LooseString("81"), currency: LooseString(nil)) == "$81")
     }
 }
+
+@Suite("Count display")
+struct ReportCountTests {
+
+    /// The shapes real reports actually sent.
+    @Test(arguments: [("12194", "12,194"), ("22888", "22,888"), ("825000", "825,000"), ("2568", "2,568")])
+    func groupsBareSizes(raw: String, expected: String) {
+        #expect(ReportFormat.count(LooseString(raw)) == expected)
+    }
+
+    @Test func leavesAlreadyGroupedValuesAlone() {
+        #expect(ReportFormat.count(LooseString("86,400")) == "86,400")
+    }
+
+    /// Anything carrying a unit or a range is not re-parsed.
+    @Test func leavesAnythingWithNonDigitsAlone() {
+        #expect(ReportFormat.count(LooseString("12,194 SF")) == "12,194 SF")
+        #expect(ReportFormat.count(LooseString("40,000-60,000")) == "40,000-60,000")
+        #expect(ReportFormat.count(LooseString("approx 12000")) == "approx 12000")
+    }
+
+    @Test func shortNumbersAreUntouched() {
+        #expect(ReportFormat.count(LooseString("999")) == "999")
+        #expect(ReportFormat.count(LooseString("48")) == "48")
+    }
+
+    /// A year is also a bare four-digit number, and "1,900" would be wrong.
+    /// The rule is that call sites never pass a year — this pins the reason.
+    @Test func aYearWouldBeGroupedWhichIsWhyItIsNeverPassed() {
+        #expect(ReportFormat.count(LooseString("1900")) == "1,900")
+    }
+
+    @Test func absentStaysAbsent() {
+        #expect(ReportFormat.count(LooseString(nil)) == nil)
+    }
+}

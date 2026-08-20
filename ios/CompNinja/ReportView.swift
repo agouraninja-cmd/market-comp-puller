@@ -122,7 +122,7 @@ struct ReportView: View {
         if let reviewed = report.transactionsReviewed.value {
             facts.append(Fact(label: "Transactions reviewed", value: reviewed))
         }
-        if let size = report.subjectSizeSqft.value {
+        if let size = ReportFormat.count(report.subjectSizeSqft) {
             facts.append(Fact(label: "Building size", value: "\(size) SF"))
         }
         if let year = report.subjectYearBuilt.value {
@@ -146,7 +146,7 @@ struct CompRow: View {
             HStack(spacing: 6) {
                 if let date = comp.date.value { Text(date) }
                 if let tx = comp.transaction.value { Text("· \(tx)") }
-                if let size = comp.sizeSqft.value { Text("· \(size) SF") }
+                if let size = ReportFormat.count(comp.sizeSqft) { Text("· \(size) SF") }
             }
             .font(.caption)
             .foregroundStyle(.secondary)

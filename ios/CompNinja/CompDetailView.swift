@@ -52,11 +52,13 @@ struct CompDetailView: View {
         let candidates: [(String, LooseString)] = [
             ("Date", comp.date),
             ("Transaction", comp.transaction),
-            ("Size", comp.sizeSqft),
+            ("Size", LooseString(ReportFormat.count(comp.sizeSqft))),
             ("Price", LooseString(ReportFormat.money(comp.priceOrRate))),
             ("$/SF", LooseString(ReportFormat.money(comp.pricePerSqft))),
             ("Cap rate", comp.capRate),
             ("Tenancy", comp.tenancy),
+            // NOT grouped: a year is a bare four-digit number too, and 1,900
+            // would be wrong.
             ("Year built", comp.yearBuilt),
             ("Clear height", comp.clearHeight),
             ("Dock doors", comp.dockDoors),
@@ -64,7 +66,7 @@ struct CompDetailView: View {
             ("Floor plate", comp.floorPlate),
             ("Center type", comp.centerType),
             ("Anchor tenant", comp.anchorTenant),
-            ("Units", comp.units),
+            ("Units", LooseString(ReportFormat.count(comp.units))),
             ("$/unit", LooseString(ReportFormat.money(comp.pricePerUnit))),
             ("Lot", comp.lotAcres),
             ("$/acre", LooseString(ReportFormat.money(comp.pricePerAcre))),

@@ -27,6 +27,36 @@ public enum ReportFormat {
         return code == "USD" ? "$" + raw : "\(code) \(raw)"
     }
 
+    /// Group a plain count so it can be read at a glance.
+    ///
+    /// Same inconsistency as `money`, in a different field: real reports send
+    /// `size_sqft` as "12194" and "825000", while the shipped sample sends
+    /// "86,400". Both are real. "825000 SF" in a table cell is a number you
+    /// have to count digits on.
+    ///
+    /// Only a string that is ENTIRELY digits is touched. Anything already
+    /// grouped, or carrying a unit or a range, is returned untouched rather
+    /// than re-parsed.
+    ///
+    /// Deliberately NOT applied to `year_built`, which is also a bare number:
+    /// 1900 is a year, and "1,900" would be wrong. That is a call site rule,
+    /// not something this function can see, which is why it is written down
+    /// here and pinned by a test.
+    public static func count(_ value: LooseString) -> String? {
+        guard let raw = value.value else { return nil }
+        guard raw.allSatisfy(\.isNumber), raw.count > 3 else { return raw }
+
+        // Commas, not the device locale. Reports mix grouped and ungrouped
+        // values in one table, and a German phone rendering our "86,400" next
+        // to its own "12.194" would be worse than either alone.
+        var grouped = ""
+        for (offset, character) in raw.reversed().enumerated() {
+            if offset > 0, offset % 3 == 0 { grouped.append(",") }
+            grouped.append(character)
+        }
+        return String(grouped.reversed())
+    }
+
     /// The same, for a figure that may legitimately be absent.
     public static func money(_ value: LooseString?, currency: LooseString = LooseString(nil)) -> String? {
         guard let value else { return nil }

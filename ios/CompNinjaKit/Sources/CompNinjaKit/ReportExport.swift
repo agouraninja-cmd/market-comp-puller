@@ -75,11 +75,11 @@ public enum ReportExport {
         var lines = [head]
 
         var facts: [String] = []
-        if let size = comp.sizeSqft.value { facts.append("\(size) SF") }
+        if let size = ReportFormat.count(comp.sizeSqft) { facts.append("\(size) SF") }
         if let price = ReportFormat.money(comp.priceOrRate) { facts.append(price) }
         if let psf = ReportFormat.money(comp.pricePerSqft) { facts.append("\(psf)/SF") }
         if let cap = comp.capRate.value { facts.append("\(cap) cap") }
-        if let units = comp.units.value { facts.append("\(units) units") }
+        if let units = ReportFormat.count(comp.units) { facts.append("\(units) units") }
         if let ppu = ReportFormat.money(comp.pricePerUnit) { facts.append("\(ppu)/unit") }
         if let acres = comp.lotAcres.value { facts.append("\(acres) ac") }
         if let year = comp.yearBuilt.value { facts.append("built \(year)") }

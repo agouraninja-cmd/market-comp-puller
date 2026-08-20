@@ -127,6 +127,31 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
 & "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
 ```
 
+### Desktop app (`desktop.js`)
+
+```bash
+npm run desktop                          # local server + chromeless app window
+node desktop.js --url https://compninja.co   # hosted site as an app window, no local server
+```
+
+A zero-dependency launcher, **deliberately not Electron** — the no-npm-deps
+rule covers it, and every target machine already ships a Chromium (Edge is
+preinstalled on Windows). It boots the ordinary `server.js` on a **free
+port, never 3000** (so it can run beside `npm start`), waits for `/healthz`,
+then opens a Chromium-family browser in `--app` mode. Three rules from its
+header comment: children spawn from `process.execPath`, never the string
+`"node"` (the owner's portable Node is not on PATH); the app window gets its
+**own `--user-data-dir`** (`~/.compninja/desktop-profile`) — without one
+Chromium hands the URL to an existing instance and exits, leaving no process
+to wait on, so the server would die under an open window; and closing the
+window stops the server. Flags are refused, never guessed (`--ur`, a
+non-http `--url`, `--port` combined with `--url` are all errors). Pure
+helpers are tested in `test/desktop.test.js`, and requiring the module
+starts nothing (`require.main` guard).
+`scripts/install-desktop-shortcut.ps1` creates the Windows shortcut (repo
+favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
+`-StartMenu` for a Start Menu copy).
+
 ### Restart rule (important)
 
 - Editing **`index.html`** needs no restart — `server.js` reads it from disk on

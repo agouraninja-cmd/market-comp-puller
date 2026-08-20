@@ -93,9 +93,23 @@ every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory on GitHub, but since 2026-08-08 the same checks also
 gate the deploy itself: `npm start` runs a `prestart` script (`node --check
-server.js && npm test`), so on Render a red build exits before the server
+server.js`), so on Render an unparseable server.js exits before the server
 listens and the previous green deploy keeps serving. That gate holds even
-when Actions is down. A red X on
+when Actions is down.
+
+**`npm test` was removed from `prestart` on 2026-08-20**, after it broke
+production deploys. It was written when the suite was about two seconds; it is
+now 1731 tests taking **63 seconds on Render**, and several suites spawn real
+child servers. On a 0.5-CPU Starter instance that is 63 seconds of saturated
+CPU before the port is ever bound, re-run from scratch on every restart and by
+every concurrent instance. Three deploys in a row died on
+`Timed out after waiting for internal health check ... /healthz` while the
+health checker fought the test suite for a core — and each failure restarted
+the instance, which re-ran the suite, which made the next one likelier to fail.
+`node --check` stays, because that is the failure the gate was actually
+protecting against: a syntax error in server.js takes the whole site down at
+boot. Correctness is CI's job, on every push, where it costs nothing to run it
+twice. A red X on
 GitHub Actions still means fix or revert now. **No result at all is not the same as
 green**, and it happens: during a 7-hour Actions incident on 2026-08-06 GitHub
 throttled webhooks to ~15% and four branches merged with no CI run ever
@@ -157,13 +171,14 @@ on the other session's branch so its files stay on disk.
 ## Running it
 
 ```bash
-npm start          # prestart runs the checks (~2s), then node server.js -> http://localhost:3000
+npm start          # prestart runs node --check, then node server.js -> http://localhost:3000
 ```
 
-`npm start` first runs `prestart` (`node --check server.js && npm test`, about
-two seconds) and refuses to boot on a failure — that is the production deploy
-gate (Render's start command is `npm start`), so do not remove it to save the
-two seconds. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
+`npm start` first runs `prestart` (`node --check server.js`) and refuses to
+boot on a failure — that is the production deploy gate (Render's start command
+is `npm start`). Keep it: it is fast and it catches the one failure that takes
+the site down at boot. Do NOT put `npm test` back in front of it — see the note
+above on the deploys that killed. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
 a **portable (no-admin) copy**, so it's launched by full path instead:
 
 ```powershell

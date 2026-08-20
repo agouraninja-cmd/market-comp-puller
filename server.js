@@ -3193,6 +3193,16 @@ async function orgMembershipsFor(email) {
 // needs both, and a second read for the setting would be a second thing to
 // keep in step with membership.
 //
+// AND `seats`, which is not optional: every caller of seatCapOf() is fed by
+// this function, and seatCapOf() falls back to MAX_MEMBERS when the column is
+// absent. Omitting it here does not read as zero seats, it reads as 200 — so
+// the invite gate, the billing display and the entitlement read all silently
+// stop enforcing what a firm bought, and `orgs.seats` becomes a column the
+// webhook writes and nothing reads. Shipped that way on 2026-08-16 and found
+// on 2026-08-19 by a firm whose seats were 2 accepting a third member without
+// a word. MAX_MEMBERS and 030's column default are both 200, which is what
+// hid it. If a column is added to this select, add it to findOrg() too.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3204,7 +3214,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);

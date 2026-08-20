@@ -124,6 +124,11 @@ function anonymizeLead(lead, introSet) {
     type: String(l.type || ""),
     size_sqft: cleanSizeSqft(l.size_sqft),
     ts: String(l.ts || ""),
+    // A boolean derived from the source tag, never the tag itself: the
+    // allowlist stays a list of facts a stranger may see, and "this seller is
+    // inside a 1031 window" is the one fact that changes how fast a broker
+    // moves. Nothing about who they are rides along with it.
+    is_1031: String(l.source || "") === "1031",
     intro_requested: Boolean(
       introSet && typeof introSet.has === "function" && introSet.has(String(l.id))),
   };

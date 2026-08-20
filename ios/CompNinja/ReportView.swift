@@ -12,7 +12,7 @@ struct ReportView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(saved.address).font(.headline)
                     Text(saved.propertyType).font(.subheadline).foregroundStyle(.secondary)
-                    if let psf = report.avgPricePerSqft.value {
+                    if let psf = ReportFormat.money(report.avgPricePerSqft, currency: report.currency) {
                         Text(psf).font(.title.weight(.semibold)).padding(.top, 4)
                         Text("Average $/SF across the sale comps below")
                             .font(.caption).foregroundStyle(.secondary)
@@ -151,10 +151,10 @@ struct CompRow: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             HStack(spacing: 8) {
-                if let price = comp.priceOrRate.value {
+                if let price = ReportFormat.money(comp.priceOrRate) {
                     Text(price).font(.subheadline.weight(.semibold))
                 }
-                if let psf = comp.pricePerSqft.value {
+                if let psf = ReportFormat.money(comp.pricePerSqft) {
                     Text("\(psf)/SF").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

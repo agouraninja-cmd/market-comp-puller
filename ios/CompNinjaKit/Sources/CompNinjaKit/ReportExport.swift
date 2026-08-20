@@ -26,7 +26,7 @@ public enum ReportExport {
             out.append("")
         }
 
-        if let psf = report.avgPricePerSqft.value {
+        if let psf = ReportFormat.money(report.avgPricePerSqft, currency: report.currency) {
             out.append("Average $/SF: \(psf)")
         }
         if let low = report.marketCapRateRange?.low.value,
@@ -76,11 +76,11 @@ public enum ReportExport {
 
         var facts: [String] = []
         if let size = comp.sizeSqft.value { facts.append("\(size) SF") }
-        if let price = comp.priceOrRate.value { facts.append(price) }
-        if let psf = comp.pricePerSqft.value { facts.append("\(psf)/SF") }
+        if let price = ReportFormat.money(comp.priceOrRate) { facts.append(price) }
+        if let psf = ReportFormat.money(comp.pricePerSqft) { facts.append("\(psf)/SF") }
         if let cap = comp.capRate.value { facts.append("\(cap) cap") }
         if let units = comp.units.value { facts.append("\(units) units") }
-        if let ppu = comp.pricePerUnit.value { facts.append("\(ppu)/unit") }
+        if let ppu = ReportFormat.money(comp.pricePerUnit) { facts.append("\(ppu)/unit") }
         if let acres = comp.lotAcres.value { facts.append("\(acres) ac") }
         if let year = comp.yearBuilt.value { facts.append("built \(year)") }
         if !facts.isEmpty { lines.append("  " + facts.joined(separator: " · ")) }

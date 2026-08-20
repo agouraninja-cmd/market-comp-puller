@@ -46,12 +46,15 @@ struct CompDetailView: View {
     /// Absent fields are omitted rather than shown blank — a blank row reads as
     /// a bug, an absent one reads as "not known".
     private var rows: [Row] {
+        // The money fields go through ReportFormat: the server sends them with
+        // a currency marker or without, inconsistently, and a bare "81" in a
+        // Price row reads as a defect.
         let candidates: [(String, LooseString)] = [
             ("Date", comp.date),
             ("Transaction", comp.transaction),
             ("Size", comp.sizeSqft),
-            ("Price", comp.priceOrRate),
-            ("$/SF", comp.pricePerSqft),
+            ("Price", LooseString(ReportFormat.money(comp.priceOrRate))),
+            ("$/SF", LooseString(ReportFormat.money(comp.pricePerSqft))),
             ("Cap rate", comp.capRate),
             ("Tenancy", comp.tenancy),
             ("Year built", comp.yearBuilt),
@@ -62,9 +65,9 @@ struct CompDetailView: View {
             ("Center type", comp.centerType),
             ("Anchor tenant", comp.anchorTenant),
             ("Units", comp.units),
-            ("$/unit", comp.pricePerUnit),
+            ("$/unit", LooseString(ReportFormat.money(comp.pricePerUnit))),
             ("Lot", comp.lotAcres),
-            ("$/acre", comp.pricePerAcre),
+            ("$/acre", LooseString(ReportFormat.money(comp.pricePerAcre))),
             ("Zoning", comp.zoning),
             ("Beds / baths", comp.bedsBaths),
             ("Condition", comp.condition),

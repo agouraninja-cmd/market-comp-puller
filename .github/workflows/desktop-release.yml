@@ -1,0 +1,74 @@
+# Builds the standalone desktop app (desktop-app/) and publishes installers
+# to a GitHub Release. This is how "download the app" gets its files:
+# compninja.co/download links the latest release's assets by their stable,
+# version-less names (CompNinja-Setup.exe / CompNinja.dmg / CompNinja.AppImage
+# — set by artifactName in desktop-app/package.json, so keep those in step
+# with the /download page in server.js).
+#
+# Fires ONLY on a desktop-v* tag — never on ordinary pushes, so the site's
+# deploy path is untouched. Cut a release with:
+#   git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
+#
+# The installers are UNSIGNED: Windows SmartScreen and macOS Gatekeeper will
+# warn on first run until a code-signing certificate (Windows) and Apple
+# notarization (macOS) are set up — a paid, owner-identity step this workflow
+# can't do. The only secret used is the workflow's own GITHUB_TOKEN; the
+# ci.yml rule (no repo secrets a fork could exfiltrate) still holds — tag
+# pushes only come from accounts with write access.
+name: Desktop release
+
+on:
+  push:
+    tags: ["desktop-v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  # Create the release once, before the matrix — three jobs racing to create
+  # the same release is a 422 on two of them.
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: CompNinja Desktop ${{ github.ref_name }}
+          body: |
+            The CompNinja desktop app — installs like any program, opens compninja.co in its own window, and stays current automatically (the app is the live site).
+
+            - **Windows:** CompNinja-Setup.exe
+            - **Mac:** CompNinja.dmg
+            - **Linux:** CompNinja.AppImage
+
+  build:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: desktop-app/dist/CompNinja-Setup.exe
+          - os: macos-latest
+            asset: desktop-app/dist/CompNinja.dmg
+          - os: ubuntu-latest
+            asset: desktop-app/dist/CompNinja.AppImage
+    runs-on: ${{ matrix.os }}
+    env:
+      # No signing identities exist; stop electron-builder looking for them
+      # (macos runners otherwise fail the build hunting a keychain identity).
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install build tools
+        working-directory: desktop-app
+        run: npm ci
+      - name: Build installer
+        working-directory: desktop-app
+        run: npx electron-builder --publish never
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}

@@ -47,12 +47,18 @@ There are no `npm install` dependencies — it runs on plain Node.
 
 ## Run it as a desktop app
 
-**For users:** the deployed site is an installable app (PWA) — open
-compninja.co in Chrome or Edge and click the Install icon in the address
-bar (or the footer's "Install the desktop app" button). It lands on the
-desktop/taskbar/Start Menu with the CompNinja icon, opens in its own
-window, and stays current automatically because the app is the live site.
-Nothing to download or host.
+**For users — the downloadable app:** `desktop-app/` is a standalone
+Electron shell around compninja.co — its own installer, icon, and process,
+no visible browser. Installers (`CompNinja-Setup.exe`, `CompNinja.dmg`,
+`CompNinja.AppImage`) build automatically on a `desktop-v*` tag and publish
+to this repo's GitHub Releases; compninja.co/download links the latest.
+It contains no product code, so installed copies stay current with every
+site deploy. This is the one folder in the repo with npm dependencies
+(dev-only build tools, own package.json — the site itself stays zero-dep).
+
+**For users — no download at all:** the site is also an installable web
+app (PWA) — open compninja.co in Chrome or Edge and click the Install icon
+in the address bar (or the footer's "Install the desktop app" button).
 
 **For the owner/dev**, there is also a local launcher:
 

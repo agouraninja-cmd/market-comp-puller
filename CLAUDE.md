@@ -152,8 +152,31 @@ starts nothing (`require.main` guard).
 favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
 `-StartMenu` for a Start Menu copy).
 
-**Users install the app from the site itself** (2026-08-20) — `desktop.js`
-is the owner/dev door; customers get the installable web app (PWA).
+**The standalone downloadable app lives in `desktop-app/`** (2026-08-20) —
+an Electron shell around https://compninja.co with its own installer,
+icon, and process: no visible browser anywhere, which is what the owner
+asked for after the PWA still carried Chrome's chrome. It holds NO product
+code (every deploy of the site reaches installed copies instantly) and is
+**the one folder in the repo with npm dependencies** — dev-only build
+tools, in their own package.json; the site's zero-dep rule is about
+server.js and stands, and root `npm test`/`npm start` never touch this
+folder. The window is locked down like a browser tab (sandbox, no
+nodeIntegration, no preload, no IPC); navigation stays in-window only for
+compninja.co and *.stripe.com (checkout must complete and return),
+everything else opens the system browser; an unreachable site shows the
+branded `offline.html`, never Chromium's grey error. Installers build on a
+`desktop-v*` tag via `.github/workflows/desktop-release.yml` (create the
+release once, then a 3-OS matrix attaches `CompNinja-Setup.exe` /
+`CompNinja.dmg` / `CompNinja.AppImage` — version-less artifact names on
+purpose, so `releases/latest/download/…` URLs are stable; keep them in
+step with the /download page). Cut a release:
+`git tag desktop-vX.Y.Z && git push origin desktop-vX.Y.Z`. The installers
+are **unsigned** until the owner buys a Windows code-signing cert and
+Apple notarization ($99/yr) — first-run SmartScreen/Gatekeeper warnings
+are expected and the /download page says so honestly.
+
+**Users can also install from the site itself** (2026-08-20) — `desktop.js`
+is the owner/dev door; the site is an installable web app (PWA).
 `manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the
 `STATIC_FILES` allowlist, served without a session so the wall never blocks
 install) make Chrome/Edge offer "Install CompNinja" from the address bar,

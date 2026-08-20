@@ -20,7 +20,7 @@ const { AsyncLocalStorage, AsyncResource } = require("node:async_hooks");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot,
-  dateKey, safeHttpUrl, isLease, rentFromComps } = require("./market-snapshot");
+  dateKey, safeHttpUrl, isLease, rentFromComps, freshDirection } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -18881,7 +18881,16 @@ const server = http.createServer((req, res) =>
     const merged = allMarketPages();
     const list = Object.keys(merged).map((slug) => {
       const p = merged[slug];
-      return { slug, type: p.type, city: p.city, state: p.state };
+      // `direction` is omitted, never "", when the snapshot has none or its
+      // read has aged out — the Explorer dropdown keys the badge off its
+      // presence, so an expired market simply renders no badge. The gate lives
+      // HERE rather than in the browser so the age rule has one home and the
+      // dropdown stays a renderer; see freshDirection in market-snapshot.js for
+      // why a momentum call expires when a median $/SF does not.
+      const row = { slug, type: p.type, city: p.city, state: p.state };
+      const direction = freshDirection(p, Date.now());
+      if (direction) row.direction = direction;
+      return row;
     });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300" });
     return res.end(JSON.stringify(list));

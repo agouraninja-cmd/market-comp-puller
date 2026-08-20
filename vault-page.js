@@ -575,6 +575,7 @@ if(dd)dd.open=false;});</script>
         <div class="form">
           <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
           <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
+          <label>License number <input id="idLicense" type="text" placeholder="01899123" maxlength="60"/></label>
           <div class="formact">
             <button class="btn" id="idSave">Save</button>
             <button class="btn ghost" id="idCancel">Cancel</button>
@@ -583,6 +584,9 @@ if(dd)dd.open=false;});</script>
         <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
           when you have one, otherwise to your name. This is not a public listing &mdash; it only
           names the credit on comps you choose to publish.</p>
+        <p class="fine">Your license number is required to publish, because the Verified badge on a
+          published comp tells a reader that a licensed broker vouched for the deal. It is never
+          shown to anyone: it backs that badge rather than appearing beside it.</p>
         <p class="msg bad hide" id="idMsg"></p>
       </div>
     </div>
@@ -2062,16 +2066,26 @@ if(dd)dd.open=false;});</script>
   // credit could promise a name the write would not produce.
   // (No backticks anywhere in this block: the whole page is one template
   // literal, and one stray backtick ends it — see the file's header note.)
-  var identity={display_name:"",company:"",creditedTo:""};
+  var identity={display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
 
   function renderIdentity(idn){
-    identity=idn||{display_name:"",company:"",creditedTo:""};
+    identity=idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
     var to=identity.creditedTo||"";
-    $("creditLine").innerHTML=to
-      ? "Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
-        '<button class="pubbtn" id="idEdit">Change</button>'
-      : "Comps you publish need a name to credit them to. "+
+    // Three states, not two. A broker with a credit name but no license is
+    // ready in every way the old copy could describe and would still be
+    // refused on click, so the line says which of the two is missing BEFORE
+    // the Publish button is pressed rather than after.
+    if(!to){
+      $("creditLine").innerHTML="Comps you publish need a name to credit them to. "+
         '<button class="pubbtn" id="idEdit">Add your firm</button>';
+    }else if(!identity.canPublish){
+      $("creditLine").innerHTML="Comps you publish are credited to <strong>"+esc(to)+"</strong>, "+
+        "and publishing needs your license number. "+
+        '<button class="pubbtn" id="idEdit">Add it</button>';
+    }else{
+      $("creditLine").innerHTML="Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
+        '<button class="pubbtn" id="idEdit">Change</button>';
+    }
   }
 
   // The single writer of the form's visibility, like setAddOpen: the fields
@@ -2081,6 +2095,7 @@ if(dd)dd.open=false;});</script>
     if(open){
       $("idCompany").value=identity.company||"";
       $("idName").value=identity.display_name||"";
+      $("idLicense").value=identity.license_number||"";
       $("idMsg").className="msg bad hide";
     }
     $("idForm").className=open?"":"hide";
@@ -2092,7 +2107,8 @@ if(dd)dd.open=false;});</script>
   });
   $("idCancel").addEventListener("click",function(){ setIdOpen(false); });
   $("idSave").addEventListener("click",function(){
-    var body={company:$("idCompany").value,display_name:$("idName").value};
+    var body={company:$("idCompany").value,display_name:$("idName").value,
+      license_number:$("idLicense").value};
     $("idSave").disabled=true; $("idSave").textContent="Saving\\u2026";
     fetch("/api/vault/identity",{method:"POST",credentials:"same-origin",
       headers:{"content-type":"application/json"},body:JSON.stringify(body)})
@@ -2105,7 +2121,8 @@ if(dd)dd.open=false;});</script>
           return;
         }
         renderIdentity({display_name:o.j.identity.display_name,
-          company:o.j.identity.company,creditedTo:o.j.creditedTo});
+          company:o.j.identity.company,license_number:o.j.identity.license_number,
+          creditedTo:o.j.creditedTo,canPublish:o.j.canPublish});
         setIdOpen(false);
       })
       .catch(function(){
@@ -3173,7 +3190,7 @@ if(dd)dd.open=false;});</script>
           compMsg(o.j.error||"That didn't go through.",true);
           // The one refusal a broker can fix on this page, same as the single
           // publish: open the form that supplies the missing credit name.
-          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          if(o.j.code==="needs_credit_name"||o.j.code==="needs_license")setIdOpen(true);
           load();
           return;
         }
@@ -3287,7 +3304,7 @@ if(dd)dd.open=false;});</script>
           // turns "you need a name" into the field that supplies it, instead
           // of sending them off to find where identity is set — which, until
           // this shipped, was nowhere.
-          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          if(o.j.code==="needs_credit_name"||o.j.code==="needs_license")setIdOpen(true);
         }else if(o.j.published&&o.j.creditedTo){
           compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{

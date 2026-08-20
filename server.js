@@ -6659,7 +6659,10 @@ async function findBrokerProfile(email, userId) {
   // unknown SELECTed columns, which would take the email fallback down too);
   // the user_id=eq. filter read is individually caught, so it alone may
   // reference the column.
-  const SELECT = "select=email,slug,display_name,company,public";
+  const SELECT = "select=email,slug,display_name,company,public,license_number";
+  // license_number rides along because VAULT.canPublishAs reads it off this
+  // row. Omit it and the gate sees undefined on every profile and refuses
+  // every publish, with a message about a field the broker already filled.
   if (userId) {
     try {
       const rows = await sbRequest("GET",
@@ -11674,10 +11677,17 @@ async function vaultReadPayload(req, params) {
     // and `email` are no business of this page.
     identity: (() => {
       const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      // license_number is sent back to its OWNER's own vault page, which is
+      // the one place it belongs: the page has to refill the field on edit,
+      // and has to be able to say publishing is blocked before the broker
+      // clicks Publish and is refused. It is never rendered publicly and is
+      // deliberately absent from publicBrokerRow.
       return {
         display_name: (p && p.display_name) || "",
         company: (p && p.company) || "",
+        license_number: (p && p.license_number) || "",
         creditedTo: VAULT.creditName(p),
+        canPublish: VAULT.canPublishAs(p).ok,
       };
     })(),
     // The firm's half of the header, and the per-comp control. `firm: null`
@@ -15093,13 +15103,14 @@ const server = http.createServer((req, res) =>
           // their signup name and copied it into broker_company, which is
           // published as their firm. Unset now means the refusal below,
           // which the vault turns into a one-time question.
-          const by = VAULT.creditName(profile);
-          if (!by) {
-            return sendJson(res, 400, {
-              error: "Add your firm or display name before publishing — published comps are credited to it.",
-              code: "needs_credit_name",
-            });
+          //
+          // canPublishAs answers BOTH requirements (credit name, then license
+          // number) so this route and publish-many cannot drift apart.
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
           }
+          const by = gateBy.by;
 
           const inserted = await sbRequest("POST", "comp_submissions",
             [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
@@ -15176,13 +15187,11 @@ const server = http.createServer((req, res) =>
           // comps published under no credit is fifty rows given away, and the
           // page turns this exact code into the form that fixes it.
           const profile = await findBrokerProfile(user.email, user.id);
-          const by = VAULT.creditName(profile);
-          if (!by) {
-            return sendJson(res, 400, {
-              error: "Add your firm or display name before publishing — published comps are credited to it.",
-              code: "needs_credit_name",
-            });
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
           }
+          const by = gateBy.by;
 
           // user_id in the filter, always. Without it, knowing another broker's
           // comp ids would be enough to publish their private data.
@@ -15286,7 +15295,7 @@ const server = http.createServer((req, res) =>
           }
           const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
           if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
-          const { display_name, company } = parsed.identity;
+          const { display_name, company, license_number } = parsed.identity;
 
           const existing = await findBrokerProfile(user.email, user.id);
           if (existing) {
@@ -15300,7 +15309,7 @@ const server = http.createServer((req, res) =>
             // user_id rides along to finish adopting that legacy row.
             await sbRequest("PATCH",
               `broker_profiles?email=eq.${encodeURIComponent(String(existing.email || user.email).toLowerCase())}`,
-              { display_name, company, user_id: user.id, updated_at: new Date().toISOString() },
+              { display_name, company, license_number, user_id: user.id, updated_at: new Date().toISOString() },
               { prefer: "return=minimal" });
           } else {
             // First statement creates the row. `public` is NOT passed: the
@@ -15314,7 +15323,7 @@ const server = http.createServer((req, res) =>
                 const ins = await sbRequest("POST", "broker_profiles", {
                   email: String(user.email).toLowerCase(),
                   user_id: user.id,
-                  display_name, company, slug,
+                  display_name, company, license_number, slug,
                 }, { prefer: "return=representation" });
                 created = ins && ins[0];
               } catch (err) {
@@ -15329,7 +15338,7 @@ const server = http.createServer((req, res) =>
               await sbRequest("POST", "broker_profiles", {
                 email: String(user.email).toLowerCase(),
                 user_id: user.id,
-                display_name, company, slug,
+                display_name, company, license_number, slug,
               }, { prefer: "return=minimal" });
             }
           }
@@ -15338,8 +15347,12 @@ const server = http.createServer((req, res) =>
           refreshBrokerProfiles();
           return sendJson(res, 200, {
             ok: true,
-            identity: { display_name, company },
+            identity: { display_name, company, license_number },
             creditedTo: VAULT.creditName({ display_name, company }),
+            // So the page can say whether publishing is unlocked without a
+            // second round trip, and without ever echoing the number back
+            // into anything public.
+            canPublish: VAULT.canPublishAs({ display_name, company, license_number }).ok,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

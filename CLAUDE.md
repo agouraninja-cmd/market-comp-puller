@@ -678,6 +678,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
   normalization is a guarantee.
+  **Market-page cross-link (2026-08-20).** Every served report also carries
+  `market_page` (`{ slug, market }`) when a standing `/market/<slug>` page
+  covers the subject's market + type — attached at SERIALIZATION inside
+  `gate()` via `marketPageInfo()` (pure in-memory reads of the loaded page
+  stores, so it costs nothing and a page published later lights up older
+  cached reports), never written into the cache. index.html renders it as
+  the "See the {market} market page →" line under the Market Summary
+  (`renderMarketPageLink`; `no-print`/`no-capture` — navigation, not report
+  content). The reverse door is the market page's own CTA: a "value a
+  property here" mini-form (`vform` / `MARKET_VALUE_FORM_JS`) that stores
+  the typed address under `pendingLandingAddress.v1` — the landing form's
+  exact mechanism, already consumed at startup — and navigates to
+  `/?type=<type>` (member) or `/?auth=signup&type=<type>` (anonymous, the
+  wall-honored door). The same `marketPageInfo` decorates `GET
+  /api/portfolio` items and the watchlist feed, so My Desk links each saved
+  property and watched market to its market page.
   **"Verified" is a reserved word (2026-08-10).** It names a badge only the
   server awards (a broker vouched, our team reviewed), so the model must
   never write it. Two layers, the same requests-vs-guarantee split: the
@@ -1287,14 +1303,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `refreshBillingUI` once `live`/`pro` are known, cleared either way).
   Sign-out reloads the page rather than re-hydrating, because the page
   around the bar may itself be signed-in-shaped (the vault above all).
-  Traps: /how-it-works takes `accountNavSlots({ desk: false })` or a member
-  sees TWO My Desk links (it renders its own); and `.hdr nav .dd a` sets
+  Traps: `.hdr nav .dd a` sets
   `display:block`, which out-specifies `[hidden]`, so the
   `.hdr nav [hidden]{display:none!important}` line in ACCOUNT_NAV_CSS is
   load-bearing — without it every page shows both auth states at once.
-  There are now THREE headers to keep in step (index.html, MARKET_BAR,
-  /how-it-works'). `test/routes.test.js` pins presence on all seven pages
+  `test/routes.test.js` pins presence on all seven pages
   and the no-double-desk rule.
+  **The headers unified (2026-08-20).** `/how-it-works`' hand-kept header is
+  gone: `marketBar(signedIn, current)` is THE header for every server-rendered
+  page (the two copies had drifted to within one `aria-current`, which is what
+  the new `current` argument renders — pass the page's own path from its
+  `marketShell` call and the Explore menu marks where the reader is). The
+  Explore menu's browse links themselves live in **`NAV_LINKS`**, one list
+  beside marketBar with three consumers: `navLinksHtml()` for marketBar,
+  and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
+  `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
+  index.html authors no copy of the menu any more, so adding a nav link is a
+  one-line edit to NAV_LINKS. Two traps: `APP_NAV_LINK_CLASS` must stay
+  identical to `#pricingLink`'s class string, because tailwind.css is purged
+  against index.html alone and a utility that existed only in the server-side
+  string would silently stop styling on a regen; and the marker must survive
+  in index.html, or the app quietly loses its browse links —
+  `test/routes.test.js` pins both the replacement and link parity with the
+  server-rendered headers. index.html's header ELEMENT still lives in
+  index.html (its auth chrome, account menu and pricing button are SPA
+  behavior owned by `refreshBillingUI()`); what is single-sourced is the
+  markup every header shares.
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on

@@ -1600,8 +1600,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
         <!-- The browse links live behind one dropdown so the bar stays three
              items on every screen; My Desk and Sign in are actions and stay
-             visible. Mirrored (as a no-JS <details>) on the server-rendered
-             market / brokers / how-it-works headers in server.js. -->
+             visible. The dropdown's links are injected at serve time from
+             server.js's NAV_LINKS — the same list marketBar renders (as a
+             no-JS <details>) on every server-rendered page — so there is no
+             second copy of the menu here to keep in step. -->
         <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
           aria-label="Switch colour theme" title="Switch colour theme">
           <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
@@ -1615,17 +1617,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
           <!-- Order is the owner's (2026-08-09): Pricing, Brokers, Markets,
-               How it works, 1031 Guide — money first. Mirrored in server.js's
-               two headers (marketBar and /how-it-works'); keep the three in
-               step. -->
+               How it works, 1031 Guide — money first. The browse links are
+               NOT authored here: server.js injects them at serve time from
+               NAV_LINKS (the same list marketBar renders on every
+               server-rendered page), replacing the NAV_LINKS_MARKER comment
+               below — one list, no hand-copied menu left to drift. Their
+               class string (APP_NAV_LINK_CLASS in server.js) must stay
+               identical to #pricingLink's, which is what keeps every one of
+               those utilities in index.html for the tailwind purge. -->
           <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
             <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
                  unset there is nothing to sell and the link would dead-end. -->
             <button id="pricingLink" type="button" class="hidden block w-full text-left px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Pricing</button>
-            <a href="/brokers" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Brokers</a>
-            <a href="/markets" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">Markets</a>
-            <a href="/how-it-works" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">How it works</a>
-            <a href="/1031-exchange" class="block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]">1031 Guide</a>
+            <!--NAV_LINKS-->
           </div>
         </div>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
@@ -2911,6 +2915,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             </button>
           </div>
           <p id="summaryText" class="text-[15px] text-[#374253] leading-relaxed max-w-4xl"></p>
+          <!-- Cross-link to the standing /market/<slug> page for this market +
+               type. The server attaches `market_page` to the report only when
+               such a page exists, so absence simply keeps this hidden.
+               no-print/no-capture: navigation, not report content. Visibility
+               toggles on the wrapper <p>, never the <a> — an inline-display
+               anchor can't carry mt-3, and `inline-block` is not in the
+               vendored tailwind.css. -->
+          <p id="marketPageLine" class="hidden no-print no-capture mt-3">
+            <a id="marketPageLink" class="text-sm font-medium text-[#B91C1C] hover:text-[#991B1B]"></a>
+          </p>
         </div>
 
         <!-- What's driving your number (owner mode only) — the market trend and
@@ -4293,6 +4307,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerHero").classList.remove("hidden");
     // A repeat search must not show the previous report's prose or rows.
     document.getElementById("summaryText").textContent = "";
+    document.getElementById("marketPageLine").classList.add("hidden");
     const card = document.getElementById("compsCard");
     for (const child of card.children) {
       if (child.id === "scrollBody" || child.id === "cardList" || child.querySelector("h2")) continue;
@@ -4402,6 +4417,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById(id).innerHTML = "";
     });
     document.getElementById("summaryText").textContent = "";
+    document.getElementById("marketPageLine").classList.add("hidden");
     document.getElementById("compCount").textContent = "";
     document.getElementById("ownerBasis").textContent = "";
     document.getElementById("loadingSkeletons").classList.remove("hidden");
@@ -9453,6 +9469,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : `Prices in ${reportCurrency.code} (local currency)`;
   }
 
+  // The report's door into the standing /market/<slug> page for its market +
+  // type. The server attaches `market_page` ({slug, market}) at serialization
+  // only when such a page exists — seeded or explorer-published — so absence
+  // hides the line and nothing here needs a list of pages. The slug is
+  // server-derived but rides through saves and shares, so it is shape-checked
+  // before it becomes an href.
+  function renderMarketPageLink(parsed, meta) {
+    const line = document.getElementById("marketPageLine");
+    const a = document.getElementById("marketPageLink");
+    if (!line || !a) return;
+    const mp = parsed && parsed.market_page;
+    const slug = mp && typeof mp.slug === "string" && /^[a-z0-9-]{1,120}$/.test(mp.slug) ? mp.slug : "";
+    if (!slug) {
+      line.classList.add("hidden");
+      a.removeAttribute("href");
+      return;
+    }
+    a.href = "/market/" + slug;
+    const noun = String(meta && meta.type || "").toLowerCase() || "market";
+    a.textContent = "See the " + (mp.market || "local") + " " + noun + " market page →";
+    line.classList.remove("hidden");
+  }
+
   function renderResults(parsed, meta) {
     if (!parsed || !Array.isArray(parsed.comps)) {
       throw new Error("Parsed response is missing a 'comps' array.");
@@ -9495,6 +9534,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderReportBrand();
 
     document.getElementById("summaryText").textContent = parsed.summary || "No summary returned.";
+    renderMarketPageLink(parsed, meta);
 
     // Search radius (makes the market-radius calibration visible): the geographic
     // scope the model used. Hidden when the model didn't return one.
@@ -10665,6 +10705,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const sub = document.createElement("div");
         sub.className = "text-[10.5px] text-[#68707E]";
         sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
+        // Door to the standing market page for this property's market + type.
+        // The server attaches `market_page` only when such a page exists
+        // (marketPageInfo), so absence renders nothing — same contract as
+        // `movement` below. Slug is shape-checked before it becomes an href,
+        // like the report's own market-page link.
+        if (item.market_page && typeof item.market_page.slug === "string"
+            && /^[a-z0-9-]{1,120}$/.test(item.market_page.slug)) {
+          sub.appendChild(document.createTextNode(" · "));
+          const mk = document.createElement("a");
+          mk.href = "/market/" + item.market_page.slug;
+          mk.className = "underline hover:text-[#1A2433]";
+          mk.textContent = "market page";
+          mk.title = `The standing ${item.market_page.market || ""} ${String(item.property_type || "").toLowerCase()} market page — medians, cap rates, recent comps`;
+          sub.appendChild(mk);
+        }
         tdA.appendChild(sub);
         // What the MARKET did since this property was last checked, which is
         // the one number on this page that moves without the owner re-running
@@ -10861,9 +10916,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       box.className = "dk-mkt";
       const head = document.createElement("div");
       head.className = "flex items-baseline justify-between gap-3 flex-wrap";
-      const title = document.createElement("div");
+      // The market's name links to its standing /market/<slug> page when one
+      // exists (the server attaches `market_page` via the same marketPageInfo
+      // the portfolio rows use); a market with no page keeps the plain div.
+      const hasPage = w.market_page && typeof w.market_page.slug === "string"
+        && /^[a-z0-9-]{1,120}$/.test(w.market_page.slug);
+      const title = document.createElement(hasPage ? "a" : "div");
       title.className = "dk-mname";
       title.textContent = `${w.property_type} · ${w.market}`;
+      if (hasPage) {
+        title.href = "/market/" + w.market_page.slug;
+        title.classList.add("hover:text-[#B91C1C]");
+        title.title = "Open this market's page — medians, cap rates, recent comps";
+      }
       const right = document.createElement("div");
       right.className = "flex items-baseline gap-3 text-[11px] text-[#68707E]";
       if (w.median_psf) {

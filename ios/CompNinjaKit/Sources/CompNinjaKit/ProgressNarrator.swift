@@ -22,6 +22,15 @@ public struct ProgressNarrator: Sendable {
     public private(set) var fraction = 0.02
     public private(set) var lastPhase: String?
 
+    /// Whether the report itself has started being written.
+    ///
+    /// Load-bearing for the bar. The server interleaves `drafting` frames from
+    /// about two seconds in, long before any report exists — that early output
+    /// is the model working, not prose. Letting those frames drive the bar put
+    /// it at 50% at 1.8s, where it then sat for the entire 40-second search
+    /// because the bar cannot walk backwards. Measured on a real run.
+    private var sawWriting = false
+
     /// Comps seen streaming in, for the assembling table underneath.
     public private(set) var identifiedComps = 0
     public private(set) var lockedComps = 0
@@ -47,15 +56,22 @@ public struct ProgressNarrator: Sendable {
             if let count = e.count, count > 0 { detail = "\(count) results to review" }
             aim(0.48)
         case "writing":
+            sawWriting = true
             headline = "Writing your report…"
             detail = "Comparing size, age, and location"
             aim(0.55)
         case "drafting":
             if e.writing == true, lastPhase != "writing", lastPhase != "drafting" {
+                sawWriting = true
                 headline = "Writing your report…"
                 detail = "Comparing size, age, and location"
             }
-            aim(0.50 + min(0.45, (Double(e.chars ?? 0) / Self.draftCharsFull) * 0.45))
+            // Only once the report is genuinely being written. Before that the
+            // search phases own the bar, which is what makes its position
+            // agree with the headline above it.
+            if sawWriting {
+                aim(0.50 + min(0.45, (Double(e.chars ?? 0) / Self.draftCharsFull) * 0.45))
+            }
         case "comp":
             if e.locked == true { lockedComps += 1 } else { identifiedComps += 1 }
         case "field":

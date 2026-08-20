@@ -1350,6 +1350,56 @@ function creditName(profile) {
     || "";
 }
 
+// The license number backing a profile's public claims, or "" if there is
+// none. Trimmed through the same `text` helper as the identity fields so a
+// profile holding a single space is absent rather than present-but-blank.
+function licenseOf(profile) {
+  return text((profile || {}).license_number, MAX_SHORT_TEXT) || "";
+}
+
+/**
+ * May this profile publish a comp, and under what name?
+ *
+ * ONE answer, called by both /api/vault/publish and /api/vault/publish-many.
+ * The batch route's own comment gives the reason: the rules it enforces are
+ * the same rules "because a second set would be a second place for the public
+ * corpus to grow a hole". The credit-name refusal was already duplicated
+ * across the two; the license refusal joins it here instead of beside it.
+ *
+ * Two requirements, in the order a broker meets them:
+ *
+ *  1. A credit name. Credit is the compensation (Ecosystem Plan §4), so a comp
+ *     with nothing to credit is not worth publishing.
+ *  2. A license number. "Verified · via <firm>" claims a NAMED LICENSED BROKER
+ *     vouched for the deal in public. Nothing checked the licensed half, so
+ *     the badge could be made to say something untrue by anyone who reached a
+ *     vault -- the owner included, who is not a licensed broker. Decided
+ *     2026-08-12; the number is never rendered publicly, it backs the badge
+ *     rather than appearing beside it.
+ *
+ * Credit name is checked FIRST so an existing broker's refusal does not change
+ * shape: someone with neither still meets the message they met before.
+ */
+function canPublishAs(profile) {
+  const by = creditName(profile);
+  if (!by) {
+    return {
+      ok: false,
+      code: "needs_credit_name",
+      error: "Add your firm or display name before publishing. Published comps are credited to it.",
+    };
+  }
+  const license = licenseOf(profile);
+  if (!license) {
+    return {
+      ok: false,
+      code: "needs_license",
+      error: "Add your license number before publishing. The Verified badge says a licensed broker vouched for the deal.",
+    };
+  }
+  return { ok: true, by, license };
+}
+
 // The identity a broker states for their published comps: a firm, a personal
 // name, or both. Pure so `npm test` covers the rules on strings that become
 // PUBLIC — the "via <firm>" credit on every report the comp reaches, and the
@@ -1370,10 +1420,16 @@ function validateIdentity(input) {
     text(String(v == null ? "" : v).replace(/[\u0000-\u001F\u007F-\u009F]+/g, " "), MAX_SHORT_TEXT);
   const display_name = clean(src.display_name);
   const company = clean(src.company);
+  // OPTIONAL here on purpose, and required at publish time instead (see
+  // canPublishAs). A broker sets their name the first time they open the
+  // vault and may not have their number to hand; refusing the whole identity
+  // save over it would block the credit name too, and the credit name is what
+  // the page needs before it can say anything useful about publishing.
+  const license_number = clean(src.license_number);
   if (!display_name && !company) {
     return { ok: false, error: "Enter your firm, or your own name if you work under it." };
   }
-  return { ok: true, identity: { display_name, company } };
+  return { ok: true, identity: { display_name, company, license_number } };
 }
 
 /**
@@ -1660,6 +1716,8 @@ module.exports = {
   enforceVerifiedFlags,
   canPublish,
   creditName,
+  licenseOf,
+  canPublishAs,
   validateIdentity,
   submissionRowFrom,
   parseCsv,

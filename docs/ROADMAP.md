@@ -58,24 +58,6 @@ intent, the devlog states history.
 - **White-label exports**, riding on the branding profile once its UI
   exists.
 - **Market digest pages**, once the corpus holds 2+ quarters of history.
-- **Only a licensed broker may publish a vault comp** (decided 2026-08-12,
-  not yet built). The "Verified" badge means "a named broker vouched for
-  this deal" — the strongest provenance a report shows, and the entire
-  currency the broker tier trades in, since brokers are paid in credit
-  rather than cash. The owner is not a licensed broker, so his publishing
-  under any credit name would make the badge say something untrue, and the
-  same hole is open to anyone else who gets vault access. **The decision:
-  put a license field on the broker profile and refuse `POST
-  /api/vault/publish` without it** — enforced in code rather than
-  remembered as a rule. Deliberately deferred, not parked: nobody can
-  publish today except the owner, who has decided not to, so there is no
-  live exposure; build it before the first outside broker gets a vault
-  (i.e. alongside `vault_beta`, migration 023). Rejected alternatives, so
-  they are not re-litigated: a separate non-broker provenance tier (moves
-  SOURCE_TIERS, TIER_WEIGHT, the comp-gate mirror, badge copy and the
-  legend together, for a contributor class that does not exist yet), and
-  rewording "Verified" to claim less (weakens the badge for the actual
-  brokers it exists to reward).
 
 ## Later (broker-tier phases, in order)
 
@@ -145,6 +127,17 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-19: only a licensed broker may publish a vault comp.** Decided
+  2026-08-12 and built now: `broker_profiles.license_number` (migration 034,
+  NOT NULL DEFAULT ''), and one pure gate `VAULT.canPublishAs(profile)` that
+  both `POST /api/vault/publish` and `POST /api/vault/publish-many` call, so
+  the two cannot drift. Credit name is still refused first, so an existing
+  broker's refusal keeps its shape. Optional to SAVE an identity, required to
+  PUBLISH: a broker setting up a vault rarely has the number to hand, and
+  refusing the whole save would block the credit name too. Never rendered
+  publicly, and `publicBrokerRow`'s allowlist is now test-pinned against it.
+  **Needs migration 034 applied before it does anything on production**, and
+  until then every publish refuses, so apply it with the merge.
 - **2026-08-19: enterprise (firm) accounts, all four slices.** From Chuck's
   email of 2026-08-16; design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`.

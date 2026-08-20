@@ -109,6 +109,12 @@ const COLUMNS = [
   // file is how "the owner said they ran it" becomes a fact.
   ["broker_comps",      ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"],
                                                                 "029-vault-lease-rent.sql"],
+  // 034 gates publishing on a license number. Its absence is the silent kind:
+  // canPublishAs reads the column off the profile row, PostgREST 400s the
+  // whole SELECT when a listed column does not exist, so findBrokerProfile
+  // returns nothing and EVERY broker is told to add a credit name they can
+  // see on their own screen.
+  ["broker_profiles",   ["license_number"],                     "034-broker-license.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

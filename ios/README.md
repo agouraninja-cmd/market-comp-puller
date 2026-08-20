@@ -99,6 +99,47 @@ joins the existing entitlement — a real piece of work, not a link.
   CompNinja uses its own email/password, so this does not apply today
 - A test account for App Review, in the review notes
 
+## Testing it without tapping
+
+Two techniques carried the whole first session, because `simctl` can take
+screenshots but cannot inject taps or typing, and the simulator MCP tool was
+stuck on a stale `xcode-select` check throughout.
+
+**Read the device's own state.** The app writes its store where you can go and
+look at it:
+
+```
+C=$(xcrun simctl get_app_container booted co.compninja.ios data)
+cat "$C/Library/Application Support/saved-reports.json"
+```
+
+That is how "the search worked, the app just never navigated to the report"
+was diagnosed, and it turns real reports into test data.
+
+**Compile the kit into a throwaway harness.** The kit is plain Swift with no
+iOS dependencies, so it runs on the Mac:
+
+```
+swiftc -O ios/CompNinjaKit/Sources/CompNinjaKit/*.swift main.swift -o harness
+```
+
+Top-level code has to live in a file literally named `main.swift`. This drives
+`APIClient` and `ReportExport` directly against a running server, and it is
+what exercised the streaming path end to end and found the progress-bar
+defect that 52 passing tests had not.
+
+Two things to know before pointing a harness at a server. Production answers
+`signin_required` after the single free guest search, so use a local one. And
+`.env` carries no `GEMINI_API_KEY` while the server defaults to `gemini`, so a
+local run needs `SEARCH_PROVIDER=anthropic`:
+
+```
+PORT=3250 ACCOUNT_WALL=off SEARCH_PROVIDER=anthropic node server.js
+```
+
+Note that this exercises a different search provider than production, so the
+report CONTENT differs. The stream shape does not, which is the part under test.
+
 ## How this talks to the server
 
 No server changes were needed. The client uses the same endpoints the browser

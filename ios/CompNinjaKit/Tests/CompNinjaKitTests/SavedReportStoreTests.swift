@@ -63,6 +63,40 @@ struct SavedReportStoreTests {
         #expect(store.all().map(\.address) == ["B"])
     }
 
+    /// Account deletion has to leave nothing behind. These reports came from
+    /// an account that no longer exists.
+    @Test func deleteAllRemovesEveryReportAndTheFileItself() {
+        let store = SavedReportStore(directory: dir)
+        store.save(saved("A"))
+        store.save(saved("B"))
+        #expect(store.all().count == 2)
+
+        #expect(store.deleteAll().isEmpty)
+        #expect(store.all().isEmpty)
+
+        // The file is gone, not rewritten as an empty array — and a store
+        // reopened over the same directory agrees.
+        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("saved-reports.json").path))
+        #expect(SavedReportStore(directory: dir).all().isEmpty)
+    }
+
+    /// Deleting everything must not wedge the store: signing up again on the
+    /// same phone has to work.
+    @Test func storeStillWorksAfterDeleteAll() {
+        let store = SavedReportStore(directory: dir)
+        store.save(saved("A"))
+        store.deleteAll()
+        store.save(saved("B"))
+        #expect(store.all().map(\.address) == ["B"])
+        #expect(SavedReportStore(directory: dir).all().count == 1)
+    }
+
+    @Test func deleteAllOnAnEmptyStoreIsHarmless() {
+        let store = SavedReportStore(directory: dir)
+        #expect(store.deleteAll().isEmpty)
+        #expect(store.all().isEmpty)
+    }
+
     /// A store written by a newer build, or torn by a crash mid-write, must
     /// not take the app down with it.
     @Test func unreadableStoreIsAnEmptyStoreNotACrash() throws {

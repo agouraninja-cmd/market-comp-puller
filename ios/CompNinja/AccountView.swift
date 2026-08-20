@@ -14,6 +14,8 @@ struct AccountView: View {
     @State private var name = ""
     @State private var busy = false
     @State private var errorMessage: String?
+    @State private var confirmingDelete = false
+    @State private var deleting = false
 
     enum Mode { case logIn, signUp }
 
@@ -50,6 +52,46 @@ struct AccountView: View {
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
                 }
+            }
+
+            // Required by App Store guideline 5.1.1(v): an app that creates
+            // accounts must let a person delete theirs from inside the app —
+            // not via a link out to the website, not by emailing support. It
+            // also has to be findable, which is why it sits here on the
+            // account screen rather than behind a submenu.
+            Section {
+                Button("Delete account", role: .destructive) {
+                    confirmingDelete = true
+                }
+                .disabled(deleting)
+            } footer: {
+                Text("Permanently deletes your account, your saved properties and your watchlist, and removes every report saved on this iPhone. This cannot be undone.")
+            }
+
+            if let errorMessage {
+                Section { Text(errorMessage).foregroundStyle(.red) }
+            }
+        }
+        .alert("Delete your account?", isPresented: $confirmingDelete) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) { runDelete() }
+        } message: {
+            Text("Your account, saved properties and watchlist are deleted from CompNinja, and the reports saved on this iPhone are removed. This cannot be undone.")
+        }
+    }
+
+    private func runDelete() {
+        deleting = true
+        errorMessage = nil
+        Task {
+            defer { deleting = false }
+            do {
+                try await model.deleteAccount()
+            } catch {
+                // The account still exists and nothing local was touched —
+                // deleteAccount wipes this device only after the server
+                // confirms, so a failed call is safe to simply report.
+                errorMessage = error.localizedDescription
             }
         }
     }

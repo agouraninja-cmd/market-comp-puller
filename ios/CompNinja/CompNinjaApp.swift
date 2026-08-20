@@ -64,6 +64,19 @@ final class AppModel: ObservableObject {
         try? await api.logOut()
         account = nil
     }
+
+    /// Delete the account, then leave nothing behind on this device.
+    ///
+    /// The local wipe is deliberate and is NOT best-effort: these reports were
+    /// served by an account that no longer exists. It runs only after the
+    /// server confirms the deletion, so a failed call leaves the person's
+    /// reports where they were rather than destroying them on a network error.
+    func deleteAccount() async throws {
+        try await api.deleteAccount()
+        savedReports = store.deleteAll()
+        account = nil
+        signInPrompt = nil
+    }
 }
 
 struct RootView: View {

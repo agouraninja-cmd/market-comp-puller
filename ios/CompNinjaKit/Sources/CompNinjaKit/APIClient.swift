@@ -120,10 +120,31 @@ public final class APIClient: @unchecked Sendable {
         _ = try? await postRaw(path: "/api/account/logout", body: [:])
         // Belt and braces: dropping the cookie locally means a failed logout
         // request still signs this device out.
-        if let cookies = session.configuration.httpCookieStorage?.cookies(for: baseURL) {
-            for c in cookies where c.name == "cn_session" {
-                session.configuration.httpCookieStorage?.deleteCookie(c)
-            }
+        clearSessionCookie()
+    }
+
+    /// Delete the account and everything the server holds for it.
+    ///
+    /// Required by App Store guideline 5.1.1(v): any app that lets a person
+    /// create an account must let them delete it from inside the app. Not a
+    /// link to a web page, not an email to support — this call.
+    ///
+    /// The server cascades to sessions, saved properties and the watchlist,
+    /// and clears the session cookie on its way out. The local cookie is
+    /// dropped too, so a failure to parse the response still leaves this
+    /// device signed out.
+    public func deleteAccount() async throws {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/api/account"))
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "accept")
+        defer { clearSessionCookie() }
+        _ = try await send(req)
+    }
+
+    private func clearSessionCookie() {
+        guard let cookies = session.configuration.httpCookieStorage?.cookies(for: baseURL) else { return }
+        for c in cookies where c.name == "cn_session" {
+            session.configuration.httpCookieStorage?.deleteCookie(c)
         }
     }
 

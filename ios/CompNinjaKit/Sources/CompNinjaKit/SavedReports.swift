@@ -87,6 +87,21 @@ public final class SavedReportStore: @unchecked Sendable {
         }
     }
 
+    /// Everything this device is holding, gone.
+    ///
+    /// Called when the account is deleted: these reports were served by an
+    /// account that no longer exists, so leaving them sitting on the phone
+    /// would make "delete my account" a lie. The FILE is removed rather than
+    /// rewritten with an empty array, so nothing recoverable is left behind.
+    @discardableResult
+    public func deleteAll() -> [SavedReport] {
+        queue.sync {
+            try? FileManager.default.removeItem(at: url)
+            cache = []
+            return []
+        }
+    }
+
     public func report(forKey key: String) -> SavedReport? {
         all().first { $0.key == key }
     }

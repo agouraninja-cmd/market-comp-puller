@@ -133,11 +133,30 @@
   // endpoint calls this), but it lives here so the aggregation is tested with
   // everything else. parseDealDate is INJECTED — same rule as corpus-audit.js:
   // this module must never disagree with server.js about what a date means.
+  //
+  // A row whose deal_date cannot be placed in time is NOT a closed sale and
+  // must not set a benchmark. That became load-bearing when the corpus began
+  // storing on-market listings (2026-08-20): those carry deal_date "Active" or
+  // "Listed Mon YYYY", neither of which parses, and an asking price is not a
+  // comparable sale. Measured before the guard: four closed sales at ~$100/SF
+  // plus ONE optimistic listing at $160 moved the median 101 -> 102 and Q3
+  // 102.5 -> 104. This is the number a broker checks their own book against,
+  // so it silently made every book look cheap.
+  //
+  // The parser is only trusted when one was actually INJECTED: the fallback
+  // returns null for every input, so filtering on it unconditionally would
+  // empty every benchmark on any caller that forgot to pass one. Today the
+  // single caller (server.js's /api/vault/benchmarks) always does.
   function corpusStats(rows, opts) {
-    const parseDealDate = (opts && opts.parseDealDate) || function () { return null; };
+    const injectedParser = opts && opts.parseDealDate;
+    const parseDealDate = injectedParser || function () { return null; };
+    const isClosedDeal = function (r) {
+      if (!injectedParser) return true;   // no parser to judge with: behave as before
+      return injectedParser(r && r.deal_date) != null;
+    };
     const usableRaw = (Array.isArray(rows) ? rows : []).filter(function (r) {
       return r && !BAD_PROVENANCE[String(r.source_type || "").toLowerCase()] &&
-        isSale(r.transaction);
+        isSale(r.transaction) && isClosedDeal(r);
     });
     const usable = dedupeByBuilding(usableRaw, parseDealDate);
     const priced = usable

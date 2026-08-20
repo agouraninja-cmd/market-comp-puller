@@ -122,6 +122,8 @@ const BOVSVC = require("./bov-log");
 // tightening of that rule, and a second copy would be one more mirrored pair to
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
+const { parseDealDate } = require("./deal-date");
+const HARVEST = require("./corpus-harvest");
 const { isAggregateAddress } = AUDIT;
 const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
@@ -1431,9 +1433,18 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     unseen += fresh.length;
     // Median $/SF: sale rows only, trailing ~6 months — matches the
     // client-side rule that lease $/SF never mixes into valuation.
+    // parseDealDate != null is the CLOSED-DEAL gate, and it is load-bearing
+    // since the corpus began storing on-market listings (2026-08-20): those
+    // carry deal_date "Active" or "Listed Mon YYYY", neither of which parses.
+    // Note this list is windowed on `ts` — when we HARVESTED the row, not when
+    // the deal closed — so a freshly harvested asking price would otherwise
+    // land straight in the median with nothing to exclude it. That median is
+    // quoted on My Desk and again in the watchlist digest email, which is the
+    // one message this product sends on its own initiative.
     const salePsf = rows
       .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
       .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .filter((r) => parseDealDate(r.deal_date) != null)
       .map((r) => corpusNum(r.price_per_sqft))
       .filter(Boolean)
       .sort((a, b) => a - b);
@@ -2454,58 +2465,45 @@ async function accuracyReport(force) {
 // exact-address search cache misses, so it never touches the cache key.
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
+  const empty = { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0, listed: [], listedCount: 0 };
   try {
     const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    // A second, separate read so the shared single-market helper keeps its
-    // exact contract for its four other callers.
     const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
-    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    if (!rows.length && !nearbyRows.length) return empty;
 
-    // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
+    const split = HARVEST.splitRetrieved(rows, { parseDealDate, cutoffFrac, corpusNum });
+    const usable = split.usable;
+    const listedAll = CORPUS_LISTED ? split.listed : [];
+
     const isUsable = (r) => {
-      // Only feed higher-confidence provenance; a rough guess ("estimate") or a
-      // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
       if (st === "estimate" || st === "news") return false;
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
     };
-    const usable = rows.filter(isUsable);
-    // Nearby rows clear the identical bar: provenance better than estimate or
-    // news, a parseable price, and a deal date inside the requested window.
     const nearbyUsable = nearbyRows.filter(isUsable);
 
-    // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
-    // freshest we hold for this market. Stale coverage → fall back to the web.
-    // 75 days (was 45 until 2026-07-31): the 2026-07-30 speed work flagged
-    // this gate as the top untested cost lever, and the exposure is narrow —
-    // the only deals a corpus-assisted search can miss are ones that surfaced
-    // during the staleness gap, the 2-3 fresh searches are aimed at exactly
-    // that gap, and `usable` below is window-filtered, so a market whose
-    // comps have aged out of the requested lookback stops qualifying no
-    // matter what this constant says. Judge it by the /admin corpus hit rate
-    // and spot-checks of corpus-tagged reports; it is one constant to revert.
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
     return {
       comps: usable.slice(0, maxComps * 2),
-      // coverage stays EXACT-market only: corpusIsStrong and the search budget
-      // read it, and nearby rows must never buy a smaller budget.
       coverage: usable.length,
       fresh,
       nearby: nearbyUsable.slice(0, maxComps),
       nearbyCount: nearbyUsable.length,
+      listed: listedAll.slice(0, maxComps),
+      listedCount: listedAll.length,
     };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    return empty;
   }
 }
 
@@ -2570,6 +2568,11 @@ const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 // serialization. Default ON; `off` restores search-only reports. Harvest
 // still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
+
+// On-market listing rows (unparseable deal_date) offered as extra candidates.
+// Default ON; `off` hides the prompt block and returns listed: []. The harvest
+// filter (no estimate/news) has no flag.
+const CORPUS_LISTED = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_LISTED || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -3960,17 +3963,17 @@ async function harvestComps(type, searchAddress, payload) {
     const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
     const rows = [];
     for (const c of comps) {
-      if (!c || !String(c.address || "").trim()) continue;
-      // A comp with no price at all is not data worth keeping.
-      if (!String(c.price_or_rate || "").trim() && !String(c.price_per_sqft || "").trim()) continue;
-      // Backstop for the prompt's individual-property rule: a market median or
-      // research benchmark formatted as a comp would otherwise sit in the
-      // permanent corpus looking like a real transaction.
-      if (isAggregateAddress(c.address)) {
-        console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+      if (!HARVEST.shouldHarvest(c)) {
+        if (c && isAggregateAddress(c.address)) {
+          console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+        }
         continue;
       }
-      const key = corpusKeyOf(c);
+      // Fill empty listing dates before the dedupe key so "" and "Active"
+      // cannot both occupy the store for the same address + price.
+      const date = HARVEST.listingDateForHarvest(c);
+      const keyed = { ...c, date };
+      const key = corpusKeyOf(keyed);
       if (corpusSeen.has(key)) continue;
       corpusSeen.add(key);
       rows.push({
@@ -3980,14 +3983,11 @@ async function harvestComps(type, searchAddress, payload) {
         market: marketOf(c.address),
         address: String(c.address).trim(),
         transaction: String(c.transaction || ""),
-        deal_date: String(c.date || ""),
+        deal_date: date,
         size_sqft: String(c.size_sqft || ""),
         price_or_rate: String(c.price_or_rate || ""),
         price_per_sqft: String(c.price_per_sqft || ""),
         cap_rate: String(c.cap_rate || ""),
-        // Per-type specs (TYPE_COMP_FIELDS). One flat row per comp regardless
-        // of type, so every key is always present — the columns a given type
-        // doesn't use just stay empty.
         ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),
@@ -4415,7 +4415,7 @@ Rules:
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -4529,6 +4529,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
   ].join("\n") : "";
 
+  const listedBlock = (corpusListed && corpusListed.length) ? [
+    ``,
+    `ON-MARKET LISTINGS: our prior research surfaced these asking-price listings in this market that are currently on the market, not closed sales. They are already sourced.`,
+    ...corpusListed.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Include one only when it is genuinely comparable to the target. These are asking prices, not closed transactions: copy source_url, set source_type to "listing", keep the date string as given (Active or Listed Mon YYYY), and the notes caveat that the price is asking rather than a closed sale must fire. Do not treat an asking price as a closed sale. Set "verified": false on these unless they also appear in the verified list above.`,
+  ].join("\n") : "";
+
   return [
     // Residential is a home-buyer CMA, not a CRE analyst write-up. The CRE
     // role line sent the model hunting LoopNet-shaped deals and writing
@@ -4621,6 +4629,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     verifiedBlock,
     corpusBlock,
     nearbyBlock,
+    listedBlock,
     ``,
     // LoopNet / Crexi / brokerage-listing lane copy is for commercial
     // assets. A house search that starts there comes back empty or padded
@@ -4670,7 +4679,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = for a closed sale or a signed lease, the closing or signing month-year like "Mar 2025"; for an active listing, "Active" when the page has no post date, or "Listed Mar 2025" when it does. Never write a bare "Mar 2025" for an active listing. "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
     // because of how long it takes to WRITE, not to search (see the streaming
@@ -5363,7 +5372,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        subjectDetails, lane),
+                        corpus && corpus.listed, subjectDetails, lane),
     maxComps,
     searchUses,
     stream: useStream,
@@ -6781,29 +6790,6 @@ function renderBrokerProfileHTML(profile, subs, signedIn) {
 // unparseable dates drop out of trends but stay in counts. Cached in-process
 // like MARKET_CREDIT: one corpus query per TTL, no per-request DB reads.
 // ---------------------------------------------------------------------------
-const MONTHS_IDX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-// "2025" | "Q1 2025" | "Apr 2026" | "April 2026" | "04/2026" | "2026-04(-15)"
-// -> fractional year (mid-period), else null.
-function parseDealDate(s) {
-  const t = String(s || "").trim().toLowerCase();
-  if (!t) return null;
-  let m;
-  if ((m = t.match(/^(19|20)\d{2}$/))) return Number(t) + 0.5;
-  if ((m = t.match(/^q([1-4])\s*((19|20)\d{2})$/))) return Number(m[2]) + (Number(m[1]) * 3 - 1.5) / 12;
-  if ((m = t.match(/^([a-z]{3,9})\.?\s+((19|20)\d{2})$/))) {
-    const mo = MONTHS_IDX[m[1].slice(0, 3)];
-    return mo ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^(\d{1,2})\/((19|20)\d{2})$/))) {
-    const mo = Number(m[1]);
-    return mo >= 1 && mo <= 12 ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^((19|20)\d{2})-(\d{2})(-\d{2})?$/))) {
-    const mo = Number(m[3]);
-    return mo >= 1 && mo <= 12 ? Number(m[1]) + (mo - 0.5) / 12 : null;
-  }
-  return null;
-}
 // Sale rows with a parseable date and numeric $/SF — the trendable subset.
 function saleRowsWithDates(rows) {
   return (rows || [])
@@ -12692,6 +12678,9 @@ const server = http.createServer((req, res) =>
           // total, so report both rather than let the count overstate what
           // the model was actually offered.
           console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+        }
+        if (corpus.listedCount) {
+          console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,

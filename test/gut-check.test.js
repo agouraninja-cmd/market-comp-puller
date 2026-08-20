@@ -298,3 +298,66 @@ test("the module also installs a browser global", () => {
   assert.equal(typeof root.GUTCHECK.gutCheck, "function");
   assert.equal(typeof root.GUTCHECK.corpusStats, "function");
 });
+
+// --- on-market listings never set a benchmark (2026-08-20) -----------------
+//
+// The corpus began storing on-market listings in the same commit as this
+// test. They are stored with deal_date "Active" (or "Listed Mon YYYY") and
+// carry `listing` provenance and transaction "Sale", which is exactly the
+// shape corpusStats already trusted — so without the closed-deal gate an
+// ASKING price sets the band a broker checks their own book against.
+
+test("corpusStats: an on-market listing is not a closed sale and cannot move the band", () => {
+  const closed = [
+    corpusRow({ address: "100 Elm St, Boise, ID", price_per_sqft: "100" }),
+    corpusRow({ address: "200 Oak St, Boise, ID", price_per_sqft: "102" }),
+    corpusRow({ address: "300 Pine St, Boise, ID", price_per_sqft: "98" }),
+    corpusRow({ address: "400 Cedar St, Boise, ID", price_per_sqft: "104" }),
+  ];
+  const before = GC.corpusStats(closed, { parseDealDate });
+
+  // The two shapes the harvest actually writes for a live listing.
+  for (const dealDate of ["Active", "Listed Mar 2025"]) {
+    const withAsk = closed.concat([corpusRow({
+      address: "99 Asking Ave, Boise, ID", price_per_sqft: "160",
+      source_type: "listing", deal_date: dealDate,
+    })]);
+    const after = GC.corpusStats(withAsk, { parseDealDate });
+    assert.equal(after.count, before.count,
+      `a listing dated "${dealDate}" entered the priced count`);
+    assert.equal(after.median_ppsf, before.median_ppsf,
+      `a listing dated "${dealDate}" moved the median`);
+    assert.equal(after.q3_ppsf, before.q3_ppsf,
+      `a listing dated "${dealDate}" moved Q3`);
+  }
+});
+
+test("corpusStats: an asking CAP RATE is excluded too, not just the price", () => {
+  // Same argument as the price: a cap rate quoted on a live listing is what
+  // the seller hopes for, not what the market paid.
+  const rows = [
+    corpusRow({ address: "100 Elm St, Boise, ID", cap_rate: "6.0%" }),
+    corpusRow({ address: "200 Oak St, Boise, ID", cap_rate: "6.2%" }),
+    corpusRow({ address: "300 Pine St, Boise, ID", cap_rate: "6.1%" }),
+  ];
+  const before = GC.corpusStats(rows, { parseDealDate });
+  const after = GC.corpusStats(rows.concat([corpusRow({
+    address: "99 Asking Ave, Boise, ID", cap_rate: "3.0%",
+    source_type: "listing", deal_date: "Active",
+  })]), { parseDealDate });
+  assert.equal(after.cap_rate_count, before.cap_rate_count);
+  assert.deepEqual(after.cap_rate_median, before.cap_rate_median);
+});
+
+test("corpusStats: with NO parser injected it still behaves as it always did", () => {
+  // The fallback parser returns null for everything, so gating on it
+  // unconditionally would empty every benchmark for a caller that forgot to
+  // inject one. Absent a parser there is nothing to judge a date with, so the
+  // rows are taken as they were before the gate existed.
+  const rows = [
+    corpusRow({ address: "100 Elm St, Boise, ID", price_per_sqft: "100" }),
+    corpusRow({ address: "200 Oak St, Boise, ID", price_per_sqft: "120" }),
+  ];
+  const s = GC.corpusStats(rows, {});
+  assert.ok(s && s.count === 2, "no injected parser must not empty the benchmark");
+});

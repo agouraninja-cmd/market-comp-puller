@@ -53,7 +53,9 @@ its own snapshot) and **`account-avatar.js`** (what may be stored as a
 profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-digest.js`** (the digest's copy and its
 "is this worth sending?" rule — the only email this product sends on its own
 initiative, so every judgment in it is about what a person is worth
-interrupting for) — plus **`report-access.js`** (the ONLY function that
+interrupting for), **`deal-date.js`** (the deal-date parser, including the
+Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
+the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`org-access.js`** (who is in a firm
 and what their membership allows — an unknown role is a `member`,
@@ -1208,7 +1210,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (billed AND cached) has its comps harvested by `harvestComps()` into the
   Supabase `comp_corpus` table (file fallback `comp-corpus.jsonl`, git-ignored),
   deduped by a normalized address|date|price key (unique constraint +
-  ignore-duplicates upsert; in-memory seen-set for the file path). Fire-and-
+  ignore-duplicates upsert; in-memory seen-set for the file path). Harvest
+  keeps only `public_record` and `listing`; `estimate` and `news` stay in the
+  report that found them and are not stored; an empty listing date is stored
+  as `"Active"`. Fire-and-
   forget — a corpus failure never affects the request. This is the permanent
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
@@ -1317,6 +1322,34 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   sharing one submarket, never a whole statistical area, and a test pins every
   entry against `marketOf` because an exact-match key that never matches is
   invisible.
+  **On-market listings (2026-08-13).** Unparseable listing dates (`Active`,
+  `Listed Mar 2025`) come back as `listed` extra candidates with their own
+  prompt block; they do not count toward `coverage` or shrink the budget;
+  dated listing comps still do. Rollback is `CORPUS_LISTED=off`. The harvest
+  filter has no flag.
+  **An asking price is not a comparable sale, and `comp_corpus` now holds
+  both** — so EVERY aggregate over corpus rows must exclude the on-market
+  ones, and the test for "is this a closed deal" is that `parseDealDate`
+  returns non-null (`Active` and `Listed Mon YYYY` are both deliberately
+  unparseable). Most consumers got this free because they already required a
+  parseable date — the radius blend (`blend-corpus.js`), the backtest, the
+  market-page trend, and portfolio movement all filter on one, so the
+  VALUATION was never exposed. **Two did not, and both were fixed in the
+  shipping commit rather than found later**: `gut-check.js`'s `corpusStats`
+  (the broker's own benchmark — measured, one listing at $160 against four
+  closed sales near $100 moved the median 101 → 102 and Q3 102.5 → 104, so
+  every book looked cheap against it) and `buildWatchlistFeed`'s
+  `median_psf`, which windows on `ts` — when the row was HARVESTED, not when
+  the deal closed — and so had nothing at all to exclude an asking price
+  with; that median is quoted on My Desk and in the digest email. Both are
+  test-pinned, and the gut-check gate only trusts an INJECTED parser because
+  its fallback returns null for everything and would otherwise empty every
+  benchmark. `/api/corpus-comps` deliberately still offers these rows: they
+  carry a visible `date` of `Active`, and a comp a visitor reads and chooses
+  to add is not a silent aggregate. This is the cost of one table holding two
+  kinds of row — CLAUDE.md's own separate-tables rule (the vault privacy
+  wall) is the alternative that was not taken here, so a new corpus reader
+  must be checked against this rule by hand.
 - `GET /how-it-works` — the account-wall front door, reached from the header
   nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +

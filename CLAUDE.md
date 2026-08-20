@@ -111,6 +111,47 @@ A Claude Code hook (`.claude/hooks/regen-tailwind.js`) regenerates it when
 session, the manual command is under "Restart rule". Either way, verify a NEW
 utility class actually landed in the vendored file and commit it alongside.
 
+## Working alongside another session
+
+**If someone else already has this folder, take your own.** A clone has one
+checked-out branch and one staging area shared by every process pointed at it,
+so two agents in `~/dev/compninja-owen` are not two workspaces, they are two
+people at one desk. Whichever commits first sweeps up whatever the other has
+staged, and a branch switch pulls files out from under the other mid-edit. On
+2026-08-20 that filed an entire iOS client under an unrelated feature branch one
+minute before that branch was pushed. Nothing was lost, but only because someone
+checked.
+
+```bash
+node scripts/worktree.js market-badge   # -> ../cn-market-badge on feat/market-badge
+```
+
+That makes a second folder with its own branch, its own staging area, and the
+same history, branched off `origin/main` as it is right now rather than off
+whatever this folder is sitting on. Git then refuses to check out one branch in
+two worktrees, which is the guardrail the shared folder never had. It also
+symlinks `.env`, which is gitignored and therefore absent from a fresh worktree
+— without it the server boots keyless and every Supabase script fails
+confusingly rather than obviously. The other gitignored files
+(`account-store.json`, `analytics.jsonl`, `shared-reports.json`,
+`search-cache.json`) are local fallback DATA and are deliberately not linked.
+
+Run `git worktree list` to see who holds what. When your PR merges,
+`git worktree remove <dir> && git worktree prune`.
+
+**Check what you are about to send, every time.** `git status` shows changed
+files and says nothing about whose commits are underneath them:
+
+```bash
+git log origin/main..HEAD
+```
+
+If that lists work you did not do, it arrived the way described above. Do not
+just drop it — confirm the same content is committed somewhere else first (`git
+diff --stat <other-commit> <yours>` over the relevant paths), then rebase in a
+throwaway worktree and push with `--force-with-lease`, leaving the shared folder
+on the other session's branch so its files stay on disk.
+
 ## Running it
 
 ```bash

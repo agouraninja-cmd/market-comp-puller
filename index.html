@@ -15592,6 +15592,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     catch (_) { return true; }      // storage unavailable — don't dead-end exports
   }
 
+  // The /1031-exchange guide stamps this marker on every read (its widget
+  // script owns the key — keep the two strings identical). A BOV request from
+  // a browser that read the guide recently is tagged source "1031" instead of
+  // "bov", which is the only attribution the funnel has: the guide, the
+  // account wall, and the report live on separate pages, so a URL param
+  // cannot survive the journey. 7 days, then it is just a lead again.
+  function ref1031Active() {
+    try {
+      const t = Number(localStorage.getItem("cnRef1031.v1"));
+      return Number.isFinite(t) && t > 0 && Date.now() - t < 7 * 24 * 3600 * 1000;
+    } catch (_) { return false; }
+  }
+
   // One CTA, two audiences. Same lead funnel (source: "bov"), same "we
   // connect you with a licensed local broker, we are not one" rule. A house
   // buyer bouncing off "Broker Opinion of Value" is why Residential gets
@@ -15777,7 +15790,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       company: document.getElementById("leadCompany").value.trim(),
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
-      source: leadContext,
+      // "1031" is a bov-class source: same funnel, same broker alert — the
+      // tag tells the owner and the broker inbox this seller is on the
+      // 45/180-day clock. Export unlocks are never tagged.
+      source: leadContext === "bov" && ref1031Active() ? "1031" : leadContext,
       size_sqft: leadContext === "bov" && currentMeta && currentMeta.subject && currentMeta.subject.sizeMin
         ? (currentMeta.subject.sizeMax ? (currentMeta.subject.sizeMin + currentMeta.subject.sizeMax) / 2 : currentMeta.subject.sizeMin)
         : undefined,

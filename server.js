@@ -3193,6 +3193,16 @@ async function orgMembershipsFor(email) {
 // needs both, and a second read for the setting would be a second thing to
 // keep in step with membership.
 //
+// AND `seats`, which is not optional: every caller of seatCapOf() is fed by
+// this function, and seatCapOf() falls back to MAX_MEMBERS when the column is
+// absent. Omitting it here does not read as zero seats, it reads as 200 — so
+// the invite gate, the billing display and the entitlement read all silently
+// stop enforcing what a firm bought, and `orgs.seats` becomes a column the
+// webhook writes and nothing reads. Shipped that way on 2026-08-16 and found
+// on 2026-08-19 by a firm whose seats were 2 accepting a third member without
+// a word. MAX_MEMBERS and 030's column default are both 200, which is what
+// hid it. If a column is added to this select, add it to findOrg() too.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3204,7 +3214,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);
@@ -7200,6 +7210,18 @@ function sendNotFound(req, res, message) {
   }));
 }
 
+// Coarse on purpose: this only keeps the obvious non-humans (search
+// crawlers, link previewers, monitoring curls, the test suite's bare
+// fetches) out of a human-traffic count — it is not bot defense, and a
+// count it feeds should be read as "roughly people". An empty UA counts as
+// a bot: every real browser sends one, and undici/curl by default do not
+// send a browser-shaped one.
+function isCrawlerUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return /bot|crawl|spider|slurp|preview|headless|curl|wget|python|monitor|undici|node/i.test(s);
+}
+
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
   const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
   res.writeHead(200, {
@@ -7727,6 +7749,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
+  // Contextual door into the 1031 guide: someone reading a replacement
+  // market's numbers mid-exchange is exactly who that page serves, and the
+  // footer link alone is invisible at the moment it matters. One line, after
+  // the CTA so it never competes with the conversion ask above it.
+  const guide1031 =
+    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
+    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
+    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
     cityHero.intro +
     bovLead +
@@ -7741,6 +7771,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -9212,6 +9243,27 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
+    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
+    // skipped at the route, so this is roughly people) against the BOV leads
+    // the guide produced (source "1031" — the localStorage marker the
+    // widget stamps). The split by `source` says which audience is reading:
+    // "visitor" is the SEO traffic the page exists for, "member" is people
+    // already here. Conversion is left for the card to phrase, because the
+    // two counts age out of the 10k-row window at different rates and a
+    // hard percentage would look more solid than it is.
+    guide1031: (() => {
+      const views = rows.filter((r) => r.kind === "guide_1031");
+      const day30 = Date.now() - 30 * 86400000;
+      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
+      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
+      return {
+        views: views.length,
+        views30d: in30(views),
+        members: views.filter((r) => (r.source || "") === "member").length,
+        leads: leads1031.length,
+        leads30d: in30(leads1031),
+      };
+    })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
     // from outside this process, which buys a schedule somebody chose and
     // costs the thing every external scheduler eventually does: it stops, and
@@ -9649,6 +9701,22 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
+  // before this shipped. No computed conversion percentage on purpose: the
+  // counts are small and age out of the event window at different rates, so
+  // the honest read is both numbers side by side.
+  var g31=d.guide1031;
+  var guideCard=(g31===undefined)?"":
+    "<div class=card><h2>1031 guide funnel</h2>"+
+    (!g31.views&&!g31.leads
+      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
+        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
+      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
+        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
+        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
+        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
+        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
+    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -9739,6 +9807,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
+    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -12820,10 +12889,17 @@ const server = http.createServer((req, res) =>
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
           ...(sizeClean ? { size_sqft: sizeClean } : {}),
-          // "bov" = the owner-mode Broker Opinion of Value request; anything
-          // else is the export-unlock form.
-          source: ["export", "bov"].includes(source) ? source : "export",
+          // "bov" = the owner-mode Broker Opinion of Value request; "1031" =
+          // the same request from a browser that recently read the
+          // /1031-exchange guide (index.html tags it — a bov-class lead on
+          // the 45/180-day clock, the highest-intent source the site has);
+          // anything else is the export-unlock form.
+          source: ["export", "bov", "1031"].includes(source) ? source : "export",
         };
+        // Everything BOV-shaped (broker matching, alerts, the follow-up
+        // email) treats "1031" as a bov: the tag is attribution and urgency,
+        // never a different funnel.
+        const bovClass = lead.source === "bov" || lead.source === "1031";
         // Share link for the lead's report. Validated hard against our own
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
@@ -12846,7 +12922,7 @@ const server = http.createServer((req, res) =>
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
-        if (lead.source === "bov") {
+        if (bovClass) {
           const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
@@ -12854,7 +12930,7 @@ const server = http.createServer((req, res) =>
           }
         }
         notifyByEmail(
-          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          `${lead.source === "1031" ? "New BOV request (1031 exchange)" : bovClass ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
             ["Name", lead.name],
             ["Email", lead.email],
@@ -12862,7 +12938,9 @@ const server = http.createServer((req, res) =>
             ["Company", lead.company],
             ["Property", lead.address],
             ["Property type", lead.type],
-            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Came from", lead.source === "1031"
+              ? "Broker Opinion of Value request (read the 1031 guide — likely on the 45/180-day clock)"
+              : bovClass ? "Broker Opinion of Value request" : "Export unlock form"],
             ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
@@ -12876,7 +12954,7 @@ const server = http.createServer((req, res) =>
         // Gated on dest === "db": the inbox is DB-only, so a lead that fell
         // back to the local file is invisible there, and mailing brokers
         // about a lead they can never see would be worse than saying nothing.
-        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+        if (bovClass && DB_CONFIGURED && dest === "db") {
           (async () => {
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
@@ -12900,7 +12978,10 @@ const server = http.createServer((req, res) =>
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
-              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null,
+              // The one extra fact a broker acts on immediately: this seller
+              // is inside a 1031 window and must transact.
+              lead.source === "1031" ? "1031 exchange" : null]
               .filter(Boolean).join(" · ");
             const now = Date.now();
             for (const u of users || []) {
@@ -12929,7 +13010,7 @@ const server = http.createServer((req, res) =>
         }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
-        if (lead.source === "bov") {
+        if (bovClass) {
           sendOutboundEmail(
             lead.email,
             "Your CompNinja report + what happens next",
@@ -14021,9 +14102,11 @@ const server = http.createServer((req, res) =>
         if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const [leads, intros] = await Promise.all([
+          // in.(bov,1031): a 1031-tagged lead is a BOV request with a clock
+          // on it — it must be at least as visible as an ordinary one.
           sbRequest("GET",
-            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+            `leads?source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft,source&order=ts.desc&limit=200`),
           sbRequest("GET",
             `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
             `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
@@ -14275,8 +14358,8 @@ const server = http.createServer((req, res) =>
         // leads outside the product's own contract.
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft,source&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
@@ -14339,6 +14422,7 @@ const server = http.createServer((req, res) =>
           ["Property", lead.address],
           ["Property type", lead.type],
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
@@ -18639,6 +18723,19 @@ const server = http.createServer((req, res) =>
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
+    // funnel's exit, and until this event nothing counted anyone ENTERING —
+    // "does the guide produce leads" had a numerator with no denominator.
+    // PII-free like every event. Crawler UAs are skipped because this page
+    // is public and sitemapped, so bots would otherwise be most of the
+    // count (vault_visit never needed this — that page is auth-shaped).
+    // `source` = which audience is reading, on cookie PRESENCE (the wall's
+    // cheap rule; getSessionUser is a DB read and this renders per request).
+    if (!isCrawlerUA(req.headers["user-agent"])) {
+      logEvent("guide_1031", {
+        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
+      });
+    }
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,

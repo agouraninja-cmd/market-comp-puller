@@ -69,9 +69,10 @@ test("anonymizeLead emits exactly the allowlist, nothing else, and leaks no PII 
     company: "Owner LLC", address: "123 Main St, Boise, ID", source: "bov",
   }, new Set());
   assert.deepEqual(Object.keys(out).sort(),
-    ["id", "intro_requested", "market", "size_sqft", "ts", "type"]);
+    ["id", "intro_requested", "is_1031", "market", "size_sqft", "ts", "type"]);
   assert.equal(out.size_sqft, 42000);
   assert.equal(out.intro_requested, false);
+  assert.equal(out.is_1031, false);
   const leaked = ["Pat Owner", "pat@example.com", "208-555-0100", "Owner LLC", "123 Main St"];
   for (const v of Object.values(out)) {
     for (const bad of leaked) assert.ok(!String(v).includes(bad), `${bad} leaked into ${v}`);
@@ -101,8 +102,17 @@ test("anonymizeLead blanks a market that is not City, ST shape", () => {
 test("anonymizeLead tolerates a null lead and null introSet without throwing", () => {
   const out = L.anonymizeLead(null, null);
   assert.deepEqual(Object.keys(out).sort(),
-    ["id", "intro_requested", "market", "size_sqft", "ts", "type"]);
+    ["id", "intro_requested", "is_1031", "market", "size_sqft", "ts", "type"]);
   assert.equal(out.intro_requested, false);
+});
+
+test("anonymizeLead derives is_1031 as a boolean, never the raw source tag", () => {
+  const base = { id: 1, market: "Boise, ID", type: "Industrial", ts: "" };
+  assert.equal(L.anonymizeLead({ ...base, source: "1031" }, new Set()).is_1031, true);
+  assert.equal(L.anonymizeLead({ ...base, source: "bov" }, new Set()).is_1031, false);
+  assert.equal(L.anonymizeLead({ ...base }, new Set()).is_1031, false);
+  // The allowlist carries facts, not the tag: `source` itself must not appear.
+  assert.ok(!("source" in L.anonymizeLead({ ...base, source: "1031" }, new Set())));
 });
 
 // --- seeding -----------------------------------------------------------------

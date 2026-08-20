@@ -41,6 +41,18 @@ test("the education-not-advice box and funnel copy are present", () => {
   }
 });
 
+test("the choosing-a-QI section educates and disclaims in the same breath", () => {
+  const body = G.renderGuide1031Body();
+  for (const must of [
+    "Choosing a qualified intermediary",
+    "not a qualified intermediary and does not hold funds",
+    "segregated qualified escrow",
+    "fidelity bond",
+  ]) {
+    assert.ok(body.includes(must), "QI section must contain: " + must);
+  }
+});
+
 test("no copy claims broker, QI, or advisor status", () => {
   const body = G.renderGuide1031Body().toLowerCase();
   for (const never of [
@@ -49,6 +61,11 @@ test("no copy claims broker, QI, or advisor status", () => {
     "we are a qualified intermediary", "compninja is a qualified intermediary",
     "we provide tax advice", "we provide legal advice",
     "appraisal of your",
+    // The QI section is a vetting checklist, never a referral service: the
+    // page may say what to verify about an intermediary, and must never offer
+    // one, hold money, or take a cut for the introduction.
+    "our qualified intermediary", "we can act as your qualified intermediary",
+    "we hold your funds", "we will hold your funds", "referral fee",
   ]) {
     assert.ok(!body.includes(never), "page must never contain: " + never);
   }

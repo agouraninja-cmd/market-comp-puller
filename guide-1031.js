@@ -90,6 +90,18 @@ const GUIDE_1031_FAQ = [
     q: "Where does the exchange get reported?",
     a: "On IRS Form 8824, filed with the federal return for the year of the sale. Your tax preparer handles the mechanics; what they need from you is the timeline, the QI paperwork, and the closing statements from both legs.",
   },
+  {
+    q: "How do I choose a qualified intermediary?",
+    a: "Verify five things before your sale closes: your funds will sit in a segregated qualified escrow or trust account in your name, never commingled; a fidelity bond and errors-and-omissions insurance are in force, with certificates you can see; the QI is registered in states that regulate exchange facilitators, if yours does; they are independent of you (not your own agent, attorney, or accountant from the last two years); and the fees are in writing, including who keeps the interest earned on your money while they hold it. Your closing attorney, title officer, and CPA all see intermediaries' work firsthand and can point you to established ones.",
+  },
+  {
+    q: "How much does a qualified intermediary cost?",
+    a: "A straightforward delayed exchange typically runs from several hundred dollars to around $1,500 in stated fees, and many intermediaries also keep some or all of the interest earned on your escrowed funds while they hold them — ask about both numbers and get them in writing. Reverse and improvement exchanges are specialist work and cost several times more.",
+  },
+  {
+    q: "Can my own attorney or CPA act as my qualified intermediary?",
+    a: "Generally not: the rules disqualify anyone who has been your employee, attorney, accountant, investment banker, or real estate agent within the two years before your sale. The intermediary has to be independent — your attorney and CPA still advise you alongside them, which is exactly the arrangement you want.",
+  },
 ];
 
 function escGuide(s) {
@@ -219,6 +231,38 @@ function renderGuide1031Body() {
     `<li><strong>Boot.</strong> Leftover cash, or debt you do not replace, is taxable even when the exchange otherwise succeeds.</li>` +
     `<li><strong>Specialist variations.</strong> Reverse exchanges (buy first) and improvement exchanges exist, but they need specialist QIs and more structure — get advice early.</li>` +
     `</ul></div>` +
+
+    // The referral stance, made useful: CompNinja is not a QI and holds no
+    // funds (the disc below says so; the tests pin it), so what this page CAN
+    // give an owner is the vetting list — the industry is lightly regulated
+    // and the QI failures that made case law lost clients their money AND
+    // their deferral. Education throughout: what to verify, never who to hire.
+    `<div class="card" id="choosing-qi"><h2>Choosing a qualified intermediary</h2>` +
+    `<p>The QI is the one professional every delayed exchange must have, and the ` +
+    `industry is lightly regulated — your sale proceeds sit with whoever you pick. ` +
+    `CompNinja is not a qualified intermediary and does not hold funds. Before your ` +
+    `sale closes, verify these about anyone who will:</p><ul>` +
+    `<li><strong>How your money is held.</strong> A segregated qualified escrow or ` +
+    `qualified trust account in your name — never commingled with the QI's operating ` +
+    `funds — ideally requiring your signature to move money.</li>` +
+    `<li><strong>Insurance and bonding.</strong> A fidelity bond and ` +
+    `errors-and-omissions coverage in force, with certificates you can see. Several ` +
+    `states (California, Washington, Nevada, Idaho, Colorado, Oregon, Maine, ` +
+    `Virginia) regulate exchange facilitators — if yours does, confirm the ` +
+    `registration too.</li>` +
+    `<li><strong>Independence.</strong> Someone who has been your agent, attorney, ` +
+    `accountant, or employee within the last two years generally cannot serve as ` +
+    `your QI — a disqualification in the rules themselves, not a preference.</li>` +
+    `<li><strong>Track record.</strong> Years in business, exchange volume, ` +
+    `references, and membership in the Federation of Exchange Accommodators (the ` +
+    `industry body behind the Certified Exchange Specialist designation).</li>` +
+    `<li><strong>Fees in writing.</strong> Including who keeps the interest earned ` +
+    `on your escrowed funds while they hold them — often the larger number.</li>` +
+    `</ul>` +
+    `<p>Where to find one: your closing attorney, title or escrow officer, and CPA ` +
+    `all see intermediaries' work firsthand. And when CompNinja connects you with a ` +
+    `local broker for an opinion of value, ask them which intermediaries their ` +
+    `clients use in your market — brokers watch these deals close.</p></div>` +
 
     `<h2 id="faq" style="margin-top:32px">Questions owners actually ask</h2>` + faq +
 

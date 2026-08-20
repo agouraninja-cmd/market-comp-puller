@@ -62,7 +62,10 @@ invited person accepts it) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
 picture rather than someone else's skyline) and **`market-hero-quality.js`**
 (whether a stored hero JPEG is the right size and dense enough to not be an
-upscale) and **`test/routes.test.js`**, which boots a real
+upscale) and **`sender-email.js`** (what a valid outbound From address is, and
+which one wins when the owner has set one on `/admin` — an override that does
+not parse falls back to `EMAIL_FROM` rather than stopping mail) and
+**`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -247,13 +250,47 @@ dependency. `.env` is git-ignored — never commit it.
   does), but it decides where mail is posted, so treat it as trusted config.
 - `LEAD_NOTIFY_EMAIL` — where those notifications go; defaults to
   agouraninja@gmail.com.
-- `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The single
-  gate for OUTBOUND mail (to leads and brokers, not the owner): a BOV lead gets
-  a follow-up with their report share link, and a broker gets a confirmation
-  after submitting a comp. Leave UNSET until a custom domain is verified in
-  Resend — the free tier only delivers to the owner, so without it these sends
-  log `Outbound email skipped` and silently no-op. Replies go to
-  `LEAD_NOTIFY_EMAIL` (Resend `reply_to`).
+- `EMAIL_FROM` — optional, e.g. `CompNinja <reports@yourdomain.com>`. The
+  **fallback** From address for OUTBOUND mail (to leads and brokers, not the
+  owner): a BOV lead gets a follow-up with their report share link, and a
+  broker gets a confirmation after submitting a comp. Leave UNSET until a
+  custom domain is verified in Resend — the free tier only delivers to the
+  owner, so without it these sends log `Outbound email skipped` and silently
+  no-op. Replies go to `LEAD_NOTIFY_EMAIL` (Resend `reply_to`).
+  **Since 2026-08-20 it is no longer the only answer** (migration 034): the
+  owner can set the From address on `/admin`, and `senderFrom()` — not this
+  constant — is what every send and `OUTBOUND_EMAIL_LIVE()` read. The rules
+  live in the pure, tested **`sender-email.js`**; server.js owns the read and a
+  60s stale-while-revalidate memo (`SENDER_OVERRIDE`), because
+  `sendOutboundEmail` is fire-and-forget inside handlers that have already
+  answered and cannot await a database read. Six things to know:
+  - **An override that does not parse falls back to this variable**, never to
+    no mail at all. Password resets ride this path, so the failure worth
+    choosing is the old address, not silence. `/admin` says out loud when a
+    stored value is being ignored — otherwise it is indistinguishable from
+    never having set one.
+  - **The write refuses without a database (503) and names `EMAIL_FROM`.** The
+    vault's stance for the vault's reason: Render wipes its disk on deploy, so
+    an override in a file would silently revert days later and mail would go
+    out from the old address with nothing saying so. The READ still degrades
+    to this variable, which is a real working answer — that asymmetry is the
+    point.
+  - **A From address is not mail.** `OUTBOUND_EMAIL_LIVE()` is
+    `RESEND_API_KEY && senderFrom()`; no caller may re-derive it from
+    `EMAIL_FROM` (a test fails the build if `EMAIL_FROM && RESEND_API_KEY`
+    reappears anywhere in server.js).
+  - **`POST /api/admin/sender/test` is not a nicety.** Every other send here
+    is fire-and-forget, so an unverified sending domain fails into a Render
+    log nobody tails — which is exactly what makes changing this frightening.
+    The test send awaits Resend (`postEmail`, the one awaited send path) and
+    hands the provider's own refusal back verbatim; it answers 200 either way,
+    because that verdict is the ANSWER to the request, not a failure of it.
+  - **Setting it can switch outbound mail ON** for a deployment whose
+    environment variable was never set. That is deliberate, and it is why the
+    startup banner waits for the first read before naming the live address.
+  - **Migration 034 is safe to run in either order**, unlike 024/026/028: the
+    read is wrapped and falls back, so deploying first costs the admin card
+    and nothing else.
 - `DAILY_SEARCH_CAP` — optional (default 150). Hard ceiling on *billed*
   Anthropic searches per UTC day; cache hits don't count. On the (cap+1)th
   search the server returns 429 to visitors and emails the owner once (via the
@@ -1449,6 +1486,36 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   folder: `logEvent`'s INSERT names the two columns, PostgREST 400s an insert
   on an unknown column, so every analytics write would divert to the
   ephemeral `analytics.jsonl` and the dashboard would quietly flatten.
+- `GET|PUT|DELETE /api/admin/sender` + `POST /api/admin/sender/test` — the
+  **Outbound email** card on `/admin` (2026-08-20; migration 034). Changes the
+  From address on every outbound email without an environment edit and a
+  redeploy. Gated like every other dashboard route (`isAdminRequest`: the
+  `x-admin-key` header or the `cn_admin` cookie), 404 rather than 401 when
+  `ADMIN_KEY` is unset. `GET` reads through the memo rather than serving it,
+  because the page is opened precisely to check what the address is. `PUT`
+  validates through `sender-email.js` and applies to the serving instance
+  immediately (others within the 60s TTL); `DELETE` clears it back to
+  `EMAIL_FROM`. See the `EMAIL_FROM` bullet under Configuration for the six
+  rules — especially that an invalid stored value falls back rather than
+  stopping mail, and that the test send exists because every other send here
+  fails silently. Like the digest card, **opening `/admin` must not send
+  email**: the GET writes nothing and mails nobody, and the test send lives
+  behind a button.
+- **The messaging hub** — `/hub/<id>` and `/api/hub*`, spec
+  `docs/superpowers/specs/2026-08-13-messaging-hub-design.md`, gate
+  `hub-access.js`, schema migration 024. NOT the connection hub at `/brokers`
+  (see that spec's naming warning). One rule belongs here because it is easy
+  to collapse: **Close and Delete are two different acts.** `POST
+  /api/hub/close` flips the status and everyone keeps access to what they were
+  already shown — the honest end to a conversation a client relied on, and the
+  same instinct as 024's `on delete set null` for a deleted owner. `DELETE
+  /api/hub?id=` (2026-08-20, the broker's hubs list on `/vault`) is "this
+  should not exist": the hub, its comps and its messages go by FK cascade and
+  the invite links stop working, so the confirm says all three things and
+  names Close as the gentler option. Owner-scoped **in the query itself**, so
+  a hub that is not yours answers exactly as one that does not exist. There is
+  no undo and there cannot be: only `sha256(token)` is stored, so the links a
+  client already holds could never be reissued.
 - `GET /api/accuracy` — the valuation-accuracy backtest card on `/admin`
   (added 2026-08-06; spec in
   `docs/superpowers/specs/2026-08-06-valuation-backtest-design.md`). Gated

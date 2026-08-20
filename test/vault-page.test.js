@@ -2696,3 +2696,49 @@ test("the spreadsheet shows the same count as the compact table", async () => {
   assert.match(doc.getElementById("tbody").innerHTML, /class="cites"[^>]*>2</,
     "one builder feeds both tables, so the two can never disagree");
 });
+
+// ---------------------------------------------------------------------------
+// Deleting a hub (2026-08-20)
+// ---------------------------------------------------------------------------
+//
+// The hubs deck is fetched rather than booted, so there is no boot payload to
+// drive it from here. These assert on what the page EMITS, which is the same
+// thing the parse test above protects and is enough to catch the ways this
+// control goes wrong: pointing at the wrong verb, losing the confirm, or
+// binding a listener per render.
+
+test("each hub row offers Delete beside Open", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.match(script, /class="btn ghost hubdel" data-id=/,
+    "the row builder must emit a delete control carrying its own hub id");
+});
+
+test("Delete calls DELETE /api/hub and nothing else", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.match(script, /fetch\("\/api\/hub\?id="\+encodeURIComponent\(id\),\{method:"DELETE"/);
+  // The close route is a different act and is not this button. If this ever
+  // fails because someone pointed Delete at close, the two ways a hub can end
+  // have quietly become one.
+  assert.ok(!/hubdel[\s\S]{0,600}api\/hub\/close/.test(script));
+});
+
+test("the confirm says what is lost and names Close as the gentler option", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const confirmCall = script.match(/if\(!confirm\('Delete[\s\S]*?\)\)return;/)[0];
+  assert.match(confirmCall, /every message in it/, "it takes the conversation with it");
+  assert.match(confirmCall, /links you sent stop working/, "the client's link dies too");
+  assert.match(confirmCall, /cannot be undone/);
+  assert.match(confirmCall, /Close this hub/,
+    "the unrecoverable option must point at the recoverable one");
+});
+
+test("the delete listener is delegated and bound once, not per render", () => {
+  // renderHubs replaces every row on each load. A listener attached inside it
+  // would stack up copies, and the broker would get one confirm per load they
+  // had done — the same trap the comps table's cell editing had to avoid.
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  assert.equal((script.match(/\$\("hubRows"\)\.addEventListener\(/g) || []).length, 1);
+  const renderHubs = script.match(/function renderHubs\(\)\{[\s\S]*?\n  \}/)[0];
+  assert.ok(!/addEventListener/.test(renderHubs),
+    "renderHubs must not bind listeners — it runs on every load");
+});

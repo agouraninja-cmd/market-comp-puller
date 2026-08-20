@@ -81,6 +81,7 @@ test("hub routes on a bare server (no database)", async (t) => {
       ["POST", "/api/hub/message", { id: "abc123def", body: "hi" }],
       ["PUT", "/api/hub/participants", { id: "abc123def", emails: [] }],
       ["POST", "/api/hub/close", { id: "abc123def" }],
+      ["DELETE", "/api/hub?id=abc123def", null],
     ];
     for (const [method, path, body] of calls) {
       const r = await fetch(srv.base + path, {
@@ -110,4 +111,47 @@ test("hub routes on a bare server (no database)", async (t) => {
     const html = await r.text();
     assert.doesNotMatch(html, /Comps in this hub/);
   });
+});
+
+// --- Deleting a hub (2026-08-20) -------------------------------------------
+
+test("DELETE /api/hub is owner-scoped in the query, not merely checked", () => {
+  // The failure this prevents is the one every route in this file is shaped
+  // against: an id is a short public string that a client already holds, so
+  // "look the hub up, then compare owners" is one forgotten branch away from
+  // letting anybody delete anybody's hub. Scoping the DELETE itself means the
+  // wrong caller matches zero rows and gets the same 404 a nonexistent id
+  // gets — no confirmation that another broker's hub exists.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  const route = src.match(/if \(req\.method === "DELETE" && hubPath === "\/api\/hub"\)[\s\S]*?\n    \}/)[0];
+  assert.match(route, /hubs\?id=eq\.\$\{encodeURIComponent\(id\)\}&owner_user_id=eq\.\$\{encodeURIComponent\(user\.id\)\}/,
+    "the owner must be in the DELETE's own filter");
+  assert.match(route, /requireUser\(req, res\)/, "and it must require a session at all");
+  assert.match(route, /404/, "a hub that is not yours must answer as one that does not exist");
+
+  // The children go by FK cascade (migration 024), never by three deletes
+  // here: one statement cannot half-succeed and leave messages addressed to a
+  // hub that no longer exists.
+  assert.ok(!/hub_participants\?hub_id=eq/.test(route) && !/hub_messages\?hub_id=eq/.test(route),
+    "children cascade; deleting them by hand reintroduces a half-deleted state");
+});
+
+test("Close and Delete stay two different acts", () => {
+  // Closing is "we are done talking" — everyone keeps what they were shown.
+  // Deleting is "this should not exist". Collapsing them (a Close that
+  // eventually deletes, or a Delete offered as the only ending) is how a
+  // client loses a record they were relying on, which migration 024's
+  // SET NULL on owner_user_id already refuses to do for account deletion.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /hubPath === "\/api\/hub\/close"/, "close must still exist");
+  assert.match(src, /req\.method === "DELETE" && hubPath === "\/api\/hub"/);
+
+  const close = src.match(/if \(req\.method === "POST" && hubPath === "\/api\/hub\/close"\)[\s\S]*?\n    \}/)[0];
+  assert.match(close, /status: "closed"/, "close must remain a status change");
+  assert.ok(!/sbRequest\("DELETE"/.test(close), "close must never delete anything");
 });

@@ -178,7 +178,15 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
         if (req.method === "DELETE") {
           const doomed = new Set(applyFilters(tables[table], params));
           tables[table] = tables[table].filter((r) => !doomed.has(r));
-          return json(200, []);
+          // `return=representation` answers with the rows that were actually
+          // deleted, and callers use the EMPTY case as a verdict exactly as
+          // they do for PATCH: deleting a hub scopes on the caller's own
+          // user_id, so "no rows" is how the route knows the hub was not
+          // theirs (or never existed) and answers 404. Answering [] here
+          // unconditionally made a successful delete report as not-found
+          // while the row was already gone.
+          const prefer = String(req.headers.prefer || "");
+          return json(200, prefer.includes("return=representation") ? [...doomed] : []);
         }
         return json(405, { message: "method not allowed" });
       } catch (err) {

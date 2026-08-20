@@ -3598,10 +3598,47 @@ if(dd)dd.open=false;});</script>
         '<td class="num">'+seen+" of "+people+"</td>"+
         "<td>"+esc(dateShort(h.createdAt))+"</td>"+
         "<td>"+esc(dateShort(h.updatedAt))+"</td>"+
-        '<td><a class="btn ghost" href="/hub/'+encodeURIComponent(h.id)+'">Open</a></td>'+
+        '<td><a class="btn ghost" href="/hub/'+encodeURIComponent(h.id)+'">Open</a> '+
+          '<button class="btn ghost hubdel" data-id="'+esc(h.id)+'">Delete</button></td>'+
       "</tr>";
     }).join("");
   }
+
+  // Delete, which is NOT a harder Close. Close lives on the hub page and means
+  // "we are done talking" — everyone keeps what they were shown. This means
+  // "this should not exist": a test hub, a client who never engaged, a
+  // mistake. It takes the comps and the messages with it and the links stop
+  // working, so the confirm says all three things and names Close as the
+  // gentler option, because the wrong one of these two is unrecoverable.
+  //
+  // Delegated, and bound ONCE at module scope: renderHubs replaces every row
+  // on each load, so a listener attached per render would stack up copies and
+  // fire the confirm once per load the broker had done.
+  $("hubRows").addEventListener("click",function(e){
+    var btn=e.target.closest?e.target.closest(".hubdel"):null;
+    if(!btn)return;
+    var id=btn.getAttribute("data-id");
+    var hub=hubs.filter(function(h){return h.id===id})[0]||{};
+    var name=hub.title||hub.subjectAddress||"this hub";
+    if(!confirm('Delete "'+name+'"? The hub, its comps and every message in it go for everyone, '+
+      // The line break below is DOUBLE-escaped: this page is one template
+      // literal, so a single-backslash escape emits a REAL newline into this
+      // quoted string and /vault renders blank rather than erroring. It bit
+      // twice while this was written, the second time inside the comment
+      // explaining it, which ended the comment early.
+      'and the invite links you sent stop working. This cannot be undone.\\n\\n'+
+      'To end the conversation but leave it readable, open the hub and use "Close this hub" instead.'))return;
+    btn.disabled=true;
+    fetch("/api/hub?id="+encodeURIComponent(id),{method:"DELETE",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){btn.disabled=false;return hubMsg((o.j&&o.j.error)||"That hub could not be deleted.",true);}
+        hubMsg("Hub deleted.");
+        loadHubs();
+      })
+      .catch(function(){btn.disabled=false;
+        hubMsg("That didn't reach the server. Nothing was deleted.",true);});
+  });
 
   // UTC, not local. Every other date on this page is a UTC calendar day (the
   // pipeline slices its timestamps to ten characters), and these arrive as

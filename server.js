@@ -91,6 +91,11 @@ const EMAILSHELL = require("./email-shell");
 // tested, because every judgment in it is about what a person is worth
 // interrupting for — see its header.
 const DIGEST = require("./watchlist-digest");
+// What a valid outbound From address is, and which one wins when the owner has
+// set one on /admin. Pure and tested; the read and the cache are below, in the
+// email section. An invalid override falls back to EMAIL_FROM rather than to
+// no mail at all — see its header.
+const SENDER = require("./sender-email");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -4079,25 +4084,108 @@ const STATE_NAMES = {
 // posted, so it belongs in the same trusted place as the key itself.
 const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
 
-function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
-  if (!RESEND_API_KEY) return;
-  fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: from || "CompNinja <onboarding@resend.dev>",
-      to: [to],
-      subject,
-      text,
-      ...(html ? { html } : {}),
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
-    signal: AbortSignal.timeout(8000),
-  })
-    .then(async (r) => {
-      if (!r.ok) console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
+// --- The From address (migration 034) ---------------------------------------
+//
+// EMAIL_FROM is still the answer on a deployment that never sets an override,
+// and is still the only answer with no database. The override exists because
+// EMAIL_FROM is read once at startup, so changing the address every customer
+// sees meant an environment edit and a redeploy — and it is the one setting
+// most likely to need changing on the day a domain is finally verified.
+//
+// Rules (which one wins, what a valid value is) live in the pure, tested
+// sender-email.js. This owns only the read and the cache.
+//
+// CACHED, AND READ SYNCHRONOUSLY. sendOutboundEmail is fire-and-forget and is
+// called from inside handlers that have already answered; it cannot await a
+// database read. So the value is memoized with a stale-while-revalidate
+// refresh, exactly like BROKER_DIRECTORY and MARKET_CREDIT. Two consequences,
+// both accepted deliberately: a change takes up to a minute to reach a
+// second instance, and a failed read keeps serving the last known value
+// rather than reverting the address underneath a live send.
+const SENDER_TTL_MS = 60_000;
+const SENDER_OVERRIDE = { value: "", fetchedAt: 0, refreshing: false, updatedAt: "", updatedBy: "", error: "" };
+
+async function readSenderSetting() {
+  const rows = await sbRequest("GET",
+    "app_settings?key=eq.email_from&select=value,updated_at,updated_by&limit=1");
+  return (rows && rows[0]) || null;
+}
+
+// Fire-and-forget. Never throws, never clears a known-good value on failure:
+// an unreachable settings table must cost the refresh, not the address.
+function refreshSenderOverride() {
+  if (!DB_CONFIGURED || SENDER_OVERRIDE.refreshing) return Promise.resolve();
+  SENDER_OVERRIDE.refreshing = true;
+  // Returns the chain so the startup banner can wait for it once and print
+  // what mail will ACTUALLY go out as. Every other caller ignores it.
+  return readSenderSetting()
+    .then((row) => {
+      SENDER_OVERRIDE.value = (row && row.value) || "";
+      SENDER_OVERRIDE.updatedAt = (row && row.updated_at) || "";
+      SENDER_OVERRIDE.updatedBy = (row && row.updated_by) || "";
+      SENDER_OVERRIDE.error = "";
     })
-    .catch((err) => console.error(`Email send failed (${subject}):`, err.message));
+    .catch((err) => {
+      // Expected and harmless before migration 034 is run: PostgREST 404s the
+      // unknown table and mail carries on as EMAIL_FROM. Logged once per TTL
+      // rather than silenced, because the same message covers a real outage.
+      SENDER_OVERRIDE.error = err.message;
+      console.error("Sender setting read failed (mail continues as EMAIL_FROM):", err.message);
+    })
+    .finally(() => {
+      SENDER_OVERRIDE.refreshing = false;
+      SENDER_OVERRIDE.fetchedAt = Date.now();
+    });
+}
+
+/**
+ * The From address mail actually goes out as, right now. Synchronous by
+ * design (see the cache note above); kicks off a background refresh when the
+ * memo is stale and answers from what it already holds.
+ */
+function senderFrom() {
+  if (DB_CONFIGURED && Date.now() - SENDER_OVERRIDE.fetchedAt > SENDER_TTL_MS) refreshSenderOverride();
+  return SENDER.effectiveSender(SENDER_OVERRIDE.value, EMAIL_FROM);
+}
+
+/**
+ * Post one email and report what the provider said.
+ *
+ * Awaited, and it NEVER throws — a caller gets `{ ok, status, error }`. It
+ * exists for the admin card's test send: every other path here is
+ * fire-and-forget, so an unverified sending domain fails into a Render log
+ * nobody is tailing, which is precisely the silent failure that makes
+ * changing this address frightening. The test send makes the provider's own
+ * refusal visible on the page where the change was just made.
+ */
+async function postEmail(to, subject, text, { from, replyTo, html } = {}) {
+  if (!RESEND_API_KEY) return { ok: false, status: 0, error: "RESEND_API_KEY is not set." };
+  try {
+    const r = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: from || "CompNinja <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        text,
+        ...(html ? { html } : {}),
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (r.ok) return { ok: true, status: r.status, error: "" };
+    return { ok: false, status: r.status, error: (await r.text().catch(() => "")).slice(0, 300) };
+  } catch (err) {
+    return { ok: false, status: 0, error: err.message };
+  }
+}
+
+function sendEmail(to, subject, text, opts = {}) {
+  if (!RESEND_API_KEY) return;
+  postEmail(to, subject, text, opts).then((r) => {
+    if (!r.ok) console.error(`Email send failed (${subject}):`, r.status, r.error);
+  });
 }
 
 // Internal notification to the owner. Empty fields are dropped from the body.
@@ -4115,11 +4203,15 @@ function notifyByEmail(subject, fields) {
 // so a call site edits its copy in one place and plain-text clients lose
 // nothing. Owner-facing notifyByEmail stays deliberately plain.
 function sendOutboundEmail(to, subject, text) {
-  if (!RESEND_API_KEY || !EMAIL_FROM) {
-    console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
+  // senderFrom(), not EMAIL_FROM: the owner may have set the address on
+  // /admin, in which case that is what "configured" means and mail leaves the
+  // building on a deployment whose environment variable was never set.
+  const from = senderFrom();
+  if (!RESEND_API_KEY || !from) {
+    console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "no from address"} unset): ${subject}`);
     return;
   }
-  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
+  sendEmail(to, subject, text, { from, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -4168,7 +4260,7 @@ function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
 // they have to send the link themselves. Without it the create panel has to
 // guess, and it guessed wrong in both directions: it hard-coded "CompNinja
 // does not email them yet", which becomes a lie the day a domain is verified.
-const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && senderFrom());
 
 // The hub invitation.
 //
@@ -9534,6 +9626,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
 <div id="digest" style="display:none"></div>
+<div id="sender" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -9963,6 +10056,121 @@ function renderDigestCard(state){
   document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
   document.getElementById("dgSend").addEventListener("click",function(){run(false);});
 }
+// --- Outbound email: the From address --------------------------------------
+//
+// The one setting on this page that changes what a CUSTOMER sees, so the card
+// is written to be honest about three things a status line usually hides:
+// which address is actually in use (an override that does not parse is
+// ignored, and that is invisible otherwise), that Resend delivers only from a
+// domain verified in its own dashboard, and that nothing here PROVES delivery
+// until a test send comes back clean.
+//
+// Unlike the digest above, opening the page reads this — a GET changes
+// nothing. The digest's rule is that opening /admin must not send email, and
+// the same rule is why the test send here sits behind a button.
+function senderBtn(id,label,cls){
+  return "<button id='"+id+"' class='btn"+(cls?" "+cls:"")+"'>"+label+"</button> ";
+}
+function renderSenderCard(state,msg,msgBad){
+  var el=document.getElementById("sender");
+  var s=state||{};
+  var body;
+  if(s.unavailable){
+    body="<p class=muted>"+esc(s.unavailable)+"</p>";
+  }else{
+    var srcLabel={override:"set here",env:"from EMAIL_FROM",invalid:"IGNORED — not a valid address",none:"not set"}[s.source]||"";
+    var line="<p>Sending as <b>"+esc(s.effective||"nothing")+"</b>"+
+      (srcLabel?" <span class=muted>("+esc(srcLabel)+")</span>":"")+"</p>";
+    // The distinction that matters most on this card: an address is not mail.
+    if(!s.hasApiKey){
+      line+="<p class=muted>RESEND_API_KEY is not set, so nothing sends whatever this says.</p>";
+    }else if(!s.live){
+      line+="<p class=muted>Outbound email is OFF — password resets, share and hub invites log instead of sending.</p>";
+    }
+    if(s.source==="invalid"){
+      line+="<p class=muted>A saved address here could not be parsed, so mail is falling back to EMAIL_FROM. Save a valid one or clear it.</p>";
+    }
+    if(s.updatedAt){
+      line+="<p class=muted>Last changed "+esc(new Date(s.updatedAt).toLocaleDateString())+
+        (s.updatedBy?" by "+esc(s.updatedBy):"")+".</p>";
+    }
+    if(!s.db){
+      line+="<p class=muted>No database configured, so this can only be changed with the EMAIL_FROM environment variable.</p>";
+    }
+    // The field's value is assigned through the DOM below, never written into
+    // the markup. This whole page is one template literal, so an escaped
+    // quote in an attribute is a single backslash here and a BROKEN one in
+    // what the browser receives — value=\"…\" emitted as value=""…"" and took
+    // the entire /admin script down with it. Assigning it afterwards needs no
+    // escaping to be right, and cannot be got wrong by an address containing
+    // a quote either.
+    var controls=s.db
+      ? "<p style='margin-top:12px'><input id='sndIn' style='min-width:320px;padding:6px 8px;border:1px solid #E4E2DA;border-radius:6px' "+
+        "placeholder='CompNinja &lt;reports@compninja.co&gt;'/></p>"+
+        "<p>"+senderBtn("sndSave","Save")+senderBtn("sndTest","Send test to "+esc(s.testTo||""),"mute")+
+        (s.override?senderBtn("sndClear","Use EMAIL_FROM instead","mute"):"")+"</p>"
+      : "<p style='margin-top:12px'>"+senderBtn("sndTest","Send test to "+esc(s.testTo||""),"mute")+"</p>";
+    body=line+controls+
+      "<p class=muted style='margin-top:12px'>Resend only delivers from a domain verified in its dashboard. "+
+      "Pointing this at an unverified domain stops <b>all</b> outbound mail — password resets included — and the failure is silent. "+
+      "Send a test after changing it. Replies go to "+esc(s.replyTo||"")+".</p>";
+  }
+  el.innerHTML="<div class=card><h2>Outbound email</h2>"+
+    (msg?"<p class="+(msgBad?"err":"muted")+">"+esc(msg)+"</p>":"")+body+"</div>";
+  el.style.display="block";
+  var input=document.getElementById("sndIn");
+  if(input)input.value=s.override||"";
+  var key=function(){try{return sessionStorage.getItem(KEYK)||"";}catch(e){return "";}};
+  var call=function(method,path,payload){
+    return fetch(path,{method:method,headers:{"content-type":"application/json","x-admin-key":key()},
+      body:payload===undefined?undefined:JSON.stringify(payload)})
+      .then(function(r){return r.json().then(function(j){
+        // The refusals ARE the useful part: "run migration 034" and "that is
+        // not a valid email address" are different problems.
+        if(!r.ok)throw new Error(j.error||("Error "+r.status));
+        return j;
+      });});
+  };
+  var save=document.getElementById("sndSave");
+  if(save)save.addEventListener("click",function(){
+    var v=document.getElementById("sndIn").value.trim();
+    save.disabled=true;
+    call("PUT","/api/admin/sender",{from:v})
+      .then(function(j){renderSenderCard(j,"Saved. Send a test to prove the domain is verified.");})
+      .catch(function(e){save.disabled=false;renderSenderCard(state,e.message,true);});
+  });
+  var clear=document.getElementById("sndClear");
+  if(clear)clear.addEventListener("click",function(){
+    if(!confirm("Clear the saved from address? Mail reverts to the EMAIL_FROM environment variable, which may be unset — in which case outbound email stops."))return;
+    clear.disabled=true;
+    call("DELETE","/api/admin/sender")
+      .then(function(j){renderSenderCard(j,"Cleared. Mail now uses EMAIL_FROM.");})
+      .catch(function(e){clear.disabled=false;renderSenderCard(state,e.message,true);});
+  });
+  var testBtn=document.getElementById("sndTest");
+  if(testBtn)testBtn.addEventListener("click",function(){
+    testBtn.disabled=true;testBtn.textContent="Sending…";
+    call("POST","/api/admin/sender/test",{})
+      // The provider's own words, verbatim: "The domain is not verified" is
+      // the entire diagnosis and paraphrasing it costs the fix.
+      .then(function(j){renderSenderCard(state,
+        j.ok?("Sent to "+j.to+" as "+j.from+". If it does not arrive, check spam and the Resend dashboard.")
+            :("The provider refused it: "+(j.error||("HTTP "+j.status))),!j.ok);})
+      .catch(function(e){renderSenderCard(state,e.message,true);});
+  });
+}
+function loadSender(key){
+  fetch("/api/admin/sender",{headers:{"x-admin-key":key}})
+    .then(function(r){
+      // 404 = ADMIN_KEY unset on the server, which cannot happen on a page
+      // that just authenticated; anything else is an outage worth naming
+      // rather than an empty card.
+      if(!r.ok)throw new Error("Error "+r.status);
+      return r.json();
+    })
+    .then(function(d){renderSenderCard(d);})
+    .catch(function(e){renderSenderCard({unavailable:"The from address could not be read ("+e.message+")."});});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -9977,7 +10185,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); loadSender(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -13148,9 +13356,11 @@ const server = http.createServer((req, res) =>
         if (user) {
           const token = await createPasswordReset(user.id);
           const link = `${SITE_URL}/#reset=${token}`;
-          // Gate on BOTH vars: sendOutboundEmail silently no-ops without a
+          // Gate on BOTH: sendOutboundEmail silently no-ops without a
           // RESEND_API_KEY, which would swallow the reset link entirely.
-          if (EMAIL_FROM && RESEND_API_KEY) {
+          // OUTBOUND_EMAIL_LIVE asks the same question sendOutboundEmail
+          // itself asks, so a From address set on /admin counts here too.
+          if (OUTBOUND_EMAIL_LIVE()) {
             sendOutboundEmail(user.email, "Reset your CompNinja password",
               `Someone (hopefully you) asked to reset the password for this CompNinja account.\n\n` +
               `Reset it here (link works for 1 hour):\n${link}\n\n` +
@@ -13446,6 +13656,148 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- The outbound From address (migration 034) ----------------------------
+  //
+  // Changing who mail comes from used to mean editing EMAIL_FROM in Render and
+  // waiting out a redeploy. These four routes make it a field on /admin.
+  //
+  // Rules live in the pure, tested sender-email.js; the cache and the read are
+  // up in the email section. Three things worth keeping:
+  //
+  //   * ADMIN_KEY-gated, like every other dashboard route. There is no admin
+  //     USER in this codebase, so possession of the key (header or cn_admin
+  //     cookie) is the whole identity — see CLAUDE.md's "Admin access".
+  //   * The WRITE refuses without a database (503) and names EMAIL_FROM as the
+  //     way to do it instead. A file fallback is what the vault refuses for the
+  //     same reason: Render wipes its disk on deploy, so a saved override would
+  //     silently revert days later and mail would go out from the old address
+  //     with nothing on screen saying so.
+  //   * The test send is not a nicety. Every other send here is
+  //     fire-and-forget, so an unverified sending domain fails into a log
+  //     nobody tails — which is exactly what makes changing this address
+  //     frightening. POST /api/admin/sender/test awaits the provider and
+  //     hands back its own refusal.
+  if (req.url.split("?")[0] === "/api/admin/sender") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+
+    const senderState = () => ({
+      ...SENDER.describeSender({
+        stored: SENDER_OVERRIDE.value,
+        envFrom: EMAIL_FROM,
+        hasApiKey: Boolean(RESEND_API_KEY),
+      }),
+      db: DB_CONFIGURED,
+      hasApiKey: Boolean(RESEND_API_KEY),
+      updatedAt: SENDER_OVERRIDE.updatedAt || "",
+      updatedBy: SENDER_OVERRIDE.updatedBy || "",
+      // Where a test send goes. Shown so nobody has to guess whether pressing
+      // it mails a customer: it never does.
+      testTo: LEAD_NOTIFY_EMAIL,
+      replyTo: LEAD_NOTIFY_EMAIL,
+    });
+
+    if (req.method === "GET") {
+      // Read through rather than serving the memo: this page is opened
+      // precisely to check what the address is, and a stale answer here is the
+      // failure the card exists to prevent.
+      return refreshSenderOverride().then(() => sendJson(res, 200, senderState()));
+    }
+
+    if (req.method === "PUT" || req.method === "DELETE") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (!DB_CONFIGURED) {
+            return sendJson(res, 503, {
+              error: "Changing the from address needs a database (migrations/034-app-settings.sql). " +
+                "Without one, set the EMAIL_FROM environment variable instead.",
+            });
+          }
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", "app_settings?key=eq.email_from");
+            SENDER_OVERRIDE.value = "";
+            SENDER_OVERRIDE.updatedAt = "";
+            SENDER_OVERRIDE.updatedBy = "";
+            SENDER_OVERRIDE.fetchedAt = Date.now();
+            return sendJson(res, 200, { ok: true, cleared: true, ...senderState() });
+          }
+          const parsed = SENDER.normalizeSender(JSON.parse(body || "{}").from);
+          if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
+          // Whoever is signed in, when anybody is: an ADMIN_KEY holder is a
+          // machine as often as a person, so this is nullable by design.
+          const user = await getSessionUser(req).catch(() => null);
+          const now = new Date().toISOString();
+          // on_conflict names the key the upsert resolves against. PostgREST
+          // would default to the primary key, which `key` already is; naming
+          // it is what makes a second save an UPDATE rather than a rival row
+          // in any reader of this call, the test fake included.
+          await sbRequest("POST", "app_settings?on_conflict=key",
+            { key: "email_from", value: parsed.value, updated_at: now, updated_by: (user && user.email) || null },
+            { prefer: "resolution=merge-duplicates,return=minimal" });
+          // Applied to THIS instance immediately; others pick it up within the
+          // memo's TTL. Writing it here rather than waiting for a refresh is
+          // what makes the test send below test what was just saved.
+          SENDER_OVERRIDE.value = parsed.value;
+          SENDER_OVERRIDE.updatedAt = now;
+          SENDER_OVERRIDE.updatedBy = (user && user.email) || "";
+          SENDER_OVERRIDE.fetchedAt = Date.now();
+          return sendJson(res, 200, { ok: true, ...senderState() });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Sender setting write failed:", err.message);
+          return sendJson(res, 503, {
+            error: "That could not be saved. If migrations/034-app-settings.sql has not been run yet, run it first.",
+          });
+        }
+      });
+      return;
+    }
+    return sendJson(res, 405, { error: "Method not allowed." });
+  }
+
+  // The test send. Its own route rather than a flag on the PUT: sending mail
+  // is a different act from saving a setting, and folding them together would
+  // mean either a save that silently mails somebody or a test that cannot be
+  // repeated without re-saving.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/admin/sender/test") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const from = senderFrom();
+        if (!RESEND_API_KEY) return sendJson(res, 503, { error: "RESEND_API_KEY is not set, so nothing can send." });
+        if (!from) return sendJson(res, 503, { error: "There is no from address set, so nothing can send." });
+        // Defaults to the owner's own notify address. A typed address is
+        // validated the same way the From is — this route can mail an
+        // arbitrary recipient, so it takes the same care about what it is
+        // handed even though only an admin can reach it.
+        const raw = String(JSON.parse(body || "{}").to || "").trim();
+        const to = raw ? SENDER.normalizeSender(raw) : { ok: true, address: LEAD_NOTIFY_EMAIL };
+        if (!to.ok) return sendJson(res, 400, { error: to.error });
+
+        const subject = "CompNinja test email";
+        const text = `This is a test send from CompNinja's admin page.\n\n` +
+          `From: ${from}\nReplies go to: ${LEAD_NOTIFY_EMAIL}\n\n` +
+          `If this arrived, outbound email is working and the sending domain is verified in Resend.`;
+        const sent = await postEmail(to.address, subject, text,
+          { from, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
+        // 200 either way: the provider's verdict is the ANSWER to this
+        // request, not a failure of it, and the card needs the refusal text
+        // verbatim — "domain is not verified" is the whole diagnosis.
+        return sendJson(res, 200, { ok: sent.ok, status: sent.status, error: sent.error, to: to.address, from });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Sender test send failed:", err.message);
+        return sendJson(res, 500, { error: "The test send could not be attempted." });
+      }
+    });
+    return;
+  }
+
   // --- The watchlist digest -------------------------------------------------
   //
   // The one thing CompNinja sends on its own initiative. Everything else it
@@ -13486,7 +13838,7 @@ const server = http.createServer((req, res) =>
         // and it is the reason the outbound-mail check below is skipped for
         // it — inspecting the copy must not require a verified domain.
         const dryRun = opts.dryRun === true;
-        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+        if (!dryRun && !OUTBOUND_EMAIL_LIVE()) {
           return sendJson(res, 503, {
             error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
               "Refusing rather than marking everyone as mailed. Use { dryRun: true } to see the copy.",
@@ -18373,6 +18725,51 @@ const server = http.createServer((req, res) =>
 
     // --- Close a hub. One way, like revoking a share, but NOT the same act:
     // closing stops new posts and leaves every reader their access. ---------
+    // --- Delete a hub ------------------------------------------------------
+    //
+    // The other half of Close, and deliberately a DIFFERENT act rather than a
+    // harder version of it. Closing is "we are done talking": everyone keeps
+    // what they were shown, which is the honest end to a conversation somebody
+    // relied on. Deleting is "this should not exist" — a test hub, a client
+    // that never engaged, a mistake — and it takes the comps, the messages and
+    // every invite link with it.
+    //
+    // Three rules:
+    //   * Owner-scoped IN THE QUERY, so an id is never enough. Same shape as
+    //     close, and the reason a broker cannot delete a hub they were merely
+    //     invited into.
+    //   * The children go by FK cascade (migration 024), not by three deletes
+    //     here. One statement cannot half-succeed and leave orphaned messages
+    //     addressed to a hub that no longer exists.
+    //   * NO UNDO, and the confirm on /vault says so. Restoring is not
+    //     possible even in principle: only sha256(token) is stored, so the
+    //     invite links a client already holds cannot be reissued — they would
+    //     come back as new links, to a hub the recipients would have to be
+    //     told about again.
+    if (req.method === "DELETE" && hubPath === "/api/hub") {
+      (async () => {
+        try {
+          const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+          if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) return sendJson(res, 400, { error: "Invalid hub id." });
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const gone = await sbRequest("DELETE",
+            `hubs?id=eq.${encodeURIComponent(id)}&owner_user_id=eq.${encodeURIComponent(user.id)}`,
+            undefined, { prefer: "return=representation" });
+          // An id that exists but belongs to somebody else answers exactly as
+          // one that never existed: this route must not confirm the existence
+          // of another broker's hub.
+          if (!gone || !gone.length) return sendJson(res, 404, { error: "That hub was not found." });
+          logEvent("hub_deleted", { market: (gone[0] && gone[0].market) || "" });
+          return sendJson(res, 200, { ok: true, deleted: true });
+        } catch (err) {
+          console.error("Hub delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't delete that hub. Please try again in a minute." });
+        }
+      })();
+      return;
+    }
+
     if (req.method === "POST" && hubPath === "/api/hub/close") {
       (async () => {
         try {
@@ -19153,6 +19550,18 @@ server.listen(PORT, () => {
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
+  // The From address, warmed before the banner below reports it — printing it
+  // from EMAIL_FROM while an /admin override was about to load would name the
+  // wrong address in the one place somebody checks after changing it.
+  refreshSenderOverride().then(() => {
+    const from = senderFrom();
+    console.log(from
+      ? `📤 Outbound email From: ${from} (${SENDER_OVERRIDE.value ? "set on /admin" : "EMAIL_FROM"})` +
+        `${RESEND_API_KEY ? "" : " — but RESEND_API_KEY is unset, so nothing sends"}. ` +
+        "Resend delivers only from a domain verified in its dashboard."
+      : "📤 Outbound email OFF — no From address, so password resets, share and hub invites log instead of sending. " +
+        "Set EMAIL_FROM, or set one on /admin once migrations/034-app-settings.sql has been run.");
+  });
   loadDynamicMarketPages().then((n) => {
     console.log(`🧭 Market Explorer: ${n} visitor-generated page(s) loaded (${DB_CONFIGURED ? "Supabase market_pages" : path.basename(DYNAMIC_MARKETS_FILE) + " — EPHEMERAL on most hosts; run the market_pages DDL in Supabase for durable storage"}).`);
   });

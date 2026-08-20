@@ -2089,7 +2089,13 @@ test("hub invites are wired to the outbound mail gate", async () => {
 
   // And the client is told whether anything actually left, so the panel's copy
   // cannot claim "we do not email" on a deployment that does.
-  assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && EMAIL_FROM\)/);
+  //
+  // senderFrom(), not EMAIL_FROM, since 2026-08-20 (migration 034): the From
+  // address can now be set on /admin, and a deployment whose environment
+  // variable was never set but whose address was saved there really does mail
+  // invitations. The rule this pins is unchanged — one question, asked in one
+  // place, by both the sender and the panel that describes it.
+  assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && senderFrom\(\)\)/);
   assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\)/g) || []).length, 2);
 });
 

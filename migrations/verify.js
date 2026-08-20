@@ -67,6 +67,7 @@ const TABLES = [
   ["org_members",         "030-enterprise-orgs.sql"],
   ["org_comps",           "032-org-shared-comps.sql"],
   ["org_subscriptions",   "033-org-billing.sql"],
+  ["app_settings",        "034-app-settings.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

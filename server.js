@@ -7266,6 +7266,12 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // The install identity rides on every public page, not just the app:
+    // under the wall an anonymous visitor at / gets the landing render, and
+    // without this link Chrome/Edge never offer "Install CompNinja" to the
+    // people who haven't signed up yet — the exact audience a download door
+    // exists for.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
@@ -9018,6 +9024,10 @@ ${marketBar(signedIn, "/how-it-works")}
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // Same manifest link as marketShell, same reason: this is the landing
+    // page anonymous visitors get at / under the wall, so it is where the
+    // browser must learn the site is installable.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +

@@ -72,6 +72,16 @@ test("index.html links the manifest and wires the footer Install button", () => 
   assert.ok(indexSrc.includes("appinstalled"));
 });
 
+test("the landing render and marketShell both carry the manifest link", () => {
+  // Under the account wall an ANONYMOUS visitor at / gets the landing render,
+  // not index.html — if only the app page links the manifest, Chrome/Edge
+  // never offer Install to the people who haven't signed up yet, which is
+  // the exact audience a download door exists for. Two head builders serve
+  // every public page (marketShell + renderHowItWorksHTML); both must link it.
+  const linkCount = serverSrc.split('rel="manifest"').length - 1;
+  assert.ok(linkCount >= 2, `server.js renders the manifest link ${linkCount} time(s); expected marketShell AND the landing render`);
+});
+
 test("no service worker — the app must never cache /valuation.js itself", () => {
   // index.html's inline script destructures VALUATION as its first statement;
   // a service worker's cache could serve that file stale relative to the HTML

@@ -6517,6 +6517,10 @@ const NAV_LINKS = [
   ["/markets", "Markets"],
   ["/how-it-works", "How it works"],
   ["/1031-exchange", "1031 Guide"],
+  // Appended 2026-08-20 (the four above keep the owner's 2026-08-09 order):
+  // the desktop app's download page has to be findable from every surface,
+  // or "where do I download it" gets answered by a support email.
+  ["/download", "Download the app"],
 ];
 // `current` is the path of the page being rendered: its own link gets the
 // `.on` style and aria-current so the menu shows where the reader already is.
@@ -8296,6 +8300,72 @@ const HOW_FAQ = [
   ["What is the Broker Vault?",
    "A private comp database for Pro members. Upload your own comp book and it folds into your reports, benchmarked against the market, visible to you and no one else. It never appears in anyone else's report unless you explicitly share yours."],
 ];
+
+// ---------------------------------------------------------------------------
+// /download — where users get the standalone desktop app (desktop-app/, an
+// Electron shell around this site with its own installer and no visible
+// browser). The installers live on this repo's GitHub Releases; the
+// version-less filenames below are set by artifactName in
+// desktop-app/package.json and referenced again in
+// .github/workflows/desktop-release.yml — test/download-page.test.js holds
+// the three in step, because a renamed artifact would leave this page
+// serving 404 links with nothing else failing. The unsigned-installer note
+// is honesty, not boilerplate: until a code-signing cert (Windows) and
+// notarization (macOS) are bought, first launch shows an unknown-publisher
+// prompt, and a page that hides that turns an expected prompt into a
+// support ticket about a "virus warning".
+// ---------------------------------------------------------------------------
+const DOWNLOAD_BASE = "https://github.com/agouraninja-cmd/market-comp-puller/releases/latest/download";
+const DOWNLOAD_FILES = {
+  windows: "CompNinja-Setup.exe",
+  mac: "CompNinja.dmg",
+  linux: "CompNinja.AppImage",
+};
+function renderDownloadPageHTML(signedIn) {
+  const title = "Download the CompNinja Desktop App";
+  const canonical = `${SITE_URL}/download`;
+  const description = "Get CompNinja as a desktop app for Windows, Mac, or Linux — " +
+    "its own window, its own icon, always up to date. Or install straight from your browser.";
+  // MARKET_CSS's own .btn — no colours restated here, so the theme test's
+  // no-raw-literal rule holds and dark mode themes these for free.
+  const card = (name, file, note) =>
+    `<div class="dl-card"><h2>${name}</h2><p class="dl-note">${note}</p>` +
+    `<a class="btn" href="${DOWNLOAD_BASE}/${file}">Download ${file}</a></div>`;
+  const body =
+    `<h1>Download the desktop app</h1>` +
+    `<p class="dl-lede">CompNinja in its own window, with its own icon on your desktop and taskbar — ` +
+    `no browser tabs, nothing else to manage. The app stays current automatically: ` +
+    `it is the live CompNinja, so there is never an update to install.</p>` +
+    `<div class="dl-grid">` +
+    card("Windows", DOWNLOAD_FILES.windows, "Windows 10 or newer.") +
+    card("Mac", DOWNLOAD_FILES.mac, "Intel and Apple Silicon, one download.") +
+    card("Linux", DOWNLOAD_FILES.linux, "AppImage — make it executable and run it.") +
+    `</div>` +
+    `<div class="dl-fine"><strong>First launch:</strong> Windows may show a SmartScreen prompt and ` +
+    `Mac may say the developer is unverified — that is the standard notice for a new, ` +
+    `not-yet-registered publisher, not a fault. On Windows choose <em>More info → Run anyway</em>; ` +
+    `on Mac right-click the app and choose <em>Open</em> the first time.</div>` +
+    `<p class="dl-alt">Prefer nothing to download? Open <a href="/">compninja.co</a> in Chrome or Edge ` +
+    `and click the install icon in the address bar — same app, straight from your browser.</p>`;
+  return marketShell({
+    title,
+    description,
+    canonical,
+    signedIn,
+    current: "/download",
+    head: `<style>
+.dl-lede{max-width:62ch;color:var(--ink-2)}
+.dl-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:22px 0}
+.dl-card{border:1px solid var(--edge);border-radius:10px;padding:18px;background:var(--card);box-shadow:var(--lift)}
+.dl-card h2{margin:0 0 4px;font-size:17px}
+.dl-note{margin:0 0 14px;color:var(--ink-2);font-size:13px}
+.dl-fine{border:1px solid var(--edge);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--ink-mute);max-width:72ch}
+.dl-alt{margin-top:18px;font-size:14px}
+</style>`,
+    jsonLd: JSON.stringify({ "@context": "https://schema.org", "@graph": [...brandGraph()] }),
+    body,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // /brokers — the broker side of the product on its own indexable URL. This
@@ -18882,6 +18952,12 @@ const server = http.createServer((req, res) =>
   // matcher below so the two stay adjacent. ---
   // Path-only match (split at "?" like /terms), or /brokers?utm_source=x
   // 404s — found 2026-08-10 when a cache-busting query string hit a 404.
+  // --- Download the desktop app. Path-only match like /brokers below, so a
+  // campaign link's query string can't 404 it. ---
+  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/download") {
+    return sendShellPage(req, res, (signedIn) => renderDownloadPageHTML(signedIn));
+  }
+
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/brokers") {
     // The proof line reads MARKET_CREDIT; same stale-while-revalidate kick
     // as the market pages, so the render never waits on the DB and the line
@@ -19358,6 +19434,7 @@ const server = http.createServer((req, res) =>
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +

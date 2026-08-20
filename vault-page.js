@@ -2303,7 +2303,7 @@ if(dd)dd.open=false;});</script>
         out.push({kind:"lead",id:l.id,stage:"new",stageRank:0,
           received:String(l.ts||"").slice(0,10),market:l.market||"",address:"",
           property_type:l.type||"",size_sqft:l.size_sqft||null,
-          source:"lead",sourceLabel:"CompNinja lead",notes:"",
+          source:"lead",sourceLabel:l.is_1031?"CompNinja lead · 1031 exchange":"CompNinja lead",notes:"",
           intro_requested:!!l.intro_requested,status:""});
       });
     }

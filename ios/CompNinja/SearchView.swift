@@ -16,6 +16,10 @@ struct SearchView: View {
 
     @State private var running: RunningSearch?
     @State private var errorMessage: String?
+    @State private var presentedReport: SavedReport?
+    /// What the finished search produced, held until the progress screen has
+    /// actually gone away. See the note in the cover's callback.
+    @State private var pendingOutcome: Result<SavedReport, Error>?
 
     var body: some View {
         NavigationStack {
@@ -86,22 +90,41 @@ struct SearchView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
-            .fullScreenCover(item: $running) { search in
+            .navigationDestination(item: $presentedReport) { saved in
+                ReportView(saved: saved)
+            }
+            .fullScreenCover(item: $running, onDismiss: deliverOutcome) { search in
                 SearchingView(search: search) { result in
-                    running = nil
-                    switch result {
-                    case .success(let report):
-                        model.save(report, address: search.address, propertyType: search.type)
-                    case .failure(let error):
-                        if let api = error as? APIError, api.signInRequired {
-                            // The server's own sentence, never a copy of it.
-                            model.signInPrompt = api.message
-                        } else {
-                            errorMessage = error.localizedDescription
-                        }
+                    // Record the outcome and dismiss, and do NOTHING else here.
+                    // Pushing a report or raising an alert in this same tick
+                    // races the cover's own dismissal, and SwiftUI drops
+                    // whichever loses — which is exactly how a finished report
+                    // showed the user nothing at all, and how a failed one
+                    // showed no error either. onDismiss runs once the cover is
+                    // genuinely gone.
+                    pendingOutcome = result.map {
+                        model.save($0, address: search.address, propertyType: search.type)
                     }
+                    running = nil
                 }
                 .environmentObject(model)
+            }
+        }
+    }
+
+    /// Runs after the progress screen has finished dismissing.
+    private func deliverOutcome() {
+        guard let outcome = pendingOutcome else { return }
+        pendingOutcome = nil
+        switch outcome {
+        case .success(let saved):
+            presentedReport = saved
+        case .failure(let error):
+            if let api = error as? APIError, api.signInRequired {
+                // The server's own sentence, never a copy of it.
+                model.signInPrompt = api.message
+            } else {
+                errorMessage = error.localizedDescription
             }
         }
     }

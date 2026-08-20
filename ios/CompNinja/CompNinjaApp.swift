@@ -50,10 +50,14 @@ final class AppModel: ObservableObject {
         account = try? await api.me()
     }
 
-    func save(_ report: Report, address: String, propertyType: String) {
-        savedReports = store.save(SavedReport(address: address,
-                                              propertyType: propertyType,
-                                              report: report))
+    /// Returns the report as STORED, which is not always the one passed in:
+    /// re-running a property replaces its saved copy and keeps the original
+    /// id, so the caller must navigate to the row that actually exists.
+    @discardableResult
+    func save(_ report: Report, address: String, propertyType: String) -> SavedReport {
+        let candidate = SavedReport(address: address, propertyType: propertyType, report: report)
+        savedReports = store.save(candidate)
+        return savedReports.first { $0.key == candidate.key } ?? candidate
     }
 
     func delete(id: String) {

@@ -3,11 +3,16 @@
 // Gemini half of the provider seam. Same pure contract as
 // search-provider-anthropic.js: no fetch, no timers, no env reads.
 //
-// Prices are per million tokens for gemini-3.7-flash. Google Search grounding
-// is billed per query ($14/1,000) with 5,000 free per month across the Gemini
-// 3 family, so at this volume grounding is free and is deliberately not
-// modelled here. Revisit if report volume ever approaches that ceiling.
-const USD_PER_MTOK = { input: 1.50, output: 7.50, cacheRead: 0.375, cacheWrite: 0 };
+// Prices are per million tokens for gemini-3.7-flash. These are Google's
+// INTRODUCTORY rate, in effect through 2026-12-31 ($0.75 in / $3.75 out);
+// standard pricing ($1.50 / $7.50, the values this constant held until
+// 2026-08-19) takes over 2027-01-01 and this must flip back then, or every
+// report after that date will silently under-report cost by half. Google
+// Search grounding is billed per query ($14/1,000) with 5,000 free per month
+// across the Gemini 3 family, so at this volume grounding is free and is
+// deliberately not modelled here. Revisit if report volume ever approaches
+// that ceiling.
+const USD_PER_MTOK = { input: 0.75, output: 3.75, cacheRead: 0.1875, cacheWrite: 0 };
 
 const capabilities = {
   // google_search accepts NO max_uses. searchBudgetFor's 10-to-3 cut cannot be

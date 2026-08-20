@@ -185,7 +185,10 @@ const SEARCH_PROVIDERS = {
 // Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
 // measured it better on every scored metric of the 12-target eval AND 3.9x
 // cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
-// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// docs/evals/2026-08-10-gemini-pipeline-validation.md. That $0.092 used
+// USD_PER_MTOK's standard rate; billed today at Google's introductory rate
+// (in effect through 2026-12-31) the same measured tokens cost ~$0.045 — see
+// search-provider-gemini.js.
 // Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
 // deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
 // PAID-tier Google project: a free-tier key authenticates and runs the model
@@ -4731,10 +4734,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // tests. normalizeSourceTypes takes the corpus-audit rule as an argument
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
-const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+const normalizeSourceTypes = (parsed, propertyType) =>
+  RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
         normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
-        normalizeConditions } = RPARSE;
+        normalizeSubjectSize, normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -5590,7 +5594,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
-    const parsed = normalizeSubjectAssessed(
+    const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
       normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
@@ -5599,8 +5603,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                 normalizeCurrency(
                   normalizeSourceTypes(
                     normalizeConditions(
-                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
-      new Date());
+                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+      new Date()));
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };
@@ -6942,14 +6946,26 @@ const MARKET_FOOTER =
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first — a POST since 2026-08-17, so the address stays out
 // of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
-// localStorage geoCache.v1 — same key shape, so the app and these pages share a
-// cache). Comps geocode sequentially, not in a burst, to stay friendly to
-// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// localStorage). Comps geocode sequentially, not in a burst, to stay friendly
+// to /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
 // card hides rather than showing an empty map — which is also what a market
 // page cached from before that deploy does for its last hour of life.
+//
+// --- This cache is DELIBERATELY NOT the app's, and must not be re-joined to
+// it. The two stores held the same key until 2026-08-04, when index.html went
+// to geoCache.v2 so every entry carries the geocoder's echoed label; photos
+// and footprint sizing gate on that label through geoLabelMatches, which
+// returns false when it is missing. This script has no use for labels — it
+// draws pins and nothing else — so it stores {lat, lng} alone. Sharing one
+// key again would let a market-page visit write a label-less entry that the
+// app then reads for the same address, silently costing that property its
+// subject photo and its footprint size estimate, and costing it persistently,
+// because the miss is what got cached. A separate NAME rather than a lower
+// version number: version numbers invite being re-synced by anyone who reads
+// the two as having drifted apart, which is exactly how this comes back. ---
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
-  var CACHE_KEY = "geoCache.v1";
+  var CACHE_KEY = "mktGeoCache.v1";
   var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
   function save(k, v) {
     cache[k] = v;
@@ -7654,8 +7670,9 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
   // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
-  // under the same localStorage geoCache.v1 the app uses so the two share
-  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // in localStorage under this page's own key, never the app's (see
+  // MARKET_MAP_JS for why the two must stay apart). Only street-numbered
+  // addresses get pins: submarket/aggregate rows
   // geocode to a district point, which reads as a wrong pin (same rule as the
   // report's street-view gate). A rough city-distance gate drops geocoder
   // mismatches that would land a pin in another state. The leading number

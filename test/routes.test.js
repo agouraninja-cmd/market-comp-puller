@@ -2216,3 +2216,54 @@ test("the geocode proxy is POST-only and no caller builds a query string", async
     }
   });
 });
+
+// --- The two geocode caches keep separate localStorage names ----------------
+//
+// The app (index.html) and the market pages' map (MARKET_MAP_JS in server.js)
+// run the same geocoding stack against the same addresses, and until
+// 2026-08-04 they shared one localStorage key on purpose, to share hits. They
+// must not any more, and nothing at runtime would say so if they did.
+//
+// index.html went to geoCache.v2 that day so every entry carries the
+// geocoder's echoed label. geoLabelMatches returns false when the label is
+// missing, and it is the gate on subject photos and footprint sizing — the
+// two claims a report makes about a specific building. MARKET_MAP_JS draws
+// pins only, so it stores {lat, lng} with no label.
+//
+// Share one key again and a market-page visit writes a label-less entry for
+// an address the app later reads, which costs that property its photo and its
+// size estimate — silently, and persistently, since the entry is cached. The
+// harm runs one way and shows up nowhere near the change that caused it,
+// which is why it is worth a test rather than a comment alone.
+//
+// Names, not version numbers, and the test checks the names really differ:
+// two keys that differ only by a digit read as drift, and the obvious tidy-up
+// is to re-sync them.
+
+test("the app's geocode cache and the market map's stay separate stores", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+
+  const appKey = read("index.html").match(/GEO_CACHE_KEY = "([^"]+)"/);
+  const mktKey = read("server.js").match(/var CACHE_KEY = "([^"]+)"/);
+
+  assert.ok(appKey, "index.html no longer declares GEO_CACHE_KEY — update this test with it");
+  assert.ok(mktKey, "MARKET_MAP_JS no longer declares CACHE_KEY — update this test with it");
+
+  assert.notEqual(
+    appKey[1],
+    mktKey[1],
+    "the market map and the app share a localStorage geocode key again: the market map "
+      + "caches no geocoder label, and a label-less entry read by the app fails "
+      + "geoLabelMatches, costing that address its subject photo and footprint size"
+  );
+
+  // A market-page entry must stay recognisable as one from its name alone,
+  // so a future reader does not take the pair for accidental drift.
+  assert.ok(
+    /^mkt/.test(mktKey[1]),
+    "the market map's cache key should name itself a market-page store, not sit one "
+      + "version number away from the app's"
+  );
+});

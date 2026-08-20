@@ -31,6 +31,12 @@
 //   node run-eval.js --compare docs/evals/a.json docs/evals/b.json
 //   ... --only 2            run just the first 2 targets (plumbing check)
 //   ... --only=2            equals form, also accepted
+//   ... --per-type 2        at most 2 targets of each property type (10 of
+//                           the 12), which is the flag to reach for when the
+//                           question is per-type quality. --only cannot
+//                           answer that: eval-set.json leads with four
+//                           Industrial targets, so "--only 2" is two
+//                           Industrial searches.
 // Spec: docs/superpowers/specs/2026-08-09-search-quality-eval-design.md
 
 const fs = require("fs");
@@ -52,14 +58,14 @@ const flag = (name) => {
 // old indexOf-only flag() never matched the equals form) would fall through
 // to a default full run: an intended ~$0.72 plumbing check turning into a
 // ~$4.30 run with nobody meaning it to.
-const KNOWN_FLAGS = ["--compare", "--label", "--only"];
+const KNOWN_FLAGS = ["--compare", "--label", "--only", "--per-type"];
 for (const a of args) {
   if (!a.startsWith("--")) continue; // positional value (e.g. a --compare file path)
   const name = a.includes("=") ? a.slice(0, a.indexOf("=")) : a;
   if (!KNOWN_FLAGS.includes(name)) {
     console.error(`Unrecognized argument: ${a}`);
     console.error("Usage:");
-    console.error("  EVAL_BASE=... ADMIN_KEY=... node run-eval.js --label <name> [--only <n>|--only=<n>]");
+    console.error("  EVAL_BASE=... ADMIN_KEY=... node run-eval.js --label <name> [--per-type <n>] [--only <n>]");
     console.error("  node run-eval.js --compare <a.json> <b.json>");
     process.exit(1);
   }
@@ -77,6 +83,17 @@ if (args.includes("--compare")) {
   };
   console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}, ${a.ranAt})`);
   console.log(`candidate: ${b.label} (${b.model || "model not recorded"}, ${b.ranAt})\n`);
+  // Two runs over different target sets are not comparable target-for-target:
+  // the full set carries four Industrial targets against one Land, so a
+  // per-type slice reweights every aggregate below for reasons that have
+  // nothing to do with the model. Older summaries predate this field, so an
+  // absent selection is reported as unknown rather than assumed to match.
+  const selA = a.targetSelection || (a.setSize ? `unrecorded (${a.setSize} targets)` : "unrecorded");
+  const selB = b.targetSelection || (b.setSize ? `unrecorded (${b.setSize} targets)` : "unrecorded");
+  if (selA !== selB) {
+    console.log(`  ! Target selections differ: baseline "${selA}" vs candidate "${selB}".`);
+    console.log(`    These aggregates are over different target sets. Treat the deltas as indicative only.\n`);
+  }
   row("valuation possible", d.valuationPossibleRate);
   row("subject size found", d.subjectSizeFoundRate);
   row("failures", d.failures);
@@ -99,8 +116,45 @@ if (!ADMIN_KEY) {
 
 const label = flag("--label") || "run";
 const only = Number(flag("--only") || 0);
+const perType = Number(flag("--per-type") || 0);
 const set = JSON.parse(fs.readFileSync(path.join(__dirname, "eval-set.json"), "utf8"));
-const targets = only > 0 ? set.targets.slice(0, only) : set.targets;
+
+// Target selection, in a fixed order: --per-type first (a balanced slice
+// across property types), then --only (a plain head cap for a plumbing
+// check). --only alone takes eval-set.json's order, which is Industrial
+// heavy by design -- "--only 2" is two Industrial targets, NOT one target
+// each from two types, so it can never answer "how does this model do per
+// property type". --per-type is the flag for that question.
+//
+// Both change WHICH targets ran, which makes the summary no longer
+// comparable target-for-target against a full-set baseline, so the
+// selection is recorded in the summary (`targetSelection`) and --compare
+// warns when two runs disagree on it. A per-type run and a full-set run
+// weight the types differently -- the full set carries four Industrial
+// targets against one Land -- so their aggregate metrics move for reasons
+// that have nothing to do with the model.
+function selectTargets(all) {
+  let picked = all;
+  if (perType > 0) {
+    const seen = new Map();
+    picked = picked.filter((t) => {
+      const n = (seen.get(t.type) || 0) + 1;
+      seen.set(t.type, n);
+      return n <= perType;
+    });
+  }
+  if (only > 0) picked = picked.slice(0, only);
+  return picked;
+}
+const targets = selectTargets(set.targets);
+// The COUNT is part of the selection, not decoration: eval-set.json is
+// designed to be added to over time, so two runs can both say "full set" and
+// still be over different targets. Without the count the --compare guard
+// below would pass them as comparable.
+const selectionName = perType > 0
+  ? `per-type ${perType}${only > 0 ? `, capped at ${only}` : ""}`
+  : (only > 0 ? `first ${only}` : "full set");
+const targetSelection = `${selectionName} (${targets.length} targets)`;
 
 // Database preflight. Isolation (SUPABASE_URL blank on the server under
 // test) is enforced only by whoever launched that server, and there is no
@@ -149,6 +203,25 @@ async function preflightDbCheck() {
   console.log("Database preflight: no database configured on the target server. Proceeding.");
 }
 
+// Which model actually served this run. MODEL is a startup constant on the
+// server, overridable by an env var this script cannot read, so recording
+// `process.env.MODEL || "(server default)"` records what the RUNNER was
+// told, not what answered -- and "(server default)" is exactly what four of
+// the five runs in docs/evals say, which is why "was 3.7 Flash ever scored?"
+// could not be answered from the committed record on 2026-08-19. /healthz
+// reports the live provider and model for this reason; ask it.
+// Never fatal: a summary with an unknown model still beats losing the run.
+async function liveModel() {
+  try {
+    const r = await fetch(`${BASE}/healthz`);
+    if (!r.ok) return null;
+    const h = await r.json();
+    return h && h.model ? { model: h.model, provider: h.provider || null } : null;
+  } catch (e) {
+    return null;
+  }
+}
+
 async function runOne(t) {
   const started = Date.now();
   const r = await fetch(`${BASE}/api/comps`, {
@@ -180,6 +253,14 @@ async function runOne(t) {
   const runDir = path.join(__dirname, "eval-runs", `${label}-${Date.now()}`);
   try {
     await preflightDbCheck();
+
+    // Asked before any billing, and printed, so the operator sees which
+    // model is about to be scored while there is still time to stop.
+    const live = await liveModel();
+    console.log(live
+      ? `Target server reports: ${live.provider || "provider unknown"} / ${live.model}`
+      : "Target server did not report a model (/healthz unreachable or older build); recording the runner's MODEL instead.");
+    console.log(`Targets: ${targets.length} (${targetSelection})`);
 
     // The `fresh: true` flag on each request only skips the CACHE read.
     // There are two quieter doors back to a previous run's data, and both
@@ -273,10 +354,14 @@ async function runOne(t) {
     const summary = SCORE.summarize(results);
     const out = {
       label: label,
-      model: process.env.MODEL || "(server default)",
+      // What the server said it was running, with the runner's own MODEL as
+      // the fallback when /healthz could not be reached.
+      model: (live && live.model) || process.env.MODEL || "(server default)",
+      provider: (live && live.provider) || null,
       ranAt: new Date().toISOString(),
       base: BASE,
       setSize: targets.length,
+      targetSelection: targetSelection,
       corpusWiped: corpusWiped,
       subjectSizesWiped: subjectSizesWiped,
       summary: summary,

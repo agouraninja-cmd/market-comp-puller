@@ -7125,6 +7125,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // geoLabelMatches below — and any wrong-street result cached under v1
   // (the poisoned entry behind a wrong-house subject photo) retires with
   // the bump. A re-geocode per address, once, is the whole cost.
+  //
+  // This key belongs to the app alone. The market pages' map keeps its own
+  // store (mktGeoCache.v1 in server.js's MARKET_MAP_JS) because it caches
+  // {lat, lng} with no label, and a label-less entry read back here fails
+  // geoLabelMatches — which is the gate on subject photos and footprint
+  // sizing, so the cost of merging the two would be paid silently, by the
+  // report. A test holds the names apart.
   const GEO_CACHE_KEY = "geoCache.v2";
   let geoCache = (() => { try { return JSON.parse(localStorage.getItem(GEO_CACHE_KEY)) || {}; } catch (_) { return {}; } })();
 

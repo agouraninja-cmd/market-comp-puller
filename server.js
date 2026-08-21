@@ -15440,17 +15440,23 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 503, { error: "Could not start that run. Please try again." });
           }
 
+          // Sorted once, for both consumers: the worker needs a defined order
+          // and the page needs the rows in the order they were pasted.
+          // PostgREST returns an insert's rows in insertion order today; that
+          // is not something to depend on for a list somebody is reading.
+          const ordered = itemRows.slice().sort((a, b) => a.position - b.position);
+
           logEvent("bulk_start", { prop_type: typeOk, source: parsed.header ? "upload" : "paste" });
           // Fire and forget, deliberately: the run outlives this request by
           // half an hour, so awaiting it would hold a socket open for the
           // whole job and time out long before it finished. The member closes
           // the tab; the rows land anyway.
-          runBulkJob(job, itemRows.sort((a, b) => a.position - b.position), user, ent)
+          runBulkJob(job, ordered, user, ent)
             .catch((err) => console.error("bulk job crashed:", err.message));
 
           return sendJson(res, 200, {
             job: bulkJobRow(job),
-            items: itemRows.map(bulkItemRow),
+            items: ordered.map(bulkItemRow),
             skipped: parsed.skipped, warnings: parsed.warnings,
             duplicates: parsed.duplicates, truncated: parsed.truncated,
           });

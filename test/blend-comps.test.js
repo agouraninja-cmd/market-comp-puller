@@ -9,6 +9,10 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
+// The whole module, for the shared-vault cases at the foot of this file: they
+// assert about FIELD_MAP itself, so naming each export would defeat the point.
+const BLEND = require("../blend-comps.js");
+
 const {
   blendPrivateComps,
   stripPrivateComps,
@@ -326,4 +330,118 @@ test("non-numeric coordinate strings are refused, not guessed", () => {
 test("junk rows and junk input do not throw", () => {
   assert.equal(propertyCoordsById(null).size, 0);
   assert.equal(propertyCoordsById([null, {}, { id: null, lat: 1, lng: 2 }]).size, 0);
+});
+
+// ---------------------------------------------------------------------------
+// The SHARED vault (migration 030) — a colleague's comp, in your report.
+//
+// Spec §7. The wall here is the same one the rest of this file guards, one
+// step further out: a firm comp must carry nothing that identifies the row it
+// was copied from, must stay `private` so every downstream strip keeps
+// working, and must not be counted twice when two colleagues held the same
+// deal.
+// ---------------------------------------------------------------------------
+
+test("firmCompPayload carries what a report renders and NONE of the vault's plumbing", () => {
+  const row = {
+    // plumbing — every one of these is a way to identify or re-key a private row
+    user_id: "u1", upload_id: "up1", dedupe_key: "k", address_key: "a",
+    property_id: "p1", published: true, published_at: "2026-01-01",
+    published_submission_id: "s1", id: "c1", created_at: "2026-01-01",
+    // the comp
+    address: "100 Main St", deal_date: "2026-05-01", transaction: "sale",
+    price: 1000000, size_sqft: 10000, price_per_sqft: 100, cap_rate: 6.25,
+    notes: "off market", clear_height: "28", lat: 43.6, lng: -116.2,
+  };
+  const out = BLEND.firmCompPayload(row);
+  for (const leak of ["user_id", "upload_id", "dedupe_key", "address_key",
+    "property_id", "published", "published_at", "published_submission_id", "id", "created_at"]) {
+    assert.equal(leak in out, false, `${leak} must not travel to another account's table`);
+  }
+  assert.equal(out.address, "100 Main St");
+  assert.equal(out.price, 1000000);
+  assert.equal(out.clear_height, "28");
+  assert.equal(out.lat, 43.6, "coordinates travel, so a colleague's map needs no geocode");
+});
+
+test("firmCompPayload is derived from FIELD_MAP, so a new comp field cannot be forgotten", () => {
+  // The reason 030 stores jsonb rather than a column per field: a per-type
+  // field arrives through the add-comp-field skill, and this must not become
+  // a fifth map to update — still less a migration.
+  const row = { address: "1 A St", deal_date: "2026-01-01" };
+  for (const col of Object.keys(BLEND.FIELD_MAP)) if (!(col in row)) row[col] = "x";
+  const out = BLEND.firmCompPayload(row);
+  for (const col of Object.keys(BLEND.FIELD_MAP)) {
+    assert.equal(col in out, true, `${col} is in FIELD_MAP so it must be stored`);
+  }
+});
+
+test("a comp with no address or no date is refused rather than stored unusable", () => {
+  assert.equal(BLEND.firmCompPayload({ deal_date: "2026-01-01" }), null);
+  assert.equal(BLEND.firmCompPayload({ address: "1 A St" }), null);
+  assert.equal(BLEND.firmCompPayload(null), null);
+});
+
+test("a firm comp keeps broker_vault and private:true, and adds attribution", () => {
+  // Keeping the tier is what makes every downstream rule work by construction
+  // rather than by review: /api/share strips or anonymizes it, exports drop
+  // it, print and PNG drop it, and the valuation still weights it at 1.
+  const stored = {
+    comp: { address: "100 Main St", deal_date: "2026-05-01", price: 1000000 },
+    firm: "Colliers Boise", shared_by_name: "Brad",
+  };
+  const c = BLEND.toFirmReportComp(stored);
+  assert.equal(c.source_type, "broker_vault");
+  assert.equal(c.private, true);
+  assert.equal(c.firm, "Colliers Boise");
+  assert.equal(c.shared_by, "Brad");
+  assert.equal(c.verified, undefined, "never the public Verified claim");
+});
+
+test("a firm comp is stripped from a public share and anonymized on an invited one", () => {
+  // The property that matters most, and it holds for free because the flag is
+  // what both functions filter on.
+  const c = BLEND.toFirmReportComp({
+    comp: { address: "100 Main St", deal_date: "2026-05-01", price: 1000000, size_sqft: 10000 },
+    firm: "Colliers Boise", shared_by_name: "Brad",
+  });
+  const report = { comps: [{ address: "public", source_type: "listing" }, c] };
+  assert.equal(BLEND.stripPrivateComps(report).comps.length, 1);
+  const anon = BLEND.anonymizePrivateComps(report);
+  assert.equal(anon.comps.length, 1);
+  assert.equal(anon.locked_basis.length, 1);
+  assert.equal(anon.locked_basis[0].address, undefined, "no address travels");
+  assert.equal(anon.locked_basis[0].firm, undefined, "and not the firm's name either");
+});
+
+test("one deal is one row: a colleague's copy of a comp you already hold is dropped", () => {
+  // Two brokers at one firm were routinely on opposite sides of the same
+  // transaction, so a naive blend counts it twice and moves the median with
+  // nothing on screen explaining why.
+  const mine = [{ address: "100 Main St", date: "2026-05-01", price_or_rate: 1000000, private: true }];
+  const theirs = [
+    { address: "100 MAIN ST.", date: "2026-05-01", price_or_rate: 1000000, private: true, firm: "F" },
+    { address: "900 Other Way", date: "2026-05-01", price_or_rate: 500000, private: true, firm: "F" },
+  ];
+  const out = BLEND.dedupeFirmComps(mine, theirs);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].address, "900 Other Way", "yours wins, so your own deal keeps its own badge");
+});
+
+test("two colleagues sharing the same deal contribute it once", () => {
+  const dupe = { address: "100 Main St", date: "2026-05-01", price_or_rate: 1000000, private: true };
+  assert.equal(BLEND.dedupeFirmComps([], [dupe, { ...dupe, firm: "F" }]).length, 1);
+});
+
+test("dedupe never merges two different deals at one address", () => {
+  const a = { address: "100 Main St", date: "2026-05-01", price_or_rate: 1000000 };
+  const b = { address: "100 Main St", date: "2024-05-01", price_or_rate: 800000 };
+  assert.equal(BLEND.dedupeFirmComps([], [a, b]).length, 2, "a re-sale is a second comp");
+  const c = { address: "100 Main St", date: "2026-05-01", price_or_rate: 1200000 };
+  assert.equal(BLEND.dedupeFirmComps([], [a, c]).length, 2, "and so is a different price");
+});
+
+test("dedupe survives junk without throwing", () => {
+  assert.deepEqual(BLEND.dedupeFirmComps(null, null), []);
+  assert.deepEqual(BLEND.dedupeFirmComps(undefined, [null]), [null]);
 });

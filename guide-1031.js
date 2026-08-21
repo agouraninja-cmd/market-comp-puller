@@ -46,6 +46,11 @@ details.faq summary{cursor:pointer;font-weight:600}
 details.faq p{color:var(--ink-2);margin:8px 0 0}
 #q1031out{font-size:18px;font-weight:600;margin-top:10px}
 #q1031out span{display:block;margin-top:4px}
+#q1031ics{display:inline-block;margin-top:10px;font-size:13.5px;color:#4C5665;
+  text-decoration:underline;text-decoration-color:#D8D4C9}
+/* display:inline-block out-specifies the UA's [hidden] rule (the same trap
+   ACCOUNT_NAV_CSS documents), so the hidden state needs its own line. */
+#q1031ics[hidden]{display:none}
 .ws label{display:block;font-weight:600;font-size:13px;color:var(--ink-2);margin:10px 0 4px}
 .ws input[type=text],.ws input[type=date],.ws select{
   width:100%;max-width:36rem;padding:8px 10px;border:1px solid var(--edge);
@@ -111,6 +116,18 @@ const GUIDE_1031_FAQ = [
   {
     q: "Where does the exchange get reported?",
     a: "On IRS Form 8824, filed with the federal return for the year of the sale. Your tax preparer handles the mechanics; what they need from you is the timeline, the QI paperwork, and the closing statements from both legs.",
+  },
+  {
+    q: "How do I choose a qualified intermediary?",
+    a: "Verify five things before your sale closes: your funds will sit in a segregated qualified escrow or trust account in your name, never commingled; a fidelity bond and errors-and-omissions insurance are in force, with certificates you can see; the QI is registered in states that regulate exchange facilitators, if yours does; they are independent of you (not your own agent, attorney, or accountant from the last two years); and the fees are in writing, including who keeps the interest earned on your money while they hold it. Your closing attorney, title officer, and CPA all see intermediaries' work firsthand and can point you to established ones.",
+  },
+  {
+    q: "How much does a qualified intermediary cost?",
+    a: "A straightforward delayed exchange typically runs from several hundred dollars to around $1,500 in stated fees, and many intermediaries also keep some or all of the interest earned on your escrowed funds while they hold them — ask about both numbers and get them in writing. Reverse and improvement exchanges are specialist work and cost several times more.",
+  },
+  {
+    q: "Can my own attorney or CPA act as my qualified intermediary?",
+    a: "Generally not: the rules disqualify anyone who has been your employee, attorney, accountant, investment banker, or real estate agent within the two years before your sale. The intermediary has to be independent — your attorney and CPA still advise you alongside them, which is exactly the arrangement you want.",
   },
 ];
 
@@ -208,6 +225,12 @@ function typeSelect(id, label) {
 function widgetJs(signedIn) {
   const dest = signedIn ? "/" : "/?auth=signup";
   return `(function(){
+  // Reading this guide is the one signal the app has that a later BOV request
+  // is 1031-driven; index.html reads this marker at lead submit and tags the
+  // lead's source. A timestamp, not a flag, so the signal can expire. Guarded:
+  // no localStorage (the Node test harness, a locked-down browser) = no marker,
+  // and the widget still works.
+  try{localStorage.setItem("cnRef1031.v1",String(Date.now()))}catch(e){}
   var VALUE_DEST = ${JSON.stringify(dest)};
   var TYPES = ["Industrial","Office","Retail","Multifamily","Land","Residential"];
   var MAX_A = 300;
@@ -306,18 +329,43 @@ function widgetJs(signedIn) {
   function fmt(d){
     return DAYS[d.getDay()]+", "+MONTHS[d.getMonth()]+" "+d.getDate()+", "+d.getFullYear();
   }
+  function pad2(n){ return (n<10?"0":"")+n; }
+  function icsDate(d){ return ""+d.getFullYear()+pad2(d.getMonth()+1)+pad2(d.getDate()); }
+  // All-day VEVENTs (VALUE=DATE), so no timezone can shift a deadline. The
+  // DTSTAMP is derived from the closing date rather than the clock — the file
+  // is deterministic for a given closing, which is also what the test pins.
+  function icsEvent(d,dayN,summary){
+    var next=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1);
+    return ["BEGIN:VEVENT",
+      "UID:1031-day"+dayN+"-"+icsDate(d)+"@compninja.co",
+      "DTSTAMP:"+icsDate(d)+"T000000Z",
+      "DTSTART;VALUE=DATE:"+icsDate(d),
+      "DTEND;VALUE=DATE:"+icsDate(next),
+      "SUMMARY:"+summary,
+      "DESCRIPTION:Counted in calendar days from your closing. No extensions assumed. Confirm your dates with your tax advisor.",
+      "END:VEVENT"];
+  }
   function renderDates(){
     var input = el("q1031close");
     var out = el("q1031out");
+    var ics = el("q1031ics");
     if (!input || !out) return;
     var raw = String(input.value || "");
-    if (raw.length !== 10){ out.innerHTML = ""; return; }
+    if (raw.length !== 10){ out.innerHTML = ""; if (ics) ics.hidden = true; return; }
     var m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(raw);
-    if (!m){ out.innerHTML = ""; return; }
+    if (!m){ out.innerHTML = ""; if (ics) ics.hidden = true; return; }
     var y = +m[1], mo = +m[2] - 1, day = +m[3];
     var d45 = new Date(y, mo, day + 45), d180 = new Date(y, mo, day + 180);
     out.innerHTML = "<span>Day 45 \\u2014 identify in writing by: "+fmt(d45)+"</span>"+
       "<span>Day 180 \\u2014 close your replacement by: "+fmt(d180)+"</span>";
+    if (ics) {
+      var cal=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//CompNinja//1031 deadlines//EN"]
+        .concat(icsEvent(d45,45,"1031 exchange \\u2014 day 45: identify replacements in writing"))
+        .concat(icsEvent(d180,180,"1031 exchange \\u2014 day 180: close on the replacement"))
+        .concat(["END:VCALENDAR"]).join("\\r\\n");
+      ics.href="data:text/calendar;charset=utf-8,"+encodeURIComponent(cal);
+      ics.hidden=false;
+    }
   }
   function goValue(addr, type){
     addr = cleanAddr(addr);
@@ -436,6 +484,10 @@ function renderGuide1031Body(signedIn) {
     // every input change, and without a live region a screen-reader user who
     // just typed a closing date hears nothing back.
     `<div id="q1031out" aria-live="polite"></div>` +
+    // A data: URI the widget fills in — the deadlines leave as an .ics file
+    // without the date ever touching a server. Hidden until a valid date is
+    // typed: a download link over nothing is a control that does nothing.
+    `<a id="q1031ics" download="1031-deadlines.ics" hidden>Add both deadlines to your calendar (.ics)</a>` +
     `<p class="disc">Calendar days, no extensions assumed. The 180-day period can end ` +
     `sooner if your tax-return due date arrives first and you do not file an extension &mdash; ` +
     `confirm your dates with your tax advisor.</p></div>` +
@@ -480,6 +532,38 @@ function renderGuide1031Body(signedIn) {
     `<li><strong>Specialist variations.</strong> Reverse exchanges (buy first) and improvement exchanges exist, but they need specialist QIs and more structure &mdash; get advice early.</li>` +
     `</ul></div>` +
     `</div>` +
+
+    // The referral stance, made useful: CompNinja is not a QI and holds no
+    // funds (the disc below says so; the tests pin it), so what this page CAN
+    // give an owner is the vetting list — the industry is lightly regulated
+    // and the QI failures that made case law lost clients their money AND
+    // their deferral. Education throughout: what to verify, never who to hire.
+    `<div class="card" id="choosing-qi"><h2>Choosing a qualified intermediary</h2>` +
+    `<p>The QI is the one professional every delayed exchange must have, and the ` +
+    `industry is lightly regulated — your sale proceeds sit with whoever you pick. ` +
+    `CompNinja is not a qualified intermediary and does not hold funds. Before your ` +
+    `sale closes, verify these about anyone who will:</p><ul>` +
+    `<li><strong>How your money is held.</strong> A segregated qualified escrow or ` +
+    `qualified trust account in your name — never commingled with the QI's operating ` +
+    `funds — ideally requiring your signature to move money.</li>` +
+    `<li><strong>Insurance and bonding.</strong> A fidelity bond and ` +
+    `errors-and-omissions coverage in force, with certificates you can see. Several ` +
+    `states (California, Washington, Nevada, Idaho, Colorado, Oregon, Maine, ` +
+    `Virginia) regulate exchange facilitators — if yours does, confirm the ` +
+    `registration too.</li>` +
+    `<li><strong>Independence.</strong> Someone who has been your agent, attorney, ` +
+    `accountant, or employee within the last two years generally cannot serve as ` +
+    `your QI — a disqualification in the rules themselves, not a preference.</li>` +
+    `<li><strong>Track record.</strong> Years in business, exchange volume, ` +
+    `references, and membership in the Federation of Exchange Accommodators (the ` +
+    `industry body behind the Certified Exchange Specialist designation).</li>` +
+    `<li><strong>Fees in writing.</strong> Including who keeps the interest earned ` +
+    `on your escrowed funds while they hold them — often the larger number.</li>` +
+    `</ul>` +
+    `<p>Where to find one: your closing attorney, title or escrow officer, and CPA ` +
+    `all see intermediaries' work firsthand. And when CompNinja connects you with a ` +
+    `local broker for an opinion of value, ask them which intermediaries their ` +
+    `clients use in your market — brokers watch these deals close.</p></div>` +
 
     `<h2 id="faq" style="margin-top:32px">Questions owners actually ask</h2>` + faq +
 

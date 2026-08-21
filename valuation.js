@@ -152,10 +152,10 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
-  //   distance     free pass within 1 mile, then a 4-mile half-life (a sale
-  //                five miles away is a different pocket; the Austin Rosedale
-  //                failure was vintage AND pocket, and vintage alone left the
-  //                far comps pulling the headline)
+  //   distance     free pass within 1 mile, then a half-life (4 miles for
+  //                CRE, 2 miles for Residential — a sale five miles away is
+  //                a different pocket; the 4-mile CRE half-life still let
+  //                cheaper houses a few miles over pull a $2M home to $1M)
   //   source       verified/public-record full weight, down to half for model
   //                estimates (mirrors the badge tiers)
   // Floored at 0.15 so no comp silently vanishes from a range it visibly sits
@@ -163,7 +163,41 @@
   // callers that have no year (the accuracy backtest, a report whose lookup
   // found none) keep the pre-vintage weights exactly. Missing distance is
   // the same: a comp the map has not placed yet must not be punished.
-  function compWeight(c, asOf, subjSF, subjYear) {
+  // `opts.propertyType` (or a 5th-arg string) switches the distance half-life
+  // for Residential; omitted keeps the CRE 4-mile curve so existing callers
+  // do not move.
+  function distanceHalfLifeMiles(propType) {
+    return propType === "Residential" ? 2 : 4;
+  }
+
+  // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
+  // not name a distance: the type default (1 mile for houses, 1-mile free
+  // pass for CRE) stands. Capped at 50 so a stray "1000 miles" cannot
+  // become the blend radius.
+  function parseRadiusMiles(note) {
+    if (note == null || note === "") return null;
+    const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
+    if (!m) return null;
+    const n = Number(m[1]);
+    return n > 0 && n <= 50 ? n : null;
+  }
+
+  // A house more than 1.5× the subject's implied $/SF is a different
+  // pocket, even at 0.3 miles. Same 1.5× bar blend-corpus.js uses on
+  // extras (RESIDENTIAL_PRICE_TIER_RATIO). Past it, the weight floors so
+  // 15 cheaper sales cannot outvote 4 true comps in the IQR. Missing
+  // subject $/SF is neutral — we do not invent a tier.
+  var PRICE_TIER_RATIO = 1.5;
+  function priceTierFactor(compPsf, subjectPsf) {
+    if (!(compPsf > 0) || !(subjectPsf > 0)) return 1;
+    const octaves = Math.abs(Math.log2(compPsf / subjectPsf));
+    if (octaves <= Math.log2(PRICE_TIER_RATIO)) return 1;
+    return 0.15;
+  }
+
+  function compWeight(c, asOf, subjSF, subjYear, opts) {
+    const o = opts && typeof opts === "object" && !Array.isArray(opts) ? opts : {};
+    const propType = typeof opts === "string" ? opts : o.propertyType;
     let w = 1;
     const age = compAgeYears(c, asOf);
     if (age !== null) w *= Math.pow(0.5, age / 2);
@@ -178,7 +212,10 @@
       if (dy > 15) w *= Math.pow(0.5, (dy - 15) / 15);
     }
     const mi = distanceMiles(c);
-    if (mi !== null && mi > 1) w *= Math.pow(0.5, (mi - 1) / 4);
+    const halfLife = distanceHalfLifeMiles(propType);
+    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+    if (mi !== null && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
+    if (propType === "Residential") w *= priceTierFactor(salePsfOf(c), o.subjectPsf);
     const tier = tierOf(c);
     if (tier && TIER_WEIGHT[tier] != null) w *= TIER_WEIGHT[tier];
     return Math.max(0.15, w);
@@ -231,7 +268,11 @@
 
     const rr = robustPpsfRange(items.map((x) => ({
       v: x.v * trendFactor(x.comp, o.asOf, o.trendPct),
-      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear),
+      w: compWeight(x.comp, o.asOf, sizeMid, o.subjectYear, {
+        propertyType: o.propertyType,
+        radiusMiles: o.radiusMiles,
+        subjectPsf: o.subjectPsf,
+      }),
     })));
 
     return {
@@ -335,9 +376,193 @@
     return out;
   }
 
+  // The residual spread: what the comps still disagree about AFTER every
+  // factor this report can control for.
+  //
+  // compWeight discounts a comp for sale recency, size ratio, vintage,
+  // distance, price tier and source quality. Whatever spread survives all six
+  // is, by construction, driven by what no public record carries: condition,
+  // finish quality, layout, how the last owner kept the place. On a house that
+  // is the single largest unmodeled variance in the estimate, and no report
+  // said so until 2026-08-16 — a gut-renovated home and an untouched one on
+  // the same street, same size, same vintage, priced identically to the dollar.
+  //
+  // Deliberately derived from THIS report's own band rather than a published
+  // industry constant. In a single-builder subdivision the band comes in tight
+  // and condition really does matter less; in a mixed-vintage neighborhood it
+  // comes in wide. A hardcoded "10-20%" would be wrong in both directions, and
+  // would be the one figure in the hero with no source standing behind it.
+  //
+  // Requires `trimmed` (4+ sale comps). Below that the band is the raw observed
+  // spread rather than an interquartile one, so it measures how scattered a
+  // tiny sample is, not what this market pays for condition — index.html's
+  // smallNNote already covers that case in its own words.
+  //
+  // `pct` uses the same (high - low) / mid ratio index.html's spreadPhrase
+  // reads, so "spread" means one thing across the hero.
+  //
+  // `swing` is quoted at ONE size, the caller's mid, and NOT as the ledger's
+  // Low-to-High distance: those two totals apply psfLow to the smallest size
+  // and psfHigh to the largest, so their difference folds size uncertainty
+  // into a figure whose whole job is to isolate the $/SF spread.
+  function conditionSpread(band, subjectSF) {
+    if (!band || band.trimmed !== true) return null;
+    var low = Number(band.low), high = Number(band.high), mid = Number(band.mid);
+    if (!(low > 0) || !(high > low) || !(mid > 0)) return null;
+    var out = { psfLow: low, psfHigh: high, pct: Math.round(((high - low) / mid) * 100) };
+    var sf = Number(subjectSF);
+    if (sf > 0) out.swing = heroRound((high - low) * sf);
+    return out;
+  }
+
+  // How much of a property's gain since its own last sale the market's drift
+  // does NOT explain.
+  //
+  // Compound the prior sale price forward at the market's annual trend to the
+  // report date, then compare against what the property asks today. The
+  // remainder is the part of the gain the market did not hand over, and on a
+  // house the usual explanation is that money went into it. That makes this
+  // the closest this product can honestly get to "how much was spent on the
+  // renovation" without permit data — and permit data would not settle it
+  // either: declared permit valuations understate real spend, unpermitted and
+  // cosmetic work never appears at all, and spend is not value in any case.
+  //
+  // Evidence, never a fourth ledger figure — the same rule subject_last_sale
+  // and subject_asking already follow. It does not enter the range.
+  //
+  // Four deliberate refusals:
+  //   * No trend, no answer. report-parse.js already normalizes
+  //     annual_price_trend_pct to null unless it is a nonzero number within
+  //     +/-30, and without it there is no drift model at all. Reading a missing
+  //     trend as flat would report every appreciating market as a renovation.
+  //   * Only the ABOVE direction speaks. A property asking LESS than drift
+  //     explains is a real signal with unknowable causes (a distressed sale, a
+  //     divorce, deferred maintenance, an overpriced original purchase), and
+  //     naming any of them about somebody's specific home is not a claim this
+  //     report can defend.
+  //   * Bounded to 10 years back. One current annual rate compounded across a
+  //     decade is already a stretch; across thirty it is fiction. The floor
+  //     keeps a same-quarter relist from dividing by noise while still
+  //     catching the classic buy-renovate-list flip.
+  //   * Below the shared 25% bar it stays quiet, so this can never disagree
+  //     with askFit or outlierOf about what counts as a gap worth naming.
+  //
+  // The three reported figures are derived from the ROUNDED expected value so
+  // they reconcile against each other on screen (expected + unexplained is
+  // exactly the ask, always). The 25% gate above deliberately tests the
+  // unrounded math instead, so display rounding can never decide whether the
+  // line appears.
+
+  // Month names are spelled out rather than matched as "3-9 letters" so that
+  // "Sometime 2021" cannot pass for a date the way a generic word class would
+  // let it.
+  var MONTH = "(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
+  var SALE_DATE_SHAPES = [
+    /^(?:18|19|20)\d{2}[-/](?:0?[1-9]|1[0-2])(?:[-/](?:0?[1-9]|[12]\d|3[01]))?$/,   // 2021-06-01, 2021-06
+    // "6/2021" matches this shape but Date.parse answers NaN for it, so it is
+    // refused a line later. Left in rather than tightened: the shape list is
+    // the readable statement of intent, and the parse is the backstop.
+    /^(?:0?[1-9]|1[0-2])\/(?:(?:0?[1-9]|[12]\d|3[01])\/)?(?:18|19|20)\d{2}$/,       // 6/1/2021
+    new RegExp("^" + MONTH + "\\s+(?:\\d{1,2},?\\s+)?(?:18|19|20)\\d{2}$", "i"),    // June 2021, Jun 1, 2021
+    new RegExp("^\\d{1,2}\\s+" + MONTH + "\\s+(?:18|19|20)\\d{2}$", "i"),           // 1 June 2021
+  ];
+  var GAIN_MIN_YEARS = 0.25;
+  var GAIN_MAX_YEARS = 10;
+  function unexplainedGain(opts) {
+    var o = opts || {};
+    var paid = Number(o.lastPrice), ask = Number(o.askPrice), pct = Number(o.trendPct);
+    if (!(paid > 0) || !(ask > 0)) return null;
+    if (!Number.isFinite(pct) || pct === 0 || Math.abs(pct) > 30) return null;
+    // subject_last_sale.date is model-written free text, and Date.parse alone
+    // is far too lenient to guard a dollar figure: V8 answers
+    // "sometime in 2021" with 2021-01-01 rather than NaN, silently anchoring
+    // the whole calculation to a January that nothing in the report claims.
+    // So the string must match a real date SHAPE first — same reject-rather-
+    // than-guess stance yearOf takes with "c. 1994". A bare year is refused
+    // too: it is the ambiguous case, not a lucky one.
+    //
+    // Month-level slack past that is tolerable. Half a year of drift moves
+    // `expected` by a few percent against a 25% gate, and the last-sale line
+    // above prints the raw date text, so the reader sees the precision they
+    // are actually being given.
+    var raw = String(o.lastDate == null ? "" : o.lastDate).trim();
+    if (!SALE_DATE_SHAPES.some(function (re) { return re.test(raw); })) return null;
+    var then = Date.parse(raw);
+    if (isNaN(then)) return null;
+    var years = (Number(o.asOf) - then) / (365.25 * 24 * 3600 * 1000);
+    if (!(years >= GAIN_MIN_YEARS) || years > GAIN_MAX_YEARS) return null;
+    var expected = paid * Math.pow(1 + pct / 100, years);
+    if (!(expected > 0) || !((ask - expected) / expected > OUTLIER_PCT)) return null;
+    var expectedR = heroRound(expected);
+    if (!(expectedR > 0)) return null;
+    return {
+      years: Math.round(years * 10) / 10,
+      expected: expectedR,
+      unexplained: ask - expectedR,
+      pct: Math.round(((ask - expectedR) / expectedR) * 100),
+    };
+  }
+
+  // Where the subject sits in the condition spread the comps show — the payoff
+  // for asking the question at all.
+  //
+  // conditionSpread above says a house's condition is worth $X of the range and
+  // that the estimate cannot see it. Once the OWNER has told us their own
+  // condition, and enough comps carry one, the report can say which half of
+  // that range is the fairer read for this particular house. That is guidance
+  // about where to look inside the existing band, not a fourth figure and not a
+  // change to Low/Likely/High — the same standing askFit and subjectSizeFit
+  // have.
+  //
+  // The vocabulary is report-parse.js's CONDITION_VALUES and the ranks are its
+  // order. Keep the two in step; a word here that the parser drops to "" would
+  // be a rank nothing can ever reach.
+  //
+  // Two deliberate silences:
+  //   * Under three RATED comps it returns null. "Most of the comps" is not a
+  //     claim two houses can support, and it is the same floor subjectSizeFit
+  //     uses for the same reason.
+  //   * A subject that sits among its comps returns dir "inline", and the
+  //     caller is expected to say NOTHING. The trust line measured 1,034
+  //     characters on 2026-08-16 precisely because every computable sentence
+  //     got printed; a sentence that reports no difference is one to leave out.
+  var CONDITION_RANK = { "Needs work": 0, "Original": 1, "Updated": 2, "Renovated": 3 };
+  var CONDITION_FIT_MIN_COMPS = 3;
+  var CONDITION_FIT_SHARE = 2 / 3;
+  // Own-property lookup, NOT CONDITION_RANK[v]. A plain object literal inherits
+  // from Object.prototype, so CONDITION_RANK["toString"] is a FUNCTION, not
+  // undefined — and a function passes an `== null` guard. Before this,
+  // conditionFit("constructor", …) returned dir "below" and the trust line
+  // would have stated, confidently, that three comps were more updated than a
+  // house whose condition was the word "constructor". The server gates both
+  // sides onto the vocabulary (normalizeConditions, SUBJECT_FIELD_ENUMS), but
+  // this module is shared with backtest.js and reads saved and shared reports
+  // written before that gate existed, so it defends itself.
+  function rankOf(v) {
+    return Object.prototype.hasOwnProperty.call(CONDITION_RANK, v) ? CONDITION_RANK[v] : null;
+  }
+  function conditionFit(subjectCondition, comps) {
+    var subj = rankOf(subjectCondition);
+    if (subj == null) return null;
+    var ranks = (comps || [])
+      .filter(function (c) { return c && !String(c.transaction || "").toLowerCase().startsWith("lease"); })
+      .map(function (c) { return rankOf(c && c.condition); })
+      .filter(function (r) { return r != null; });
+    if (ranks.length < CONDITION_FIT_MIN_COMPS) return null;
+    var below = ranks.filter(function (r) { return r < subj; }).length;
+    var above = ranks.filter(function (r) { return r > subj; }).length;
+    var out = { subject: subjectCondition, rated: ranks.length, below: below, above: above, dir: "inline" };
+    if (below >= ranks.length * CONDITION_FIT_SHARE) out.dir = "above";
+    else if (above >= ranks.length * CONDITION_FIT_SHARE) out.dir = "below";
+    return out;
+  }
+
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
-    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, compWeight, trendFactor,
+    TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
+    compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
+    conditionSpread, unexplainedGain, conditionFit, CONDITION_RANK,
   };
 });

@@ -15,6 +15,8 @@ const {
   formEncode, verifyWebhookSignature, planForPrice, statusForStripe,
   subscriptionRowFrom, periodEndIso, refundOf, WEBHOOK_TOLERANCE_MS,
 } = require("../stripe");
+// The whole module too, for the per-seat cases at the foot of this file.
+const stripe = require("../stripe");
 
 const SECRET = "whsec_test_secret";
 const NOW = Date.parse("2026-08-01T12:00:00Z");
@@ -311,4 +313,52 @@ test("garbage in produces a safe answer, not a throw", () => {
   assert.deepEqual(refundOf(null), { paymentIntentId: null, full: false });
   assert.deepEqual(refundOf(undefined), { paymentIntentId: null, full: false });
   assert.equal(refundOf({ amount: "x", amount_refunded: "y" }).full, false);
+});
+
+// ---------------------------------------------------------------------------
+// Per-seat firm billing (2026-08-16, migration 033).
+// ---------------------------------------------------------------------------
+
+test("the firm price resolves to firm_monthly, and only when it is configured", () => {
+  const map = { monthly: "price_m", annualFounding: "price_a", firmMonthly: "price_f" };
+  assert.equal(planForPrice("price_f", map), "firm_monthly");
+  // A SEPARATE price from the individual plan on purpose: sharing one would
+  // make the two indistinguishable in every webhook that arrives afterwards.
+  assert.equal(planForPrice("price_m", map), "pro_monthly");
+  // Unset is "", and an unset price must never match an empty price id —
+  // the fail-closed rule the whole map already follows.
+  assert.equal(planForPrice("price_f", { monthly: "price_m" }), null);
+  assert.equal(planForPrice("", { firmMonthly: "" }), null);
+});
+
+test("seatsOf reads the subscription ITEM, across both shapes Stripe has used", () => {
+  assert.equal(stripe.seatsOf({ items: { data: [{ quantity: 6 }] } }), 6);
+  assert.equal(stripe.seatsOf({ quantity: 4 }), 4, "the older flat shape");
+  assert.equal(stripe.seatsOf({ items: { data: [{ quantity: 3 }] }, quantity: 99 }),
+    3, "the item wins — it is what Stripe actually bills");
+});
+
+test("seatsOf falls back to ONE, never to zero", () => {
+  // Zero would read as "a firm with no seats", which the invite gate enforces
+  // as "nobody may be in this firm" — turning a shape change at Stripe into a
+  // lockout for a paying customer.
+  for (const junk of [null, undefined, {}, { items: {} }, { items: { data: [] } },
+    { quantity: 0 }, { quantity: -3 }, { quantity: "many" }]) {
+    assert.equal(stripe.seatsOf(junk), 1, JSON.stringify(junk));
+  }
+  assert.equal(stripe.seatsOf({ quantity: 2.9 }), 2, "and never a fractional seat");
+});
+
+test("a firm subscription row carries no user_id", () => {
+  // The row goes into org_subscriptions, keyed on the firm. A user_id on it
+  // would be the buyer's, and 008's table would then hold a personal
+  // subscription their firm is paying for.
+  const row = stripe.subscriptionRowFrom(
+    { id: "sub_1", status: "active", customer: "cus_1",
+      items: { data: [{ price: { id: "price_f" }, quantity: 5 }] },
+      current_period_end: 1900000000 },
+    { firmMonthly: "price_f" }, { graceDays: 7 });
+  assert.equal(row.plan, "firm_monthly");
+  assert.equal(row.status, "active");
+  assert.equal("user_id" in row, false);
 });

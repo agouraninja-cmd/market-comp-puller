@@ -29,16 +29,10 @@ intent, the devlog states history.
 
 ## Next
 
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
-- **Import-time geocoding for vault comps** (step 2 of the same spec).
+- **Import-time geocoding for vault comps** (step 2 of
+  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
+  follow-on from that spec, the `/api/geocode` POST move Owen ranked above
+  this one, shipped 2026-08-17 and is in the log below).
   Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
   what fraction of broker exports already carry coordinates — could not be
   answered because there were **no vault uploads at all** yet. It is work that
@@ -58,24 +52,6 @@ intent, the devlog states history.
 - **White-label exports**, riding on the branding profile once its UI
   exists.
 - **Market digest pages**, once the corpus holds 2+ quarters of history.
-- **Only a licensed broker may publish a vault comp** (decided 2026-08-12,
-  not yet built). The "Verified" badge means "a named broker vouched for
-  this deal" — the strongest provenance a report shows, and the entire
-  currency the broker tier trades in, since brokers are paid in credit
-  rather than cash. The owner is not a licensed broker, so his publishing
-  under any credit name would make the badge say something untrue, and the
-  same hole is open to anyone else who gets vault access. **The decision:
-  put a license field on the broker profile and refuse `POST
-  /api/vault/publish` without it** — enforced in code rather than
-  remembered as a rule. Deliberately deferred, not parked: nobody can
-  publish today except the owner, who has decided not to, so there is no
-  live exposure; build it before the first outside broker gets a vault
-  (i.e. alongside `vault_beta`, migration 023). Rejected alternatives, so
-  they are not re-litigated: a separate non-broker provenance tier (moves
-  SOURCE_TIERS, TIER_WEIGHT, the comp-gate mirror, badge copy and the
-  legend together, for a contributor class that does not exist yet), and
-  rewording "Verified" to claim less (weakens the badge for the actual
-  brokers it exists to reward).
 
 ## Later (broker-tier phases, in order)
 
@@ -88,7 +64,11 @@ subscription benefit.
 ## Engineering track (no product decisions needed)
 
 - Deploy-checklist project skill (tests → tailwind regen if needed →
-  pending migrations → push → verify live → devlog).
+  pending migrations → push → verify live → devlog). **Shipped 2026-08-04**
+  (`96bab16`): `.claude/skills/deploy/SKILL.md`, which carries the whole
+  chain plus the two things this line did not think to ask for — the
+  shared-checkout rules (stage explicit paths, never amend) and the Supabase
+  project to run migrations against.
 - Extract tested pure modules out of server.js as they're touched. Shipped
   2026-08-08: `marketOf` → market.js (+ the Canada fix); the ENTIRE
   /api/comps parse pipeline → report-parse.js (parse, salvage, compact-key
@@ -98,13 +78,22 @@ subscription benefit.
   same way: when touched, with tests first.
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
-- Market pages restyle onto the `rd-*` Research Desk tokens; regenerate
-  og-image.png from the cut-card logo.
+- Market pages restyle onto the `rd-*` Research Desk tokens. Still
+  outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
+  own header — /how-it-works took the `rd-*` system "rather than the older
+  market-page skin". (The og-image half of this line is done: regenerated
+  from the cut-card mark 2026-07-15 in `660b563`, and byte-identical today,
+  the Sliced Tower attempt having been reverted whole in `017f2c5`.)
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
-- Fix `marketOf()` yielding "Canada" for Canadian addresses before
-  non-USD reports are ever harvested.
-  (Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
-  owner's yes — both now say "Comps in". See the Shipped log.)
+- Fix `marketOf()` yielding "Canada" for Canadian addresses before non-USD
+  reports are ever harvested. **Shipped 2026-08-08** (`fb190aa`), in the same
+  commit as the `marketOf` extraction the bullet above already credits —
+  which is why it sat here unnoticed. `market.js` reads Canadian
+  provinces, so "123 King St W, Toronto, ON, Canada" keys as "Toronto, ON"
+  rather than collapsing to the literal "Canada"; pinned by
+  `test/market.test.js`.
+- Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
+  owner's yes — both now say "Comps in". See the Shipped log.
 
 ## Open business questions (not code)
 
@@ -113,7 +102,12 @@ privacy — processing limits, deletion rights, and liability for data a
 broker was not licensed to hold. **The last of these gates launch, not
 development.** As of 2026-08-06 it is no longer hypothetical: brokers'
 private comps are live in storage (`broker_comps`, `broker_properties`)
-and flow into that broker's own valuation reports.
+and flow into that broker's own valuation reports. **Enterprise accounts
+sharpen the same question** (2026-08-16): when a broker uploads their book as
+an employee and then leaves the firm, whose comps are they? The design
+recommends the uploader keeps their vault and the firm keeps whatever was
+published to its shelf — a recommendation, not an agreement, and the first
+time it matters is the worst time to decide it.
 
 For Chuck: the gut-check benchmark, pricing, day-one dashboard
 views. Details in Section 8 of the Ecosystem Plan docx.
@@ -140,6 +134,87 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-19: only a licensed broker may publish a vault comp.** Decided
+  2026-08-12 and built now: `broker_profiles.license_number` (migration 034,
+  NOT NULL DEFAULT ''), and one pure gate `VAULT.canPublishAs(profile)` that
+  both `POST /api/vault/publish` and `POST /api/vault/publish-many` call, so
+  the two cannot drift. Credit name is still refused first, so an existing
+  broker's refusal keeps its shape. Optional to SAVE an identity, required to
+  PUBLISH: a broker setting up a vault rarely has the number to hand, and
+  refusing the whole save would block the credit name too. Never rendered
+  publicly, and `publicBrokerRow`'s allowlist is now test-pinned against it.
+  **Needs migration 034 applied before it does anything on production**, and
+  until then every publish refuses, so apply it with the merge.
+- **2026-08-19: enterprise (firm) accounts, all four slices.** From Chuck's
+  email of 2026-08-16; design in
+  `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`.
+  A firm is an account with a shelf on it: colleagues share reports to it
+  (manually, or automatically if an owner switches that on), search the
+  firm's whole record, and opt individual vault comps into each other's
+  reports. Migrations 030-033, run and verified on production the same day.
+  Slice 2 landed WITHOUT the `org_shelf_items` table the design assumed —
+  reports already live in `shared_reports` with `visibility='org'`, and a
+  second copy would have been two sources of truth. Slice 3 is opt-in per
+  COMP rather than per import, narrower than the spec proposed and the
+  version worth defending. Slice 4 (per-seat billing) is live but DARK:
+  `STRIPE_PRICE_FIRM_MONTHLY` is unset, so checkout 503s, the buy control
+  never renders, and seats stay hand-granted at 200 per firm. Standing
+  recommendation: leave that price unset until a firm asks to pay.
+  **What has NOT happened: a real firm.** Everything is proved against a
+  stand-in PostgREST and in a real browser, and the live database has never
+  held one. The first outside firm is the evidence that decides whether the
+  shelf or the shared vault earns further work — and the attorney question
+  below (whose comps are they when the broker who uploaded them leaves) is
+  now sharper, because a departing broker's comps can sit in colleagues'
+  reports as well as on the shelf.
+
+- **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
+  higher-ranked of the two follow-ons from the private-comp geocoding work
+  (Owen's section 7 ordering: above import-time geocoding, which stays in
+  "Next"). Every comp's address used to travel in a query string, so it landed
+  in Render's access logs and in any outbound Referer; it rides in the body
+  now, the same reasoning `POST /api/report-access` and `POST /api/hub/access`
+  already carry. It matters most for the comps that are not public — a vault
+  comp is geocoded through this proxy and deliberately nowhere else (GUARD 2),
+  so logging its address in a URL undid part of what that guard bought.
+  Both callers moved (index.html's `geocodeAddress`, `MARKET_MAP_JS`); the
+  Explorer turned out not to be one. **The GET alias was removed, not
+  deprecated** — an open door is one stale caller away from putting the
+  addresses back, and nothing detects that. The bounded cost is market pages
+  cached `public, max-age=3600` before the deploy, which geocode nothing for
+  up to an hour and hide the map card rather than showing a broken one;
+  index.html is `no-store` and updates at once. Four tests pin it, including
+  a source check that neither caller ever rebuilds a query string.
+
+- **2026-08-13/14: five changes aimed at the acquisition constraint, plus two
+  money-path holes.** None of these were on this roadmap, which is the point:
+  the list above is engineering the product needs, and every item here answers
+  "nobody arrives, and the few who do are told things we cannot back up."
+  - **A refund takes the report back** (#61). `charge.refunded` and the
+    async-payment pair had no handlers, so a refunded buyer kept their unlock
+    forever and a payment settling after checkout charged the card and never
+    unlocked anything. **Closed 2026-08-17**: the three events are ticked on
+    the live destination (`empowering-legacy`), which now reports all nine,
+    matching `PRO-BILLING-SETUP.md`. The handlers were inert for two weeks.
+  - **The market pages stop promising a broker nobody has** (#62). All 38
+    offered "a no-cost Broker Opinion of Value from a licensed local broker"
+    while the broker card above rendered nothing. The promise now reads the
+    same list that card reads; uncovered markets sell the report instead.
+  - **A covered market leads with the broker** (#62). Where somebody does
+    cover the market, the introduction offer sits above the tiles rather than
+    in the last sentence. Anonymous visitors only, since the CTA below already
+    splits and a member is here to work.
+  - **A forwarded report asks the reader for their own building** (#63).
+    `/r/<id>` is the only page the wall lets a stranger through to, and it
+    greeted them with a generic signup card plus a line telling them to "enter
+    an address above" while that card stood where the field would be.
+  - **Report-first outreach** (#68). `node outreach.js` runs real reports on
+    real buildings in one market, publishes share links and drafts a message
+    per building. It sends nothing and bills nothing without `--confirm`.
+    `--warm-only` is the bounded cache pre-warm. **Never run live yet.**
+  - **A saved property says what its market did while its owner was away**
+    (#70). The desk's only figure that moves without the owner re-running
+    anything, drawn from comps other people's searches already harvested.
 - **2026-08-09: market pages agree with themselves.** The `<title>`s said
   "Comps in" and the `<h1>`s said "Property Values in" on all 38 pages, so
   each one gave Google a mixed signal about its own subject. `marketTitle()`

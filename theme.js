@@ -16,14 +16,22 @@
 // (spec 2026-08-13-dark-mode-lifted-slate): paper #121826, card #1A2433,
 // wash/slab #243044, hover #334155. Same cool personality, charcoal not
 // black. No new brand colours.
+//
+// Ink was lifted a hair on 2026-08-14: the charcoal floor plus the original
+// dimmed ramp made labels and body copy read as one grey fog. Paper/card/
+// wash do not move. --ink-3 on --card goes 4.50:1 → 5.32:1, and on --slab
+// (table heads, already-dark chips) 3.82:1 → 4.52:1, which is the AA floor
+// that workhorse muted text actually sits on.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
   card:             { light: "#ffffff", dark: "#1A2433" }, // card, above paper
   wash:             { light: "#F5F4EF", dark: "#243044" }, // lifted panel
-  // Same light value as --wash on purpose: in light mode a hover above a
-  // washed surface DARKENS, in dark mode it must LIGHTEN. One token cannot
-  // express both directions, so this one changes nothing today.
+  // Same light value as --wash on purpose: in light mode a hover (or an
+  // inner tile) above a washed surface DARKENS, in dark mode it must
+  // LIGHTEN. One token cannot express both directions. Dark #334155 is
+  // also the inner-panel step (rd-tile, ledger mid-cell) so a tile on a
+  // card reads as a second surface rather than the same charcoal.
   "wash-2":         { light: "#F5F4EF", dark: "#334155" },
   // Surfaces that are ALREADY dark in light mode (bg-[#1A2433], bg-slate-900,
   // the footer). Left equal to --paper they would dissolve into the page and
@@ -36,11 +44,11 @@ const THEME_TOKENS = {
   hair:             { light: "#F0EFE9", dark: "#1E2938" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------
-  ink:              { light: "#1A2433", dark: "#C9D3E0" },
-  "ink-body":       { light: "#374253", dark: "#A8B4C4" },
-  "ink-2":          { light: "#4C5665", dark: "#9AABC0" },
-  "ink-mute":       { light: "#5A6473", dark: "#8A97A8" },
-  "ink-3":          { light: "#68707E", dark: "#7D8B9C" }, // the workhorse
+  ink:              { light: "#1A2433", dark: "#D5DDE8" },
+  "ink-body":       { light: "#374253", dark: "#B6C1CF" },
+  "ink-2":          { light: "#4C5665", dark: "#A8B6C6" },
+  "ink-mute":       { light: "#5A6473", dark: "#96A3B4" },
+  "ink-3":          { light: "#68707E", dark: "#8B98A8" }, // the workhorse
   "ink-faint":      { light: "#9AA2AD", dark: "#7C8899" },
   "ink-4":          { light: "#C7CBD2", dark: "#475569" }, // outlines, disabled
 
@@ -78,6 +86,15 @@ const THEME_TOKENS = {
   "err-text":       { light: "#7F1D1D", dark: "#F87171" },
   "err-bg":         { light: "#FCF1EF", dark: "#2A1517" },
   "err-rule":       { light: "#F0C7C7", dark: "#C27070" },
+  // Estimate and vault-comp badges. Light values are the literals those
+  // chips already used, so light mode does not move. Dark values keep the
+  // sienna / purple identities rather than borrowing --warn-* or --ok-*,
+  // which would collapse Estimate into Listing and From-your-vault into
+  // Verified.
+  "est-text":       { light: "#9A3412", dark: "#FDBA74" },
+  "est-bg":         { light: "#F8E9DC", dark: "#2A1C12" },
+  "bv-text":        { light: "#4C3A8C", dark: "#C4B5FD" },
+  "bv-bg":          { light: "#EDE9F8", dark: "#1C1730" },
 };
 
 // Emits both custom-property blocks as one line. Every in-scope stylesheet
@@ -94,10 +111,45 @@ const THEME_TOKENS = {
 // consuming rules, fixes every current and future var()-driven rule at the
 // source with one change, and :root must stay unscoped or print loses all
 // colour (nothing would define the light values a print run needs).
+// Dark-only card elevation. Not a colour token (the hex test on
+// THEME_TOKENS would reject a box-shadow), and --lift is `none` on :root
+// so applying `box-shadow: var(--lift)` in light mode is a no-op — light
+// stays byte-identical. The inset highlight is what actually separates a
+// card from charcoal paper; the drop is a whisper so a stack of report
+// cards does not look like a lightbox.
+const DARK_LIFT =
+  "0 1px 0 rgba(213,221,232,.14) inset,0 10px 28px -10px rgba(0,0,0,.55)";
+
+// Dark-only chrome that is not a colour token: native autofill, the caret,
+// scrollbar thumb, and font smoothing. Light mode must not gain any of
+// these -- they are a second @media screen block after the dark token
+// block, so print stays light. Interpolated via rootCss() into every
+// server-rendered in-scope page; index.html hand-copies the same rules
+// (it is static and never templates this file).
+const DARK_CHROME =
+  "@media screen{[data-theme=\"dark\"]{scrollbar-color:var(--wash-2) var(--paper);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}" +
+  "[data-theme=\"dark\"] input,[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{caret-color:var(--ink)}" +
+  "[data-theme=\"dark\"] input:-webkit-autofill,[data-theme=\"dark\"] textarea:-webkit-autofill,[data-theme=\"dark\"] select:-webkit-autofill{" +
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}}";
+
+// Chrome paints a light-blue sheet on autofill, including when someone
+// pastes a street address it recognises. background-color cannot override
+// it (UA !important); an inset shadow the size of the field can. var(--card)
+// is white in light and charcoal in dark, so the field stays the colour it
+// already is. Intentionally NOT inside DARK_CHROME: that block is dark-only,
+// and the blue sheet is a light-mode bug. :hover/:focus are the states
+// Chrome restyles after the paste.
+const AUTOFILL_COVER =
+  "input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus," +
+  "textarea:-webkit-autofill,textarea:-webkit-autofill:hover,textarea:-webkit-autofill:focus," +
+  "select:-webkit-autofill,select:-webkit-autofill:hover,select:-webkit-autofill:focus{" +
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);" +
+  "box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}";
+
 function rootCss() {
   const decl = (key) =>
     Object.entries(THEME_TOKENS).map(([n, v]) => `--${n}:${v[key]}`).join(";");
-  return `:root{${decl("light")}}@media screen{[data-theme="dark"]{${decl("dark")}}}`;
+  return `:root{${decl("light")};--lift:none}@media screen{[data-theme="dark"]{${decl("dark")};color-scheme:dark;--lift:${DARK_LIFT}}}${DARK_CHROME}${AUTOFILL_COVER}`;
 }
 
-module.exports = { THEME_TOKENS, rootCss };
+module.exports = { THEME_TOKENS, DARK_LIFT, DARK_CHROME, AUTOFILL_COVER, rootCss };

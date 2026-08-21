@@ -117,6 +117,7 @@ const SHORT_COMP_KEYS = {
   floor_plate: "fp", center_type: "ct", anchor_tenant: "at",
   units: "un", price_per_unit: "ppu", lot_acres: "ac",
   price_per_acre: "ppa", zoning: "z", beds_baths: "bb",
+  condition: "cd",
 };
 const LONG_COMP_KEYS = Object.fromEntries(
   Object.entries(SHORT_COMP_KEYS).map(([l, s]) => [s, l])
@@ -190,11 +191,56 @@ function normalizeCurrency(parsed) {
 // the caller — the prompt already forbids market-level rows as comps, but in
 // thin markets the model pads anyway, and a prompt rule is a request while
 // normalization is a guarantee.
-function normalizeSourceTypes(parsed, enforcedSourceType) {
+// `propertyType` is passed through to the rule because what counts as an
+// address identifying ONE property is type-dependent: a vacant parcel is
+// identified by its corner, having no building to number. Omitted, the rule
+// falls back to the street-number test alone.
+function normalizeSourceTypes(parsed, enforcedSourceType, propertyType) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    c.source_type = enforcedSourceType(c.source_type, c.address);
+    c.source_type = enforcedSourceType(c.source_type, c.address, propertyType);
+  }
+  return parsed;
+}
+
+// A house's condition is the largest thing the valuation cannot see (see
+// VALUATION.conditionSpread), so it is asked for as a CLOSED vocabulary rather
+// than free text: four words, ranked, that a homeowner picking from a dropdown
+// and a model reading a listing can both apply to the same house and mean the
+// same thing.
+//
+// The gate is deliberately STRICT — exact matches and a short alias list, and
+// anything else becomes "" (unknown) rather than a guess. This is the same
+// reject-rather-than-guess stance yearOf takes with "c. 1994" and broker-vault
+// takes with "1.2M", and it matters more here than usual: the value is shown
+// as a fact in a comp table whose entire selling point is provenance, and a
+// fuzzy matcher that reads "partially renovated" as Renovated would state
+// something about a stranger's house that nobody checked.
+//
+// If the fill rate turns out poor, the fix is the PROMPT (which names the four
+// words and tells the model to answer with exactly one of them), never a
+// looser parser here. Widening this list is how a provenance column quietly
+// becomes an opinion column.
+const CONDITION_VALUES = ["Needs work", "Original", "Updated", "Renovated"];
+const CONDITION_ALIASES = {
+  "needs work": "Needs work", "needs-work": "Needs work",
+  "needs_work": "Needs work", "needswork": "Needs work",
+  "original": "Original", "updated": "Updated", "renovated": "Renovated",
+};
+function normalizeConditionValue(v) {
+  const raw = String(v == null ? "" : v).trim().toLowerCase().replace(/\.$/, "");
+  return CONDITION_ALIASES[raw] || "";
+}
+function normalizeConditions(parsed) {
+  if (!parsed || !Array.isArray(parsed.comps)) return parsed;
+  for (const c of parsed.comps) {
+    if (!c || typeof c !== "object") continue;
+    // Only rewrite a key the comp actually carries: expandCompKeys backfills
+    // "" for this type's fields, and writing the key onto a comp of a type
+    // that never collects it would add a column's worth of empty strings to
+    // every harvested Industrial row.
+    if ("condition" in c) c.condition = normalizeConditionValue(c.condition);
   }
   return parsed;
 }
@@ -443,7 +489,32 @@ function normalizeSubjectYearBuilt(parsed) {
   return parsed;
 }
 
+// The subject's size and the PROVENANCE of that size travel as two separate
+// model-written fields, and nothing tied them together: the 2026-08-19 eval's
+// Atlanta multifamily report came back with subject_size_sqft "" and
+// subject_size_source "public_record", a provenance claim attached to no
+// value. index.html happens to read the source only inside its `found > 0`
+// branch, so this never reached a screen, but the orphan is written into the
+// cache, the harvest and every share, where the next reader of that payload
+// has no reason to expect it. A source with nothing to source is not a
+// smaller truth than a missing size, it is a different and false one.
+//
+// Same shape as normalizeSubjectLastSale's "no date drops the whole field":
+// the pair is kept or dropped together, never half-populated. The size is
+// normalized to "" rather than deleted, because it is a documented key of the
+// report shape that callers test for emptiness.
+function normalizeSubjectSize(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const size = Number(String(parsed.subject_size_sqft == null ? "" : parsed.subject_size_sqft)
+    .replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(size) && size > 0) return parsed;
+  if ("subject_size_sqft" in parsed) parsed.subject_size_sqft = "";
+  delete parsed.subject_size_source;
+  return parsed;
+}
+
 module.exports = {
+  normalizeSubjectSize,
   extractFirstJsonObject,
   parseCompJson,
   stripEmDashes,
@@ -460,4 +531,7 @@ module.exports = {
   normalizeSubjectAssessed,
   normalizeSubjectAsking,
   normalizeSubjectYearBuilt,
+  CONDITION_VALUES,
+  normalizeConditionValue,
+  normalizeConditions,
 };

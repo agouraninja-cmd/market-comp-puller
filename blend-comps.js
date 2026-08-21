@@ -129,6 +129,93 @@ function isPrivateComp(c) {
   return Boolean(c && typeof c === "object" && c.private === true);
 }
 
+// ---------------------------------------------------------------------------
+// The SHARED vault (migration 030) — a colleague's comp, in your report.
+//
+// Spec §7. Everything about a firm comp is a broker_vault comp except WHOSE it
+// is, and that difference is deliberately carried as ATTRIBUTION rather than
+// as a new source type. Two reasons, and the second is the load-bearing one:
+//
+//   1. A colleague's closed deal is the same provenance class as your own.
+//      The tier answers "how good is this evidence", and the answer does not
+//      change with the desk it came from.
+//   2. TIER_WEIGHT exists TWICE — valuation.js and comp-gate.js, a pair that
+//      already carries a keep-in-step warning — plus SOURCE_TIERS in
+//      index.html and eval-score.js's own read. A new tier would be four
+//      places that must agree about a weight that is 1 in every one of them.
+//
+// So a firm comp keeps `source_type: "broker_vault"` and `private: true`, and
+// EVERY downstream rule keeps working by construction rather than by review:
+// POST /api/share strips or anonymizes it, exports drop it, the print and the
+// PNG drop it, and the valuation still counts it at full weight. What changes
+// is the badge, which reads the `firm` field below.
+// ---------------------------------------------------------------------------
+
+// The stored payload for one shared comp: exactly the keys a report can
+// render, taken from FIELD_MAP itself so the two cannot drift.
+//
+// This is the privacy wall in one function. `user_id`, `dedupe_key`,
+// `address_key`, `upload_id`, `property_id` and the `published` flags are the
+// vault's own plumbing; none of them is in FIELD_MAP, so none of them can
+// reach another account's database row by being forgotten here.
+function firmCompPayload(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return null;
+  const out = {};
+  for (const col of Object.keys(FIELD_MAP)) {
+    const v = row[col];
+    if (v === null || v === undefined || v === "") continue;
+    out[col] = v;
+  }
+  return out.address && row.deal_date ? out : null;
+}
+
+// A stored firm comp, shaped as a report comp and attributed.
+//
+// `firm` is what the badge renders and is the ONLY thing distinguishing this
+// from the broker's own vault comp on screen. `shared_by` names the colleague
+// so a reader knows who to ask — the same reason the shelf attributes rows.
+function toFirmReportComp(stored) {
+  const comp = toReportComp(stored && stored.comp);
+  if (!comp) return null;
+  return {
+    ...comp,
+    firm: String((stored && stored.firm) || "") || undefined,
+    shared_by: String((stored && stored.shared_by_name) || "") || undefined,
+  };
+}
+
+// One deal, one row in the valuation.
+//
+// Two colleagues at the same firm routinely hold the SAME transaction in their
+// own books — they were on opposite sides of it — so a naive blend counts it
+// twice, and the second copy moves the median with nothing on screen
+// explaining why. This is the one place a private comp IS deduplicated, and it
+// is deliberately not the rule blendPrivateComps follows about public comps:
+// there, two rows are two pieces of evidence from different sources; here they
+// are one deal entered twice.
+//
+// The caller's OWN comp wins, so a broker's own deal keeps saying "From your
+// vault" rather than being attributed to whoever else uploaded it.
+function dedupeKeyOf(c) {
+  const addr = String((c && c.address) || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const date = String((c && c.date) || "").slice(0, 10);
+  const price = c && c.price_or_rate != null ? String(c.price_or_rate) : "";
+  return `${addr}|${date}|${price}`;
+}
+
+function dedupeFirmComps(mine, firm) {
+  const own = Array.isArray(mine) ? mine : [];
+  const seen = new Set(own.map(dedupeKeyOf));
+  const out = [];
+  for (const c of Array.isArray(firm) ? firm : []) {
+    const key = dedupeKeyOf(c);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
+}
+
 // Coordinates a building may lend its comps (migration 017), keyed by
 // property id. One rule: BOTH OR NEITHER, and null is not a coordinate.
 //
@@ -236,6 +323,10 @@ function anonymizePrivateComps(report) {
 }
 
 module.exports = {
+  firmCompPayload,
+  toFirmReportComp,
+  dedupeFirmComps,
+  dedupeKeyOf,
   blendPrivateComps,
   stripPrivateComps,
   anonymizePrivateComps,

@@ -249,3 +249,251 @@ test("polling goes dormant when nobody is there, and wakes on any sign of one", 
   // Waking must catch up in the same moment, or the wake is visible as a lag.
   assert.match(js, /if \(wasIdle\) tick\(\)/);
 });
+
+test("a reader who cannot post is given something to click", () => {
+  // This shipped as a sentence with no control: the composer that carries the
+  // account ask is hidden from exactly the people the line addresses, and the
+  // header's signed-out slots do not render on this page. A client read their
+  // broker's comps, went to reply, and hit a dead end — on the one path the
+  // whole feature is justified by. Found by opening a real invite link.
+  const js = pageScript(html);
+  assert.match(js, /a\.href = "\/\?auth=signin"/);
+  assert.match(js, /Sign in or create an account/);
+  // Only for the signed-out case. A CLOSED hub is finished, and offering a
+  // sign-in there would promise something signing in cannot deliver.
+  assert.match(js, /if \(d\.hub\.closedAt\)\s*\{[\s\S]*?\}\s*else\s*\{[\s\S]*?auth=signin/);
+});
+
+// --- the page's own chrome and colours (2026-08-14) ------------------------
+
+test("every CSS variable the hub page uses is one the theme actually defines", () => {
+  // The bug this pins: the page styled itself with `var(--bg)`, which does not
+  // exist — the page colour is `--paper`. An undefined var with no fallback
+  // makes the declaration invalid, so `.btn`'s `color: var(--bg)` fell back to
+  // the inherited ink, which is the same value as the button's own background.
+  // The primary action read as a blank rectangle: the label was present,
+  // correct, and the same colour as what it sat on. `--bad` was undefined too
+  // and only survived because it had a fallback.
+  const THEME = require("../theme.js");
+  const defined = new Set((THEME.rootCss().match(/--[a-z0-9-]+(?=\s*:)/g) || []));
+  const used = new Set((html.match(/var\(\s*(--[a-z0-9-]+)/g) || [])
+    .map((s) => s.replace(/var\(\s*/, "")));
+  const missing = [...used].filter((v) => !defined.has(v));
+  assert.deepEqual(missing, [], `hub-page.js uses undefined theme variables: ${missing.join(", ")}`);
+});
+
+test("the hub page's nav carries My Desk and Sign in", () => {
+  // accountNavSlots({ desk: false }) strips BOTH, and exists for
+  // /how-it-works, which renders its own My Desk link. The hub page renders
+  // neither, so passing that flag left a client with no way back into the app
+  // and no way to sign in. Both were reported on a real hub, from one flag.
+  //
+  // Asserted on what server.js actually passes, because the page cannot see
+  // the flag — it only receives the rendered slots.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,2500}?\}\)\);/);
+  assert.ok(call, "could not find the hub page's render call");
+  assert.match(call[0], /accountNavSlots\(\{ desk: true[^}]*\}\)/);
+});
+
+test("a hub sells the client nothing", () => {
+  // The tenant rule from the spec, which the page was breaking: "No comp gate,
+  // no Pro prompt, no export tally. A tenant who hits a paywall inside their
+  // own broker's hub is a lost acquisition and an embarrassed broker." The
+  // page was showing Pricing to everyone and, once signed in as a free
+  // account, an Upgrade to Pro button in the account menu — a pitch aimed at
+  // somebody else's guest, inside the workspace that broker owns.
+  //
+  // Owner's call, 2026-08-14: hubs show nothing about Pro. Every other page
+  // keeps both, which is why this asserts the HUB's own call rather than the
+  // helper's default.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const call = server.match(/renderHubHTML\(hubPageMatch\[1\][\s\S]{0,2500}?\}\)\);/);
+  assert.ok(call, "could not find the hub page's render call");
+  assert.match(call[0], /upsell: false/);
+  assert.match(call[0], /ACCOUNT_NAV_PRICING: ""/);
+  // And the helper must still default to showing both, or every other page
+  // silently loses its pricing link.
+  assert.match(server, /function accountNavSlots\(\{ desk = true, upsell = true \} = \{\}\)/);
+});
+
+// --- sending comps out of the vault (2026-08-14) --------------------------
+
+test("the vault picker is the OWNER's, not every writer's", () => {
+  // A client can add a building they found; only the broker sends out of the
+  // book of record. canAdd, not canWrite.
+  const js = pageScript(html);
+  assert.match(js, /show\("vaultWrap", !!d\.canAdd\)/);
+  assert.match(js, /show\("addWrap", !!d\.canWrite\)/);
+});
+
+test("the vault is fetched once, lazily, and never on an ordinary hub visit", () => {
+  // Most hub visits never open this. A broker's whole book is the largest
+  // thing this page could ask for.
+  const js = pageScript(html);
+  assert.match(js, /if \(!open \|\| vaultBook\) return;/);
+  assert.match(js, /\/api\/vault\?limit=1000/);
+});
+
+test("a refused vault read says so instead of showing an empty book", () => {
+  // An empty list and a refused read look identical, and one of them is a
+  // broker's whole book of business appearing to be gone.
+  const js = pageScript(html);
+  const fn = js.match(/el\("vaultToggle"\)\.addEventListener[\s\S]*?\n  \}\);/);
+  assert.ok(fn, "the toggle handler must exist");
+  assert.match(fn[0], /Your vault could not be loaded/);
+});
+
+test("the send reports what actually landed, not what was asked for", () => {
+  // added can be fewer than requested when something was already here. A
+  // broker told five were sent will not go looking for the two that were not.
+  const js = pageScript(html);
+  assert.match(js, /var n = o\.j\.added \|\| 0;/);
+  assert.match(js, /already in this hub/);
+});
+
+test("already-sent comps cannot be selected", () => {
+  // Matched on address, because the client item shape deliberately carries no
+  // vault row id. A hint only — the server filters duplicates itself.
+  const js = pageScript(html);
+  assert.match(js, /function alreadySent\(\)\{/);
+  assert.match(js, /cb\.disabled = isSent/);
+});
+
+test("hub-page.js and vault-page.js contain exactly two backticks", () => {
+  // Each file is ONE template literal, so a backtick anywhere inside it — in a
+  // comment, in a string, in a regex — ends the template early and emits
+  // broken JavaScript. `node --check` catches it, but as a SyntaxError
+  // pointing at whatever happened to follow, which reads as unrelated.
+  //
+  // This failed three times in one session, always in a comment quoting an
+  // identifier. The count is the cheapest possible guard: two backticks, the
+  // ones opening and closing the template.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  for (const f of ["hub-page.js", "vault-page.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const n = (src.match(/`/g) || []).length;
+    assert.equal(n, 2,
+      `${f} has ${n} backticks; it is one template literal, so it must have exactly 2. ` +
+      `A backtick in a comment ends the string and ships a dead page.`);
+  }
+});
+
+test("no single-backslash escape hides inside either template literal", () => {
+  // The sibling of the backtick guard above, and the general form of the
+  // invite-splitter bug. Inside a template literal JavaScript keeps \\n, \\t,
+  // \\r, \\\\, \\", \\', \\`, \\x.., \\u.... and \\$ — every OTHER backslash is
+  // dropped before the browser sees the source. So /\\s+/ ships as /s+/ and
+  // /\\d/ as /d/: still valid JavaScript, still passes `node --check`, and
+  // now matches a letter instead of a class.
+  //
+  // Escapes inside a ${} interpolation are ordinary code and are NOT at risk,
+  // so those spans are skipped.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const KEPT = new Set(["n", "t", "r", "\\", '"', "'", "`", "x", "u", "0", "$", "\n"]);
+  for (const f of ["hub-page.js", "vault-page.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const found = [];
+    let inTemplate = false, depth = 0, line = 1;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (c === "\n") { line++; continue; }
+      if (c === "\\") {
+        if (inTemplate && depth === 0 && !KEPT.has(src[i + 1])) {
+          found.push(`${f}:${line} eats \\${src[i + 1]}`);
+        }
+        i++;
+        continue;
+      }
+      if (inTemplate && depth === 0 && c === "$" && src[i + 1] === "{") { depth = 1; i++; continue; }
+      if (inTemplate && depth > 0) {
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+        continue;
+      }
+      if (c === "`") inTemplate = !inTemplate;
+    }
+    assert.deepStrictEqual(found, [],
+      `${f} carries an escape the template literal will eat before the browser sees it. ` +
+      `Write it with TWO backslashes.`);
+  }
+});
+
+// --- who is in a hub, and closing it (2026-08-14) -------------------------
+
+test("the People card is the OWNER's, and its presence is the server's answer", () => {
+  // `people` is only sent to the owner, so the page does not decide who may
+  // manage a guest list — it renders what it was given. The other addresses in
+  // a hub are that broker's client relationships and no fellow guest's
+  // business.
+  const js = pageScript(html);
+  assert.match(js, /show\("peopleCard", !!d\.people\)/);
+  assert.match(js, /if \(d\.people\) renderPeople\(d\.people, d\.hub\)/);
+});
+
+test("editing the guest list sends the WHOLE list, because the route replaces it", () => {
+  // PUT /api/hub/participants is a wholesale replace — one state to reason
+  // about instead of three. Inviting sends everyone plus the new ones;
+  // removing sends everyone except one.
+  const js = pageScript(html);
+  assert.match(js, /var all = people\.map\(function\(p\)\{ return p\.email; \}\)\.concat\(typed\)/);
+  assert.match(js, /people\.filter\(function\(p\)\{ return p\.email !== email; \}\)/);
+});
+
+test("the invite splitter survives the template literal, and keeps plus-addresses whole", () => {
+  // The bug this test exists for, found by inviting a real address on
+  // production 2026-08-19. The source said /[,;\\s]+/ with ONE backslash, so
+  // the template literal ate it and the page shipped /[,;s]+/ — a class
+  // matching the LETTER s. "okb336+hubtest@gmail.com" split at the s in
+  // "hubtest" into "okb336+hubte" and "t@gmail.com"; normalizeEmail dropped
+  // the first for having no @ and accepted the second, so the invitation went
+  // to a stranger while the broker was told it was sent, with the link hidden
+  // because emailed was true.
+  //
+  // The existing guard above compiles the script, and /[,;s]+/ compiles
+  // perfectly. So this asserts BEHAVIOUR on the emitted regex, not that the
+  // page parses: any escape the template eats changes what it matches.
+  const js = pageScript(html);
+  const m = js.match(/el\("peopleEmails"\)\.value\.split\((\/[^/]+\/)\)/);
+  assert.ok(m, "the invite input must still be split before it is sent");
+
+  const emitted = new RegExp(m[1].slice(1, -1));
+  const split = (v) => v.split(emitted).filter(Boolean);
+
+  assert.deepStrictEqual(split("okb336+hubtest@gmail.com"), ["okb336+hubtest@gmail.com"],
+    "a plus-address is ONE recipient; splitting it invents a second one");
+  assert.deepStrictEqual(split("sam@shore.com"), ["sam@shore.com"],
+    "an address full of the letter s is still one address");
+  assert.deepStrictEqual(split("a@x.com, b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com; b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com b@y.com"), ["a@x.com", "b@y.com"],
+    "whitespace still separates, which is the whole reason for the escape");
+});
+
+test("invite links are shown only when the server could NOT email them", () => {
+  // When it did email, the links are still secrets and there is no reason to
+  // put them on screen.
+  assert.match(pageScript(html), /if \(!list\.length \|\| j\.emailed\)\{ show\("peopleInvites", false\)/);
+});
+
+test("show() is never handed a DOM node", () => {
+  // show(name, on) does getElementById(name). Passing an element makes that
+  // return null and .classList throw — which, inside a fetch .then, surfaced
+  // to the broker as "that did not reach the server" AFTER the invitation had
+  // been saved. A failure message describing the opposite of what happened is
+  // worse than none. Caught by clicking the button, not by reading it.
+  const js = pageScript(html);
+  assert.ok(!/show\(box,/.test(js), "show() takes an id string, not a node");
+});
+
+test("a closed hub hides the controls that would fail on click", () => {
+  const js = pageScript(html);
+  assert.match(js, /show\("peopleAdd", !closed\)/);
+  assert.match(js, /show\("closeWrap", !closed\)/);
+});

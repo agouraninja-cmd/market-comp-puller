@@ -43,7 +43,7 @@ jobs:
 
       - name: Syntax-check entry points
         run: |
-          for f in server.js entitlements.js comp-gate.js stripe.js gen-market-seed.js market-snapshot.js; do
+          for f in server.js entitlements.js comp-gate.js stripe.js gen-market-seed.js market-snapshot.js desktop.js desktop-app/main.js; do
             node --check "$f"
           done
 

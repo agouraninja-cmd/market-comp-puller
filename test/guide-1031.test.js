@@ -336,3 +336,63 @@ test("a member Value goes to the app, not signup", () => {
   assert.ok(!page.location.href.includes("auth=signup"));
   assert.match(page.location.href, /type=Retail/);
 });
+
+// --- what today's guide work contributes, on the worksheet page -------------
+//
+// The calendar export, the lead-attribution marker and the choose-a-QI section
+// shipped on 2026-08-20 against the pre-worksheet page. They are re-applied on
+// top of the worksheet here, so these pin that the worksheet did not quietly
+// drop them.
+
+test("the deadlines still export as a calendar file built from the typed date", () => {
+  const page = bootPage();
+  page.els.q1031close.value = "2026-08-20";
+  page.fire("q1031close", "input");
+  const ics = page.els.q1031ics;
+  assert.equal(ics.hidden, false, "the link shows once a valid date is typed");
+  assert.match(String(ics.href), /^data:text\/calendar/,
+    "a data: URI, so the closing date never touches a server");
+  const cal = decodeURIComponent(String(ics.href).split(",").slice(1).join(","));
+  assert.equal((cal.match(/BEGIN:VEVENT/g) || []).length, 2, "both deadlines");
+  assert.ok(cal.includes("DTSTART;VALUE=DATE:20261004"), "day 45");
+  assert.ok(cal.includes("DTSTART;VALUE=DATE:20270216"), "day 180");
+  assert.ok(cal.includes("\r\n"), "RFC 5545 wants CRLF");
+
+  // Deterministic: DTSTAMP derives from the closing date, never the clock.
+  const again = bootPage();
+  again.els.q1031close.value = "2026-08-20";
+  again.fire("q1031close", "input");
+  assert.equal(String(again.els.q1031ics.href), String(ics.href));
+});
+
+test("an invalid date hides the calendar link rather than serving a stale file", () => {
+  const page = bootPage();
+  page.els.q1031close.value = "2026-08-20";
+  page.fire("q1031close", "input");
+  assert.equal(page.els.q1031ics.hidden, false);
+  page.els.q1031close.value = "not-a-date";
+  page.fire("q1031close", "input");
+  assert.equal(page.els.q1031ics.hidden, true, "a stale file must not stay downloadable");
+  assert.equal(page.els.q1031out.innerHTML, "");
+});
+
+test("reading the page leaves the marker lead attribution reads", () => {
+  // index.html reads this exact key at BOV submit to tag the lead's source
+  // "1031". The two strings must not drift.
+  const page = bootPage();
+  const v = page.localStorage.getItem("cnRef1031.v1");
+  assert.ok(v, "the marker must be written on load");
+  assert.ok(Number(v) > 0, "the marker is a timestamp, so the signal can expire");
+});
+
+test("the choosing-a-QI section survives on the worksheet page", () => {
+  const body = G.renderGuide1031Body();
+  for (const must of [
+    "Choosing a qualified intermediary",
+    "not a qualified intermediary and does not hold funds",
+    "segregated qualified escrow",
+    "fidelity bond",
+  ]) {
+    assert.ok(body.includes(must), "QI section must contain: " + must);
+  }
+});

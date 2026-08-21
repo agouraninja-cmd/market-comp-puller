@@ -183,6 +183,60 @@ test("bare environment", async (t) => {
     assert.match(related, /·/, "trimmed links use a bullet in place of the middle");
   });
 
+  // The comp map card carries the market's momentum — the same read, the same
+  // three words and the same three colours the Explorer dropdown badges with.
+  //
+  // The colour is a CLASS here (MARKET_CSS is ours, unlike the vendored
+  // tailwind build the dropdown has to work around), and a class that is not
+  // in the stylesheet fails silently: the word renders in body grey and the
+  // page looks fine. So the served page is checked for the rule, not just for
+  // the attribute.
+  await t.test("the comp map card badges which way the market is moving", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
+    const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
+    assert.match(head, /<h2>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
+    assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
+      "Ontario's stored read is contracting — the word and its colour class must both render");
+    assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
+    for (const cls of ["mdirv-expanding", "mdirv-flat", "mdirv-contracting"]) {
+      assert.match(html, new RegExp("\\." + cls + "\\{color:var\\(--"),
+        cls + " has no rule in MARKET_CSS, so that word would render uncoloured");
+    }
+  });
+
+  // A market with no read renders NOTHING, never a fourth "unknown" state.
+  // Five of the seeded pages are in this state on purpose: their momentum
+  // sentence was two-sided and the classifier refused to pick a half.
+  await t.test("a market with no stored direction gets no badge at all", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
+    assert.ok(!html.includes('class="mdir"'),
+      "an unread market must show no momentum, not an Unknown chip");
+    assert.match(html, /<h2>Where these comps are<\/h2>/,
+      "and the heading must be untouched when there is no badge beside it");
+  });
+
+  // The dropdown and the page it links to must never disagree about the same
+  // market on the same afternoon. Both read freshDirection(), which is what
+  // makes the 90-day expiry one rule rather than two — this is what catches a
+  // second copy of the vocabulary or the age gate growing on either side.
+  await t.test("the map badge says what /api/markets says, market by market", async () => {
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    assert.ok(rows.length > 10, "the seeded directory should be here");
+    let checked = 0;
+    for (const row of rows) {
+      const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
+      // No map card, no badge: this one rides on the map, so a market whose
+      // comps are all quoted at the submarket level shows nothing either way.
+      if (!html.includes('id="mktMapCard"')) continue;
+      checked++;
+      const word = (html.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
+      assert.equal(word ? word.toLowerCase() : null, row.direction || null,
+        row.slug + ": the map card and the Explorer dropdown disagree");
+    }
+    assert.ok(checked > 10, "expected most seeded markets to have a map card, got " + checked);
+  });
+
   // The signed-in header chrome, on every page that is not index.html.
   //
   // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and

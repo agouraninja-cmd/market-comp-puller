@@ -3,7 +3,7 @@
 **Date:** 2026-08-21
 **Status:** shipped
 **Modules:** `bulk.js` (pure), `bulk-page.js` (the /bulk screen), migration
-`035-bulk-valuations.sql`
+`036-bulk-valuations.sql`
 **Touches:** `entitlements.js` (`canBulkValue`, `bulkMaxAddresses`),
 `server.js` (`runCompSearch`, `finishReportForViewer`, the job store and
 worker, `/api/bulk*`, `/bulk`), `index.html` (`?property=<id>`)

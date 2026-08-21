@@ -1,7 +1,7 @@
 // Bulk valuation, actually running — the routes against a stand-in PostgREST.
 //
 // Why this exists, and why it is not bulk.test.js: bulk valuation deliberately
-// has NO file fallback (migration 035), so on a bare server every route
+// has NO file fallback (migration 036), so on a bare server every route
 // answers 503 and nothing past the refusals can be proven. Everything that
 // actually matters here — that the gate ladder refuses in the right order,
 // that a job is scoped to its owner, that one member cannot start two runs at

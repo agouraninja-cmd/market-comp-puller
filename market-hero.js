@@ -10,6 +10,21 @@
 // Photos are downloaded, cropped, and served from /market-heroes/ rather than
 // hotlinked: Wikimedia asks not to be used as a CDN. Credits render on the
 // photograph. Pure, no I/O, so npm test can pin the lookup.
+//
+// Since 2026-08-21 the curated table is no longer the only photo layer.
+// `market-heroes-auto.json` holds the same shape for cities nobody curated by
+// hand — found, graded, looked at by a model and encoded by
+// `node scripts/auto-market-heroes.js`, then committed like any other hero.
+// It exists because the Explorer publishes market pages faster than a person
+// can pick photographs for them: on the day it shipped, 21 cities were
+// curated and 13 live Explorer markets had no picture at all.
+//
+// The resolution order is curated photo, then automatic photo, then a
+// satellite aerial of the city's own coordinates, then nothing. Curated wins
+// on purpose — a person looked at those — and the auto file also carries
+// COORDINATES for every market city it has ever seen, which is what turns the
+// last-resort satellite branch from a hardcoded list of 22 cities into
+// something every market page can reach.
 
 "use strict";
 
@@ -207,6 +222,45 @@ const HEROES = {
 
 const FILE_RE = /^[a-z0-9-]+\.jpg$/;
 
+// The generated companion table. A static require of committed JSON, the same
+// deterministic read market-seed.json gets, so this module stays testable with
+// no network and no filesystem of its own — but it is GENERATED, so nothing
+// here may assume it is well formed. A missing or unreadable file must leave
+// the curated markets exactly as they were rather than take the server down at
+// boot.
+let AUTO_FILE;
+try {
+  AUTO_FILE = require("./market-heroes-auto.json");
+} catch (_) {
+  AUTO_FILE = null;
+}
+
+function autoCities(table) {
+  const src = table === undefined ? AUTO_FILE : table;
+  return (src && typeof src === "object" && src.cities && typeof src.cities === "object")
+    ? src.cities
+    : {};
+}
+
+// One generated entry, checked before it is believed. The file name is the
+// part that matters: it becomes a URL under /market-heroes/, so it goes
+// through the same FILE_RE the curated files do — a generated path is still a
+// path, and this is the one place a bad one could enter.
+function autoHeroFor(key, table) {
+  const row = autoCities(table)[key];
+  const hero = row && row.hero;
+  if (!hero || !isHeroFilename(hero.file)) return null;
+  if (!hero.credit || !hero.commons) return null;
+  return hero;
+}
+
+function autoCoordsFor(key, table) {
+  const row = autoCities(table)[key];
+  const ll = row && row.coords;
+  if (!ll || !Number.isFinite(Number(ll.lat)) || !Number.isFinite(Number(ll.lng))) return null;
+  return { lat: Number(ll.lat), lng: Number(ll.lng) };
+}
+
 function cityKey(city, state) {
   return `${String(city || "").trim().toLowerCase()}, ${String(state || "").trim().toLowerCase()}`;
 }
@@ -264,26 +318,47 @@ function satelliteHero(city, state, ll) {
   };
 }
 
+function photoHero(row, kind) {
+  return {
+    src: "/market-heroes/" + row.file,
+    srcset: photoSrcset(row.file),
+    alt: row.alt,
+    credit: row.credit,
+    license: row.license,
+    commonsUrl: commonsFileUrl(row.commons),
+    kind,
+  };
+}
+
+// opts:
+//   skipKeys  — cities whose stored JPEG failed the quality grade
+//   coords    — {lat,lng} the caller already knows (a market page payload),
+//               used only after the two committed coordinate sources
+//   auto      — the generated table, injected by tests
 function heroFor(city, state, opts) {
   const key = cityKey(city, state);
+  const skipped = skippedKey(opts && opts.skipKeys, key);
+  const auto = opts && opts.auto;
   const curated = HEROES[key];
   // skipKeys is the quality grade: a curated file that is the wrong size or
   // too small to be sharp must not head the live page. Fall through to Esri
   // of THIS city's coordinates — Ontario, CA is still not Ontario, Canada.
-  if (curated && !skippedKey(opts && opts.skipKeys, key)) {
-    return {
-      src: "/market-heroes/" + curated.file,
-      srcset: photoSrcset(curated.file),
-      alt: curated.alt,
-      credit: curated.credit,
-      license: curated.license,
-      commonsUrl: commonsFileUrl(curated.commons),
-      kind: "photo",
-    };
-  }
-  const ll = CITY_COORDS[key];
-  if (ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lng)) {
-    return satelliteHero(city, state, ll);
+  if (curated && !skipped) return photoHero(curated, "photo");
+
+  // The automatic layer sits below the curated one and above the satellite:
+  // a real photograph a model looked at beats an aerial tile, and a person's
+  // pick beats both. Same skip rule, so a soft generated file drops through
+  // exactly as a soft curated one does.
+  const generated = autoHeroFor(key, auto);
+  if (generated && !skipped) return photoHero(generated, "photo");
+
+  // Coordinates, in order of how much they have been checked: the curated
+  // downtown points, then the geocoded ones the generator stored, then
+  // whatever the caller was handed. A city with none still gets nothing —
+  // the whole point of this file is that a wrong skyline is worse than none.
+  const ll = CITY_COORDS[key] || autoCoordsFor(key, auto) || (opts && opts.coords);
+  if (ll && Number.isFinite(Number(ll.lat)) && Number.isFinite(Number(ll.lng))) {
+    return satelliteHero(city, state, { lat: Number(ll.lat), lng: Number(ll.lng) });
   }
   return null;
 }
@@ -295,6 +370,9 @@ function isHeroFilename(name) {
 module.exports = {
   HEROES,
   CITY_COORDS,
+  autoCities,
+  autoHeroFor,
+  autoCoordsFor,
   FILE_RE,
   HERO_WIDTH,
   HERO_HEIGHT,

@@ -1,4 +1,4 @@
--- 035 · Bulk valuation jobs (2026-08-21)
+-- 036 · Bulk valuation jobs (2026-08-21)
 -- Spec:   docs/superpowers/specs/2026-08-21-bulk-valuation-design.md
 -- Module: bulk.js (what counts as an address, what a row is worth, the totals)
 --
@@ -97,7 +97,7 @@ alter table bulk_jobs enable row level security;
 -- browser or editor that reflows the line turns it into a syntax error that
 -- aborts the whole script. Not hypothetical -- this file's first run in the
 -- SQL editor did nothing, and this was the likeliest reason.
-comment on table bulk_jobs is 'One bulk valuation run. Pro-only, user-scoped, no file fallback (see 035). A row is the record of the RUN; the valuations themselves also land in portfolio_items.';
+comment on table bulk_jobs is 'One bulk valuation run. Pro-only, user-scoped, no file fallback (see 036). A row is the record of the RUN; the valuations themselves also land in portfolio_items.';
 
 -- ---------------------------------------------------------------------------
 -- 2. One address in it.

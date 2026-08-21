@@ -1069,6 +1069,41 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
        but cells top-align because a row can carry a viewer list or the
        inline people editor, and the detail row needs its own quiet berth. */
+    /* Refine's two groups (2026-08-21). A micro-label on a hairline, one
+       step quieter than the desk decks: this is a subdivision inside an
+       already-collapsed section, not a shelf of the page. .rf-grule is the
+       same flex-fill rule the deck heads use, so the two read as one family
+       at two weights. */
+    .rf-group + .rf-group { margin-top: 20px; }
+    .rf-ghead { display: flex; align-items: center; gap: 10px; }
+    .rf-glab { font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+      font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+    .rf-grule { flex: 1; height: 0; border-top: 1px solid var(--hair); }
+    .rf-gnote { font-size: 11.5px; line-height: 1.5; color: var(--ink-3); margin: 4px 0 10px; }
+    /* Report jump nav (2026-08-21). Sticky at the top of the viewport while
+       any part of the report is in view. z-40 is chosen against this file's
+       existing layers: above ordinary content (which sets no z-index), below
+       the account/pricing modals (1100-1200) and below the fullscreen map
+       (#compMap.map-fullscreen is 1300), so an opened map still covers it
+       with no extra bookkeeping.
+
+       -webkit-overflow-scrolling and the horizontal scroll are for a phone:
+       five labels do not fit 360px, and a wrapping nav bar changes height as
+       you scroll, which reads as the page juddering. */
+    #reportNav { position: sticky; top: 0; z-index: 40; margin-bottom: 12px;
+      background: var(--paper); border-bottom: 1px solid var(--hair); }
+    .rn-inner { display: flex; align-items: center; gap: 18px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 9px 2px; }
+    .rn-inner::-webkit-scrollbar { display: none; }
+    .rn-link { flex: none; background: none; border: 0; padding: 0; cursor: pointer;
+      font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+      border-bottom: 2px solid transparent; padding-bottom: 2px; }
+    .rn-link:hover { color: var(--ink); }
+    /* aria-current is the announced state; the rule is on the attribute rather
+       than a class so the two can never disagree. */
+    .rn-link[aria-current="true"] { color: var(--ink); border-bottom-color: var(--red); }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     .dk-shares td { vertical-align: top; }
     .dk-shares .acts { text-align: right; white-space: nowrap; font-size: 12px; }
     .dk-shares .acts > * + * { margin-left: 12px; }
@@ -1893,64 +1928,84 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(asking price, NOI, cap rate, market note: optional)</span></span>
           </summary>
           <div class="px-4 pb-4 pt-1">
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintLead">What you enter here steers which comps we pick — buildings like yours in specs.</span> <span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <!-- Size is NOT here any more — it went back up onto the form on
-                   2026-08-16. Do not add a second size input down here to be
-                   helpful: #targetSize is a single id read by the footprint
-                   estimate, targetRange(), and every report restore, and a
-                   duplicate would either break those or silently disagree with
-                   the value the search actually sends. -->
-              <div id="noiWrap">
-                <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
-                <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#68707E] mt-1">Used only in your browser for the income-approach estimate. Never sent to our server.</p>
+            <!-- The lead sentence ("what you enter here steers which comps we pick")
+                 moved down into the first group's note on 2026-08-21, where it is
+                 true: it was making a claim about every field behind this
+                 summary, and three of them never reach the search at all. -->
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
+            <!-- Two groups, split on where the data actually goes
+                 (2026-08-21). Every field behind this summary looked alike, so
+                 the one real difference between them was invisible: the market
+                 note and the per-type facts ride to our server with the search
+                 and steer which comps come back, while the asking price, NOI
+                 and cap rate are read only by this browser and are not in the
+                 /api/comps body at all — so they are not in the cache key
+                 either. The code has enforced that split from the start; this
+                 is the first time the form says so.
+
+                 The copy is worded against what the code does, not what reads
+                 well. "Not sent with your search" rather than "never leaves
+                 your browser", because publishing a share DOES upload the
+                 report: /api/share nulls meta.subject.noi but keeps capRate
+                 and the asking price, so a blanket never-leaves claim would be
+                 false the moment somebody shares. The share sentence is the
+                 per-type half of the note below, set beside hintIncome, since
+                 Land hides the two income fields entirely.
+
+                 Asking price leads the second group deliberately: it stays
+                 adjacent to the per-type facts it was placed beside on
+                 2026-08-17, while sitting under the header that tells the
+                 truth about it. -->
+            <div class="rf-group" role="group" aria-labelledby="rfSentLab">
+              <div class="rf-ghead"><span class="rf-glab" id="rfSentLab">Sent with your search</span><span class="rf-grule"></span></div>
+              <p id="rfSentNote" class="rf-gnote">Used to pick comps — buildings like yours.</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Size is NOT here any more — it went back up onto the form
+                     on 2026-08-16. Do not add a second size input down here to
+                     be helpful: #targetSize is a single id read by the
+                     footprint estimate, targetRange(), and every report
+                     restore, and a duplicate would either break those or
+                     silently disagree with the value the search actually
+                     sends. -->
+                <div id="subjectTypeFields" class="contents"></div>
+  <div>
+                  <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                  <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
               </div>
-              <div id="capRateWrap">
-                <!-- Took the Price max slot on 2026-08-10. That max earned its
-                     place when the asking price also lived down here; once the
-                     price moved up onto the form itself, a lone "max" in Refine
-                     was a control that only made sense if you remembered the
-                     field it belonged to. A cap rate is what a commercial owner
-                     actually reaches for, and it lights up an approach the
-                     report could not otherwise hear an opinion about: the
-                     income line values NOI at the MODEL's range and had no way
-                     to be told the owner disagrees. Browser-only, exactly like
-                     the NOI beside it - never in the /api/comps body, so never
-                     in the cache key. -->
-                <label class="rd-lab" for="capRate">Cap rate (%)</label>
-                <input id="capRate" type="number" min="0" step="0.01" placeholder="e.g. 6.25" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#68707E] mt-1">Your own cap rate. With NOI it adds an income-approach value line. Used only in your browser.</p>
+            </div>
+
+            <div class="rf-group" role="group" aria-labelledby="rfLocalLab">
+              <div class="rf-ghead"><span class="rf-glab" id="rfLocalLab">Yours alone</span><span class="rf-grule"></span></div>
+              <p class="rf-gnote">Not sent with your search, and they never change which comps we find. <span id="rfLocalShare"></span></p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div>
+                  <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">What it's listed at, or what you'd ask today. Shows your $/SF against the market's.</p>
+                </div>
+  <div id="noiWrap">
+                  <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
+                  <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">Powers the income-approach cross-check and the DCF. Stripped from any report link you share.</p>
+                </div>
+  <div id="capRateWrap">
+                  <!-- Took the Price max slot on 2026-08-10. That max earned its
+                       place when the asking price also lived down here; once the
+                       price moved up onto the form itself, a lone "max" in Refine
+                       was a control that only made sense if you remembered the
+                       field it belonged to. A cap rate is what a commercial owner
+                       actually reaches for, and it lights up an approach the
+                       report could not otherwise hear an opinion about: the
+                       income line values NOI at the MODEL's range and had no way
+                       to be told the owner disagrees. Browser-only, exactly like
+                       the NOI beside it - never in the /api/comps body, so never
+                       in the cache key. -->
+                  <label class="rd-lab" for="capRate">Cap rate (%)</label>
+                  <input id="capRate" type="number" min="0" step="0.01" placeholder="e.g. 6.25" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">Your own cap rate. With NOI it adds an income-approach value line.</p>
+                </div>
               </div>
-              <div>
-                <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-                <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-              </div>
-              <!-- Asking price came down off the form on 2026-08-17 (owner's
-                   call) so the row above fits on one line again. It sits
-                   directly beside the per-type facts below — beds/baths on a
-                   house, unit count on a multifamily — because that is what it
-                   is: a fact about the subject, not a control over the search.
-                   Still optional; the address is this form's only required
-                   field. It stays ONE input: a price BAND is not a thing an
-                   owner has, where a size band is.
-                   "Asking price", not "Your price": a bare "your price" invites
-                   the price they PAID years ago, and a historical number would
-                   make the comparison card announce a nonsense over/under
-                   against today's market.
-                   Worth knowing before removing it: renderComparison() hides
-                   itself unless it has BOTH a size and a price, so this is the
-                   only field that lights up the owner's own $/SF against the
-                   market's — and on Residential it is a compWeight factor, the
-                   thing that stops cheaper sales in the next pocket over
-                   halving a house's estimate. It takes the bordered Refine
-                   styling rather than .rd-in now that it lives in this grid. -->
-              <div>
-                <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-                <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                <p class="text-xs text-[#68707E] mt-1">What it's listed at, or what you'd ask today. Shows your $/SF against the market's.</p>
-              </div>
-              <div id="subjectTypeFields" class="contents"></div>
             </div>
           </div>
         </details>
@@ -2098,6 +2153,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span id="deskCount" class="dk-note"></span>
         </div>
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
+        <!-- The other empty state, and the reason they are two elements: a
+             failed read used to render as "Run a report — it will show up
+             here", which tells somebody with a book of sixteen properties
+             that it is gone. Same rule the vault's comps table, the lead
+             inbox and the hub list each had to learn — an outage must never
+             be reported as an absence. Shown by renderMyDesk(); the rows and
+             the count are left exactly as they were rather than wiped. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost — refresh in a moment.</p>
         <!-- Statement table container (was a 3-col card grid). The id keeps
              every existing reference; renderMyDesk builds the table inside.
              The book line (#deskLedger) that used to sit above it is now the
@@ -2532,6 +2595,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
 
       <!-- Captured / printed region -->
+      <!-- Jump nav (2026-08-21). A finished report is about five screens on a
+           laptop and the comps table starts three and a half of them down, so
+           "where is the evidence" was a scroll hunt. Sticky, screen-only
+           navigation: no-print AND no-capture, because it is chrome, not
+           report content, and a PNG of a report with a floating toolbar
+           welded across it is worse than no PNG.
+
+           It sits INSIDE #results and OUTSIDE #reportArea deliberately. Inside
+           #results, so beginAssembly's allowlist hides it with everything else
+           that is not a data-assemble block — a nav pointing at cards that do
+           not exist yet is worse than none. Outside #reportArea, so it is
+           never inside the element html2canvas rasterises and never inherits
+           a card entrance transform (a transformed ancestor is what the map
+           fullscreen comment above warns about, and sticky is measured
+           against it).
+
+           Built by syncReportNav(); the links come from REPORT_NAV_SECTIONS
+           filtered by what is actually on screen, so the bar follows the
+           visible tab instead of keeping a second list of it. -->
+      <nav id="reportNav" class="hidden no-print no-capture" aria-label="Jump to a section of this report">
+        <div id="reportNavInner" class="rn-inner"></div>
+      </nav>
+
       <div id="reportArea" class="space-y-6">
 
         <!-- Print letterhead: appears only on the printed / PDF report.
@@ -3570,8 +3656,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const noun = assetNoun(type);
     // "in specs", not "in size and specs": the size that steers comp selection
     // is entered on the form now, not behind this summary.
-    document.getElementById("subjectHintLead").textContent =
-      `What you enter here steers which comps we pick — ${assetNounPlural(type)} like yours in specs.`;
+    // Writes the FIRST group's note, not the intro line it used to: the claim
+    // is only true of the fields in that group, which is the whole point of
+    // the split above.
+    document.getElementById("rfSentNote").textContent =
+      `Used to pick comps — ${assetNounPlural(type)} like yours in specs.`;
     const hintIncome = document.getElementById("subjectHintIncome");
     const summaryBits = document.getElementById("subjectSummaryBits");
     // The bits list what is actually BEHIND this summary, so none of them names
@@ -3582,15 +3671,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // by name, and it is now the only place to type it. Land loses its income
     // line, so asking price + market note + zoning is all it has left to
     // advertise.
+    // The "Yours alone" group's share sentence rides this same branch, for
+    // the same reason hintIncome does: Land hides the NOI and cap-rate fields
+    // outright, so a note naming them would describe two inputs that are not
+    // on the page. It is the one place the form states which of these figures
+    // survives a share — /api/share nulls meta.subject.noi and keeps capRate
+    // and the asking price — so keep it in step with that route.
+    const localShare = document.getElementById("rfLocalShare");
     if (type === "Residential") {
       hintIncome.textContent = "If this is a rental, add NOI for an income-approach cross-check.";
       summaryBits.textContent = "(asking price, beds/baths, market note: optional)";
+      localShare.textContent = "Share a report and your NOI is dropped from the link; the asking price and cap rate travel with it.";
     } else if (type === "Land") {
       hintIncome.textContent = "";
       summaryBits.textContent = "(asking price, zoning, market note: optional)";
+      localShare.textContent = "The asking price does travel on a report link you share.";
     } else {
       hintIncome.textContent = "Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.";
       summaryBits.textContent = "(asking price, NOI, cap rate, market note: optional)";
+      localShare.textContent = "Share a report and your NOI is dropped from the link; the asking price and cap rate travel with it.";
     }
     document.getElementById("targetSizeHint").textContent = type === "Land"
       ? "Left blank, it comes from public records."
@@ -4486,6 +4585,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     results.classList.remove("assembling");
     results.removeAttribute("aria-busy");
     results.classList.add("hidden");
+    // The jump nav rides inside #results, so hiding that hides it too — but
+    // its targets are what the scroll listener works from, and a list of
+    // detached-from-view cards would keep it measuring on every frame of a
+    // scroll through a page with no report on it.
+    document.getElementById("reportNav").classList.add("hidden");
+    reportNavTargets = [];
     // Leave nothing half-real behind: renderResults rebuilds all of these
     // wholesale on success, and on error the report region must be empty.
     ["tableBody", "tableFoot", "cardList", "subjectRowBody"].forEach((id) => {
@@ -6887,6 +6992,102 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // Report | Analysis tabs — pure class toggling; print CSS ignores them
   // (both panels forced visible on paper).
+  // ---------------------------------------------------------------------------
+  // Report jump nav — the sticky strip above the report.
+  //
+  // ONE declared list, filtered by what is actually on screen. offsetParent is
+  // null for anything display:none, which covers both a card that did not
+  // render (no map, no NOI) and every card in the tab that is not showing — so
+  // switching tabs re-labels the bar without this file keeping a second copy
+  // of which card lives in which tab. Order here is document order and must
+  // stay that way: the scrollspy below walks it and takes the last match.
+  // ---------------------------------------------------------------------------
+  const REPORT_NAV_SECTIONS = [
+    { id: "ownerHero",   label: "Value" },
+    { id: "summaryCard", label: "Market" },
+    { id: "driversCard", label: "Drivers" },
+    { id: "mapCard",     label: "Map" },
+    { id: "chartCard",   label: "Position" },
+    { id: "compsCard",   label: "Comps" },
+    { id: "dcfCard",      label: "DCF" },
+    { id: "opexCard",     label: "Expenses" },
+    { id: "debtCard",     label: "Debt" },
+    { id: "sensCard",     label: "Sensitivity" },
+    { id: "rentRollCard", label: "Rent roll" },
+  ];
+  // Two screens of report before a jump nav earns its space. Below that the
+  // whole document is a flick of the wheel and the bar is furniture — the
+  // same rule the firm shelf's search box and the history filter follow.
+  const REPORT_NAV_MIN_SCREENS = 2;
+  let reportNavTargets = [];
+
+  function syncReportNav() {
+    const nav = document.getElementById("reportNav");
+    const inner = document.getElementById("reportNavInner");
+    const results = document.getElementById("results");
+    const shown = REPORT_NAV_SECTIONS
+      .map((sec) => ({ ...sec, el: document.getElementById(sec.id) }))
+      .filter((sec) => sec.el && sec.el.offsetParent !== null);
+    // Measured on the REPORT, not the document: the page also carries the
+    // header, the search form and the footer, and a two-card report inside a
+    // tall page is still a two-card report.
+    const longEnough = results.getBoundingClientRect().height >
+      window.innerHeight * REPORT_NAV_MIN_SCREENS;
+    if (results.classList.contains("hidden") || shown.length < 3 || !longEnough) {
+      nav.classList.add("hidden");
+      reportNavTargets = [];
+      return;
+    }
+    nav.classList.remove("hidden");
+    inner.innerHTML = "";
+    reportNavTargets = shown;
+    shown.forEach((sec) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "rn-link";
+      b.textContent = sec.label;
+      b.dataset.target = sec.id;
+      b.addEventListener("click", () => {
+        // scrollIntoView rather than an anchor href: the ids are report cards,
+        // not link targets, and a hash would land in the URL and then in a
+        // shared link. The sticky bar covers the top of whatever it scrolls
+        // to, so scroll-margin-top is set on the element itself.
+        sec.el.style.scrollMarginTop = (document.getElementById("reportNav").offsetHeight + 8) + "px";
+        sec.el.scrollIntoView({
+          block: "start",
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        });
+      });
+      inner.appendChild(b);
+    });
+    markReportNavPosition();
+  }
+
+  // Scrollspy. Deliberately a scroll read rather than an IntersectionObserver:
+  // the cards are up to 800px tall, so several are intersecting at once and
+  // "which one am I reading" is a position question, not a visibility one.
+  // rAF-throttled, and it does nothing at all while the nav is hidden.
+  let reportNavTick = false;
+  function markReportNavPosition() {
+    if (!reportNavTargets.length) return;
+    const line = (document.getElementById("reportNav").offsetHeight || 0) + 24;
+    let active = reportNavTargets[0].id;
+    reportNavTargets.forEach((sec) => {
+      if (sec.el.getBoundingClientRect().top <= line) active = sec.id;
+    });
+    document.querySelectorAll("#reportNavInner .rn-link").forEach((b) => {
+      if (b.dataset.target === active) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("scroll", () => {
+    if (reportNavTick || !reportNavTargets.length) return;
+    reportNavTick = true;
+    requestAnimationFrame(() => { reportNavTick = false; markReportNavPosition(); });
+  }, { passive: true });
+  // A resize changes both the "is it long enough" answer and every offset.
+  window.addEventListener("resize", () => { if (!document.getElementById("results").classList.contains("hidden")) syncReportNav(); });
+
   function setReportTab(which) {
     const isReport = which !== "analysis";
     document.getElementById("tabReport").classList.toggle("hidden", !isReport);
@@ -6907,6 +7108,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!isReport && currentParsed && currentMeta) renderAnalysisCluster(currentParsed, currentMeta, false);
     // Leaflet renders blank tiles if its container was hidden — re-measure.
     if (isReport && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 50);
+    // The two tabs hold different cards, so the bar is rebuilt rather than
+    // re-marked. Guarded because setReportTab also runs from beginAssembly,
+    // before syncReportNav is meaningful.
+    if (typeof syncReportNav === "function") syncReportNav();
   }
   document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
   document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
@@ -9693,6 +9898,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     syncPortfolioButton();
+    // Last, and after renderMap: the bar measures the finished report to
+    // decide whether it is long enough to deserve one, and the map card is
+    // 400px of that height. A frame later, so the cards' entrance transforms
+    // have settled and the measurement is of where things land, not where
+    // they started.
+    requestAnimationFrame(syncReportNav);
   }
 
   // ----------------------------------------------------------------------------
@@ -10710,7 +10921,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (el) el.scrollIntoView({ block: "center" });
     }
     let items = [];
-    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    let loadFailed = false;
+    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) { loadFailed = true; }
+    document.getElementById("deskLoadError").classList.toggle("hidden", !loadFailed);
+    if (loadFailed) {
+      // Everything below this line describes a portfolio we could not read.
+      // The count would say "0 properties", the invitation would say the
+      // book is empty, and portfolioKeys.clear() would make "Save to
+      // portfolio" offer to re-save a property that is already in it — three
+      // confident statements about data we do not have. The rest of the desk
+      // does not depend on this read, so it still renders.
+      document.getElementById("deskEmpty").classList.add("hidden");
+      document.getElementById("deskCount").textContent = "";
+      renderDeskRest();
+      return;
+    }
     portfolioKeys.clear();
     items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
     syncPortfolioButton();
@@ -10905,6 +11130,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       grid.appendChild(table);
     }
+    renderDeskRest();
+  }
+
+  // The rest of the desk, which does not depend on the portfolio read — so a
+  // failed one must not take the watchlist, the shares table and the firm
+  // sections down with it. Extracted rather than duplicated at the two exits
+  // of renderMyDesk, so a future section added here cannot be added to only
+  // one of them.
+  function renderDeskRest() {
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();

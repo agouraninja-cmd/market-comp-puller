@@ -72,6 +72,17 @@ const BULK_CSS = `
 .bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
   color:var(--ink-mute);font-size:12px;max-width:70ch}
 .bulk .hide{display:none}
+/* The size cell is an input rather than a button-then-field, because a bulk
+   run's usual gap IS the size and one click should not stand between a member
+   and fixing it. Borderless until focus so a table of them still reads as a
+   table. */
+.bulk input.szin{width:88px;padding:2px 4px;font:inherit;font-size:13px;text-align:right;
+  color:var(--ink);background:transparent;border:1px solid transparent;border-radius:4px;
+  font-variant-numeric:tabular-nums}
+.bulk input.szin:hover{border-color:var(--line)}
+.bulk input.szin:focus{border-color:var(--red);background:var(--paper);outline:none}
+.bulk input.szin::placeholder{color:var(--red);opacity:1}
+.bulk input.szin[disabled]{color:var(--ink-mute)}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -326,8 +337,20 @@ function rowHtml(it,i){
     ? '<a href="/?property='+encodeURIComponent(it.portfolio_item_id)+'">'+esc(it.address)+"</a>"
     : esc(it.address);
   var lbl=it.label?'<div class="sub">'+esc(it.label)+"</div>":"";
-  var sz=Number(it.size_sqft)>0
-    ? num(it.size_sqft)+'<div class="sub">'+esc(it.size_source||"you")+"</div>" : "\\u2014";
+  // Editable on any FINISHED row — not only an unsized one. A looked-up size
+  // that is wrong is the most expensive figure in the report (it is what put a
+  // $52,000 mobile home at $795,000), so correcting one matters as much as
+  // supplying a missing one. Nothing else in the row is editable: the comps
+  // are evidence, and this is the one input that was ours to get wrong.
+  var sz;
+  if(it.status!=="done"){
+    sz="\\u2014";
+  }else{
+    var szv=Number(it.size_sqft)>0?String(Math.round(it.size_sqft)):"";
+    sz='<input class="szin" type="text" inputmode="numeric" data-id="'+esc(it.id)+'"'+
+       ' value="'+esc(szv)+'" placeholder="add size" aria-label="Building size in square feet for '+esc(it.address)+'"/>'+
+       (szv?'<div class="sub">'+esc(it.size_source||"you")+"</div>":"");
+  }
   // Sale comps, not the comp count: the band comes from the sales, and a
   // lease-heavy report showing "10" would imply ten deals behind the number.
   var comps=Number(it.sale_comps)>0
@@ -352,6 +375,7 @@ function renderJob(){
     "<th>Size</th><th>Sale comps</th><th>Status</th></tr></thead><tbody>"+
     items.map(rowHtml).join("")+"</tbody>";
   $("cancel").className=job.status==="running"?"lnk":"lnk hide";
+  bindSizeInputs();
   renderPast();
   refreshCount();
   var dl=$("dl");
@@ -364,6 +388,44 @@ function renderJob(){
 // not yet known — without this the run showing above is also listed below it
 // as an earlier one.
 function setJobs(list){allJobs=list||[];renderPast();}
+
+// Save on Enter or on leaving the field, the spreadsheet behavior the vault's
+// comps table already teaches; Escape restores what was there.
+//
+// Re-valuing costs nothing — it is arithmetic over comps we already hold — so
+// there is no confirm and no spend warning. That is the whole point of it.
+function bindSizeInputs(){
+  Array.prototype.forEach.call(document.querySelectorAll("input.szin"),function(el){
+    var was=el.value;
+    el.addEventListener("keydown",function(e){
+      if(e.key==="Enter"){e.preventDefault();el.blur();}
+      else if(e.key==="Escape"){e.preventDefault();el.value=was;el.blur();}
+    });
+    el.addEventListener("blur",function(){
+      var v=el.value.trim();
+      if(v===was.trim())return;             // nothing typed, nothing to do
+      if(v===""){el.value=was;return;}      // clearing is not a way to unset a size
+      saveSize(el,v,was);
+    });
+  });
+}
+
+function saveSize(el,value,was){
+  el.disabled=true;
+  $("msg").textContent="Re-valuing\\u2026";$("msg").className="msg";
+  api("POST","/api/bulk/item/size",{id:el.getAttribute("data-id"),size_sqft:value})
+    .then(function(){
+      // Re-read the whole job rather than patching the row in place: the
+      // totals strip above is a sum over every row and would otherwise go on
+      // showing the old portfolio value beside a new one.
+      $("msg").textContent="Re-valued from the comps already found \\u2014 no new search.";
+      return poll(job.id,true);
+    })
+    .catch(function(e){
+      el.disabled=false;el.value=was;
+      $("msg").textContent=e.message;$("msg").className="msg bad";
+    });
+}
 
 function renderPast(){
   var rest=allJobs.filter(function(j){return !job||j.id!==job.id;});

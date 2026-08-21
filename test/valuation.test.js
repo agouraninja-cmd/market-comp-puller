@@ -157,9 +157,26 @@ test("compWeight gives a free pass within a mile of the subject", () => {
   assert.equal(V.compWeight(comp({ distance_mi: "< 0.1 mi" }), AS_OF, 10000), 1);
 });
 
-test("compWeight halves at five miles (4-mile half-life after the 1-mile pass)", () => {
-  assert.equal(V.compWeight(comp({ distance_mi: 5 }), AS_OF, 10000), 0.5);
-  assert.equal(V.compWeight(comp({ distance_mi: "5.0 mi" }), AS_OF, 10000), 0.5);
+test("CRE's free pass runs out to 10 miles, matching blend-corpus's radius", () => {
+  // The free pass and the corpus blend radius must name the same circle, or a
+  // comp the blend auto-includes as in-market is graded Weak by the hero.
+  assert.equal(V.defaultFreePassMiles("Industrial"), 10);
+  assert.equal(V.defaultFreePassMiles("Office"), 10);
+  assert.equal(V.defaultFreePassMiles("Residential"), 1);
+  assert.equal(V.compWeight(comp({ distance_mi: 9 }), AS_OF, 10000), 1);
+  assert.equal(V.compWeight(comp({ distance_mi: 10 }), AS_OF, 10000), 1);
+});
+
+test("compWeight halves at fourteen miles (4-mile half-life after the 10-mile pass)", () => {
+  assert.equal(V.compWeight(comp({ distance_mi: 14 }), AS_OF, 10000), 0.5);
+  assert.equal(V.compWeight(comp({ distance_mi: "14.0 mi" }), AS_OF, 10000), 0.5);
+});
+
+test("an explicit radius still overrides the type default in both directions", () => {
+  // A "2.5 miles" market note tightens the circle; the fallback only applies
+  // when the caller names nothing.
+  assert.equal(V.compWeight(comp({ distance_mi: 6.5 }), AS_OF, 10000, null, { radiusMiles: 2.5 }), 0.5);
+  assert.equal(V.compWeight(comp({ distance_mi: 6.5 }), AS_OF, 10000, null, {}), 1);
 });
 
 test("Residential distance half-life is 2 miles, so a 5-mile house counts half as much as CRE", () => {

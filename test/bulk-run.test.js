@@ -31,6 +31,9 @@ const BULK = require("../bulk.js");
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
 const PAT = { id: "11111111-1111-4111-8111-111111111111", email: "pat@brokerage.com", name: "Pat" };
+// Flipped by the re-value suite to reproduce the first real production run,
+// where two addresses in three came back with comps and no building size.
+let SIZELESS = false;
 
 // The report the stub "search" returns. Long comp keys on purpose: expandComp
 // passes them through, and writing the compact ones here would test the
@@ -52,8 +55,8 @@ function reportFor(address) {
     market_trend: "Prices up modestly year over year.",
     market_cap_rate_range: "6.0% - 6.75%",
     annual_price_trend_pct: 3,
-    subject_size_sqft: "20000",
-    subject_size_source: "county records",
+    subject_size_sqft: SIZELESS ? "" : "20000",
+    subject_size_source: SIZELESS ? "" : "county records",
     // Supplied so the radius blend reads coordinates off the report instead of
     // geocoding the address at the US Census.
     subject_lat: 43.6150,
@@ -407,4 +410,91 @@ test("a search that fails costs the row, not the run", async (t) => {
   assert.equal(failed[0].value_likely, null, "a failure is not a zero");
   assert.equal(done.summary.valued, 1, "and the total covers one address, and says so");
   assert.equal(done.summary.failed, 1);
+});
+
+
+// ---------------------------------------------------------------------------
+// Re-valuing a row against a size the member types (2026-08-21)
+//
+// The first real production run found 24-27 sale comps on every address and a
+// building size on ONE in three, so two rows showed a $/SF band and no dollars
+// — the single-property flow estimates a size from the OSM footprint in the
+// BROWSER, and bulk has no browser step to do it in. This is the way out that
+// does not cost another $18.
+// ---------------------------------------------------------------------------
+test("a row with no size can be valued by typing one, for free", async (t) => {
+  SIZELESS = true;
+  t.after(() => { SIZELESS = false; });
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const { srv, tables, stub } = ctx;
+
+  const started = await (await fetch(srv.base + "/api/bulk", as({
+    method: "POST",
+    body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID 83702", type: "Industrial", months: 24 }),
+  }))).json();
+  const finished = await waitForJob(srv.base, started.job.id);
+  const row = finished.items[0];
+
+  await t.test("the run reproduces the real one: comps, a $/SF band, no dollars", () => {
+    assert.equal(row.status, "done");
+    assert.equal(row.value_likely, null, "no size, no dollar figure");
+    assert.ok(row.psf_mid > 0, "but the market was found");
+    assert.equal(row.size_sqft, null);
+    assert.match(row.error || "", /No building size found/);
+    assert.equal(finished.summary.valued, 0);
+  });
+
+  const searchesBefore = stub.calls.length;
+
+  await t.test("typing a size values it, and buys no search", async () => {
+    const r = await fetch(srv.base + "/api/bulk/item/size", as({
+      method: "POST", body: JSON.stringify({ id: row.id, size_sqft: "20,000 SF" }),
+    }));
+    const body = await r.json();
+    assert.equal(r.status, 200, JSON.stringify(body));
+    const { item } = body;
+    assert.equal(item.size_sqft, 20000, "parseNumber takes what a person types");
+    assert.ok(item.value_likely > 0, "and there is a figure now");
+    assert.equal(item.error, null, "the note about the missing size is gone");
+    assert.equal(item.size_source, null, "a typed size claims no public-record source");
+    assert.equal(stub.calls.length, searchesBefore, "NO new search — this is the whole point");
+  });
+
+  await t.test("it is the same arithmetic the worker runs", async () => {
+    const saved = tables.portfolio_items[0];
+    const expected = BULK.valueFromReport(saved.payload.data, {
+      subjectSizeSqft: 20000, asOf: Date.parse(saved.updated_at), propertyType: "Industrial",
+    });
+    const after = await (await fetch(srv.base + "/api/bulk?id=" + started.job.id, as())).json();
+    assert.equal(after.items[0].value_likely, expected.value_likely,
+      "a re-valued row and a first-pass row must be computed identically");
+    assert.equal(after.summary.valued, 1, "and the totals follow");
+    assert.equal(after.summary.likely, expected.value_likely);
+  });
+
+  await t.test("the desk copy moves with it", () => {
+    const saved = tables.portfolio_items[0];
+    assert.equal(saved.payload.meta.subject.sizeMin, 20000,
+      "reopening the property must show the size that produced the figure");
+    const last = saved.snapshots[saved.snapshots.length - 1];
+    assert.ok(last.likely > 0, "and the desk's value history records the new value");
+  });
+
+  await t.test("a size that is not a number is refused, not stored as a guess", async () => {
+    const r = await fetch(srv.base + "/api/bulk/item/size", as({
+      method: "POST", body: JSON.stringify({ id: row.id, size_sqft: "about 20k" }),
+    }));
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /not a building size/);
+  });
+
+  await t.test("another member cannot re-value it", async () => {
+    const r = await fetch(srv.base + "/api/bulk/item/size", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: row.id, size_sqft: "5000" }),
+    });
+    assert.equal(r.status, 401, "anonymous is refused before anything is read");
+  });
 });

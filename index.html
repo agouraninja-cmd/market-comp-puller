@@ -2252,6 +2252,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
           <input id="firmShelfSearch" type="text" placeholder="Search by address, market or type" aria-label="Search your firm's reports"
             class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <!-- The saved view of Transition Plan v2 §6: a development shop
+               opens on Land, a broker shop on everything. It is a DEFAULT and
+               not a wall - "All types" is one click away and the count beside
+               it always names the whole shelf. -->
+          <select id="firmShelfType" aria-label="Filter the shelf by property type"
+            class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+            <option value="">All types</option>
+            <option value="Industrial">Industrial</option>
+            <option value="Office">Office</option>
+            <option value="Retail">Retail</option>
+            <option value="Multifamily">Multifamily</option>
+            <option value="Land">Land</option>
+            <option value="Residential">Residential</option>
+          </select>
           <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
         </div>
         <p id="firmShelfTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
@@ -2277,6 +2291,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- 2. No firm yet. -->
         <div id="firmCreate" class="hidden mt-2">
           <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
+          <!-- The shop question (036), asked once, here. It has no default on
+               purpose: the answer decides the words every colleague reads from
+               then on, the creator is the only person who knows it, and a
+               preselected option is a question answered by silence. The empty
+               first option is not a value the server accepts. -->
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+            <label for="firmKindSelect">What kind of shop is this?</label>
+            <select id="firmKindSelect"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="">Choose one</option>
+              <option value="broker">Broker shop</option>
+              <option value="development">Development shop</option>
+            </select>
+          </div>
+          <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
           <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
             <input id="firmNameInput" type="text" maxlength="80" placeholder="Your firm's name" aria-label="Firm name"
               class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
@@ -2307,6 +2336,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
               <span>Share new reports with the firm by default</span>
             </label>
+            <!-- Which shop this firm is. An owner/admin control, because it
+                 re-labels every colleague's desk; everyone else reads the
+                 answer as a line of text (renderFirmShop). -->
+            <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmShopSelect">This firm is a</label>
+              <select id="firmShopSelect"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                <option value="broker">Broker shop</option>
+                <option value="development">Development shop</option>
+              </select>
+              <span id="firmShopState" class="text-xs text-[#68707E]"></span>
+            </div>
             <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
@@ -11578,6 +11619,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
+  // The two shops (migration 036), Transition Plan v2 §6.
+  //
+  // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
+  // require. test/index-html.test.js pins the two together, which is the
+  // repo's standing answer to a mirrored constant: mirror it on purpose, then
+  // make the suite refuse to let the mirror drift. The wire carries the kind
+  // and never the words, so this is the only copy in the browser.
+  const SHOP_COPY = {
+    broker: {
+      label: "Broker shop",
+      arrivals: "comp sets, BOVs, market reports and lease abstracts",
+      shelfType: "",
+    },
+    development: {
+      label: "Development shop",
+      arrivals: "land comps, rent comps, absorption studies and feasibility packets",
+      shelfType: "Land",
+    },
+  };
+  // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
+  // vocabulary every firm predating 036 has already been reading.
+  const shopCopy = (kind) => SHOP_COPY[kind] || SHOP_COPY.broker;
+
+  // Whether this visitor has touched the shelf's type filter. Once they have,
+  // the shop's default stops being applied on re-render — a saved view that
+  // undoes a person's own click is not a default, it is a fight.
+  let firmShelfTypeTouched = false;
+
   async function renderFirmShelf() {
     const box = document.getElementById("deskSharedWithFirm");
     // `currentUser` first, before the cached membership: a failed /api/org
@@ -11613,27 +11682,41 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : "";
 
     // A filter over three rows is furniture.
-    document.getElementById("firmShelfSearchWrap").classList.toggle("hidden", firmShelfItems.length < 6);
+    const filters = firmShelfItems.length >= 6;
+    document.getElementById("firmShelfSearchWrap").classList.toggle("hidden", !filters);
     document.getElementById("deskSharedWithFirmEmpty").classList.toggle("hidden", firmShelfItems.length > 0);
+
+    // The shop's saved view, applied ONLY while the filter row is on screen.
+    // A hidden control that is quietly hiding rows would make a small shelf
+    // look like a shelf that lost something, which is the one thing a record
+    // may never do. Below six rows the filter is cleared rather than merely
+    // hidden, for the same reason.
+    const type = document.getElementById("firmShelfType");
+    if (!filters) type.value = "";
+    else if (!firmShelfTypeTouched) type.value = shopCopy(firm.kind).shelfType;
     applyFirmShelfFilter();
   }
 
   function applyFirmShelfFilter() {
     const q = document.getElementById("firmShelfSearch").value.trim().toLowerCase();
-    const shown = q
-      ? firmShelfItems.filter((i) =>
-          `${i.address} ${i.market} ${i.type} ${i.sharedBy}`.toLowerCase().includes(q))
-      : firmShelfItems;
+    const type = document.getElementById("firmShelfType").value;
+    const shown = firmShelfItems.filter((i) =>
+      (!type || i.type === type) &&
+      (!q || `${i.address} ${i.market} ${i.type} ${i.sharedBy}`.toLowerCase().includes(q)));
 
     const wrap = document.getElementById("sharedWithFirmRows");
     wrap.innerHTML = "";
     // Told apart on purpose: an empty shelf is an invitation to share
     // something, a search with no hits is a search with no hits, and showing
     // the first message for the second reads as the shelf having been wiped.
+    const filtering = Boolean(q || type);
     document.getElementById("firmShelfNoMatch").classList
-      .toggle("hidden", !(q && !shown.length && firmShelfItems.length));
+      .toggle("hidden", !(filtering && !shown.length && firmShelfItems.length));
+    // The count names the WHOLE shelf on purpose, filtered or not: a saved
+    // view a colleague did not choose must never read as the firm's record
+    // having shrunk.
     document.getElementById("firmShelfCount").textContent =
-      q ? `${shown.length} of ${firmShelfItems.length}` : "";
+      filtering ? `${shown.length} of ${firmShelfItems.length}` : "";
 
     shown.forEach((r) => {
       const row = document.createElement("div");
@@ -11659,6 +11742,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   document.getElementById("firmShelfSearch").addEventListener("input", applyFirmShelfFilter);
+  document.getElementById("firmShelfType").addEventListener("change", () => {
+    firmShelfTypeTouched = true;
+    applyFirmShelfFilter();
+  });
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.
@@ -11872,8 +11959,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
 
     document.getElementById("firmInviteWrap").classList.toggle("hidden", !data.canManage);
+    renderFirmShop(firm);
     renderFirmAutoShare(firm);
     renderFirmBilling(firm);
+  }
+
+  // Which shop this firm is (036). The control is offered only to somebody who
+  // may actually change it: /api/org/settings refuses everyone else, and a
+  // select that always 403s is worse than a sentence. Everyone still READS the
+  // answer, because it is why their shelf opens the way it does.
+  function renderFirmShop(firm) {
+    if (!firm) return;
+    const sel = document.getElementById("firmShopSelect");
+    const state = document.getElementById("firmShopState");
+    const copy = shopCopy(firm.kind);
+    sel.value = firm.kind === "development" ? "development" : "broker";
+    sel.disabled = !firm.canManage;
+    state.textContent = firm.canManage
+      ? `Your shelf holds ${copy.arrivals}`
+      : `${copy.label} · your shelf holds ${copy.arrivals}`;
   }
 
   // The two auto-share switches. Presentation only — the server re-decides
@@ -11997,17 +12101,61 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("firmAutoShareSelect").addEventListener("change", (e) => {
     saveFirmSetting({ autoShare: e.target.value });
   });
+  document.getElementById("firmShopSelect").addEventListener("change", async (e) => {
+    const firm = myFirm();
+    if (!firm) return;
+    const state = document.getElementById("firmShopState");
+    const before = firm.kind;
+    state.textContent = "Saving…";
+    try {
+      const res = await fetch("/api/org/settings", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id, kind: e.target.value }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      // The server's own answer, not the option that was clicked.
+      firm.kind = body.kind;
+      renderFirmShop(firm);
+      // The shelf's default view follows the firm, so a shop that has just
+      // changed its mind gets the new view rather than the old one — unless
+      // this visitor has already made the filter their own.
+      if (!firmShelfTypeTouched) await renderFirmShelf();
+    } catch (err) {
+      firm.kind = before;
+      renderFirmShop(firm);
+      state.textContent = err.message || "That didn't go through.";
+    }
+  });
+
+  // Says what the answer means before it is given, rather than after: the
+  // words are the whole point of the question.
+  document.getElementById("firmKindSelect").addEventListener("change", (e) => {
+    const note = document.getElementById("firmKindNote");
+    note.textContent = e.target.value
+      ? `Your firm's shelf will hold ${shopCopy(e.target.value).arrivals}.`
+      : "";
+  });
 
   document.getElementById("firmCreateBtn").addEventListener("click", async () => {
     const btn = document.getElementById("firmCreateBtn");
     const err = document.getElementById("firmCreateErr");
     const name = document.getElementById("firmNameInput").value;
+    const kind = document.getElementById("firmKindSelect").value;
     err.classList.add("hidden");
+    // Refused here as well as server-side, because the server's refusal would
+    // arrive as a sentence under the name box about a question further up the
+    // form. Same words either way (org-access.js validateShopKind owns them).
+    if (!kind) {
+      err.textContent = "Choose whether this is a broker shop or a development shop.";
+      err.classList.remove("hidden");
+      return;
+    }
     btn.disabled = true;
     try {
       const res = await fetch("/api/org", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, kind }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -12017,6 +12165,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         throw new Error(body.error || "That didn't go through.");
       }
       document.getElementById("firmNameInput").value = "";
+      document.getElementById("firmKindSelect").value = "";
+      document.getElementById("firmKindNote").textContent = "";
       await renderShares();
     } catch (e) {
       err.textContent = e.message || "That didn't go through. Please try again.";

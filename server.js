@@ -3305,6 +3305,11 @@ async function orgMembershipsFor(email) {
 // a word. MAX_MEMBERS and 030's column default are both 200, which is what
 // hid it. If a column is added to this select, add it to findOrg() too.
 //
+// AND `kind` (036), which fails the OTHER way. A missing `seats` is a silent
+// wrong answer; a missing `kind` is a 400 from PostgREST on every firm read at
+// once, because this select names its columns. That is why 036 runs BEFORE the
+// deploy that added this word - 030's ordering, for 030's reason.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3316,7 +3321,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats,kind&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);
@@ -3330,6 +3335,15 @@ async function orgsByIds(ids) {
 async function setOrgShareDefault(orgId, value) {
   return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
     { share_default: value }, { prefer: "return=minimal" });
+}
+
+// Which of the two shops a firm is (migration 036). Nothing is gated on this
+// and nothing is published by it - it decides vocabulary and which property
+// type the shelf opens on - which is why it is an ordinary PATCH beside the
+// one above rather than a route of its own.
+async function setOrgKind(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { kind: value }, { prefer: "return=minimal" });
 }
 
 // The member's own override (migration 031). Scoped by BOTH the org and the
@@ -3374,20 +3388,25 @@ async function orgMemberRows(orgId) {
 async function findOrg(orgId) {
   if (!DB_CONFIGURED || !orgId) return null;
   const rows = await sbRequest("GET",
-    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,created_at&limit=1`);
+    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,kind,created_at&limit=1`);
   return (rows && rows[0]) || null;
 }
 
 // Create the firm and its first member in that order, and make the creator an
 // OWNER who has already joined: they are the one person whose membership needs
 // no accept step, because they are the one who asked for it.
-async function createOrgWithOwner(name, user) {
+async function createOrgWithOwner(name, kind, user) {
   const rows = await sbRequest("POST", "orgs",
     // `seats` is written explicitly rather than left to 030's column default.
     // A hand-granted firm is the ordinary case (§9: seats are granted by hand
     // until somebody asks to pay), and code that reads this column should
     // never have to distinguish "not set" from "set to the structural cap".
-    [{ name, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
+    // `kind` is written explicitly and always: 036 defaults it to 'broker'
+    // for the firms that predate the column, and a new firm has answered the
+    // question by the time it reaches here (validateShopKind refuses a create
+    // that has not). Letting the default catch a new firm would put the two
+    // paths back together and hide a browser that stopped sending it.
+    [{ name, kind, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
   const org = rows && rows[0];
   if (!org) throw new Error("Firm row was not returned.");
   await sbRequest("POST", "org_members", [{
@@ -4332,12 +4351,16 @@ function sendShareInvites(emails, { url, address, fromName }) {
 // the recipient's only way to check it is real is to recognise the sender.
 // Nothing about the firm's reports travels here — the invite grants no access
 // on its own, and does not until the person accepts it themselves.
-function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
+function sendOrgInvites(emails, { firm, kind, fromName, fromEmail }) {
+  // The shop's own nouns (036). A development shop's colleague being told the
+  // shelf holds "comp sets and BOVs" is being described somebody else's job in
+  // the first sentence they read about the product.
+  const arrivals = ORG.SHOP_COPY[ORG.kindOf({ kind })].arrivals;
   for (const to of emails) {
     const who = fromName ? `${fromName} (${fromEmail})` : fromEmail;
     sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
       `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
-      `A firm is a shared shelf: reports and BOVs a colleague shares with the firm ` +
+      `A firm is a shared shelf: ${arrivals} a colleague shares with the firm ` +
       `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
       `Accept here: ${SITE_URL}/desk\n\n` +
       `Sign in with this email address (${to}) — a free account is all it takes. ` +
@@ -18831,6 +18854,10 @@ const server = http.createServer((req, res) =>
         autoShare: row.auto_share === true ? "always"
           : row.auto_share === false ? "never" : "follow",
         autoShareOn: ORG.autoShareFor({ org, membership: row }),
+        // Which vocabulary this firm reads (036). Sent as the kind rather than
+        // as the words: index.html holds the nouns, pinned to SHOP_COPY by
+        // test/index-html.test.js, so the wire stays a two-value enum.
+        kind: ORG.kindOf(org),
       };
     };
 
@@ -18910,6 +18937,12 @@ const server = http.createServer((req, res) =>
         const body = await readOrgBody();
         const check = ORG.validateOrgName(body && body.name);
         if (!check.ok) return sendJson(res, 400, { error: check.error });
+        // Required, not defaulted (org-access.js validateShopKind says why).
+        // Checked before the one-firm-per-person read below so a creator who
+        // skipped the question is told what is missing rather than told they
+        // are already in a firm.
+        const shop = ORG.validateShopKind(body && body.kind);
+        if (!shop.ok) return sendJson(res, 400, { error: shop.error });
         // One firm per person, for now. Not a technical limit — the schema is
         // many-to-many and activeOrgIds already returns a set — but a member of
         // two firms raises "which firm did I just share that with", and slice 1
@@ -18918,9 +18951,11 @@ const server = http.createServer((req, res) =>
         if (existing.some((r) => ORG.isActive(r))) {
           return sendJson(res, 409, { error: "You are already part of a firm." });
         }
-        const org = await createOrgWithOwner(check.name, user);
-        logEvent("org_create", {});
-        return sendJson(res, 200, { id: org.id, name: org.name, role: "owner", canManage: true });
+        const org = await createOrgWithOwner(check.name, shop.kind, user);
+        logEvent("org_create", { kind: shop.kind });
+        return sendJson(res, 200, {
+          id: org.id, name: org.name, kind: ORG.kindOf(org), role: "owner", canManage: true,
+        });
       })().catch((err) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm create failed:", err.message);
@@ -19082,7 +19117,8 @@ const server = http.createServer((req, res) =>
         // into an error the inviter has to interpret.
         try {
           sendOrgInvites(clean.emails, {
-            firm: (org && org.name) || "", fromName: user.name || "", fromEmail: user.email,
+            firm: (org && org.name) || "", kind: ORG.kindOf(org),
+            fromName: user.name || "", fromEmail: user.email,
           });
         } catch (err) {
           console.error("Firm invite send failed:", err.message);
@@ -19133,6 +19169,17 @@ const server = http.createServer((req, res) =>
           await setOrgShareDefault(orgId, body.shareDefault);
           changed = true;
         }
+        if (body.kind !== undefined) {
+          // Owner/admin, the same authority as the firm default: this changes
+          // what every colleague reads, not what one member's own work does.
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          const shop = ORG.validateShopKind(body.kind);
+          if (!shop.ok) return sendJson(res, 400, { error: "Unrecognized setting." });
+          await setOrgKind(orgId, shop.kind);
+          changed = true;
+        }
         if (body.autoShare !== undefined) {
           const value = ORG.autoShareValue(body.autoShare);
           // `undefined` is the refusal and `null` is a real value ("follow"),
@@ -19153,6 +19200,7 @@ const server = http.createServer((req, res) =>
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
         return sendJson(res, 200, {
           ok: true,
+          kind: ORG.kindOf(org),
           shareDefault: ORG.shareDefaultOf(org),
           autoShare: mine && mine.auto_share === true ? "always"
             : mine && mine.auto_share === false ? "never" : "follow",

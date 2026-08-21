@@ -83,7 +83,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a free account cannot create a firm, and is told it is Pro", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(MIKE, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }));
+      as(MIKE, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }));
     assert.equal(r.status, 403);
     const body = await r.json();
     assert.equal(body.upgrade, true, "the browser branches on the flag, never the prose");
@@ -92,7 +92,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a Pro member creates a firm and is its owner", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(BRAD, { method: "POST", body: JSON.stringify({ name: "  Colliers   Boise " }) }));
+      as(BRAD, { method: "POST", body: JSON.stringify({ name: "  Colliers   Boise ", kind: "broker" }) }));
     assert.equal(r.status, 200);
     const body = await r.json();
     orgId = body.id;
@@ -105,7 +105,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a second firm is refused rather than silently created", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(BRAD, { method: "POST", body: JSON.stringify({ name: "Another Firm" }) }));
+      as(BRAD, { method: "POST", body: JSON.stringify({ name: "Another Firm", kind: "broker" }) }));
     assert.equal(r.status, 409);
     assert.equal(tables.orgs.length, 1);
   });
@@ -301,7 +301,7 @@ test("joining a firm is something the joiner does", async (t) => {
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
 
   await t.test("posting a firm id you were never invited to joins nothing", async () => {
     // The accept PATCH matches on the CALLER'S OWN email, so an org id — which
@@ -357,7 +357,7 @@ test("the firm's auto-share default, and the member's veto over it", async (t) =
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   await fetch(srv.base + "/api/org/invite", as(BRAD, {
     method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
   }));
@@ -463,7 +463,7 @@ test("the shared vault: a comp's whole life on the firm's shelf", async (t) => {
   const COMP = tables.broker_comps[0].id;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   const firm = (method, body) => fetch(srv.base + "/api/vault/firm",
     as(BRAD, { method, body: JSON.stringify(body) }));
 
@@ -565,7 +565,7 @@ test("per-seat firm billing", async (t) => {
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   const orgRow = tables.orgs[0];
   const buy = (user, body) => fetch(srv.base + "/api/checkout",
     as(user, { method: "POST", body: JSON.stringify({ plan: "firm_monthly", orgId: org.id, ...body }) }));
@@ -686,7 +686,7 @@ test("a firm share still refuses to carry whole vault comps", async (t) => {
   const { srv } = ctx;
 
   const created = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
 
   // 400 rather than a silent strip: sharing a broker's book across their firm
   // is the spec's §7 and is deliberately not built, so a client asking for it
@@ -740,7 +740,7 @@ test("what an invited colleague actually receives", async (t) => {
   t.after(async () => { srv2.stop(); await db.stop(); });
 
   const create = await fetch(srv2.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }));
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }));
   assert.equal(create.status, 200);
   const org = await create.json();
   const invite = (emails) => fetch(srv2.base + "/api/org/invite",
@@ -813,7 +813,107 @@ test("what an invited colleague actually receives", async (t) => {
     assert.equal(db.sent.length, before, "a refused invitation was still mailed");
   });
 
+  await t.test("the invitation speaks the shop's own language", async () => {
+    // 036. The first sentence a stranger reads about the product describes
+    // what this shelf holds, and describing a development shop's shelf as
+    // "comp sets and BOVs" describes somebody else's job to them.
+    const broker = db.sent[0];
+    assert.match(broker.text, /comp sets, BOVs, market reports and lease abstracts/);
+
+    const flip = await fetch(srv2.base + "/api/org/settings", as(BRAD, {
+      method: "POST", body: JSON.stringify({ orgId: org.id, kind: "development" }),
+    }));
+    assert.equal(flip.status, 200);
+    assert.equal((await flip.json()).kind, "development");
+
+    const before = db.sent.length;
+    assert.equal((await invite(["land@colliers.com"])).status, 200);
+    const sent = await settleMail(db, before + 1);
+    const mail = sent[sent.length - 1];
+    assert.match(mail.text, /land comps, rent comps, absorption studies and feasibility packets/);
+    assert.doesNotMatch(mail.text, /lease abstracts/,
+      "the two vocabularies must not both arrive in one invitation");
+  });
+
   await t.test("the fake never had to guess at a query it did not understand", () => {
     assert.deepEqual(db.unparsed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shop kind (migration 036) — Transition Plan v2 §6's two customer types.
+//
+// The rules worth executing rather than arguing: the question cannot be
+// answered by silence, changing the answer is an admin's job, and the answer
+// survives a fresh read. org-access.test.js proves the pure half with no
+// database; this is the half that writes a column.
+// ---------------------------------------------------------------------------
+test("a firm is one of two shops, and says which", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  const create = (body) => fetch(srv.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify(body) }));
+  const myOrg = async (user) => (await (await fetch(srv.base + "/api/org", as(user))).json());
+
+  await t.test("a firm cannot be created without answering the question", async () => {
+    for (const body of [{ name: "Colliers Boise" },
+                        { name: "Colliers Boise", kind: "" },
+                        { name: "Colliers Boise", kind: "enterprise" }]) {
+      const r = await create(body);
+      assert.equal(r.status, 400, JSON.stringify(body));
+      assert.match((await r.json()).error, /broker shop or a development shop/);
+    }
+    assert.equal(tables.orgs.length, 0, "and nothing was written");
+  });
+
+  await t.test("the name is checked first, so one missing answer is reported at a time", async () => {
+    const r = await create({ name: "x", kind: "development" });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /firm's name/);
+  });
+
+  await t.test("a development shop is created, and stays one", async () => {
+    const r = await create({ name: "Boise Land Partners", kind: "  Development " });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).kind, "development", "normalized server-side, not echoed");
+    assert.equal(tables.orgs[0].kind, "development", "and written to the column");
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development", "and survives a fresh read");
+  });
+
+  await t.test("an owner changes it; a plain member cannot", async () => {
+    const orgId = tables.orgs[0].id;
+    const settings = (user, body) => fetch(srv.base + "/api/org/settings",
+      as(user, { method: "POST", body: JSON.stringify({ orgId, ...body }) }));
+
+    await fetch(srv.base + "/api/org/invite",
+      as(BRAD, { method: "POST", body: JSON.stringify({ orgId, emails: [MIKE.email] }) }));
+    await fetch(srv.base + "/api/org/accept",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId }) }));
+
+    const refused = await settings(MIKE, { kind: "broker" });
+    assert.equal(refused.status, 403, "it re-labels every colleague's desk, not one person's work");
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development", "and nothing changed");
+
+    assert.equal((await settings(BRAD, { kind: "broker" })).status, 200);
+    assert.equal((await myOrg(MIKE)).orgs[0].kind, "broker", "the colleague reads the new words too");
+
+    for (const junk of ["enterprise", "", true, "dev", "brokerage"]) {
+      assert.equal((await settings(BRAD, { kind: junk })).status, 400, JSON.stringify(junk));
+    }
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "broker", "a refused change changed nothing");
+
+    // Case and padding are NORMALIZED on the way in rather than refused, the
+    // way validateOrgName collapses a name. The column may only ever hold the
+    // two exact values (036's CHECK says so), and that is what this proves:
+    // the write path cleans, the read path in org-access.js stays strict.
+    assert.equal((await settings(BRAD, { kind: "  DEVELOPMENT " })).status, 200);
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development");
+    assert.equal(tables.orgs[0].kind, "development", "stored lower case, never as typed");
+  });
+
+  await t.test("the fake never had to guess at a query it did not understand", () => {
+    assert.deepEqual(ctx.db.unparsed, []);
   });
 });

@@ -1438,6 +1438,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
+  **Two shops, one architecture** (migration `036-org-shop-kind.sql`, **run it
+  before deploying**; Business Model Transition Plan v2 §6, 2026-08-17).
+  `orgs.kind` is `'broker'` or `'development'` and decides two things: the
+  nouns a firm reads (a development shop is told its shelf holds land comps,
+  rent comps, absorption studies and feasibility packets, in the invite email
+  and on the desk) and which property type the firm shelf opens on (Land for a
+  development shop, everything for a broker shop). Nothing is gated on it and
+  nothing is published by it. Four rules:
+  - **Required at creation, not defaulted.** `POST /api/org` refuses without a
+    valid kind (`ORG.validateShopKind`), because the creator is the only person
+    who knows the answer and a default would be answered by silence. Changing
+    it later is an owner/admin call on `POST /api/org/settings`, the same
+    authority as `share_default` and for the same reason: it re-labels every
+    colleague's desk, not one person's own work.
+  - **The migration is 030's hazard, not 031's.** `orgsByIds()` and
+    `findOrg()` name `kind` in their SELECTs and PostgREST 400s an unknown
+    column, so deploying first takes down every firm surface at once. Migrate,
+    then deploy.
+  - **An unrecognized kind reads as `broker`** (`ORG.kindOf`), which is
+    incumbency rather than safety: every firm predating 036 has only ever been
+    shown broker-shop words, so a typo must not re-label their desk. The write
+    path normalizes case and padding; the read path stays strict.
+  - **The shelf's saved view never hides a row while its filter is off
+    screen.** The filter row is furniture under six items, so below six the
+    type is cleared rather than merely hidden, and a colleague's own choice of
+    filter is never stomped by a re-render. The header count always describes
+    the whole shelf.
+  Enterprise is deliberately not a third kind: §6 rules it out as a target
+  (a research department kills the deal internally) and names its real entry
+  point as somebody who used CompNinja at their last shop.
+  The two shops' words live in `ORG.SHOP_COPY` and are **mirrored** in
+  index.html, which cannot require the module; `test/index-html.test.js` pins
+  the two together, because drift there would invite a firm as a development
+  shop and then greet it with a broker shop's desk.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,

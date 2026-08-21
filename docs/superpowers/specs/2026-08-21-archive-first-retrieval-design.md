@@ -69,6 +69,25 @@ cached exactly as before, because corpus strength alone justified the budget.
 Cache **reads** are unchanged: a broker searching an address somebody already
 paid full price for still gets the free hit.
 
+## 3b. The provider must be able to honor the budget
+
+**`archiveStrong` is gated on `PROVIDER.capabilities.searchBudget`, and that
+gate is load-bearing rather than tidy.** Gemini's `google_search` takes no
+`max_uses`, so on the default provider the floored number is silently ignored
+and the billed call is byte-identical to a full-budget one. Without the gate
+the feature would buy nothing there and still skip the cache write — strictly
+worse than not existing, and invisible, because the report looks perfectly
+normal.
+
+This shipped wrong on the first pass, on the provider production actually
+runs. `test/archive-first.test.js` boots the same seeded vault against Gemini
+and asserts the flag never fires: full budget, normal cache write, no
+`archive` tag. The capability is read, never the provider name.
+
+The consequence worth stating plainly: **on Gemini this feature is currently
+inert.** It becomes a cost lever the moment `SEARCH_PROVIDER=anthropic`, or
+whenever Gemini's grounding tool gains a round cap.
+
 ## 4. What deliberately does not count
 
 - **Firm-shared comps** (`org_comps`). They blend into the broker's report,

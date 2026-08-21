@@ -1686,6 +1686,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  and entitlements.js reads `const broker = pro`. A plain link,
                  not a button: /vault is its own server-rendered page. -->
             <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Your vault</a>
+            <!-- Bulk valuation, off canBulkValue for the same reasons as the
+                 vault link above: the entitlement is the only sanctioned way
+                 to ask, and /api/bulk re-checks it server-side, so unhiding
+                 this by hand reveals a link and nothing behind it. Also its
+                 own server-rendered page, so a plain link. -->
+            <a id="menuBulkLink" href="/bulk" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Bulk valuation</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -10749,6 +10755,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         if (addrEl && pendingAddr.trim()) addrEl.value = pendingAddr;
       }
     } catch (err) {}
+    // ?property=<id> opens one saved property straight into the report view.
+    // The door /bulk needs: a bulk run writes every valuation onto the desk,
+    // and each of its fifty rows has to lead to the comps behind its own
+    // number rather than all fifty landing on the same desk page. Signed-in
+    // only, by construction — the id names a row in this member's own
+    // portfolio and openPortfolioItem's read is user-scoped, so a guessed id
+    // answers 404 rather than opening somebody else's building. Cleared after
+    // use like ?submit=comp, so a refresh does not reopen it.
+    const propParam = new URLSearchParams(location.search).get("property");
+    if (currentUser && propParam) {
+      const qs = new URLSearchParams(location.search);
+      qs.delete("property");
+      history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
+      openPortfolioItem(propParam);
+    }
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
     // different query params (?checkout= vs ?purchase=), so at most one acts.
@@ -13888,6 +13909,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // deployment with no Stripe keys, the same exception the billing card makes.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
+    // Bulk valuation. Its own entitlement rather than `pro`, because the two
+    // deliberately part company on the tester passkey — a shared code buys
+    // Pro's reports and not a fan-out that bills fifty searches per click.
+    document.getElementById("menuBulkLink")
+      .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
     // Same entitlement drives the My Desk card. Signed-in only: the desk's
     // account-backed areas are already hidden signed out, and a vault card
     // there would offer a page that answers 401.

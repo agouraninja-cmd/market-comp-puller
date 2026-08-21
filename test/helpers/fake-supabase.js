@@ -24,6 +24,7 @@
 // "test/*.test.js"`, so this is a helper, not a suite.
 
 const http = require("node:http");
+const crypto = require("node:crypto");
 
 // PostgREST filter values arrive percent-encoded and, for in.(), quoted.
 function decodeValue(raw) {
@@ -154,7 +155,14 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
               // not returned as inserted.
               continue;
             }
-            const row = { id: `${table}-${tables[table].length + 1}`, ...r };
+            // A UUID, because every table server.js inserts into declares
+            // `id uuid primary key default gen_random_uuid()` — and because
+            // several routes guard an id with isUuidish() before it reaches a
+            // Postgres uuid cast. A `${table}-1` id sails through the insert
+            // and is then 404'd by the caller's own guard on the very next
+            // read, which looks like a broken feature and is only a broken
+            // fake. Seeded rows keep whatever id the test gave them.
+            const row = { id: crypto.randomUUID(), ...r };
             tables[table].push(row);
             stored.push(row);
           }

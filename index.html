@@ -2382,11 +2382,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- 2. No firm yet. -->
         <div id="firmCreate" class="hidden mt-2">
           <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
-          <!-- The shop question (036), asked once, here. It has no default on
-               purpose: the answer decides the words every colleague reads from
-               then on, the creator is the only person who knows it, and a
-               preselected option is a question answered by silence. The empty
-               first option is not a value the server accepts. -->
+          <!-- The shop question (036, third kind 037), asked once, here. It
+               has no default on purpose: the answer decides the words every
+               colleague reads from then on, the creator is the only person who
+               knows it, and a preselected option is a question answered by
+               silence. The empty first option is not a value the server
+               accepts. -->
           <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
             <label for="firmKindSelect">What kind of shop is this?</label>
             <select id="firmKindSelect"
@@ -2394,6 +2395,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
+              <option value="tenant_rep">Tenant rep shop</option>
             </select>
           </div>
           <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
@@ -2436,6 +2438,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
+                <option value="tenant_rep">Tenant rep shop</option>
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
@@ -11958,7 +11961,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
-  // The two shops (migration 036), Transition Plan v2 §6.
+  // The three shops (migrations 036 and 037), Transition Plan v2 §6.
   //
   // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
   // require. test/index-html.test.js pins the two together, which is the
@@ -11975,6 +11978,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       label: "Development shop",
       arrivals: "land comps, rent comps, absorption studies and feasibility packets",
       shelfType: "Land",
+    },
+    tenant_rep: {
+      label: "Tenant rep shop",
+      arrivals: "lease abstracts, rent comps and market surveys",
+      // Empty on purpose, not an oversight: no property type names a tenant
+      // rep's subject the way Land names a development shop's.
+      shelfType: "",
     },
   };
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
@@ -12312,7 +12322,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sel = document.getElementById("firmShopSelect");
     const state = document.getElementById("firmShopState");
     const copy = shopCopy(firm.kind);
-    sel.value = firm.kind === "development" ? "development" : "broker";
+    // Was a two-way ternary until 037. Reading the kind back through the
+    // same map the words come from means a fourth shop is a map entry and an
+    // <option>, not a third branch somebody forgets: an unrecognized kind
+    // lands on broker here for exactly the reason shopCopy() does.
+    sel.value = SHOP_COPY[firm.kind] ? firm.kind : "broker";
     sel.disabled = !firm.canManage;
     state.textContent = firm.canManage
       ? `Your shelf holds ${copy.arrivals}`
@@ -12486,7 +12500,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // arrive as a sentence under the name box about a question further up the
     // form. Same words either way (org-access.js validateShopKind owns them).
     if (!kind) {
-      err.textContent = "Choose whether this is a broker shop or a development shop.";
+      err.textContent = "Choose whether this is a broker shop, a development shop or a tenant rep shop.";
       err.classList.remove("hidden");
       return;
     }

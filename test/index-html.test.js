@@ -1319,3 +1319,16 @@ test("development costs are private: never sent to the server's search", () => {
     assert.ok(!/devCost/.test(b), "a development cost reached the /api/comps request body");
   }
 });
+
+// The SECOND mirrored string of the firm panel, and the one with no map to
+// hide behind. The browser refuses an unanswered shop question itself rather
+// than spending a round trip on it, so the sentence exists twice; the sentence
+// also enumerates the shops, so it goes stale the day a kind is added. Pinning
+// it to the module's own words is what turns that from a silent drift into a
+// failing test (037 is the migration that proved it can happen).
+test("index.html refuses the shop question in org-access.js's own words", () => {
+  const ORG = require("../org-access.js");
+  const expected = ORG.validateShopKind("").error;
+  assert.ok(html.includes(`"${expected}"`),
+    `the page's refusal has drifted from validateShopKind's: ${expected}`);
+});

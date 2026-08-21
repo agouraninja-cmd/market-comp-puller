@@ -735,7 +735,8 @@ test("both report notices are dropped from the print and the PNG", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migration 036) — the browser half of Transition Plan v2 §6.
+// Shop kind (migrations 036 and 037) — the browser half of Transition Plan
+// v2 §6, plus the tenant rep shop added on top of it 2026-08-21.
 //
 // Two things are worth executing rather than reading: that a control which
 // only an owner may use is not offered to everybody, and that the shelf's
@@ -765,6 +766,25 @@ test("an owner may change the shop; a colleague reads it and cannot", () => {
   assert.match(colleague.dom.text("firmShopState"), /^Broker shop · your shelf holds comp sets, BOVs/);
 });
 
+test("a tenant rep shop reads its own words, not the shop next door's", () => {
+  // 037. The select's value came off a two-way ternary until this kind
+  // existed, so a third shop that silently displayed "Broker shop" while
+  // holding kind='tenant_rep' is the exact regression worth executing: the
+  // owner would have seen the wrong answer selected and corrected it, writing
+  // the wrong kind to a firm that was already right.
+  const ctx = loadShop();
+  ctx.fn({ name: "Ada Tenant Advisors", kind: "tenant_rep", canManage: true });
+  assert.equal(ctx.dom.el("firmShopSelect").value, "tenant_rep");
+  assert.equal(ctx.dom.el("firmShopSelect").disabled, false);
+  assert.match(ctx.dom.text("firmShopState"), /lease abstracts, rent comps and market surveys/);
+  assert.doesNotMatch(ctx.dom.text("firmShopState"), /comp sets|land comps/);
+
+  const colleague = loadShop();
+  colleague.fn({ name: "Ada Tenant Advisors", kind: "tenant_rep", canManage: false });
+  assert.equal(colleague.dom.el("firmShopSelect").disabled, true);
+  assert.match(colleague.dom.text("firmShopState"), /^Tenant rep shop · your shelf holds/);
+});
+
 test("a firm from before 036 reads as a broker shop rather than as nothing", () => {
   const ctx = loadShop();
   ctx.fn({ name: "Colliers Boise", canManage: true });   // no kind at all
@@ -788,6 +808,20 @@ test("a development shop's shelf opens on Land, and says how much it is not show
   assert.match(ctx.dom.text("firmShelfStats"), /6 reports/);
   assert.equal(ctx.dom.text("firmShelfCount"), "2 of 6");
   assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 2);
+});
+
+test("a tenant rep shop's shelf opens on everything, like a broker shop", async () => {
+  // The deliberate half of 037: office, industrial and retail tenant reps all
+  // exist, so there is no one type to open on. This asserts the ABSENCE of a
+  // saved view, which is the sort of decision that gets "fixed" later by
+  // somebody who reads the empty string as an oversight.
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Ada Tenant Advisors", kind: "tenant_rep" },
+    body: { items: sixItems("Office") },
+  });
+  await ctx.render();
+  assert.equal(ctx.dom.el("firmShelfType").value, "");
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
 });
 
 test("a broker shop's shelf opens on everything", async () => {
@@ -873,7 +907,8 @@ test("creating a firm without answering the shop question asks nothing of the se
   await ctx.click();
   assert.equal(ctx.fetch.log.length, 0, "the round trip was spent on a question the page could answer");
   assert.equal(ctx.dom.hidden("firmCreateErr"), false);
-  assert.match(ctx.dom.text("firmCreateErr"), /broker shop or a development shop/);
+  assert.match(ctx.dom.text("firmCreateErr"),
+    /broker shop, a development shop or a tenant rep shop/);
   assert.equal(ctx.dom.el("firmCreateBtn").disabled, false, "and the button comes back");
 });
 

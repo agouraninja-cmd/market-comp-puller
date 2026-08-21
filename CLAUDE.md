@@ -1460,40 +1460,60 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
-  **Two shops, one architecture** (migration `036-org-shop-kind.sql`, **run it
-  before deploying**; Business Model Transition Plan v2 §6, 2026-08-17).
-  `orgs.kind` is `'broker'` or `'development'` and decides two things: the
-  nouns a firm reads (a development shop is told its shelf holds land comps,
-  rent comps, absorption studies and feasibility packets, in the invite email
-  and on the desk) and which property type the firm shelf opens on (Land for a
-  development shop, everything for a broker shop). Nothing is gated on it and
-  nothing is published by it. Four rules:
+  **Three shops, one architecture** (migrations `036-org-shop-kind.sql` and
+  `037-org-shop-kind-tenant-rep.sql`, **run both before deploying**; Business
+  Model Transition Plan v2 §6, 2026-08-17, third kind added 2026-08-21).
+  `orgs.kind` is `'broker'`, `'development'` or `'tenant_rep'` and decides two
+  things: the nouns a firm reads (a development shop is told its shelf holds
+  land comps, rent comps, absorption studies and feasibility packets, a tenant
+  rep shop that it holds lease abstracts, rent comps and market surveys, in the
+  invite email and on the desk) and which property type the firm shelf opens on
+  (Land for a development shop, everything for the other two). Nothing is gated
+  on it and nothing is published by it. Five rules:
   - **Required at creation, not defaulted.** `POST /api/org` refuses without a
     valid kind (`ORG.validateShopKind`), because the creator is the only person
     who knows the answer and a default would be answered by silence. Changing
     it later is an owner/admin call on `POST /api/org/settings`, the same
     authority as `share_default` and for the same reason: it re-labels every
     colleague's desk, not one person's own work.
-  - **The migration is 030's hazard, not 031's.** `orgsByIds()` and
+  - **036 is 030's hazard; 037 is a smaller one.** `orgsByIds()` and
     `findOrg()` name `kind` in their SELECTs and PostgREST 400s an unknown
-    column, so deploying first takes down every firm surface at once. Migrate,
-    then deploy.
+    column, so deploying 036 second takes down every firm surface at once. 037
+    only WIDENS the CHECK, so nothing goes down, but until it runs the database
+    refuses the value the new third `<option>` sends and the owner who picks it
+    gets a 503 from a route that looks like it should have worked. Migrate,
+    then deploy, both times.
   - **An unrecognized kind reads as `broker`** (`ORG.kindOf`), which is
     incumbency rather than safety: every firm predating 036 has only ever been
     shown broker-shop words, so a typo must not re-label their desk. The write
     path normalizes case and padding; the read path stays strict.
+  - **Only one kind has a saved view, and that is deliberate.** Land is a
+    default VIEW rather than a claim about what a development shop may file,
+    and it exists because exactly one entry in `VAULT.PROPERTY_TYPES` names
+    that shop's subject. Nothing names a tenant rep's: office, industrial and
+    retail tenant reps are all normal, so its `shelfType` is `""` and a shelf
+    that opens filtered for two shops out of three is the bug that was avoided,
+    not a default that was forgotten. `test/org-access.test.js` asserts the
+    empty string on purpose.
   - **The shelf's saved view never hides a row while its filter is off
     screen.** The filter row is furniture under six items, so below six the
     type is cleared rather than merely hidden, and a colleague's own choice of
     filter is never stomped by a re-render. The header count always describes
     the whole shelf.
-  Enterprise is deliberately not a third kind: §6 rules it out as a target
+  Enterprise is still deliberately not a kind: §6 rules it out as a target
   (a research department kills the deal internally) and names its real entry
-  point as somebody who used CompNinja at their last shop.
-  The two shops' words live in `ORG.SHOP_COPY` and are **mirrored** in
-  index.html, which cannot require the module; `test/index-html.test.js` pins
-  the two together, because drift there would invite a firm as a development
-  shop and then greet it with a broker shop's desk.
+  point as somebody who used CompNinja at their last shop. Tenant rep passes
+  the test enterprise fails — it signs up one person at a time like the other
+  two, and reads different nouns off the same shelf — which is the bar a fourth
+  kind has to clear, because a value nothing may select is a value that rots.
+  The shops' words live in `ORG.SHOP_COPY` and are **mirrored** in index.html,
+  which cannot require the module; `test/index-html.test.js` pins the two
+  together, because drift there would invite a firm as a development shop and
+  then greet it with a broker shop's desk. **Two** strings are mirrored, not
+  one: the refusal `validateShopKind` returns is repeated in the browser (which
+  declines to spend a round trip on a question it can answer) and it ENUMERATES
+  the shops, so it goes stale the day a kind is added — the same suite pins it
+  to the module's own words.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,

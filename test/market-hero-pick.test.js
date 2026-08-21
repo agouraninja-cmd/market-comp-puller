@@ -164,3 +164,32 @@ test("undescribed stock imports sink below anything that says what it shows", ()
   assert.equal(stock.ok, true, "not refused — one of them might be the skyline");
   assert.ok(stock.score < described.score - 30, "but judged last");
 });
+
+test("archival building surveys are refused outright, however well they name the city", () => {
+  // Ontario, CA's entire shortlist was six of these: black-and-white HABS
+  // elevations of one church and one packing house, big, freely licensed,
+  // geotagged downtown, and with the city in every title.
+  const habs = cand({
+    title: "File:MAIN SECTION - EAST - NORTH WINGS from E - Latimer Packing House, 321 South San Antonio Avenue, Ontario, San Bernardino County, CA HABS CAL,36-ONT,1-3.jpg",
+    source: "geosearch", distanceM: 700, width: 5000, height: 3970,
+  });
+  const g = gradeCandidate(habs, { city: "Ontario", state: "CA" });
+  assert.equal(g.ok, false);
+  assert.match(g.reasons[0], /archival/);
+  for (const t of ["File:Something HAER PA,2-PITBU,1.jpg", "File:A road HALS CA-12.jpg"]) {
+    assert.equal(gradeCandidate(cand({ title: t }), CTX).ok, false, t);
+  }
+  // "Habsburg" is not a survey, and a title is not a haystack for substrings.
+  assert.equal(gradeCandidate(cand({ title: "File:Casper Habsburg Avenue aerial.jpg" }), CTX).ok, true);
+});
+
+test("the article's other pictures rank between its lead image and a bare category", () => {
+  const at = (source) => gradeCandidate(cand({ title: "File:Nampa Idaho downtown.jpg", source }),
+    { city: "Nampa", state: "ID" }).score;
+  assert.ok(at("wikipedia") > at("wikipedia-article"));
+  assert.ok(at("wikipedia-article") > at("category"));
+  // And it proves the city by itself, like every other Wikipedia/Commons
+  // source: an article about Nampa does not illustrate itself with Boise.
+  assert.equal(gradeCandidate(cand({ title: "File:Downtown at dusk.jpg", source: "wikipedia-article" }),
+    { city: "Nampa", state: "ID" }).ok, true);
+});

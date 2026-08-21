@@ -1069,6 +1069,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
        but cells top-align because a row can carry a viewer list or the
        inline people editor, and the detail row needs its own quiet berth. */
+    /* Report jump nav (2026-08-21). Sticky at the top of the viewport while
+       any part of the report is in view. z-40 is chosen against this file's
+       existing layers: above ordinary content (which sets no z-index), below
+       the account/pricing modals (1100-1200) and below the fullscreen map
+       (#compMap.map-fullscreen is 1300), so an opened map still covers it
+       with no extra bookkeeping.
+
+       -webkit-overflow-scrolling and the horizontal scroll are for a phone:
+       five labels do not fit 360px, and a wrapping nav bar changes height as
+       you scroll, which reads as the page juddering. */
+    #reportNav { position: sticky; top: 0; z-index: 40; margin-bottom: 12px;
+      background: var(--paper); border-bottom: 1px solid var(--hair); }
+    .rn-inner { display: flex; align-items: center; gap: 18px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 9px 2px; }
+    .rn-inner::-webkit-scrollbar { display: none; }
+    .rn-link { flex: none; background: none; border: 0; padding: 0; cursor: pointer;
+      font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--ink-3); white-space: nowrap;
+      border-bottom: 2px solid transparent; padding-bottom: 2px; }
+    .rn-link:hover { color: var(--ink); }
+    /* aria-current is the announced state; the rule is on the attribute rather
+       than a class so the two can never disagree. */
+    .rn-link[aria-current="true"] { color: var(--ink); border-bottom-color: var(--red); }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
     .dk-shares td { vertical-align: top; }
     .dk-shares .acts { text-align: right; white-space: nowrap; font-size: 12px; }
     .dk-shares .acts > * + * { margin-left: 12px; }
@@ -2532,6 +2556,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
 
       <!-- Captured / printed region -->
+      <!-- Jump nav (2026-08-21). A finished report is about five screens on a
+           laptop and the comps table starts three and a half of them down, so
+           "where is the evidence" was a scroll hunt. Sticky, screen-only
+           navigation: no-print AND no-capture, because it is chrome, not
+           report content, and a PNG of a report with a floating toolbar
+           welded across it is worse than no PNG.
+
+           It sits INSIDE #results and OUTSIDE #reportArea deliberately. Inside
+           #results, so beginAssembly's allowlist hides it with everything else
+           that is not a data-assemble block — a nav pointing at cards that do
+           not exist yet is worse than none. Outside #reportArea, so it is
+           never inside the element html2canvas rasterises and never inherits
+           a card entrance transform (a transformed ancestor is what the map
+           fullscreen comment above warns about, and sticky is measured
+           against it).
+
+           Built by syncReportNav(); the links come from REPORT_NAV_SECTIONS
+           filtered by what is actually on screen, so the bar follows the
+           visible tab instead of keeping a second list of it. -->
+      <nav id="reportNav" class="hidden no-print no-capture" aria-label="Jump to a section of this report">
+        <div id="reportNavInner" class="rn-inner"></div>
+      </nav>
+
       <div id="reportArea" class="space-y-6">
 
         <!-- Print letterhead: appears only on the printed / PDF report.
@@ -4486,6 +4533,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     results.classList.remove("assembling");
     results.removeAttribute("aria-busy");
     results.classList.add("hidden");
+    // The jump nav rides inside #results, so hiding that hides it too — but
+    // its targets are what the scroll listener works from, and a list of
+    // detached-from-view cards would keep it measuring on every frame of a
+    // scroll through a page with no report on it.
+    document.getElementById("reportNav").classList.add("hidden");
+    reportNavTargets = [];
     // Leave nothing half-real behind: renderResults rebuilds all of these
     // wholesale on success, and on error the report region must be empty.
     ["tableBody", "tableFoot", "cardList", "subjectRowBody"].forEach((id) => {
@@ -6887,6 +6940,102 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   // Report | Analysis tabs — pure class toggling; print CSS ignores them
   // (both panels forced visible on paper).
+  // ---------------------------------------------------------------------------
+  // Report jump nav — the sticky strip above the report.
+  //
+  // ONE declared list, filtered by what is actually on screen. offsetParent is
+  // null for anything display:none, which covers both a card that did not
+  // render (no map, no NOI) and every card in the tab that is not showing — so
+  // switching tabs re-labels the bar without this file keeping a second copy
+  // of which card lives in which tab. Order here is document order and must
+  // stay that way: the scrollspy below walks it and takes the last match.
+  // ---------------------------------------------------------------------------
+  const REPORT_NAV_SECTIONS = [
+    { id: "ownerHero",   label: "Value" },
+    { id: "summaryCard", label: "Market" },
+    { id: "driversCard", label: "Drivers" },
+    { id: "mapCard",     label: "Map" },
+    { id: "chartCard",   label: "Position" },
+    { id: "compsCard",   label: "Comps" },
+    { id: "dcfCard",      label: "DCF" },
+    { id: "opexCard",     label: "Expenses" },
+    { id: "debtCard",     label: "Debt" },
+    { id: "sensCard",     label: "Sensitivity" },
+    { id: "rentRollCard", label: "Rent roll" },
+  ];
+  // Two screens of report before a jump nav earns its space. Below that the
+  // whole document is a flick of the wheel and the bar is furniture — the
+  // same rule the firm shelf's search box and the history filter follow.
+  const REPORT_NAV_MIN_SCREENS = 2;
+  let reportNavTargets = [];
+
+  function syncReportNav() {
+    const nav = document.getElementById("reportNav");
+    const inner = document.getElementById("reportNavInner");
+    const results = document.getElementById("results");
+    const shown = REPORT_NAV_SECTIONS
+      .map((sec) => ({ ...sec, el: document.getElementById(sec.id) }))
+      .filter((sec) => sec.el && sec.el.offsetParent !== null);
+    // Measured on the REPORT, not the document: the page also carries the
+    // header, the search form and the footer, and a two-card report inside a
+    // tall page is still a two-card report.
+    const longEnough = results.getBoundingClientRect().height >
+      window.innerHeight * REPORT_NAV_MIN_SCREENS;
+    if (results.classList.contains("hidden") || shown.length < 3 || !longEnough) {
+      nav.classList.add("hidden");
+      reportNavTargets = [];
+      return;
+    }
+    nav.classList.remove("hidden");
+    inner.innerHTML = "";
+    reportNavTargets = shown;
+    shown.forEach((sec) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "rn-link";
+      b.textContent = sec.label;
+      b.dataset.target = sec.id;
+      b.addEventListener("click", () => {
+        // scrollIntoView rather than an anchor href: the ids are report cards,
+        // not link targets, and a hash would land in the URL and then in a
+        // shared link. The sticky bar covers the top of whatever it scrolls
+        // to, so scroll-margin-top is set on the element itself.
+        sec.el.style.scrollMarginTop = (document.getElementById("reportNav").offsetHeight + 8) + "px";
+        sec.el.scrollIntoView({
+          block: "start",
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        });
+      });
+      inner.appendChild(b);
+    });
+    markReportNavPosition();
+  }
+
+  // Scrollspy. Deliberately a scroll read rather than an IntersectionObserver:
+  // the cards are up to 800px tall, so several are intersecting at once and
+  // "which one am I reading" is a position question, not a visibility one.
+  // rAF-throttled, and it does nothing at all while the nav is hidden.
+  let reportNavTick = false;
+  function markReportNavPosition() {
+    if (!reportNavTargets.length) return;
+    const line = (document.getElementById("reportNav").offsetHeight || 0) + 24;
+    let active = reportNavTargets[0].id;
+    reportNavTargets.forEach((sec) => {
+      if (sec.el.getBoundingClientRect().top <= line) active = sec.id;
+    });
+    document.querySelectorAll("#reportNavInner .rn-link").forEach((b) => {
+      if (b.dataset.target === active) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+    });
+  }
+  window.addEventListener("scroll", () => {
+    if (reportNavTick || !reportNavTargets.length) return;
+    reportNavTick = true;
+    requestAnimationFrame(() => { reportNavTick = false; markReportNavPosition(); });
+  }, { passive: true });
+  // A resize changes both the "is it long enough" answer and every offset.
+  window.addEventListener("resize", () => { if (!document.getElementById("results").classList.contains("hidden")) syncReportNav(); });
+
   function setReportTab(which) {
     const isReport = which !== "analysis";
     document.getElementById("tabReport").classList.toggle("hidden", !isReport);
@@ -6907,6 +7056,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!isReport && currentParsed && currentMeta) renderAnalysisCluster(currentParsed, currentMeta, false);
     // Leaflet renders blank tiles if its container was hidden — re-measure.
     if (isReport && mapInstance) setTimeout(() => mapInstance.invalidateSize(), 50);
+    // The two tabs hold different cards, so the bar is rebuilt rather than
+    // re-marked. Guarded because setReportTab also runs from beginAssembly,
+    // before syncReportNav is meaningful.
+    if (typeof syncReportNav === "function") syncReportNav();
   }
   document.getElementById("tabBtnReport").addEventListener("click", () => setReportTab("report"));
   document.getElementById("tabBtnAnalysis").addEventListener("click", () => setReportTab("analysis"));
@@ -9693,6 +9846,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     document.getElementById("results").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
     syncPortfolioButton();
+    // Last, and after renderMap: the bar measures the finished report to
+    // decide whether it is long enough to deserve one, and the map card is
+    // 400px of that height. A frame later, so the cards' entrance transforms
+    // have settled and the measurement is of where things land, not where
+    // they started.
+    requestAnimationFrame(syncReportNav);
   }
 
   // ----------------------------------------------------------------------------

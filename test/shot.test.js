@@ -59,6 +59,22 @@ test("parseShotArgs collects paths and defaults to a whole-page shot", () => {
   assert.equal(o.before, null);
   assert.equal(o.fullPage, true);
   assert.equal(o.expand, false);
+  assert.equal(o.dark, false);
+  assert.deepEqual(o.errors, []);
+});
+
+// A dark-mode change is the one kind of design change the default shot
+// cannot show: a scratch profile has no stored theme, so every capture came
+// out light. --dark emulates the media query the page's own boot script
+// falls back to, rather than seeding localStorage, so what gets photographed
+// is the real boot path.
+test("--dark is off by default and rides alongside the other flags", () => {
+  assert.equal(SHOT.parseShotArgs(["/"]).dark, false);
+  assert.equal(SHOT.parseShotArgs(["/", "--dark"]).dark, true);
+  const o = SHOT.parseShotArgs(["/", "--dark", "--before", "--expand"]);
+  assert.equal(o.dark, true);
+  assert.equal(o.before, "origin/main");
+  assert.equal(o.expand, true);
   assert.deepEqual(o.errors, []);
 });
 

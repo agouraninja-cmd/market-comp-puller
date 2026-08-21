@@ -3321,6 +3321,11 @@ async function orgMembershipsFor(email) {
 // a word. MAX_MEMBERS and 030's column default are both 200, which is what
 // hid it. If a column is added to this select, add it to findOrg() too.
 //
+// AND `kind` (036), which fails the OTHER way. A missing `seats` is a silent
+// wrong answer; a missing `kind` is a 400 from PostgREST on every firm read at
+// once, because this select names its columns. That is why 036 runs BEFORE the
+// deploy that added this word - 030's ordering, for 030's reason.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3332,7 +3337,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats,kind&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);
@@ -3346,6 +3351,15 @@ async function orgsByIds(ids) {
 async function setOrgShareDefault(orgId, value) {
   return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
     { share_default: value }, { prefer: "return=minimal" });
+}
+
+// Which of the two shops a firm is (migration 036). Nothing is gated on this
+// and nothing is published by it - it decides vocabulary and which property
+// type the shelf opens on - which is why it is an ordinary PATCH beside the
+// one above rather than a route of its own.
+async function setOrgKind(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { kind: value }, { prefer: "return=minimal" });
 }
 
 // The member's own override (migration 031). Scoped by BOTH the org and the
@@ -3390,20 +3404,25 @@ async function orgMemberRows(orgId) {
 async function findOrg(orgId) {
   if (!DB_CONFIGURED || !orgId) return null;
   const rows = await sbRequest("GET",
-    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,created_at&limit=1`);
+    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,kind,created_at&limit=1`);
   return (rows && rows[0]) || null;
 }
 
 // Create the firm and its first member in that order, and make the creator an
 // OWNER who has already joined: they are the one person whose membership needs
 // no accept step, because they are the one who asked for it.
-async function createOrgWithOwner(name, user) {
+async function createOrgWithOwner(name, kind, user) {
   const rows = await sbRequest("POST", "orgs",
     // `seats` is written explicitly rather than left to 030's column default.
     // A hand-granted firm is the ordinary case (§9: seats are granted by hand
     // until somebody asks to pay), and code that reads this column should
     // never have to distinguish "not set" from "set to the structural cap".
-    [{ name, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
+    // `kind` is written explicitly and always: 036 defaults it to 'broker'
+    // for the firms that predate the column, and a new firm has answered the
+    // question by the time it reaches here (validateShopKind refuses a create
+    // that has not). Letting the default catch a new firm would put the two
+    // paths back together and hide a browser that stopped sending it.
+    [{ name, kind, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
   const org = rows && rows[0];
   if (!org) throw new Error("Firm row was not returned.");
   await sbRequest("POST", "org_members", [{
@@ -4348,12 +4367,16 @@ function sendShareInvites(emails, { url, address, fromName }) {
 // the recipient's only way to check it is real is to recognise the sender.
 // Nothing about the firm's reports travels here — the invite grants no access
 // on its own, and does not until the person accepts it themselves.
-function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
+function sendOrgInvites(emails, { firm, kind, fromName, fromEmail }) {
+  // The shop's own nouns (036). A development shop's colleague being told the
+  // shelf holds "comp sets and BOVs" is being described somebody else's job in
+  // the first sentence they read about the product.
+  const arrivals = ORG.SHOP_COPY[ORG.kindOf({ kind })].arrivals;
   for (const to of emails) {
     const who = fromName ? `${fromName} (${fromEmail})` : fromEmail;
     sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
       `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
-      `A firm is a shared shelf: reports and BOVs a colleague shares with the firm ` +
+      `A firm is a shared shelf: ${arrivals} a colleague shares with the firm ` +
       `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
       `Accept here: ${SITE_URL}/desk\n\n` +
       `Sign in with this email address (${to}) — a free account is all it takes. ` +
@@ -6518,7 +6541,17 @@ function bulkJobRow(job) {
 // than render as blank. `job_id` and `user_id` are plumbing and stay behind.
 function bulkItemRow(it) {
   if (!it) return null;
-  const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+  // Number(null) is 0 and Number("") is 0, so a nullable column read back
+  // through a bare Number() becomes a ZERO — and a zero here is a claim. An
+  // unvalued row would export as $0 rather than blank, which is precisely the
+  // "a failure is not $0" rule this feature states and summarize() enforces,
+  // broken one layer below it. The page happened to survive it (every display
+  // path tests > 0); the CSV did not.
+  const n = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
   return {
     id: it.id,
     position: Number(it.position) || 0,
@@ -7320,6 +7353,57 @@ const ACCOUNT_NAV_JS =
 // /how-it-works, so a visitor arriving from search lands on something that
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab is
+// #1A2433 light, #243044 dark), so every ink token runs backwards on it: the
+// ramp is built to lighten as the page darkens, and here the page never
+// lightened. Measured on /brokers before this existed, in dark:
+//   footer a / footer li a   --ink-4      1.75:1   (light: 9.60:1)
+//   footer p                 --ink-faint  2.38:1   (light: 6.06:1)
+//   footer .cols .ch         --ink-faint  2.38:1   (light: 6.06:1)
+// Nine footer links and the contact address, effectively invisible, on every
+// server-rendered page. theme.js's header already documents this trap for
+// --ink-4 and index.html's bridge already fixes it there (.text-[#B8C0CC] and
+// .text-[#D5DAE2] both redirect to --ink-3); the server-rendered footers use
+// var(--ink-4) DIRECTLY, so no class bridge could ever have reached them.
+//
+// Dark keeps light's own relationship rather than flattening it: links are the
+// loud thing (7.28:1 vs light's 9.60:1) and the small print is about 1.6x
+// quieter (4.52:1 vs light's 6.06:1), which is the same gap light has.
+// --ink-faint is deliberately NOT used here at all any more -- it is a whisper
+// token, below AA by design in both themes now (see theme.js), and this
+// footer's small print is a legal disclaimer that has to be readable.
+//
+// ONE copy, interpolated into MARKET_CSS and HOW_CSS and handed to
+// vault-page.js through the chrome object. The footer block is already
+// duplicated three times with a "keep the three in step" comment on it, and
+// three copies of a fix is three chances to fix two of them.
+// Leaflet's own chrome, dark. index.html carries the same block for the report
+// map; the market pages have their OWN comp map (#mktMap, MARKET_MAP_JS) and
+// had none of it, so in dark the container showed leaflet.css's #ddd -- a
+// light grey slab the size of the map, through every tile gap and for the
+// whole of a slow tile load -- with white zoom controls and a white popup on
+// top. Found by a leak scan across all nine pages, not by reading the diff.
+//
+// This is a HAND-COPY of index.html's block, like DARK_CHROME is: index.html
+// is static and never templates this file, so the two cannot share a constant
+// and can only be kept in step deliberately. A test pins that they agree.
+const LEAFLET_DARK_CSS = `
+[data-theme="dark"] .leaflet-container{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution,
+[data-theme="dark"] .leaflet-bar a{background:var(--card);color:var(--ink-3);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-bar a:hover{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution a{color:var(--ink-2)}
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
+[data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+`;
+
+const FOOTER_DARK_CSS = `
+[data-theme="dark"] footer{color:var(--ink-body)}
+[data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
+[data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
+`;
+
 const MARKET_CSS = `
 ${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
@@ -7336,7 +7420,14 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-heigh
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
+/* 1120px, not a new number: /vault has run at 1120 since it was built, so the
+   widest surface in the product already answered this question. 1024 dates
+   from before the market pages carried 3840px photographs and before the comp
+   tables grew their per-type columns, and it is narrow enough on a modern
+   laptop to read as a site that has not been touched in a while. Kept in step
+   with HOW_CSS's copy below; the four dashboards and /bulk keep their own
+   widths deliberately. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
@@ -7394,6 +7485,17 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
+/* Text inside a --wash-2 cell steps up one rung, dark only. --wash-2 is the
+   only dark surface that lifts ABOVE the card, so a ramp step chosen against
+   the card lands too dim on it: --ink-3 measures 5.32:1 on --card and 3.53:1
+   here, and the red LIKELY label 3.74:1. Mirrors the same fix on
+   index.html's .rd-lcell (2026-08-21); the two ledgers are separate class
+   vocabularies, so neither rule reaches the other's markup. In light
+   --wash-2 is identical to --wash and none of this applies. */
+[data-theme="dark"] .lcell.mid .k,[data-theme="dark"] .lcell.mid .lab,
+[data-theme="dark"] .lcell.mid .n{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .k{color:var(--red-deep)}
+
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
@@ -7569,6 +7671,13 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
 .mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit;box-shadow:var(--lift)}
 .mcard:hover{border-color:var(--ink-3)}
+/* A card with a picture puts the photograph above the words, edge to edge, so
+   the padding moves off the card and onto the body. The image keeps the
+   header's 4.8:1 crop and its own width/height attributes, so the grid does
+   not reflow as the lazy images arrive. */
+.mcard.haspic{padding:0;overflow:hidden}
+.mcard .mthumb{display:block;width:100%;height:auto;aspect-ratio:${MARKETHERO.HERO_THUMB_WIDTH} / ${MARKETHERO.HERO_THUMB_HEIGHT};object-fit:cover;background:var(--wash);border-bottom:1px solid var(--hair)}
+.mcard .mbody{padding:14px 18px 16px}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
@@ -7631,6 +7740,8 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
+${LEAFLET_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -7649,13 +7760,15 @@ ${ACCOUNT_NAV_CSS}`;
 //     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
 //     file holds no copy of the list any more.
 // Order is the owner's (2026-08-09): Pricing first (rendered separately —
-// it is a door to index.html's pricing modal, not a page), then these four.
+// it is a door to index.html's pricing modal, not a page), then these.
+// "Markets" left this list 2026-08-21 (owner's call): the app page links
+// /markets from an "Our markets" line under the Market Explorer's own input
+// instead, and every server-rendered page keeps its footer /markets link.
 const NAV_LINKS = [
   ["/brokers", "Brokers"],
-  ["/markets", "Markets"],
   ["/how-it-works", "How it works"],
   ["/1031-exchange", "1031 Guide"],
-  // Appended 2026-08-20 (the four above keep the owner's 2026-08-09 order):
+  // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
   // The third element is a class, and only this entry has one: `nav-dl` is
@@ -7701,7 +7814,14 @@ const marketBar = (signedIn = false, current = "") =>
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
+  `<div class="dd">${navLinksHtml(current)}</div></details>` +
+  // Pricing sits in the bar itself rather than one click inside Explore. It is
+  // the question a prospect arrives with, and a B2B site that hides its price
+  // behind a browse menu reads as one that would rather not say. The
+  // visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
+  // (`live && !isPro`), so it still hides for a Pro member and on a deployment
+  // with no billing configured; only the position moved.
+  ACCOUNT_NAV_PRICING +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -8076,6 +8196,18 @@ const MARKET_FOOTER =
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
   `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  // Follow was in index.html's footer and NOWHERE ELSE, which put the only
+  // links to the company's own accounts BEHIND the login. Every indexable
+  // page -- the landing a stranger actually arrives on, every market page,
+  // /brokers -- ended in a footer that named no accounts at all, which reads
+  // as a site nobody is behind. rel="noopener noreferrer" and target=_blank
+  // match index.html's copies exactly.
+  `<div><div class="ch">Follow</div>` +
+  `<ul aria-label="Follow">` +
+  `<li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer">Instagram</a></li>` +
+  `<li><a href="https://www.tiktok.com/@comp.ninja" target="_blank" rel="noopener noreferrer">TikTok</a></li>` +
+  `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
+  `</ul></div>` +
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
@@ -8146,14 +8278,32 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { return f || nominatim(a); })
       .then(function (f) { save(k, f); return f; });
   }
-  var map = null, pts = [];
+  var map = null, pts = [], tiles = null;
+  // The basemap follows the theme, the way index.html's basemapUrl() does. It
+  // was pinned to light_all, so a dark market page rendered a white rectangle
+  // in the middle of it. setUrl on a theme change rather than a rebuild: the
+  // toggle lives in the shared header and can fire long after this ran, and
+  // re-adding the layer would drop every pin already placed.
+  function baseUrl() {
+    var el = document.documentElement;
+    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
+  }
   function ensureMap(center) {
     if (map) return map;
     map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    // Assigned before addTo rather than from its return value: Leaflet does
+    // return the layer, but the theme swap below depends on holding it, and a
+    // chained assignment makes that dependency invisible.
+    tiles = L.tileLayer(baseUrl(), {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map);
+    });
+    tiles.addTo(map);
+    try {
+      new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    } catch (e) {}
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
@@ -8476,7 +8626,7 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
 }
 
 function marketHeroBanner(p, title) {
-  const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
   // A page published since the last run of scripts/auto-market-heroes.js has
   // no curated photo, no generated photo and no entry in either committed
   // coordinate table — but it does carry the city coordinates its own publish
@@ -8486,7 +8636,7 @@ function marketHeroBanner(p, title) {
   const coords = (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
     ? { lat: Number(p.lat), lng: Number(p.lng) }
     : null;
-  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys, coords });
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipFiles, coords });
   const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
   const heading = `<h1>${escHtml(title)}</h1>`;
   const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
@@ -8540,8 +8690,10 @@ function sampleMarketPathForHero(key) {
 function allHeroRows() {
   const rows = [];
   for (const [key, row] of Object.entries(MARKETHERO.HEROES)) rows.push({ key, row, auto: null });
+  // A generated photograph for a city that IS curated is not a duplicate: it
+  // is the understudy for a curated file that fails the grade (Ontario, CA).
+  // Both are listed so both are graded, and heroFor picks between them.
   for (const [key, city] of Object.entries(MARKETHERO.autoCities())) {
-    if (MARKETHERO.HEROES[key]) continue;
     const hero = MARKETHERO.autoHeroFor(key);
     if (hero) rows.push({ key, row: hero, auto: city });
   }
@@ -8571,6 +8723,7 @@ function inspectMarketHeroes() {
       license: row.license,
       commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
       samplePath: sampleMarketPathForHero(key),
+      file: row.file,
       picked: auto ? "auto" : "curated",
       judge: (auto && row.judge) || null,
       ok: g.ok,
@@ -8580,8 +8733,17 @@ function inspectMarketHeroes() {
       width: g.width,
       height: g.height,
       bytes: g.bytes,
-      liveKind: !g.ok ? "satellite" : "photo",
     });
+  }
+  // What each city ACTUALLY shows, asked of heroFor rather than inferred: a
+  // failing file no longer implies a satellite aerial, because the generated
+  // photograph behind a failing curated one can take over.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(rows);
+  for (const r of rows) {
+    const parts = String(r.key).split(",");
+    const live = MARKETHERO.heroFor((parts[0] || "").trim(), (parts[1] || "").trim(), { skipFiles });
+    r.liveKind = live ? live.kind : "none";
+    r.live = Boolean(live && live.src === r.src);
   }
   return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
 }
@@ -9117,6 +9279,9 @@ function renderMarketDirectoryHTML(signedIn) {
   // Trimmed to the ~160 characters Google renders; it was 169.
   const description =
     "Price-per-square-foot and cap-rate snapshots by city and property type — industrial, office, retail, and multifamily — built from real comparable sales.";
+  // One grade read for the whole page: cachedHeroInspect memoizes, but the
+  // list is walked per card and this keeps that explicit.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
   const cards = slugs.map((s) => {
     const p = merged[s];
     // Everything a visitor might reasonably type for this card, flattened into
@@ -9126,9 +9291,26 @@ function renderMarketDirectoryHTML(signedIn) {
     const haystack = [
       p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
     ].join(" ").toLowerCase();
-    return `<a class="mcard" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+    // The same picture that heads the market's own page, drawn small. It is
+    // decorative here — the card already names the city in text — so the alt
+    // is empty rather than a repeat for a screen reader to read twice.
+    const thumb = MARKETHERO.thumbFor(p.city, p.state, {
+      skipFiles,
+      coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+    });
+    // loading="lazy" matters more here than anywhere else on the site: this is
+    // the one page that carries every market at once.
+    const pic = thumb
+      ? `<img class="mthumb" src="${escHtml(thumb.src)}" alt="" width="${MARKETHERO.HERO_THUMB_WIDTH}" ` +
+        `height="${MARKETHERO.HERO_THUMB_HEIGHT}" loading="lazy" decoding="async"/>`
+      : "";
+    return `<a class="mcard${thumb ? " haspic" : ""}" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+      pic +
+      `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
-      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
+      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
+      `</div></a>`;
   }).join("");
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -9209,7 +9391,8 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Matches MARKET_CSS's .wrap exactly; the reasoning is on that copy. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
@@ -9276,11 +9459,40 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash-2)}
+/* LIKELY sets its figure at 22px against its neighbours' 18px, so it is the
+   cell that runs out of room first: eight digits measure 115px inside the
+   108px an even three-way split leaves at 1280px. Widen the cell rather than
+   shrink the type -- the size difference IS the emphasis this ledger exists
+   to give the middle number. */
+.lcell.mid{background:var(--wash-2);flex:1.15}
 .lcell.mid .lab{color:var(--red)}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+/* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
+   exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
+   and .n, which is why the rule cannot be shared. Dark only. */
+[data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
+/* white-space:nowrap here is load-bearing, not cosmetic. The scroll
+   choreography below splits "$4,730,000" into a "$" text node plus an
+   inline-block .cu span, so the numeral can tick without shoving its cell
+   around on every frame -- and that split MANUFACTURES a line-break
+   opportunity the plain string never had. The HTML as served wraps nowhere;
+   the scripted DOM broke the LIKELY figure across two lines with the "$"
+   stranded alone above it, on the one number a visitor came to see. The rule
+   belongs on .fig rather than on .cu because the break is BETWEEN the two
+   boxes, not inside either one. */
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+/* Three cells side by side need ~430px before the figures stop fitting, and
+   this sheet had no rule to stack them, so every phone drew all three values
+   broken across three lines each. Matches index.html's .rd-ledger breakpoint
+   (639.98px) rather than MARKET_CSS's 700px on purpose: this exhibit is a
+   miniature of the REPORT, so it should fold where the report folds. */
+@media (max-width:639.98px){
+  .ledger{flex-direction:column}
+  .lcell{border-right:0;border-bottom:1px solid var(--hair)}
+  .lcell:last-child{border-bottom:0}
+}
 .drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
 .drv b{color:var(--red);font-weight:700}
@@ -9297,12 +9509,27 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .hero2{display:grid;grid-template-columns:1fr;gap:28px}
 .hero2 h1.h{max-width:none}
 .hero2 .lead{max-width:48ch}
-@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+/* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
+   is four short lines and a search row; the exhibit is a five-comp table that
+   was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
+   mid-word, next to a left column sitting on 300px of dead air. Handing the
+   26px across costs the headline nothing and buys the table its last column. */
+@media(min-width:900px){.hero2{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
+/* The badge key moved OUT of a full-width strip under the hero and INTO the
+   claim column (2026-08-21). It was a row of four items spanning both columns
+   while the column beside the exhibit sat on ~300px of dead air, which read
+   as an unfinished page rather than a restrained one. In the column it also
+   sits where it belongs: a key, next to the exhibit whose badges it decodes.
+   Stacked only once there are two columns to be beside -- below 900px the
+   hero is one column and a wrapping row is the more compact shape. */
+@media(min-width:900px){
+  .hero2 .legend{flex-direction:column;align-items:flex-start;gap:10px;margin-top:28px}
+}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
 .steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
@@ -9353,6 +9580,11 @@ button.btn{border:0;cursor:pointer;font-family:inherit}
 .landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
 .landProof{color:var(--ink-2)}
 .heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
+/* align-items:flex-start shrink-wraps every child, which left the search row
+   at 326px of a 502px column and the field at 187px -- narrow enough that its
+   own placeholder truncated to "e.g. 1200 W Industrial B". The row is the
+   page's primary action; it gets the column. */
+.heroCta .landForm{align-self:stretch;width:100%}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}
@@ -9370,6 +9602,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .steps{grid-template-columns:repeat(3,1fr)}
@@ -10128,6 +10361,16 @@ ${marketBar(signedIn, "/how-it-works")}
             <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
+          <div class="legend">
+            <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
+            <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
+            <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
+            <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+                 match to the literal this used to carry -- a plain span's
+                 style="" attribute resolves var() reliably, unlike an SVG
+                 presentation attribute, so no class is needed. -->
+            <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
+          </div>
         </div>
         <div class="exhibit" data-rv>
           <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
@@ -10156,16 +10399,6 @@ ${marketBar(signedIn, "/how-it-works")}
             </div>
           </div>
         </div>
-      </div>
-      <div class="legend">
-        <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
-        <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
-        <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
-             match to the literal this used to carry -- a plain span's
-             style="" attribute resolves var() reliably, unlike an SVG
-             presentation attribute, so no class is needed. -->
-        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -10203,40 +10436,13 @@ ${marketBar(signedIn, "/how-it-works")}
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div>
-      <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
-      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
-        connect you with local brokers for opinions of value. Comparables derive from publicly available data;
-        verify independently before underwriting.</p>
-      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
-      <p>&copy; 2026 CompNinja LLC</p>
-    </div>
-    <div class="right">
-      <div class="cols">
-        <div>
-          <div class="ch">Explore</div>
-          <ul aria-label="Explore">
-            <li><a href="/markets">Markets</a></li>
-            <li><a href="/brokers">Brokers</a></li>
-            <li><a href="/how-it-works">How it works</a></li>
-            <li><a href="/how-it-works#faq">FAQ</a></li>
-            <li><a href="/1031-exchange">1031 exchange guide</a></li>
-            <li><a href="/">Run a report</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="ch">Company</div>
-          <ul aria-label="Company">
-            <li><a href="/terms">Terms</a></li>
-            <li><a href="/privacy">Privacy</a></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</footer>
+<!-- MARKET_FOOTER, not a copy of it. This page hand-kept markup that was
+     byte-identical to that constant once whitespace was normalised, which is
+     the third time this file has grown a second copy of the same footer and
+     the second time the copies drifted (see theme.test.js on the dark-ink
+     fix). One constant means the landing page cannot fall behind /brokers
+     again. -->
+${MARKET_FOOTER}
 <script>
 (function(){
   var f=document.getElementById("landingSearch");
@@ -15962,6 +16168,137 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // Re-value ONE finished row against a size the member supplies.
+    //
+    // This costs NOTHING and must stay that way. A bulk run's usual failure is
+    // not missing comps — the first real run found 24-27 sale comps on every
+    // address — it is a missing building size, because the single-property
+    // flow estimates one from the OSM footprint in the BROWSER during the
+    // confirm dialog and bulk has no browser step to do it in. So two rows in
+    // three came back with a $/SF band and no dollars, and no way to fix it
+    // short of paying for the whole list again.
+    //
+    // The report is already stored, so this is pure arithmetic over comps we
+    // hold: type a size, get a value. Three rules hold it up.
+    //
+    // IT READS THE STORED REPORT, NEVER runCompSearch. Going back through the
+    // search pipeline would hit the cache and be free TODAY, and would quietly
+    // become a billed search the moment that entry aged out — a button
+    // labelled as costless that sometimes charges $0.36 is worse than no
+    // button. The desk row is the copy that cannot expire.
+    //
+    // IT IS THE SAME ARITHMETIC. BULK.valueFromReport, the same call the
+    // worker makes, so a re-valued row and a first-pass row are computed
+    // identically and the portfolio still reconciles.
+    //
+    // IT UPDATES BOTH PLACES. The bulk row and the desk property disagreeing
+    // about what a building is worth is worse than either being wrong alone.
+    if (req.method === "POST" && path === "/api/bulk/item/size") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id, size_sqft } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+
+          // parseNumber accepts what a person actually types — "12,500",
+          // "12500 SF" — and refuses what is not a number rather than storing
+          // a best effort, which is broker-vault.js's rule and the reason a
+          // wrong size is the most expensive figure in the report.
+          const parsed = VAULT.parseNumber(size_sqft);
+          if (!parsed.ok || !(parsed.value > 0)) {
+            return sendJson(res, 400, { error: `"${String(size_sqft).slice(0, 40)}" is not a building size.` });
+          }
+          const size = Math.min(20_000_000, Math.round(parsed.value));
+
+          const rows = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=eq.${encodeURIComponent(String(id))}&limit=1`);
+          const item = rows && rows[0];
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          if (item.status !== "done") {
+            return sendJson(res, 409, { error: "That address has no report to re-value. Run the list again." });
+          }
+          const job = await getBulkJob(user.id, item.job_id);
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+
+          // The stored report. Absent only when the desk write failed or the
+          // portfolio was full — in which case there is genuinely nothing to
+          // re-value, and saying so beats a silent no-op.
+          const saved = item.portfolio_item_id
+            ? await getPortfolioItem(user.id, item.portfolio_item_id)
+            : null;
+          const report = saved && saved.payload && saved.payload.data;
+          if (!report || !Array.isArray(report.comps)) {
+            return sendJson(res, 409, {
+              error: "This row's report was not saved, so it cannot be re-valued. Run that address again.",
+            });
+          }
+
+          const valued = BULK.valueFromReport(report, {
+            subjectSizeSqft: size,
+            // The report's own date, not now: a saved report's numbers must
+            // not drift as it ages, which is what asOfOf() protects in the
+            // browser. updated_at is when this report was written.
+            asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
+            note: job.note || "",
+            propertyType: job.property_type,
+          });
+          if (!valued) {
+            return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });
+          }
+
+          const patch = {
+            value_low: valued.value_low, value_likely: valued.value_likely, value_high: valued.value_high,
+            psf_low: round2(valued.psf_low), psf_mid: round2(valued.psf_mid), psf_high: round2(valued.psf_high),
+            subject_size_sqft: valued.size_sqft,
+            // Null, the same as any typed size: "you" is what the page renders
+            // for it, and claiming a public-record source for a number a
+            // person typed would be the one lie this column can tell.
+            size_source: null,
+            sale_comps: valued.sale_comps, comp_count: valued.comp_count,
+            trimmed: valued.trimmed,
+            error: null,
+          };
+          await patchBulkItem(user.id, item.id, patch);
+
+          // The desk copy moves with it, payload included, so reopening the
+          // property shows the size that produced the figure beside it.
+          try {
+            const payload = {
+              ...saved.payload,
+              meta: {
+                ...saved.payload.meta,
+                subject: { ...(saved.payload.meta.subject || {}), sizeMin: size, sizeMax: size },
+              },
+            };
+            await updatePortfolioItem(user.id, saved.id, {
+              payload,
+              snapshot: cleanSnapshot({
+                low: valued.value_low, likely: valued.value_likely,
+                high: valued.value_high, median_psf: valued.psf_mid,
+              }),
+            });
+          } catch (err) {
+            // The row is already right; the desk catching up is not worth
+            // failing the request the member just watched succeed.
+            console.error("bulk size re-value: desk update failed:", err.message);
+          }
+
+          logEvent("bulk_resize", { prop_type: job.property_type });
+          return sendJson(res, 200, { item: bulkItemRow({ ...item, ...patch }) });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk size re-value error:", err.message);
+          return sendJson(res, 500, { error: "Could not re-value that address." });
+        }
+      });
+      return;
+    }
+
     // Stop one between rows. There is no way to abort a search already in
     // flight — it is billed the moment it starts — so a cancel stops the
     // QUEUE, and the rows already running finish and are kept. Saying that
@@ -18892,6 +19229,10 @@ const server = http.createServer((req, res) =>
         autoShare: row.auto_share === true ? "always"
           : row.auto_share === false ? "never" : "follow",
         autoShareOn: ORG.autoShareFor({ org, membership: row }),
+        // Which vocabulary this firm reads (036). Sent as the kind rather than
+        // as the words: index.html holds the nouns, pinned to SHOP_COPY by
+        // test/index-html.test.js, so the wire stays a two-value enum.
+        kind: ORG.kindOf(org),
       };
     };
 
@@ -18971,6 +19312,12 @@ const server = http.createServer((req, res) =>
         const body = await readOrgBody();
         const check = ORG.validateOrgName(body && body.name);
         if (!check.ok) return sendJson(res, 400, { error: check.error });
+        // Required, not defaulted (org-access.js validateShopKind says why).
+        // Checked before the one-firm-per-person read below so a creator who
+        // skipped the question is told what is missing rather than told they
+        // are already in a firm.
+        const shop = ORG.validateShopKind(body && body.kind);
+        if (!shop.ok) return sendJson(res, 400, { error: shop.error });
         // One firm per person, for now. Not a technical limit — the schema is
         // many-to-many and activeOrgIds already returns a set — but a member of
         // two firms raises "which firm did I just share that with", and slice 1
@@ -18979,9 +19326,11 @@ const server = http.createServer((req, res) =>
         if (existing.some((r) => ORG.isActive(r))) {
           return sendJson(res, 409, { error: "You are already part of a firm." });
         }
-        const org = await createOrgWithOwner(check.name, user);
-        logEvent("org_create", {});
-        return sendJson(res, 200, { id: org.id, name: org.name, role: "owner", canManage: true });
+        const org = await createOrgWithOwner(check.name, shop.kind, user);
+        logEvent("org_create", { kind: shop.kind });
+        return sendJson(res, 200, {
+          id: org.id, name: org.name, kind: ORG.kindOf(org), role: "owner", canManage: true,
+        });
       })().catch((err) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm create failed:", err.message);
@@ -19143,7 +19492,8 @@ const server = http.createServer((req, res) =>
         // into an error the inviter has to interpret.
         try {
           sendOrgInvites(clean.emails, {
-            firm: (org && org.name) || "", fromName: user.name || "", fromEmail: user.email,
+            firm: (org && org.name) || "", kind: ORG.kindOf(org),
+            fromName: user.name || "", fromEmail: user.email,
           });
         } catch (err) {
           console.error("Firm invite send failed:", err.message);
@@ -19194,6 +19544,17 @@ const server = http.createServer((req, res) =>
           await setOrgShareDefault(orgId, body.shareDefault);
           changed = true;
         }
+        if (body.kind !== undefined) {
+          // Owner/admin, the same authority as the firm default: this changes
+          // what every colleague reads, not what one member's own work does.
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          const shop = ORG.validateShopKind(body.kind);
+          if (!shop.ok) return sendJson(res, 400, { error: "Unrecognized setting." });
+          await setOrgKind(orgId, shop.kind);
+          changed = true;
+        }
         if (body.autoShare !== undefined) {
           const value = ORG.autoShareValue(body.autoShare);
           // `undefined` is the refusal and `null` is a real value ("follow"),
@@ -19214,6 +19575,7 @@ const server = http.createServer((req, res) =>
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
         return sendJson(res, 200, {
           ok: true,
+          kind: ORG.kindOf(org),
           shareDefault: ORG.shareDefaultOf(org),
           autoShare: mine && mine.auto_share === true ? "always"
             : mine && mine.auto_share === false ? "never" : "follow",
@@ -20794,6 +21156,7 @@ const server = http.createServer((req, res) =>
       res.end(renderVaultHTML(boot, {
         CN_LOGO,
         MARKET_CSS,
+        FOOTER_DARK_CSS,
         THEME_CSS,
         THEME_BOOT,
         ACCOUNT_NAV_CSS,

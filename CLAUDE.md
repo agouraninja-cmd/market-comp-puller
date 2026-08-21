@@ -1438,6 +1438,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
+  **Two shops, one architecture** (migration `036-org-shop-kind.sql`, **run it
+  before deploying**; Business Model Transition Plan v2 §6, 2026-08-17).
+  `orgs.kind` is `'broker'` or `'development'` and decides two things: the
+  nouns a firm reads (a development shop is told its shelf holds land comps,
+  rent comps, absorption studies and feasibility packets, in the invite email
+  and on the desk) and which property type the firm shelf opens on (Land for a
+  development shop, everything for a broker shop). Nothing is gated on it and
+  nothing is published by it. Four rules:
+  - **Required at creation, not defaulted.** `POST /api/org` refuses without a
+    valid kind (`ORG.validateShopKind`), because the creator is the only person
+    who knows the answer and a default would be answered by silence. Changing
+    it later is an owner/admin call on `POST /api/org/settings`, the same
+    authority as `share_default` and for the same reason: it re-labels every
+    colleague's desk, not one person's own work.
+  - **The migration is 030's hazard, not 031's.** `orgsByIds()` and
+    `findOrg()` name `kind` in their SELECTs and PostgREST 400s an unknown
+    column, so deploying first takes down every firm surface at once. Migrate,
+    then deploy.
+  - **An unrecognized kind reads as `broker`** (`ORG.kindOf`), which is
+    incumbency rather than safety: every firm predating 036 has only ever been
+    shown broker-shop words, so a typo must not re-label their desk. The write
+    path normalizes case and padding; the read path stays strict.
+  - **The shelf's saved view never hides a row while its filter is off
+    screen.** The filter row is furniture under six items, so below six the
+    type is cleared rather than merely hidden, and a colleague's own choice of
+    filter is never stomped by a re-render. The header count always describes
+    the whole shelf.
+  Enterprise is deliberately not a third kind: §6 rules it out as a target
+  (a research department kills the deal internally) and names its real entry
+  point as somebody who used CompNinja at their last shop.
+  The two shops' words live in `ORG.SHOP_COPY` and are **mirrored** in
+  index.html, which cannot require the module; `test/index-html.test.js` pins
+  the two together, because drift there would invite a firm as a development
+  shop and then greet it with a broker shop's desk.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -1829,13 +1863,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   city** (2026-08-21), resolved in `market-hero.js` in four steps: a curated
   Wikimedia Commons file, then a GENERATED one, then an Esri satellite aerial
   of the city's coordinates, then — only when there is not even a point —
-  nothing. All photos are 3840×800 plus a 1920w `srcset` sibling, served from
-  `market-heroes/` rather than hotlinked (Wikimedia asks not to be a CDN),
-  with the credit and licence rendered on the photograph. `/admin/heroes` is
-  the visual QA for BOTH photo layers, with a file-size/dimension grade in the
-  tested `market-hero-quality.js`; a file that fails that grade is skipped on
-  the live header in favour of the satellite aerial of the same city, curated
-  and generated alike.
+  nothing. All photos are 3840×800, a 1920w `srcset` sibling, and a
+  768×160 thumbnail for the `/markets` directory (a third stored size, because
+  that page carries every market at once and scaling the 1920w files in the
+  browser would make it a ~10 MB page). They are served from `market-heroes/`
+  rather than hotlinked (Wikimedia asks not to be a CDN), with the credit and
+  licence rendered on the photograph. `/admin/heroes` is the visual QA for BOTH
+  photo layers, with a file-size/dimension grade in the tested
+  `market-hero-quality.js`.
+
+  **The grade skips a FILE, never a city** (`skipFilesFromRows` →
+  `heroFor({ skipFiles })`, changed 2026-08-22). It was city-keyed while a city
+  could only have one photograph; now that a curated pick and a generated one
+  can both exist for one city, a city key would take the good one down with the
+  bad. Not hypothetical: Ontario, CA's curated JPEG is an upscale of a 1600px
+  original, so the generated layer is its understudy, and `/admin/heroes` marks
+  a passing photograph that is not the live one **Standby**. The generator has
+  the matching exception to "never generate for a curated city": it DOES run
+  for one whose stored file fails the grade, measured off the bytes on disk
+  (`curatedFileIsGood`), never configured. Commons has nothing better for
+  Ontario as of 2026-08-22 — six HABS elevations of one packing house — so it
+  stays on a satellite aerial, and the only remaining lever there is a decision
+  nobody has made: whether a soft-but-real photograph beats a satellite tile
+  (the 2026-08-15 rule says it does not).
 
   **The generated layer** is `market-heroes-auto.json` + `node
   scripts/auto-market-heroes.js` (`--city "Casper, WY"`, `--dry-run`,
@@ -1872,6 +1922,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     becomes a URL under `/market-heroes/`, so it goes through the same
     `FILE_RE` the curated names do, and an entry missing its credit or its
     Commons title is unattributable and unused.
+
+  **`.github/workflows/market-heroes.yml`** runs the generator monthly (and on
+  a "Run workflow" button), then opens a PR with whatever it found rather than
+  committing to main — a model approving a crop is not the same as somebody
+  having looked at it. Unlike `ci.yml` it needs three repository secrets:
+  `ANTHROPIC_API_KEY` for the reviewer, and the `SUPABASE_URL` /
+  `SUPABASE_SERVICE_KEY` pair, without which it sees only the markets committed
+  to the repo and would miss exactly the Explorer-published cities it exists
+  for. It fails loudly on a missing secret rather than reporting "nothing to
+  do". Setting them is Jacob's; the same command run locally needs nothing but
+  the `.env` that is already there.
 
   **A market published since the last run of that script is still not blank**:
   `attachCityCoords` resolves the city's coordinates once at PUBLISH time (both

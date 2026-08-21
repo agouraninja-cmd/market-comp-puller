@@ -557,7 +557,7 @@ test("a market page header is a photograph of that city, or a satellite aerial i
   const html = await (await fetch(srv.base + MARKET_PAGE)).text();
   assert.equal(MARKETHERO.cityKey(MARKET.city, MARKET.state), "ontario, ca",
     "this fixture is Ontario, CA — the city whose Commons file is too small");
-  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipKeys: ["ontario, ca"] });
+  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipFiles: ["ontario-ca.jpg"] });
   assert.ok(live, "the seeded fixture city must still have a header picture");
   assert.match(html, /class="mkt-hero"/);
   assert.match(html, /class="mkt-hero-img"/);

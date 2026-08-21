@@ -72,6 +72,22 @@ const BULK_CSS = `
 .bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
   color:var(--ink-mute);font-size:12px;max-width:70ch}
 .bulk .hide{display:none}
+/* The size cell is an input rather than a button-then-field, because a bulk
+   run's usual gap IS the size and one click should not stand between a member
+   and fixing it. Borderless until focus so a table of them still reads as a
+   table. */
+.bulk input.szin{width:88px;padding:2px 4px;font:inherit;font-size:13px;text-align:right;
+  color:var(--ink);background:transparent;border:1px solid transparent;border-radius:4px;
+  font-variant-numeric:tabular-nums}
+.bulk input.szin:hover{border-color:var(--line)}
+.bulk input.szin:focus{border-color:var(--red);background:var(--paper);outline:none}
+.bulk input.szin::placeholder{color:var(--red);opacity:1}
+.bulk input.szin[disabled]{color:var(--ink-mute)}
+/* The Tab hint's key cap. Inline in the button so the shortcut is named where
+   the action is, rather than in a legend somebody has to go and find. */
+.bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
+  border-radius:4px;color:var(--ink-mute);text-decoration:none;vertical-align:1px}
 `;
 
 /**
@@ -109,6 +125,13 @@ function renderBulkPageBody(boot) {
       <p class="acts" style="margin-top:10px">
         <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
         <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
+        <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
+             for somebody whose hands are already in the box; this is how it is
+             DISCOVERED, and how anyone who cannot or would rather not press
+             Tab reaches the same thing. Hidden the moment the box has content
+             (refreshCount owns that), because the offer only applies to an
+             empty one. -->
+        <button type="button" class="lnk" id="useExample">Try it with example addresses <span class="kbd">Tab</span></button>
         <span class="cost" id="count"></span>
       </p>
 
@@ -222,6 +245,11 @@ function countLines(text){
 function refreshCount(){
   parsedCount=Math.min(countLines($("bulkText").value),MAX);
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
+  // The offer applies to an empty box only, so it leaves once there is
+  // anything to lose — a control that would overwrite nothing is noise, and
+  // one that WOULD overwrite something should not be a stray keystroke.
+  var ex=$("useExample");
+  if(ex)ex.className=$("bulkText").value===""?"lnk":"lnk hide";
   // One run at a time, and the button says so rather than letting somebody
   // press it into a 409. The server enforces it either way; this is the
   // Buy-button rule — a control that can only fail is worse than none.
@@ -252,6 +280,29 @@ function refreshCount(){
 function capNoteText(){
   var base="Up to "+MAX+" addresses per run";
   return LEFT===null?base:base+" · "+LEFT+" left today";
+}
+
+// Fill the box with the example addresses.
+//
+// The examples live in the textarea's PLACEHOLDER and are read back out of it
+// here, so there is one copy. Writing them twice would let the greyed text and
+// the thing Tab inserts drift into disagreeing about what a valid list looks
+// like, which is the one job this feature has.
+//
+// insertText rather than assigning .value, so Ctrl+Z / Cmd+Z undoes it like
+// any other typing. It is a deprecated API and universally supported; the
+// assignment is the fallback, and costs only the undo entry.
+function fillExamples(){
+  var ta=$("bulkText");
+  if(ta.value!=="")return false;
+  var text=ta.placeholder||"";
+  if(!text)return false;
+  ta.focus();
+  var ok=false;
+  try{ok=document.execCommand("insertText",false,text);}catch(e){ok=false;}
+  if(!ok){ta.value=text;}
+  refreshCount();
+  return true;
 }
 
 function statusChip(s){
@@ -286,8 +337,20 @@ function rowHtml(it,i){
     ? '<a href="/?property='+encodeURIComponent(it.portfolio_item_id)+'">'+esc(it.address)+"</a>"
     : esc(it.address);
   var lbl=it.label?'<div class="sub">'+esc(it.label)+"</div>":"";
-  var sz=Number(it.size_sqft)>0
-    ? num(it.size_sqft)+'<div class="sub">'+esc(it.size_source||"you")+"</div>" : "\\u2014";
+  // Editable on any FINISHED row — not only an unsized one. A looked-up size
+  // that is wrong is the most expensive figure in the report (it is what put a
+  // $52,000 mobile home at $795,000), so correcting one matters as much as
+  // supplying a missing one. Nothing else in the row is editable: the comps
+  // are evidence, and this is the one input that was ours to get wrong.
+  var sz;
+  if(it.status!=="done"){
+    sz="\\u2014";
+  }else{
+    var szv=Number(it.size_sqft)>0?String(Math.round(it.size_sqft)):"";
+    sz='<input class="szin" type="text" inputmode="numeric" data-id="'+esc(it.id)+'"'+
+       ' value="'+esc(szv)+'" placeholder="add size" aria-label="Building size in square feet for '+esc(it.address)+'"/>'+
+       (szv?'<div class="sub">'+esc(it.size_source||"you")+"</div>":"");
+  }
   // Sale comps, not the comp count: the band comes from the sales, and a
   // lease-heavy report showing "10" would imply ten deals behind the number.
   var comps=Number(it.sale_comps)>0
@@ -312,6 +375,7 @@ function renderJob(){
     "<th>Size</th><th>Sale comps</th><th>Status</th></tr></thead><tbody>"+
     items.map(rowHtml).join("")+"</tbody>";
   $("cancel").className=job.status==="running"?"lnk":"lnk hide";
+  bindSizeInputs();
   renderPast();
   refreshCount();
   var dl=$("dl");
@@ -324,6 +388,44 @@ function renderJob(){
 // not yet known — without this the run showing above is also listed below it
 // as an earlier one.
 function setJobs(list){allJobs=list||[];renderPast();}
+
+// Save on Enter or on leaving the field, the spreadsheet behavior the vault's
+// comps table already teaches; Escape restores what was there.
+//
+// Re-valuing costs nothing — it is arithmetic over comps we already hold — so
+// there is no confirm and no spend warning. That is the whole point of it.
+function bindSizeInputs(){
+  Array.prototype.forEach.call(document.querySelectorAll("input.szin"),function(el){
+    var was=el.value;
+    el.addEventListener("keydown",function(e){
+      if(e.key==="Enter"){e.preventDefault();el.blur();}
+      else if(e.key==="Escape"){e.preventDefault();el.value=was;el.blur();}
+    });
+    el.addEventListener("blur",function(){
+      var v=el.value.trim();
+      if(v===was.trim())return;             // nothing typed, nothing to do
+      if(v===""){el.value=was;return;}      // clearing is not a way to unset a size
+      saveSize(el,v,was);
+    });
+  });
+}
+
+function saveSize(el,value,was){
+  el.disabled=true;
+  $("msg").textContent="Re-valuing\\u2026";$("msg").className="msg";
+  api("POST","/api/bulk/item/size",{id:el.getAttribute("data-id"),size_sqft:value})
+    .then(function(){
+      // Re-read the whole job rather than patching the row in place: the
+      // totals strip above is a sum over every row and would otherwise go on
+      // showing the old portfolio value beside a new one.
+      $("msg").textContent="Re-valued from the comps already found \\u2014 no new search.";
+      return poll(job.id,true);
+    })
+    .catch(function(e){
+      el.disabled=false;el.value=was;
+      $("msg").textContent=e.message;$("msg").className="msg bad";
+    });
+}
 
 function renderPast(){
   var rest=allJobs.filter(function(j){return !job||j.id!==job.id;});
@@ -444,6 +546,24 @@ function start(boot){
   if(live)poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  $("useExample").addEventListener("click",function(){fillExamples();});
+  // Tab fills the box — but ONLY while it is empty, and never with a modifier.
+  //
+  // Tab is how a keyboard user leaves a field, so taking it is a real cost and
+  // the guards are what keep it payable. An empty box is the one state where
+  // Tab-to-leave and Tab-to-fill can be told apart by intent: there is nothing
+  // to move on FROM. The moment there is any content the key does its ordinary
+  // job again, so the surprise can happen at most once, is visible when it
+  // does (three lines of text appear under the cursor), and is undone with
+  // Ctrl+Z or one more Tab press to carry on.
+  //
+  // Shift+Tab is never intercepted: moving focus BACKWARDS out of an empty box
+  // is unambiguous, and stealing it would trap somebody at the top of the form.
+  $("bulkText").addEventListener("keydown",function(e){
+    if(e.key!=="Tab"||e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(!fillExamples())return;   // non-empty (or no placeholder): Tab moves focus, as it must
+    e.preventDefault();
+  });
   $("run").addEventListener("click",run);
   $("pickFile").addEventListener("click",function(){$("bulkFile").click();});
   $("bulkFile").addEventListener("change",function(){

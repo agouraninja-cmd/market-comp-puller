@@ -317,3 +317,53 @@ test("autoShareValue maps the three named choices, and refuses anything else", (
     assert.equal(ORG.autoShareValue(junk), undefined, JSON.stringify(junk));
   }
 });
+
+// ---------------------------------------------------------------------------
+// Shop kind (migration 036) — the two customer types of Transition Plan v2 §6.
+//
+// One column, two vocabularies. These pin the two rules that make it safe to
+// read anywhere: an unrecognized kind renders the words a firm has already
+// been reading, and creating a firm cannot answer the question by silence.
+// ---------------------------------------------------------------------------
+
+test("an unrecognized kind reads as 'broker' — the words the firm already saw", () => {
+  // Not a security fallback (nothing here grants anything) but an incumbency
+  // one: every firm created before 036 has only ever been shown broker-shop
+  // copy, so a typo must not re-label their whole desk.
+  for (const v of ["BROKER", "enterprise", "dev", "", null, undefined, true, 3]) {
+    assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
+  }
+  assert.equal(ORG.kindOf(null), "broker");
+  assert.equal(ORG.kindOf("development"), "broker", "a string is not an org row");
+  assert.equal(ORG.kindOf({ kind: "development" }), "development");
+});
+
+test("creating a firm cannot answer the shop question by silence", () => {
+  // The one place this differs from share_default, which ships off and is
+  // changed later: the creator is the only person who knows the answer, and a
+  // default would be taken by everyone who never thought about it.
+  for (const missing of [undefined, null, "", "   "]) {
+    assert.equal(ORG.validateShopKind(missing).ok, false, JSON.stringify(missing));
+  }
+  // "enterprise" is refused like any other junk: §6 rules it out as a target,
+  // so it is not a value the product has.
+  for (const junk of ["enterprise", "brokerage", "dev", 1, true, {}]) {
+    assert.equal(ORG.validateShopKind(junk).ok, false, JSON.stringify(junk));
+  }
+  assert.deepEqual(ORG.validateShopKind("  Development "), { ok: true, kind: "development" },
+    "trimmed and lowercased, the way validateOrgName collapses a name");
+  assert.deepEqual(ORG.validateShopKind("broker"), { ok: true, kind: "broker" });
+});
+
+test("every kind has copy, and only the kinds do", () => {
+  // SHOP_COPY is read through kindOf, so a kind without an entry would be an
+  // undefined dereference on a desk rather than a missing word.
+  assert.deepEqual(Object.keys(ORG.SHOP_COPY).sort(), [...ORG.SHOP_KINDS].sort());
+  for (const kind of ORG.SHOP_KINDS) {
+    const copy = ORG.SHOP_COPY[kind];
+    assert.ok(copy.label && copy.arrivals, kind);
+    assert.equal(typeof copy.shelfType, "string", `${kind} shelfType is a string, "" meaning all`);
+  }
+  assert.equal(ORG.shopCopyOf({ kind: "development" }).shelfType, "Land");
+  assert.equal(ORG.shopCopyOf({ kind: "nonsense" }), ORG.SHOP_COPY.broker);
+});

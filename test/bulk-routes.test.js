@@ -310,6 +310,25 @@ test("reading a finished run", async (t) => {
     assert.equal(body.summary.failed, 1);
   });
 
+  await t.test("an unvalued row exports blank, never $0", async () => {
+    // Number(null) is 0, so a nullable column read back through a bare
+    // Number() becomes a ZERO — and a zero here is a claim. The page survived
+    // it (every display path tests > 0) and the CSV did not, which is the
+    // failure worth a test: "a failure is not $0" is a rule this feature
+    // states out loud, and it was broken one layer below the code that
+    // enforces it.
+    const body = await (await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(PAT))).json();
+    const failed = body.items.find((it) => it.status === "failed");
+    assert.equal(failed.value_likely, null, "not 0");
+    assert.equal(failed.psf_mid, null, "not 0");
+    assert.equal(failed.size_sqft, null, "not 0");
+
+    const csv = await (await fetch(srv.base + "/api/bulk/export.csv?id=" + JOB_ID, as(PAT))).text();
+    const line = csv.split("\n").find((l) => l.indexOf("900 N Cole Rd") >= 0);
+    assert.ok(line, "the failed row must be in the file");
+    assert.ok(!/,0,/.test(line), "an unvalued row must export blank cells, not zeros: " + line);
+  });
+
   await t.test("the row shape is an allowlist, not the table row", async () => {
     // vault-api.js's rule: a storage column added later must not reach the
     // browser by default. user_id and job_id are plumbing.
@@ -453,6 +472,41 @@ test("the workspace page", async (t) => {
       const src = s.replace(/^<script>/, "").replace(/<\/script>$/, "");
       assert.doesNotThrow(() => new Function(src), "a page script failed to compile");
     }
+  });
+
+  await t.test("Tab fills the box from the placeholder, and only while it is empty", async () => {
+    // Two rules, both of which fail SILENTLY if they drift.
+    //
+    // ONE SOURCE: the example addresses live in the textarea's placeholder and
+    // are read back out of it. A second copy would let the greyed text and the
+    // thing Tab inserts disagree about what a valid list looks like, which is
+    // the one job this has.
+    //
+    // ONE STATE: Tab is how a keyboard user leaves a field. It is intercepted
+    // only in an empty box and never with a modifier, so the key does its
+    // ordinary job the moment there is anything to move on from. Losing either
+    // guard traps somebody in the textarea, and nothing else would report it.
+    const html = await (await fetch(ctx.srv.base + "/bulk", as(PAT))).text();
+    const js = (html.match(/<script>([\s\S]*?)<\/script>/g) || []).join("\n");
+
+    assert.match(js, /ta\.placeholder/,
+      "the examples must be read from the placeholder, not written out a second time");
+    assert.ok(!/1201 W Idaho St[\s\S]{0,200}1201 W Idaho St/.test(html),
+      "the example list appears twice — one copy is the placeholder, the other will drift");
+
+    // Anchored on bulkText: there is a second keydown handler on the page now
+    // (the editable size cells), and an unanchored match would happily prove
+    // the wrong one.
+    const handler = /\$\("bulkText"\)\.addEventListener\("keydown"[\s\S]{0,700}?preventDefault/.exec(js);
+    assert.ok(handler, "the textarea must have its own keydown handler that can preventDefault");
+    assert.match(handler[0], /e\.shiftKey/, "Shift+Tab must never be intercepted");
+    assert.match(handler[0], /e\.key!=="Tab"|e\.key !== "Tab"/, "only Tab");
+    assert.match(js, /if\(ta\.value!==""\)return false;/,
+      "fillExamples must refuse a non-empty box, which is what releases the key");
+
+    // And a mouse path to the same thing, so the shortcut is discoverable
+    // rather than folklore.
+    assert.match(html, /id="useExample"/);
   });
 
   await t.test("a non-Pro member sees the Pro door, never the paste box", async () => {

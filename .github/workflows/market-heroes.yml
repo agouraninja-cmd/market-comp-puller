@@ -1,0 +1,122 @@
+# Market hero photographs, refreshed on a schedule.
+#
+# scripts/auto-market-heroes.js gives every market page a picture of its own
+# city. The photographs are COMMITTED (Render erases its disk on every deploy),
+# so the job cannot just run and be done: it runs the generator, and if new
+# files appear it opens a pull request with them for a person to look at.
+#
+# That review step is the point, not politeness. A model approves each crop
+# before it is written, but the last check on a photograph that will head a
+# public page is somebody's eyes — the same reason /admin/heroes exists.
+#
+# UNLIKE ci.yml, THIS WORKFLOW NEEDS SECRETS, and it is inert until they are
+# set (repository settings, Secrets and variables → Actions):
+#   ANTHROPIC_API_KEY     the reviewer that looks at each crop (~a cent a city)
+#   SUPABASE_URL          \
+#   SUPABASE_SERVICE_KEY  / where Explorer-published market pages actually live
+#
+# Without the Supabase pair the job still runs, but it only sees the markets
+# committed to the repo — which is the opposite of the point, since the cities
+# with no photograph are precisely the ones visitors generated. It says so and
+# fails rather than quietly finding nothing to do.
+#
+# The same thing by hand, for anyone holding those keys locally, is:
+#   node scripts/auto-market-heroes.js
+name: Market heroes
+
+on:
+  workflow_dispatch:
+    inputs:
+      city:
+        description: 'One city only, e.g. "Casper, WY" (blank = every market without a photo)'
+        required: false
+        default: ''
+      force:
+        description: 'Redo cities that already have a generated photo'
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    # 07:00 UTC on the 1st. Market pages accumulate slowly, so monthly is
+    # plenty; the manual button covers "we just published a big market".
+    - cron: '0 7 1 * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  heroes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The generator prefers ffmpeg and falls back to macOS's sips, which
+      # does not exist here — so on a runner ffmpeg is not optional.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Check the secrets this job cannot work without
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          missing=""
+          [ -n "$ANTHROPIC_API_KEY" ] || missing="$missing ANTHROPIC_API_KEY"
+          [ -n "$SUPABASE_URL" ] || missing="$missing SUPABASE_URL"
+          [ -n "$SUPABASE_SERVICE_KEY" ] || missing="$missing SUPABASE_SERVICE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — see the header of this workflow file."
+            exit 1
+          fi
+
+      - name: Find photographs
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          args=""
+          [ -n "${{ inputs.city }}" ] && args="$args --city \"${{ inputs.city }}\""
+          [ "${{ inputs.force }}" = "true" ] && args="$args --force"
+          eval node scripts/auto-market-heroes.js $args
+          node scripts/auto-market-heroes.js --thumbs
+
+      - name: Open a pull request if anything was found
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain market-heroes market-heroes-auto.json)" ]; then
+            echo "No new photographs. Nothing to open."
+            exit 0
+          fi
+          branch="heroes/auto-$(date -u +%Y-%m-%d-%H%M)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add market-heroes market-heroes-auto.json
+          # Which cities changed, for the PR body — read from the file the
+          # generator just wrote rather than from the filenames, so the credit
+          # and the reviewer's verdict travel with them.
+          summary=$(node -e '
+            const a = require("./market-heroes-auto.json");
+            const rows = Object.entries(a.cities)
+              .filter(([, c]) => c && c.hero)
+              .map(([k, c]) => "- **" + k + "** — " + c.hero.commons + " (" + c.hero.credit + ", " +
+                   c.hero.license + "): " + ((c.hero.judge && c.hero.judge.reason) || ""));
+            const none = Object.entries(a.cities).filter(([, c]) => c && !c.hero).map(([k]) => k);
+            console.log(rows.join("\n"));
+            if (none.length) console.log("\nStill on a satellite aerial (nothing on Commons passed): " + none.join(", "));
+          ')
+          git commit -q -m "Market hero photographs, found automatically" -m "$summary"
+          git push -q origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Market hero photographs, found automatically" \
+            --body "$(printf '%s\n\n%s\n' \
+              'Opened by the Market heroes workflow. Every photograph below was approved by the reviewer in market-hero-judge.js; look at them anyway, on /admin/heroes or in the diff, before merging. A wrong picture on a market page is public.' \
+              "$summary")"

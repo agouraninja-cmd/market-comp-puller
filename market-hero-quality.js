@@ -120,12 +120,15 @@ function gradeHero(input) {
   };
 }
 
-function skipKeysFromRows(rows) {
-  const keys = [];
+// The files the live pages must not use. Keyed on the FILE rather than the
+// city since 2026-08-22: a city can carry both a curated photograph and a
+// generated one, and a city key would take the good one down with the bad.
+function skipFilesFromRows(rows) {
+  const files = [];
   for (const r of rows || []) {
-    if (r && r.ok === false && r.key) keys.push(r.key);
+    if (r && r.ok === false && r.file) files.push(r.file);
   }
-  return keys;
+  return files;
 }
 
 module.exports = {
@@ -133,5 +136,5 @@ module.exports = {
   jpegDimensions,
   displayCity,
   gradeHero,
-  skipKeysFromRows,
+  skipFilesFromRows,
 };

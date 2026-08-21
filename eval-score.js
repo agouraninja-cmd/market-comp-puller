@@ -89,6 +89,42 @@ function scoreReport(report, target, now) {
     valueDriversChars: drivers.length,
     marketTrendChars: String(r.market_trend || "").length,
     priceDiscoveryChars: String((r.price_discovery && r.price_discovery.note) || "").length,
+    // What the search actually cost, from `_call` — attached by /api/comps for
+    // an internal caller only (see the gate() closure) and present only on a
+    // BILLED leg, never a cache hit. Absent leaves every key undefined, which
+    // summarize() filters out of its averages rather than folding in as zero:
+    // a run that never saw the field must report "no cost data", not "$0.00".
+    //
+    // reportTokens is the figure the other two exist to contextualize. On
+    // Gemini `thought_tokens` is a SUBSET of `output_tokens`, so the report
+    // itself is the remainder — and that remainder is what every prompt trim
+    // this project has ever made was aiming at, while the thinking beside it is
+    // several times larger. Without the split a THINKING_LEVEL comparison can
+    // show that the clock moved but not that reasoning is why.
+    ...costMetrics(r && r._call),
+  };
+}
+
+function costMetrics(call) {
+  if (!call || typeof call !== "object") return {};
+  const u = (call.usage && typeof call.usage === "object") ? call.usage : {};
+  const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
+  const output = num(u.output_tokens);
+  const thought = num(u.thought_tokens);
+  return {
+    costUsd: num(call.cost_usd),
+    billedCalls: num(call.billed_calls),
+    inputTokens: num(u.input_tokens),
+    outputTokens: output,
+    thoughtTokens: thought,
+    // Never negative, even if a provider one day reports the two independently
+    // rather than as a subset — a negative "report size" would be nonsense in
+    // an average and would hide the real bug behind a plausible-looking number.
+    reportTokens: Math.max(0, output - thought),
+    // The share of everything generated that was reasoning rather than report.
+    // This is the single number that says whether THINKING_LEVEL is worth
+    // touching on a given provider: at 0 it cannot help at all.
+    thoughtShare: output > 0 ? thought / output : 0,
   };
 }
 
@@ -96,7 +132,13 @@ function scoreReport(report, target, now) {
 // `failures`), never a zero dragging an average toward a flattering middle.
 const AVERAGED = ["comps", "pricedSales", "provenanceScore", "estimateRate", "aggregateRate",
   "inWindowRate", "marketMatchRate", "sizeRate", "summaryChars", "valueDriversChars",
-  "marketTrendChars", "priceDiscoveryChars", "durationMs"];
+  "marketTrendChars", "priceDiscoveryChars", "durationMs",
+  // Spend and token accounting. These only appear when the run was made by an
+  // internal caller against a billed leg; an older summary simply has none of
+  // them, and compare() already reports a one-sided metric as null rather than
+  // as a delta from zero.
+  "costUsd", "billedCalls", "inputTokens", "outputTokens", "thoughtTokens",
+  "reportTokens", "thoughtShare"];
 
 function summarize(results) {
   const rows = Array.isArray(results) ? results : [];

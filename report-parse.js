@@ -328,7 +328,17 @@ function reconcilePricePerSqft(parsed) {
       // Same sane per-SF band the front-end uses for user-added comps.
       if (derived < 1 || derived > 100000) continue;
       const stated = parsePsf(c.price_per_sqft);
-      if (stated === null || Math.abs(stated - derived) / derived > 0.10) {
+      // A FILL and a CORRECTION are not the same event, and only one of them is
+      // worth telling the reader about. Since 2026-08-21 the prompt asks the
+      // model to OMIT $/SF on any sale carrying both a price and a size, because
+      // this function derives it exactly - so "absent" is now the normal case on
+      // most priced sales, not a model failure. Flagging it would put the "calc"
+      // mark on nearly every row and drain the meaning out of a mark that exists
+      // to say "we did not trust the figure we were handed". A stated figure
+      // that disagrees with its own row still earns it.
+      if (stated === null) {
+        c.price_per_sqft = fmtPsf(derived);
+      } else if (Math.abs(stated - derived) / derived > 0.10) {
         c.price_per_sqft = fmtPsf(derived);
         c.psf_reconciled = true; // front-end discloses the recompute
       }

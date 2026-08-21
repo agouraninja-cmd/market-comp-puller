@@ -155,3 +155,62 @@ test("parseExtractResponse also reads Interactions-style incomplete status", () 
   });
   assert.equal(out.stopReason, "incomplete");
 });
+
+// --- thinking level ----------------------------------------------------------
+// Thought tokens are billed and generated as OUTPUT here, and on this workload
+// they are roughly seven of every eight tokens the model produces (a measured
+// call: 928 output against 6,473 thought). That makes this the biggest
+// wall-clock setting the deployment has, so the two properties worth pinning
+// are that it reaches the wire in the one place Google accepts it, and that
+// leaving it unset changes nothing at all.
+
+test("an unset thinking level leaves the request byte-identical", () => {
+  const args = { model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 8 };
+  const before = P.buildRequestBody(args);
+  for (const level of ["", null, undefined]) {
+    const body = P.buildRequestBody({ ...args, thinkingLevel: level });
+    assert.deepEqual(body, before,
+      `thinkingLevel=${JSON.stringify(level)} must not add a field; the vendor default has to keep applying`);
+    assert.equal("thinking_level" in body.generation_config, false);
+  }
+});
+
+test("a thinking level rides in generation_config, beside max_output_tokens", () => {
+  const body = P.buildRequestBody({
+    model: "gemini-3.7-flash", prompt: "PROMPT", maxComps: 8, thinkingLevel: "low",
+  });
+  // Same nesting trap max_output_tokens has: every top-level spelling 400s.
+  assert.equal(body.thinking_level, undefined, "top-level thinking_level is rejected by the API");
+  assert.equal(body.generation_config.thinking_level, "low");
+  assert.equal(body.generation_config.max_output_tokens, 24000,
+    "the output ceiling must survive alongside it");
+});
+
+test("the tunable levels are declared so server.js never branches on the name", () => {
+  assert.deepEqual(P.capabilities.thinkingLevels, ["low", "medium", "high"]);
+  assert.equal(A.capabilities.thinkingLevels, null,
+    "anthropic declares null so a THINKING_LEVEL set against it is refused, not ignored");
+});
+
+test("lowering the thinking level cannot outrun the deadline budget", () => {
+  // deadlineTokens is sized from a measured thought+output total. Thinking less
+  // only ever generates fewer tokens, so the ceiling stays safe in the one
+  // direction this knob moves.
+  assert.equal(P.deadlineTokens(), 12000);
+});
+
+test("thought tokens are reported alongside output, not instead of or on top of it", () => {
+  const u = P.normalizeUsage(FIXTURE.usage);
+  assert.equal(u.thought_tokens, 6473, "the split is what explains this provider's wall clock");
+  assert.equal(u.output_tokens, 928 + 6473, "output still folds them in, because they bill as output");
+  // The trap: thought_tokens is a SUBSET of output_tokens. Adding them would
+  // double the bill and double-count the thinking in any scorecard.
+  assert.ok(u.thought_tokens < u.output_tokens);
+  assert.equal(u.output_tokens - u.thought_tokens, 928, "the remainder is the report itself");
+});
+
+test("both providers normalize to the same keys, so a scorecard can average them", () => {
+  assert.deepEqual(Object.keys(P.normalizeUsage({})).sort(),
+                   Object.keys(A.normalizeUsage({})).sort(),
+                   "a key present on one provider and undefined on the other poisons an average");
+});

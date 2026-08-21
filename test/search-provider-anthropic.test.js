@@ -41,14 +41,15 @@ test("parseResponse keeps only text blocks, joined with newline and trimmed", ()
 test("normalizeUsage maps Anthropic's four token fields", () => {
   const u = P.normalizeUsage(FIXTURE.usage);
   assert.deepEqual(u, {
-    input_tokens: 3300, output_tokens: 4100,
+    input_tokens: 3300, output_tokens: 4100, thought_tokens: 0,
     cache_read_tokens: 26400, cache_write_tokens: 3300,
   });
 });
 
 test("normalizeUsage is total about missing fields rather than returning undefined", () => {
   assert.deepEqual(P.normalizeUsage(undefined), {
-    input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0,
+    input_tokens: 0, output_tokens: 0, thought_tokens: 0,
+    cache_read_tokens: 0, cache_write_tokens: 0,
   });
 });
 

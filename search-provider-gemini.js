@@ -25,12 +25,23 @@ const capabilities = {
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
+  // Thought tokens count toward OUTPUT here, and on this workload they dwarf
+  // the report: a measured call spent 6,473 thought against 928 output, so
+  // roughly seven of every eight tokens this provider generates are thinking.
+  // Generation time scales with tokens generated, which makes this the single
+  // largest wall-clock lever on the default provider - larger than everything
+  // in the report JSON put together. It is exposed rather than pinned because
+  // Google's own guidance calls the default level the best quality for
+  // agentic work, so trading it down is a measurement (run-eval.js --compare),
+  // not a hunch. server.js reads THINKING_LEVEL and validates against this
+  // list; a provider with a null list is handed nothing.
+  thinkingLevels: ["low", "medium", "high"],
   pdfExtract: true,
   // inline_data carries an image on the same call it carries a PDF.
   imageExtract: true,
 };
 
-function buildRequestBody({ model, prompt, maxComps }) {
+function buildRequestBody({ model, prompt, maxComps, thinkingLevel }) {
   return {
     model,
     input: prompt,
@@ -48,7 +59,16 @@ function buildRequestBody({ model, prompt, maxComps }) {
     // accepted, and it is genuinely honored (a cap of 40 truncated the reply
     // to status "incomplete" with 2 output + 34 thought tokens; a cap of
     // 4,000 completed normally at 691 output + 130 thought).
-    generation_config: { max_output_tokens: maxComps > 8 ? 32000 : 24000 },
+    //
+    // thinking_level is OMITTED unless the deployment set one, so the default
+    // request stays byte-identical to what it was before the knob existed and
+    // the vendor's own default (medium on 3.7 Flash) keeps applying. Lowering
+    // it only ever reduces generated tokens, so deadlineTokens() below stays
+    // a safe ceiling either way.
+    generation_config: {
+      max_output_tokens: maxComps > 8 ? 32000 : 24000,
+      ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}),
+    },
   };
 }
 
@@ -148,6 +168,16 @@ function normalizeUsage(raw) {
     // what makes costOf correct and makes the log line comparable across
     // providers.
     output_tokens: n(u.total_output_tokens) + n(u.total_thought_tokens),
+    // ...and reported SEPARATELY as well, because the fold above hides the one
+    // number that explains this provider's wall clock: a measured call was 928
+    // report tokens against 6,473 thought, so "output_tokens: 7,401" reads as a
+    // gigantic report when it is a small report and a long think. Without the
+    // split, a THINKING_LEVEL A/B cannot show WHY it got faster, only that it
+    // did.
+    // TRAP: this is a SUBSET of output_tokens, never an addition to it. Anyone
+    // summing the two double-counts the thinking, and costOf would double the
+    // bill. Report it as "of which", never as another column to add up.
+    thought_tokens: n(u.total_thought_tokens),
     cache_read_tokens: n(u.total_cached_tokens),
     cache_write_tokens: 0,
   };

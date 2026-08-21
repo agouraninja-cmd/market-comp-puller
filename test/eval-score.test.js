@@ -107,3 +107,54 @@ test("compare reports per-metric deltas and tolerates a missing metric", () => {
   assert.equal(d2.metrics.comps.candidate, null);
   assert.equal(d2.metrics.other.baseline, null);
 });
+
+// --- cost and token accounting ----------------------------------------------
+// The scorecard could measure quality and wall clock but not spend, so "is
+// thinking less cheaper AND still accurate?" was only half answerable. These
+// ride on `_call`, which /api/comps attaches for an internal caller on a billed
+// leg only.
+
+test("scoreReport reads spend off _call, splitting thinking from the report", () => {
+  const m = S.scoreReport({
+    comps: [], summary: "",
+    _call: {
+      billed_calls: 1, cost_usd: 0.0311,
+      usage: { input_tokens: 4207, output_tokens: 7401, thought_tokens: 6473 },
+    },
+  }, { type: "Industrial", months: 12 }, Date.now());
+  assert.equal(m.costUsd, 0.0311);
+  assert.equal(m.billedCalls, 1);
+  assert.equal(m.outputTokens, 7401);
+  assert.equal(m.thoughtTokens, 6473);
+  // thought is a SUBSET of output, so the report is the remainder — the figure
+  // every prompt trim in this project has been aiming at.
+  assert.equal(m.reportTokens, 928);
+  assert.ok(Math.abs(m.thoughtShare - 0.8746) < 0.001, `got ${m.thoughtShare}`);
+});
+
+test("a run with no spend data reports none of it, rather than zeros", () => {
+  // A cache hit, or a run predating this, must not average in as a free search
+  // — that would halve the reported cost of any run that hit the cache.
+  const m = S.scoreReport({ comps: [], summary: "" },
+    { type: "Industrial", months: 12 }, Date.now());
+  for (const k of ["costUsd", "outputTokens", "thoughtTokens", "reportTokens", "thoughtShare"]) {
+    assert.ok(!(k in m), `${k} must be absent, not zero`);
+  }
+  const s = S.summarize([{ target: "t", ok: true, metrics: m }]);
+  assert.ok(!("costUsd" in s.metrics), "summarize must not invent a $0.00 average");
+});
+
+test("summarize averages spend only over the targets that reported it", () => {
+  const withCost = (c) => ({ target: "t", ok: true, metrics: { costUsd: c, comps: 5 } });
+  const s = S.summarize([withCost(0.02), withCost(0.04), { target: "u", ok: true, metrics: { comps: 5 } }]);
+  assert.equal(s.metrics.costUsd, 0.03, "the target with no cost data is skipped, not counted as free");
+});
+
+test("a provider with no thinking reports a zero share, which reads as 'no lever here'", () => {
+  const m = S.scoreReport({
+    comps: [], summary: "",
+    _call: { billed_calls: 1, cost_usd: 0.3, usage: { output_tokens: 4100, thought_tokens: 0 } },
+  }, { type: "Industrial", months: 12 }, Date.now());
+  assert.equal(m.thoughtShare, 0);
+  assert.equal(m.reportTokens, 4100, "with no thinking, every output token is report");
+});

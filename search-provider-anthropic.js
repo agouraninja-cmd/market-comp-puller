@@ -14,6 +14,12 @@ const capabilities = {
   streaming: true,
   // cache_control is an explicit breakpoint we place ourselves.
   promptCaching: "explicit",
+  // No tunable reasoning depth on this path: extended thinking is a separate
+  // opt-in this product does not use, so there is no level to set. Declared
+  // as null rather than omitted so server.js can REFUSE a THINKING_LEVEL that
+  // this provider would silently ignore - a knob that appears to work and
+  // changes nothing is worse than one that says it does not apply.
+  thinkingLevels: null,
   pdfExtract: true,
   // Screenshots and photos of a deals table, through the same extract call.
   imageExtract: true,
@@ -115,6 +121,13 @@ function normalizeUsage(raw) {
   return {
     input_tokens: n(u.input_tokens),
     output_tokens: n(u.output_tokens),
+    // Always 0 here: extended thinking is a separate opt-in this product does
+    // not use on the search path (hence capabilities.thinkingLevels: null), so
+    // no output token is a thought token. Present rather than omitted so every
+    // consumer of a normalized usage object sees the same keys whichever
+    // provider produced it - the eval scorecard averages this field, and an
+    // undefined would poison the average rather than read as zero.
+    thought_tokens: 0,
     cache_read_tokens: n(u.cache_read_input_tokens),
     cache_write_tokens: n(u.cache_creation_input_tokens),
   };

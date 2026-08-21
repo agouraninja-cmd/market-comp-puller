@@ -285,6 +285,47 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Not bulk, but only testable HERE: the stub provider this file stands up is
+// the only way to reach a billed /api/comps call in the suite.
+//
+// `_call` is the per-search spend the eval harness scores against, attached for
+// internal callers at serialization. eval-score.test.js pins the SHAPE and
+// nothing pinned the WIRING — which is exactly the seam that broke when the
+// serialization funnel moved out of the handler into finishReportForViewer
+// (2026-08-21) and was re-merged by hand against main's telemetry.
+// ---------------------------------------------------------------------------
+test("an internal caller is handed the call's real spend, and a cache hit is not", async (t) => {
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const srv = await shared.boot({
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on",
+    SUPABASE_URL: ctx.db.url, SUPABASE_SERVICE_KEY: "service-key",
+    SEARCH_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "test-key",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: ctx.stub.url,
+    ADMIN_KEY: "admin-secret",
+  });
+  t.after(() => srv.stop());
+
+  const ask = (address) => fetch(srv.base + "/api/comps", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-key": "admin-secret" },
+    body: JSON.stringify({ address, type: "Industrial", months: 24 }),
+  }).then((r) => r.json());
+
+  const billed = await ask("42 Telemetry Way, Boise, ID 83702");
+  assert.ok(billed._call, "a billed internal search must carry _call");
+  assert.equal(billed._call.billed_calls, 1);
+  assert.ok(billed._call.cost_usd > 0, "and a real dollar figure");
+  assert.equal(billed._call.provider, "anthropic");
+  assert.ok(billed._call.usage.output_tokens > 0);
+
+  const cached = await ask("42 Telemetry Way, Boise, ID 83702");
+  assert.ok(Array.isArray(cached.comps) && cached.comps.length, "the cache still serves a report");
+  assert.equal(cached._call, undefined,
+    "a cached search cost nothing — reporting zeros would halve the average cost of any run that hit the cache");
+});
+
 test("a search that fails costs the row, not the run", async (t) => {
   // One bad address must never stop the rest of the list — the watchlist
   // digest's rule, and here the other forty-nine are owed their answer.

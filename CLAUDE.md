@@ -303,6 +303,61 @@ here would change.)
   are covered; only genuinely new utilities need a regen. Commit the updated
   `tailwind.css` alongside the HTML change.
 
+### Design changes: before and after (standing rule)
+
+**Every time you change how something LOOKS, show the owner a before and an
+after picture of it** — a layout, spacing, colour, copy on a rendered surface,
+a new card or section, anything in `index.html`, `vault-page.js`, or the
+server-rendered pages in `server.js`. A diff of a template literal says what
+the markup now is and nothing about what the page now looks like, which is why
+this is a rule and not a nicety.
+
+```bash
+node scripts/shot.js /how-it-works --before      # vs origin/main
+node scripts/shot.js / /markets /brokers --before HEAD~1
+node scripts/shot.js / --size 390x844 --expand   # phone width, accordions open
+```
+
+PNGs land in the git-ignored `screenshots/` as `<page>--before.png` /
+`<page>--after.png`. Zero dependencies: it drives a Chromium the machine
+already has (`desktop.js`'s `findBrowser`, reused rather than copied) over the
+DevTools protocol, boots `server.js` on a free port at each side of the
+comparison, and removes the worktree it made. Five things to know before
+editing it or trusting its output:
+
+- **The "before" is a DETACHED WORKTREE, never `git stash`.** This checkout is
+  routinely shared with another session, and stash moves files under them
+  mid-edit. Detached because git refuses to check out one branch twice, and a
+  comparison needs no branch of its own.
+- **Both servers boot with `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` blanked**, by
+  ASSIGNMENT rather than delete — server.js's `.env` loader fills anything
+  `undefined` and would restore the real ones, pointing a scratch server at
+  production's corpus, market pages and cache (the trap `run-eval.js`
+  documents at more length). The consequence to remember when reading a
+  picture: **anything DB-driven renders its fallback**, so a change to real
+  market figures or to `/vault` will not show. `--env SUPABASE_URL=…` puts a
+  database back deliberately and prints a warning; point it at a scratch
+  project, because the before pass runs OLD code against whatever it is given.
+- **It emulates `prefers-reduced-motion: reduce`,** which is load-bearing, not
+  polite. The server-rendered pages hide below-the-fold content with
+  `.anim .rv{opacity:0}` and reveal it from an IntersectionObserver that never
+  fires in a beyond-viewport capture; without this, `/how-it-works` comes out
+  with blank bands where the Method and FAQ should be, and two runs of
+  IDENTICAL code produce different bytes.
+- **Collapsed `<details>` are invisible unless you pass `--expand`.** Real copy
+  lives inside them (the FAQ accordions on `/`, `/how-it-works` and `/brokers`;
+  the vault's `dbox` panels). A change to a FAQ answer photographs as two
+  identical pages, which reads as "nothing changed" rather than "you
+  photographed a closed drawer" — that is exactly how this was found.
+- **Identical pages produce byte-identical PNGs**, so "this changed nothing
+  visually" is provable with `sha256` rather than eyeballed. Treat a
+  same-bytes result on a change you expected to see as a question about the
+  capture (a closed accordion, a DB-driven surface) before concluding the code
+  is wrong.
+
+Pure helpers are tested in `test/shot.test.js`; requiring the module starts
+nothing.
+
 ## Configuration (environment / `.env`)
 
 `server.js` has a tiny built-in `.env` loader, so a local `.env` works without any
@@ -644,6 +699,46 @@ dependency. `.env` is git-ignored — never commit it.
   preserved and promoted. Keep `max_tokens` generous — the cap is a quality
   instruction, and a low `max_tokens` would truncate the JSON mid-array
   instead.
+  **FIELD ORDER is the other half of that lever** (2026-08-21). The model
+  writes the JSON top to bottom, and `comps` is the only part the browser
+  can paint while it is still writing, so every field above the array is
+  dead air on screen. The shape now writes `summary` (the one field the
+  loading card can show), currency, and the tiny subject lookups, then
+  **`comps`**, then every market-level field — `avg_price_per_sqft`,
+  `subject_lat`/`lng`, `market_cap_rate_range`, `market_opex_range`,
+  `value_drivers`, `market_trend`, `annual_price_trend_pct`,
+  `search_radius`, `transactions_reviewed`, `price_discovery`. That is
+  ~800 characters (~200 output tokens, ~2.5s at the measured 78 tok/s) the
+  live comp table no longer waits through, and it is a quality change in
+  the same direction: every one of those fields is a read OF the comps
+  (`avg_price_per_sqft` averages them, `transactions_reviewed` must exceed
+  their count), so the model now describes rows it has committed to
+  instead of rows it still intends to write. A new top-level field belongs
+  BELOW `comps` unless the browser can render it mid-stream or a later
+  figure depends on it; `test/routes.test.js` evaluates the taught shape
+  and fails the build otherwise.
+  Also dropped that day: `price_per_sqft` on any SALE comp carrying both a
+  price and a size. `reconcilePricePerSqft` already derived that number
+  server-side and already overrode the model's figure when the two
+  disagreed by more than 10%, so the field was tokens spent restating
+  arithmetic. The source cross-check it was really performing survives as
+  a prompt instruction; the field is still asked for where it is NOT
+  derivable (lease rates, and sales missing a price or a size). One
+  consequence: `psf_reconciled` now fires only on a real CORRECTION, never
+  on a fill, because a "calc" mark on every row would drain the meaning
+  out of a mark that says "we did not trust the figure we were handed".
+  **On the DEFAULT provider none of the above is the big lever, and the
+  streaming assembly does not run at all.** Gemini declares
+  `streaming: false`, so `useStream` is false and the whole live-progress
+  path (`makeCompExtractor`, the `comp` events, `assemblyComp`) is dark in
+  production — a visitor sees the simulated wall-clock card and then the
+  finished report. And thought tokens count toward OUTPUT there: a
+  measured call spent **4,207 in / 928 out / 6,473 thought**, so the report
+  JSON is about one eighth of what the model generates and reasoning is the
+  other seven eighths. That makes `THINKING_LEVEL` (see its bullet under
+  Configuration) a larger wall-clock lever than everything in the report
+  JSON put together — and makes it the one to MEASURE first, since Google's
+  guidance calls the default depth the best quality for agentic work.
   The Explorer reaches the same rule from the other side: its cache lookup
   lives inside the shared in-flight job, so it cannot decide up front whether
   the request is fast. Its SSE opens on the FIRST progress event instead, and
@@ -741,6 +836,57 @@ dependency. `.env` is git-ignored — never commit it.
   code, so a checkout only proves what the source says. The Gemini default is
   `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
   `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.6-flash`.
+- `THINKING_LEVEL` — optional `low`/`medium`/`high`, **unset by default**
+  (2026-08-21). How deeply the model reasons before it answers. Unset means
+  the request is byte-identical to what it was before this knob existed and
+  the vendor's own default applies (`medium` on gemini-3.7-flash), which is
+  what every deployment runs today.
+  **It is the largest wall-clock setting this deployment has**, and the
+  reason is that on Gemini thought tokens are generated and billed as
+  OUTPUT: a measured call spent 4,207 in / **928 out / 6,473 thought**, so
+  about seven of every eight tokens the model produces are reasoning and
+  only one in eight is the report. Every trim to the report JSON is
+  attacking that one eighth; this is the other seven.
+  **It ships unset on purpose, because this is a thing to measure rather
+  than assume.** Google's guidance calls the default depth the best quality
+  for agentic work, and comp selection accuracy IS the product, so the
+  honest way to spend it is a `run-eval.js --compare` pair (about $8.60 and
+  a restart between runs — `MODEL` and this are both read once at startup).
+  **`node scripts/compare-thinking.js` runs that whole pair as one command**
+  (boot → score → restart at the candidate depth → score → compare). Prefer
+  it over doing the steps by hand: it spawns the server with an EXPLICIT
+  env, which makes the PowerShell `$env:SUPABASE_URL = ""` delete-vs-empty
+  trap in run-eval.js's header impossible rather than merely documented; it
+  enforces the restart, refuses to run against the main checkout, verifies
+  via `/healthz` that the server is at the depth asked for BEFORE spending,
+  and prints the bill and stops without `--yes`.
+  The run summary records `thinkingLevel` beside `model` and `--compare`
+  prints it, so a pair that differs only in this can never be misread as
+  model noise. The scorecard also carries **spend** as of 2026-08-21 —
+  `costUsd`, `billedCalls`, `inputTokens`, `outputTokens`, `thoughtTokens`,
+  `reportTokens`, `thoughtShare` — because until then it measured quality
+  and wall clock and nothing about cost, which is the half of this question
+  that decides it. Those ride on a `_call` block that `gate()` attaches for
+  an INTERNAL caller only and only on a billed leg: never cached, never
+  harvested, never served to a customer, and absent (not zero) on a cache
+  hit, so a run that hit the cache reports "no cost data" rather than
+  halving its own average. `thought_tokens` is a **subset** of
+  `output_tokens`, never an addition — summing them double-counts the
+  thinking and doubles the bill; `reportTokens` is the remainder, and it is
+  the figure every prompt trim in this project has actually been aiming at. `GET /healthz` reports the live value for the same reason it
+  reports `model` — ask the deployment, never the repo; `""` there means the
+  vendor default, and an absent field means a build older than this.
+  Three rules, all pinned by tests. It is read through
+  `PROVIDER.capabilities.thinkingLevels`, never a provider name. An
+  unrecognized level **exits at boot** (the `SEARCH_PROVIDER` /
+  `/api/checkout` `PLANS` no-fallthrough rule). And a level set against a
+  provider that declares `thinkingLevels: null` — Anthropic, which has no
+  tunable depth on this path — **also exits at boot** rather than being
+  accepted and dropped: a knob that appears to work and changes nothing is
+  worse than either a working knob or a refused one, because the deployment
+  would conclude that thinking less does not help. Lowering it only ever
+  generates fewer tokens, so Gemini's `deadlineTokens()` ceiling stays safe
+  in the one direction this moves.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team

@@ -15,8 +15,13 @@
 // launched, so this script also probes the server before spending anything
 // (see "Database preflight" below) and refuses if it looks database-backed.
 //
-// SETTING UP THE ISOLATED SERVER'S .env: copy ONLY the ANTHROPIC_API_KEY line
-// into this worktree's .env, never the whole file: a copied SUPABASE_URL /
+// SETTING UP THE ISOLATED SERVER'S .env: copy ONLY the line holding the
+// PROVIDER'S OWN key -- GEMINI_API_KEY since the default flipped on
+// 2026-08-10, ANTHROPIC_API_KEY only if the isolated server is launched with
+// SEARCH_PROVIDER=anthropic. Copying the wrong one boots a server that
+// authenticates nothing, and every target fails after the preflight has
+// already said the run is safe to spend.
+// Copy that line and nothing else, never the whole file: a copied SUPABASE_URL /
 // SUPABASE_SERVICE_KEY pair is exactly what turns an "isolated" run into one
 // that writes to production. On Windows, if you launch the server from
 // PowerShell, `$env:SUPABASE_URL = ""` DELETES the variable rather than
@@ -81,8 +86,12 @@ if (args.includes("--compare")) {
     const arrow = o.delta == null ? "" : (o.delta > 0 ? "  +" : "   ") + fmt(o.delta);
     console.log(`  ${label.padEnd(22)} ${fmt(o.baseline).padStart(10)} -> ${fmt(o.candidate).padStart(10)}${arrow}`);
   };
-  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}, ${a.ranAt})`);
-  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}, ${b.ranAt})\n`);
+  // "" is a recorded answer (the vendor default), null is "not recorded", and
+  // the two must not read the same - a comparison whose only real difference
+  // was the thinking level would otherwise be attributed to the model.
+  const think = (r) => (r.thinkingLevel == null ? "" : `, thinking ${r.thinkingLevel || "vendor default"}`);
+  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}${think(a)}, ${a.ranAt})`);
+  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}${think(b)}, ${b.ranAt})\n`);
   // Two runs over different target sets are not comparable target-for-target:
   // the full set carries four Industrial targets against one Land, so a
   // per-type slice reweights every aggregate below for reasons that have
@@ -98,6 +107,65 @@ if (args.includes("--compare")) {
   row("subject size found", d.subjectSizeFoundRate);
   row("failures", d.failures);
   Object.keys(d.metrics).sort().forEach((k) => row(k, d.metrics[k]));
+
+  // The averages above are the raw record and stay exactly as they were. This
+  // block is the DECISION: a speed/cost change is only ever worth taking if
+  // the quality it was bought with held, and reading that off an alphabetical
+  // list of eighteen averages is how a provenance drop gets missed next to an
+  // exciting duration delta. So the two are put side by side, per report,
+  // in the units the question is actually asked in.
+  const m = (k) => (d.metrics[k] || { baseline: null, candidate: null });
+  const pctMove = (o) => (o.baseline ? ((o.candidate - o.baseline) / o.baseline) * 100 : null);
+  const has = (k) => m(k).baseline != null && m(k).candidate != null;
+  if (has("durationMs") || has("costUsd")) {
+    console.log("\n  --- per report ---");
+    const line = (label, o, fmtv) => {
+      if (o.baseline == null || o.candidate == null) return;
+      const pc = pctMove(o);
+      const tag = pc == null ? "" : `   ${pc > 0 ? "+" : ""}${pc.toFixed(1)}%`;
+      console.log(`  ${label.padEnd(22)} ${fmtv(o.baseline).padStart(10)} -> ${fmtv(o.candidate).padStart(10)}${tag}`);
+    };
+    const secs = (v) => (v / 1000).toFixed(1) + "s";
+    const usd = (v) => "$" + v.toFixed(4);
+    const tok = (v) => Math.round(v).toLocaleString("en-US");
+    line("time", m("durationMs"), secs);
+    line("cost", m("costUsd"), usd);
+    line("tokens generated", m("outputTokens"), tok);
+    line("  of which thinking", m("thoughtTokens"), tok);
+    line("  the report itself", m("reportTokens"), tok);
+    line("thinking share", m("thoughtShare"), (v) => (v * 100).toFixed(1) + "%");
+    // Cost is per report, so the number the owner actually budgets against is
+    // what a month of them costs. Stated at a round volume rather than a
+    // guessed one, so it reads as arithmetic instead of a forecast.
+    const cb = m("costUsd");
+    if (cb.baseline != null && cb.candidate != null) {
+      console.log(`  per 1,000 reports      ${("$" + (cb.baseline * 1000).toFixed(2)).padStart(10)} -> ${("$" + (cb.candidate * 1000).toFixed(2)).padStart(10)}`);
+    }
+    // Quality is what a speed change is being traded against, so it is printed
+    // in the same breath and never left to be looked up elsewhere.
+    console.log("\n  --- what it cost in quality (higher is better, except the two rates) ---");
+    line("priced sale comps", m("pricedSales"), (v) => v.toFixed(2));
+    line("provenance score", m("provenanceScore"), (v) => v.toFixed(3));
+    line("comps returned", m("comps"), (v) => v.toFixed(2));
+    line("estimate rate", m("estimateRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("aggregate rate", m("aggregateRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("in-window rate", m("inWindowRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("market match rate", m("marketMatchRate"), (v) => (v * 100).toFixed(1) + "%");
+    const vp = d.valuationPossibleRate || {};
+    if (vp.baseline != null && vp.candidate != null) {
+      console.log(`  valuation possible     ${(vp.baseline * 100).toFixed(0).padStart(9)}% -> ${(vp.candidate * 100).toFixed(0).padStart(9)}%`);
+    }
+    console.log("\n  Read it as a trade: the top block is what you gained, the bottom is what you paid.");
+    console.log("  valuation possible and priced sale comps are the two that decide it — a faster,");
+    console.log("  cheaper report that cannot value the building is not a cheaper report.");
+  } else if (!has("costUsd")) {
+    // Silence here would read as "no cost difference" rather than "no cost
+    // data", which is the same misreport-absence-as-a-value trap the corpus
+    // health alarm and the lead inbox each had to fix.
+    console.log("\n  ! No spend data in one or both runs, so cost is not compared.");
+    console.log("    Cost accounting rides on an internal-caller field added 2026-08-21; a run made");
+    console.log("    before that, or one served entirely from cache, carries none.");
+  }
   console.log("\nDeltas only. A dozen stochastic searches per run means small moves are noise; read the direction, not the decimal.\n");
   process.exit(0);
 }
@@ -216,7 +284,13 @@ async function liveModel() {
     const r = await fetch(`${BASE}/healthz`);
     if (!r.ok) return null;
     const h = await r.json();
-    return h && h.model ? { model: h.model, provider: h.provider || null } : null;
+    return h && h.model
+      ? { model: h.model, provider: h.provider || null,
+          // "" is the vendor default and is a real answer, so null (not "")
+          // is what "this build does not report it" means. Only an OLDER
+          // server, predating the field, yields null here.
+          thinkingLevel: typeof h.thinking_level === "string" ? h.thinking_level : null }
+      : null;
   } catch (e) {
     return null;
   }
@@ -258,7 +332,8 @@ async function runOne(t) {
     // model is about to be scored while there is still time to stop.
     const live = await liveModel();
     console.log(live
-      ? `Target server reports: ${live.provider || "provider unknown"} / ${live.model}`
+      ? `Target server reports: ${live.provider || "provider unknown"} / ${live.model}` +
+        (live.thinkingLevel == null ? "" : ` / thinking ${live.thinkingLevel || "vendor default"}`)
       : "Target server did not report a model (/healthz unreachable or older build); recording the runner's MODEL instead.");
     console.log(`Targets: ${targets.length} (${targetSelection})`);
 
@@ -358,6 +433,12 @@ async function runOne(t) {
       // the fallback when /healthz could not be reached.
       model: (live && live.model) || process.env.MODEL || "(server default)",
       provider: (live && live.provider) || null,
+      // The reasoning depth the server was running. Recorded for the same
+      // reason `model` is: it is the largest wall-clock setting on the box and
+      // it is invisible in the report, so a --compare pair that differs only
+      // in this would otherwise look like unexplained noise. null means the
+      // server did not report it; "" means the vendor's own default.
+      thinkingLevel: live ? live.thinkingLevel : null,
       ranAt: new Date().toISOString(),
       base: BASE,
       setSize: targets.length,

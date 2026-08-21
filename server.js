@@ -8106,6 +8106,18 @@ const MARKET_FOOTER =
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
   `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  // Follow was in index.html's footer and NOWHERE ELSE, which put the only
+  // links to the company's own accounts BEHIND the login. Every indexable
+  // page -- the landing a stranger actually arrives on, every market page,
+  // /brokers -- ended in a footer that named no accounts at all, which reads
+  // as a site nobody is behind. rel="noopener noreferrer" and target=_blank
+  // match index.html's copies exactly.
+  `<div><div class="ch">Follow</div>` +
+  `<ul aria-label="Follow">` +
+  `<li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer">Instagram</a></li>` +
+  `<li><a href="https://www.tiktok.com/@comp.ninja" target="_blank" rel="noopener noreferrer">TikTok</a></li>` +
+  `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
+  `</ul></div>` +
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
@@ -9385,6 +9397,16 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .badge.p{color:var(--ink-body);background:var(--wash)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
+/* The badge key moved OUT of a full-width strip under the hero and INTO the
+   claim column (2026-08-21). It was a row of four items spanning both columns
+   while the column beside the exhibit sat on ~300px of dead air, which read
+   as an unfinished page rather than a restrained one. In the column it also
+   sits where it belongs: a key, next to the exhibit whose badges it decodes.
+   Stacked only once there are two columns to be beside -- below 900px the
+   hero is one column and a wrapping row is the more compact shape. */
+@media(min-width:900px){
+  .hero2 .legend{flex-direction:column;align-items:flex-start;gap:10px;margin-top:28px}
+}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
 .steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
@@ -10216,6 +10238,16 @@ ${marketBar(signedIn, "/how-it-works")}
             <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
+          <div class="legend">
+            <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
+            <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
+            <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
+            <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+                 match to the literal this used to carry -- a plain span's
+                 style="" attribute resolves var() reliably, unlike an SVG
+                 presentation attribute, so no class is needed. -->
+            <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
+          </div>
         </div>
         <div class="exhibit" data-rv>
           <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
@@ -10244,16 +10276,6 @@ ${marketBar(signedIn, "/how-it-works")}
             </div>
           </div>
         </div>
-      </div>
-      <div class="legend">
-        <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
-        <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
-        <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
-             match to the literal this used to carry -- a plain span's
-             style="" attribute resolves var() reliably, unlike an SVG
-             presentation attribute, so no class is needed. -->
-        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -10291,40 +10313,13 @@ ${marketBar(signedIn, "/how-it-works")}
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div>
-      <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
-      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
-        connect you with local brokers for opinions of value. Comparables derive from publicly available data;
-        verify independently before underwriting.</p>
-      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
-      <p>&copy; 2026 CompNinja LLC</p>
-    </div>
-    <div class="right">
-      <div class="cols">
-        <div>
-          <div class="ch">Explore</div>
-          <ul aria-label="Explore">
-            <li><a href="/markets">Markets</a></li>
-            <li><a href="/brokers">Brokers</a></li>
-            <li><a href="/how-it-works">How it works</a></li>
-            <li><a href="/how-it-works#faq">FAQ</a></li>
-            <li><a href="/1031-exchange">1031 exchange guide</a></li>
-            <li><a href="/">Run a report</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="ch">Company</div>
-          <ul aria-label="Company">
-            <li><a href="/terms">Terms</a></li>
-            <li><a href="/privacy">Privacy</a></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</footer>
+<!-- MARKET_FOOTER, not a copy of it. This page hand-kept markup that was
+     byte-identical to that constant once whitespace was normalised, which is
+     the third time this file has grown a second copy of the same footer and
+     the second time the copies drifted (see theme.test.js on the dark-ink
+     fix). One constant means the landing page cannot fall behind /brokers
+     again. -->
+${MARKET_FOOTER}
 <script>
 (function(){
   var f=document.getElementById("landingSearch");

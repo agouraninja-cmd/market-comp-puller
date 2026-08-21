@@ -99,7 +99,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --lift:none}
     @media screen{
     [data-theme="dark"]{--paper:#121826;--card:#1A2433;--wash:#243044;--wash-2:#334155;--slab:#243044;
-      --edge:#3D4B5F;--line:#2F3D51;--hair:#253346;
+      --edge:#333E4F;--line:#2A3648;--hair:#222F40;
       --ink:#E4E9F0;--ink-body:#B6C1CF;--ink-2:#A8B6C6;--ink-mute:#96A3B4;--ink-3:#8B98A8;
       --ink-faint:#5E6978;--ink-4:#475569;
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
@@ -3521,7 +3521,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
           conditionSpread, unexplainedGain, conditionFit,
-          parseRadiusMiles } = VALUATION;
+          parseRadiusMiles, defaultFreePassMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -5168,7 +5168,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     const mi = numericValue(comp.distance_mi);
     if (mi >= 0 && Number.isFinite(mi)) {
-      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : 1;
+      // Same free pass compWeight just applied, read from the same function —
+      // this line explains that weight, so a hardcoded 1 here would tell a
+      // reader a 6-mile comp is "farther away" while the weighting gave it
+      // full credit.
+      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : defaultFreePassMiles(opts.propertyType);
       reasons.push(mi > free ? "farther away" : "nearby");
     }
     if (opts.propertyType === "Residential" && opts.subjectPsf > 0) {

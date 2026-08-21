@@ -455,6 +455,38 @@ test("the workspace page", async (t) => {
     }
   });
 
+  await t.test("Tab fills the box from the placeholder, and only while it is empty", async () => {
+    // Two rules, both of which fail SILENTLY if they drift.
+    //
+    // ONE SOURCE: the example addresses live in the textarea's placeholder and
+    // are read back out of it. A second copy would let the greyed text and the
+    // thing Tab inserts disagree about what a valid list looks like, which is
+    // the one job this has.
+    //
+    // ONE STATE: Tab is how a keyboard user leaves a field. It is intercepted
+    // only in an empty box and never with a modifier, so the key does its
+    // ordinary job the moment there is anything to move on from. Losing either
+    // guard traps somebody in the textarea, and nothing else would report it.
+    const html = await (await fetch(ctx.srv.base + "/bulk", as(PAT))).text();
+    const js = (html.match(/<script>([\s\S]*?)<\/script>/g) || []).join("\n");
+
+    assert.match(js, /ta\.placeholder/,
+      "the examples must be read from the placeholder, not written out a second time");
+    assert.ok(!/1201 W Idaho St[\s\S]{0,200}1201 W Idaho St/.test(html),
+      "the example list appears twice — one copy is the placeholder, the other will drift");
+
+    const handler = /keydown[\s\S]{0,700}?preventDefault/.exec(js);
+    assert.ok(handler, "the textarea must have a keydown handler that can preventDefault");
+    assert.match(handler[0], /e\.shiftKey/, "Shift+Tab must never be intercepted");
+    assert.match(handler[0], /e\.key!=="Tab"|e\.key !== "Tab"/, "only Tab");
+    assert.match(js, /if\(ta\.value!==""\)return false;/,
+      "fillExamples must refuse a non-empty box, which is what releases the key");
+
+    // And a mouse path to the same thing, so the shortcut is discoverable
+    // rather than folklore.
+    assert.match(html, /id="useExample"/);
+  });
+
   await t.test("a non-Pro member sees the Pro door, never the paste box", async () => {
     const html = await (await fetch(ctx.srv.base + "/bulk", as(SAM))).text();
     assert.match(html, /BULKPAGE\.start\(\{"s":403/);

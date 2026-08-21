@@ -7363,7 +7363,14 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-heigh
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
+/* 1120px, not a new number: /vault has run at 1120 since it was built, so the
+   widest surface in the product already answered this question. 1024 dates
+   from before the market pages carried 3840px photographs and before the comp
+   tables grew their per-type columns, and it is narrow enough on a modern
+   laptop to read as a site that has not been touched in a while. Kept in step
+   with HOW_CSS's copy below; the four dashboards and /bulk keep their own
+   widths deliberately. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
@@ -7750,7 +7757,14 @@ const marketBar = (signedIn = false, current = "") =>
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
+  `<div class="dd">${navLinksHtml(current)}</div></details>` +
+  // Pricing sits in the bar itself rather than one click inside Explore. It is
+  // the question a prospect arrives with, and a B2B site that hides its price
+  // behind a browse menu reads as one that would rather not say. The
+  // visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
+  // (`live && !isPro`), so it still hides for a Pro member and on a deployment
+  // with no billing configured; only the position moved.
+  ACCOUNT_NAV_PRICING +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -8125,6 +8139,18 @@ const MARKET_FOOTER =
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
   `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  // Follow was in index.html's footer and NOWHERE ELSE, which put the only
+  // links to the company's own accounts BEHIND the login. Every indexable
+  // page -- the landing a stranger actually arrives on, every market page,
+  // /brokers -- ended in a footer that named no accounts at all, which reads
+  // as a site nobody is behind. rel="noopener noreferrer" and target=_blank
+  // match index.html's copies exactly.
+  `<div><div class="ch">Follow</div>` +
+  `<ul aria-label="Follow">` +
+  `<li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer">Instagram</a></li>` +
+  `<li><a href="https://www.tiktok.com/@comp.ninja" target="_blank" rel="noopener noreferrer">TikTok</a></li>` +
+  `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
+  `</ul></div>` +
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
@@ -9308,7 +9334,8 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Matches MARKET_CSS's .wrap exactly; the reasoning is on that copy. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
@@ -9375,16 +9402,40 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash-2)}
+/* LIKELY sets its figure at 22px against its neighbours' 18px, so it is the
+   cell that runs out of room first: eight digits measure 115px inside the
+   108px an even three-way split leaves at 1280px. Widen the cell rather than
+   shrink the type -- the size difference IS the emphasis this ledger exists
+   to give the middle number. */
+.lcell.mid{background:var(--wash-2);flex:1.15}
 .lcell.mid .lab{color:var(--red)}
 /* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
    exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
    and .n, which is why the rule cannot be shared. Dark only. */
 [data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
 [data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+/* white-space:nowrap here is load-bearing, not cosmetic. The scroll
+   choreography below splits "$4,730,000" into a "$" text node plus an
+   inline-block .cu span, so the numeral can tick without shoving its cell
+   around on every frame -- and that split MANUFACTURES a line-break
+   opportunity the plain string never had. The HTML as served wraps nowhere;
+   the scripted DOM broke the LIKELY figure across two lines with the "$"
+   stranded alone above it, on the one number a visitor came to see. The rule
+   belongs on .fig rather than on .cu because the break is BETWEEN the two
+   boxes, not inside either one. */
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+/* Three cells side by side need ~430px before the figures stop fitting, and
+   this sheet had no rule to stack them, so every phone drew all three values
+   broken across three lines each. Matches index.html's .rd-ledger breakpoint
+   (639.98px) rather than MARKET_CSS's 700px on purpose: this exhibit is a
+   miniature of the REPORT, so it should fold where the report folds. */
+@media (max-width:639.98px){
+  .ledger{flex-direction:column}
+  .lcell{border-right:0;border-bottom:1px solid var(--hair)}
+  .lcell:last-child{border-bottom:0}
+}
 .drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
 .drv b{color:var(--red);font-weight:700}
@@ -9401,12 +9452,27 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .hero2{display:grid;grid-template-columns:1fr;gap:28px}
 .hero2 h1.h{max-width:none}
 .hero2 .lead{max-width:48ch}
-@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+/* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
+   is four short lines and a search row; the exhibit is a five-comp table that
+   was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
+   mid-word, next to a left column sitting on 300px of dead air. Handing the
+   26px across costs the headline nothing and buys the table its last column. */
+@media(min-width:900px){.hero2{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
+/* The badge key moved OUT of a full-width strip under the hero and INTO the
+   claim column (2026-08-21). It was a row of four items spanning both columns
+   while the column beside the exhibit sat on ~300px of dead air, which read
+   as an unfinished page rather than a restrained one. In the column it also
+   sits where it belongs: a key, next to the exhibit whose badges it decodes.
+   Stacked only once there are two columns to be beside -- below 900px the
+   hero is one column and a wrapping row is the more compact shape. */
+@media(min-width:900px){
+  .hero2 .legend{flex-direction:column;align-items:flex-start;gap:10px;margin-top:28px}
+}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
 .steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
@@ -9457,6 +9523,11 @@ button.btn{border:0;cursor:pointer;font-family:inherit}
 .landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
 .landProof{color:var(--ink-2)}
 .heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
+/* align-items:flex-start shrink-wraps every child, which left the search row
+   at 326px of a 502px column and the field at 187px -- narrow enough that its
+   own placeholder truncated to "e.g. 1200 W Industrial B". The row is the
+   page's primary action; it gets the column. */
+.heroCta .landForm{align-self:stretch;width:100%}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}
@@ -10233,6 +10304,16 @@ ${marketBar(signedIn, "/how-it-works")}
             <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
+          <div class="legend">
+            <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
+            <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
+            <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
+            <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+                 match to the literal this used to carry -- a plain span's
+                 style="" attribute resolves var() reliably, unlike an SVG
+                 presentation attribute, so no class is needed. -->
+            <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
+          </div>
         </div>
         <div class="exhibit" data-rv>
           <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
@@ -10261,16 +10342,6 @@ ${marketBar(signedIn, "/how-it-works")}
             </div>
           </div>
         </div>
-      </div>
-      <div class="legend">
-        <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
-        <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
-        <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
-             match to the literal this used to carry -- a plain span's
-             style="" attribute resolves var() reliably, unlike an SVG
-             presentation attribute, so no class is needed. -->
-        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
       </div>
     </section>
   </div>
@@ -10308,40 +10379,13 @@ ${marketBar(signedIn, "/how-it-works")}
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div>
-      <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
-      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
-        connect you with local brokers for opinions of value. Comparables derive from publicly available data;
-        verify independently before underwriting.</p>
-      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
-      <p>&copy; 2026 CompNinja LLC</p>
-    </div>
-    <div class="right">
-      <div class="cols">
-        <div>
-          <div class="ch">Explore</div>
-          <ul aria-label="Explore">
-            <li><a href="/markets">Markets</a></li>
-            <li><a href="/brokers">Brokers</a></li>
-            <li><a href="/how-it-works">How it works</a></li>
-            <li><a href="/how-it-works#faq">FAQ</a></li>
-            <li><a href="/1031-exchange">1031 exchange guide</a></li>
-            <li><a href="/">Run a report</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="ch">Company</div>
-          <ul aria-label="Company">
-            <li><a href="/terms">Terms</a></li>
-            <li><a href="/privacy">Privacy</a></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</footer>
+<!-- MARKET_FOOTER, not a copy of it. This page hand-kept markup that was
+     byte-identical to that constant once whitespace was normalised, which is
+     the third time this file has grown a second copy of the same footer and
+     the second time the copies drifted (see theme.test.js on the dark-ink
+     fix). One constant means the landing page cannot fall behind /brokers
+     again. -->
+${MARKET_FOOTER}
 <script>
 (function(){
   var f=document.getElementById("landingSearch");

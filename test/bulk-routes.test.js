@@ -199,6 +199,99 @@ function seedJob(overrides, items) {
   };
 }
 
+test("the per-member daily ceiling", async (t) => {
+  // The spend backstop. DAILY_SEARCH_CAP is site-wide and Pro deliberately
+  // bypasses it, which was written for somebody typing one address at a time;
+  // bulk multiplies that by fifty per click, so it needs a bound of its own.
+  // Per MEMBER, so one person's ceiling never denies anyone else a search.
+  const attempted = (n, status) => Array.from({ length: n }, (_, i) => ({
+    id: `aaaaaaaa-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    job_id: JOB_ID, user_id: PAT.id, position: i, address: `${i} A St, Boise ID`,
+    status, created_at: new Date().toISOString(),
+  }));
+
+  await t.test("a list that would cross it is refused, with the number left", async () => {
+    const ctx = await bootWithDb(seedTables({
+      bulk_jobs: [], bulk_job_items: attempted(8, "done"),
+    }), { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
+        method: "POST",
+        body: JSON.stringify({
+          text: Array.from({ length: 5 }, (_, i) => `${i + 1}00 B St, Boise ID`).join("\n"),
+          type: "Industrial", months: 24,
+        }),
+      }));
+      assert.equal(r.status, 429);
+      const body = await r.json();
+      assert.equal(body.code, "daily_limit");
+      assert.equal(body.left_today, 2, "8 of 10 attempted today");
+      assert.match(body.error, /2 left today/, "actionable, not just a wall");
+      assert.match(body.error, /midnight UTC/, "and it says when it resets");
+      assert.equal(ctx.tables.bulk_jobs.length, 0, "refused before anything is created");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("a queued row that never ran does not count against it", async () => {
+    // Cancelling a fifty-address run after two rows must cost two, not fifty
+    // — otherwise stopping a run is punished harder than letting it finish.
+    const ctx = await bootWithDb(seedTables({
+      bulk_jobs: [], bulk_job_items: attempted(40, "queued"),
+    }), { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
+        method: "POST",
+        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
+      }));
+      // 503 (no provider key), NOT 429 — the point is which refusal it is.
+      assert.equal(r.status, 503);
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("yesterday's addresses do not count against today", async () => {
+    const old = attempted(40, "done").map((it) => ({
+      ...it, created_at: "2020-01-01T00:00:00.000Z",
+    }));
+    const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: old }),
+      { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
+        method: "POST",
+        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
+      }));
+      assert.equal(r.status, 503, "not 429 — the window really is today only");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("another member's addresses do not count against yours", async () => {
+    // The whole reason this is per-member rather than charged to
+    // DAILY_SEARCH_CAP: one person's heavy day must never lock anybody else out.
+    const theirs = attempted(40, "done").map((it) => ({ ...it, user_id: SAM.id }));
+    const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: theirs }),
+      { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const r = await fetch(ctx.srv.base + "/api/bulk", as(PAT, {
+        method: "POST",
+        body: JSON.stringify({ text: "1 A St, Boise ID", type: "Industrial", months: 24 }),
+      }));
+      assert.equal(r.status, 503, "not 429");
+    } finally { await ctx.stop(); }
+  });
+
+  await t.test("the page is told the allowance up front, not only at the refusal", async () => {
+    const ctx = await bootWithDb(seedTables({
+      bulk_jobs: [], bulk_job_items: attempted(8, "done"),
+    }), { BULK_DAILY_ADDRESSES: "10" });
+    try {
+      const body = await (await fetch(ctx.srv.base + "/api/bulk", as(PAT))).json();
+      assert.equal(body.leftToday, 2);
+      assert.equal(body.dailyLimit, 10);
+      const html = await (await fetch(ctx.srv.base + "/bulk", as(PAT))).text();
+      assert.match(html, /"leftToday":2/, "the boot payload carries it, so nothing pops in");
+    } finally { await ctx.stop(); }
+  });
+});
+
 test("reading a finished run", async (t) => {
   const seeded = seedJob();
   const ctx = await bootWithDb(seedTables(seeded));

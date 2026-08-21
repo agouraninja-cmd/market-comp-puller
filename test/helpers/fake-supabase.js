@@ -52,6 +52,18 @@ function matches(row, key, expr) {
   // value so it matches, which is the one place this could have been wrong.
   if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
+  // `gte.` is taught deliberately, like `neq.` above and for the same reason:
+  // server.js sends it (every date-windowed read — the vault blend, the firm
+  // blend, bulk's daily ceiling), and a fake that 400s on it cannot exercise
+  // those paths at all.
+  //
+  // STRING comparison, which is correct for exactly the values this app sends
+  // through it: ISO-8601 UTC timestamps and yyyy-mm-dd dates both sort
+  // lexicographically in the same order they sort chronologically. It is NOT
+  // Postgres's comparison — a mixed-offset timestamp or a numeric column would
+  // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
+  // needs this taught properly rather than reused.
+  if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);

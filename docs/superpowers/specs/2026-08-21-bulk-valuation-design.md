@@ -38,6 +38,14 @@ the design is a spend design first:
 - **One live job per member**, read from the DATABASE rather than from
   in-process state, so a restart cannot let somebody start the same list
   twice and pay for it twice.
+- **A per-member daily ceiling** (`BULK_DAILY_ADDRESSES`, default 200). One
+  job at a time bounds CONCURRENCY, not spend: a 50-address run finishes in
+  ~17 minutes and the next can start immediately, which is ~$63/hour with no
+  daily bound. This was missed on the first pass and added before shipping.
+  Per member rather than charged to `DAILY_SEARCH_CAP`, because that cap is
+  site-wide and one bulk run would eat a third of it and lock out the free
+  visitors it exists to protect. It counts rows that were *attempted*, so
+  cancelling a run costs what ran rather than what was queued.
 - **The count and the time are said before the button**, not after. The Run
   button is disabled while a run is going, with the reason beside it — the
   Buy-button rule.
@@ -118,6 +126,29 @@ list fully valued.
 - Below four sale comps the band is the full observed spread rather than the
   weighted interquartile one; the row marks it "wide band".
 
+## 4b. How it is tested
+
+`test/bulk.test.js` covers the pure module. `test/bulk-routes.test.js` boots a
+real server against the stand-in PostgREST for the gate ladder, user scoping,
+the one-run rule, the daily ceiling, cancel, the stall reaper and the CSV.
+
+`test/bulk-run.test.js` runs a **whole job end to end** against a stub search
+provider, reached through `SEARCH_API_URL` — a test-only endpoint override
+that is `RESEND_API_URL`'s precedent applied to the same problem. The digest's
+whole point is mail leaving the building; this one's is fifty searches leaving
+it, and neither can be tested by stopping at the call. It proves the search,
+the valuation, the desk upsert, the harvest, the cache write, the job's
+completion, that two addresses buy exactly two searches, that re-running the
+same list buys none, that one failed address costs the row and not the run,
+and that the vendor's error text never reaches the member.
+
+One thing that test taught, worth keeping: the figure must be scored against
+the report **as served** — after normalization, $/SF reconciliation, distance
+stamping and the radius blend — not against what the model returned.
+`salePsfOf` prefers the reconciled `price_per_sqft` over price ÷ size, so the
+two differ by a couple of cents per foot. Scoring against the raw reply would
+be scoring a report no member ever sees.
+
 ## 5. What was deliberately not built
 
 - **Mixed property types in one job.** A list a broker pastes is a portfolio
@@ -160,9 +191,12 @@ browser was never meant to have must not grow one on a spend amplifier.
 
 ## 7. Open questions
 
-- **Is 50 the right cap?** It was chosen as "a number a person can be shown
-  before committing to it" (~30 minutes, ~$18). The first real bulk run is the
-  evidence; raise it deliberately, not by drift.
+- **Are 50 and 200 the right caps?** 50 was chosen as "a number a person can
+  be shown before committing to it" (~30 minutes, ~$18); 200/day is about four
+  full runs, far more than the workflow this was built for and far less than
+  an unbounded afternoon. Both are guesses until a real broker runs a real
+  list. Raise them deliberately, not by drift — and `BULK_DAILY_ADDRESSES` is
+  an env var precisely so raising it for a blocked customer needs no deploy.
 - **Should a firm share a run?** Migration 030's shelf holds shared reports; a
   bulk run is a natural second thing for it to hold, and is exactly the case
   the shelf's own note says makes an `org_shelf_items` table worth building.

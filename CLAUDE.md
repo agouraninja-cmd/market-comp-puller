@@ -408,6 +408,36 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
+- `BULK_DAILY_ADDRESSES` — optional (default 200). Per-MEMBER ceiling on
+  addresses bulk valuation may put through a search in one UTC day. A
+  SEPARATE number from `DAILY_SEARCH_CAP` on purpose: that one is site-wide
+  and Pro deliberately bypasses it (`countsDailyCap: !ent.pro`), an exemption
+  written for somebody typing one address at a time. Bulk multiplies it by
+  fifty per click — one run is ~17 minutes and ~$18, and with
+  one-job-at-a-time as the only other bound a member could start another the
+  moment it finishes, roughly $63/hour indefinitely. Charging bulk to
+  `DAILY_SEARCH_CAP` instead was rejected: one 50-address run would eat a
+  third of the site's daily allowance and lock out the free visitors that cap
+  exists to protect. Counts rows that were ATTEMPTED (anything past `queued`),
+  so cancelling a run costs what actually ran rather than what was queued;
+  windowed on `created_at`, so a job straddling midnight counts wholly against
+  the day it started. Fails OPEN on a read error — a paying member must not be
+  locked out by one failed count, and the 50-address cap still bounds the
+  damage. The remaining allowance rides on `GET /api/bulk` and the `/bulk`
+  boot payload (`leftToday`/`dailyLimit`) so the form says it BEFORE a list is
+  pasted, not only at the moment of refusal. Env-overridable because the
+  moment it bites is the moment a real customer is blocked mid-workday.
+- `SEARCH_API_URL` — **test-only**, unset in production, where the provider's
+  own endpoint is the live value. `RESEND_API_URL`'s precedent for
+  `RESEND_API_URL`'s reason: bulk valuation's whole point is fifty searches
+  leaving the building, and without this the suite could reach the provider
+  call and then had to stop and assume — everything from "a report came back"
+  through valuing it, writing the row and putting it on the member's desk was
+  argued in comments and never executed. `test/bulk-run.test.js` is the user.
+  It covers the SEARCH call only; the extract vendor (PDF/screenshot import)
+  keeps its own endpoint, so there is one override and one thing it can move.
+  Not a secret and authorizes nothing (the API key still does), but it decides
+  where a billed request is posted, so treat it as trusted config.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
   Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
   cookie gets the **landing page rendered at `/` with a 200** (the same
@@ -2122,10 +2152,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     billed search (~$0.36, 40-70s). Hence `BULK.MAX_ADDRESSES` = 50 as a hard
     ceiling, `bulkMaxAddresses` as the per-visitor half (the parser clamps the
     entitlement to its own ceiling, so entitlements can never widen a job),
-    ONE live job per member read from the DATABASE, and the count and wall
-    clock said BEFORE the button. There is deliberately **no header-only
-    bypass** like `/api/comps`' `internal`: a bypass a browser was never meant
-    to have must not grow one on a spend amplifier.
+    ONE live job per member read from the DATABASE, **`BULK_DAILY_ADDRESSES`
+    as the per-member daily bound** (see its env bullet — one job at a time
+    bounds concurrency, not spend, and without it a member could run ~$63/hour
+    indefinitely), and the count and wall clock said BEFORE the button. There
+    is deliberately **no header-only bypass** like `/api/comps`' `internal`: a
+    bypass a browser was never meant to have must not grow one on a spend
+    amplifier. The two caps split cleanly and should stay split: the per-job
+    number is a PRODUCT limit and lives in `entitlements.js`, the per-day
+    number is a SPEND backstop and lives in an env var, exactly as
+    `maxComps` and `DAILY_SEARCH_CAP` do.
   - **`canBulkValue` is withheld on a dark deployment AND from a tester.** The
     vault's asymmetry sharpened: this is not merely an access surface but a
     SPEND surface, so `PRO_ENABLED=off` (the default) must not hand an
@@ -2152,6 +2188,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     are each reported by line number; `BULK.summarize` sums only rows that
     produced a figure and says how many. `sale_comps` is what a row shows, not
     the comp count — the band comes from the sales.
+  **The worker is proven end to end** by `test/bulk-run.test.js`, which
+  stands a stub provider in front of `SEARCH_API_URL` and runs a whole job:
+  the search, the valuation, the desk upsert, the harvest, the cache write,
+  the job's completion, and a second run of the same list costing zero
+  searches. It also pins that one failed address costs the row and not the
+  run, and that the vendor's own error text never reaches the member.
   Deliberately not built (see the spec's §5): mixed types in one job,
   per-address lookback/details, an automatic resume (re-running IS the resume,
   free from cache), a shareable portfolio, and any scheduling.

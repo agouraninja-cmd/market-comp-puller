@@ -189,6 +189,7 @@ var BULKPAGE=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
 var MAX=50,TYPES=[],job=null,items=[],timer=null,parsedCount=0,allJobs=[];
+var LEFT=null,DAILY=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -229,12 +230,28 @@ function refreshCount(){
   $("run").textContent=parsedCount?"Run "+parsedCount+" valuation"+(parsedCount===1?"":"s"):"Run valuations";
   // Said BEFORE the button, not after: a run is up to fifty billed searches
   // and half an hour, and the moment to know that is while deciding.
+  // The daily ceiling is said BEFORE the list is too long, not only when the
+  // run is refused: somebody with 12 left should find that out while pasting,
+  // not after deciding which forty addresses mattered.
+  var overCap=LEFT!==null&&parsedCount>LEFT;
+  if(overCap)$("run").disabled=true;
   $("cost").textContent=busy
     ? "A run is going below. Wait for it to finish, or cancel it first."
+    : overCap
+    ? (LEFT===0
+        ? "You have valued "+DAILY+" addresses today — the daily limit. It resets at midnight UTC."
+        : "Only "+LEFT+" left today (the daily limit is "+DAILY+"). Trim the list, or come back after midnight UTC.")
     : parsedCount
     ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
       " min. Addresses searched before are served from cache and finish instantly."
     : "";
+}
+
+// The per-run cap and the daily allowance in one line, because they answer
+// the same question ("how much can I do") and two chips would compete.
+function capNoteText(){
+  var base="Up to "+MAX+" addresses per run";
+  return LEFT===null?base:base+" · "+LEFT+" left today";
 }
 
 function statusChip(s){
@@ -345,8 +362,9 @@ function poll(id,force){
 function loadList(){
   return api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses)MAX=d.maxAddresses;
+    if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
-    $("capNote").textContent="Up to "+MAX+" addresses per run";
+    $("capNote").textContent=capNoteText();
     setJobs(d.jobs||[]);
     refreshCount();
     // Resume whatever is going: a member who closed the tab mid-run and came
@@ -387,6 +405,10 @@ function run(){
     renderJob();poll(job.id);
   }).catch(function(e){
     $("msg").textContent=e.message;$("msg").className="msg bad";
+    // A refusal carries the fresh number, so the hint above corrects itself
+    // rather than going on claiming an allowance the server just denied.
+    if(e.data&&typeof e.data.left_today==="number"){
+      LEFT=e.data.left_today;DAILY=e.data.daily_limit;$("capNote").textContent=capNoteText();}
     if(e.data)showNotes(e.data);
     if(e.data&&e.data.job){job=e.data.job;poll(job.id);}
   }).then(function(){refreshCount();});
@@ -414,8 +436,9 @@ function start(boot){
   $("gate").hidden=true;$("app").hidden=false;
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;
+  if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
-  $("capNote").textContent="Up to "+MAX+" addresses per run";
+  $("capNote").textContent=capNoteText();
   setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)poll(live.id);

@@ -518,6 +518,26 @@ const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // (cache hits are free and don't count). Override via env for more headroom.
 const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
 
+// The same backstop for bulk valuation, and it is a SEPARATE number for a
+// reason: DAILY_SEARCH_CAP above is site-wide and Pro deliberately bypasses
+// it (`countsDailyCap: !ent.pro`), so a paying subscriber is never told the
+// site is out of searches. That exemption was written for somebody typing
+// one address at a time. Bulk multiplies it by fifty per click: one run is
+// ~17 minutes and ~$18, and with one-job-at-a-time as the only bound a
+// member could start another the moment it finishes — roughly $63/hour,
+// indefinitely. This is PER MEMBER, so one person's ceiling never denies
+// anyone else a search (charging bulk to DAILY_SEARCH_CAP instead would let
+// one 50-address run eat a third of the site's daily allowance and lock out
+// the free visitors it exists to protect).
+//
+// 200 is about four full runs a day, which is far more than the workflow
+// this was built for (a broker valuing one portfolio) and far less than an
+// unbounded afternoon. Env-overridable because the moment it bites is the
+// moment a real customer is blocked mid-workday, and that must not need a
+// deploy. A smoke alarm, not accounting.
+const BULK_DAILY_ADDRESSES = Number(process.env.BULK_DAILY_ADDRESSES) > 0
+  ? Number(process.env.BULK_DAILY_ADDRESSES) : 200;
+
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
 // accounting. Explorer shares the getComps pipeline, so both prices track the
@@ -5014,6 +5034,23 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
 
+// Where the search actually goes. Overridable ONLY so the suite can stand a
+// stub in front of it — RESEND_API_URL's precedent, for RESEND_API_URL's
+// reason. Bulk valuation's whole point is fifty searches leaving the building,
+// and until this existed the tests could reach the provider call and then had
+// to stop and assume: everything from "a report came back" through valuing it,
+// writing the row and putting it on the member's desk was argued in comments
+// and never executed.
+//
+// Unset everywhere except in tests; production never sets it, so the
+// provider's own endpoint is the live value. It authorizes nothing (the API
+// key still does) but it decides where a billed request is posted, so it
+// belongs in the same trusted place as the key itself.
+//
+// The SEARCH call only. The extract vendor (PDF/screenshot import) keeps its
+// own endpoint deliberately: one override, one thing it can move.
+const SEARCH_API_URL = (process.env.SEARCH_API_URL || "").trim();
+
 // ---------------------------------------------------------------------------
 // Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
 // the data JSON repeats the event name in its own `type`, so we switch on that
@@ -5448,7 +5485,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   let r;
   try {
     const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
-    r = await fetch(init.url, {
+    r = await fetch(SEARCH_API_URL || init.url, {
       method: "POST",
       headers: init.headers,
       body: JSON.stringify(body),
@@ -6274,6 +6311,57 @@ async function patchBulkJob(userId, id, patch) {
 async function patchBulkItem(userId, id, patch) {
   await sbRequest("PATCH",
     `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+}
+
+// How many addresses this member has actually put through a search today.
+//
+// Counts rows that were ATTEMPTED (anything past `queued`), not rows that were
+// created, so cancelling a fifty-address run after two rows costs two and not
+// fifty — otherwise the honest act of stopping a run would be punished harder
+// than letting it finish.
+//
+// Windowed on `created_at` rather than `finished_at`: a job that straddles UTC
+// midnight therefore counts wholly against the day it started, which is the
+// approximation this is happy to make. It is a spend backstop, not accounting
+// — the same stance DAILY_SEARCH_CAP takes about being in-memory.
+//
+// Capped at cap+1 rows so the query cost cannot grow with a heavy user: the
+// only question is whether the number is at or over the ceiling.
+async function bulkAddressesUsedToday(userId, cap) {
+  const since = todayUTC() + "T00:00:00Z";
+  const rows = await sbRequest("GET",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
+    `&created_at=gte.${encodeURIComponent(since)}` +
+    `&status=neq.queued&select=id&limit=${Math.max(1, cap) + 1}`);
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+// What the workspace needs before it can draw a form: the member's runs, the
+// two caps, and the property types. ONE builder, used by both the /bulk page's
+// boot payload and the GET route the page polls — they were two copies for
+// about an hour and the page shipped without the daily allowance, which is a
+// number the form is supposed to show BEFORE somebody pastes fifty addresses.
+async function bulkListPayload(user, ent) {
+  const jobs = [];
+  for (const j of await listBulkJobs(user.id)) {
+    jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
+  }
+  // Best-effort: a failed count reports the full ceiling, matching the route's
+  // own fail-open, so the page can never be more pessimistic than the gate.
+  let leftToday = BULK_DAILY_ADDRESSES;
+  try {
+    leftToday = Math.max(0, BULK_DAILY_ADDRESSES -
+      await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES));
+  } catch (err) {
+    console.error("bulk daily count failed (reporting the full ceiling):", err.message);
+  }
+  return {
+    jobs,
+    maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
+    leftToday,
+    dailyLimit: BULK_DAILY_ADDRESSES,
+    types: VAULT.PROPERTY_TYPES,
+  };
 }
 
 // One live job per member. Read from the DATABASE rather than from
@@ -15416,6 +15504,34 @@ const server = http.createServer((req, res) =>
             });
           }
 
+          // The per-member daily ceiling. Checked BEFORE the job is created,
+          // so a refusal costs nothing and leaves nothing to clean up — and
+          // refusing the whole list rather than quietly running the part that
+          // fits, because a list silently shortened reads as a list fully
+          // valued. It says how many are left and when it resets, which is
+          // what makes it actionable rather than merely a wall.
+          //
+          // Fails OPEN on a read error: a member must not be locked out of a
+          // tool they pay for because one count query failed, and
+          // one-job-at-a-time plus the 50-address cap still bound the damage.
+          let usedToday = 0;
+          try {
+            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
+          } catch (err) {
+            console.error("bulk daily count failed (allowing the run):", err.message);
+          }
+          const leftToday = Math.max(0, BULK_DAILY_ADDRESSES - usedToday);
+          if (parsed.rows.length > leftToday) {
+            return sendJson(res, 429, {
+              error: leftToday === 0
+                ? `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`
+                : `That list is ${parsed.rows.length} addresses and you have ${leftToday} left today (the daily limit is ${BULK_DAILY_ADDRESSES}). Trim the list, or come back after midnight UTC.`,
+              code: "daily_limit",
+              left_today: leftToday,
+              daily_limit: BULK_DAILY_ADDRESSES,
+            });
+          }
+
           // Checked HERE, before a job exists, because callAnthropicOnce has
           // no key guard of its own — /api/comps guards at the route and this
           // is the second route that reaches it. Without this a keyless
@@ -15578,15 +15694,7 @@ const server = http.createServer((req, res) =>
             job: bulkJobRow(job), items, summary: BULK.summarize(items),
           });
         }
-        const jobs = [];
-        for (const j of await listBulkJobs(user.id)) {
-          jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
-        }
-        return sendJson(res, 200, {
-          jobs,
-          maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
-          types: VAULT.PROPERTY_TYPES,
-        });
+        return sendJson(res, 200, await bulkListPayload(user, ent));
       })().catch((err) => {
         console.error("bulk GET error:", err.message);
         sendJson(res, 500, { error: "Could not read your runs." });
@@ -20252,17 +20360,7 @@ const server = http.createServer((req, res) =>
           const ent = await entitlementsFor(req);
           if (!ent.canBulkValue) boot = { s: 403, j: { error: "Bulk valuation is part of Pro.", code: "pro_required" } };
           else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
-          else {
-            const jobs = [];
-            for (const j of await listBulkJobs(user.id)) {
-              jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
-            }
-            boot = { s: 200, j: {
-              jobs,
-              maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
-              types: VAULT.PROPERTY_TYPES,
-            } };
-          }
+          else boot = { s: 200, j: await bulkListPayload(user, ent) };
         }
       } catch (err) {
         console.error("bulk boot failed:", err.message);

@@ -7360,6 +7360,17 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
+/* Text inside a --wash-2 cell steps up one rung, dark only. --wash-2 is the
+   only dark surface that lifts ABOVE the card, so a ramp step chosen against
+   the card lands too dim on it: --ink-3 measures 5.32:1 on --card and 3.53:1
+   here, and the red LIKELY label 3.74:1. Mirrors the same fix on
+   index.html's .rd-lcell (2026-08-21); the two ledgers are separate class
+   vocabularies, so neither rule reaches the other's markup. In light
+   --wash-2 is identical to --wash and none of this applies. */
+[data-theme="dark"] .lcell.mid .k,[data-theme="dark"] .lcell.mid .lab,
+[data-theme="dark"] .lcell.mid .n{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .k{color:var(--red-deep)}
+
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
@@ -9244,6 +9255,11 @@ section{padding:48px 0}
 .lcell:last-child{border-right:0}
 .lcell.mid{background:var(--wash-2)}
 .lcell.mid .lab{color:var(--red)}
+/* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
+   exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
+   and .n, which is why the rule cannot be shared. Dark only. */
+[data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}

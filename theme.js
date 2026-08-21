@@ -22,6 +22,28 @@
 // wash do not move. --ink-3 on --card goes 4.50:1 → 5.32:1, and on --slab
 // (table heads, already-dark chips) 3.82:1 → 4.52:1, which is the AA floor
 // that workhorse muted text actually sits on.
+//
+// The ENDS of that ramp were opened up on 2026-08-21. The 08-14 notch fixed
+// the middle and left the extremes bunched: dark spanned 2.14x (--ink 11.41:1
+// down to --ink-3 5.32:1) where light spans 3.13x (15.62:1 down to 4.99:1).
+// Everything landed in one mid-grey band, so headings did not out-rank body
+// copy and captions did not whisper. --ink goes #D5DDE8 -> #E4E9F0 (11.41:1
+// -> 12.81:1) and --ink-faint goes #7C8899 -> #5E6978 (4.34:1 -> 2.80:1,
+// matching light's 2.58:1). The four middle steps do NOT move -- body copy
+// and the workhorse grey stay exactly where 08-14 put them.
+//
+// Note what --ink-faint's drop means: it is a whisper token again, below AA
+// by design, exactly as it already is in light. Anything that needs to be
+// READ must not use it. The footer disclaimer did, and was remapped to
+// --ink-3 in the index.html bridge on the same date (in light that class
+// sits on the DARK slab, where it reads 5.42:1 -- the bridge had been
+// treating it as a whisper it never was).
+//
+// Rules were re-laddered the same day. Light steps hair/line/edge 1.15 ->
+// 1.30 -> 1.48 against --card; dark had collapsed to 1.06 -> 1.28 -> 1.76,
+// and 1.06:1 is not a visible line -- the row dividers in the comp tables
+// were simply gone. hair #1E2938 -> #253346 (1.22:1) and line #2A3648 ->
+// #2F3D51 (1.42:1) reopen the ladder. --edge does not move.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
@@ -40,16 +62,16 @@ const THEME_TOKENS = {
 
   // --- rules ------------------------------------------------------------
   edge:             { light: "#D8D4C9", dark: "#3D4B5F" }, // primary border
-  line:             { light: "#E4E2DA", dark: "#2A3648" },
-  hair:             { light: "#F0EFE9", dark: "#1E2938" }, // hairline/divider
+  line:             { light: "#E4E2DA", dark: "#2F3D51" },
+  hair:             { light: "#F0EFE9", dark: "#253346" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------
-  ink:              { light: "#1A2433", dark: "#D5DDE8" },
+  ink:              { light: "#1A2433", dark: "#E4E9F0" },
   "ink-body":       { light: "#374253", dark: "#B6C1CF" },
   "ink-2":          { light: "#4C5665", dark: "#A8B6C6" },
   "ink-mute":       { light: "#5A6473", dark: "#96A3B4" },
   "ink-3":          { light: "#68707E", dark: "#8B98A8" }, // the workhorse
-  "ink-faint":      { light: "#9AA2AD", dark: "#7C8899" },
+  "ink-faint":      { light: "#9AA2AD", dark: "#5E6978" },
   "ink-4":          { light: "#C7CBD2", dark: "#475569" }, // outlines, disabled
 
   // --- brand ------------------------------------------------------------
@@ -76,16 +98,19 @@ const THEME_TOKENS = {
   // dark value outright (6.23:1 against err-bg dark) rather than inventing a
   // new red -- the message IS an error, so borrowing the brand's own error
   // red keeps the palette from growing a second one. err-rule's dark value
-  // was chosen to clear 4.5:1 (4.80:1) as asked, which is a stricter bar than
-  // its siblings actually clear: --ok-rule and --warn-rule measure only
-  // ~1.9:1 and ~1.8:1 against their own dark backgrounds (they read as
-  // subtle hairlines, not text). Held here to 4.5:1 as instructed, so
-  // --err-rule renders visibly brighter/more saturated than --ok-rule/
-  // --warn-rule side by side -- worth a look if that inconsistency reads as
-  // odd next to them in practice.
+  // was originally held at 4.5:1 (#C27070, 4.80:1) on instruction, and the
+  // note here flagged that its siblings clear only ~1.96:1 (--ok-rule) and
+  // ~1.79:1 (--warn-rule) against their own dark backgrounds. Side by side
+  // that read exactly as odd as predicted: the error box wore a bright
+  // saturated outline while success and warning wore hairlines. Resolved
+  // 2026-08-21 by bringing err DOWN to the siblings (#943F3F, 2.50:1)
+  // rather than dragging the other two up. These are BORDERS, not text --
+  // no contrast floor applies to them, and 4.5:1 outlines make an alert
+  // shout over its own message. The error TEXT is untouched and still
+  // clears 6.23:1, which is the part a reader actually has to read.
   "err-text":       { light: "#7F1D1D", dark: "#F87171" },
   "err-bg":         { light: "#FCF1EF", dark: "#2A1517" },
-  "err-rule":       { light: "#F0C7C7", dark: "#C27070" },
+  "err-rule":       { light: "#F0C7C7", dark: "#943F3F" },
   // Estimate and vault-comp badges. Light values are the literals those
   // chips already used, so light mode does not move. Dark values keep the
   // sienna / purple identities rather than borrowing --warn-* or --ok-*,
@@ -120,25 +145,46 @@ const THEME_TOKENS = {
 const DARK_LIFT =
   "0 1px 0 rgba(213,221,232,.14) inset,0 10px 28px -10px rgba(0,0,0,.55)";
 
-// Dark-only chrome that is not a colour token: native autofill, the caret,
-// scrollbar thumb, and font smoothing. Light mode must not gain any of
-// these -- they are a second @media screen block after the dark token
-// block, so print stays light. Interpolated via rootCss() into every
-// server-rendered in-scope page; index.html hand-copies the same rules
+// Dark-only chrome that is not a colour token: the field background, native
+// autofill, the caret, scrollbar thumb, and font smoothing. Light mode must
+// not gain any of these -- they are a second @media screen block after the
+// dark token block, so print stays light. Interpolated via rootCss() into
+// every server-rendered in-scope page; index.html hand-copies the same rules
 // (it is static and never templates this file).
+//
+// The field background is the one that looked broken. NOT ONE input on this
+// site carries a bg-* class (18 in index.html, 38 in vault-page.js, 21 in
+// server.js, zero with a background). In light that was invisible luck: the
+// UA default is white, which is exactly --card, so a white field on a white
+// card separated by its --edge border was the intended design all along. In
+// dark, color-scheme:dark hands those same fields Chrome's own #3B3B3B --
+// a NEUTRAL grey, off-palette against cool slate, sitting at 1.39:1 against
+// --card. Every text field on the site read as muddy and slightly warm.
+//
+// They take --paper (one step DOWN from the card they sit on) rather than
+// --card. That deliberately diverges from light's white-on-white: on
+// charcoal a 1.76:1 border alone is too thin to read as an edge, and a
+// field recessed below its surface is what dark UIs use to say "type here".
+// Selector is by ELEMENT, so it is specificity 0,1,1 -- any input that ever
+// does get a bg-* class still wins through the bridge at 0,2,0.
 const DARK_CHROME =
   "@media screen{[data-theme=\"dark\"]{scrollbar-color:var(--wash-2) var(--paper);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}" +
   "[data-theme=\"dark\"] input,[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{caret-color:var(--ink)}" +
+  "[data-theme=\"dark\"] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset])," +
+  "[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{background-color:var(--paper)}" +
   "[data-theme=\"dark\"] input:-webkit-autofill,[data-theme=\"dark\"] textarea:-webkit-autofill,[data-theme=\"dark\"] select:-webkit-autofill{" +
-  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--card) inset;transition:background-color 9999s ease-out}}";
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--paper) inset;transition:background-color 9999s ease-out}}";
 
 // Chrome paints a light-blue sheet on autofill, including when someone
 // pastes a street address it recognises. background-color cannot override
 // it (UA !important); an inset shadow the size of the field can. var(--card)
-// is white in light and charcoal in dark, so the field stays the colour it
-// already is. Intentionally NOT inside DARK_CHROME: that block is dark-only,
-// and the blue sheet is a light-mode bug. :hover/:focus are the states
-// Chrome restyles after the paste.
+// is the LIGHT field colour, so the field stays the colour it already is.
+// Intentionally NOT inside DARK_CHROME: that block is dark-only, and the
+// blue sheet is a light-mode bug. Dark restates the same rule with
+// var(--paper) inside DARK_CHROME, at a higher specificity (0,2,1 beats
+// 0,1,1) so it wins here regardless of source order -- if the dark field
+// colour ever moves, BOTH copies move. :hover/:focus are the states Chrome
+// restyles after the paste.
 const AUTOFILL_COVER =
   "input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus," +
   "textarea:-webkit-autofill,textarea:-webkit-autofill:hover,textarea:-webkit-autofill:focus," +

@@ -40,6 +40,7 @@
 //   node scripts/shot.js / --size 390x844             a phone-width capture
 //   node scripts/shot.js / --env ACCOUNT_WALL=off     signed-out app, not the landing page
 //   node scripts/shot.js /markets --viewport          just the fold, not the whole page
+//   node scripts/shot.js / --dark                     the same page in dark mode
 "use strict";
 
 const fs = require("fs");
@@ -99,7 +100,7 @@ function slugForPath(pathname) {
 function parseShotArgs(argv) {
   const out = {
     paths: [], before: null, size: { ...DEFAULT_SIZE }, out: null, browser: null,
-    fullPage: true, expand: false, keep: false, help: false, env: {}, settleMs: SETTLE_MS, errors: [],
+    fullPage: true, expand: false, dark: false, keep: false, help: false, env: {}, settleMs: SETTLE_MS, errors: [],
   };
   const args = Array.isArray(argv) ? argv.slice() : [];
   while (args.length) {
@@ -145,6 +146,7 @@ function parseShotArgs(argv) {
       continue;
     }
     if (arg === "--expand") { out.expand = true; continue; }
+    if (arg === "--dark") { out.dark = true; continue; }
     if (arg === "--viewport") { out.fullPage = false; continue; }
     if (arg === "--full") { out.fullPage = true; continue; }
     if (arg === "--keep") { out.keep = true; continue; }
@@ -364,7 +366,7 @@ function launchBrowser(bin, profileDir) {
   return spawn(bin, args, { stdio: ["ignore", "ignore", "pipe"] });
 }
 
-async function captureViaCdp(dt, url, size, fullPage, settleMs, expand) {
+async function captureViaCdp(dt, url, size, fullPage, settleMs, expand, dark) {
   const { targetId } = await dt.send("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await dt.send("Target.attachToTarget", { targetId, flatten: true });
   try {
@@ -382,8 +384,19 @@ async function captureViaCdp(dt, url, size, fullPage, settleMs, expand) {
     // under prefers-reduced-motion, so emulating it uses the page's own
     // accessibility path instead of injecting stylesheet overrides that would
     // have to know each surface's class names.
+    //
+    // --dark rides in on the same call. The theme boot script (index.html's
+    // inline <script>, THEME_BOOT in server.js) reads localStorage first and
+    // falls back to matchMedia("(prefers-color-scheme: dark)") when nothing
+    // is stored -- and a fresh scratch profile never has anything stored, so
+    // emulating the media query is enough to get a genuine dark render
+    // through the page's OWN boot path. Nothing is injected and no storage is
+    // seeded, which matters because the thing under test IS that boot path.
     await dt.send("Emulation.setEmulatedMedia", {
-      features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+      features: [
+        { name: "prefers-reduced-motion", value: "reduce" },
+        ...(dark ? [{ name: "prefers-color-scheme", value: "dark" }] : []),
+      ],
     }, sessionId).catch(() => { /* older Chromium: the flag below still applies */ });
 
     const loaded = dt.once("Page.loadEventFired");
@@ -450,7 +463,7 @@ function captureViaFlag(bin, url, size, outFile, settleMs) {
 // One pass: boot a server in `cwd`, shoot every path, tear the server down
 // ---------------------------------------------------------------------------
 
-async function shootPass({ cwd, paths, size, fullPage, expand, settleMs, outDir, suffix, browserBin, envOverrides, label }) {
+async function shootPass({ cwd, paths, size, fullPage, expand, dark, settleMs, outDir, suffix, browserBin, envOverrides, label }) {
   const port = await freePort();
   const server = startServer(cwd, port, envOverrides, label);
   const written = [];
@@ -472,7 +485,7 @@ async function shootPass({ cwd, paths, size, fullPage, expand, settleMs, outDir,
     for (const pathname of paths) {
       const url = `http://127.0.0.1:${port}${pathname}`;
       const file = path.join(outDir, `${slugForPath(pathname)}${suffix}.png`);
-      if (dt) fs.writeFileSync(file, await captureViaCdp(dt, url, size, fullPage, settleMs, expand));
+      if (dt) fs.writeFileSync(file, await captureViaCdp(dt, url, size, fullPage, settleMs, expand, dark));
       else captureViaFlag(browserBin, url, size, file, settleMs);
       written.push({ pathname, file });
       console.log(`  ${label}  ${pathname}  ->  ${path.relative(REPO, file)}`);
@@ -542,6 +555,7 @@ Options:
                    throwaway detached worktree
   --size WxH       viewport size (default ${DEFAULT_SIZE.width}x${DEFAULT_SIZE.height})
   --expand         open every <details> first (FAQ accordions, vault panels)
+  --dark           shoot in dark mode (emulates prefers-color-scheme: dark)
   --viewport       capture the fold only, not the whole page
   --out <dir>      where the PNGs go (default screenshots/)
   --env K=V        an env var for the scratch server (repeatable)
@@ -576,14 +590,14 @@ async function main() {
     if (before) {
       console.log(`\nBefore — ${opts.before} (${before.resolved.slice(0, 7)})`);
       await shootPass({
-        cwd: before.dir, paths: opts.paths, size: opts.size, fullPage: opts.fullPage, expand: opts.expand,
+        cwd: before.dir, paths: opts.paths, size: opts.size, fullPage: opts.fullPage, expand: opts.expand, dark: opts.dark,
         settleMs: opts.settleMs, outDir, suffix: "--before", browserBin,
         envOverrides: opts.env, label: "before",
       });
     }
     console.log(`\n${before ? "After — " : ""}working tree`);
     const after = await shootPass({
-      cwd: REPO, paths: opts.paths, size: opts.size, fullPage: opts.fullPage, expand: opts.expand,
+      cwd: REPO, paths: opts.paths, size: opts.size, fullPage: opts.fullPage, expand: opts.expand, dark: opts.dark,
       settleMs: opts.settleMs, outDir, suffix: before ? "--after" : "", browserBin,
       envOverrides: opts.env, label: before ? "after " : "shot  ",
     });

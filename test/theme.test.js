@@ -22,18 +22,30 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
   }
 });
 
-// The 2026-08-13 lift (paper/card/wash) plus the 2026-08-14 ink notch.
-// Light values stay on EXISTING above; paper/card do not move. A silent
-// revert to slate-950 would still satisfy "has a dark hex" and the
-// index.html mirror (if both copies moved together), so this table is
-// the lock.
+// The 2026-08-13 lift (paper/card/wash), the 2026-08-14 ink notch, and the
+// 2026-08-21 ramp/rule pass. Light values stay on EXISTING above; paper,
+// card and wash do not move in any of the three. A silent revert to
+// slate-950 would still satisfy "has a dark hex" and the index.html mirror
+// (if both copies moved together), so this table is the lock.
+//
+// Moved on 2026-08-21, and why, so a future reader can tell a deliberate
+// retune from a drift:
+//   ink        #D5DDE8 -> #E4E9F0  11.41:1 -> 12.81:1 on --card
+//   ink-faint  #7C8899 -> #5E6978   4.34:1 ->  2.80:1 (a whisper again)
+//   hair       #1E2938 -> #253346   1.06:1 ->  1.22:1 (was not a line)
+//   line       #2A3648 -> #2F3D51   1.28:1 ->  1.42:1 (reopens the ladder)
+// The four middle ink steps and --edge are deliberately unchanged.
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
-  edge: "#3D4B5F", line: "#2A3648", hair: "#1E2938",
-  ink: "#D5DDE8", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
+  edge: "#3D4B5F", line: "#2F3D51", hair: "#253346",
+  ink: "#E4E9F0", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
   "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
-  "ink-faint": "#7C8899", "ink-4": "#475569",
+  "ink-faint": "#5E6978", "ink-4": "#475569",
+  // Brought DOWN to its siblings on 2026-08-21 (--ok-rule 1.96:1,
+  // --warn-rule 1.79:1) after shipping at 4.80:1 made the error box the
+  // only alert wearing a bright outline. Locked here so it stays a rule.
+  "err-rule": "#943F3F",
 };
 
 test("dark tokens match the lifted-slate table", () => {

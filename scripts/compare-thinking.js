@@ -129,6 +129,24 @@ function startServer(thinkingLevel) {
   // Supabase pair are real empty strings here, so server.js's .env loader
   // (which only fills `undefined`) cannot refill them from the worktree's
   // symlinked .env. Passing through the parent env wholesale would undo that.
+  //
+  // Anything NOT named here is `undefined` in the child, and server.js's .env
+  // loader fills exactly those from the worktree's .env — which
+  // scripts/worktree.js SYMLINKS to the main checkout's real one. So the
+  // blanked entries below are not belt-and-braces, they are the isolation: an
+  // explicitly empty string is `defined`, and the loader only fills
+  // `undefined` (that `=== undefined` test is deliberate and commented in
+  // server.js). This is also why the operator never has to edit that .env —
+  // editing a symlink edits the production file on the other end of it.
+  //
+  // APP_PASSWORD is blanked for a concrete reason: if the real .env sets it,
+  // /api/comps demands an x-app-password header that run-eval.js does not
+  // send, and every target 401s after the preflight has already declared the
+  // run safe to spend. Nothing is billed, but the failure is baffling.
+  // THINKING_LEVEL is blanked-then-set below so a value sitting in the .env
+  // cannot silently make both halves of the comparison identical — which
+  // would read as "reasoning depth does not matter" rather than as a
+  // misconfiguration.
   const env = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -137,6 +155,8 @@ function startServer(thinkingLevel) {
     TEMP: process.env.TEMP,
     SUPABASE_URL: "",
     SUPABASE_SERVICE_KEY: "",
+    APP_PASSWORD: "",
+    THINKING_LEVEL: "",
     PORT: String(PORT),
     ADMIN_KEY,
     [KEY_VAR]: API_KEY,

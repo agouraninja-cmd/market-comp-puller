@@ -324,7 +324,8 @@ function loadMembers(body, status) {
     "const __confirms = [];\n" +
     "function confirm(m) { __confirms.push(m); return true; }\n" +
     "async function renderShares() {}\n" +
-    "function renderFirmAutoShare() {} function renderFirmBilling() {}",
+    "function renderFirmAutoShare() {} function renderFirmBilling() {}\n" +
+    "function renderFirmShop() {}",
     { fetch });
 }
 
@@ -492,7 +493,9 @@ function loadShelf(opts) {
   const o = opts || {};
   const fetch = makeFetch([["/api/org/shelf", { status: o.status || 200, body: o.body }]]);
   return load(SHELF_RE,
-    "this.render = renderFirmShelf; this.filter = applyFirmShelfFilter; this.items = () => firmShelfItems;",
+    "this.render = renderFirmShelf; this.filter = applyFirmShelfFilter; this.items = () => firmShelfItems;" +
+    // The flag the type filter sets when a person changes it themselves.
+    " this.touch = () => { firmShelfTypeTouched = true; };",
     "let currentUser = __user; function myFirm() { return __firm; }\n" +
     "function fmtShareDate(s) { return 'Mar 14'; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
@@ -705,6 +708,12 @@ test("every id the firm code reaches for exists in index.html", async () => {
   const shelf = loadShelf({ body: { items: [ITEM({})], truncated: true } });
   await shelf.render();
   collect(shelf);
+  const shop = loadShop();
+  shop.fn({ name: "F", kind: "development", canManage: true });
+  collect(shop);
+  const create = loadCreate({ kind: "" });
+  await create.click();
+  collect(create);
 
   assert.ok(asked.size > 15, "the sweep collected almost no ids — did the loaders stop running?");
   for (const id of asked) {
@@ -723,4 +732,157 @@ test("both report notices are dropped from the print and the PNG", () => {
     assert.match(m[1], /\bno-capture\b/, `#${id} would land in the exported PNG`);
     assert.match(m[1], /\bhidden\b/, `#${id} ships visible, so an ordinary report shows an empty line`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Shop kind (migration 036) — the browser half of Transition Plan v2 §6.
+//
+// Two things are worth executing rather than reading: that a control which
+// only an owner may use is not offered to everybody, and that the shelf's
+// saved view never hides rows while its own filter is off screen.
+// ---------------------------------------------------------------------------
+const SHOP_COPY_RE = /  const SHOP_COPY = \{[\s\S]*?\n  const shopCopy = [^\n]*\n/;
+const SHOP_RE = /  function renderFirmShop\(firm\) \{[\s\S]*?\n  \}/;
+
+function loadShop() {
+  const copy = html.match(SHOP_COPY_RE);
+  assert.ok(copy, "index.html's SHOP_COPY block moved — the slice below reads it");
+  return load(SHOP_RE, "this.fn = renderFirmShop;", copy[0]);
+}
+
+test("an owner may change the shop; a colleague reads it and cannot", () => {
+  const owner = loadShop();
+  owner.fn({ name: "Boise Land Partners", kind: "development", canManage: true });
+  assert.equal(owner.dom.el("firmShopSelect").value, "development");
+  assert.equal(owner.dom.el("firmShopSelect").disabled, false);
+  assert.match(owner.dom.text("firmShopState"), /land comps, rent comps/);
+
+  const colleague = loadShop();
+  colleague.fn({ name: "Colliers Boise", kind: "broker", canManage: false });
+  assert.equal(colleague.dom.el("firmShopSelect").disabled, true,
+    "/api/org/settings refuses them, and a control that can only fail is worse than a sentence");
+  // They still read the answer: it is why their shelf opens the way it does.
+  assert.match(colleague.dom.text("firmShopState"), /^Broker shop · your shelf holds comp sets, BOVs/);
+});
+
+test("a firm from before 036 reads as a broker shop rather than as nothing", () => {
+  const ctx = loadShop();
+  ctx.fn({ name: "Colliers Boise", canManage: true });   // no kind at all
+  assert.equal(ctx.dom.el("firmShopSelect").value, "broker");
+  assert.match(ctx.dom.text("firmShopState"), /comp sets, BOVs, market reports and lease abstracts/);
+});
+
+const LAND = (o) => ITEM(Object.assign({ type: "Land", address: "40 acres, Kuna" }, o));
+const sixItems = (type) => Array.from({ length: 6 }, (_, i) =>
+  ITEM({ type: i < 2 ? "Land" : type, address: `${i} Test St` }));
+
+test("a development shop's shelf opens on Land, and says how much it is not showing", async () => {
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
+    body: { items: sixItems("Industrial") },
+  });
+  await ctx.render();
+  assert.equal(ctx.dom.el("firmShelfType").value, "Land", "§6's saved view");
+  // The whole shelf in the header, the filtered slice named separately: a view
+  // the colleague did not choose must never read as the record having shrunk.
+  assert.match(ctx.dom.text("firmShelfStats"), /6 reports/);
+  assert.equal(ctx.dom.text("firmShelfCount"), "2 of 6");
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 2);
+});
+
+test("a broker shop's shelf opens on everything", async () => {
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Colliers Boise", kind: "broker" },
+    body: { items: sixItems("Industrial") },
+  });
+  await ctx.render();
+  assert.equal(ctx.dom.el("firmShelfType").value, "");
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
+  assert.equal(ctx.dom.text("firmShelfCount"), "", "nothing is being filtered, so nothing is counted");
+});
+
+test("the saved view never hides rows while its own filter is off screen", async () => {
+  // The filter row is furniture under six rows and hides itself. If the
+  // default still applied, a five-report shelf would show two and offer no
+  // visible way to ask why — a record that appears to have lost something.
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
+    body: { items: [LAND({}), ITEM({ address: "1 A St" }), ITEM({ address: "2 B St" })] },
+  });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("firmShelfSearchWrap"), true);
+  assert.equal(ctx.dom.el("firmShelfType").value, "", "cleared, not merely hidden");
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 3, "every row is on the shelf");
+});
+
+test("a colleague's own choice of filter survives the next render", async () => {
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Boise Land Partners", kind: "development" },
+    body: { items: sixItems("Retail") },
+  });
+  await ctx.render();
+  assert.equal(ctx.dom.el("firmShelfType").value, "Land");
+  // They widen it themselves. A default that undoes a person's own click is
+  // not a default, it is a fight — so the second render leaves it alone.
+  ctx.dom.el("firmShelfType").value = "";
+  ctx.touch();
+  await ctx.render();
+  assert.equal(ctx.dom.el("firmShelfType").value, "");
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 6);
+});
+
+test("the type filter and the search box narrow together", async () => {
+  const ctx = loadShelf({
+    firm: { id: "o1", name: "Boise Land Partners", kind: "broker" },
+    body: { items: [LAND({ market: "Kuna, ID" }), LAND({ address: "80 acres, Nampa", market: "Nampa, ID" }),
+                    ITEM({ address: "500 Warehouse Way" })] },
+  });
+  await ctx.render();
+  ctx.dom.el("firmShelfType").value = "Land";
+  ctx.dom.el("firmShelfSearch").value = "nampa";
+  ctx.filter();
+  assert.equal(ctx.dom.el("sharedWithFirmRows").children.length, 1);
+  assert.equal(ctx.dom.text("firmShelfCount"), "1 of 3");
+  // An empty shelf and a filter with no hits are still told apart, now that
+  // either control can be the one that empties the list.
+  ctx.dom.el("firmShelfSearch").value = "nothing here";
+  ctx.filter();
+  assert.equal(ctx.dom.hidden("firmShelfNoMatch"), false);
+});
+
+// The create button, which is where the shop question is REQUIRED. Sliced as
+// the handler it is: the guard has to hold in the browser as well as on the
+// route, or the server's refusal arrives as a sentence under the name box
+// about a question further up the form.
+const CREATE_RE = /  document\.getElementById\("firmCreateBtn"\)\.addEventListener\("click", async \(\) => \{[\s\S]*?\n  \}\);/;
+
+function loadCreate(opts) {
+  const o = opts || {};
+  const fetch = makeFetch([["/api/org", { status: o.status || 200, body: o.body || { id: "o1" } }]]);
+  const copy = html.match(SHOP_COPY_RE);
+  const ctx = load(CREATE_RE, "this.fetch = fetch;",
+    copy[0] + "\nasync function renderShares() {}\nfunction openUpgradePrompt() {}", { fetch });
+  ctx.dom.el("firmNameInput").value = o.name === undefined ? "Colliers Boise" : o.name;
+  ctx.dom.el("firmKindSelect").value = o.kind === undefined ? "broker" : o.kind;
+  ctx.click = () => ctx.dom.el("firmCreateBtn").fire("click");
+  return ctx;
+}
+
+test("creating a firm without answering the shop question asks nothing of the server", async () => {
+  const ctx = loadCreate({ kind: "" });
+  await ctx.click();
+  assert.equal(ctx.fetch.log.length, 0, "the round trip was spent on a question the page could answer");
+  assert.equal(ctx.dom.hidden("firmCreateErr"), false);
+  assert.match(ctx.dom.text("firmCreateErr"), /broker shop or a development shop/);
+  assert.equal(ctx.dom.el("firmCreateBtn").disabled, false, "and the button comes back");
+});
+
+test("a firm is created with both answers, and the form is left empty", async () => {
+  const ctx = loadCreate({ kind: "development", name: "Boise Land Partners" });
+  await ctx.click();
+  assert.equal(ctx.fetch.log.length, 1);
+  const sent = JSON.parse(ctx.fetch.log[0].init.body);
+  assert.deepEqual(sent, { name: "Boise Land Partners", kind: "development" });
+  assert.equal(ctx.dom.el("firmNameInput").value, "");
+  assert.equal(ctx.dom.el("firmKindSelect").value, "", "the next firm asks the question again");
 });

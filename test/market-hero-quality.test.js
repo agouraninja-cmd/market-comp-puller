@@ -85,14 +85,18 @@ test("a missing 1920w sibling is its own flag", () => {
   assert.equal(g.grade, "sibling");
 });
 
-test("skipKeysFromRows is the live-header skip list", () => {
-  const { skipKeysFromRows } = require("../market-hero-quality");
-  assert.deepEqual(skipKeysFromRows([
-    { key: "dallas, tx", ok: true },
-    { key: "ontario, ca", ok: false },
+test("skipFilesFromRows is the live-header skip list, and it names FILES", () => {
+  const { skipFilesFromRows } = require("../market-hero-quality");
+  // Keyed on the file, not the city: one city can hold a curated photograph
+  // and a generated one, and a city key would take the good one down with the
+  // bad one. Ontario, CA is the live case.
+  assert.deepEqual(skipFilesFromRows([
+    { key: "dallas, tx", file: "dallas-tx.jpg", ok: true },
+    { key: "ontario, ca", file: "ontario-ca.jpg", ok: false },
+    { key: "ontario, ca", file: "ontario-ca-auto.jpg", ok: true },
     { ok: false },
-  ]), ["ontario, ca"]);
-  assert.deepEqual(skipKeysFromRows(null), []);
+  ]), ["ontario-ca.jpg"]);
+  assert.deepEqual(skipFilesFromRows(null), []);
 });
 
 test("Ontario is the city the softness rule exists to catch", () => {

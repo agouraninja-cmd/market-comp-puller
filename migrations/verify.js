@@ -190,6 +190,11 @@ const COLUMNS = [
   // follows the firm — which is exactly why it is named here: a member who
   // said NO would silently start following the firm again.
   ["org_members",       ["auto_share"],                         "031-org-auto-share.sql"],
+  // 036 is 030's hazard rather than 031's: orgsByIds() and findOrg() name
+  // `kind` in their SELECTs, so its absence 400s every firm surface at once
+  // instead of degrading one setting. Named here because that failure looks
+  // like the firm feature being broken, not like a migration being unrun.
+  ["orgs",              ["kind"],                               "036-org-shop-kind.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

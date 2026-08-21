@@ -1238,3 +1238,30 @@ test("the Explorer badge uses only classes the vendored tailwind.css actually ha
       `class "${cls}" is not in the vendored tailwind.css — regenerate it (see tailwind.config.js) or use an inline style`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// The shop nouns, mirrored (migration 036)
+//
+// index.html cannot require org-access.js, so the two shops' words exist
+// twice: once in the module the server writes emails from, once in the script
+// that writes the desk. That is a mirrored constant, which CLAUDE.md and
+// Chuck's own trap list name as the way this codebase breaks quietly -- so it
+// is mirrored deliberately and pinned here, the way exportReportKey and
+// PRO-BILLING-SETUP.md are.
+//
+// What drift would look like without this: a firm invited as a development
+// shop, told by email that its shelf holds land comps, opening a desk that
+// says comp sets and BOVs.
+// ---------------------------------------------------------------------------
+test("index.html's SHOP_COPY is the same map as org-access.js's", () => {
+  const ORG = require("../org-access.js");
+  const src = html.match(/  const SHOP_COPY = \{[\s\S]*?\n  \};/);
+  assert.ok(src, "index.html's SHOP_COPY block is gone or renamed — the mirror is unpinned");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\nthis.copy = SHOP_COPY;", { filename: "index.html" }).runInContext(ctx);
+  assert.deepEqual(ctx.copy, ORG.SHOP_COPY,
+    "the desk and the invite email would describe the same firm differently");
+  // Both halves read an unknown kind as broker; SHOP_COPY having a `broker`
+  // key is what makes that fallback a value rather than undefined.
+  assert.ok(ctx.copy.broker, "the fallback both halves use is missing from the page's map");
+});

@@ -22,18 +22,30 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
   }
 });
 
-// The 2026-08-13 lift (paper/card/wash) plus the 2026-08-14 ink notch.
-// Light values stay on EXISTING above; paper/card do not move. A silent
-// revert to slate-950 would still satisfy "has a dark hex" and the
-// index.html mirror (if both copies moved together), so this table is
-// the lock.
+// The 2026-08-13 lift (paper/card/wash), the 2026-08-14 ink notch, and the
+// 2026-08-21 ramp/rule pass. Light values stay on EXISTING above; paper,
+// card and wash do not move in any of the three. A silent revert to
+// slate-950 would still satisfy "has a dark hex" and the index.html mirror
+// (if both copies moved together), so this table is the lock.
+//
+// Moved on 2026-08-21, and why, so a future reader can tell a deliberate
+// retune from a drift:
+//   ink        #D5DDE8 -> #E4E9F0  11.41:1 -> 12.81:1 on --card
+//   ink-faint  #7C8899 -> #5E6978   4.34:1 ->  2.80:1 (a whisper again)
+//   hair       #1E2938 -> #253346   1.06:1 ->  1.22:1 (was not a line)
+//   line       #2A3648 -> #2F3D51   1.28:1 ->  1.42:1 (reopens the ladder)
+// The four middle ink steps and --edge are deliberately unchanged.
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
-  edge: "#3D4B5F", line: "#2A3648", hair: "#1E2938",
-  ink: "#D5DDE8", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
+  edge: "#3D4B5F", line: "#2F3D51", hair: "#253346",
+  ink: "#E4E9F0", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
   "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
-  "ink-faint": "#7C8899", "ink-4": "#475569",
+  "ink-faint": "#5E6978", "ink-4": "#475569",
+  // Brought DOWN to its siblings on 2026-08-21 (--ok-rule 1.96:1,
+  // --warn-rule 1.79:1) after shipping at 4.80:1 made the error box the
+  // only alert wearing a bright outline. Locked here so it stays a rule.
+  "err-rule": "#943F3F",
 };
 
 test("dark tokens match the lifted-slate table", () => {
@@ -161,6 +173,7 @@ const root = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8").repla
 // here: they declare their own :root and are out of scope (spec section 1).
 const SERVER_JS = root("server.js");
 const VAULT_JS = root("vault-page.js");
+const INDEX_HTML = root("index.html");
 
 // Slice one template-literal CSS constant out of server.js by name.
 function cssBlock(name) {
@@ -175,6 +188,114 @@ function cssBlock(name) {
   assert.notEqual(end, -1, `${name} has no closing backtick`);
   return SERVER_JS.slice(from, end);
 }
+
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab), so the
+// ink ramp runs backwards on it: --ink-4, which is a pale outline colour in
+// light, is a dark slate in dark. Measured on /brokers before the fix, every
+// footer link sat at 1.75:1 and the legal small print at 2.38:1. index.html
+// was protected by its class bridge; the three server-rendered footers set
+// var(--ink-4) DIRECTLY, so no bridge could reach them.
+//
+// The footer block already carried a "Mirrored in HOW_CSS and in index.html's
+// footer; keep the three in step" comment that it had NOT been kept in step
+// with, which is exactly why the fix is one shared constant and why this test
+// checks it arrives in all three rather than trusting the comment.
+// index.html and the market pages each own a Leaflet map, and index.html is
+// static so the two cannot share a constant -- the same hand-copy relationship
+// DARK_CHROME already has. The market pages had NO Leaflet dark rules at all
+// until 2026-08-21, so in dark the container showed leaflet.css's #ddd behind
+// every tile gap. This pins the copies together: a rule added to one and not
+// the other is the failure mode a comment alone has never prevented in this
+// file.
+test("the market pages' Leaflet dark chrome matches index.html's copy", () => {
+  // Both sides are parsed into selector -> declaration-set, because the two
+  // files format identically-meaning CSS differently: index.html keeps its
+  // selector lists on separate lines with spaces and a trailing semicolon,
+  // server.js writes them compact. Comparing text would fail on whitespace.
+  const parse = (css) => {
+    const map = new Map();
+    css.replace(/\/\*[\s\S]*?\*\//g, "").split("}").forEach((chunk) => {
+      const at = chunk.indexOf("{");
+      if (at < 0) return;
+      const sels = chunk.slice(0, at).split(",").map((x) => x.replace(/\s+/g, " ").trim());
+      const decls = chunk.slice(at + 1).split(";")
+        .map((d) => d.replace(/\s+/g, " ").replace(/\s*:\s*/, ":").trim())
+        .filter(Boolean).sort().join(";");
+      sels.filter(Boolean).forEach((sel) => { if (sel.includes("leaflet")) map.set(sel, decls); });
+    });
+    return map;
+  };
+
+  const block = SERVER_JS.match(/const LEAFLET_DARK_CSS = `([\s\S]*?)`;/);
+  assert.ok(block, "LEAFLET_DARK_CSS must exist in server.js");
+  const market = parse(block[1]);
+  const index = parse(INDEX_HTML.split("</style>")[0]);
+
+  assert.ok(market.size >= 6, `expected the whole block, got ${market.size} selectors`);
+  for (const [sel, decls] of market) {
+    assert.ok(index.has(sel), `index.html has no dark Leaflet rule for ${sel}`);
+    assert.equal(index.get(sel), decls, `${sel} disagrees between index.html and LEAFLET_DARK_CSS`);
+  }
+});
+
+// The market map used to hardcode CARTO's light_all basemap, so a dark market
+// page rendered a white rectangle in the middle of it. It follows the theme
+// now, and swaps by setUrl rather than rebuilding the layer, because the
+// theme toggle lives in the shared header and can fire long after the pins
+// have been placed.
+test("the market map's basemap follows the theme", () => {
+  assert.match(SERVER_JS, /basemaps\.cartocdn\.com\/" \+ \(dark \? "dark_all" : "light_all"\)/,
+    "the market basemap must be chosen from the theme, not pinned");
+  assert.equal(/cartocdn\.com\/light_all/.test(SERVER_JS), false,
+    "no hardcoded light_all basemap should remain");
+  assert.match(SERVER_JS, /attributeFilter: \["data-theme"\]/,
+    "a theme change must reach the tile layer");
+  assert.match(SERVER_JS, /tiles\.setUrl\(baseUrl\(\)\)/,
+    "swap the URL rather than re-adding the layer, which would drop the pins");
+});
+
+test("the dark-mode footer ink reaches all three server-rendered footers", () => {
+  const rule = /\[data-theme="dark"\] footer a[^{]*\{color:var\(--ink-body\)\}/;
+
+  // Defined once, not restated per stylesheet.
+  const definitions = SERVER_JS.match(/const FOOTER_DARK_CSS =/g) || [];
+  assert.equal(definitions.length, 1, "FOOTER_DARK_CSS must be defined exactly once");
+  assert.match(SERVER_JS, rule, "server.js does not define the dark footer link rule");
+
+  // Interpolated into both server-side stylesheets, and handed to the vault.
+  const uses = SERVER_JS.match(/\$\{FOOTER_DARK_CSS\}/g) || [];
+  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate it");
+  assert.match(SERVER_JS, /renderVaultHTML\(boot, \{[^}]*FOOTER_DARK_CSS/s,
+    "the vault must be handed FOOTER_DARK_CSS through the chrome object");
+  assert.match(VAULT_JS, /chrome\.FOOTER_DARK_CSS/, "vault-page.js must read it");
+  assert.match(VAULT_JS, /\$\{FOOTER_DARK_CSS\}/, "vault-page.js must interpolate it");
+
+  // And it must not have quietly gone back to a token that inverts.
+  assert.equal(/\[data-theme="dark"\] footer[^{]*\{color:var\(--ink-4\)\}/.test(SERVER_JS), false,
+    "--ink-4 is 1.75:1 on the dark footer slab; it must not be the dark value");
+});
+
+test("the footer's dark ink clears AA on the slab it actually sits on", () => {
+  const lum = (hex) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const ratio = (a, b) => {
+    const x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const slab = THEME_TOKENS.slab.dark;
+  // Links carry navigation and the contact address; the small print is a
+  // legal disclaimer. Both have to be readable, which --ink-faint no longer
+  // is by design -- it is a whisper token in both themes now.
+  assert.ok(ratio(THEME_TOKENS["ink-body"].dark, slab) >= 4.5,
+    "footer links must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-3"].dark, slab) >= 4.5,
+    "footer small print must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-faint"].dark, slab) < 4.5,
+    "--ink-faint is a whisper; if it now clears AA this test's premise changed");
+});
 
 test("no in-scope stylesheet references an undefined variable", () => {
   const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));

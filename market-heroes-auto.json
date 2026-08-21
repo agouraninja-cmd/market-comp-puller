@@ -147,27 +147,27 @@
       "rejected": [
         {
           "title": "Nampa Water Tower (Nampa, Idaho)",
-          "reason": "It shows a fenced grassy utility yard at a water tower, not a city view."
+          "reason": "It shows a fenced grassy utility yard at a water tower, not a city view or skyline."
         },
         {
           "title": "Before I Die (Nampa, Idaho)",
-          "reason": "It is a close-up of a graffiti-covered wall full of text, not a distant view of the city."
+          "reason": "It is a close-up of a graffiti wall covered in text, not a distant view of the city."
         },
         {
           "title": "College of Western Idaho Nampa Campus Academic Building",
-          "reason": "It is a close-up of a single building's facade rather than a wider city or downtown view."
+          "reason": "It's a close-up of a single building's facade rather than a wider city or downtown view."
         },
         {
           "title": "Overland Brewery Office (Nampa, Idaho)",
-          "reason": "It is a close-up of a single building's facade rather than a wider city view."
-        },
-        {
-          "title": "Nampa Depot",
-          "reason": "It's a close-up of a single building's roofline rather than a wider city or street view."
+          "reason": "It is a close-up of a single building's facade rather than a city view at a distance."
         },
         {
           "title": "Sportsman Bar (Nampa, Idaho)",
           "reason": "The crop shows only empty asphalt pavement and curb, with no identifiable cityscape."
+        },
+        {
+          "title": "Nampa Depot",
+          "reason": "It is a close-up of a single building's facade with signage rather than a wider city, skyline or streetscape view."
         }
       ]
     },
@@ -265,27 +265,27 @@
       "rejected": [
         {
           "title": "Vero Beach arial view at night (2023)",
-          "reason": "Blurry, low-contrast night aerial with indistinct subject, too soft to sit under white type."
+          "reason": "Soft, blurry hazy night aerial lacking sharpness and clear subject for white type."
+        },
+        {
+          "title": "Vero Beach FL Treasure Hammock Ranch Farmstead02",
+          "reason": "The crop is entirely overgrown grass and brush with no city, skyline or street visible."
+        },
+        {
+          "title": "Merrill P. Barber Bridge Vero Beach 20230304 151634",
+          "reason": "The crop is entirely open water with no city, skyline or landmark visible."
         },
         {
           "title": "Repairs on the Alma Lee Loy bridge in Vero Beach",
-          "reason": "It is a dashcam-style road construction shot, not a city view from a distance, with no skyline or downtown visible."
+          "reason": "It is a dashcam-style road construction shot with barricade lettering and container signage, not a city view from a distance."
         },
         {
           "title": "Main Transit Hub in Vero Beach",
-          "reason": "Close-up of a single transit building facade with signage text, not a city view."
+          "reason": "Close-up of a single transit building's facade rather than a city view at distance."
         },
         {
           "title": "Marina in Grand Harbor, Vero Beach, Florida 001",
-          "reason": "It shows a close-up marina full of docked boats rather than a city skyline, downtown or waterfront cityscape."
-        },
-        {
-          "title": "Construction on A1A in Vero Beach, Florida (2023)",
-          "reason": "Close-up of construction trucks at a roadside rather than a city view or skyline."
-        },
-        {
-          "title": "Construction on A1A in Vero Beach, Florida (2023)1",
-          "reason": "Close-up of a construction truck at an intersection rather than a city view from a distance."
+          "reason": "It shows a close-up marina full of docked boats rather than a city skyline, downtown or distant urban view."
         }
       ]
     },
@@ -319,16 +319,8 @@
       "hero": null,
       "rejected": [
         {
-          "title": "Los Angeles CA 20230827 (85)",
-          "reason": "It's a close-up of a park entrance sign and lawn, not a city view at distance."
-        },
-        {
-          "title": "Los Angeles CA 20230827 (253)",
-          "reason": "Blurry park scene of grass and trees with a sign, not a city view from a distance."
-        },
-        {
-          "title": "Los Angeles CA 20230827 (475)",
-          "reason": "Close-up of a park sign with text rather than a distant view of the city."
+          "title": "Taft High School Woodland Hills",
+          "reason": "It is a close-up of a single school building's facade with prominent signage text, not a city view."
         },
         {
           "title": "Los Angeles CA 20230805 (9935)",
@@ -336,11 +328,53 @@
         },
         {
           "title": "Los Angeles CA 20230805 (9934)",
-          "reason": "Close-up of rocks and shrubbery with a signboard, not a city view."
+          "reason": "Close-up of rocks and vegetation with a signpost, not a city view."
         },
         {
           "title": "Los Angeles CA 20230805 (9936)",
-          "reason": "Close-up of vegetation and a shallow stream, no city view."
+          "reason": "Close-up of vegetation and a shallow creek bed, with no city view."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9938)",
+          "reason": "Close-up of a single apartment building's entrance and shrubbery, not a city view at distance."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9939)",
+          "reason": "Close-up of ivy and rocks, not a city view."
+        }
+      ]
+    },
+    "ontario, ca": {
+      "coords": {
+        "lat": 34.0528,
+        "lng": -117.6278
+      },
+      "checkedAt": "2026-08-21",
+      "hero": null,
+      "rejected": [
+        {
+          "title": "GraberOliveHouseVatRoom",
+          "reason": "Interior close-up of olive curing vats, not a city view."
+        },
+        {
+          "title": "Ontario Convention Center",
+          "reason": "It is a close-up of a single building's facade with large signage text rather than a wider city view."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269248098)",
+          "reason": "Ground-level yard scene with workers and equipment, not a city view from a distance."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269017836)",
+          "reason": "It shows a group of people in a work yard, not a city viewed from outside at distance."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54268126257)",
+          "reason": "It is a close-up of people's uniforms in a yard, not a city view."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269434200)",
+          "reason": "It's a close-up group photo of people in a yard, not a distant city view."
         }
       ]
     }

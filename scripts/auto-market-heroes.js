@@ -35,6 +35,7 @@
 //   node scripts/auto-market-heroes.js --force          # redo cities that already have one
 //   node scripts/auto-market-heroes.js --limit 3        # stop after N cities
 //   node scripts/auto-market-heroes.js --no-judge       # skip the model look (free, blinder)
+//   node scripts/auto-market-heroes.js --thumbs         # only rebuild the /markets thumbnails
 // ---------------------------------------------------------------------------
 
 "use strict";
@@ -83,13 +84,14 @@ const STATE_NAMES = {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { dryRun: false, force: false, judge: true, limit: Infinity, city: "", verbose: false };
+  const opts = { dryRun: false, force: false, judge: true, limit: Infinity, city: "", verbose: false, thumbs: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") opts.dryRun = true;
     else if (a === "--force") opts.force = true;
     else if (a === "--no-judge") opts.judge = false;
     else if (a === "--verbose") opts.verbose = true;
+    else if (a === "--thumbs") opts.thumbs = true;
     else if (a === "--limit") {
       const n = Number(argv[++i]);
       opts.limit = Number.isFinite(n) && n >= 0 ? n : Infinity;
@@ -288,6 +290,26 @@ async function wikipediaLead(city, state) {
   return null;
 }
 
+// Every photograph the city's own article uses, not just the lead one. On a
+// small town this is where the only real cityscape tends to live: Wikipedia
+// editors illustrate the article with a downtown or a waterfront long before
+// anybody files an "Aerial photographs of…" category.
+async function wikipediaArticleImages(city, state) {
+  const stateName = STATE_NAMES[state] || state;
+  for (const t of [`${city}, ${stateName}`, city]) {
+    let j;
+    try {
+      j = await jget(wikiApi("action=query&redirects=1&prop=images&imlimit=40&titles=" + encodeURIComponent(t)));
+    } catch (_) {
+      continue;
+    }
+    const page = (j.query && j.query.pages && j.query.pages[0]) || {};
+    const imgs = (page.images || []).map((i) => i.title).filter(Boolean);
+    if (imgs.length) return imgs;
+  }
+  return [];
+}
+
 async function categoryFiles(cat, limit = 60) {
   let j;
   try {
@@ -345,6 +367,7 @@ async function gatherCandidates(city, state, coords, verbose) {
 
   const lead = await wikipediaLead(city, state);
   if (lead) add(lead, "wikipedia");
+  for (const t of await wikipediaArticleImages(city, state)) add(t, "wikipedia-article");
 
   const aerialCats = [
     `Category:Aerial photographs of ${city}, ${stateName}`,
@@ -542,6 +565,7 @@ async function doCity(entry, state0, opts, ctx) {
 
   const file = PICK.heroFilename(city, state);
   const sibling = HERO.srcsetName(file);
+  const thumb = HERO.thumbName(file);
   const tmp = path.join(OUT_DIR, ".tmp");
   fs.mkdirSync(tmp, { recursive: true });
 
@@ -550,6 +574,7 @@ async function doCity(entry, state0, opts, ctx) {
     const raw = path.join(tmp, "source");
     const mainOut = path.join(tmp, file);
     const sibOut = path.join(tmp, sibling);
+    const thumbOut = path.join(tmp, thumb);
     try {
       const thumb = await thumbUrl(cand.title, HERO.HERO_WIDTH);
       await download(thumb.url, raw);
@@ -573,6 +598,7 @@ async function doCity(entry, state0, opts, ctx) {
       try {
         encode(raw, mainOut, HERO.HERO_WIDTH, HERO.HERO_HEIGHT, ctx.ffmpeg, crop);
         encode(raw, sibOut, HERO.HERO_SRCSET_WIDTH, HERO.HERO_SRCSET_HEIGHT, ctx.ffmpeg, crop);
+        encode(raw, thumbOut, HERO.HERO_THUMB_WIDTH, HERO.HERO_THUMB_HEIGHT, ctx.ffmpeg, crop);
       } catch (err) {
         console.log("    x encode failed: " + err.message);
         verdict = { verdict: "bad", reason: "encode failed: " + err.message };
@@ -608,6 +634,7 @@ async function doCity(entry, state0, opts, ctx) {
 
     fs.copyFileSync(mainOut, path.join(OUT_DIR, file));
     fs.copyFileSync(sibOut, path.join(OUT_DIR, sibling));
+    fs.copyFileSync(thumbOut, path.join(OUT_DIR, thumb));
     const kb = Math.round(fs.statSync(path.join(OUT_DIR, file)).size / 1024);
     const kb1x = Math.round(fs.statSync(path.join(OUT_DIR, sibling)).size / 1024);
     console.log(`    ✓ ${file} ${kb} KB + ${kb1x} KB`);
@@ -630,6 +657,47 @@ async function doCity(entry, state0, opts, ctx) {
   return record;
 }
 
+// Is the CURATED file for this city one the live page will actually use? The
+// same grade the server applies, read off the same bytes.
+function curatedFileIsGood(key) {
+  const row = HERO.HEROES[key];
+  if (!row) return false;
+  return gradeFiles(path.join(OUT_DIR, row.file), path.join(OUT_DIR, HERO.srcsetName(row.file))).ok;
+}
+
+// The /markets directory draws every market at once, so it reads a third,
+// small size. Thumbnails are made by downscaling the STORED 3840w hero rather
+// than by going back to Wikimedia: the framing is already decided, the network
+// is not involved, and a thumbnail can therefore never show a different crop
+// from the page it links to.
+function rebuildThumbs(ctx, force) {
+  const heroes = [];
+  for (const [key, row] of Object.entries(HERO.HEROES)) heroes.push([key, row.file]);
+  for (const key of Object.keys(HERO.autoCities())) {
+    const hero = HERO.autoHeroFor(key);
+    if (hero) heroes.push([key, hero.file]);
+  }
+  let made = 0;
+  let skipped = 0;
+  for (const [key, file] of heroes) {
+    const src = path.join(OUT_DIR, file);
+    const dest = path.join(OUT_DIR, HERO.thumbName(file));
+    if (!fs.existsSync(src)) {
+      console.log(`  ! ${key}: ${file} is missing, no thumbnail made`);
+      continue;
+    }
+    if (fs.existsSync(dest) && !force) { skipped++; continue; }
+    try {
+      encode(src, dest, HERO.HERO_THUMB_WIDTH, HERO.HERO_THUMB_HEIGHT, ctx.ffmpeg, "center");
+      made++;
+      console.log(`  ✓ ${HERO.thumbName(file)} ${Math.round(fs.statSync(dest).size / 1024)} KB`);
+    } catch (err) {
+      console.log(`  x ${key}: ${err.message}`);
+    }
+  }
+  console.log(`\n${made} thumbnail(s) written, ${skipped} already there (--force to redo).`);
+}
+
 // ---------------------------------------------------------------------------
 
 async function main() {
@@ -642,7 +710,7 @@ async function main() {
     apiKey: process.env.ANTHROPIC_API_KEY || "",
     model: process.env.HERO_JUDGE_MODEL || JUDGE.DEFAULT_MODEL,
   };
-  if (opts.judge && !ctx.apiKey) {
+  if (opts.judge && !ctx.apiKey && !opts.thumbs) {
     console.error("ANTHROPIC_API_KEY is not set — run with --no-judge to pick on metadata alone.");
     process.exit(1);
   }
@@ -650,6 +718,11 @@ async function main() {
 
   const auto = readJson(AUTO_FILE, { version: 1, cities: {} });
   auto.cities = auto.cities || {};
+
+  if (opts.thumbs) {
+    rebuildThumbs(ctx, opts.force);
+    return;
+  }
 
   let cities = await marketCities();
   if (opts.city) {
@@ -662,10 +735,14 @@ async function main() {
   }
 
   const todo = cities.filter((c) => {
-    // A curated city is never generated for, --force or not: heroFor resolves
-    // the curated photo first, so anything found here could only ever be
-    // spend with no effect on any page.
-    if (HERO.HEROES[c.key]) return false;
+    // A curated city is normally never generated for: heroFor resolves the
+    // curated photo first, so anything found would be spend with no effect on
+    // any page. The exception is a curated file that FAILS the quality grade —
+    // Ontario, CA, whose stored JPEG is an upscale, so the live page shows a
+    // satellite aerial and a generated photograph really would be an
+    // improvement. That is a fact about the file on disk, so it is measured
+    // here rather than configured.
+    if (HERO.HEROES[c.key] && curatedFileIsGood(c.key)) return false;
     if (opts.force) return true;
     const row = auto.cities[c.key];
     return !(row && row.hero);
@@ -704,4 +781,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseArgs, cityVariants, geocodeCity, wikipediaPoint, zippopotamPoint, gatherCandidates, encode, main };
+module.exports = { parseArgs, cityVariants, geocodeCity, wikipediaPoint, zippopotamPoint, gatherCandidates, encode, rebuildThumbs, curatedFileIsGood, main };

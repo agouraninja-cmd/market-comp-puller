@@ -35,6 +35,11 @@ function renderVaultHTML(boot, chrome) {
   // object; the vault draws its own stylesheet and only lifts the account-nav
   // pieces from it, because a second copy of MARKET_BAR would drift.
   const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
+  // The dark-mode footer ink, shared with MARKET_CSS and HOW_CSS rather than
+  // restated here: this page draws its own stylesheet but its footer is the
+  // same navy slab with the same selectors, and that block already carries a
+  // "keep the three in step" warning it has not always been kept in step with.
+  const FOOTER_DARK_CSS = chrome.FOOTER_DARK_CSS || "";
   const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
   const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
@@ -500,6 +505,7 @@ footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border
 footer .wrap{padding:36px var(--s6)}
 footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
+${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
 </style>
 ${THEME_BOOT}

@@ -1,0 +1,54 @@
+<!--
+  CompNinja email signature — Jacob Adler, CEO.
+
+  HOW TO INSTALL
+    Gmail   Open this file in a browser, select the block below (Ctrl/Cmd+A),
+            copy, then Settings -> See all settings -> General -> Signature ->
+            Create new -> paste. Leave "Insert signature before quoted text"
+            checked if you reply above the quote.
+    Outlook File -> Options -> Mail -> Signatures -> New -> paste.
+    Apple   Mail -> Settings -> Signatures -> new signature -> paste, then
+      Mail  UNTICK "Always match my default message font".
+
+  DESIGN NOTES (same constraints as email-shell.js, the outbound letterhead
+  this is styled to match — do not "modernize" them away):
+    - table layout + inline styles only (Gmail strips <style>, Outlook renders
+      through Word);
+    - system fonts only (Arial ships everywhere, webfonts do not);
+    - NO images. The wordmark is text, because remote images are blocked by
+      default in most clients and a signature must survive that. Adding a logo
+      PNG would leave a grey placeholder box in the majority of inboxes.
+    - Colours are email-shell.js's: ink #1A2433, body #374253, muted #68707E,
+      red #B91C1C, hairline #E4E2DA.
+
+  COPY RULES (CLAUDE.md): the owner is not a licensed broker, so this may
+  never describe CompNinja as a brokerage or its output as an appraisal.
+  "Adler" here is the CEO's own surname on his own signature — it is not the
+  retired Adler Industrial branding the repo rule forbids reintroducing.
+-->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+  <tr>
+    <td style="padding:2px 0 2px 14px;border-left:3px solid #B91C1C;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+        <tr>
+          <td style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:20px;font-weight:bold;color:#1A2433;padding:0 0 2px;">Jacob Adler</td>
+        </tr>
+        <tr>
+          <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#68707E;padding:0 0 10px;">CEO<span style="color:#E4E2DA;">&nbsp;&nbsp;|&nbsp;&nbsp;</span>CompNinja</td>
+        </tr>
+        <tr>
+          <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#374253;padding:0;"><a href="tel:+18189148021" style="color:#374253;text-decoration:none;">818-914-8021</a></td>
+        </tr>
+        <tr>
+          <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#374253;padding:0;"><a href="mailto:jacobadler@compninja.co" style="color:#374253;text-decoration:none;">jacobadler@compninja.co</a></td>
+        </tr>
+        <tr>
+          <td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;padding:0 0 10px;"><a href="https://compninja.co" style="color:#B91C1C;text-decoration:none;">compninja.co</a></td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0 0;border-top:1px solid #E4E2DA;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:15px;color:#68707E;"><span style="font-weight:bold;letter-spacing:2px;color:#1A2433;">COMP<span style="color:#B91C1C;">NINJA</span></span><span style="color:#E4E2DA;">&nbsp;&nbsp;|&nbsp;&nbsp;</span>Commercial real estate comps &amp; valuation reports</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>

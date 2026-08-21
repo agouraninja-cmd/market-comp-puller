@@ -15,8 +15,13 @@
 // launched, so this script also probes the server before spending anything
 // (see "Database preflight" below) and refuses if it looks database-backed.
 //
-// SETTING UP THE ISOLATED SERVER'S .env: copy ONLY the ANTHROPIC_API_KEY line
-// into this worktree's .env, never the whole file: a copied SUPABASE_URL /
+// SETTING UP THE ISOLATED SERVER'S .env: copy ONLY the line holding the
+// PROVIDER'S OWN key -- GEMINI_API_KEY since the default flipped on
+// 2026-08-10, ANTHROPIC_API_KEY only if the isolated server is launched with
+// SEARCH_PROVIDER=anthropic. Copying the wrong one boots a server that
+// authenticates nothing, and every target fails after the preflight has
+// already said the run is safe to spend.
+// Copy that line and nothing else, never the whole file: a copied SUPABASE_URL /
 // SUPABASE_SERVICE_KEY pair is exactly what turns an "isolated" run into one
 // that writes to production. On Windows, if you launch the server from
 // PowerShell, `$env:SUPABASE_URL = ""` DELETES the variable rather than

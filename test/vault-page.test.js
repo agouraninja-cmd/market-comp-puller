@@ -2696,3 +2696,143 @@ test("the spreadsheet shows the same count as the compact table", async () => {
   assert.match(doc.getElementById("tbody").innerHTML, /class="cites"[^>]*>2</,
     "one builder feeds both tables, so the two can never disagree");
 });
+
+// ---------------------------------------------------------------------------
+// The firm column — a comp's second, narrower audience (migration 032)
+//
+// Publishing and firm sharing are two different acts with two different
+// audiences, and the page has to keep them apart on screen as firmly as
+// server.js keeps org_comps apart from comp_submissions. Until this block
+// existed, nothing here mentioned firms at all: the toggle, its confirm, and
+// the correction to the vault's central privacy promise were all untested.
+// ---------------------------------------------------------------------------
+
+const FIRM = { id: "o1", name: "Colliers Boise" };
+
+function firmBoot(comps, firm, sharedIds) {
+  const b = boot(comps);
+  b.j.firm = firm || null;
+  b.j.sharedWithFirm = sharedIds || [];
+  return b;
+}
+
+// renderFirmPrivacy, executed. It writes two elements and reads two module
+// variables, so a four-line stand-in DOM is the whole harness.
+function runFirmPrivacy(firm, sharedCount) {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], firm), CHROME));
+  const src = js.match(/function renderFirmPrivacy\(\)\{[\s\S]*?\n  \}/);
+  assert.ok(src, "renderFirmPrivacy is gone from the emitted page");
+  const els = {
+    deckSub: { textContent: "", innerHTML: "" },
+    trustNote: { textContent: "", innerHTML: "" },
+  };
+  const sharedIds = {};
+  for (let i = 0; i < sharedCount; i++) sharedIds["c" + i] = true;
+  const fn = new Function("$", "esc", "myFirm", "sharedIds",
+    src[0] + "\nreturn renderFirmPrivacy;")(
+    (id) => els[id], (s) => String(s), firm, sharedIds);
+  fn();
+  return els;
+}
+
+test("a vault with nothing shared keeps the promise the whole tier rests on", () => {
+  // Keyed on having actually SHARED something, not on being in a firm: a
+  // broker who has shared nothing really does have a vault visible only to
+  // them, and rewriting their copy frightens them about a thing that has not
+  // happened.
+  for (const firm of [null, FIRM]) {
+    const els = runFirmPrivacy(firm, 0);
+    assert.match(els.trustNote.innerHTML, /^Visible only to you\./);
+    assert.match(els.trustNote.innerHTML, /nothing is published unless you choose it/);
+    assert.match(els.deckSub.textContent, /Visible only to you\.$/);
+  }
+});
+
+test("sharing one comp corrects the promise rather than leaving it false", () => {
+  const els = runFirmPrivacy(FIRM, 1);
+  assert.match(els.trustNote.innerHTML, /^1 comp is shared with Colliers Boise\./);
+  // The rest of the promise survives — this is a correction, not a retraction.
+  assert.match(els.trustNote.innerHTML, /Everything else is visible only to you/);
+  assert.match(els.trustNote.innerHTML, /never|nothing here is ever read/i);
+  assert.doesNotMatch(els.trustNote.innerHTML, /^Visible only to you/);
+  assert.match(els.deckSub.textContent, /1 shared with Colliers Boise; the rest visible only to you/);
+});
+
+test("the corrected promise counts in plural", () => {
+  const els = runFirmPrivacy(FIRM, 3);
+  assert.match(els.trustNote.innerHTML, /^3 comps are shared with Colliers Boise\./);
+});
+
+test("the default promise lives in the MARKUP, not only in the script", () => {
+  // A page whose script failed must still make the true statement rather than
+  // none — this is the vault's central claim, and an empty <p> where it should
+  // be is worse than a stale one.
+  const html = renderVaultHTML(firmBoot([comp({})], FIRM, ["c1"]), CHROME);
+  assert.match(html, /<p class="note" id="trustNote">Visible only to you\./);
+  assert.match(html, /id="deckSub">Closed deals, leads, and BOVs\. Visible only to you\./);
+});
+
+test("the Firm column exists only for a broker who is in a firm", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /myFirm\?"<th>Firm<\/th>":""/,
+    "the Firm column is no longer conditional on being in a firm");
+  // And the row cell is behind the same condition, or the header and the
+  // cells would fall out of step and shift every column after them.
+  assert.match(js, /var firm="";\s*if\(myFirm\)\{/);
+});
+
+test("sharing with the firm is confirmed, and the confirm makes all three promises", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  const m = js.match(/if\(!on&&!confirm\("Share this comp with "\+myFirm\.name\+"\?([^"]*)"\)\)return;/);
+  assert.ok(m, "sharing a comp with the firm is no longer confirmed");
+  const copy = m[1];
+  assert.match(copy, /with your name on it/, "the confirm must say the comp is attributed");
+  assert.match(copy, /does NOT go into CompNinja's public records/,
+    "the confirm must tell the two audiences apart — this is not publishing");
+  assert.match(copy, /left out of every download and client link/);
+  assert.match(copy, /take it back at any time/);
+});
+
+test("taking a comp back is NOT confirmed — only giving it out is", () => {
+  // The asymmetry is deliberate: the irreversible-feeling act is the one that
+  // widens the audience. A dialog on the safe action trains people to click
+  // through the dangerous one.
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /if\(!on&&!confirm\("Share this comp/,
+    "the firm confirm is no longer gated on !on — unsharing now asks too");
+});
+
+test("the firm toggle is a separate handler from Publish", () => {
+  // One confirm dialog covering both is how a broker publishes to the world
+  // when they meant to show a colleague.
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /closest\("button\[data-firm\]"\)/);
+  assert.match(js, /closest\("button\[data-pub\]"\)/);
+  assert.notEqual(js.indexOf('button[data-firm]'), js.indexOf('button[data-pub]'));
+  // The publish confirm must never be the one a firm share reaches.
+  const firmHandler = js.match(/var b=e\.target\.closest\("button\[data-firm\]"\);[\s\S]*?\n  \}\);/);
+  assert.ok(firmHandler, "could not find the firm toggle handler");
+  assert.doesNotMatch(firmHandler[0], /public records, credited to your firm by name/,
+    "the firm toggle is showing the PUBLISH confirm");
+});
+
+test("the toggle posts the firm and the comp, and DELETEs to take it back", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  const handler = js.match(/var b=e\.target\.closest\("button\[data-firm\]"\);[\s\S]*?\n  \}\);/)[0];
+  assert.match(handler, /fetch\("\/api\/vault\/firm",\{method:on\?"DELETE":"POST"/);
+  assert.match(handler, /body:JSON\.stringify\(\{orgId:myFirm\.id,compIds:\[id\]\}\)/);
+  // A refusal must give the button back, or a 403 leaves a dead control.
+  assert.match(handler, /b\.disabled=false;b\.textContent=on\?"Shared":"Share"/);
+  // And the privacy line is re-rendered on success, or the promise goes stale
+  // the moment it stops being true.
+  assert.match(handler, /renderFirmPrivacy\(\);/);
+});
+
+test("a broker in no firm gets no firm toggle at all", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], null), CHROME));
+  // The handler still exists (the page is one script for every broker), but it
+  // refuses without a firm rather than posting a null org id.
+  assert.match(js, /closest\("button\[data-firm\]"\);\s*if\(!b\|\|!myFirm\)return;/);
+  const html = renderVaultHTML(firmBoot([comp({})], null), CHROME);
+  assert.match(html, /"firm":null|firm":null/, "the boot payload should carry an explicit null firm");
+});

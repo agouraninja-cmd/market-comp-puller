@@ -1250,14 +1250,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     receiving end needs no plan at all: they are exactly an invited share's
     viewer, and a firm that could only share with people who had already
     bought the product would not solve the problem it exists for.
-  - **Migration 028 must be run BEFORE the code deploys**, like 018 and 026
+  - **Migration 030 must be run BEFORE the code deploys**, like 018 and 026
     and unlike most: it adds `shared_reports.org_id`, which `getShareRecord`
     SELECTs by name on EVERY share read, and PostgREST 400s an unknown
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
-  029, owner's yes 2026-08-16). An owner or admin can set the firm to share
+  031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both
   switches. It ships with the safeguards the spec made a condition of building
   it at all, and each one is load-bearing:
@@ -1281,7 +1281,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     somebody wants this off is the moment they are looking at the report.
     Guarded on `meta.autoShared`, or every subject-field repaint would
     re-publish — including something just undone.
-  **The shared vault** (§7, migration 030, 2026-08-16). A broker can opt one
+  **The shared vault** (§7, migration 032, 2026-08-16). A broker can opt one
   comp at a time into their firm; colleagues see it inside their OWN reports,
   attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
   `/vault`'s comps table, shown only to a broker who is in a firm. Rules in

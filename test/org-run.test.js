@@ -699,3 +699,121 @@ test("a firm share still refuses to carry whole vault comps", async (t) => {
   assert.match((await r.json()).error, /can't be shared with a firm yet/);
   assert.equal(tables.shared_reports.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// The invitation email
+//
+// Every test above asserts the ROW an invitation writes. None of them asserted
+// the mail, which is the half the invited colleague actually experiences —
+// and the half where the mistakes are expensive: mailing somebody twice,
+// mailing the inviter, mailing an address that was refused, or sending a
+// stranger a message that reads as though a firm already has their data.
+//
+// RESEND_API_URL is the test-only hook that makes this possible (see
+// CLAUDE.md's bullet on it); the fake collects every post to it.
+// ---------------------------------------------------------------------------
+
+// Mail is fire-and-forget on purpose — a provider having a bad minute must
+// never turn a written invitation into an error — so the route answers before
+// the post lands.
+async function settleMail(db, want) {
+  for (let i = 0; i < 80 && db.sent.length < want; i++) await new Promise((r) => setTimeout(r, 25));
+  return db.sent;
+}
+
+test("what an invited colleague actually receives", async (t) => {
+  // Booted by hand rather than through bootWithDb: the fake's Resend url is
+  // only knowable once it is listening, and server.js reads its environment
+  // once at startup, so the server has to be started after it.
+  const tables = seedTables();
+  const db = await fake.start({ tables });
+  const srv2 = await shared.boot({
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on",
+    SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    SITE_URL: "https://compninja.co",
+    // Both are required for a send: sendOutboundEmail is a silent no-op
+    // without EMAIL_FROM, which is the state every deployment without a
+    // verified domain is in.
+    EMAIL_FROM: "CompNinja <reports@compninja.co>",
+    RESEND_API_KEY: "resend-key", RESEND_API_URL: db.resendUrl,
+  });
+  t.after(async () => { srv2.stop(); await db.stop(); });
+
+  const create = await fetch(srv2.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }));
+  assert.equal(create.status, 200);
+  const org = await create.json();
+  const invite = (emails) => fetch(srv2.base + "/api/org/invite",
+    as(BRAD, { method: "POST", body: JSON.stringify({ orgId: org.id, emails }) }));
+
+  await t.test("the invitation says who, which firm, and what accepting does", async () => {
+    assert.equal((await invite([MIKE.email])).status, 200);
+    const [mail] = await settleMail(db, 1);
+    assert.ok(mail, "no invitation reached the provider");
+    assert.deepEqual(mail.to, [MIKE.email]);
+    assert.match(mail.subject, /Colliers Boise invited you/);
+    assert.match(mail.text, /brad@colliers\.com/, "the invitation must name who sent it");
+    assert.match(mail.text, /https:\/\/compninja\.co\/desk/, "no way to accept");
+    // Identity is the EMAIL — 018's decision, adopted by 030 — so the mail has
+    // to name the address that will work, or a colleague signs in with another
+    // one and finds nothing.
+    assert.match(mail.text, new RegExp(MIKE.email.replace(".", "\\.") + "\\)"));
+    assert.match(mail.text, /a free account is all it takes/,
+      "a colleague who needs no plan must not be left assuming they need to buy one");
+    // The safeguard, restated to the person it protects: this mail can reach
+    // somebody who has never heard of the firm.
+    assert.match(mail.text, /Nothing is shared with you until you accept/);
+    assert.match(mail.text, /an unaccepted invitation gives nobody access to anything/);
+  });
+
+  await t.test("a colleague already invited is not mailed again", async () => {
+    // The MAIL has to be idempotent as well as the row, or a firm working
+    // through a list turns one invitation into four. A list that dropped to
+    // nothing is answered as an error rather than a cheerful 200 — the
+    // inviter typed somebody, and "sent!" would be a lie about a person.
+    const before = db.sent.length;
+    const r = await invite([MIKE.email]);
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /No new email addresses/);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before, "an already-invited colleague was mailed a second time");
+  });
+
+  await t.test("only the newly-added addresses are mailed", async () => {
+    const before = db.sent.length;
+    const r = await invite([MIKE.email, "  New@Colliers.com  ", "new@colliers.com"]);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).invited, 1, "the count must be the server's own, after dedupe");
+    const sent = await settleMail(db, before + 1);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(sent.length, before + 1, "one address, two spellings, two emails");
+    assert.deepEqual(sent[sent.length - 1].to, ["new@colliers.com"]);
+  });
+
+  await t.test("the inviter never invites themselves", async () => {
+    // Dropped by normalizeInviteEmails before the route ever gets a list, so
+    // this is refused for the same reason as the line above rather than
+    // quietly mailing the sender an invitation to their own firm.
+    const before = db.sent.length;
+    const r = await invite([BRAD.email]);
+    assert.equal(r.status, 400);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before);
+  });
+
+  await t.test("a refused invitation mails nobody", async () => {
+    // Mike is a plain member. The mail must ride BEHIND the permission check,
+    // not beside it — an invitation nobody was authorized to send must not
+    // still arrive in somebody's inbox.
+    const before = db.sent.length;
+    const r = await fetch(srv2.base + "/api/org/invite",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId: org.id, emails: ["someone@else.com"] }) }));
+    assert.equal(r.status, 403);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before, "a refused invitation was still mailed");
+  });
+
+  await t.test("the fake never had to guess at a query it did not understand", () => {
+    assert.deepEqual(db.unparsed, []);
+  });
+});

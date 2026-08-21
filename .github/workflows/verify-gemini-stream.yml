@@ -30,6 +30,13 @@ name: Verify Gemini stream
 
 on:
   workflow_dispatch:
+  # TEMPORARY, remove before merge: a dispatch-only workflow cannot be
+  # dispatched until its file reaches the default branch, so this scoped push
+  # trigger is how the verification run happens from the feature branch at
+  # all. Same-repo push runs receive secrets; fork PRs never fire on push.
+  push:
+    branches:
+      - claude/compninja-improvements-spfr4a
 
 jobs:
   verify:

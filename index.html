@@ -644,8 +644,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .print-shadow-none { box-shadow: none !important; border-color: #E4E2DA !important; }
       @page { margin: 14mm 12mm; }
       /* Tabs are screen-only navigation — a printed report is the whole
-         document, so both tab panels are forced visible. */
+         document, so both tab panels are forced visible. They print in DOM
+         order (report, then analysis), which is why that order is fixed in
+         the markup rather than left to the tab bar. */
       #tabReport, #tabAnalysis { display: block !important; }
+      /* The seam the .no-print tab bar draws on screen. break-before makes
+         the appendix its own page, so the client-facing report ends cleanly
+         instead of sharing a page with the owner's DCF. */
+      #analysisSeam { break-before: page; page-break-before: always; padding-top: 2mm; }
+      #analysisSeam.hidden { display: none !important; }
       /* Keep each report card on one page (cards now sit one level deeper,
          inside the tab wrappers). The entrance cascade starts cards at
          opacity 0, so they must be forced visible for a fast Ctrl+P. */
@@ -2712,7 +2719,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
         <!-- Report | Analysis tabs — the hero stays above; everything below
              splits into two wrappers. Screen-only navigation: print CSS forces
-             both wrappers visible so PDFs keep the whole document. -->
+             both wrappers visible so PDFs keep the whole document.
+
+             DOM ORDER IS LOAD-BEARING, and only on paper (2026-08-21). On
+             screen the tabs hide one panel, so their order is invisible; in
+             print and in a full-page capture both are forced visible and read
+             in document order. #tabAnalysis used to come first, so a printed
+             report put the owner's DCF, expense, debt and rollover cards
+             between the value hero and the market evidence that justifies it —
+             the comps arrived on page four of the document handed to a client.
+             Report first, analysis after, and the print-only rule below marks
+             the seam the tab bar draws on screen. -->
         <!-- Real tablist semantics: aria-selected is the announced state (the
              red underline was the ONLY signal before), roving tabindex + the
              arrow keys in setReportTab's keydown handler complete the ARIA
@@ -2721,218 +2738,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button id="tabBtnReport" type="button" role="tab" aria-selected="true" aria-controls="tabReport" class="pb-2 text-sm font-semibold text-[#1A2433] border-b-2 border-[#B91C1C] -mb-px">Market Report</button>
           <button id="tabBtnAnalysis" type="button" role="tab" aria-selected="false" aria-controls="tabAnalysis" tabindex="-1" class="pb-2 text-sm font-medium text-[#5A6473] border-b-2 border-transparent -mb-px hover:text-[#1A2433]">Analysis</button>
         </div>
-
-        <div id="tabAnalysis" role="tabpanel" aria-labelledby="tabBtnAnalysis" class="hidden space-y-6">
-
-        <!-- DCF + hold/sell analysis — client-side math on the browser-held NOI
-             (never sent to the server), shown only when an NOI is entered.
-             Assumption inputs are no-print: the explanation paragraph restates
-             them, so exports stay clean. Built by renderDcfCard(). -->
-        <div id="dcfCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Hold or Sell? (DCF Analysis)</h2>
-            <span id="dcfBasis" class="text-xs text-[#68707E] text-right"></span>
-          </div>
-          <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div>
-              <label class="rd-lab" for="dcfYears">Hold period (yrs)</label>
-              <input id="dcfYears" type="number" min="1" max="30" step="1"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-            <div>
-              <label class="rd-lab" for="dcfGrowth">NOI growth %/yr</label>
-              <input id="dcfGrowth" type="number" min="-10" max="15" step="0.1"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-            <div>
-              <label class="rd-lab" for="dcfDisc">Discount rate %</label>
-              <input id="dcfDisc" type="number" min="0.1" max="30" step="0.1"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-            <div>
-              <label class="rd-lab" for="dcfExitCap">Exit cap rate %</label>
-              <input id="dcfExitCap" type="number" min="0.1" max="25" step="0.1"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div id="dcfSellTile" class="rd-tile">
-              <div class="rd-lab">Sell today (est.)</div>
-              <div id="dcfSellVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="dcfSellSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile-hi">
-              <div id="dcfHoldLabel" class="rd-lab">Hold (DCF value)</div>
-              <div id="dcfValue" class="rd-h text-[30px] mt-1">-</div>
-              <div id="dcfValueSub" class="text-xs text-[#5A6473] mt-1">income + resale, in today's dollars</div>
-            </div>
-            <div id="dcfVerdictTile" class="rd-tile">
-              <div class="rd-lab">Verdict</div>
-              <div id="dcfVerdict" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="dcfVerdictSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-          </div>
-          <p id="dcfWhatIs" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
-          <p id="dcfHoldSell" class="text-sm text-[#4C5665] leading-relaxed mt-2"></p>
-          <p class="text-xs text-[#68707E] mt-4">Automated planning estimate: unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
-        </div>
-
-        <!-- Signed-out gate for the toolkit below: one calm framed nudge stands
-             in for the debt + sensitivity cards until the visitor signs in. -->
-        <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Expense, Debt &amp; Risk Analysis</h2>
-              <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk, free with an account.</p>
-            </div>
-            <button id="analysisLockBtn" type="button"
-              class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
-          </div>
-        </div>
-
-        <!-- Operating-expense benchmark — the owner's own expense ratio vs what
-             this market typically spends for the asset class. Gross income is
-             private finance: browser + portfolio only, stripped from shares.
-             Signed-in only; built by renderOpexCard(). -->
-        <div id="opexCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Operating Expense Check</h2>
-          </div>
-          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-            <div>
-              <label class="rd-lab" for="opexGross">Gross annual income ($/yr)</label>
-              <input id="opexGross" type="text" inputmode="numeric" placeholder="e.g. 1,085,000"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rd-tile">
-              <div class="rd-lab">Your expense ratio</div>
-              <div id="opexRatio" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexRatioSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile">
-              <div class="rd-lab">Typical for this market</div>
-              <div id="opexBand" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexBandSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile">
-              <div class="rd-lab">Your operating expenses</div>
-              <div id="opexDollars" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="opexDollarsSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-          </div>
-          <div class="rd-tile-hi mt-4">
-            <div class="rd-lab">Expense Benchmark<span id="opexVerdict"></span></div>
-            <p id="opexRead" class="text-sm text-[#374253] mt-1"></p>
-          </div>
-          <p class="text-xs text-[#68707E] mt-4">Automated benchmark from this search, not an audit of your books. Your income figures stay in your browser.</p>
-        </div>
-
-        <!-- Debt & refi — DSCR / LTV / debt yield + refi headroom, computed on the
-             browser-held NOI and loan terms. Loan terms never reach the server
-             except the owner's own portfolio; shares strip them. Signed-in only;
-             built by renderDebtCard(). -->
-        <div id="debtCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Debt &amp; Refi Check</h2>
-            <span id="debtBasis" class="text-xs text-[#68707E] text-right"></span>
-          </div>
-          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
-            <div>
-              <label class="rd-lab" for="debtLoan">Loan balance ($)</label>
-              <input id="debtLoan" type="text" inputmode="numeric" placeholder="e.g. 2,000,000"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-            <div>
-              <label class="rd-lab" for="debtRate">Interest rate %</label>
-              <input id="debtRate" type="number" min="0.1" max="20" step="0.05" placeholder="e.g. 6.75"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-            <div>
-              <label class="rd-lab" for="debtAmort">Amortization (yrs)</label>
-              <input id="debtAmort" type="number" min="5" max="40" step="1"
-                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            </div>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div class="rd-tile">
-              <div class="rd-lab">Annual debt service</div>
-              <div id="debtSvc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtSvcSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile">
-              <div class="rd-lab">DSCR</div>
-              <div id="debtDscr" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtDscrSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile">
-              <div class="rd-lab">LTV</div>
-              <div id="debtLtv" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtLtvSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-            <div class="rd-tile">
-              <div class="rd-lab">Debt yield</div>
-              <div id="debtYield" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-              <div id="debtYieldSub" class="text-xs text-[#68707E] mt-1"></div>
-            </div>
-          </div>
-          <div class="rd-tile-hi mt-4">
-            <div class="rd-lab">Refi headroom</div>
-            <div id="debtHeadroom" class="rd-h text-[30px] mt-1">—</div>
-            <div id="debtHeadroomSub" class="text-xs text-[#5A6473] mt-1"></div>
-          </div>
-          <p class="text-xs text-[#68707E] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
-        </div>
-
-        <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
-             the DCF card (shared dcfValue); built by renderSensCard(). -->
-        <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Sensitivity (DCF Value)</h2>
-            <span id="sensBasis" class="text-xs text-[#68707E] text-right"></span>
-          </div>
-          <div id="sensBody" class="overflow-x-auto"></div>
-          <p id="sensNote" class="text-xs text-[#68707E] mt-3"></p>
-        </div>
-
-        <!-- Rent roll & rollover — standalone risk view (WALT, occupancy, expiry
-             schedule). Tenant rents are private finances: portfolio-only, shares
-             strip them. Built by renderRentRollCard(). -->
-        <div id="rentRollCard" class="hidden rd-bcard print-shadow-none fade-in">
-          <div class="flex items-center justify-between gap-4 mb-4">
-            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Rent Roll &amp; Rollover</h2>
-            <span id="rrBasis" class="text-xs text-[#68707E] text-right"></span>
-          </div>
-          <div id="rrRows" class="no-print space-y-2 mb-2"></div>
-          <button id="rrAdd" type="button" class="no-print btn-live text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5 mb-4">+ Add lease</button>
-          <div id="rrOut" class="hidden">
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div class="rd-tile">
-                <div class="rd-lab">WALT</div>
-                <div id="rrWalt" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div class="text-xs text-[#68707E] mt-1">rent-weighted avg lease term</div>
-              </div>
-              <div class="rd-tile">
-                <div class="rd-lab">Occupancy</div>
-                <div id="rrOcc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div id="rrOccSub" class="text-xs text-[#68707E] mt-1"></div>
-              </div>
-              <div class="rd-tile">
-                <div class="rd-lab">Total base rent</div>
-                <div id="rrRent" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
-                <div id="rrRentSub" class="text-xs text-[#68707E] mt-1"></div>
-              </div>
-            </div>
-            <div id="rrScheduleWrap" class="overflow-x-auto mt-4"></div>
-          </div>
-          <p class="text-xs text-[#68707E] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
-        </div>
-
-        <!-- no-print: an instruction to interact with the app is noise on paper. -->
-        <p id="analysisEmpty" class="hidden no-print text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
-
-        </div><!-- /tabAnalysis -->
 
         <div id="tabReport" role="tabpanel" aria-labelledby="tabBtnReport" class="space-y-6">
 
@@ -3184,6 +2989,235 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
 
         </div><!-- /tabReport -->
+
+        <div id="tabAnalysis" role="tabpanel" aria-labelledby="tabBtnAnalysis" class="hidden space-y-6">
+
+        <!-- PRINT/CAPTURE ONLY. The tab bar names these two halves on screen
+             and is .no-print, so on paper the analysis cards used to begin
+             with no seam at all — a DCF table simply followed the comps.
+             .print-only keeps it off screen; the CSS starts it on a fresh
+             page, so the market report reads as one document and the owner's
+             own analysis as its appendix. It says "your figures" because
+             every card below is computed from what the owner typed, not from
+             the comp search — the distinction the trust line makes in the
+             report above. Hidden with the panel itself when there is nothing
+             in it (renderAnalysisSeam), or an empty appendix header prints
+             over blank space. -->
+        <div id="analysisSeam" class="hidden print-only">
+          <div class="rd-lab">Appendix</div>
+          <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Your Figures: Income, Debt &amp; Risk</h2>
+          <p class="text-xs text-[#68707E] mt-1">Computed from the figures you entered, not from the comparable sales above. Automated planning estimates, not an appraisal.</p>
+        </div>
+
+        <!-- DCF + hold/sell analysis — client-side math on the browser-held NOI
+             (never sent to the server), shown only when an NOI is entered.
+             Assumption inputs are no-print: the explanation paragraph restates
+             them, so exports stay clean. Built by renderDcfCard(). -->
+        <div id="dcfCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Hold or Sell? (DCF Analysis)</h2>
+            <span id="dcfBasis" class="text-xs text-[#68707E] text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="dcfYears">Hold period (yrs)</label>
+              <input id="dcfYears" type="number" min="1" max="30" step="1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="dcfGrowth">NOI growth %/yr</label>
+              <input id="dcfGrowth" type="number" min="-10" max="15" step="0.1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="dcfDisc">Discount rate %</label>
+              <input id="dcfDisc" type="number" min="0.1" max="30" step="0.1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="dcfExitCap">Exit cap rate %</label>
+              <input id="dcfExitCap" type="number" min="0.1" max="25" step="0.1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div id="dcfSellTile" class="rd-tile">
+              <div class="rd-lab">Sell today (est.)</div>
+              <div id="dcfSellVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="dcfSellSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile-hi">
+              <div id="dcfHoldLabel" class="rd-lab">Hold (DCF value)</div>
+              <div id="dcfValue" class="rd-h text-[30px] mt-1">-</div>
+              <div id="dcfValueSub" class="text-xs text-[#5A6473] mt-1">income + resale, in today's dollars</div>
+            </div>
+            <div id="dcfVerdictTile" class="rd-tile">
+              <div class="rd-lab">Verdict</div>
+              <div id="dcfVerdict" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
+              <div id="dcfVerdictSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+          </div>
+          <p id="dcfWhatIs" class="text-sm text-[#4C5665] leading-relaxed mt-4"></p>
+          <p id="dcfHoldSell" class="text-sm text-[#4C5665] leading-relaxed mt-2"></p>
+          <p class="text-xs text-[#68707E] mt-4">Automated planning estimate: unlevered, before taxes and selling costs. Not investment advice and not an appraisal.</p>
+        </div>
+
+        <!-- Signed-out gate for the toolkit below: one calm framed nudge stands
+             in for the debt + sensitivity cards until the visitor signs in. -->
+        <div id="analysisLockCard" class="hidden rd-bcard print-shadow-none no-print">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Expense, Debt &amp; Risk Analysis</h2>
+              <p class="text-sm text-[#5A6473] mt-1">How your expense ratio compares to this market, plus DSCR, refi headroom, a value sensitivity grid, and lease-rollover risk, free with an account.</p>
+            </div>
+            <button id="analysisLockBtn" type="button"
+              class="btn-live text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-4 py-2">Create a free account</button>
+          </div>
+        </div>
+
+        <!-- Operating-expense benchmark — the owner's own expense ratio vs what
+             this market typically spends for the asset class. Gross income is
+             private finance: browser + portfolio only, stripped from shares.
+             Signed-in only; built by renderOpexCard(). -->
+        <div id="opexCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Operating Expense Check</h2>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="opexGross">Gross annual income ($/yr)</label>
+              <input id="opexGross" type="text" inputmode="numeric" placeholder="e.g. 1,085,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">Your expense ratio</div>
+              <div id="opexRatio" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexRatioSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Typical for this market</div>
+              <div id="opexBand" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexBandSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Your operating expenses</div>
+              <div id="opexDollars" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="opexDollarsSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Expense Benchmark<span id="opexVerdict"></span></div>
+            <p id="opexRead" class="text-sm text-[#374253] mt-1"></p>
+          </div>
+          <p class="text-xs text-[#68707E] mt-4">Automated benchmark from this search, not an audit of your books. Your income figures stay in your browser.</p>
+        </div>
+
+        <!-- Debt & refi — DSCR / LTV / debt yield + refi headroom, computed on the
+             browser-held NOI and loan terms. Loan terms never reach the server
+             except the owner's own portfolio; shares strip them. Signed-in only;
+             built by renderDebtCard(). -->
+        <div id="debtCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Debt &amp; Refi Check</h2>
+            <span id="debtBasis" class="text-xs text-[#68707E] text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="debtLoan">Loan balance ($)</label>
+              <input id="debtLoan" type="text" inputmode="numeric" placeholder="e.g. 2,000,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="debtRate">Interest rate %</label>
+              <input id="debtRate" type="number" min="0.1" max="20" step="0.05" placeholder="e.g. 6.75"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="debtAmort">Amortization (yrs)</label>
+              <input id="debtAmort" type="number" min="5" max="40" step="1"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">Annual debt service</div>
+              <div id="debtSvc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtSvcSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">DSCR</div>
+              <div id="debtDscr" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtDscrSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">LTV</div>
+              <div id="debtLtv" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtLtvSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Debt yield</div>
+              <div id="debtYield" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="debtYieldSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Refi headroom</div>
+            <div id="debtHeadroom" class="rd-h text-[30px] mt-1">—</div>
+            <div id="debtHeadroomSub" class="text-xs text-[#5A6473] mt-1"></div>
+          </div>
+          <p class="text-xs text-[#68707E] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
+        </div>
+
+        <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
+             the DCF card (shared dcfValue); built by renderSensCard(). -->
+        <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Sensitivity (DCF Value)</h2>
+            <span id="sensBasis" class="text-xs text-[#68707E] text-right"></span>
+          </div>
+          <div id="sensBody" class="overflow-x-auto"></div>
+          <p id="sensNote" class="text-xs text-[#68707E] mt-3"></p>
+        </div>
+
+        <!-- Rent roll & rollover — standalone risk view (WALT, occupancy, expiry
+             schedule). Tenant rents are private finances: portfolio-only, shares
+             strip them. Built by renderRentRollCard(). -->
+        <div id="rentRollCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Rent Roll &amp; Rollover</h2>
+            <span id="rrBasis" class="text-xs text-[#68707E] text-right"></span>
+          </div>
+          <div id="rrRows" class="no-print space-y-2 mb-2"></div>
+          <button id="rrAdd" type="button" class="no-print btn-live text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-1.5 mb-4">+ Add lease</button>
+          <div id="rrOut" class="hidden">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="rd-tile">
+                <div class="rd-lab">WALT</div>
+                <div id="rrWalt" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div class="text-xs text-[#68707E] mt-1">rent-weighted avg lease term</div>
+              </div>
+              <div class="rd-tile">
+                <div class="rd-lab">Occupancy</div>
+                <div id="rrOcc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div id="rrOccSub" class="text-xs text-[#68707E] mt-1"></div>
+              </div>
+              <div class="rd-tile">
+                <div class="rd-lab">Total base rent</div>
+                <div id="rrRent" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+                <div id="rrRentSub" class="text-xs text-[#68707E] mt-1"></div>
+              </div>
+            </div>
+            <div id="rrScheduleWrap" class="overflow-x-auto mt-4"></div>
+          </div>
+          <p class="text-xs text-[#68707E] mt-4">Lease data stays in your browser and your own portfolio, never on shared links. Rollover shows base rent expiring by calendar year; renewals aren't assumed.</p>
+        </div>
+
+        <!-- no-print: an instruction to interact with the app is noise on paper. -->
+        <p id="analysisEmpty" class="hidden no-print text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
+
+        </div><!-- /tabAnalysis -->
 
         <!-- Member disclaimer: additive only. The automated-estimate line
              right below is never removed by any branding configuration. -->
@@ -6906,6 +6940,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("reportTabs").classList.toggle("hidden", hideResiToolkit);
     document.getElementById("analysisLockCard").classList.toggle("hidden", Boolean(currentUser) || !hasNoi);
     document.getElementById("analysisEmpty").classList.toggle("hidden", hasNoi || hideResiToolkit);
+    // The print-only appendix seam. It is a header for the cards below it, so
+    // it prints only when at least one of them will: without an NOI every
+    // analysis card is hidden and a page break plus a heading would print
+    // over nothing. Keyed on the same hasNoi the cards themselves are, rather
+    // than on card visibility, so it cannot disagree with them.
+    document.getElementById("analysisSeam").classList.toggle("hidden", !hasNoi || hideResiToolkit);
   }
   document.getElementById("analysisLockBtn").addEventListener("click", () =>
     openAcctModal("signup", "Create a free account to unlock the expense benchmark, debt, sensitivity, and rent-roll analysis for this report."));

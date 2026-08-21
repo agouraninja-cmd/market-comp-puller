@@ -33,12 +33,12 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
 //   ink        #D5DDE8 -> #E4E9F0  11.41:1 -> 12.81:1 on --card
 //   ink-faint  #7C8899 -> #5E6978   4.34:1 ->  2.80:1 (a whisper again)
 //   hair       #1E2938 -> #253346   1.06:1 ->  1.22:1 (was not a line)
-//   line       #2A3648 -> #2F3D51   1.28:1 ->  1.42:1 (reopens the ladder)
+//   line       unchanged at #2A3648  1.28:1  (see the 08-21 revert below)
 // The four middle ink steps and --edge are deliberately unchanged.
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
-  edge: "#3D4B5F", line: "#2F3D51", hair: "#253346",
+  edge: "#333E4F", line: "#2A3648", hair: "#222F40",
   ink: "#E4E9F0", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
   "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
   "ink-faint": "#5E6978", "ink-4": "#475569",

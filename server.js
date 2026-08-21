@@ -6490,7 +6490,17 @@ function bulkJobRow(job) {
 // than render as blank. `job_id` and `user_id` are plumbing and stay behind.
 function bulkItemRow(it) {
   if (!it) return null;
-  const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+  // Number(null) is 0 and Number("") is 0, so a nullable column read back
+  // through a bare Number() becomes a ZERO — and a zero here is a claim. An
+  // unvalued row would export as $0 rather than blank, which is precisely the
+  // "a failure is not $0" rule this feature states and summarize() enforces,
+  // broken one layer below it. The page happened to survive it (every display
+  // path tests > 0); the CSV did not.
+  const n = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
   return {
     id: it.id,
     position: Number(it.position) || 0,
@@ -16075,6 +16085,137 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("bulk POST error:", err.message);
           return sendJson(res, 500, { error: "Could not start that run." });
+        }
+      });
+      return;
+    }
+
+    // Re-value ONE finished row against a size the member supplies.
+    //
+    // This costs NOTHING and must stay that way. A bulk run's usual failure is
+    // not missing comps — the first real run found 24-27 sale comps on every
+    // address — it is a missing building size, because the single-property
+    // flow estimates one from the OSM footprint in the BROWSER during the
+    // confirm dialog and bulk has no browser step to do it in. So two rows in
+    // three came back with a $/SF band and no dollars, and no way to fix it
+    // short of paying for the whole list again.
+    //
+    // The report is already stored, so this is pure arithmetic over comps we
+    // hold: type a size, get a value. Three rules hold it up.
+    //
+    // IT READS THE STORED REPORT, NEVER runCompSearch. Going back through the
+    // search pipeline would hit the cache and be free TODAY, and would quietly
+    // become a billed search the moment that entry aged out — a button
+    // labelled as costless that sometimes charges $0.36 is worse than no
+    // button. The desk row is the copy that cannot expire.
+    //
+    // IT IS THE SAME ARITHMETIC. BULK.valueFromReport, the same call the
+    // worker makes, so a re-valued row and a first-pass row are computed
+    // identically and the portfolio still reconciles.
+    //
+    // IT UPDATES BOTH PLACES. The bulk row and the desk property disagreeing
+    // about what a building is worth is worse than either being wrong alone.
+    if (req.method === "POST" && path === "/api/bulk/item/size") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id, size_sqft } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+
+          // parseNumber accepts what a person actually types — "12,500",
+          // "12500 SF" — and refuses what is not a number rather than storing
+          // a best effort, which is broker-vault.js's rule and the reason a
+          // wrong size is the most expensive figure in the report.
+          const parsed = VAULT.parseNumber(size_sqft);
+          if (!parsed.ok || !(parsed.value > 0)) {
+            return sendJson(res, 400, { error: `"${String(size_sqft).slice(0, 40)}" is not a building size.` });
+          }
+          const size = Math.min(20_000_000, Math.round(parsed.value));
+
+          const rows = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=eq.${encodeURIComponent(String(id))}&limit=1`);
+          const item = rows && rows[0];
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          if (item.status !== "done") {
+            return sendJson(res, 409, { error: "That address has no report to re-value. Run the list again." });
+          }
+          const job = await getBulkJob(user.id, item.job_id);
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+
+          // The stored report. Absent only when the desk write failed or the
+          // portfolio was full — in which case there is genuinely nothing to
+          // re-value, and saying so beats a silent no-op.
+          const saved = item.portfolio_item_id
+            ? await getPortfolioItem(user.id, item.portfolio_item_id)
+            : null;
+          const report = saved && saved.payload && saved.payload.data;
+          if (!report || !Array.isArray(report.comps)) {
+            return sendJson(res, 409, {
+              error: "This row's report was not saved, so it cannot be re-valued. Run that address again.",
+            });
+          }
+
+          const valued = BULK.valueFromReport(report, {
+            subjectSizeSqft: size,
+            // The report's own date, not now: a saved report's numbers must
+            // not drift as it ages, which is what asOfOf() protects in the
+            // browser. updated_at is when this report was written.
+            asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
+            note: job.note || "",
+            propertyType: job.property_type,
+          });
+          if (!valued) {
+            return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });
+          }
+
+          const patch = {
+            value_low: valued.value_low, value_likely: valued.value_likely, value_high: valued.value_high,
+            psf_low: round2(valued.psf_low), psf_mid: round2(valued.psf_mid), psf_high: round2(valued.psf_high),
+            subject_size_sqft: valued.size_sqft,
+            // Null, the same as any typed size: "you" is what the page renders
+            // for it, and claiming a public-record source for a number a
+            // person typed would be the one lie this column can tell.
+            size_source: null,
+            sale_comps: valued.sale_comps, comp_count: valued.comp_count,
+            trimmed: valued.trimmed,
+            error: null,
+          };
+          await patchBulkItem(user.id, item.id, patch);
+
+          // The desk copy moves with it, payload included, so reopening the
+          // property shows the size that produced the figure beside it.
+          try {
+            const payload = {
+              ...saved.payload,
+              meta: {
+                ...saved.payload.meta,
+                subject: { ...(saved.payload.meta.subject || {}), sizeMin: size, sizeMax: size },
+              },
+            };
+            await updatePortfolioItem(user.id, saved.id, {
+              payload,
+              snapshot: cleanSnapshot({
+                low: valued.value_low, likely: valued.value_likely,
+                high: valued.value_high, median_psf: valued.psf_mid,
+              }),
+            });
+          } catch (err) {
+            // The row is already right; the desk catching up is not worth
+            // failing the request the member just watched succeed.
+            console.error("bulk size re-value: desk update failed:", err.message);
+          }
+
+          logEvent("bulk_resize", { prop_type: job.property_type });
+          return sendJson(res, 200, { item: bulkItemRow({ ...item, ...patch }) });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk size re-value error:", err.message);
+          return sendJson(res, 500, { error: "Could not re-value that address." });
         }
       });
       return;

@@ -140,9 +140,13 @@ function render(d){
   var ordered=look.concat(rows.filter(function(r){return r.ok;}));
   el("list").innerHTML=ordered.map(function(r){
     var badge=(r.picked==="auto"?'<span class="who">Auto</span>':'')+
+      (r.live===false&&r.ok?'<span class="who">Standby</span>':'')+
       (r.ok?'<span class="badge">OK</span>':'<span class="badge look">Needs a look</span>');
     var why=(r.reasons||[]).length?'<p class="reasons">'+r.reasons.map(esc).join(" · ")+"</p>":"";
-    if(!r.ok) why+='<p class="reasons">Live pages show a satellite aerial of this city instead.</p>';
+    if(!r.ok) why+='<p class="reasons">'+(r.liveKind==="photo"
+      ?"Live pages show the other photograph for this city instead."
+      :r.liveKind==="satellite"?"Live pages show a satellite aerial of this city instead."
+      :"Live pages show no picture for this city at all.")+"</p>";
     var links=[];
     if(r.samplePath)links.push('<a href="'+esc(r.samplePath)+'" target="_blank" rel="noopener">Live page</a>');
     if(r.commonsUrl)links.push('<a href="'+esc(r.commonsUrl)+'" target="_blank" rel="noopener">Commons original</a>');

@@ -3514,7 +3514,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   const { numericValue, salePsfOf, heroRound,
           compAgeYears, yearOf, compWeight, trendFactor, valueFromComps, subjectSizeFit, outlierOf, askFit,
           conditionSpread, unexplainedGain, conditionFit,
-          parseRadiusMiles } = VALUATION;
+          parseRadiusMiles, defaultFreePassMiles } = VALUATION;
 
   // ----------------------------------------------------------------------------
   // Table columns
@@ -5161,7 +5161,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     const mi = numericValue(comp.distance_mi);
     if (mi >= 0 && Number.isFinite(mi)) {
-      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : 1;
+      // Same free pass compWeight just applied, read from the same function —
+      // this line explains that weight, so a hardcoded 1 here would tell a
+      // reader a 6-mile comp is "farther away" while the weighting gave it
+      // full credit.
+      const free = Number(opts.radiusMiles) > 0 ? Number(opts.radiusMiles) : defaultFreePassMiles(opts.propertyType);
       reasons.push(mi > free ? "farther away" : "nearby");
     }
     if (opts.propertyType === "Residential" && opts.subjectPsf > 0) {

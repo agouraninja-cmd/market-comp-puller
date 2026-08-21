@@ -32,16 +32,32 @@ ship-time one. Both apply.
    The regen may be sitting UNCOMMITTED in the shared tree: read its diff
    (additions for your classes = yours to commit; anything else may be the
    other session's regen — leave it) and commit it alongside the HTML.
-5. **Pending migrations?** Compare `migrations/` against
-   `migrations/APPLIED.md`. Run **your own** unlogged migration in the
-   Supabase SQL editor FIRST — project **"Market comp puller"**
-   (`bqdgthxkdnpofgzfcyhl`), not "compninja" (that's the Google Cloud
-   project). An unlogged migration you didn't write is the other session's
-   in-flight work: leave it for their deploy. When NAMING a migration,
-   check existing files (tracked AND untracked) for a number collision.
+5. **Pending migrations?** `node migrations/apply.js` lists what
+   `APPLIED.md` does not name and runs nothing. Then apply **your own** file
+   FIRST, by name:
+
+   ```bash
+   node migrations/apply.js 037-your-file.sql --yes
+   ```
+
+   **Name the file — do not bare `--yes` in this shared checkout.** With no
+   filename it applies every pending file, and an unlogged migration you
+   didn't write is the other session's in-flight work: leave it for their
+   deploy. Reading the plan first is what makes that visible.
+   The runner derives the project from `SUPABASE_URL`, so the wrong-project
+   failure in APPLIED.md's 036 row (pasted into the empty default project,
+   reported Success, created two tables nothing reads) cannot happen; with
+   no `SUPABASE_ACCESS_TOKEN` set it refuses and it is the SQL editor by
+   hand — project **"Market comp puller"** (`bqdgthxkdnpofgzfcyhl`), not
+   "compninja" (that's the Google Cloud project).
+   When NAMING a migration, check existing files (tracked AND untracked) for
+   a number collision; the runner refuses a colliding PENDING pair, but two
+   files already applied (036) it leaves alone.
    New code against the old schema 400s silently: harvests divert to an
-   ephemeral file and corpus reads return empty. Log the run in APPLIED.md
-   and commit it.
+   ephemeral file and corpus reads return empty. The runner appends the
+   APPLIED.md row and re-checks the live schema afterwards — **read that row
+   and replace its placeholder note** with what the migration does and what
+   its absence would have cost, then commit it.
 6. **Sync with main**: `git fetch origin`, then if
    `git log --oneline HEAD..origin/main` shows anything, merge
    `origin/main` into dev-hub before pushing (never rebase or force-push).

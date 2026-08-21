@@ -12,22 +12,64 @@ with the code?**
 
 1. Write the change as the next numbered file: `012-something.sql`,
    `013-something.sql`, ...
-2. Open the [Supabase SQL editor](https://supabase.com/dashboard) and run it.
-3. Add a line to `APPLIED.md` with the date.
+2. Run it:
+
+   ```bash
+   node migrations/apply.js          # what is pending? (runs nothing)
+   node migrations/apply.js --yes    # apply it, in order, and verify after
+   ```
+
+3. Read the row it appends to `APPLIED.md` and replace the placeholder note
+   with what the migration does and what its absence would have cost.
 4. Commit both files together with the code change that needs them.
+
+`apply.js` needs `SUPABASE_ACCESS_TOKEN` in `.env` (see `.env.example`).
+Without it, step 2 is still the [Supabase SQL
+editor](https://supabase.com/dashboard) and step 3 is still by hand — nothing
+below changes, and that path stays supported.
 
 **To check whether prod is current:**
 
 ```bash
-node migrations/verify.js
+node migrations/apply.js --check   # Management API token
+node migrations/verify.js          # service key
 ```
 
-Read-only — it asks the live database which expected tables and columns are
-actually there, and exits non-zero listing what is missing, grouped by the
-migration that creates it. There is still no runner and no framework: applying
-a migration is you, the SQL editor, and a line in `APPLIED.md`. This only
-checks that the record is true, because `APPLIED.md` is a claim and 004 is the
-proof that claims can be wrong.
+Both answer the same question from the same list (`verify.js` owns `TABLES`
+and `COLUMNS`; `apply.js --check` asks `information_schema` through the other
+door). Two transports because the keys live in different places: this repo's
+local `.env` has never held a SERVICE key — five rows in `APPLIED.md` say
+"not verified by verify.js" for exactly that reason — while a Management API
+token is one a person can hold. Either exits non-zero listing what is missing,
+grouped by the migration that creates it.
+
+Applying is now a command, but the practice is unchanged and the reason for it
+is the same: `APPLIED.md` is a claim, and 004 is the proof that claims can be
+wrong. `apply.js` logs only what actually ran, only after it ran, and then
+checks the result rather than trusting its own success message — 036's first
+run reported Success into the wrong project.
+
+### What the runner refuses
+
+It runs DDL against production, so its refusals are the point:
+
+- **A project it was not pointed at.** The ref is derived from `SUPABASE_URL`,
+  never passed in, so it can only reach the database the app uses. A blank
+  `SUPABASE_URL` (an eval worktree's deliberate isolation) refuses outright.
+- **Destructive statements** — `drop table`/`drop column`/`truncate`, an
+  unscoped `delete` or `update` — without `--allow-destructive`. This folder is
+  append-only by convention; a `DROP` reaching it is a question.
+- **Two pending files sharing a number**, because the order would be undefined.
+  (036 collides on disk today; both are applied, so nothing is blocked.)
+- **`000` and `010`**, by name — they are reconstructions, never run as files.
+- **An unknown flag**, rather than guessing it.
+
+Ad-hoc SQL goes through the same door, read-only unless you say otherwise:
+
+```bash
+node migrations/apply.js --sql "select count(*) from comp_corpus"
+node migrations/apply.js --sql "update users set vault_beta = true where email = 'x@y.co'" --write
+```
 
 ## Why this exists
 

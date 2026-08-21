@@ -297,7 +297,16 @@ async function main() {
   process.exit(1);
 }
 
-main().catch((err) => {
-  console.error("verify failed:", err.message);
-  process.exit(2);
-});
+// The expected-schema lists above are the single home for "what does the code
+// need the database to have". apply.js --check asks the same question through
+// the Management API instead of PostgREST, which is how a machine holding no
+// SERVICE key (this repo's local .env has never had one -- five rows in
+// APPLIED.md say so) can still settle it. Requiring this module starts nothing.
+module.exports = { TABLES, COLUMNS };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("verify failed:", err.message);
+    process.exit(2);
+  });
+}

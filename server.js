@@ -5086,6 +5086,9 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
+// Opt-in to a provider stream whose wire format we have not yet confirmed
+// against a live call. Default OFF; see the useStream note in callAnthropicOnce.
+const STREAM_UNVERIFIED = /^(1|on|true|yes)$/i.test(String(process.env.STREAM_UNVERIFIED || ""));
 
 // ---------------------------------------------------------------------------
 // Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
@@ -5450,7 +5453,16 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
   // non-streaming path rather than ask for a mode it doesn't support.
-  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
+  // STREAM_UNVERIFIED is the opt-in for a provider whose API supports streaming
+  // and which has a reader here, but whose live wire format has never been
+  // confirmed (Gemini, as of 2026-08-21). It is separate from STREAM_ANTHROPIC
+  // and defaults OFF because a wrong frame shape fails CLOSED — the reader
+  // recovers no text and the report errors out — so this must never be
+  // something a deployment enables by accident. Confirm with
+  // `node scripts/verify-gemini-stream.js`, then flip that provider's
+  // capabilities.streaming and delete this branch.
+  const useStream = STREAM_ANTHROPIC && (PROVIDER.capabilities.streaming
+    || (STREAM_UNVERIFIED && PROVIDER.capabilities.streamingUnverified));
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
@@ -5527,7 +5539,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
+    // `stream` reaches requestInit as well as the body: Gemini selects SSE with
+    // a query parameter, so a provider that streams via its URL would otherwise
+    // ask for a stream in the body and be answered with ordinary JSON.
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: useStream });
     r = await fetch(init.url, {
       method: "POST",
       headers: init.headers,
@@ -5575,55 +5590,55 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     usage = parsed.usage;
     stopReason = parsed.stopReason;
   } else {
-    // Rebuild exactly what the non-streaming branch above produces: the text
-    // blocks, in index order, joined with "\n" and trimmed. Anything else and
-    // parseCompJson starts seeing different input.
-    const blocks = new Map();       // index -> { type, text, json }
+    // Provider-agnostic since 2026-08-21. This loop used to name eight
+    // Anthropic event types directly, which is the reason a second provider
+    // could not stream no matter what its API supported. The vendor's frames
+    // are interpreted by PROVIDER.createStreamReader() and arrive here as a
+    // small normalized vocabulary (start / text / results / search / usage /
+    // error / done); the reader also owns rebuilding the final text, so the
+    // streaming and non-streaming paths cannot drift into feeding
+    // parseCompJson different input.
+    const reader = PROVIDER.createStreamReader();
     let wroteWriting = false;
     let lastDraft = 0;
     let textChars = 0;
     try {
-      for await (const ev of sseFrames(r.body, () => controller.abort())) {
-        if (ev.type === "error") {
-          // A mid-stream error carries the same vendor-authored text as a
-          // non-2xx, just after the 200 — so it goes through the same door.
-          // `overloaded_error` is the 529 that never got a status line.
-          const e = ev.error || {};
-          throw upstreamError(e.type === "overloaded_error" ? 529 : "stream",
-                              e.message || e.type || "unknown");
-        }
-        if (ev.type === "message_start") {
-          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
-          say({ phase: "start" });
-        } else if (ev.type === "content_block_start") {
-          const cb = ev.content_block || {};
-          blocks.set(ev.index, { type: cb.type, text: "", json: "" });
-          if (cb.type === "web_search_tool_result") {
-            say({ phase: "results", n: searches, count: Array.isArray(cb.content) ? cb.content.length : null });
-          }
-        } else if (ev.type === "content_block_delta") {
-          const b = blocks.get(ev.index);
-          const d = ev.delta || {};
-          if (!b) continue;
-          // citations_delta also arrives on text blocks and carries no .text —
-          // never let it fall through into the text branch.
-          if (d.type === "text_delta" && typeof d.text === "string") {
-            b.text += d.text;
-            textChars += d.text.length;
+      for await (const frame of sseFrames(r.body, () => controller.abort())) {
+        for (const ev of reader.push(frame)) {
+          if (ev.kind === "error") throw upstreamError(ev.status, ev.message);
+          if (ev.kind === "start") {
+            usage = ev.usage;
+            say({ phase: "start" });
+          } else if (ev.kind === "results") {
+            say({ phase: "results", n: searches, count: ev.count });
+          } else if (ev.kind === "search") {
+            searches += 1;
+            say({ phase: "search", n: searches, query: ev.query });
+          } else if (ev.kind === "usage") {
+            // normalizeUsage always emits every key, filling absent ones with
+            // 0 (Number(undefined) || 0). A mid-stream usage frame carries
+            // only some of them, so a plain spread would zero the input and
+            // cache counts the opening frame already established. Overwrite
+            // only the keys this update actually carried.
+            for (const k of Object.keys(ev.usage)) if (ev.usage[k]) usage[k] = ev.usage[k];
+          } else if (ev.kind === "done") {
+            stopReason = ev.stopReason || stopReason;
+          } else if (ev.kind === "text") {
+            textChars += ev.text.length;
             if (compExtractor) {
-              try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+              try { compExtractor.push(ev.text); } catch (_) { compExtractor = null; }
             }
             if (summaryExtractor) {
-              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
+              try { summaryExtractor.push(ev.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
-            // it STARTS, not at content_block_stop (which is after the report is
+            // it STARTS, not when the block closes (which is after the report is
             // already written and useless as progress). Match the opening brace
-            // ANYWHERE in the block, not at its start: the model prefaces the
-            // JSON with narration, which is exactly why parseCompJson has to
+            // ANYWHERE in the text so far, not at its start: the model prefaces
+            // the JSON with narration, which is exactly why parseCompJson has to
             // slice to the first "{" too.
-            if (!wroteWriting && b.text.includes("{")) {
+            if (!wroteWriting && ev.text.includes("{")) {
               wroteWriting = true;
               say({ phase: "writing" });
             }
@@ -5634,29 +5649,6 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               lastDraft = Date.now();
               say({ phase: "drafting", chars: textChars, writing: wroteWriting });
             }
-          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") b.json += d.partial_json;
-        } else if (ev.type === "content_block_stop") {
-          const b = blocks.get(ev.index);
-          if (b && b.type === "server_tool_use") {
-            searches += 1;
-            let query = "";
-            // The query only exists once the block is complete — content_block_start
-            // carries input:{}. A truncated stream would throw here, and a raw
-            // SyntaxError would make solo() think the REPORT failed to parse and
-            // silently re-bill an entire search. Swallow it.
-            try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
-            say({ phase: "search", n: searches, query });
-          }
-        } else if (ev.type === "message_delta") {
-          stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          // normalizeUsage always emits all four keys, filling absent ones
-          // with 0 (Number(undefined) || 0). A message_delta frame carries
-          // only output_tokens, so a plain spread would zero the input and
-          // cache counts that message_start already established. Overwrite
-          // only the keys this delta actually carried.
-          if (ev.usage) {
-            const d = PROVIDER.normalizeUsage(ev.usage);
-            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
           }
         }
       }
@@ -5667,13 +5659,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     } finally {
       clearTimeout(timer);
     }
-    text = [...blocks.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, b]) => b)
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+    text = reader.text();
   }
 
   // Timing/usage line. Generation time scales with output_tokens, search time

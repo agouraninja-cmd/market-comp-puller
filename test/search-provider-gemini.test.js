@@ -214,3 +214,97 @@ test("both providers normalize to the same keys, so a scorecard can average them
                    Object.keys(A.normalizeUsage({})).sort(),
                    "a key present on one provider and undefined on the other poisons an average");
 });
+
+// --- streaming reader (UNVERIFIED wire format) -------------------------------
+// The request FORM is confirmed against the live API: `?alt=sse` + stream:true
+// answers content-type text/event-stream. What is not confirmed is the frame
+// contents, so these tests pin the shapes the reader claims to handle and the
+// invariants that keep a wrong guess survivable. scripts/verify-gemini-stream.js
+// settles the rest with one real call.
+
+test("streaming is still OFF, and the opt-in is a separate flag", () => {
+  assert.equal(P.capabilities.streaming, false,
+    "production must not ask for a stream whose frame shape is unconfirmed");
+  assert.equal(P.capabilities.streamingUnverified, true,
+    "but the reader exists and is reachable via STREAM_UNVERIFIED");
+});
+
+test("streaming is requested in BOTH places the API needs it", () => {
+  // Either one alone silently yields ordinary JSON, which the reader cannot
+  // parse and which looks like a broken model rather than a bad request.
+  assert.equal(P.requestInit({ apiKey: "k", stream: true }).url.endsWith("?alt=sse"), true);
+  assert.equal(P.buildRequestBody({ model: "m", prompt: "p", maxComps: 8, stream: true }).stream, true);
+  // ...and absent entirely when not streaming, so every existing call is
+  // byte-identical to before this shipped.
+  assert.equal(P.requestInit({ apiKey: "k" }).url.includes("alt=sse"), false);
+  assert.equal("stream" in P.buildRequestBody({ model: "m", prompt: "p", maxComps: 8 }), false);
+});
+
+test("the streamed text matches what parseResponse would produce", () => {
+  const r = P.createStreamReader();
+  r.push({ steps: [{ type: "thought", signature: "x" }] });
+  r.push({ steps: [{ type: "model_output", content: [{ type: "text", text: '{"ok":' }] }] });
+  r.push({ steps: [{ type: "model_output", content: [{ type: "text", text: "true}" }] }] });
+  const nonStreaming = P.parseResponse({
+    steps: [{ type: "thought" }, { type: "model_output", content: [{ type: "text", text: '{"ok":true}' }] }],
+  });
+  assert.equal(r.text(), nonStreaming.text);
+  assert.deepEqual(r.unknown(), [], "a thought step is expected, not unrecognized");
+});
+
+test("a re-sent snapshot replaces rather than appends", () => {
+  // Google's streaming surfaces have historically sent both deltas and
+  // cumulative snapshots. Appending a snapshot duplicates the whole report —
+  // which still PARSES, and is wrong, which is the worst failure available.
+  const r = P.createStreamReader();
+  r.push({ steps: [{ type: "model_output", index: 0, content: [{ type: "text", text: '{"a":1' }] }] });
+  r.push({ steps: [{ type: "model_output", index: 0, content: [{ type: "text", text: '{"a":1,"b":2}' }] }] });
+  assert.equal(r.text(), '{"a":1,"b":2}', "must not become {\"a\":1{\"a\":1,\"b\":2}");
+});
+
+test("only the newly-arrived characters are emitted as text events", () => {
+  // The live comp extractor is fed these; re-emitting a snapshot whole would
+  // make it re-scan and double-count every comp it had already seen.
+  const r = P.createStreamReader();
+  const a = r.push({ steps: [{ type: "model_output", index: 0, content: [{ type: "text", text: "abc" }] }] });
+  const b = r.push({ steps: [{ type: "model_output", index: 0, content: [{ type: "text", text: "abcdef" }] }] });
+  assert.deepEqual(a.filter((e) => e.kind === "text").map((e) => e.text), ["abc"]);
+  assert.deepEqual(b.filter((e) => e.kind === "text").map((e) => e.text), ["def"]);
+});
+
+test("an unrecognized frame is RECORDED, not silently dropped", () => {
+  // The whole point: when the guess is wrong, the verifier must be able to say
+  // WHICH frames were missed, not merely that the text came out empty.
+  const r = P.createStreamReader();
+  r.push({ type: "some_future_event", payload: 1 });
+  r.push({ steps: [{ type: "tool_call", name: "google_search" }] });
+  assert.deepEqual(r.unknown().sort(), ["some_future_event", "step:tool_call"]);
+  assert.equal(r.text(), "");
+});
+
+test("usage and a terminal status surface as normalized events", () => {
+  const r = P.createStreamReader();
+  const out = r.push({ usage: { total_input_tokens: 10, total_output_tokens: 5, total_thought_tokens: 3 },
+                       status: "completed" });
+  assert.equal(out.find((e) => e.kind === "start").kind, "start");
+  assert.equal(out.find((e) => e.kind === "usage").usage.thought_tokens, 3);
+  assert.equal(out.find((e) => e.kind === "done").stopReason, "completed");
+});
+
+test("a vendor error frame maps onto the shared error contract", () => {
+  const r = P.createStreamReader();
+  const out = r.push({ error: { code: 429, message: "rate limited" } });
+  assert.equal(out[0].kind, "error");
+  assert.equal(out[0].status, 529, "429/503 become the busy status the handler knows");
+  assert.equal(out[0].message, "rate limited");
+});
+
+test("both providers expose the same reader contract", () => {
+  for (const mod of [P, A]) {
+    const r = mod.createStreamReader();
+    assert.equal(typeof r.push, "function");
+    assert.equal(typeof r.text, "function");
+    assert.deepEqual(r.push(null), [], "junk must never throw out of a read loop");
+    assert.equal(r.text(), "");
+  }
+});

@@ -9324,16 +9324,40 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash-2)}
+/* LIKELY sets its figure at 22px against its neighbours' 18px, so it is the
+   cell that runs out of room first: eight digits measure 115px inside the
+   108px an even three-way split leaves at 1280px. Widen the cell rather than
+   shrink the type -- the size difference IS the emphasis this ledger exists
+   to give the middle number. */
+.lcell.mid{background:var(--wash-2);flex:1.15}
 .lcell.mid .lab{color:var(--red)}
 /* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
    exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
    and .n, which is why the rule cannot be shared. Dark only. */
 [data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
 [data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+/* white-space:nowrap here is load-bearing, not cosmetic. The scroll
+   choreography below splits "$4,730,000" into a "$" text node plus an
+   inline-block .cu span, so the numeral can tick without shoving its cell
+   around on every frame -- and that split MANUFACTURES a line-break
+   opportunity the plain string never had. The HTML as served wraps nowhere;
+   the scripted DOM broke the LIKELY figure across two lines with the "$"
+   stranded alone above it, on the one number a visitor came to see. The rule
+   belongs on .fig rather than on .cu because the break is BETWEEN the two
+   boxes, not inside either one. */
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+/* Three cells side by side need ~430px before the figures stop fitting, and
+   this sheet had no rule to stack them, so every phone drew all three values
+   broken across three lines each. Matches index.html's .rd-ledger breakpoint
+   (639.98px) rather than MARKET_CSS's 700px on purpose: this exhibit is a
+   miniature of the REPORT, so it should fold where the report folds. */
+@media (max-width:639.98px){
+  .ledger{flex-direction:column}
+  .lcell{border-right:0;border-bottom:1px solid var(--hair)}
+  .lcell:last-child{border-bottom:0}
+}
 .drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
 .drv b{color:var(--red);font-weight:700}
@@ -9350,7 +9374,12 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .hero2{display:grid;grid-template-columns:1fr;gap:28px}
 .hero2 h1.h{max-width:none}
 .hero2 .lead{max-width:48ch}
-@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+/* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
+   is four short lines and a search row; the exhibit is a five-comp table that
+   was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
+   mid-word, next to a left column sitting on 300px of dead air. Handing the
+   26px across costs the headline nothing and buys the table its last column. */
+@media(min-width:900px){.hero2{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
@@ -9406,6 +9435,11 @@ button.btn{border:0;cursor:pointer;font-family:inherit}
 .landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
 .landProof{color:var(--ink-2)}
 .heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
+/* align-items:flex-start shrink-wraps every child, which left the search row
+   at 326px of a 502px column and the field at 187px -- narrow enough that its
+   own placeholder truncated to "e.g. 1200 W Industrial B". The row is the
+   page's primary action; it gets the column. */
+.heroCta .landForm{align-self:stretch;width:100%}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}

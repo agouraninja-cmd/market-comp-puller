@@ -13007,8 +13007,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const hay = `${m.type} ${m.city}, ${m.state}`.toLowerCase();
         return tokens.every((t) => hay.includes(t));
       }).slice(0, 8);
+      // Momentum badge. The read is the model's own price-discovery direction,
+      // already asked for on every search and carried onto the market page by
+      // distillMarketSnapshot — this dropdown does not compute anything.
+      // Expanding green, flat grey, contracting red, per the brief.
+      //
+      // The WORD is the signal and the colour only reinforces it, so the row
+      // still reads for a colour-blind visitor and in a print. A page with no
+      // stored direction shows NOTHING rather than a fourth "unknown" state:
+      // most of the pages standing today predate the field.
+      //
+      // Colour rides in a style attribute rather than a class because the
+      // vendored tailwind.css has no green utility at all, and a class missing
+      // from that build silently does nothing — same call as the
+      // min-width:260px above. The three values are THEME TOKENS, never
+      // literals: --green and --red both invert in dark mode (#15803D → #34D399,
+      // #B91C1C → #F87171), so a badge hard-coded to the light shades would go
+      // to 2:1 on the dark dropdown.
+      const DIR_COLOR = {
+        expanding: "var(--green)", flat: "var(--ink-mute)", contracting: "var(--red)",
+      };
+      const dirBadge = (d) => {
+        // Own-property check, not a bare lookup: `direction` arrives over the
+        // wire, and DIR_COLOR["constructor"] is truthy on a plain object.
+        if (!Object.prototype.hasOwnProperty.call(DIR_COLOR, d)) return "";
+        return `<span class="shrink-0 text-[11px]" style="color:${DIR_COLOR[d]}">${escq(d[0].toUpperCase() + d.slice(1))}</span>`;
+      };
       let html = matches.map((m) =>
-        `<a href="/market/${escq(m.slug)}" class="block px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</a>`).join("");
+        `<a href="/market/${escq(m.slug)}" class="flex items-baseline justify-between gap-2 px-3 py-1.5 text-[#46536A] hover:text-[#1A2433] hover:bg-[#FBFBF9]">` +
+        `<span class="truncate">${escq(m.type)} · ${escq(m.city)}, ${escq(m.state)}</span>${dirBadge(m.direction)}</a>`).join("");
       // Explorer rows — only when the query doesn't resolve to a covered page.
       let p = parseExploreQuery(input.value.trim());
       // A zip is an intent: swap in the resolved market, or ask for it once.

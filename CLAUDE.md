@@ -93,9 +93,23 @@ every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory on GitHub, but since 2026-08-08 the same checks also
 gate the deploy itself: `npm start` runs a `prestart` script (`node --check
-server.js && npm test`), so on Render a red build exits before the server
+server.js`), so on Render an unparseable server.js exits before the server
 listens and the previous green deploy keeps serving. That gate holds even
-when Actions is down. A red X on
+when Actions is down.
+
+**`npm test` was removed from `prestart` on 2026-08-20**, after it broke
+production deploys. It was written when the suite was about two seconds; it is
+now 1731 tests taking **63 seconds on Render**, and several suites spawn real
+child servers. On a 0.5-CPU Starter instance that is 63 seconds of saturated
+CPU before the port is ever bound, re-run from scratch on every restart and by
+every concurrent instance. Three deploys in a row died on
+`Timed out after waiting for internal health check ... /healthz` while the
+health checker fought the test suite for a core — and each failure restarted
+the instance, which re-ran the suite, which made the next one likelier to fail.
+`node --check` stays, because that is the failure the gate was actually
+protecting against: a syntax error in server.js takes the whole site down at
+boot. Correctness is CI's job, on every push, where it costs nothing to run it
+twice. A red X on
 GitHub Actions still means fix or revert now. **No result at all is not the same as
 green**, and it happens: during a 7-hour Actions incident on 2026-08-06 GitHub
 throttled webhooks to ~15% and four branches merged with no CI run ever
@@ -113,16 +127,58 @@ A Claude Code hook (`.claude/hooks/regen-tailwind.js`) regenerates it when
 session, the manual command is under "Restart rule". Either way, verify a NEW
 utility class actually landed in the vendored file and commit it alongside.
 
+## Working alongside another session
+
+**If someone else already has this folder, take your own.** A clone has one
+checked-out branch and one staging area shared by every process pointed at it,
+so two agents in `~/dev/compninja-owen` are not two workspaces, they are two
+people at one desk. Whichever commits first sweeps up whatever the other has
+staged, and a branch switch pulls files out from under the other mid-edit. On
+2026-08-20 that filed an entire iOS client under an unrelated feature branch one
+minute before that branch was pushed. Nothing was lost, but only because someone
+checked.
+
+```bash
+node scripts/worktree.js market-badge   # -> ../cn-market-badge on feat/market-badge
+```
+
+That makes a second folder with its own branch, its own staging area, and the
+same history, branched off `origin/main` as it is right now rather than off
+whatever this folder is sitting on. Git then refuses to check out one branch in
+two worktrees, which is the guardrail the shared folder never had. It also
+symlinks `.env`, which is gitignored and therefore absent from a fresh worktree
+— without it the server boots keyless and every Supabase script fails
+confusingly rather than obviously. The other gitignored files
+(`account-store.json`, `analytics.jsonl`, `shared-reports.json`,
+`search-cache.json`) are local fallback DATA and are deliberately not linked.
+
+Run `git worktree list` to see who holds what. When your PR merges,
+`git worktree remove <dir> && git worktree prune`.
+
+**Check what you are about to send, every time.** `git status` shows changed
+files and says nothing about whose commits are underneath them:
+
+```bash
+git log origin/main..HEAD
+```
+
+If that lists work you did not do, it arrived the way described above. Do not
+just drop it — confirm the same content is committed somewhere else first (`git
+diff --stat <other-commit> <yours>` over the relevant paths), then rebase in a
+throwaway worktree and push with `--force-with-lease`, leaving the shared folder
+on the other session's branch so its files stay on disk.
+
 ## Running it
 
 ```bash
-npm start          # prestart runs the checks (~2s), then node server.js -> http://localhost:3000
+npm start          # prestart runs node --check, then node server.js -> http://localhost:3000
 ```
 
-`npm start` first runs `prestart` (`node --check server.js && npm test`, about
-two seconds) and refuses to boot on a failure — that is the production deploy
-gate (Render's start command is `npm start`), so do not remove it to save the
-two seconds. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
+`npm start` first runs `prestart` (`node --check server.js`) and refuses to
+boot on a failure — that is the production deploy gate (Render's start command
+is `npm start`). Keep it: it is fast and it catches the one failure that takes
+the site down at boot. Do NOT put `npm test` back in front of it — see the note
+above on the deploys that killed. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
 a **portable (no-admin) copy**, so it's launched by full path instead:
 
 ```powershell
@@ -1467,15 +1523,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
 - `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Hero payoff, then two stacked ledgers: Contribute (CREDIT /
+  **"Brokers"**. Hero split (claim + an illustrative report exhibit that
+  *shows* the Verified chip), then two stacked ledgers: Contribute (CREDIT /
   INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
-  PRIVATE). One Submit door at the bottom (`/?submit=comp` — a query the
-  account wall can see; a `/#submit-comp` hash never reaches the server).
-  Unlike `/how-it-works` it carries no CSS of its own: it renders through
-  `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` / `MARKET_FOOTER` style it
-  and it likewise does NOT depend on `tailwind.css`. Listed in `sitemap.xml`.
-  Do not confuse this with `GET /broker/<slug>`, the per-contributor public
-  profile.
+  PRIVATE), with a three-beat submission path (`.bkpath` / `.bkbeat`, never
+  `.steps`) between them and a broker FAQ (`BROKERS_FAQ` — one array, both
+  the accordions and the FAQPage JSON-LD; its answers are PUBLIC
+  promises that reach search engines as structured data, so each one has to
+  survive a check against what the product currently does — the vault-privacy
+  answer must name BOTH ways a comp leaves a vault, publishing and firm
+  sharing, because it shipped saying only publishing and the vault page had
+  already stopped claiming "visible only to you" by then. Pinned by test).
+  One Submit door at the bottom
+  (`/?submit=comp` — a query the account wall can see; a `/#submit-comp`
+  hash never reaches the server). Unlike `/how-it-works` it carries no CSS
+  of its own: it renders through `marketShell()`, so `MARKET_CSS` /
+  `MARKET_BAR` / `MARKET_FOOTER` style it and it likewise does NOT depend
+  on `tailwind.css`. Listed in `sitemap.xml`. Do not confuse this with
+  `GET /broker/<slug>`, the per-contributor public profile.
 - `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
   spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
   content lives in the pure **`guide-1031.js`** (the vault-page.js

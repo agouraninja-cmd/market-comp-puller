@@ -1191,3 +1191,50 @@ test("the pin scale is on the inner dot, never on the Leaflet-positioned element
   assert.match(html, /\.comp-pin\.lit \.comp-pin-dot \{[^}]*transform: scale/);
   assert.doesNotMatch(html, /\.comp-pin\.lit \{[^}]*transform:/);
 });
+
+test("the Explorer's momentum badge colours exactly the three directions", () => {
+  const src = html.match(/const DIR_COLOR = \{[\s\S]*?const dirBadge = \(d\) => \{[\s\S]*?\n      \};/);
+  assert.ok(src, "could not find the Explorer's dirBadge — was it renamed or moved?");
+  const ctx = vm.createContext({
+    escq: (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])),
+  });
+  new vm.Script(src[0] + "\n;this.fn = dirBadge;", { filename: "index.html" }).runInContext(ctx);
+  // Tokens, not literals: --green and --red invert in dark mode, so a badge
+  // pinned to the light shades would go unreadable on the dark dropdown.
+  assert.match(ctx.fn("expanding"), /var\(--green\)[\s\S]*Expanding/);
+  assert.match(ctx.fn("flat"), /var\(--ink-mute\)[\s\S]*Flat/);
+  assert.match(ctx.fn("contracting"), /var\(--red\)[\s\S]*Contracting/);
+  // A market page with no stored read shows nothing at all — most of the pages
+  // standing today predate the field, and a fourth "unknown" chip on every one
+  // of them would be the loudest thing in the dropdown.
+  assert.equal(ctx.fn(undefined), "");
+  assert.equal(ctx.fn(""), "");
+  assert.equal(ctx.fn("booming"), "");
+  // A bare DIR_COLOR[d] lookup would let an inherited key through as a truthy
+  // "colour" and print the word into the row.
+  assert.equal(ctx.fn("constructor"), "");
+  assert.equal(ctx.fn("toString"), "");
+});
+
+test("the Explorer badge uses only classes the vendored tailwind.css actually has", () => {
+  // index.html has no build step: a utility class missing from the committed
+  // tailwind.css silently does nothing, so the badge would render unstyled
+  // rather than fail. text-[11.5px], ml-2 and capitalize are all absent from
+  // that build today, which is why the badge's size and colour ride in a
+  // style attribute instead.
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  const row = html.match(/<a href="\/market\/\$\{escq\(m\.slug\)\}" class="([^"]+)"/);
+  assert.ok(row, "could not find the Explorer's covered-market row");
+  const badge = html.match(/<span class="(shrink-0[^"]*)" style="color:/);
+  assert.ok(badge, "could not find the Explorer's momentum badge span");
+  const used = (row[1] + " " + badge[1]).split(/\s+/).filter(Boolean)
+    // Interactive variants and the arbitrary text/bg colours already in the
+    // row are checked by the same escaped-selector rule below.
+    .filter((c) => !c.startsWith("hover:"));
+  for (const cls of used) {
+    const selector = "." + cls.replace(/([:[\]().%#/,])/g, "\\$1");
+    assert.ok(css.includes(selector),
+      `class "${cls}" is not in the vendored tailwind.css — regenerate it (see tailwind.config.js) or use an inline style`);
+  }
+});

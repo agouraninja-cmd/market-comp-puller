@@ -27,8 +27,49 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
+- **The extraction test — 20 real comp PDFs, one day, no code** (step 1 of the
+  Business Model Transition Plan's sequence; method and pass condition in
+  `docs/superpowers/specs/2026-08-21-archive-email-ingestion-design.md` §9).
+  This gates the whole Archive block, so it sits here rather than in Next: if
+  a broker can key 12 comps faster than they can correct 12 extracted ones,
+  the archive is data entry with extra steps and none of the ingestion work
+  below is worth doing. **It needs no product code, and the harness exists** —
+  `node scripts/extraction-eval.js` runs the whole thing: drop the files in
+  the git-ignored `extract-eval/`, `--init`, hand-key `truth.json` from the
+  source documents, `--yes`. It signs in itself, paces the route's rate
+  limit, scores through `extract-score.js` (pure, tested — broker-vault.js's
+  own parsers do the comparing so formatting never scores as error), and
+  writes the scorecard to `docs/evals/` with the stopwatch blank left for a
+  human. Measure
+  recall, per-field precision, **fabrication rate**, correction time, and
+  refusal quality. Fabrication at anything above ~zero is fatal on its own,
+  whatever the other numbers say: `normalizeRow` catches a malformed value and
+  cannot catch a well-formed invention, and a wrong number in a broker's own
+  records is the one error nobody ever notices. Deliverable is the numbers and
+  a written pass or fail. It doubles as the opening of the free-audit motion,
+  which is the same twenty PDFs.
+
 ## Next
 
+- **Archive ingestion: forward an email into the vault** (building block 1 of
+  the Business Model Transition Plan; design and migration plan in
+  `docs/superpowers/specs/2026-08-21-archive-email-ingestion-design.md`).
+  Design only as of 2026-08-21 — no product code and no migration file, both
+  deliberately gated on the extraction test above. The storage half has
+  existed since migration 013; what is missing is the front door. Three things
+  worth knowing before picking it up. **The plan document is wrong about the
+  vendor in a way that changes the design**: Resend's inbound webhook carries
+  metadata only, and the body and attachments are fetched back afterwards, so
+  the handler makes outbound calls of its own and can fail halfway. **Sender
+  verification is the privacy wall's weakest new surface**, and an SMTP
+  envelope sender is spoofable by anyone who learns the address, so the rule
+  is the envelope check AND the provider's SPF/DKIM verdict, with a missing
+  verdict quarantining rather than passing — and whether Resend exposes one at
+  all is the spec's first open question, to be settled against one real
+  message. **The commit path is a refactor, not new architecture**: pulling
+  `commitVaultBatch()` out of `POST /api/vault/upload` the way `runCompSearch`
+  came out of `/api/comps` for bulk valuation is what makes the existing
+  cascading undo work on a forwarded email with no new code.
 - **Import-time geocoding for vault comps** (step 2 of
   `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
   follow-on from that spec, the `/api/geocode` POST move Owen ranked above

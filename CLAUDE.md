@@ -1627,6 +1627,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   parse. Verified end-to-end 2026-07-27 on both a 24-month and the default
   12-month lookback. Note the threshold is per market **and** property type, so
   it only pays off when traffic repeats in the same market.
+  **Archive-first (2026-08-21).** Above the corpus sits the searcher's OWN
+  vault: 4+ usable rows for the market+type (priced, or a lease with a rent —
+  `archiveCoverage`/`archiveIsStrong` in blend-comps.js, threshold mirrors
+  `corpusIsStrong`) floor the web budget exactly as corpus strength does.
+  Three rules, all pinned by `test/archive-first.test.js` against a real
+  server and a stub provider: **nothing vault-derived reaches the prompt**
+  (the strength flag rides on the corpus object; `buildPrompt` only ever
+  receives `corpus.comps`/`nearby`/`listed`); the budget and the
+  `source: "archive"` analytics tag read ONE flag, set once in
+  `runCompSearch`; and **a vault-subsidized report is never written to the
+  shared cache** — `search_cache` is keyed by property, so a later visitor
+  would be served the thinner report without the private rows that justified
+  it (corpus-strong entries stay cacheable, because the comps that shrank
+  THAT budget are in the cached body). Firm-shared comps deliberately do not
+  count, and internal callers pass no vault rows. Rollback is
+  `ARCHIVE_FIRST=off`.
   **Metro matching (2026-08-10).** Corpus-first retrieval, and ONLY it, also
   reads the subject market's immediate neighbors from `market.js`'s curated
   `METRO_GROUPS`, so a Meridian search can draw on Boise's rows. Those come

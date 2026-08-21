@@ -445,3 +445,31 @@ test("dedupe survives junk without throwing", () => {
   assert.deepEqual(BLEND.dedupeFirmComps(null, null), []);
   assert.deepEqual(BLEND.dedupeFirmComps(undefined, [null]), [null]);
 });
+
+// --- archive-first retrieval: is the broker's own book strong enough? -------
+// The budget rule and nothing else. What these rows may NOT do — reach the
+// prompt, the cache, or the corpus — is pinned in test/archive-first.test.js
+// against the real server.
+
+test("archiveCoverage counts rows that carry a usable figure", () => {
+  const rows = [
+    { price: 1250000 },                      // priced sale
+    { price: "900000" },                     // numeric-as-string survives PostgREST
+    { rent_psf: 8.5 },                       // a lease counts through its rent
+    { price: null, rent_psf: null },         // undisclosed deal: real, but supports no number
+    { price: 0 },                            // zero is not a figure
+    { price: -5 },                           // neither is a refund
+    null, "junk",                            // garbage never throws
+  ];
+  assert.equal(BLEND.archiveCoverage(rows), 3);
+  assert.equal(BLEND.archiveCoverage([]), 0);
+  assert.equal(BLEND.archiveCoverage(undefined), 0);
+});
+
+test("archiveIsStrong mirrors corpusIsStrong's threshold: four usable comps", () => {
+  assert.equal(BLEND.archiveIsStrong(3), false);
+  assert.equal(BLEND.archiveIsStrong(4), true);
+  assert.equal(BLEND.archiveIsStrong("4"), true);
+  assert.equal(BLEND.archiveIsStrong(NaN), false);
+  assert.equal(BLEND.archiveIsStrong(undefined), false);
+});

@@ -49,7 +49,7 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
-// Who is in a firm, and what their membership lets them do (migration 032).
+// Who is in a firm, and what their membership lets them do (migration 030).
 // Same pure, fails-closed contract as report-access.js, and it feeds that
 // file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
 // consults, so there is exactly one place that decides a pending invite is not
@@ -209,6 +209,40 @@ if (!PROVIDER) {
 // default.
 // MODEL still overrides, so an existing MODEL=... deployment is unaffected.
 const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
+
+// How hard the model is allowed to think before it answers. Empty = leave the
+// vendor's own default alone, which is what every deployment does today and
+// what keeps the request byte-identical to the pre-knob wire format.
+//
+// This exists because on the default provider thinking is not a rounding error
+// on generation time, it IS generation time: a measured Gemini call spent
+// 4,207 in / 928 out / 6,473 thought, so roughly seven of every eight generated
+// tokens were reasoning and only one in eight was the report. Report-JSON trims
+// are real but they are attacking the small half; this knob is the big one.
+//
+// It ships UNSET on purpose. Google's guidance calls the default level the best
+// quality for agentic work, and comp selection accuracy is the product, so
+// turning this down is a thing to MEASURE (a run-eval.js --compare pair, about
+// $8.60 and one restart) rather than a thing to assume. Every field the
+// scorecard needs is already in eval-score.js.
+//
+// No fallthrough, same rule as SEARCH_PROVIDER above and /api/checkout's PLANS:
+// an unrecognized level exits at boot rather than being silently dropped, and a
+// level this provider cannot act on is refused rather than accepted and
+// ignored - a knob that appears to work and changes nothing is the worst of the
+// three outcomes. Read through capabilities, never through PROVIDER.name.
+const THINKING_LEVEL = (process.env.THINKING_LEVEL || "").trim().toLowerCase();
+if (THINKING_LEVEL) {
+  const levels = PROVIDER.capabilities.thinkingLevels;
+  if (!levels) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" but the ${PROVIDER.name} provider has no tunable reasoning depth. Unset it, or switch SEARCH_PROVIDER.`);
+    process.exit(1);
+  }
+  if (!levels.includes(THINKING_LEVEL)) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" is not one of: ${levels.join(", ")}`);
+    process.exit(1);
+  }
+}
 
 // The provider names its own credential var, so this stays a lookup rather
 // than a branch. Testing PROVIDER.name here would be the first crack in the
@@ -3191,7 +3225,7 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Firms (migration 032) — the reads and writes behind /api/org*.
+// Firms (migration 030) — the reads and writes behind /api/org*.
 //
 // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 //
@@ -3273,7 +3307,7 @@ async function setOrgShareDefault(orgId, value) {
     { share_default: value }, { prefer: "return=minimal" });
 }
 
-// The member's own override (migration 033). Scoped by BOTH the org and the
+// The member's own override (migration 031). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
 // knowing an org id must not be enough to flip anybody else's.
@@ -4190,7 +4224,7 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
-// A colleague invited to a firm (migration 032). Rides the same outbound gate
+// A colleague invited to a firm (migration 030). Rides the same outbound gate
 // as everything else, so it silently no-ops until EMAIL_FROM is set.
 //
 // It says who invited them and from what address, because this mail arrives
@@ -4650,30 +4684,61 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // typeGuidance (assessor + recently-sold listing pages).
     type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
-    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
+    // $/SF used to be REQUIRED on every sale comp and is arithmetic we already
+    // do: reconcilePricePerSqft derives price ÷ size server-side and has always
+    // overridden the model's figure when the two disagreed by more than 10%. So
+    // on a priced, sized sale the field was output tokens spent restating a
+    // number that could not survive contradicting its own row. Asking the model
+    // to OMIT it there (2026-08-21) buys back ~11 characters per comp on the
+    // slow write leg for no loss of information.
+    // Two things keep this from being a quality regression. The cross-check the
+    // field was really doing is retained as an instruction — verify the source's
+    // own $/SF against its own price and size — it is just no longer WRITTEN
+    // out. And the field is still asked for wherever it is not derivable: lease
+    // rates (a rent is not price ÷ size) and sales missing a price or a size,
+    // which are exactly the rows reconcilePricePerSqft skips.
+    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft". When a sale comp carries BOTH of those, OMIT "price_per_sqft" entirely - we compute it as the sale price divided by the building size, so writing it out again only costs you tokens. Do still check the source's own stated $/SF against its own stated price and size: if they disagree, recheck the figures rather than copying the inconsistency. Report "price_per_sqft" only where we cannot derive it: on LEASE comps (the quoted rate, which is not a price divided by a size), and on a sale where the price or the size genuinely could not be found. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
     ``,
-    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
+    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape, and write the keys in this order:`,
     `{`,
+    // FIELD ORDER IS LOAD-BEARING, and the ordering is the OPPOSITE of what
+    // reads naturally (2026-08-21). The model writes this JSON top to bottom,
+    // one token at a time, and the write phase is the slow half of a report
+    // (measured: searches finish in ~5s, writing runs 40-70s). Two consequences
+    // decide this order:
+    //   1. "comps" is the only part of the report the browser can put on screen
+    //      while the model is still writing (makeCompExtractor -> the `comp`
+    //      progress event -> assemblyComp fills the live table). Every field
+    //      written ABOVE it is dead air the visitor stares at. The market block
+    //      that used to sit here measures ~800 chars against the eval-recorded
+    //      narrative lengths, so ~200 output tokens, so ~2.5s of empty table at
+    //      the measured 78 tokens/sec - paid before the first row and again
+    //      before the last.
+    //   2. Everything moved BELOW the comps is a market-level read OF those
+    //      comps - avg_price_per_sqft averages them, transactions_reviewed must
+    //      exceed their count, value_drivers / market_trend / price_discovery
+    //      characterize them. Writing them after the array means the model is
+    //      describing rows it has actually committed to rather than ones it
+    //      still intends to write, so this is a quality change in the same
+    //      direction as the speed one.
+    // What deliberately stays ABOVE "comps":
+    //   - "summary", because it lands in the first seconds and is the one piece
+    //     of prose the loading card can show (makeFieldExtractor). Moving it
+    //     below would trade a visible field for an invisible one. It was
+    //     already written before the comps, so its quality is unchanged.
+    //   - currency/usd_rate, which every price BELOW is quoted in - the model
+    //     has to commit to the unit before it writes figures in it.
+    //   - the subject lookups, which the SUBJECT SIZE step above already told
+    //     the model to resolve FIRST, and which are ~100 chars all told.
+    // Anything added here later belongs below "comps" unless the browser can
+    // render it mid-stream or a later figure depends on it.
+    ...(compsOnly ? [] : [`  "summary": "",`]),
     // Currency rides in BOTH lanes: a foreign-property records lane must quote
     // its comps in the same local currency, and normalizeCurrency needs the
     // code to avoid silently treating those prices as USD on merge.
-    ...(compsOnly ? [] : [`  "summary": "",`]),
-    ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
-    ...(compsOnly ? [] : [
-      `  "subject_lat": "",`,
-      `  "subject_lng": "",`,
-      `  "market_cap_rate_range": { "low": "", "high": "" },`,
-      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
-      `  "value_drivers": ["", ""],`,
-      `  "market_trend": "",`,
-      `  "annual_price_trend_pct": "",`,
-      `  "search_radius": "",`,
-      `  "transactions_reviewed": "",`,
-      `  "price_discovery": { "direction": "", "note": "" },`,
-    ]),
     ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     // Not gated on compsOnly like the other narrative fields: on a lane split
     // the records lane is the one opening assessor pages, so it is the lane
@@ -4688,7 +4753,20 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ] : []),
     `  "comps": [`,
     `    ${compShape}`,
-    `  ]`,
+    `  ]${compsOnly ? "" : ","}`,
+    ...(compsOnly ? [] : [
+      `  "avg_price_per_sqft": "string or null",`,
+      `  "subject_lat": "",`,
+      `  "subject_lng": "",`,
+      `  "market_cap_rate_range": { "low": "", "high": "" },`,
+      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
+      `  "value_drivers": ["", ""],`,
+      `  "market_trend": "",`,
+      `  "annual_price_trend_pct": "",`,
+      `  "search_radius": "",`,
+      `  "transactions_reviewed": "",`,
+      `  "price_discovery": { "direction": "", "note": "" }`,
+    ]),
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
@@ -5016,6 +5094,9 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
+// Opt-in to a provider stream whose wire format we have not yet confirmed
+// against a live call. Default OFF; see the useStream note in callAnthropicOnce.
+const STREAM_UNVERIFIED = /^(1|on|true|yes)$/i.test(String(process.env.STREAM_UNVERIFIED || ""));
 
 // ---------------------------------------------------------------------------
 // Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
@@ -5380,7 +5461,16 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
   // non-streaming path rather than ask for a mode it doesn't support.
-  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
+  // STREAM_UNVERIFIED is the opt-in for a provider whose API supports streaming
+  // and which has a reader here, but whose live wire format has never been
+  // confirmed (Gemini, as of 2026-08-21). It is separate from STREAM_ANTHROPIC
+  // and defaults OFF because a wrong frame shape fails CLOSED — the reader
+  // recovers no text and the report errors out — so this must never be
+  // something a deployment enables by accident. Confirm with
+  // `node scripts/verify-gemini-stream.js`, then flip that provider's
+  // capabilities.streaming and delete this branch.
+  const useStream = STREAM_ANTHROPIC && (PROVIDER.capabilities.streaming
+    || (STREAM_UNVERIFIED && PROVIDER.capabilities.streamingUnverified));
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
@@ -5389,6 +5479,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     maxComps,
     searchUses,
     stream: useStream,
+    // Empty unless the deployment set one; a provider that declares no
+    // thinkingLevels never receives a value, because boot refuses that pairing.
+    thinkingLevel: THINKING_LEVEL,
   });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
@@ -5412,8 +5505,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         });
       })
     : null;
-  // The prompt orders "summary" before the comps array, so this lands in the
-  // first seconds of the write phase. The records lane has no summary at all.
+  // "summary" is deliberately the ONE narrative field the prompt still writes
+  // above the comps array (see the field-order note in buildPrompt's OUTPUT
+  // FORMAT block), precisely so this lands in the first seconds of the write
+  // phase. Everything else the model has to say about the market now comes
+  // after the comps, where it costs the live table nothing. The records lane
+  // has no summary at all.
   let summaryExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeFieldExtractor("summary", (value) =>
         say({ phase: "field", key: "summary", value: stripEmDashes(value) }))
@@ -5450,7 +5547,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
+    // `stream` reaches requestInit as well as the body: Gemini selects SSE with
+    // a query parameter, so a provider that streams via its URL would otherwise
+    // ask for a stream in the body and be answered with ordinary JSON.
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: useStream });
     r = await fetch(init.url, {
       method: "POST",
       headers: init.headers,
@@ -5498,55 +5598,55 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     usage = parsed.usage;
     stopReason = parsed.stopReason;
   } else {
-    // Rebuild exactly what the non-streaming branch above produces: the text
-    // blocks, in index order, joined with "\n" and trimmed. Anything else and
-    // parseCompJson starts seeing different input.
-    const blocks = new Map();       // index -> { type, text, json }
+    // Provider-agnostic since 2026-08-21. This loop used to name eight
+    // Anthropic event types directly, which is the reason a second provider
+    // could not stream no matter what its API supported. The vendor's frames
+    // are interpreted by PROVIDER.createStreamReader() and arrive here as a
+    // small normalized vocabulary (start / text / results / search / usage /
+    // error / done); the reader also owns rebuilding the final text, so the
+    // streaming and non-streaming paths cannot drift into feeding
+    // parseCompJson different input.
+    const reader = PROVIDER.createStreamReader();
     let wroteWriting = false;
     let lastDraft = 0;
     let textChars = 0;
     try {
-      for await (const ev of sseFrames(r.body, () => controller.abort())) {
-        if (ev.type === "error") {
-          // A mid-stream error carries the same vendor-authored text as a
-          // non-2xx, just after the 200 — so it goes through the same door.
-          // `overloaded_error` is the 529 that never got a status line.
-          const e = ev.error || {};
-          throw upstreamError(e.type === "overloaded_error" ? 529 : "stream",
-                              e.message || e.type || "unknown");
-        }
-        if (ev.type === "message_start") {
-          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
-          say({ phase: "start" });
-        } else if (ev.type === "content_block_start") {
-          const cb = ev.content_block || {};
-          blocks.set(ev.index, { type: cb.type, text: "", json: "" });
-          if (cb.type === "web_search_tool_result") {
-            say({ phase: "results", n: searches, count: Array.isArray(cb.content) ? cb.content.length : null });
-          }
-        } else if (ev.type === "content_block_delta") {
-          const b = blocks.get(ev.index);
-          const d = ev.delta || {};
-          if (!b) continue;
-          // citations_delta also arrives on text blocks and carries no .text —
-          // never let it fall through into the text branch.
-          if (d.type === "text_delta" && typeof d.text === "string") {
-            b.text += d.text;
-            textChars += d.text.length;
+      for await (const frame of sseFrames(r.body, () => controller.abort())) {
+        for (const ev of reader.push(frame)) {
+          if (ev.kind === "error") throw upstreamError(ev.status, ev.message);
+          if (ev.kind === "start") {
+            usage = ev.usage;
+            say({ phase: "start" });
+          } else if (ev.kind === "results") {
+            say({ phase: "results", n: searches, count: ev.count });
+          } else if (ev.kind === "search") {
+            searches += 1;
+            say({ phase: "search", n: searches, query: ev.query });
+          } else if (ev.kind === "usage") {
+            // normalizeUsage always emits every key, filling absent ones with
+            // 0 (Number(undefined) || 0). A mid-stream usage frame carries
+            // only some of them, so a plain spread would zero the input and
+            // cache counts the opening frame already established. Overwrite
+            // only the keys this update actually carried.
+            for (const k of Object.keys(ev.usage)) if (ev.usage[k]) usage[k] = ev.usage[k];
+          } else if (ev.kind === "done") {
+            stopReason = ev.stopReason || stopReason;
+          } else if (ev.kind === "text") {
+            textChars += ev.text.length;
             if (compExtractor) {
-              try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+              try { compExtractor.push(ev.text); } catch (_) { compExtractor = null; }
             }
             if (summaryExtractor) {
-              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
+              try { summaryExtractor.push(ev.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
-            // it STARTS, not at content_block_stop (which is after the report is
+            // it STARTS, not when the block closes (which is after the report is
             // already written and useless as progress). Match the opening brace
-            // ANYWHERE in the block, not at its start: the model prefaces the
-            // JSON with narration, which is exactly why parseCompJson has to
+            // ANYWHERE in the text so far, not at its start: the model prefaces
+            // the JSON with narration, which is exactly why parseCompJson has to
             // slice to the first "{" too.
-            if (!wroteWriting && b.text.includes("{")) {
+            if (!wroteWriting && ev.text.includes("{")) {
               wroteWriting = true;
               say({ phase: "writing" });
             }
@@ -5557,29 +5657,6 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               lastDraft = Date.now();
               say({ phase: "drafting", chars: textChars, writing: wroteWriting });
             }
-          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") b.json += d.partial_json;
-        } else if (ev.type === "content_block_stop") {
-          const b = blocks.get(ev.index);
-          if (b && b.type === "server_tool_use") {
-            searches += 1;
-            let query = "";
-            // The query only exists once the block is complete — content_block_start
-            // carries input:{}. A truncated stream would throw here, and a raw
-            // SyntaxError would make solo() think the REPORT failed to parse and
-            // silently re-bill an entire search. Swallow it.
-            try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
-            say({ phase: "search", n: searches, query });
-          }
-        } else if (ev.type === "message_delta") {
-          stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          // normalizeUsage always emits all four keys, filling absent ones
-          // with 0 (Number(undefined) || 0). A message_delta frame carries
-          // only output_tokens, so a plain spread would zero the input and
-          // cache counts that message_start already established. Overwrite
-          // only the keys this delta actually carried.
-          if (ev.usage) {
-            const d = PROVIDER.normalizeUsage(ev.usage);
-            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
           }
         }
       }
@@ -5590,13 +5667,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     } finally {
       clearTimeout(timer);
     }
-    text = [...blocks.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, b]) => b)
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+    text = reader.text();
   }
 
   // Timing/usage line. Generation time scales with output_tokens, search time
@@ -5607,7 +5678,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
   console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
-  if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
+  if (stats) {
+    stats.searches = searches; stats.out_tokens = usage.output_tokens || 0;
+    // The two fields above are ASSIGNED, so on a retry or a two-lane split the
+    // last call wins and the earlier one's spend disappears from the analytics
+    // row. Left alone rather than quietly redefined - that column has years of
+    // history read as "the last call's size". The eval needs the truth about
+    // what a search COST, though, so these accumulate across every billed call
+    // instead: one report can be several of them.
+    stats.billed_calls = (stats.billed_calls || 0) + 1;
+    stats.cost_usd = (stats.cost_usd || 0) + PROVIDER.costOf(usage);
+    stats.usage = stats.usage || {};
+    for (const k of Object.keys(usage)) {
+      stats.usage[k] = (stats.usage[k] || 0) + (Number(usage[k]) || 0);
+    }
+  }
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
@@ -6403,6 +6488,23 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market momentum, on the comp map card's heading row. Same read, same three
+   words and the same three theme tokens the Explorer dropdown badges with:
+   --green expanding, --ink-mute flat, --red contracting. The dropdown carries
+   its colour in a style attribute only because the vendored tailwind.css has no
+   green utility to name; this stylesheet is ours, so the colours are classes
+   here, like .mkt-trend-* below.
+   .mhead h2 must stay AFTER .card h2 above -- equal specificity, so source
+   order is the only thing zeroing the heading's own bottom margin. */
+.mhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+.mhead h2{margin:0}
+.mdir{font-size:12px;white-space:nowrap;color:var(--ink-3)}
+/* The WORD is the claim and the colour only reinforces it, so the row still
+   reads in a print, on a monochrome screen, and for a colour-blind visitor. */
+.mdirv{font-weight:600}
+.mdirv-expanding{color:var(--green)}
+.mdirv-flat{color:var(--ink-mute)}
+.mdirv-contracting{color:var(--red)}
 /* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
    .grid (the old two-card band). /markets still uses .grid; this page does
    not. Rows are visible on first paint: this sheet has no html.anim. */
@@ -7803,8 +7905,33 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
     };
   });
+  // Market momentum in the map card's heading row, the same read the Explorer
+  // dropdown badges on the way to this page. Nothing is computed here:
+  // freshDirection is the ONE home for both the three-word vocabulary and the
+  // 90-day expiry (market-snapshot.js), and /api/markets calls the same
+  // function, so a market that has gone quiet in the dropdown is quiet here
+  // too. Two surfaces disagreeing about which way a market is moving would be
+  // worse than neither showing it.
+  //
+  // No stored (or no longer current) direction renders NOTHING, never a fourth
+  // "unknown" state: 5 of the 27 seeded pages carry no read at all, and a page
+  // with no badge is exactly what all 27 looked like yesterday.
+  //
+  // "Momentum" labels the word because this badge is not sitting in a list of
+  // markets the way the dropdown's is -- a bare "Expanding" beside "Where these
+  // comps are" would leave the reader to guess what is expanding.
+  const MAP_DIR_CLASS = {
+    expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
+  };
+  // freshDirection is the whitelist: it returns one of those three keys or null,
+  // so no guard against an unrecognized word is needed at this end.
+  const mapDir = freshDirection(p, Date.now());
+  const mapDirBadge = mapDir
+    ? `<span class="mdir">Momentum <span class="mdirv ${MAP_DIR_CLASS[mapDir]}">` +
+      `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
+    : "";
   const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>Where these comps are</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
       `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
       `Comps quoted at the submarket level aren't pinned.</p></div>` +
@@ -12725,8 +12852,42 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
+        // Declared HERE rather than beside the search below because gate()
+        // closes over it: an internal caller is handed the call's real spend,
+        // and gate is the only funnel every exit routes through.
+        const callStats = {};
         const gate = async (rep) => {
-          if (internal) return rep;
+          // An internal caller (x-admin-key, i.e. the seed generator and the
+          // eval harness) gets the whole report, ungated. It also gets what
+          // the search actually cost — tokens, the thought/report split, and
+          // dollars — which is the difference between the eval being able to
+          // answer "is thinking less cheaper AND still accurate?" and only
+          // being able to answer the second half.
+          //
+          // Three rules. It is attached HERE, at serialization, so the cache,
+          // harvestComps and maybePublishMarketSnapshot (all of which run on
+          // `result` above this) never see it — the same rule gateReport and
+          // the vault blend follow, and the reason a cached report can never
+          // carry another run's token counts. It SPREADS rather than mutates,
+          // because `rep` may be the memoized cache object and writing into it
+          // would stamp one call's numbers onto every later reader. And it is
+          // omitted entirely on a cache hit, where callStats is empty: a cached
+          // search really did cost nothing, and reporting zeros as if they were
+          // measured would quietly halve the average cost of any run that hit
+          // the cache.
+          if (internal) {
+            return callStats.billed_calls
+              ? { ...rep, _call: {
+                  billed_calls: callStats.billed_calls,
+                  searches: callStats.searches || 0,
+                  cost_usd: callStats.cost_usd || 0,
+                  usage: callStats.usage || {},
+                  provider: PROVIDER.name,
+                  model: MODEL,
+                  thinking_level: THINKING_LEVEL,
+                } }
+              : rep;
+          }
           // Public saved deals first, then the paywall, then the vault.
           // Radius blend is before gateReport so extras become locked_basis
           // for a free visitor instead of printing their addresses. Vault
@@ -12942,7 +13103,6 @@ const server = http.createServer((req, res) =>
         // Speed observability: time the whole billed leg (what the visitor
         // actually waits for server-side) and collect the call's search
         // count, output size, and rescue history for the analytics event.
-        const callStats = {};
         const billedT0 = Date.now();
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
           sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
@@ -17223,7 +17383,7 @@ const server = http.createServer((req, res) =>
           });
         }
 
-        // The firm audience (migration 032). Same three refusals as the
+        // The firm audience (migration 030). Same three refusals as the
         // invited path — signed in, a database, and the audience proven
         // server-side — with the membership taking the place of the email
         // list. Two differences worth naming:
@@ -19043,8 +19203,14 @@ const server = http.createServer((req, res) =>
     // and the only honest answer was a git argument. It is the same class of
     // fact as `provider`, which is already here, and it names a model — not
     // a credential.
+    // thinking_level rides here for the same reason `model` does: it is a
+    // startup constant set by an env var nobody can read from outside the box,
+    // it moves the wall clock more than anything in the report JSON, and
+    // "which setting produced this report?" has to be answerable from the
+    // deployment rather than from the repo. "" means the vendor default.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
-      provider: PROVIDER.name, model: MODEL, search_budget: PROVIDER.capabilities.searchBudget,
+      provider: PROVIDER.name, model: MODEL, thinking_level: THINKING_LEVEL,
+      search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -19635,6 +19801,10 @@ server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
+  // Said out loud because it is the largest wall-clock setting on this box and
+  // the least visible: unset it looks identical to set-to-the-default in every
+  // report, and only the token counts in the per-call log would ever differ.
+  if (THINKING_LEVEL) console.log(`🧠 Thinking level: ${THINKING_LEVEL} (overrides the ${PROVIDER.name} default; watch the out-token count in the per-call log)`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)

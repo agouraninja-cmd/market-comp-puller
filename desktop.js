@@ -299,6 +299,12 @@ module.exports = {
   parseDesktopArgs,
   chromiumCandidates,
   buildAppArgs,
+  // findBrowser is exported for scripts/shot.js, which needs the same "where
+  // is a Chromium on this machine" answer. A second copy of that lookup would
+  // be a second thing to keep in step with the owner's portable-Node Windows
+  // box; there is already one such pair in this repo under a ⚠ and it is not
+  // a pattern worth repeating.
+  findBrowser,
   WINDOW_SIZE,
 };
 

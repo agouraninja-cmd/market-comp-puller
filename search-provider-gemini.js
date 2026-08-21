@@ -19,22 +19,49 @@ const capabilities = {
   // applied, so a strong corpus still improves quality here but no longer
   // reduces spend. server.js must read this rather than assume a budget.
   searchBudget: false,
-  // Phase 2 is non-streaming on purpose: it gets the validation signal without
-  // waiting on the Interactions API streaming format, which is unverified.
+  // Still false, and this is the flag that MATTERS: it is what server.js reads
+  // to decide whether to ask for a stream at all, so production is unchanged.
   streaming: false,
+  // ...but the API does support it (`?alt=sse` + `"stream": true`), and since
+  // 2026-08-21 there is a reader below for it. What is missing is a single run
+  // against the live wire format: the frame shape is documented only as "each
+  // event includes a type and JSON data", and shipping a guessed parser on the
+  // default path would fail CLOSED — no text at all, not a degraded report.
+  // So the reader exists, is unit-tested against the shapes it claims to
+  // handle, and is reachable ONLY via STREAM_UNVERIFIED=on. Verify with
+  // `node scripts/verify-gemini-stream.js` (one real call, ~$0.001): it prints
+  // whether the reader recovered the text and dumps any frame type the reader
+  // did not recognize, which is exactly what a fix needs. When it passes, set
+  // `streaming: true` above and delete this flag and the STREAM_UNVERIFIED
+  // branch in server.js.
+  streamingUnverified: true,
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
+  // Thought tokens count toward OUTPUT here, and on this workload they dwarf
+  // the report: a measured call spent 6,473 thought against 928 output, so
+  // roughly seven of every eight tokens this provider generates are thinking.
+  // Generation time scales with tokens generated, which makes this the single
+  // largest wall-clock lever on the default provider - larger than everything
+  // in the report JSON put together. It is exposed rather than pinned because
+  // Google's own guidance calls the default level the best quality for
+  // agentic work, so trading it down is a measurement (run-eval.js --compare),
+  // not a hunch. server.js reads THINKING_LEVEL and validates against this
+  // list; a provider with a null list is handed nothing.
+  thinkingLevels: ["low", "medium", "high"],
   pdfExtract: true,
   // inline_data carries an image on the same call it carries a PDF.
   imageExtract: true,
 };
 
-function buildRequestBody({ model, prompt, maxComps }) {
+function buildRequestBody({ model, prompt, maxComps, thinkingLevel, stream }) {
   return {
     model,
     input: prompt,
     tools: [{ type: "google_search" }],
+    // Absent unless streaming, matching the Anthropic module's rule: an
+    // explicit false would be a wire-level change to every existing call.
+    ...(stream ? { stream: true } : {}),
     // Thought tokens count toward output on Gemini and this prompt asks for a
     // large JSON array, so the ceiling has to cover reasoning AND the report.
     // A measured eval call spent 6,473 thought against 928 output, so the
@@ -48,13 +75,25 @@ function buildRequestBody({ model, prompt, maxComps }) {
     // accepted, and it is genuinely honored (a cap of 40 truncated the reply
     // to status "incomplete" with 2 output + 34 thought tokens; a cap of
     // 4,000 completed normally at 691 output + 130 thought).
-    generation_config: { max_output_tokens: maxComps > 8 ? 32000 : 24000 },
+    //
+    // thinking_level is OMITTED unless the deployment set one, so the default
+    // request stays byte-identical to what it was before the knob existed and
+    // the vendor's own default (medium on 3.7 Flash) keeps applying. Lowering
+    // it only ever reduces generated tokens, so deadlineTokens() below stays
+    // a safe ceiling either way.
+    generation_config: {
+      max_output_tokens: maxComps > 8 ? 32000 : 24000,
+      ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}),
+    },
   };
 }
 
-function requestInit({ apiKey }) {
+function requestInit({ apiKey, stream }) {
   return {
-    url: "https://generativelanguage.googleapis.com/v1beta/interactions",
+    // Streaming needs BOTH `?alt=sse` here and `stream: true` in the body; the
+    // query parameter is what selects the SSE encoding of the response.
+    url: "https://generativelanguage.googleapis.com/v1beta/interactions"
+      + (stream ? "?alt=sse" : ""),
     headers: {
       "content-type": "application/json",
       "x-goog-api-key": apiKey,
@@ -139,6 +178,106 @@ function parseResponse(data) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Streaming reader — UNVERIFIED against the live wire format. See the
+// streamingUnverified note in `capabilities` above before trusting it.
+//
+// What it is built on: the non-streaming body is
+//   { steps: [ {type:"thought"}, {type:"model_output", content:[{type:"text",text}]} ],
+//     usage: {...}, status: "completed" }
+// and the streaming docs say each SSE event carries a type and JSON data. So
+// this accepts frames that carry EITHER a `steps` array (a whole-or-partial
+// interaction object) or a single step-shaped object, and harvests text from
+// model_output content blocks.
+//
+// Two rules make a guessed shape survivable rather than silently wrong:
+//   - text is accumulated PER STEP INDEX, and a step re-sent in full replaces
+//     rather than appends. Google's streaming APIs have historically sent both
+//     incremental deltas and cumulative snapshots depending on the surface, and
+//     appending a snapshot would duplicate the whole report — which parses, and
+//     is wrong, which is the worst failure available here.
+//   - every frame type it does not understand is recorded on `unknown()`, so
+//     the verifier can say WHICH frames were missed instead of only that the
+//     text came out empty.
+function createStreamReader() {
+  const steps = new Map();        // index -> accumulated text
+  const unknown = new Set();
+  let stopReason = "";
+  let started = false;
+
+  const textOf = (step) => {
+    if (!step || typeof step !== "object") return null;
+    if (typeof step.text === "string") return step.text;
+    if (!Array.isArray(step.content)) return null;
+    return step.content
+      .filter((c) => c && c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text).join("");
+  };
+
+  return {
+    push(ev) {
+      const out = [];
+      if (!ev || typeof ev !== "object") return out;
+
+      // Vendor error, whatever it is wrapped in.
+      const err = ev.error || (ev.type === "error" ? ev : null);
+      if (err && (err.message || err.code || err.status)) {
+        const code = Number(err.code);
+        out.push({ kind: "error", status: code === 429 || code === 503 ? 529 : "stream",
+                   message: String(err.message || err.status || "unknown") });
+        return out;
+      }
+
+      if (!started) { started = true; out.push({ kind: "start", usage: normalizeUsage(ev.usage) }); }
+      if (ev.usage) out.push({ kind: "usage", usage: normalizeUsage(ev.usage) });
+      if (typeof ev.status === "string" && ev.status) {
+        stopReason = ev.status;
+        out.push({ kind: "done", stopReason });
+      }
+
+      const incoming = Array.isArray(ev.steps) ? ev.steps
+        : (ev.type === "model_output" || ev.content || typeof ev.text === "string") ? [ev]
+        : null;
+      if (!incoming) {
+        if (ev.type) unknown.add(String(ev.type));
+        else if (!ev.usage && !ev.status) unknown.add("(untyped frame: " + Object.keys(ev).join(",") + ")");
+        return out;
+      }
+
+      incoming.forEach((step, i) => {
+        if (!step || typeof step !== "object") return;
+        if (step.type && step.type !== "model_output" && step.type !== "text") {
+          // thought steps are expected and carry no report text.
+          if (step.type !== "thought") unknown.add("step:" + String(step.type));
+          return;
+        }
+        const t = textOf(step);
+        if (t == null) return;
+        const idx = Number.isFinite(step.index) ? step.index : i;
+        const prev = steps.get(idx) || "";
+        // Snapshot vs delta: a frame that already contains everything we hold
+        // is a resend, so replace. Otherwise it is new text, so append.
+        if (t.startsWith(prev) && t.length >= prev.length) {
+          const added = t.slice(prev.length);
+          steps.set(idx, t);
+          if (added) out.push({ kind: "text", text: added });
+        } else {
+          steps.set(idx, prev + t);
+          out.push({ kind: "text", text: t });
+        }
+      });
+      return out;
+    },
+    // Must match parseResponse()'s join exactly — model_output steps in order,
+    // joined with "\n", trimmed.
+    text() {
+      return [...steps.entries()].sort((a, b) => a[0] - b[0])
+        .map(([, t]) => t).join("\n").trim();
+    },
+    unknown() { return [...unknown]; },
+  };
+}
+
 function normalizeUsage(raw) {
   const u = raw || {};
   const n = (v) => Number(v) || 0;
@@ -148,6 +287,16 @@ function normalizeUsage(raw) {
     // what makes costOf correct and makes the log line comparable across
     // providers.
     output_tokens: n(u.total_output_tokens) + n(u.total_thought_tokens),
+    // ...and reported SEPARATELY as well, because the fold above hides the one
+    // number that explains this provider's wall clock: a measured call was 928
+    // report tokens against 6,473 thought, so "output_tokens: 7,401" reads as a
+    // gigantic report when it is a small report and a long think. Without the
+    // split, a THINKING_LEVEL A/B cannot show WHY it got faster, only that it
+    // did.
+    // TRAP: this is a SUBSET of output_tokens, never an addition to it. Anyone
+    // summing the two double-counts the thinking, and costOf would double the
+    // bill. Report it as "of which", never as another column to add up.
+    thought_tokens: n(u.total_thought_tokens),
     cache_read_tokens: n(u.total_cached_tokens),
     cache_write_tokens: 0,
   };
@@ -196,6 +345,7 @@ module.exports = {
   buildRequestBody,
   requestInit,
   parseResponse,
+  createStreamReader,
   normalizeUsage,
   costOf,
   deadlineTokens,

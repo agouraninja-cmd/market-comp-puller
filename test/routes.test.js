@@ -183,6 +183,60 @@ test("bare environment", async (t) => {
     assert.match(related, /·/, "trimmed links use a bullet in place of the middle");
   });
 
+  // The comp map card carries the market's momentum — the same read, the same
+  // three words and the same three colours the Explorer dropdown badges with.
+  //
+  // The colour is a CLASS here (MARKET_CSS is ours, unlike the vendored
+  // tailwind build the dropdown has to work around), and a class that is not
+  // in the stylesheet fails silently: the word renders in body grey and the
+  // page looks fine. So the served page is checked for the rule, not just for
+  // the attribute.
+  await t.test("the comp map card badges which way the market is moving", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
+    const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
+    assert.match(head, /<h2>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
+    assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
+      "Ontario's stored read is contracting — the word and its colour class must both render");
+    assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
+    for (const cls of ["mdirv-expanding", "mdirv-flat", "mdirv-contracting"]) {
+      assert.match(html, new RegExp("\\." + cls + "\\{color:var\\(--"),
+        cls + " has no rule in MARKET_CSS, so that word would render uncoloured");
+    }
+  });
+
+  // A market with no read renders NOTHING, never a fourth "unknown" state.
+  // Five of the seeded pages are in this state on purpose: their momentum
+  // sentence was two-sided and the classifier refused to pick a half.
+  await t.test("a market with no stored direction gets no badge at all", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
+    assert.ok(!html.includes('class="mdir"'),
+      "an unread market must show no momentum, not an Unknown chip");
+    assert.match(html, /<h2>Where these comps are<\/h2>/,
+      "and the heading must be untouched when there is no badge beside it");
+  });
+
+  // The dropdown and the page it links to must never disagree about the same
+  // market on the same afternoon. Both read freshDirection(), which is what
+  // makes the 90-day expiry one rule rather than two — this is what catches a
+  // second copy of the vocabulary or the age gate growing on either side.
+  await t.test("the map badge says what /api/markets says, market by market", async () => {
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    assert.ok(rows.length > 10, "the seeded directory should be here");
+    let checked = 0;
+    for (const row of rows) {
+      const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
+      // No map card, no badge: this one rides on the map, so a market whose
+      // comps are all quoted at the submarket level shows nothing either way.
+      if (!html.includes('id="mktMapCard"')) continue;
+      checked++;
+      const word = (html.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
+      assert.equal(word ? word.toLowerCase() : null, row.direction || null,
+        row.slug + ": the map card and the Explorer dropdown disagree");
+    }
+    assert.ok(checked > 10, "expected most seeded markets to have a map card, got " + checked);
+  });
+
   // The signed-in header chrome, on every page that is not index.html.
   //
   // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and
@@ -1557,6 +1611,51 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     } finally { over.stop(); }
   });
 
+  // THINKING_LEVEL is the same class of hazard as search_budget above: it could
+  // be perfectly implemented in search-provider-gemini.js and never read by
+  // server.js, and every unit test would still pass. /healthz reporting it is
+  // the observable proof the server consults the setting at all. It matters
+  // more than most because thought tokens ARE the wall clock on this provider
+  // (a measured call: 928 output against 6,473 thought), so a knob that quietly
+  // does nothing would be mistaken for "thinking less does not help".
+  await t.test("/healthz reports the live thinking level, default and overridden", async () => {
+    const dflt = await boot({});
+    try {
+      // "" is a real answer meaning "we set nothing, the vendor default
+      // applies" — it must be PRESENT and empty, not absent, or run-eval.js
+      // cannot tell a default-thinking run from an older build.
+      const body = await (await fetch(dflt.base + "/healthz")).json();
+      assert.equal(body.thinking_level, "", "unset must report as empty, not missing");
+      assert.ok("thinking_level" in body);
+    } finally { dflt.stop(); }
+
+    const low = await boot({ THINKING_LEVEL: "low" });
+    try {
+      assert.equal((await (await fetch(low.base + "/healthz")).json()).thinking_level, "low");
+    } finally { low.stop(); }
+  });
+
+  await t.test("an unrecognized THINKING_LEVEL refuses to boot", async () => {
+    // Same no-fallthrough rule as SEARCH_PROVIDER. A dropped value would be
+    // invisible: the reports still come back, just at a depth nobody chose.
+    await assert.rejects(
+      () => boot({ THINKING_LEVEL: "maximum" }),
+      /exited early/,
+      "must exit rather than silently ignore an unknown reasoning depth",
+    );
+  });
+
+  await t.test("a THINKING_LEVEL the provider cannot act on refuses to boot", async () => {
+    // Anthropic declares thinkingLevels: null. Accepting the value and dropping
+    // it on the floor is the worst outcome of the three — the deployment would
+    // believe it had turned thinking down and measure no difference.
+    await assert.rejects(
+      () => boot({ SEARCH_PROVIDER: "anthropic", THINKING_LEVEL: "low" }),
+      /exited early/,
+      "a knob that appears to work and changes nothing must be refused at boot",
+    );
+  });
+
   await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
     // boot() throws "server exited early" when the child exits before /healthz.
     // A silent fallback to anthropic would boot healthy and fail this test.
@@ -1917,6 +2016,91 @@ test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst writ
     "beds and year built already have columns; restating them puffed the first rows");
   assert.match(body, /If the market note names a radius in miles/,
     "a typed 2.5-mile market note must override the 1-mile neighborhood default");
+});
+
+// The model writes this JSON top to bottom and the write leg is the slow half
+// of a report, so where a field sits in the taught shape decides when (and
+// whether) the visitor ever sees it stream. "comps" is the only part the
+// browser can paint mid-stream, so everything above it is dead air and every
+// market-level read of the comps belongs below them. Evaluating the block
+// rather than grepping it, because the property that matters is the ORDER of
+// the keys and the fact that the skeleton is still valid JSON in every branch.
+test("buildPrompt writes the comps array before every market-level field", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("    `OUTPUT FORMAT");
+  assert.ok(start >= 0, "could not find the OUTPUT FORMAT shape block");
+  const endMark = "    `}`,\n";
+  const end = src.indexOf(endMark, start);
+  assert.ok(end > start, "could not bound the shape block");
+  const block = src.slice(start, end + endMark.length);
+
+  // Fields whose value is a read OF the comps: writing them first means
+  // describing rows the model has not committed to yet, and costs the live
+  // table seconds of blank screen.
+  const AFTER_COMPS = ["avg_price_per_sqft", "subject_lat", "subject_lng",
+    "market_cap_rate_range", "market_opex_range", "value_drivers", "market_trend",
+    "annual_price_trend_pct", "search_radius", "transactions_reviewed",
+    "price_discovery"];
+
+  for (const compsOnly of [false, true]) {
+    for (const wantsSize of [false, true]) {
+      for (const isLand of [false, true]) {
+        const where = `compsOnly=${compsOnly} wantsSize=${wantsSize} isLand=${isLand}`;
+        const lines = new Function("compsOnly", "wantsSize", "isLand", "compShape",
+          "return [\n" + block + "];")(compsOnly, wantsSize, isLand, '{ "a": "" }');
+        const text = lines.join("\n");
+        const skeleton = text.slice(text.indexOf("{"));
+        let shape;
+        assert.doesNotThrow(() => { shape = JSON.parse(skeleton); },
+          `the shape the prompt teaches must be valid JSON (${where})`);
+        const keys = Object.keys(shape);
+        const compsAt = keys.indexOf("comps");
+        assert.ok(compsAt >= 0, `comps must be in the shape (${where})`);
+        for (const k of AFTER_COMPS) {
+          const at = keys.indexOf(k);
+          if (at === -1) continue;   // gated off in this branch
+          assert.ok(at > compsAt,
+            `"${k}" must be written after "comps" (${where})`);
+        }
+        // summary is the deliberate exception: it is the one narrative field
+        // the loading card can show (makeFieldExtractor), so it stays on top.
+        if (!compsOnly) {
+          assert.ok(keys.indexOf("summary") >= 0 && keys.indexOf("summary") < compsAt,
+            `"summary" streams to the loading card and must stay above "comps" (${where})`);
+        }
+        // Nothing above the comps may be bulky. Everything still up there is a
+        // subject lookup or a unit declaration; a new one belongs below.
+        const ALLOWED_ABOVE = new Set(["summary", "currency", "usd_rate",
+          "subject_size_sqft", "subject_size_source", "subject_last_sale",
+          "subject_assessed", "subject_asking", "subject_year_built"]);
+        for (const k of keys.slice(0, compsAt)) {
+          assert.ok(ALLOWED_ABOVE.has(k),
+            `"${k}" sits above "comps" and delays the live table (${where})`);
+        }
+      }
+    }
+  }
+});
+
+// $/SF on a priced, sized sale is arithmetic the server already redoes
+// (reconcilePricePerSqft), so asking for it spent write-leg tokens on a figure
+// that could not survive contradicting its own row.
+test("buildPrompt stops asking for a $/SF it derives itself", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /OMIT "price_per_sqft" entirely/,
+    "a sale carrying both price and size must not restate price divided by size");
+  assert.match(body, /on LEASE comps/,
+    "a lease rate is not derivable and must still be asked for");
+  assert.match(body, /recheck the figures rather than copying the inconsistency/,
+    "dropping the field must not drop the source cross-check it was really doing");
 });
 
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {

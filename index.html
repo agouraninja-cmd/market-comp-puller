@@ -14442,7 +14442,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return VALUATION.tierOf(comp);
   }
   // A shared-vault comp: a colleague's private comp, opted in to the firm
-  // (migration 030). It is a broker_vault comp in every respect that matters
+  // (migration 032). It is a broker_vault comp in every respect that matters
   // downstream — full weight, private:true, stripped from shares and exports —
   // and the ONLY difference is whose it is, which is an attribution rather
   // than a provenance tier. So it reads off the comp's own `firm` field
@@ -14728,7 +14728,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           `${one ? "comes" : "come"} from the sender's own records, ` +
           `not from CompNinja's public research.`;
       } else if (visibleComps().some(firmOfComp)) {
-        // A THIRD case (migration 030): some of these are a COLLEAGUE'S comps,
+        // A THIRD case (migration 032): some of these are a COLLEAGUE'S comps,
         // shared with the firm. "From your private vault" is then wrong about
         // whose they are, and this line is the one that survives into the
         // print and the PNG — it is what stops a table short by rows reading

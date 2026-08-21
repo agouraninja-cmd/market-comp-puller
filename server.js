@@ -7696,13 +7696,15 @@ ${ACCOUNT_NAV_CSS}`;
 //     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
 //     file holds no copy of the list any more.
 // Order is the owner's (2026-08-09): Pricing first (rendered separately —
-// it is a door to index.html's pricing modal, not a page), then these four.
+// it is a door to index.html's pricing modal, not a page), then these.
+// "Markets" left this list 2026-08-21 (owner's call): the app page links
+// /markets from an "Our markets" line under the Market Explorer's own input
+// instead, and every server-rendered page keeps its footer /markets link.
 const NAV_LINKS = [
   ["/brokers", "Brokers"],
-  ["/markets", "Markets"],
   ["/how-it-works", "How it works"],
   ["/1031-exchange", "1031 Guide"],
-  // Appended 2026-08-20 (the four above keep the owner's 2026-08-09 order):
+  // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
   // The third element is a class, and only this entry has one: `nav-dl` is

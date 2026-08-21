@@ -480,6 +480,7 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
   const ALLOWLIST = new Set([
     "color:#fff",          // text on a filled red/dark surface (::selection)
     "fill:#334155",        // .loading-ninja .ninja-body's light-only base value, fully replaced by an explicit dark-mode rule right below it
+    "stroke:#334155",      // .loading-ninja .ninja-limb/.ninja-limb-far -- the same value on the runner's stroked limbs, replaced by the same dark-mode rule
     "fill:#dc2626",        // .loading-ninja .ninja-band -- this IS --red-fill's dark value, so tokenizing it would change the light theme
     "color:#46536a",        // .rd-badge.p's text -- kept literal alongside its background (see the fix-round-2 note at the declaration: a half conversion measured 1.28:1)
     "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token

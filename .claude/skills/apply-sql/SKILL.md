@@ -18,7 +18,18 @@ node migrations/apply.js --sql "select count(*) from comp_corpus"
 It needs `SUPABASE_ACCESS_TOKEN` in `.env` (an `sbp_...` from
 https://supabase.com/dashboard/account/tokens — **not** the service key;
 PostgREST cannot run DDL at all). If it is unset the runner says so and exits;
-that is the moment to ask the owner for one rather than to fall back silently.
+that is the moment to point the owner at the one-command setup rather than to
+fall back silently:
+
+```bash
+node scripts/setup-supabase-token.js
+```
+
+It prints the `.env` path, takes the token at a hidden prompt (never as an
+argument — that would land it in shell history), refuses a service key by name,
+sets `SUPABASE_URL` if absent, and replaces rather than duplicates on a re-run.
+**Never ask the owner to paste a token into the chat**, and if one appears
+there anyway, say plainly that it is burned and must be revoked.
 
 ## Which mode
 

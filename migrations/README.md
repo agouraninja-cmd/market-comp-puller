@@ -23,8 +23,17 @@ with the code?**
    with what the migration does and what its absence would have cost.
 4. Commit both files together with the code change that needs them.
 
-`apply.js` needs `SUPABASE_ACCESS_TOKEN` in `.env` (see `.env.example`).
-Without it, step 2 is still the [Supabase SQL
+`apply.js` needs `SUPABASE_ACCESS_TOKEN` in `.env`. Set it once with:
+
+```bash
+node scripts/setup-supabase-token.js
+```
+
+which prints where `.env` actually is, takes the token at a hidden prompt
+(never as an argument, which would land a secret in shell history), refuses a
+service key by name rather than as a generic "invalid", fills in
+`SUPABASE_URL` if it is absent, and replaces rather than duplicates when it is
+run again. Without a token, step 2 is still the [Supabase SQL
 editor](https://supabase.com/dashboard) and step 3 is still by hand — nothing
 below changes, and that path stays supported.
 

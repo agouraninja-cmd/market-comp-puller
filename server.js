@@ -2594,7 +2594,14 @@ function corpusIsStrong(corpus) {
 // are handed to the model, so a bigger ask needs no extra fresh searches.
 function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
   const big = maxComps > 8;
-  if (!corpusIsStrong(corpus)) return subjectSizeSqft ? (big ? 8 : 6) : (big ? 10 : 8);
+  // Archive-first: the searcher's own vault being strong cuts the budget
+  // exactly as a strong public corpus does. The flag rides ON the corpus
+  // object (set once, in runCompSearch, from blend-comps.js's tested
+  // predicate) so this function and the analytics tag read one decision —
+  // and so the flag can never reach buildPrompt, which is only ever handed
+  // corpus.comps / corpus.nearby / corpus.listed, never the object itself.
+  const strong = corpusIsStrong(corpus) || Boolean(corpus && corpus.archiveStrong);
+  if (!strong) return subjectSizeSqft ? (big ? 8 : 6) : (big ? 10 : 8);
   return subjectSizeSqft ? 2 : 3;                               // conservative floor, not 0/1
 }
 
@@ -2640,6 +2647,15 @@ const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 // serialization. Default ON; `off` restores search-only reports. Harvest
 // still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
+
+// Archive-first retrieval (transition plan §4.3: archive -> corpus -> web).
+// A broker whose OWN vault already holds 4+ usable comps for this market +
+// type searches the web on the corpus-strong floor — their book subsidizes
+// their search. Rules in blend-comps.js (archiveCoverage/archiveIsStrong);
+// the flag is set in runCompSearch and read in exactly two places, the budget
+// and the analytics tag, so the two can never disagree. Default ON;
+// `off` restores corpus-then-web for everyone.
+const ARCHIVE_FIRST = !/^(0|off|false|no)$/i.test(String(process.env.ARCHIVE_FIRST || ""));
 
 // On-market listing rows (unparseable deal_date) offered as extra candidates.
 // Default ON; `off` hides the prompt block and returns listed: []. The harvest
@@ -6276,6 +6292,13 @@ async function runCompSearch({
   maxComps: maxCompsOk, txFocus: txFocusOk = "both", subjectSizeSqft: sizeOk = null,
   subjectDetails: detailsOk = {}, skipCache = false, plan = null,
   countsDailyCap = true, onBilledStart = null, onProgress = null,
+  // The caller's OWN vault comps for this market + type — the same user-scoped
+  // rows finishReportForViewer will blend at serialization, passed in rather
+  // than re-read (both callers already hold them). They move the SEARCH BUDGET
+  // and nothing else: never the prompt, never the report this function returns.
+  // [] for everyone who is not a broker with rows here, which restores today's
+  // behaviour byte for byte.
+  vaultRows = [],
 }) {
   // Verified comps are fetched once, both for the model and as part of the
   // cache key — approving a new broker comp naturally invalidates any cached
@@ -6347,6 +6370,18 @@ async function runCompSearch({
   // for a fresh web search. Corpus-strong markets reuse known comps and
   // run a much smaller search budget (see searchBudgetFor).
   const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
+  // Archive first, corpus second, web last. The broker's own book being strong
+  // cuts the web budget exactly as a strong corpus does (searchBudgetFor reads
+  // the flag off this object). Their rows join the report at SERIALIZATION,
+  // same as ever — nothing here hands them to the model, because the model's
+  // output is cached and harvested, and a prompt that had seen a private row
+  // would leak it through both.
+  const archiveStrong = ARCHIVE_FIRST
+    && BLEND.archiveIsStrong(BLEND.archiveCoverage(vaultRows));
+  if (archiveStrong) {
+    corpus.archiveStrong = true;
+    console.log(`Archive-assisted search: ${BLEND.archiveCoverage(vaultRows)} usable vault comp(s) for ${marketOf(addressOk)} — ${typeOk} (web budget floored)`);
+  }
   if (corpusIsStrong(corpus)) {
     console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
   }
@@ -6388,8 +6423,24 @@ async function runCompSearch({
   if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
   // meta feeds the instant-badge address index; the Explorer's
   // market-level store below deliberately passes none.
-  await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
-  logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan,
+  //
+  // NOT cached when the budget was cut on the strength of the searcher's own
+  // vault and the public corpus alone would not have cut it. The cache is
+  // keyed by property, not by user, so a shared entry searched on a
+  // vault-subsidized floor would serve every LATER visitor a thinner report
+  // with none of the private rows that justified the thinness — the
+  // corpus-strong case has no such gap, because the comps that shrank ITS
+  // budget were handed to the model and are in the cached body. The cost
+  // lands where it belongs: the broker's own repeat search re-runs at the
+  // floored budget instead of hitting a cache entry, and the public cache
+  // simply gains nothing rather than gaining something worse.
+  if (!corpus.archiveStrong || corpusIsStrong(corpus)) {
+    await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
+  } else {
+    console.log(`Archive-assisted report not cached (vault-subsidized budget): ${addressOk} — ${typeOk}`);
+  }
+  logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false,
+    source: corpusIsStrong(corpus) ? "corpus" : corpus.archiveStrong ? "archive" : undefined, plan,
     duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
   maybePublishMarketSnapshot(typeOk, addressOk, result);
   harvestComps(typeOk, addressOk, result);
@@ -6626,6 +6677,12 @@ async function runBulkItem(item, ctx) {
       // difference between the two screens nobody could explain.
       maxComps: 12,
       txFocus: "both", subjectSizeSqft: size, subjectDetails: {},
+      // The per-market vault read the worker already holds (compsForMarket):
+      // a bulk row is archive-assisted on exactly the evidence its own report
+      // will blend. Firm-shared comps deliberately do NOT count — an admin
+      // toggling share_default must not silently change what colleagues'
+      // searches cost or find.
+      vaultRows: priv.vault,
       plan: ent.plan,
       // Pro, so the daily cap does not apply — it is a scraper backstop, and
       // /api/bulk has its own, tighter ceilings (one job at a time, capped
@@ -13806,6 +13863,10 @@ const server = http.createServer((req, res) =>
             address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
             maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
             subjectDetails: detailsOk, skipCache, plan: ent.plan,
+            // The rows read above the gate closure — the search budget and the
+            // serialization blend see the SAME list, so the report the floored
+            // budget produces always carries the comps that justified it.
+            vaultRows,
             // The cap is a scraper backstop, not a product limit: a paying
             // subscriber must never be told the site is out of searches for
             // the day, and neither must an internal caller.

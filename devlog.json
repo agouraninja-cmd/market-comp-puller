@@ -2866,5 +2866,11 @@
     "type": "improvement",
     "title": "The extraction test is one command",
     "details": "scripts/extraction-eval.js runs the Archive block's gate end to end: real comp PDFs through the live /api/vault/extract, scored against hand-keyed truth by the pure, tested extract-score.js — recall, per-field precision, and the fabrication rate that decides the feature, with every miss and invention itemized. Comparison goes through broker-vault.js's own parsers, so a formatting difference the importer would accept never scores as an error. The scorecard lands in docs/evals/ with the correction-time blank left for a person with a stopwatch — the half no harness can fake."
+  },
+  {
+    "date": "2026-08-21",
+    "type": "feature",
+    "title": "Archive-first retrieval: a broker's own book cuts their search bill",
+    "details": "Retrieval order is now archive → corpus → web. Four or more usable comps in the searcher's own vault for that market and type floor the web budget at 2–3 searches, exactly as a strong public corpus does — their rows still join the report only at serialization, and nothing vault-derived ever reaches the prompt. One finding the plan didn't have: a vault-subsidized report is deliberately NOT written to the shared cache, because the cache is keyed by property and a later visitor would be served the thinner report without the private rows that justified it. Rules pure and tested in blend-comps.js; test/archive-first.test.js proves the wiring against a real server and a stub provider that records max_uses off the wire. Rollback: ARCHIVE_FIRST=off."
   }
 ]

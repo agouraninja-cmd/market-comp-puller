@@ -322,7 +322,47 @@ function anonymizePrivateComps(report) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Archive-first retrieval — is this broker's own book strong enough to search
+// the web less? (Transition plan §4.3: archive -> corpus -> web.)
+//
+// These two decide the SEARCH BUDGET only. They never put a vault row, or
+// anything derived from one, into the prompt: the model's output is cached and
+// harvested, so a prompt that had seen private rows would leak them through
+// surfaces the wall exists to protect. The budget is the one thing a private
+// count can safely move, because a smaller number of web searches discloses
+// nothing about whose comps made them unnecessary.
+//
+// The rows arrive from vaultCompsForReport (server.js), which has already
+// scoped them by user_id, market, property type AND the requested lookback —
+// so "usable" here is only the one question that read cannot answer from a
+// WHERE clause: does the row carry a figure a valuation can lean on? A priced
+// deal counts; a lease counts through its rent; an undisclosed deal (allowed
+// in the vault — brokers track them) is real but supports no number, so it
+// does not shrink the budget.
+//
+// The threshold mirrors corpusIsStrong (coverage >= 4) on purpose, and there
+// is deliberately no separate freshness clock: the lookback filter already
+// applied by the read IS the freshness rule, and it is the searcher's own.
+// ---------------------------------------------------------------------------
+
+function archiveCoverage(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.filter((r) => {
+    if (!r || typeof r !== "object") return false;
+    const price = Number(r.price);
+    const rent = Number(r.rent_psf);
+    return (Number.isFinite(price) && price > 0) || (Number.isFinite(rent) && rent > 0);
+  }).length;
+}
+
+function archiveIsStrong(coverage) {
+  return Number(coverage) >= 4;
+}
+
 module.exports = {
+  archiveCoverage,
+  archiveIsStrong,
   firmCompPayload,
   toFirmReportComp,
   dedupeFirmComps,

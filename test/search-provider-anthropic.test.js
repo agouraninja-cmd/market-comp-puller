@@ -120,3 +120,99 @@ test("parseExtractResponse surfaces stop_reason max_tokens so truncation is visi
   });
   assert.equal(out.stopReason, "max_tokens");
 });
+
+// --- streaming reader -------------------------------------------------------
+// Extracted from server.js 2026-08-21, where it had never had a test. The
+// invariant worth pinning is not "does it parse events" but "do the streaming
+// and non-streaming paths hand parseCompJson the SAME STRING" — a drift there
+// shows up as "the report is fine unless streaming is on", which is close to
+// undebuggable from a bug report.
+
+// One realistic conversation: search block, its result, then two text blocks.
+const STREAM_FRAMES = [
+  { type: "message_start", message: { usage: { input_tokens: 3300, cache_read_input_tokens: 26400 } } },
+  { type: "content_block_start", index: 0, content_block: { type: "server_tool_use" } },
+  { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"query":"industrial ' } },
+  { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: 'sales Dallas TX"}' } },
+  { type: "content_block_stop", index: 0 },
+  { type: "content_block_start", index: 1, content_block: { type: "web_search_tool_result", content: [1, 2, 3] } },
+  { type: "content_block_stop", index: 1 },
+  { type: "content_block_start", index: 2, content_block: { type: "text" } },
+  { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: '{"summary":"ok",' } },
+  // citations_delta rides on text blocks and carries no .text — it must not
+  // fall through into the text branch and emit undefined.
+  { type: "content_block_delta", index: 2, delta: { type: "citations_delta", citation: { url: "https://x" } } },
+  { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: '"comps":[]}' } },
+  { type: "content_block_stop", index: 2 },
+  { type: "content_block_start", index: 3, content_block: { type: "text" } },
+  { type: "content_block_delta", index: 3, delta: { type: "text_delta", text: "trailing" } },
+  { type: "content_block_stop", index: 3 },
+  { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 4100 } },
+];
+
+function drain(frames) {
+  const r = P.createStreamReader();
+  const events = [];
+  for (const f of frames) events.push(...r.push(f));
+  return { reader: r, events };
+}
+
+test("the streamed text is byte-identical to the non-streaming text", () => {
+  const { reader } = drain(STREAM_FRAMES);
+  // The same conversation as a non-streaming body.
+  const nonStreaming = P.parseResponse({
+    stop_reason: "end_turn",
+    content: [
+      { type: "server_tool_use", input: { query: "industrial sales Dallas TX" } },
+      { type: "web_search_tool_result", content: [1, 2, 3] },
+      { type: "text", text: '{"summary":"ok","comps":[]}' },
+      { type: "text", text: "trailing" },
+    ],
+  });
+  assert.equal(reader.text(), nonStreaming.text,
+    "streaming and non-streaming must feed parseCompJson the same string");
+  assert.equal(reader.text(), '{"summary":"ok","comps":[]}\ntrailing');
+});
+
+test("the reader emits the progress vocabulary the loading card runs on", () => {
+  const { events } = drain(STREAM_FRAMES);
+  const kinds = events.map((e) => e.kind);
+  assert.deepEqual([...new Set(kinds)].sort(),
+    ["done", "results", "search", "start", "text", "usage"]);
+  // The query is only knowable once the tool block CLOSES — content_block_start
+  // carries input:{}, so reading it early yields "".
+  assert.deepEqual(events.filter((e) => e.kind === "search"),
+    [{ kind: "search", query: "industrial sales Dallas TX" }]);
+  assert.equal(events.find((e) => e.kind === "results").count, 3);
+  assert.equal(events.find((e) => e.kind === "done").stopReason, "end_turn");
+  // Only real text deltas; the citations_delta must not have produced one.
+  assert.deepEqual(events.filter((e) => e.kind === "text").map((e) => e.text),
+    ['{"summary":"ok",', '"comps":[]}', "trailing"]);
+});
+
+test("a truncated tool block yields an empty query, never a thrown SyntaxError", () => {
+  // A raw throw here would make solo() conclude the REPORT failed to parse and
+  // silently re-bill an entire search.
+  const { events } = drain([
+    { type: "content_block_start", index: 0, content_block: { type: "server_tool_use" } },
+    { type: "content_block_delta", index: 0, delta: { type: "input_json_delta", partial_json: '{"query":"half' } },
+    { type: "content_block_stop", index: 0 },
+  ]);
+  assert.deepEqual(events, [{ kind: "search", query: "" }]);
+});
+
+test("a mid-stream error is normalized, and overloaded becomes a 529", () => {
+  const plain = P.createStreamReader().push({ type: "error", error: { type: "api_error", message: "boom" } });
+  assert.deepEqual(plain, [{ kind: "error", status: "stream", message: "boom" }]);
+  const over = P.createStreamReader().push({ type: "error", error: { type: "overloaded_error" } });
+  assert.equal(over[0].status, 529, "the 529 that never got a status line");
+});
+
+test("junk frames and unknown types are ignored rather than fatal", () => {
+  const r = P.createStreamReader();
+  for (const junk of [null, undefined, "nope", 42, {}, { type: "ping" },
+                      { type: "content_block_delta", index: 99, delta: { type: "text_delta", text: "orphan" } }]) {
+    assert.deepEqual(r.push(junk), [], `frame ${JSON.stringify(junk)} should emit nothing`);
+  }
+  assert.equal(r.text(), "", "an orphan delta for an unopened block contributes no text");
+});

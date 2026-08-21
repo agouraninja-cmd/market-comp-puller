@@ -49,7 +49,7 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
-// Who is in a firm, and what their membership lets them do (migration 032).
+// Who is in a firm, and what their membership lets them do (migration 030).
 // Same pure, fails-closed contract as report-access.js, and it feeds that
 // file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
 // consults, so there is exactly one place that decides a pending invite is not
@@ -3242,7 +3242,7 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Firms (migration 032) — the reads and writes behind /api/org*.
+// Firms (migration 030) — the reads and writes behind /api/org*.
 //
 // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 //
@@ -3324,7 +3324,7 @@ async function setOrgShareDefault(orgId, value) {
     { share_default: value }, { prefer: "return=minimal" });
 }
 
-// The member's own override (migration 033). Scoped by BOTH the org and the
+// The member's own override (migration 031). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
 // knowing an org id must not be enough to flip anybody else's.
@@ -4241,7 +4241,7 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
-// A colleague invited to a firm (migration 032). Rides the same outbound gate
+// A colleague invited to a firm (migration 030). Rides the same outbound gate
 // as everything else, so it silently no-ops until EMAIL_FROM is set.
 //
 // It says who invited them and from what address, because this mail arrives
@@ -5111,6 +5111,9 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
+// Opt-in to a provider stream whose wire format we have not yet confirmed
+// against a live call. Default OFF; see the useStream note in callAnthropicOnce.
+const STREAM_UNVERIFIED = /^(1|on|true|yes)$/i.test(String(process.env.STREAM_UNVERIFIED || ""));
 
 // Where the search actually goes. Overridable ONLY so the suite can stand a
 // stub in front of it — RESEND_API_URL's precedent, for RESEND_API_URL's
@@ -5492,7 +5495,16 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
   // non-streaming path rather than ask for a mode it doesn't support.
-  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
+  // STREAM_UNVERIFIED is the opt-in for a provider whose API supports streaming
+  // and which has a reader here, but whose live wire format has never been
+  // confirmed (Gemini, as of 2026-08-21). It is separate from STREAM_ANTHROPIC
+  // and defaults OFF because a wrong frame shape fails CLOSED — the reader
+  // recovers no text and the report errors out — so this must never be
+  // something a deployment enables by accident. Confirm with
+  // `node scripts/verify-gemini-stream.js`, then flip that provider's
+  // capabilities.streaming and delete this branch.
+  const useStream = STREAM_ANTHROPIC && (PROVIDER.capabilities.streaming
+    || (STREAM_UNVERIFIED && PROVIDER.capabilities.streamingUnverified));
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
@@ -5569,7 +5581,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
+    // `stream` reaches requestInit as well as the body: Gemini selects SSE with
+    // a query parameter, so a provider that streams via its URL would otherwise
+    // ask for a stream in the body and be answered with ordinary JSON.
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: useStream });
     r = await fetch(SEARCH_API_URL || init.url, {
       method: "POST",
       headers: init.headers,
@@ -5617,55 +5632,55 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     usage = parsed.usage;
     stopReason = parsed.stopReason;
   } else {
-    // Rebuild exactly what the non-streaming branch above produces: the text
-    // blocks, in index order, joined with "\n" and trimmed. Anything else and
-    // parseCompJson starts seeing different input.
-    const blocks = new Map();       // index -> { type, text, json }
+    // Provider-agnostic since 2026-08-21. This loop used to name eight
+    // Anthropic event types directly, which is the reason a second provider
+    // could not stream no matter what its API supported. The vendor's frames
+    // are interpreted by PROVIDER.createStreamReader() and arrive here as a
+    // small normalized vocabulary (start / text / results / search / usage /
+    // error / done); the reader also owns rebuilding the final text, so the
+    // streaming and non-streaming paths cannot drift into feeding
+    // parseCompJson different input.
+    const reader = PROVIDER.createStreamReader();
     let wroteWriting = false;
     let lastDraft = 0;
     let textChars = 0;
     try {
-      for await (const ev of sseFrames(r.body, () => controller.abort())) {
-        if (ev.type === "error") {
-          // A mid-stream error carries the same vendor-authored text as a
-          // non-2xx, just after the 200 — so it goes through the same door.
-          // `overloaded_error` is the 529 that never got a status line.
-          const e = ev.error || {};
-          throw upstreamError(e.type === "overloaded_error" ? 529 : "stream",
-                              e.message || e.type || "unknown");
-        }
-        if (ev.type === "message_start") {
-          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
-          say({ phase: "start" });
-        } else if (ev.type === "content_block_start") {
-          const cb = ev.content_block || {};
-          blocks.set(ev.index, { type: cb.type, text: "", json: "" });
-          if (cb.type === "web_search_tool_result") {
-            say({ phase: "results", n: searches, count: Array.isArray(cb.content) ? cb.content.length : null });
-          }
-        } else if (ev.type === "content_block_delta") {
-          const b = blocks.get(ev.index);
-          const d = ev.delta || {};
-          if (!b) continue;
-          // citations_delta also arrives on text blocks and carries no .text —
-          // never let it fall through into the text branch.
-          if (d.type === "text_delta" && typeof d.text === "string") {
-            b.text += d.text;
-            textChars += d.text.length;
+      for await (const frame of sseFrames(r.body, () => controller.abort())) {
+        for (const ev of reader.push(frame)) {
+          if (ev.kind === "error") throw upstreamError(ev.status, ev.message);
+          if (ev.kind === "start") {
+            usage = ev.usage;
+            say({ phase: "start" });
+          } else if (ev.kind === "results") {
+            say({ phase: "results", n: searches, count: ev.count });
+          } else if (ev.kind === "search") {
+            searches += 1;
+            say({ phase: "search", n: searches, query: ev.query });
+          } else if (ev.kind === "usage") {
+            // normalizeUsage always emits every key, filling absent ones with
+            // 0 (Number(undefined) || 0). A mid-stream usage frame carries
+            // only some of them, so a plain spread would zero the input and
+            // cache counts the opening frame already established. Overwrite
+            // only the keys this update actually carried.
+            for (const k of Object.keys(ev.usage)) if (ev.usage[k]) usage[k] = ev.usage[k];
+          } else if (ev.kind === "done") {
+            stopReason = ev.stopReason || stopReason;
+          } else if (ev.kind === "text") {
+            textChars += ev.text.length;
             if (compExtractor) {
-              try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+              try { compExtractor.push(ev.text); } catch (_) { compExtractor = null; }
             }
             if (summaryExtractor) {
-              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
+              try { summaryExtractor.push(ev.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
-            // it STARTS, not at content_block_stop (which is after the report is
+            // it STARTS, not when the block closes (which is after the report is
             // already written and useless as progress). Match the opening brace
-            // ANYWHERE in the block, not at its start: the model prefaces the
-            // JSON with narration, which is exactly why parseCompJson has to
+            // ANYWHERE in the text so far, not at its start: the model prefaces
+            // the JSON with narration, which is exactly why parseCompJson has to
             // slice to the first "{" too.
-            if (!wroteWriting && b.text.includes("{")) {
+            if (!wroteWriting && ev.text.includes("{")) {
               wroteWriting = true;
               say({ phase: "writing" });
             }
@@ -5676,29 +5691,6 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               lastDraft = Date.now();
               say({ phase: "drafting", chars: textChars, writing: wroteWriting });
             }
-          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") b.json += d.partial_json;
-        } else if (ev.type === "content_block_stop") {
-          const b = blocks.get(ev.index);
-          if (b && b.type === "server_tool_use") {
-            searches += 1;
-            let query = "";
-            // The query only exists once the block is complete — content_block_start
-            // carries input:{}. A truncated stream would throw here, and a raw
-            // SyntaxError would make solo() think the REPORT failed to parse and
-            // silently re-bill an entire search. Swallow it.
-            try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
-            say({ phase: "search", n: searches, query });
-          }
-        } else if (ev.type === "message_delta") {
-          stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          // normalizeUsage always emits all four keys, filling absent ones
-          // with 0 (Number(undefined) || 0). A message_delta frame carries
-          // only output_tokens, so a plain spread would zero the input and
-          // cache counts that message_start already established. Overwrite
-          // only the keys this delta actually carried.
-          if (ev.usage) {
-            const d = PROVIDER.normalizeUsage(ev.usage);
-            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
           }
         }
       }
@@ -5709,13 +5701,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     } finally {
       clearTimeout(timer);
     }
-    text = [...blocks.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, b]) => b)
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+    text = reader.text();
   }
 
   // Timing/usage line. Generation time scales with output_tokens, search time
@@ -7273,6 +7259,23 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market momentum, on the comp map card's heading row. Same read, same three
+   words and the same three theme tokens the Explorer dropdown badges with:
+   --green expanding, --ink-mute flat, --red contracting. The dropdown carries
+   its colour in a style attribute only because the vendored tailwind.css has no
+   green utility to name; this stylesheet is ours, so the colours are classes
+   here, like .mkt-trend-* below.
+   .mhead h2 must stay AFTER .card h2 above -- equal specificity, so source
+   order is the only thing zeroing the heading's own bottom margin. */
+.mhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+.mhead h2{margin:0}
+.mdir{font-size:12px;white-space:nowrap;color:var(--ink-3)}
+/* The WORD is the claim and the colour only reinforces it, so the row still
+   reads in a print, on a monochrome screen, and for a colour-blind visitor. */
+.mdirv{font-weight:600}
+.mdirv-expanding{color:var(--green)}
+.mdirv-flat{color:var(--ink-mute)}
+.mdirv-contracting{color:var(--red)}
 /* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
    .grid (the old two-card band). /markets still uses .grid; this page does
    not. Rows are visible on first paint: this sheet has no html.anim. */
@@ -8673,8 +8676,33 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
     };
   });
+  // Market momentum in the map card's heading row, the same read the Explorer
+  // dropdown badges on the way to this page. Nothing is computed here:
+  // freshDirection is the ONE home for both the three-word vocabulary and the
+  // 90-day expiry (market-snapshot.js), and /api/markets calls the same
+  // function, so a market that has gone quiet in the dropdown is quiet here
+  // too. Two surfaces disagreeing about which way a market is moving would be
+  // worse than neither showing it.
+  //
+  // No stored (or no longer current) direction renders NOTHING, never a fourth
+  // "unknown" state: 5 of the 27 seeded pages carry no read at all, and a page
+  // with no badge is exactly what all 27 looked like yesterday.
+  //
+  // "Momentum" labels the word because this badge is not sitting in a list of
+  // markets the way the dropdown's is -- a bare "Expanding" beside "Where these
+  // comps are" would leave the reader to guess what is expanding.
+  const MAP_DIR_CLASS = {
+    expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
+  };
+  // freshDirection is the whitelist: it returns one of those three keys or null,
+  // so no guard against an unrecognized word is needed at this end.
+  const mapDir = freshDirection(p, Date.now());
+  const mapDirBadge = mapDir
+    ? `<span class="mdir">Momentum <span class="mdirv ${MAP_DIR_CLASS[mapDir]}">` +
+      `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
+    : "";
   const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>Where these comps are</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
       `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
       `Comps quoted at the submarket level aren't pinned.</p></div>` +
@@ -18210,7 +18238,7 @@ const server = http.createServer((req, res) =>
           });
         }
 
-        // The firm audience (migration 032). Same three refusals as the
+        // The firm audience (migration 030). Same three refusals as the
         // invited path — signed in, a database, and the audience proven
         // server-side — with the membership taking the place of the email
         // list. Two differences worth naming:

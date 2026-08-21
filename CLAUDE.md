@@ -731,7 +731,31 @@ dependency. `.env` is git-ignored — never commit it.
   streaming assembly does not run at all.** Gemini declares
   `streaming: false`, so `useStream` is false and the whole live-progress
   path (`makeCompExtractor`, the `comp` events, `assemblyComp`) is dark in
-  production — a visitor sees the simulated wall-clock card and then the
+  production — though since 2026-08-21 the *reason* is only an unconfirmed
+  frame shape, not missing capability. **Reading a stream now lives behind
+  the provider seam**: `PROVIDER.createStreamReader()` takes one decoded SSE
+  frame and returns normalized events (`start` / `text` / `results` /
+  `search` / `usage` / `error` / `done`), and owns rebuilding the final
+  text. server.js's read loop names no vendor event type. The rule that
+  makes it safe, and the first test this code ever had: a reader's `text()`
+  must be **byte-identical** to what that provider's `parseResponse()`
+  produces from the equivalent non-streaming body, or `parseCompJson` sees
+  different input depending on a setting nobody thinks about. Gemini's
+  reader exists but is gated behind `capabilities.streamingUnverified` +
+  `STREAM_UNVERIFIED=on` (default off), because the Interactions API frame
+  shape is documented only as "each event includes a type and JSON data" and
+  a wrong guess fails CLOSED — no text recovered, every report an error.
+  The request FORM is confirmed live (`?alt=sse` **and** `stream: true`;
+  either alone silently returns ordinary JSON).
+  **`node scripts/verify-gemini-stream.js`** settles the rest for ~$0.001:
+  it runs the real reader over real bytes and either passes or prints the
+  frame types it did not recognize. On a pass, set `streaming: true`, delete
+  `streamingUnverified` and the `STREAM_UNVERIFIED` branch, and commit a
+  frame sample as a fixture. Two traps the reader already guards: a re-sent
+  cumulative snapshot must REPLACE rather than append (appending duplicates
+  the whole report, which still parses and is wrong — the worst failure
+  available), and only newly-arrived characters may be emitted as `text`
+  events or the comp extractor re-scans and double-counts every comp — a visitor sees the simulated wall-clock card and then the
   finished report. And thought tokens count toward OUTPUT there: a
   measured call spent **4,207 in / 928 out / 6,473 thought**, so the report
   JSON is about one eighth of what the model generates and reasoning is the
@@ -1290,14 +1314,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     receiving end needs no plan at all: they are exactly an invited share's
     viewer, and a firm that could only share with people who had already
     bought the product would not solve the problem it exists for.
-  - **Migration 028 must be run BEFORE the code deploys**, like 018 and 026
+  - **Migration 030 must be run BEFORE the code deploys**, like 018 and 026
     and unlike most: it adds `shared_reports.org_id`, which `getShareRecord`
     SELECTs by name on EVERY share read, and PostgREST 400s an unknown
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
-  029, owner's yes 2026-08-16). An owner or admin can set the firm to share
+  031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both
   switches. It ships with the safeguards the spec made a condition of building
   it at all, and each one is load-bearing:
@@ -1321,7 +1345,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     somebody wants this off is the moment they are looking at the report.
     Guarded on `meta.autoShared`, or every subject-field repaint would
     re-publish — including something just undone.
-  **The shared vault** (§7, migration 030, 2026-08-16). A broker can opt one
+  **The shared vault** (§7, migration 032, 2026-08-16). A broker can opt one
   comp at a time into their firm; colleagues see it inside their OWN reports,
   attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
   `/vault`'s comps table, shown only to a broker who is in a firm. Rules in

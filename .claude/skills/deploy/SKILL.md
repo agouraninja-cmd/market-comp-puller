@@ -47,22 +47,43 @@ ship-time one. Both apply.
    `origin/main` into dev-hub before pushing (never rebase or force-push).
    If the merge touched code, re-run step 3's tests before continuing.
 7. **Push**: `git push origin dev-hub` (branch backup), then
-   `git push origin HEAD:main`. Render deploys automatically — but since
-   2026-08-08 `npm start` carries a `prestart` (`node --check server.js &&
-   npm test`), so a red suite makes the deploy FAIL and the previous build
-   keeps serving. The push "succeeding" therefore proves nothing about the
-   deploy: a blocked deploy looks exactly like a slow one from outside
-   (happened 2026-08-09 — two deploys failed back-to-back on a
-   non-hermetic test fixture and production silently served the old build
-   for an hour). If the live check in step 9 doesn't show the change
+   `git push origin HEAD:main`. Render deploys automatically. `npm start`
+   runs a `prestart` of **`node --check server.js` and nothing else**, so
+   the one thing that stops a deploy here is a syntax error in server.js —
+   the failure that would otherwise take the whole site down at boot; the
+   previous green build keeps serving instead.
+   **`npm test` has NOT been in `prestart` since 2026-08-20.** It was
+   removed after it broke production: the suite was written when it took
+   two seconds and now takes ~63 seconds on Render, with several suites
+   spawning real child servers. On a 0.5-CPU Starter instance that is a
+   minute of saturated CPU before the port is ever bound, re-run on every
+   restart and by every concurrent instance. Three deploys in a row died on
+   `Timed out after waiting for internal health check ... /healthz` while
+   the health checker fought the tests for the one core, and each failure
+   restarted the instance, which re-ran the suite. Correctness is CI's job
+   (step 8). Do not put it back.
+   The push "succeeding" still proves nothing about the deploy: a blocked
+   deploy looks exactly like a slow one from outside (happened 2026-08-09 —
+   two deploys failed back-to-back and production silently served the old
+   build for an hour). If the live check in step 9 doesn't show the change
    within ~3 minutes, check the service's Events tab on
    https://dashboard.render.com before suspecting caches.
-   Tests on Render run against a FRESH disk: any test fixture that leans
-   on a git-ignored local file (market-pages-dynamic.json, leads.jsonl,
-   a local corpus) passes on this machine and fails the deploy.
-8. **CI green**: the push also triggers the same checks at
-   github.com/agouraninja-cmd/market-comp-puller/actions. A red X means
-   fix or revert now.
+8. **CI green**: the push also triggers the checks at
+   github.com/agouraninja-cmd/market-comp-puller/actions. A red X means fix
+   or revert now — and since `npm test` left `prestart`, **CI is the only
+   automated gate on correctness**: a red suite now reaches production
+   instead of being stopped at the boot, so this step stopped being a
+   formality the day that changed.
+   CI runs against a FRESH checkout: any test fixture that leans on a
+   git-ignored local file (market-pages-dynamic.json, leads.jsonl, a local
+   corpus) passes on this machine and fails there.
+   **No result at all is not the same as green.** During a GitHub incident
+   webhooks get dropped and no run is ever created (2026-08-06: four
+   branches merged with no CI result). `ci.yml` carries a
+   `workflow_dispatch` "Run workflow" button for exactly that — a direct
+   API call rather than a webhook delivery — so use it to get a verdict on
+   a commit already on main instead of pushing an empty commit to
+   manufacture one. The same checks also run locally in about two seconds.
 9. **Verify live**: `https://compninja.co/healthz` answers `{"ok":true...}`.
    Check the changed surface at its exact URL, no query strings.
    `tailwind.css` serves with max-age 300, so curl it rather than trusting
@@ -100,3 +121,4 @@ ship-time one. Both apply.
 | `git add -A` | sweeps the other session's work-in-progress into your commit |
 | Trusting the `+N` harvest log line | fallback writes log it too; only the DB row count proves durability |
 | Skipping the main sync | `push HEAD:main` rejected as non-fast-forward |
+| Assuming a red suite can't reach production | it can, since 2026-08-20 — `prestart` is `node --check` only, so CI (step 8) is the only thing standing between a failing test and the live site |

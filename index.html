@@ -1732,18 +1732,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="hover:text-[#1A2433] inline-flex items-center gap-1">Explore
             <svg class="w-3 h-3 mt-px" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
-          <!-- Order is the owner's (2026-08-09): Pricing, Brokers, Markets,
-               How it works, 1031 Guide — money first. The browse links are
-               NOT authored here: server.js injects them at serve time from
-               NAV_LINKS (the same list marketBar renders on every
-               server-rendered page), replacing the NAV_LINKS_MARKER comment
-               below — one list, no hand-copied menu left to drift. Their
-               class string (APP_NAV_LINK_CLASS in server.js) must stay
-               identical to #pricingLink's, which is what keeps every one of
-               those utilities in index.html for the tailwind purge. -->
+          <!-- Order is the owner's (2026-08-09), minus two 2026-08-21 moves:
+               Pricing sits in the header bar below, and Markets lives under
+               the Market Explorer's input as the "Our markets" line. The
+               browse links are NOT authored here: server.js injects them at
+               serve time from NAV_LINKS (the same list marketBar renders on
+               every server-rendered page), replacing the NAV_LINKS_MARKER
+               comment below — one list, no hand-copied menu left to drift.
+               Their class string (APP_NAV_LINK_CLASS in server.js) must be
+               made of utilities this file already uses, which is what keeps
+               them alive through the tailwind purge. -->
           <div id="exploreMenu" class="dd-fade hidden absolute left-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
-            <!-- Only shown once /api/config reports billing is live; with PRO_ENABLED
-                 unset there is nothing to sell and the link would dead-end. -->
             <!--NAV_LINKS-->
           </div>
         </div>
@@ -2138,6 +2137,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    class="rd-desk-market-in" />
             <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
           </div>
+          <!-- The door to /markets — moved here from the Explore menu
+               (owner's call, 2026-08-21): browsing markets belongs beside the
+               box that searches them, not in the header. NAV_LINKS in
+               server.js no longer carries it; the footer still does. -->
+          <a href="/markets" class="inline-block mt-2 text-[12.5px] text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">Our markets &rarr;</a>
         </div>
       </aside>
       </div>

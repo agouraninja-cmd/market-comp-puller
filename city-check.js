@@ -62,4 +62,64 @@ async function checkCity(fetchFn, city, state) {
   return "unknown";
 }
 
-module.exports = { cityVariants, checkCity };
+// WHERE the city is, from the same answer that says it exists.
+//
+// Zippopotam returns one entry per ZIP, and averaging them is wrong: a
+// PO-box-only ZIP carries a placeholder coordinate for the whole county, the
+// same point repeated across every such ZIP. Measured on real answers,
+// averaging put Agoura Hills 15 km away in the Santa Monica Mountains and
+// Woodland Hills 40 km away in the harbour. Both would have rendered a
+// satellite aerial of somewhere else, which is the one thing market-hero.js
+// exists to prevent.
+//
+// So: drop exactly-repeated points (the placeholder's signature — two real
+// ZIP centroids are not identical to four decimals), then keep only the ones
+// near the median and average those. Pure, so npm test can pin it against the
+// real answers that produced those two misses.
+const NEAR_LAT = 0.2;    // ~22 km
+const NEAR_LNG = 0.25;   // ~22 km at 40°N
+
+function cityPointFrom(places) {
+  const seen = new Set();
+  const pts = [];
+  for (const p of places || []) {
+    const lat = Number(p && (p.latitude !== undefined ? p.latitude : p.lat));
+    const lng = Number(p && (p.longitude !== undefined ? p.longitude : p.lng));
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+    const key = lat.toFixed(4) + "," + lng.toFixed(4);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pts.push({ lat, lng });
+  }
+  if (!pts.length) return null;
+  if (pts.length === 1) return round(pts[0]);
+  const mid = (nums) => {
+    const s = [...nums].sort((a, b) => a - b);
+    return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  };
+  const mLat = mid(pts.map((p) => p.lat));
+  const mLng = mid(pts.map((p) => p.lng));
+  const near = pts.filter((p) => Math.abs(p.lat - mLat) <= NEAR_LAT && Math.abs(p.lng - mLng) <= NEAR_LNG);
+  const use = near.length ? near : pts;
+  return round({
+    lat: use.reduce((a, p) => a + p.lat, 0) / use.length,
+    lng: use.reduce((a, p) => a + p.lng, 0) / use.length,
+  });
+}
+
+function round(p) {
+  return { lat: Number(p.lat.toFixed(4)), lng: Number(p.lng.toFixed(4)) };
+}
+
+// The coordinates an English Wikipedia article states for itself, which beat
+// any average of ZIP centroids: the article IS the city, and a redirect
+// resolves the names ZIPs disagree about ("Woodland Hills, California" is
+// "Woodland Hills, Los Angeles"). Parsing only — the caller fetches.
+function wikiPointFrom(json) {
+  const page = (json && json.query && json.query.pages && json.query.pages[0]) || {};
+  const c = (page.coordinates && page.coordinates[0]) || null;
+  if (!c || !Number.isFinite(Number(c.lat)) || !Number.isFinite(Number(c.lon))) return null;
+  return round({ lat: Number(c.lat), lng: Number(c.lon) });
+}
+
+module.exports = { cityVariants, checkCity, cityPointFrom, wikiPointFrom, NEAR_LAT, NEAR_LNG };

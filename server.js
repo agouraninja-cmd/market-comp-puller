@@ -3813,6 +3813,81 @@ async function storeDynamicMarketPage(slug, payload) {
   }
 }
 
+// City coordinates for a market page, resolved once at PUBLISH time.
+//
+// The market pages' hero photograph falls back to an Esri satellite aerial of
+// the city when no photograph exists, and that fallback needs a point. Until
+// 2026-08-21 the only points were the 22 hardcoded in market-hero.js, so every
+// Explorer market outside that list opened with no picture at all — 13 of the
+// 16 live ones on the day this was measured.
+//
+// Two keyless sources, in the order of how much they know. Wikipedia's article
+// coordinates are the city's own stated position and survive the names ZIP
+// data disagrees about; Zippopotam — the service city-check.js already trusts
+// to say a city is real — is the fallback, read through `cityPointFrom`, which
+// is where the PO-box placeholder trap is handled and tested.
+//
+// Resolved on the publish path only: a page render must never wait on a
+// network call, so the answer is stored in the payload and read from there
+// forever after. Fails OPEN — no coordinates means the page renders exactly as
+// it did before this existed, with no hero.
+const cityCoordsMem = new Map();   // "ST|city" -> {lat,lng} | null
+// STATE_NAMES is declared further down this file; that is safe here and only
+// here, because nothing calls this before a page is published — i.e. long
+// after the module has finished evaluating.
+async function cityCoordsFromWikipedia(city, state) {
+  const name = STATE_NAMES[String(state || "").toUpperCase()] || state;
+  for (const title of [`${city}, ${name}`, String(city || "")]) {
+    try {
+      const r = await fetch("https://en.wikipedia.org/w/api.php?format=json&formatversion=2"
+        + "&action=query&redirects=1&prop=coordinates&titles=" + encodeURIComponent(title),
+        { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) continue;
+      const pt = CITYCHECK.wikiPointFrom(await r.json());
+      if (pt) return pt;
+    } catch (_) { /* try the next title, then Zippopotam */ }
+  }
+  return null;
+}
+
+async function cityCoordsFromZippopotam(city, state) {
+  for (const variant of CITYCHECK.cityVariants(city)) {
+    let places;
+    try {
+      const r = await fetch(
+        `https://api.zippopotam.us/us/${encodeURIComponent(state)}/${encodeURIComponent(variant)}`,
+        { signal: AbortSignal.timeout(4000) });
+      if (r.status === 404) continue;
+      if (!r.ok) return null;                     // unavailable is not "nowhere"
+      places = (await r.json()).places || [];
+    } catch (_) {
+      return null;
+    }
+    const pt = CITYCHECK.cityPointFrom(places);
+    if (pt) return pt;
+  }
+  return null;
+}
+
+async function cityCoordsFor(city, state) {
+  const key = `${String(state || "").toUpperCase()}|${String(city || "").toLowerCase()}`;
+  if (cityCoordsMem.has(key)) return cityCoordsMem.get(key);
+  const ll = (await cityCoordsFromWikipedia(city, state)) || (await cityCoordsFromZippopotam(city, state));
+  cityCoordsMem.set(key, ll || null);
+  return ll || null;
+}
+
+async function attachCityCoords(snapshot) {
+  try {
+    if (!snapshot || Number.isFinite(Number(snapshot.lat))) return snapshot;
+    const ll = await cityCoordsFor(snapshot.city, snapshot.state);
+    if (ll) { snapshot.lat = ll.lat; snapshot.lng = ll.lng; }
+  } catch (err) {
+    console.error("City coordinate lookup failed:", err.message);
+  }
+  return snapshot;
+}
+
 // Piggyback publisher: every billed /api/comps search already paid for fresh
 // comp data, so distill it into the market-page layer too — coverage grows
 // and refreshes as reports run, at zero extra API cost. Quietly skips
@@ -3849,7 +3924,7 @@ function maybePublishMarketSnapshot(type, address, data) {
     if (!isBetterSnapshot(snapshot, current)) return;
 
     const isNew = !current;
-    storeDynamicMarketPage(slug, snapshot).then(() => {
+    attachCityCoords(snapshot).then(() => storeDynamicMarketPage(slug, snapshot)).then(() => {
       if (!isNew) {
         console.log(`🧭 Market page refreshed from a report search: ${slug} ` +
           `(${pricedSaleCount} priced sale comps, was ${(current.ppsf && current.ppsf.count) || 0} on ${current.generatedAt})`);
@@ -7542,7 +7617,16 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
 
 function marketHeroBanner(p, title) {
   const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
-  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys });
+  // A page published since the last run of scripts/auto-market-heroes.js has
+  // no curated photo, no generated photo and no entry in either committed
+  // coordinate table — but it does carry the city coordinates its own publish
+  // resolved (`attachCityCoords`), which is enough for the satellite aerial.
+  // That is what makes "every market page opens with a picture" true on the
+  // day a market is created rather than after the next generator run.
+  const coords = (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    ? { lat: Number(p.lat), lng: Number(p.lng) }
+    : null;
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys, coords });
   const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
   const heading = `<h1>${escHtml(title)}</h1>`;
   const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
@@ -7588,10 +7672,26 @@ function sampleMarketPathForHero(key) {
   return null;
 }
 
+// Both photo layers, curated first — the same order heroFor resolves them in,
+// so /admin/heroes shows exactly what the live pages show. A generated entry
+// carries the reviewer's verdict with it: the file checks below say whether
+// the JPEG is sharp, and only the model (or a person here) can say whether it
+// is the right picture.
+function allHeroRows() {
+  const rows = [];
+  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) rows.push({ key, row, auto: null });
+  for (const [key, city] of Object.entries(MARKETHERO.autoCities())) {
+    if (MARKETHERO.HEROES[key]) continue;
+    const hero = MARKETHERO.autoHeroFor(key);
+    if (hero) rows.push({ key, row: hero, auto: city });
+  }
+  return rows;
+}
+
 function inspectMarketHeroes() {
   const dir = path.join(__dirname, "market-heroes");
   const rows = [];
-  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) {
+  for (const { key, row, auto } of allHeroRows()) {
     const main = readJpegHead(path.join(dir, row.file));
     const sib = readJpegHead(path.join(dir, MARKETHERO.srcsetName(row.file)));
     const g = HEROQUALITY.gradeHero({
@@ -7611,6 +7711,8 @@ function inspectMarketHeroes() {
       license: row.license,
       commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
       samplePath: sampleMarketPathForHero(key),
+      picked: auto ? "auto" : "curated",
+      judge: (auto && row.judge) || null,
       ok: g.ok,
       grade: g.grade,
       reasons: g.reasons,
@@ -13277,6 +13379,9 @@ const server = http.createServer((req, res) =>
             if (!snapshot) {
               return { status: 422, body: { error: `We couldn't find enough recent priced ${typeOk.toLowerCase()} sales in ${address} to build a market snapshot. Try a valuation for a specific property instead.` } };
             }
+            // Before either exit, so a thin-market preview opens with the
+            // same aerial the published page would have.
+            await attachCityCoords(snapshot);
             if (pricedSaleCount >= MIN_PRICED_SALE_COMPS) {
               await storeDynamicMarketPage(slug, snapshot);
               notifyByEmail(`New market page published via Explorer: ${typeOk} — ${address}`, [

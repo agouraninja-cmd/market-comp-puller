@@ -64,7 +64,11 @@ invited person accepts it) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
 picture rather than someone else's skyline) and **`market-hero-quality.js`**
 (whether a stored hero JPEG is the right size and dense enough to not be an
-upscale) and **`test/routes.test.js`**, which boots a real
+upscale) and **`market-hero-pick.js`** (which Wikimedia candidate is worth
+downloading for a city nobody curated — every hard refusal in it ends in a
+satellite aerial, so it refuses freely) and **`market-hero-judge.js`** (the
+request that asks a model to LOOK at the finished crop, and the rule that any
+answer which is not a clear "good" is not a good picture) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -1764,15 +1768,61 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
-  instantly with no DB. Each page opens with an aerial photograph of the
-  city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
-  in the pure, tested `market-hero.js` — 3840×800 plus a 1920w `srcset`
-  sibling so a full-bleed retina header is not upscaled; `/admin/heroes`
-  is the visual QA, with a file-size/dimension grade in the tested
-  `market-hero-quality.js`. A curated file that fails that grade is skipped
-  on the live header in favour of an Esri aerial of the same city. Explorer markets
-  without a photo fall through to an Esri aerial when we have coordinates,
-  and to no photo rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
+  instantly with no DB. **Every market page opens with a picture of its own
+  city** (2026-08-21), resolved in `market-hero.js` in four steps: a curated
+  Wikimedia Commons file, then a GENERATED one, then an Esri satellite aerial
+  of the city's coordinates, then — only when there is not even a point —
+  nothing. All photos are 3840×800 plus a 1920w `srcset` sibling, served from
+  `market-heroes/` rather than hotlinked (Wikimedia asks not to be a CDN),
+  with the credit and licence rendered on the photograph. `/admin/heroes` is
+  the visual QA for BOTH photo layers, with a file-size/dimension grade in the
+  tested `market-hero-quality.js`; a file that fails that grade is skipped on
+  the live header in favour of the satellite aerial of the same city, curated
+  and generated alike.
+
+  **The generated layer** is `market-heroes-auto.json` + `node
+  scripts/auto-market-heroes.js` (`--city "Casper, WY"`, `--dry-run`,
+  `--force`, `--limit N`, `--no-judge`). It exists because the Explorer
+  publishes market pages from real searches, faster than anyone curates
+  photographs for them: on the day it shipped, 21 cities were curated and 13
+  live Explorer markets rendered with no picture at all. Per city it geocodes
+  with Zippopotam (city-check.js's own service), gathers candidates from the
+  English Wikipedia lead image, Commons categories, Commons geosearch and
+  Commons search, ranks them on metadata (`market-hero-pick.js`), encodes the
+  best, grades the encode, and **shows the finished crop to Claude**
+  (`market-hero-judge.js`, ~a cent a city, `HERO_JUDGE_MODEL` to override) —
+  the only step that can tell a skyline from a shopfront. Five rules:
+  - **Its output is COMMITTED, like the curated files.** Render erases its
+    disk on every deploy, so a photograph fetched at runtime would vanish; the
+    script is run deliberately and its JPEGs and JSON go in the same commit.
+    It is not part of `npm start` and requiring it starts nothing.
+  - **Any verdict that is not a clear "good" ships no photograph.** A refusal,
+    an unparseable answer, a failed call and an outright "bad" are one
+    outcome: the satellite aerial, which is always right about WHERE the
+    market is. A wrong good is a wrong city on a public page; a wrong bad
+    costs a tile.
+  - **Metadata cannot prove a city, so provenance does.** A Commons full-text
+    hit must name the city in its title (searching "Casper Wyoming skyline"
+    returns Skyline Drive, Virginia), and a geotagged photograph that does not
+    name it must be within `NEAR_CITY_M` of the middle of it — the first run
+    offered Agoura Hills a Library of Congress aerial of the Malibu coastline.
+  - **The second crop is for a bad CROP, not a bad photograph.** A skyline is
+    mostly sky, so the centred band can be mountains over a sliver of
+    buildings while the picture itself is right (measured on Salt Lake City's
+    lead image). A reviewer complaint about emptiness — and only that — earns
+    one retry lower down the frame.
+  - **Nothing in the generated file is believed on trust.** The file name
+    becomes a URL under `/market-heroes/`, so it goes through the same
+    `FILE_RE` the curated names do, and an entry missing its credit or its
+    Commons title is unattributable and unused.
+
+  **A market published since the last run of that script is still not blank**:
+  `attachCityCoords` resolves the city's coordinates once at PUBLISH time (both
+  the Explorer and the piggyback publisher) and stores them in the page's own
+  payload, so the satellite aerial is available from the moment the page
+  exists. It is deliberately resolved on the publish path and never on a
+  render — a market page must never wait on a network call — and it fails
+  open, leaving the page exactly as it was before this existed. Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,
   Sale/Lease filter; address links to `source_url` when the snapshot has a
   sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,

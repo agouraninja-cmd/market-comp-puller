@@ -56,8 +56,10 @@ test("every curated city has coordinates so a failed file can fall through to Es
   }
 });
 
-test("an explorer city with coordinates still gets an aerial", () => {
-  const h = heroFor("Boise", "ID");
+test("an explorer city with coordinates but no photograph still gets an aerial", () => {
+  // Injected empty auto table: Boise has a GENERATED photograph now, and this
+  // test is about the branch below both photo layers.
+  const h = heroFor("Boise", "ID", { auto: { cities: {} } });
   assert.equal(h.kind, "satellite");
   assert.match(h.src, /World_Imagery/);
   assert.match(h.src, /bbox=/);
@@ -101,4 +103,99 @@ test("the Esri fallback is a static JPEG of a real bbox, not a tile URL", () => 
   assert.match(url, new RegExp("size=" + HERO_WIDTH + "," + HERO_HEIGHT));
   assert.equal(HERO_SRCSET_HEIGHT, HERO_HEIGHT * (HERO_SRCSET_WIDTH / HERO_WIDTH));
   assert.ok(CITY_COORDS["boise, id"]);
+});
+
+// --- the automatic layer (market-heroes-auto.json) --------------------------
+
+const AUTO_FIXTURE = {
+  cities: {
+    "casper, wy": {
+      coords: { lat: 42.85, lng: -106.32 },
+      hero: {
+        file: "casper-wy.jpg",
+        credit: "Somebody",
+        license: "CC BY-SA 2.0",
+        commons: "Cloudy Snowy Casper Aerial.jpg",
+        alt: "Casper, WY from above",
+        source: "geosearch",
+        judge: { verdict: "good", reason: "A real aerial of a small city." },
+      },
+    },
+    "nampa, id": { coords: { lat: 43.6, lng: -116.61 }, hero: null },
+    "dallas, tx": {
+      coords: { lat: 1, lng: 1 },
+      hero: { file: "not-dallas.jpg", credit: "x", license: "CC0", commons: "x.jpg", alt: "x" },
+    },
+    "hacked, xx": {
+      coords: { lat: 10, lng: 10 },
+      hero: { file: "../server.js", credit: "x", license: "CC0", commons: "x.jpg", alt: "x" },
+    },
+    "creditless, xx": {
+      coords: { lat: 10, lng: 10 },
+      hero: { file: "creditless-xx.jpg", license: "CC0", alt: "x" },
+    },
+  },
+};
+
+test("a generated photograph heads a city nobody curated", () => {
+  const h = heroFor("Casper", "WY", { auto: AUTO_FIXTURE });
+  assert.equal(h.kind, "photo");
+  assert.equal(h.src, "/market-heroes/casper-wy.jpg");
+  assert.equal(h.srcset, photoSrcset("casper-wy.jpg"));
+  assert.equal(h.credit, "Somebody");
+  assert.match(h.commonsUrl, /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/);
+});
+
+test("a curated photograph still wins over a generated one", () => {
+  const h = heroFor("Dallas", "TX", { auto: AUTO_FIXTURE });
+  assert.equal(h.src, "/market-heroes/dallas-tx.jpg");
+});
+
+test("a generated file that fails the quality grade drops to the satellite, like a curated one", () => {
+  const h = heroFor("Casper", "WY", { auto: AUTO_FIXTURE, skipKeys: ["casper, wy"] });
+  assert.equal(h.kind, "satellite");
+  assert.equal(h.src, esriAerialUrl(42.85, -106.32));
+});
+
+test("a generated entry is not believed on trust", () => {
+  // The file name becomes a URL under /market-heroes/, so a generated path is
+  // still a path. Credit and the Commons title are what the attribution line
+  // is made of; an entry missing either is not attributable and is not used.
+  const hacked = heroFor("Hacked", "XX", { auto: AUTO_FIXTURE });
+  assert.equal(hacked.kind, "satellite", "a file name outside the folder must never be served");
+  const creditless = heroFor("Creditless", "XX", { auto: AUTO_FIXTURE });
+  assert.equal(creditless.kind, "satellite");
+});
+
+test("a city with no photograph at all still gets an aerial from the generated coordinates", () => {
+  const h = heroFor("Nampa", "ID", { auto: AUTO_FIXTURE });
+  assert.equal(h.kind, "satellite");
+  assert.equal(h.src, esriAerialUrl(43.6, -116.61));
+});
+
+test("a market page published since the last generator run falls back to its own coordinates", () => {
+  const h = heroFor("Brand New", "TX", { auto: AUTO_FIXTURE, coords: { lat: 31.5, lng: -97.1 } });
+  assert.equal(h.kind, "satellite");
+  assert.equal(h.src, esriAerialUrl(31.5, -97.1));
+  // …and the committed tables still outrank whatever the caller supplies.
+  const boise = heroFor("Boise", "ID", { auto: AUTO_FIXTURE, coords: { lat: 0, lng: 0 } });
+  assert.equal(boise.src, esriAerialUrl(CITY_COORDS["boise, id"].lat, CITY_COORDS["boise, id"].lng));
+  assert.equal(heroFor("Nowhere", "XX", { auto: { cities: {} } }), null);
+});
+
+test("every generated hero on disk is a real, safe, attributed file", () => {
+  const { autoCities, autoHeroFor } = require("../market-hero");
+  for (const [key, row] of Object.entries(autoCities())) {
+    assert.ok(row.coords || row.hero, key + " has neither a photo nor a point — it would render blank");
+    const hero = autoHeroFor(key);
+    if (!hero) continue;
+    assert.ok(isHeroFilename(hero.file), key + " file is not a safe name");
+    assert.ok(fs.existsSync(path.join(DIR, hero.file)), hero.file + " is missing");
+    const sibling = srcsetName(hero.file);
+    assert.ok(fs.existsSync(path.join(DIR, sibling)), sibling + " is missing");
+    assert.ok(fs.statSync(path.join(DIR, hero.file)).size > 20 * 1024, hero.file + " looks empty");
+    assert.ok(hero.credit && hero.license, key + " has no attribution");
+    assert.ok(hero.commons, key + " has no Commons title to link back to");
+    assert.equal(HEROES[key], undefined, key + " is generated AND curated — the curated one would always win");
+  }
 });

@@ -141,6 +141,19 @@ const as = (init = {}) => ({
   },
 });
 
+// Poll until a condition holds, or fail saying what never happened. For the
+// fire-and-forget writes (the corpus harvest): they are deliberately not
+// awaited by anything, so "has it happened yet" is a race and the only honest
+// assertion is a bounded wait.
+async function until(cond, message, { timeoutMs = 15000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (cond()) return;
+    if (Date.now() > deadline) throw new Error(message);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 // The worker runs after the POST answers, so every assertion waits on the job
 // rather than on a timer.
 async function waitForJob(base, id, { timeoutMs = 30000 } = {}) {
@@ -247,12 +260,21 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     }
   });
 
-  await t.test("the corpus and the cache saw the report", () => {
+  await t.test("the corpus and the cache saw the report", async () => {
     // Both are downstream of the SEARCH and upstream of the gate, and both
     // swallow their own errors — so if the worker had skipped them, nothing
     // anywhere would have said so.
-    assert.ok(tables.comp_corpus.length >= 5, "harvest ran on the ungated report");
+    //
+    // The cache write is AWAITED by runCompSearch, so it has landed by the
+    // time the job reports done. The harvest is deliberately NOT — it is
+    // fire-and-forget precisely so a corpus failure can never affect a
+    // request — so asserting it immediately is a race this test lost on CI
+    // (passes on a fast box, fails on a 2-core runner) while the product was
+    // working exactly as designed. Waiting for it asserts what is actually
+    // promised: the harvest happens, not that it happens before the job ends.
     assert.ok(tables.search_cache.length >= 2, "each address cached its own search");
+    await until(() => tables.comp_corpus.length >= 5,
+      "harvest never ran on the ungated report");
   });
 
   await t.test("two addresses bought two searches, not more", () => {

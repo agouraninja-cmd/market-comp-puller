@@ -297,7 +297,12 @@ const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
 const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
-  singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // No singleReport price: the $20 single-report unlock RETIRED on 2026-08-21
+  // (owner's call, after FREE_MAX_COMPS went to "all" and left the tile with
+  // almost nothing to trigger on). STRIPE_PRICE_SINGLE_REPORT can be unset and
+  // the price archived in Stripe. Existing purchases are honored forever —
+  // the webhook, report_purchases, findReportPurchase, /api/report-access and
+  // the entitlements branch all stay; only the SALE is gone.
   // The per-seat firm plan (2026-08-16). Unset means firm checkout 503s and
   // the buy control never renders — the same "a button that can only fail is
   // worse than no button" rule the individual plans follow, and it is how
@@ -16514,7 +16519,13 @@ const server = http.createServer((req, res) =>
         const PLANS = {
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
-          single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // NO single_report plan. RETIRED 2026-08-21: once the free tier
+          // itemized every comp, the one-off was left selling only the
+          // ten-year window and rarely surfaced. Buying it now answers the
+          // same 400 as any unknown plan — which is the correct retirement
+          // shape, because this map's whole design is that an absent plan can
+          // never quietly become a charge for a different one. Purchases
+          // already made stay honored (see the webhook and /api/report-access).
           // Per-seat, and the ONLY plan whose quantity is not 1. It buys a
           // FIRM's subscription, so it needs an orgId and the caller must own
           // that firm — both checked below, before Stripe is ever called.
@@ -16529,33 +16540,6 @@ const server = http.createServer((req, res) =>
         if (!chosen.price) return sendJson(res, 503, { error: "That plan isn't configured." });
         const wantsFounding = plan === "pro_annual_founding";
         const priceId = chosen.price;
-
-        // --- single-report specifics ---------------------------------------
-        // The id is derived from the search the buyer names, never accepted as
-        // an id — see reportIdFor(). Both checks below are courtesy, not
-        // security: they stop a pointless charge rather than protect anything.
-        let reportId = "";
-        if (plan === "single_report") {
-          // Address + type only: the buyer is purchasing the PROPERTY, at every
-          // lookback, so the lookback must not enter the id (see reportIdFor).
-          reportId = reportIdFor({ address, type });
-          if (!reportId) {
-            return sendJson(res, 400, { error: "Tell us which report you want to unlock." });
-          }
-          const ent = await getEntitlements(user, reportId, isAdminRequest(req));
-          if (ent.pro) {
-            return sendJson(res, 409, {
-              error: "Your Pro plan already includes this report in full.",
-              code: "already_pro",
-            });
-          }
-          if (ent.reportUnlocked) {
-            return sendJson(res, 409, {
-              error: "You've already unlocked this report.",
-              code: "already_owned",
-            });
-          }
-        }
 
         // --- firm specifics -------------------------------------------------
         // The firm is the customer, so everything here is about proving the
@@ -16613,11 +16597,11 @@ const server = http.createServer((req, res) =>
         }
 
         const existing = await findSubscription(user.id);
-        // A one-off unlock returns to the REPORT, not to the desk: the desk
-        // has no idea which building was bought. The client stashed the search
-        // before redirecting and re-runs it on the way back (a cache hit, so
-        // no billed search), which is why no address rides in this URL.
-        const returnPath = plan === "single_report" ? "/?purchase" : "/desk?checkout";
+        // Every remaining plan is a subscription and returns to the desk.
+        // (The retired one-off returned to "/?purchase" instead — the client
+        // still handles that return, because an in-flight checkout may
+        // complete after this deploys and old purchases are honored.)
+        const returnPath = "/desk?checkout";
         // Return them to the origin they are BUYING FROM, not to the canonical
         // one — pendingUnlock.v1 lives in that origin's localStorage and is
         // what re-renders the purchased report. See returnOriginFor().
@@ -16638,13 +16622,12 @@ const server = http.createServer((req, res) =>
           metadata: {
             user_id: user.id,
             ...(chosen.firm ? { org_id: String(orgId) } : {}),
-            ...(reportId ? { report_id: reportId } : {}),
           },
           ...(chosen.mode === "subscription"
             ? { subscription_data: { metadata: {
                 user_id: user.id, ...(chosen.firm ? { org_id: String(orgId) } : {}),
               } } }
-            : { payment_intent_data: { metadata: { user_id: user.id, report_id: reportId } } }),
+            : { payment_intent_data: { metadata: { user_id: user.id } } }),
           // A firm's own customer record, never the buyer's: the card belongs
           // to the firm, and reusing the owner's personal customer would put
           // both subscriptions on one invoice and one payment method.

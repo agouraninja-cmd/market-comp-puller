@@ -35,11 +35,11 @@
 // PRO_ENABLED=off branch already resolve to it, and gateReport() still runs
 // for any numeric cap — this tier simply stops supplying one.
 //
-// KNOWN CONSEQUENCE, decided deliberately: the $20 single-report tile only
-// renders when something is actually locked (updateSingleReportTile() in
-// index.html keys on lockedCount() > 0), so within the 36-month window that
-// tile now rarely appears. The purchase still exists and still buys the
-// ten-year window, branding and unlimited exports for one property.
+// The consequence this had for the $20 single-report unlock resolved the same
+// day: with nothing locked its tile almost never surfaced, and the owner chose
+// to RETIRE the sale (2026-08-21) rather than re-trigger it. Purchases already
+// made are honored forever — reportUnlocked below still grants per-property
+// Pro — but /api/checkout no longer accepts the plan.
 const FREE_MAX_COMPS = "all";
 // Free lookback stops at 36 months — WIDENED from 12 on 2026-08-04, and the
 // reason matters more than the number.

@@ -1726,8 +1726,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   updates feed reads the comp corpus. Signed-in searches auto-save to
   `portfolio_items` (upsert on address + type); Free My Desk is an address
   list, Pro is the book of values, and the caps (100 / 500) live in
-  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The `$20`
-  unlock does not auto-save. Auth is built into server.js — scrypt
+  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The (retired)
+  `$20` unlock does not auto-save. Auth is built into server.js — scrypt
   (Node built-in) password hashes, 90-day session tokens stored as SHA-256
   hashes, `cn_session` httpOnly cookie. Routes: `POST /api/account/signup|
   login|logout|forgot|reset`, `GET /api/account/me`, `DELETE /api/account`,
@@ -1871,12 +1871,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   argument had already widened the lookback. `gateReport()` is NOT dead code:
   it still caps whenever `maxComps` is a number, this tier just stops
   supplying one, and `test/comp-gate.test.js` keeps exercising the cap through
-  an explicit `cappedEnt` so the machinery stays covered. **Known
-  consequence, accepted:** the $20 single-report tile only renders when
-  something is actually locked (`updateSingleReportTile()` keys on
-  `lockedCount() > 0`), so inside the 36-month window it now rarely appears;
-  the purchase still buys the ten-year window, branding and unlimited exports
-  for one property.
+  an explicit `cappedEnt` so the machinery stays covered. **The consequence this had for the $20 single-report unlock resolved the same
+  day**: with nothing locked its tile almost never surfaced, and the owner
+  retired the sale outright (2026-08-21, see the single-report section below);
+  purchases already made are honored forever.
   The free lookback was **12 months until 2026-08-04**. It was widened because
   at 12 months the free report often could not compute a valuation at all (the
   hero needs two priced sale comps and dense markets returned one), and because
@@ -1962,47 +1960,39 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   an unrecognized plan is a 400. It used to map everything that wasn't the
   founding plan onto monthly, which is why a $39 button was unsafe to add;
   restoring any such default would re-arm exactly that mischarge.
-  **The single-report unlock — $20 since 2026-08-04** (shipped 2026-08-03 at
-  $39). `plan: "single_report"` opens a Stripe **payment**-mode session, and the
-  `checkout.session.completed` handler writes a `report_purchases` row, after
-  which `computeEntitlements` grants **every Pro capability that can be scoped
-  to a property** — `maxComps: "all"`, `PRO_MAX_LOOKBACK_MONTHS`, unlimited
-  exports, `canBrand` — for that address + type. Four things to know:
-  - **The price lives in Stripe, not here.** The tile's `$20` is prose in
-    index.html; the actual charge comes from `STRIPE_PRICE_SINGLE_REPORT` in
-    Render. **They can disagree, and nothing detects it** — changing the copy
-    without creating a new Stripe price silently mischarges. Always move the
-    Stripe price FIRST (undercharging while the copy is stale is the safe
-    direction), then deploy the copy.
-  - **The report id is derived, never accepted, and is `address|type` —
-    NOT the lookback.** `reportIdFor()` hashes it out of the request body, so a
-    buyer cannot unlock a report they didn't pay for by posting an id. The
-    lookback left the key on 2026-08-04: while it was in there, a re-run at a
-    wider window was a different id that matched no purchase, so a purchase
-    could never carry Pro's ten-year window — which is exactly what the price
-    is now selling. It **mirrors `exportReportKey()` in index.html byte for
-    byte** (⚠ comment on both) — purchase key and export-tally key are the same
-    string, which stops a bought report burning a free export. Consequence:
-    exporting one property at two windows costs one export, not two.
-  - **The Address Explorer is the one Pro capability a purchase does NOT
-    grant** (`canExploreAddresses: pro`). It finds the NEXT property, so it
-    can't be scoped to a report without making $20 a substitute for the
-    subscription. It is deliberately the reason to subscribe.
-  - **The unlock is permanent for that address + type**, not for a
-    frozen set of comps. `report_purchases.comp_snapshot` is **nullable and
-    never written**: the webhook has a session and a payment intent but no
-    report data, and nothing reads a snapshot. If the table was created with
-    `not null`, the ALTER in `migrations/008-pro-billing.sql` must run or every
-    purchase webhook 400s. Re-running the search re-serves it whole from cache.
-  - **Buying returns to `/?purchase=success`, not `/desk`** — the buyer wants
-    the report, and the desk doesn't know which building it was. The address is
-    kept out of the URL; `localStorage.pendingUnlock.v1` carries it across the
-    redirect, and `handlePurchaseReturn()` polls **`POST /api/report-access`**
-    before re-running, so nobody who just paid gets a still-locked report.
-  - **The $39 tile is contextual.** `updateSingleReportTile()` shows it only
-    when a report is on screen with `lockedCount() > 0` and it isn't a shared
-    report. It still lives inside the ONE pricing modal — do not add a second
-    upgrade prompt.
+  **The single-report unlock — RETIRED 2026-08-21** (shipped 2026-08-03 at
+  $39, $20 from 2026-08-04). The one-off that bought every property-scoped Pro
+  capability for one address + type. Retired by the owner the day
+  `FREE_MAX_COMPS` went to `"all"`: with nothing locked inside the free
+  window it was left selling only the ten-year window, and its tile — keyed on
+  `lockedCount() > 0` — almost never surfaced. `single_report` is deleted
+  from `/api/checkout`'s `PLANS` map, so buying it answers the same 400 as
+  any unknown plan (the map's no-fallthrough design is what makes retirement
+  one deletion, pinned by a source scan in `test/routes.test.js`), and
+  `STRIPE_PRICE_SINGLE_REPORT` can be unset in Render and the price archived
+  in Stripe. **Everything else stays, because purchases already made are
+  honored FOREVER** — the unlock was sold as permanent for its address + type:
+  - the `checkout.session.completed` and refund webhook branches still write
+    and revoke `report_purchases` rows (an in-flight checkout can complete
+    after the deploy, and a refund on an old purchase must still land);
+  - `computeEntitlements` still grants per-property Pro (`reportUnlocked`:
+    `maxComps: "all"`, `PRO_MAX_LOOKBACK_MONTHS`, unlimited exports,
+    `canBrand`) when a purchase row matches;
+  - `POST /api/report-access` still answers "do I own this report yet?", and
+    `handlePurchaseReturn()` in index.html still handles a `?purchase=`
+    return — with no seller writing `pendingUnlock.v1` these go quiet on
+    their own, which is the point: the honoring side needs no trigger to
+    remain correct;
+  - `reportIdFor()` still **mirrors `exportReportKey()` byte for byte**
+    (⚠ comment on both) — the purchase key and the export-tally key stay the
+    same string, so an old buyer's report still never burns a free export;
+  - `report_purchases.comp_snapshot` stays nullable and never written.
+  Reselling a one-off later is an owner decision, not a merge accident: the
+  source scan fails the build if `single_report` reappears in `PLANS`, so
+  re-adding it means deleting that test deliberately. If it comes back,
+  re-read this section first — the tile trigger (`lockedCount`), the
+  `/?purchase` return path, and the id-excludes-lookback rule were each
+  earned by a real mistake.
   **Report branding** (shipped 2026-08-08). `GET|PUT|DELETE /api/branding`
   lets a signed-in member save one profile (firm name, preparer, phone,
   email, license number, a short disclaimer, and a logo stored inline as a
@@ -2020,9 +2010,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   broker, so a report carrying only a brokerage's mark would read as that
   brokerage's own appraisal. `/api/comps` carries `branding_allowed`
   (`ent.canBrand === true`) on every served report, computed per-report like
-  `exports_remaining` — a $20 single-report buyer's `canBrand` is scoped to
-  the property they bought, not a live Pro subscription, so this cannot be
-  folded into `/api/config`. Two rules a future editor will otherwise break:
+  `exports_remaining` — an existing $20 single-report buyer's `canBrand` is
+  scoped to the property they bought (the sale is retired; the grants are
+  not), not a live Pro subscription, so this cannot be folded into
+  `/api/config`. Two rules a future editor will otherwise break:
   - **A shared report renders the sender's snapshot and never the viewer's
     own profile.** `POST /api/share` looks up the sender's saved profile at
     share time (only when `user && ent.canBrand`) and writes it into
@@ -2042,7 +2033,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     APPLYING a profile to a report, checked server-side at serialization
     (`/api/comps`'s `branding_allowed`) and again at share time (`POST
     /api/share`'s `ent.canBrand` check before the snapshot). This is what
-    makes the $20 single-report unlock's branding promise fulfillable: the
+    keeps the retired $20 unlock's branding promise fulfillable for the
+    people who bought one: the
     entitlement it grants is scoped to one address+type, so a buyer with no
     Pro subscription can still save a profile in advance and have it apply
     the moment they unlock a report, without the editor itself needing to

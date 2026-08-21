@@ -1375,40 +1375,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </table>
       </div>
 
-      <!-- Single-report unlock. Hidden unless there is a GATED report on
-           screen to buy — updateSingleReportTile() owns that, and a single-report button
-           with no report attached has nothing to unlock and no id to send.
-           Deliberately a full-width strip under the grid rather than a third
-           column: it is the lesser, contextual offer, and this way the
-           founding tile's show/hide logic is left alone.
-           Every class here is already in the vendored tailwind.css, so this
-           needs no Tailwind regen. Check before adding one. -->
-      <div id="singleReportTile" class="hidden mt-3 pt-3 border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
-        <div class="flex-1 min-w-0">
-          <span class="rd-lab">Just this report</span>
-          <div>
-            <span class="pr-fig" style="font-size:19px">$20</span>
-            <span class="text-sm text-[#68707E]">once</span>
-          </div>
-          <!-- What this buys is now every Pro capability that is SCOPED TO A
-               PROPERTY: all comps, the ten-year window, unlimited exports,
-               branding — for this address and type, permanently. The earlier
-               "the 10-year lookback is Pro" line was removed because it is no
-               longer true; a purchase carries PRO_MAX_LOOKBACK_MONTHS since the
-               report id stopped hashing the lookback (see reportIdFor).
-               The one Pro capability deliberately NOT included is the Address
-               Explorer, because it finds the NEXT property and cannot be scoped
-               to a report — so it stays the reason to subscribe. If that ever
-               changes, this copy and canExploreAddresses move together. -->
-          <p class="text-sm text-[#4C5665] mt-1">
-            Everything Pro gives you on <span id="singleReportAddr" class="font-medium text-[#1A2433]">this property</span> — every comparable, the full 10-year history, and unlimited exports — permanently, with no subscription.
-          </p>
-        </div>
-        <button type="button" data-plan="single_report"
-          class="pricing-buy btn-live shrink-0 w-full sm:w-auto bg-white border border-[#D8D4C9] hover:bg-[#F5F4EF] text-[#1A2433] font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
-          Unlock this report
-        </button>
-      </div>
+      <!-- The single-report tile lived here until 2026-08-21, when the $20
+           one-off was RETIRED (owner's call): once free reports itemized every
+           comp, it sold only the ten-year window and almost never surfaced.
+           Purchases already made are honored forever — handlePurchaseReturn(),
+           /api/report-access and the per-report entitlement all remain. -->
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
@@ -13346,31 +13317,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // this stash is the only thing that knows which report was paid for.
   const PENDING_UNLOCK = "pendingUnlock.v1";
 
-  /**
-   * Show the single-report tile only when there is something to spend it on.
-   *
-   * The pricing modal opens from the nav, the account menu and the export-limit
-   * path as well as from a locked report, so "there is a current report" is
-   * never a safe assumption. Three ways the offer is meaningless: nothing on
-   * screen to unlock, nothing WITHHELD on what is on screen (Pro, or already
-   * bought — either way lockedCount() is 0), or a shared report, which belongs
-   * to whoever published it and isn't the viewer's to buy.
-   */
-  function updateSingleReportTile() {
-    const tile = document.getElementById("singleReportTile");
-    if (!tile) return;
-    const buyable = Boolean(currentMeta) && !currentMeta.shared && lockedCount() > 0;
-    tile.classList.toggle("hidden", !buyable);
-    if (!buyable) return;
-    const addr = document.getElementById("singleReportAddr");
-    // textContent, not innerHTML: this is a user-typed address.
-    if (addr) addr.textContent = currentMeta.address || "this report";
-  }
 
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
-    updateSingleReportTile();
     // Re-read the counter on every open: a seat may have gone since last time,
     // and the server memoizes for 60s so this is cheap.
     loadPricing();
@@ -13397,20 +13347,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // after. Cancelling the account modal clears it again, by design.
       closePricingModal();
       pendingCheckoutPlan = plan;
-      openAcctModal("signup", plan === "single_report"
-        // A single-report unlock is recorded against an account, not a device — say so,
-        // because "your subscription needs somewhere to live" is not true of a
-        // one-off and reads as a bait-and-switch to someone avoiding one.
-        ? "Create a free account first: the unlock is saved to your account, so the report stays yours on any device."
-        : "Create a free account first: your subscription needs somewhere to live.");
+      openAcctModal("signup", "Create a free account first: your subscription needs somewhere to live.");
       return;
-    }
-    // A single-report unlock is bought FOR a report, so the search that produced it has
-    // to travel: the server derives the purchase id from these three fields
-    // (reportIdFor) rather than trusting an id we send.
-    const single = plan === "single_report";
-    if (single && !currentMeta) {
-      return showPricingError("Open a report first, then unlock that one.");
     }
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening checkout…"; }
@@ -13418,19 +13356,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const r = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(single
-          ? { plan, address: currentMeta.address, type: currentMeta.type, months: currentMeta.months }
-          : { plan }),
+        body: JSON.stringify({ plan }),
       });
       const data = await r.json().catch(() => ({}));
-      // Already bought, or Pro already covers it. Both mean "don't pay again" —
-      // close up and re-run so they actually see the full report.
-      if (r.status === 409 && (data.code === "already_owned" || data.code === "already_pro")) {
-        closePricingModal();
-        showStatus(data.error + " Re-running it now.", "info");
-        rerunHistory(currentMeta);
-        return;
-      }
       if (r.status === 409 && data.code === "founding_closed") {
         pricingInfo = Object.assign({}, pricingInfo, { foundingLeft: 0 });
         renderFoundingTile();
@@ -13440,13 +13368,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (!r.ok || !data.url) {
         showPricingError(data.error || "Could not start checkout. Please try again.");
         return;
-      }
-      // Remember WHICH report is being bought. Stripe returns to "/" with no
-      // idea what was purchased, and the report is a client-side artifact —
-      // this stash is the only thing that can re-open it on the way back. It
-      // deliberately carries no address in the return URL; see PENDING_UNLOCK.
-      if (single) {
-        try { localStorage.setItem(PENDING_UNLOCK, JSON.stringify(currentMeta)); } catch (_) {}
       }
       // Hand off to Stripe. assign (not replace) so Back returns here.
       location.assign(data.url);
@@ -13786,6 +13707,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   /**
    * Handle the ?purchase=success|cancelled return from a single-report unlock.
    *
+   * KEPT after the $20 sale was retired on 2026-08-21, deliberately: a
+   * checkout opened minutes before the deploy can still complete and return
+   * here, and the purchase it records is honored forever. With no seller
+   * writing pendingUnlock.v1 any more this goes quiet on its own; do not
+   * delete it while any ?purchase= return could still arrive.
+   *
    * Separate from handleCheckoutReturn() on purpose. That one lands on /desk
    * and announces a plan; this lands on "/" and re-opens a REPORT, because the
    * report is what was bought and the desk has no idea which building it was.
@@ -13963,12 +13890,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest(".unlock-comps-btn");
     if (btn) openUpgradePrompt();
-    // The price-named one-off on the locked notice. Straight to checkout —
-    // startCheckout already owns every edge (signed out → signup nudge that
-    // resumes this plan; no billing → error; no report → error), so this
-    // button adds no rules of its own.
-    const single = e.target.closest && e.target.closest(".unlock-single-btn");
-    if (single) startCheckout("single_report", single);
   });
 
   // The audit trail: what the user changed about the comp set. Deliberately
@@ -15007,14 +14928,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const n = lockedCount();
     if (n <= 0 || txFilter !== "all") { el.classList.add("hidden"); el.innerHTML = ""; return; }
     el.classList.remove("hidden");
-    // The one-off gets a price-named button HERE, on the report (owner's call,
-    // 2026-08-08 — it was two clicks deep and rendered last in the modal, and
-    // nobody found it). This reverses the earlier "name no plan" rule for the
-    // one-off ONLY; the red button still opens the one modal with both offers.
-    // Same three exclusions as updateSingleReportTile: nothing to buy without
-    // billing live, and a shared report belongs to whoever published it. The
-    // $20 is also hard-coded in the modal's tile — change them together.
-    const buyable = billingLive() && Boolean(currentMeta) && !currentMeta.shared;
+    // One button, one modal — the ".unlock-comps-btn class → openUpgradePrompt"
+    // rule. A price-named one-off button also rendered here from 2026-08-08
+    // until the $20 unlock was RETIRED on 2026-08-21; nothing else changed
+    // about this notice. (Since FREE_MAX_COMPS went to "all" nothing supplies
+    // a numeric cap, so this renders only if a capped tier ever returns.)
     el.innerHTML =
       `<div class="text-sm font-semibold text-[#1A2433]">${n} more comparable${n === 1 ? "" : "s"} in this report</div>` +
       `<div class="text-xs text-[#68707E] mt-1 max-w-md mx-auto">` +
@@ -15023,11 +14941,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       `<div class="mt-3 flex flex-col sm:flex-row items-center justify-center gap-2">` +
       `<button type="button" class="unlock-comps-btn btn-live inline-flex items-center justify-center gap-2 ` +
       `bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold text-sm px-5 py-2.5 rounded">See all comparables</button>` +
-      (buyable
-        ? `<button type="button" class="unlock-single-btn btn-live inline-flex items-center justify-center gap-2 ` +
-          `bg-white border border-[#D8D4C9] hover:bg-slate-50 text-[#1A2433] font-semibold text-sm px-5 py-2.5 rounded">` +
-          `Unlock just this report — $20</button>`
-        : "") +
       `</div>`;
   }
 

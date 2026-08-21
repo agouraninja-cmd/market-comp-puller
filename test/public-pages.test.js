@@ -217,6 +217,23 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  // The same failure mode from the other direction: on 2026-08-21 the free
+  // tier went to every-comp and the $20 one-off was retired, and this page —
+  // the landing page under the wall, whose answers Google serves as facts —
+  // spent the day still selling both. The price answer must never promise a
+  // free comp limit that no longer exists or a product that cannot be bought.
+  await t.test("it no longer sells the retired $20 unlock or a free comp limit", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/itemizes ten comps/i.test(html),
+        p + " must not claim a ten-comp free limit; FREE_MAX_COMPS is \"all\"");
+      assert.ok(!/unlocks on its own for \$20/i.test(html) && !/single report unlocks/i.test(html),
+        p + " must not sell the single-report unlock; it was retired 2026-08-21");
+      assert.ok(/itemize every comparable/i.test(html),
+        p + " should state the real free tier, not go vague about it");
+    }
+  });
+
   await t.test("brokers have a path off the landing page, not just an FAQ row", async () => {
     // Until 2026-08-12 a broker arriving here met one FAQ answer and a link
     // inside the Explore dropdown. The owner's own read is that broker

@@ -134,6 +134,21 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-21: the pricing model simplified to one decision per customer.**
+  Two owner calls on one day, in order. First, `FREE_MAX_COMPS` went from 10
+  to `"all"` (PR #55's decision, rebuilt on current main — the branch had
+  drifted 1045 commits): the free report's value range was always computed
+  from the full comp set, so the list gate withheld the evidence for a number
+  already published. Second, the $20 single-report unlock was RETIRED the
+  same day, because with nothing locked its tile — keyed on
+  `lockedCount() > 0` — no longer surfaced and it was left selling only the
+  lookback. Purchases already made are honored forever (webhook,
+  `report_purchases`, `/api/report-access`, per-property entitlement all
+  kept); a source scan fails the build if `single_report` re-enters the
+  PLANS map. What remains: free = full report at 3 years; Pro = the ten-year
+  window, unlimited exports, the vault, Address Explorer, branding; firms =
+  per-seat. The landing-page FAQ was caught still selling both retired claims
+  and is now test-pinned against them (public-pages.test.js).
 - **2026-08-19: only a licensed broker may publish a vault comp.** Decided
   2026-08-12 and built now: `broker_profiles.license_number` (migration 034,
   NOT NULL DEFAULT ''), and one pure gate `VAULT.canPublishAs(profile)` that

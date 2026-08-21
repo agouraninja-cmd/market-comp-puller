@@ -8374,15 +8374,16 @@ const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
   // This answer reaches Google twice: as the visible accordion and inside the
-  // FAQPage JSON-LD below. It claimed "there is no subscription" for months
-  // after Pro went on sale, so the search result was actively denying the
-  // product. Keep it true to entitlements.js (10 comps, 36 months free) and to
-  // the pricing modal in index.html, which are the numbers being charged.
-  // (Both sides of the 2026-08-08 merge rewrote this entry; this is the
-  // upstream version, kept because naming the real numbers beat vagueness —
-  // it now owes an update whenever the prices move.)
+  // FAQPage JSON-LD below. It has now been caught stale TWICE — it claimed
+  // "there is no subscription" for months after Pro went on sale, and then
+  // spent 2026-08-21 promising a ten-comp free limit and a $20 one-off after
+  // the free tier went to every-comp and the one-off was retired, both the
+  // same day this page kept selling them. Keep it true to entitlements.js
+  // ("all" comps, 36 months free) and the pricing modal in index.html, which
+  // are the numbers being charged; a test in public-pages.test.js now pins
+  // the two retired claims out.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes ten comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $129 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",

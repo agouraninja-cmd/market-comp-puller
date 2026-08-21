@@ -1,0 +1,57 @@
+# Verify the Gemini streaming reader against the LIVE wire format.
+#
+# scripts/verify-gemini-stream.js exists because the Interactions API's SSE
+# frame shape is documented only as "each event includes a type and JSON
+# data", so search-provider-gemini.js's createStreamReader is written from the
+# non-streaming body shape and is explicitly UNVERIFIED — gated behind
+# capabilities.streamingUnverified + STREAM_UNVERIFIED=on, which means the
+# whole live-progress assembly is dark in production on the default provider.
+# One real call (~$0.001) settles it: the script runs the actual reader over
+# the actual bytes and either passes or prints every frame type it missed.
+#
+# This workflow is the button for that run, for a machine that holds no key.
+# UNLIKE ci.yml, IT NEEDS A SECRET, and it is inert until it is set
+# (repository settings, Secrets and variables → Actions):
+#   GEMINI_API_KEY   the same key Render's SEARCH_PROVIDER=gemini deployment
+#                    uses; the run costs a fraction of a cent
+#
+# workflow_dispatch ONLY — never on push/PR, so a fork PR can never reach the
+# secret (ci.yml's rule; market-heroes.yml is the precedent for a
+# dispatch-only workflow that holds secrets).
+#
+# The same thing by hand, for anyone holding the key locally, is:
+#   GEMINI_API_KEY=... node scripts/verify-gemini-stream.js --dump
+#
+# On a pass, the follow-up is code, not config: set capabilities.streaming =
+# true in search-provider-gemini.js, delete streamingUnverified and the
+# STREAM_UNVERIFIED branch in server.js, and commit the frame sample the
+# --dump output prints as a test fixture.
+name: Verify Gemini stream
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Plain first: proves the reader reassembles text at all. --dump prints
+      # every raw frame, which is what the fixture (and any fix) needs.
+      - name: Verify reader (plain)
+        run: node scripts/verify-gemini-stream.js --dump
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      # Grounded second: production always runs with google_search enabled, so
+      # tool frames appear on every real report — a reader that passes plain
+      # but misses tool frames would still fail in production. Requires a
+      # paid-tier project, same as production search itself.
+      - name: Verify reader (grounded, the production shape)
+        run: node scripts/verify-gemini-stream.js --grounded --dump
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

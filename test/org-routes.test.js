@@ -113,7 +113,10 @@ test("firm routes on a bare server (no database)", async (t) => {
     // firm's private book is served to the next visitor who searches that
     // address; blend before harvestComps() and it enters the public corpus
     // permanently, on a path that swallows its own errors.
-    const gateAt = SERVER.indexOf("const gate = async (rep) => {");
+    // gate() became the module-level finishReportForViewer on 2026-08-21 so
+    // the bulk worker serializes through the same funnel; the rule is
+    // unchanged, and harvestComps now lives in runCompSearch, upstream of it.
+    const gateAt = SERVER.indexOf("async function finishReportForViewer(rep, ctx) {");
     const blendAt = SERVER.indexOf("BLEND.dedupeFirmComps");
     const harvestAt = SERVER.indexOf("harvestComps(");
     assert.ok(gateAt > 0 && blendAt > gateAt, "firm comps must blend inside gate()");

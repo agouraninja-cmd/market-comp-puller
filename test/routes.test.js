@@ -2134,10 +2134,14 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const start = src.indexOf("const gate = async (rep)");
-  assert.ok(start >= 0, "gate() should still exist as an async closure");
-  const end = src.indexOf("const maxIdentified", start);
-  assert.ok(end > start, "could not bound gate()");
+  // gate() was a closure inside /api/comps until 2026-08-21; it is now the
+  // module-level finishReportForViewer, shared with the bulk worker so a
+  // portfolio row and the report behind it are assembled the same way. The
+  // ORDER inside it is what this test is about, and none of it changed.
+  const start = src.indexOf("async function finishReportForViewer(rep, ctx) {");
+  assert.ok(start >= 0, "finishReportForViewer() should still be the one serialization funnel");
+  const end = src.indexOf("\n}\n", start);
+  assert.ok(end > start, "could not bound finishReportForViewer()");
   const body = src.slice(start, end);
   const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
   const paywallAt = body.indexOf("GATE.gateReport");

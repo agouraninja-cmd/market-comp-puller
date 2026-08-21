@@ -87,6 +87,17 @@ const PRO_MAX_LOOKBACK_MONTHS = 120;
 const FREE_PORTFOLIO_MAX_ITEMS = 100;
 const PRO_PORTFOLIO_MAX_ITEMS = 500;
 
+// Bulk valuation — how many addresses one job may hold.
+//
+// Zero is the default answer everywhere it is not granted, and the reason is
+// spend rather than product tiering: every address that misses the cache is
+// its own billed search, so a bulk job is the one control in this app where a
+// single click can commit ~$18 of somebody else's API credit. bulk.js carries
+// the same number as a hard ceiling; this is the per-visitor half of it, so
+// the two must move together (bulk.js clamps to its own MAX_ADDRESSES, so a
+// larger number here can never widen a job).
+const PRO_BULK_MAX_ADDRESSES = 50;
+
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
 const GRACE_DAYS = 7;
@@ -270,6 +281,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // i.e. locked — which would leave the team staring at the paywall the
       // branch above exists to lift.
       canExploreAddresses: true,
+      canBulkValue: true,
+      bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       // The broker vault included, for the same reason: the team is permanently
       // on the far side of every paywall, so this is the only way anyone
       // internal ever renders the broker workspace at all. `admin: true` below
@@ -301,6 +314,15 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
+      // FALSE on this branch, for the vault's reason stated below and one of
+      // its own. Bulk valuation did not exist before the tier either, so
+      // "pre-Pro behavior" does not include it — and unlike the vault it is
+      // not merely an access surface, it is a SPEND surface: one POST fans
+      // out into fifty billed searches. Granting that on any deployment that
+      // simply has not switched Pro on yet — the default state — would hand
+      // an unmetered invoice to whoever finds the endpoint.
+      canBulkValue: false,
+      bulkMaxAddresses: 0,
       // FALSE here, unlike every other capability on this branch — and the
       // asymmetry is deliberate, not an oversight.
       //
@@ -371,6 +393,15 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
+      // The SECOND place a tester is deliberately not equal to Pro, and for a
+      // sharper version of the vault's argument below. TESTER_PASSKEY is one
+      // string handed to a group; bulk valuation turns one holder of it into
+      // fifty billed searches per click, with no upper bound on how often.
+      // "Try Pro's reports" is what the code is for, and a report at a time
+      // is what it grants. A tester who should have this is a tester who
+      // should have a subscription.
+      canBulkValue: false,
+      bulkMaxAddresses: 0,
       // The ONE place a tester is deliberately not equal to Pro. The vault is
       // a private-data workspace with an upload endpoint; a passkey shared
       // with a wider group is a bigger surface than "try Pro's reports", so
@@ -462,6 +493,14 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // that is not scoped to a report and cannot be sold per-report without
     // simply being Pro at a one-off price.
     canExploreAddresses: pro,
+    // Bulk valuation is Pro-only and, unlike almost everything else a
+    // purchase now grants, is NOT reachable through the single-report unlock.
+    // Same argument the Address Explorer's line above makes and then some: a
+    // one-off unlock is scoped to one address+type, and a tool whose whole
+    // purpose is running fifty OTHER addresses cannot be scoped to one of
+    // them. Selling it per-report would just be selling Pro once.
+    canBulkValue: pro,
+    bulkMaxAddresses: pro ? PRO_BULK_MAX_ADDRESSES : 0,
     broker,
     // Now simply Pro. Under one subscription the vault is a Pro capability,
     // not a second tier's, so this tracks `pro` exactly.
@@ -550,4 +589,5 @@ module.exports = {
   PAID_PLANS,
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
+  PRO_BULK_MAX_ADDRESSES,
 };

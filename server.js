@@ -5903,6 +5903,253 @@ async function solo(call, onProgress = null, stats = null) {
   }
 }
 
+// The serialization funnel for one report: radius blend, the paywall, the
+// market-page cross-link, then the private comps. Lifted out of /api/comps
+// on 2026-08-21 so bulk valuation runs the SAME one, because a portfolio
+// whose rows were assembled differently from the reports behind them would
+// disagree with every one of them and there would be no way to see it from
+// either screen. It was a closure over the handler; the variables it closed
+// over are now `ctx`, and nothing else about it changed.
+//
+// Every ordering rule in here is load-bearing and is explained where it
+// happens — above all that this runs at SERIALIZATION, downstream of the
+// cache write, harvestComps() and the market snapshot.
+async function finishReportForViewer(rep, ctx) {
+  const {
+    ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+    corpusRadiusRows = [], vaultRows = [], firmCompRows = [],
+  } = ctx || {};
+  if (internal) return rep;
+  // Public saved deals first, then the paywall, then the vault.
+  // Radius blend is before gateReport so extras become locked_basis
+  // for a free visitor instead of printing their addresses. Vault
+  // blend stays last: brokers are Pro, and a private row must never
+  // become a public locked_basis row.
+  let merged = rep;
+  if (CORPUS_RADIUS) {
+    const subject = RADIUSBLEND.coordsFromReport(rep)
+      || await geocodeCensus(addressOk);
+    merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
+      subject,
+      months: monthsOk,
+      now: Date.now(),
+      parseDealDate,
+      keyOf: corpusKeyOf,
+      subjectAddress: addressOk,
+      isAggregateAddress,
+      propertyType: typeOk,
+      marketNote: noteOk,
+      subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
+    });
+    if (merged && merged.corpus_count) {
+      const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
+      console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
+    }
+    merged = RADIUSBLEND.attachCompDistances(merged, subject);
+  } else {
+    merged = RADIUSBLEND.attachCompDistances(merged);
+  }
+  const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+  const gated = GATE.gateReport(merged, ent, {
+    asOfMs: Date.now(),
+    subjectSqft,
+    propertyType: typeOk,
+    radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+    subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
+  });
+  if (!gated || typeof gated !== "object") return gated;
+  // `ent` was resolved with THIS report's id, so it already knows a single-report
+  // unlock makes its exports unlimited — /api/config cannot, because it
+  // takes no report id and would need a purchase lookup on every page
+  // load. Without this the buyer of a report was shown the free monthly
+  // tally ("4 exports left this month") on a report they own outright.
+  // Spread rather than assign: `rep` may be the CACHED object, and the
+  // cache must never carry one visitor's entitlement to the next.
+  // Per-visitor and per-REPORT, for the same reason exports_remaining is:
+  // `ent` was resolved with this report's id, so it knows a $20
+  // single-report unlock carries branding for this property. The
+  // browser cannot work this out for itself — /api/config's canBrand
+  // takes no report id, and lockedCount() === 0 is also true for a free
+  // visitor whose thin market simply returned fewer comps than the gate.
+  // Serialization-time like everything else here, so the cached object
+  // never carries one visitor's entitlement to the next.
+  const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+  // Cross-link to the standing /market/<slug> page for this market +
+  // type, when one exists. Serialization-time like everything else in
+  // this closure, so the cached object never carries it and a market
+  // page published later lights up older cached reports too. In-memory
+  // lookup, no I/O. It rides the report payload, so a saved or shared
+  // report keeps its door into the market page.
+  const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+  if (marketPage) withExports.market_page = marketPage;
+  // LAST, and only here. Every caller of gate() is an exit — the cache
+  // hit, the derived-window hit, the SSE result and the plain JSON
+  // result — so this is the one place a private comp can enter, and it
+  // is downstream of the cache write, harvestComps() and the market
+  // snapshot, all of which keep seeing the public report. Blending any
+  // earlier serves one broker's private book to the next visitor who
+  // searches that address, because the cache is keyed by property and
+  // not by user.
+  // The broker's own comps first, then the firm's — in that order, so
+  // dedupeFirmComps can drop a colleague's copy of a deal the broker
+  // already holds rather than the other way round. Two people at one
+  // firm were routinely on opposite sides of the same transaction, so
+  // without this the deal is counted twice in the valuation with
+  // nothing on screen explaining the shift.
+  const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
+  if (!firmCompRows.length) return withMine;
+  const firmComps = BLEND.dedupeFirmComps(
+    (withMine.comps || []).filter(BLEND.isPrivateComp),
+    firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
+  if (!firmComps.length) return withMine;
+  return {
+    ...withMine,
+    comps: [...(withMine.comps || []), ...firmComps],
+    private_count: (withMine.private_count || 0) + firmComps.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// One search, whole: cache -> derivable window -> daily cap -> size memo ->
+// corpus retrieval -> the billed call, plus every side effect that must see
+// the UNGATED report (the cache write, harvestComps, the market snapshot).
+//
+// Lifted out of the /api/comps handler on 2026-08-21 when bulk valuation
+// needed the same sequence fifty times over. Duplicating it would have meant
+// two answers to every question this pipeline settles — whether a cache hit
+// counts, whether a corpus-strong market shrinks the budget, whether a
+// harvest happens — and the cheapest of those to get wrong (harvesting)
+// swallows its own errors, so nothing would have reported the drift.
+//
+// It returns the report and says HOW it was obtained; it does not serialize,
+// gate, or write a response. Gating is finishReportForViewer's job and stays
+// downstream of everything here, which is what keeps one cached search
+// serving free and Pro visitors alike.
+//
+// `countsDailyCap` is passed rather than derived: DAILY_SEARCH_CAP is a
+// scraper backstop, and who is exempt from it (a subscriber, an internal
+// caller) is the caller's question, not this function's.
+// ---------------------------------------------------------------------------
+async function runCompSearch({
+  address: addressOk, type: typeOk, note: noteOk = "", months: monthsOk,
+  maxComps: maxCompsOk, txFocus: txFocusOk = "both", subjectSizeSqft: sizeOk = null,
+  subjectDetails: detailsOk = {}, skipCache = false, plan = null,
+  countsDailyCap = true, onBilledStart = null, onProgress = null,
+}) {
+  // Verified comps are fetched once, both for the model and as part of the
+  // cache key — approving a new broker comp naturally invalidates any cached
+  // report for that property type.
+  const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
+  const cacheKey = cacheKeyFor({
+    address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
+    subjectDetails: detailsOk,
+  });
+
+  const cached = skipCache ? null : await getCachedSearch(cacheKey);
+  if (cached) {
+    // Legacy cache entries predate $/SF reconciliation — correct them at
+    // read time (idempotent, so re-hitting the in-memory object is fine).
+    reconcilePricePerSqft(cached);
+    console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, cached);
+    harvestComps(typeOk, addressOk, cached);
+    return { report: cached, kind: "cache" };
+  }
+
+  // Exact key missed — but a shorter lookback is a subset of a longer
+  // one, so a cached longer-window report for the same request can be
+  // filtered down to this window instead of paying for a fresh search
+  // (see findDerivableReport for the quality floors).
+  const dw = skipCache ? null : await findDerivableReport({
+    address: addressOk, type: typeOk, note: noteOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+    verifiedComps, subjectDetails: detailsOk,
+  }, monthsOk, txFocusOk, maxCompsOk);
+  if (dw) {
+    console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+    // Side effects mirror a direct cache hit, fed the PARENT payload —
+    // the harvester dedupes, and the fuller comp list is the better feed.
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
+    harvestComps(typeOk, addressOk, dw.parent);
+    return { report: dw.derived, kind: "derived" };
+  }
+
+  // Thrown rather than returned so no caller can mistake a refusal for a
+  // report. Who is exempt is the caller's call (see countsDailyCap);
+  // /api/comps turns this back into the 429 it always sent.
+  if (countsDailyCap && !tryConsumeDailySearch()) {
+    const capped = new Error("This site has reached its daily search limit. Please try again after midnight UTC.");
+    capped.code = "daily_cap";
+    throw capped;
+  }
+
+  // A blank SF field costs two extra searches for the size lookup — but
+  // if any previous search already looked this building up, reuse the
+  // answer and shrink the budget (see the subject-size memo). The
+  // visitor's own entry (sizeOk) always wins over the memo.
+  const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
+  if (knownSize) {
+    console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
+  }
+  const searchSize = sizeOk || (knownSize ? knownSize.size : null);
+
+  // Cache missed — see what we already hold for this market before paying
+  // for a fresh web search. Corpus-strong markets reuse known comps and
+  // run a much smaller search budget (see searchBudgetFor).
+  const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
+  if (corpusIsStrong(corpus)) {
+    console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+  }
+  if (corpus.nearbyCount) {
+    // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
+    // total, so report both rather than let the count overstate what
+    // the model was actually offered.
+    console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+  }
+  if (corpus.listedCount) {
+    console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
+  }
+
+  // The last moment before anything is billed. /api/comps opens its SSE
+  // stream here (everything above answers in plain JSON with a real status
+  // code — the password gate, the rate limiters, validation and a 43ms
+  // cache hit); the bulk worker uses it to mark the row running.
+  if (typeof onBilledStart === "function") {
+    onBilledStart({ corpus, market: marketOf(addressOk) });
+  }
+
+  // Speed observability: time the whole billed leg (what the visitor
+  // actually waits for server-side) and collect the call's search
+  // count, output size, and rescue history for the analytics event.
+  const callStats = {};
+  const billedT0 = Date.now();
+  const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
+    typeof onProgress === "function" ? onProgress : null, callStats);
+  // With the size supplied (memo hit), the prompt skips the lookup and
+  // the payload has no subject_size_sqft — carry the remembered size
+  // into the report so the client's hero math and size autofill still
+  // work for a visitor who typed nothing. Source is kept verbatim so
+  // the hero's provenance phrasing stays accurate.
+  if (knownSize && !result.subject_size_sqft) {
+    result.subject_size_sqft = String(knownSize.size);
+    if (knownSize.source) result.subject_size_source = knownSize.source;
+  }
+  // A fresh lookup (no memo, no typed size) is worth remembering for
+  // every future search of this address. Fire-and-forget.
+  if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
+  // meta feeds the instant-badge address index; the Explorer's
+  // market-level store below deliberately passes none.
+  await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
+  logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan,
+    duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
+  maybePublishMarketSnapshot(typeOk, addressOk, result);
+  harvestComps(typeOk, addressOk, result);
+  return { report: result, kind: "fresh" };
+}
+
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
@@ -12669,16 +12916,6 @@ const server = http.createServer((req, res) =>
         const noteOk = note ? String(note).trim() : "";
         const detailsOk = sanitizeSubjectDetails(typeOk, subjectDetails);
 
-        // Verified comps are fetched once, both for the model and as part of
-        // the cache key — approving a new broker comp naturally invalidates
-        // any cached report for that property type.
-        const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
-        const cacheKey = cacheKeyFor({
-          address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
-          subjectDetails: detailsOk,
-        });
-
         // Gating happens at SERIALIZATION, never at generation: the cache, the
         // corpus harvest, and the market-snapshot publisher all keep seeing
         // whole reports, so one cached search serves free and Pro visitors
@@ -12709,96 +12946,14 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
-        const gate = async (rep) => {
-          if (internal) return rep;
-          // Public saved deals first, then the paywall, then the vault.
-          // Radius blend is before gateReport so extras become locked_basis
-          // for a free visitor instead of printing their addresses. Vault
-          // blend stays last: brokers are Pro, and a private row must never
-          // become a public locked_basis row.
-          let merged = rep;
-          if (CORPUS_RADIUS) {
-            const subject = RADIUSBLEND.coordsFromReport(rep)
-              || await geocodeCensus(addressOk);
-            merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
-              subject,
-              months: monthsOk,
-              now: Date.now(),
-              parseDealDate,
-              keyOf: corpusKeyOf,
-              subjectAddress: addressOk,
-              isAggregateAddress,
-              propertyType: typeOk,
-              marketNote: noteOk,
-              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
-            });
-            if (merged && merged.corpus_count) {
-              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
-            }
-            merged = RADIUSBLEND.attachCompDistances(merged, subject);
-          } else {
-            merged = RADIUSBLEND.attachCompDistances(merged);
-          }
-          const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, {
-            asOfMs: Date.now(),
-            subjectSqft,
-            propertyType: typeOk,
-            radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
-            subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
-          });
-          if (!gated || typeof gated !== "object") return gated;
-          // `ent` was resolved with THIS report's id, so it already knows a single-report
-          // unlock makes its exports unlimited — /api/config cannot, because it
-          // takes no report id and would need a purchase lookup on every page
-          // load. Without this the buyer of a report was shown the free monthly
-          // tally ("4 exports left this month") on a report they own outright.
-          // Spread rather than assign: `rep` may be the CACHED object, and the
-          // cache must never carry one visitor's entitlement to the next.
-          // Per-visitor and per-REPORT, for the same reason exports_remaining is:
-          // `ent` was resolved with this report's id, so it knows a $20
-          // single-report unlock carries branding for this property. The
-          // browser cannot work this out for itself — /api/config's canBrand
-          // takes no report id, and lockedCount() === 0 is also true for a free
-          // visitor whose thin market simply returned fewer comps than the gate.
-          // Serialization-time like everything else here, so the cached object
-          // never carries one visitor's entitlement to the next.
-          const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
-          // Cross-link to the standing /market/<slug> page for this market +
-          // type, when one exists. Serialization-time like everything else in
-          // this closure, so the cached object never carries it and a market
-          // page published later lights up older cached reports too. In-memory
-          // lookup, no I/O. It rides the report payload, so a saved or shared
-          // report keeps its door into the market page.
-          const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
-          if (marketPage) withExports.market_page = marketPage;
-          // LAST, and only here. Every caller of gate() is an exit — the cache
-          // hit, the derived-window hit, the SSE result and the plain JSON
-          // result — so this is the one place a private comp can enter, and it
-          // is downstream of the cache write, harvestComps() and the market
-          // snapshot, all of which keep seeing the public report. Blending any
-          // earlier serves one broker's private book to the next visitor who
-          // searches that address, because the cache is keyed by property and
-          // not by user.
-          // The broker's own comps first, then the firm's — in that order, so
-          // dedupeFirmComps can drop a colleague's copy of a deal the broker
-          // already holds rather than the other way round. Two people at one
-          // firm were routinely on opposite sides of the same transaction, so
-          // without this the deal is counted twice in the valuation with
-          // nothing on screen explaining the shift.
-          const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
-          if (!firmCompRows.length) return withMine;
-          const firmComps = BLEND.dedupeFirmComps(
-            (withMine.comps || []).filter(BLEND.isPrivateComp),
-            firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
-          if (!firmComps.length) return withMine;
-          return {
-            ...withMine,
-            comps: [...(withMine.comps || []), ...firmComps],
-            private_count: (withMine.private_count || 0) + firmComps.length,
-          };
-        };
+        // One serialization funnel, shared with the bulk worker (see
+        // finishReportForViewer). The arrow is evaluated per call, so
+        // corpusRadiusRows below is read at exit time — it is filled after
+        // the guest gate, which is after this line.
+        const gate = (rep) => finishReportForViewer(rep, {
+          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+          corpusRadiusRows, vaultRows, firmCompRows,
+        });
 
         // The gate's principle applied to live progress: a limited visitor
         // never receives more identified comps than the report itself will
@@ -12843,115 +12998,48 @@ const server = http.createServer((req, res) =>
           corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
         }
 
-        const cached = skipCache ? null : await getCachedSearch(cacheKey);
-        if (cached) {
-          // Legacy cache entries predate $/SF reconciliation — correct them at
-          // read time (idempotent, so re-hitting the in-memory object is fine).
-          reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, cached);
-          harvestComps(typeOk, addressOk, cached);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(cached));
-        }
-
-        // Exact key missed — but a shorter lookback is a subset of a longer
-        // one, so a cached longer-window report for the same request can be
-        // filtered down to this window instead of paying for a fresh search
-        // (see findDerivableReport for the quality floors).
-        const dw = skipCache ? null : await findDerivableReport({
-          address: addressOk, type: typeOk, note: noteOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
-          verifiedComps, subjectDetails: detailsOk,
-        }, monthsOk, txFocusOk, maxCompsOk);
-        if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
-          // Side effects mirror a direct cache hit, fed the PARENT payload —
-          // the harvester dedupes, and the fuller comp list is the better feed.
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
-          harvestComps(typeOk, addressOk, dw.parent);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(dw.derived));
-        }
-
-        // A paying subscriber must never be told the site is out of searches
-        // for the day — the cap is a scraper backstop, not a product limit.
-        if (!ent.pro && !internal && !tryConsumeDailySearch()) {
-          return sendJson(res, 429, {
-            error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+        // One search pipeline, shared with the bulk worker: cache, derivable
+        // window, daily cap, size memo, corpus retrieval, the billed call and
+        // every side effect that must see the WHOLE report. See runCompSearch.
+        let searched;
+        try {
+          searched = await runCompSearch({
+            address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+            maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+            subjectDetails: detailsOk, skipCache, plan: ent.plan,
+            // The cap is a scraper backstop, not a product limit: a paying
+            // subscriber must never be told the site is out of searches for
+            // the day, and neither must an internal caller.
+            countsDailyCap: !ent.pro && !internal,
+            // The stream opens HERE and nowhere earlier. Everything the
+            // pipeline answers before this point — the cache hit that matters
+            // most, at 43ms — is plain JSON with a real status code, and the
+            // client picks how to read the body off its content-type, never
+            // off the fact that it asked to stream.
+            onBilledStart: ({ corpus, market }) => {
+              if (!wantsStream) return;
+              sse = openSse(res);
+              if (corpusIsStrong(corpus)) {
+                sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market });
+              }
+            },
+            // null when not streaming, exactly as before: getComps skips its
+            // per-attempt event wrapper entirely on a non-streaming call.
+            onProgress: wantsStream
+              ? (evt) => { if (sse) sse.send("progress", guardComp(evt)); }
+              : null,
           });
-        }
-
-        // A blank SF field costs two extra searches for the size lookup — but
-        // if any previous search already looked this building up, reuse the
-        // answer and shrink the budget (see the subject-size memo). The
-        // visitor's own entry (sizeOk) always wins over the memo.
-        const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
-        if (knownSize) {
-          console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
-        }
-        const searchSize = sizeOk || (knownSize ? knownSize.size : null);
-
-        // Cache missed — see what we already hold for this market before paying
-        // for a fresh web search. Corpus-strong markets reuse known comps and
-        // run a much smaller search budget (see searchBudgetFor).
-        const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
-        if (corpusIsStrong(corpus)) {
-          console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
-        }
-        if (corpus.nearbyCount) {
-          // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
-          // total, so report both rather than let the count overstate what
-          // the model was actually offered.
-          console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
-        }
-        if (corpus.listedCount) {
-          console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
-        }
-
-        // Everything above this line answers in plain JSON — the password gate,
-        // the rate limiters, validation, and (the fast path that matters) a
-        // 43ms cache hit. Only the genuinely slow leg streams. The client picks
-        // how to read the response off its content-type, never off what it asked
-        // for, so all of those keep working untouched.
-        if (wantsStream) {
-          sse = openSse(res);
-          if (corpusIsStrong(corpus)) {
-            sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market: marketOf(addressOk) });
+        } catch (err) {
+          if (err && err.code === "daily_cap") {
+            return sendJson(res, 429, {
+              error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+            });
           }
+          throw err;
         }
-
-        // Speed observability: time the whole billed leg (what the visitor
-        // actually waits for server-side) and collect the call's search
-        // count, output size, and rescue history for the analytics event.
-        const callStats = {};
-        const billedT0 = Date.now();
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
-          sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
-        // With the size supplied (memo hit), the prompt skips the lookup and
-        // the payload has no subject_size_sqft — carry the remembered size
-        // into the report so the client's hero math and size autofill still
-        // work for a visitor who typed nothing. Source is kept verbatim so
-        // the hero's provenance phrasing stays accurate.
-        if (knownSize && !result.subject_size_sqft) {
-          result.subject_size_sqft = String(knownSize.size);
-          if (knownSize.source) result.subject_size_source = knownSize.source;
-        }
-        // A fresh lookup (no memo, no typed size) is worth remembering for
-        // every future search of this address. Fire-and-forget.
-        if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
-        // meta feeds the instant-badge address index; the Explorer's
-        // market-level store below deliberately passes none.
-        await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan,
-          duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
-        maybePublishMarketSnapshot(typeOk, addressOk, result);
-        harvestComps(typeOk, addressOk, result);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", await gate(result));
-        return sendJson(res, 200, await gate(result));
+        if (sse) return sse.finish("result", await gate(searched.report));
+        return sendJson(res, 200, await gate(searched.report));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success

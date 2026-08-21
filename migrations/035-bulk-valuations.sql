@@ -78,6 +78,20 @@ create table if not exists bulk_jobs (
 create index if not exists bulk_jobs_user_idx
   on bulk_jobs (user_id, created_at desc);
 
+-- RLS, for 016's reason and 016's scar. A table in the public schema without
+-- it is reachable through PostgREST by the anon role, and this one holds a
+-- member's address list keyed by user_id -- an index of exactly which
+-- buildings somebody is valuing, which is competitive intelligence about them
+-- and nobody else's business. 016 shipped without this line on
+-- broker_properties, was caught by hand, and had to be re-run.
+--
+-- No policies, deliberately: the service role bypasses RLS and server.js is
+-- the only thing that talks to these tables, scoping every read by user_id
+-- itself. Enabling it with no policy therefore changes nothing for the app
+-- and closes the door for everyone else. Enabling it twice is a no-op, so
+-- re-running this file stays safe.
+alter table bulk_jobs enable row level security;
+
 comment on table bulk_jobs is
   'One bulk valuation run. Pro-only, user-scoped, no file fallback (see 035). '
   'A row is the record of the RUN; the valuations themselves also land in portfolio_items.';
@@ -144,6 +158,9 @@ create index if not exists bulk_job_items_job_idx
   on bulk_job_items (job_id, position);
 create index if not exists bulk_job_items_user_idx
   on bulk_job_items (user_id, created_at desc);
+
+-- Same rule, and this is the table that actually holds the addresses.
+alter table bulk_job_items enable row level security;
 
 comment on table bulk_job_items is
   'One address inside a bulk valuation run. user_id is denormalized from the '

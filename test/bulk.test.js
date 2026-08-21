@@ -253,3 +253,56 @@ test("an address with commas survives the round trip", () => {
   const csv = BULK.exportCsv({}, [{ address: "1 A St, Boise, ID", status: "done" }]);
   assert.match(csv, /"1 A St, Boise, ID"/);
 });
+
+// ---------------------------------------------------------------------------
+// The migration
+// ---------------------------------------------------------------------------
+
+const fs = require("node:fs");
+const path = require("node:path");
+const MIGRATION = fs.readFileSync(
+  path.join(__dirname, "..", "migrations", "035-bulk-valuations.sql"), "utf8");
+// Comments stripped, so a rule stated in prose can never satisfy a test about
+// what the file actually EXECUTES.
+const LIVE_SQL = MIGRATION.split("\n").map((l) => l.split("--")[0]).join("\n");
+
+test("EVERY TABLE 035 CREATES HAS ROW LEVEL SECURITY ENABLED", () => {
+  // A table in the public schema without this is reachable through PostgREST
+  // by the anon role. bulk_job_items holds a member's address list keyed by
+  // user_id — an index of exactly which buildings somebody is valuing, which
+  // is competitive intelligence about them — and without RLS it would be
+  // readable by anyone while looking perfectly healthy.
+  //
+  // 013, 016 and 030 all enable it. 016 shipped WITHOUT it on
+  // broker_properties, was caught by hand and had to be re-run; 035 shipped
+  // without it too and was caught the same way, one step before it was run.
+  // Twice is a pattern, so this now fails the build instead.
+  const created = [...LIVE_SQL.matchAll(/create table (?:if not exists )?([a-z_]+)/gi)]
+    .map((m) => m[1]);
+  assert.ok(created.length >= 2, "expected 035 to create both bulk tables");
+  for (const table of created) {
+    assert.match(LIVE_SQL, new RegExp(`alter table\\s+${table}\\s+enable row level security`, "i"),
+      `035 creates ${table} but never enables row level security on it — ` +
+      "the anon role would be able to read it through PostgREST");
+  }
+});
+
+test("035 is additive: it drops and renames nothing", () => {
+  // There is no staging database to rehearse against, so a destructive
+  // statement here is a decision somebody should have to make on purpose.
+  const live = LIVE_SQL.toLowerCase();
+  for (const forbidden of ["drop table", "drop column", "rename to", "rename column", "truncate", "delete from"]) {
+    assert.equal(live.includes(forbidden), false,
+      `035 contains "${forbidden}" outside a comment — it is meant to be purely additive`);
+  }
+});
+
+test("035 re-runs cleanly", () => {
+  // Unlike 017, which cannot: Postgres has no `add constraint if not exists`,
+  // so that file aborts on a second run. Everything here is guarded, which is
+  // what makes "just run it again" a safe answer to an interrupted run.
+  for (const st of LIVE_SQL.split(";").map((x) => x.trim()).filter(Boolean)) {
+    if (/^create table/i.test(st)) assert.match(st, /create table if not exists/i);
+    if (/^create index/i.test(st)) assert.match(st, /create index if not exists/i);
+  }
+});

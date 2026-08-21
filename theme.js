@@ -59,11 +59,31 @@
 // a UI affordance rather than text, so 3:1 is its bar and dark clears it
 // while light does not -- a light-mode finding, not a dark-mode one.
 //
-// Rules were re-laddered the same day. Light steps hair/line/edge 1.15 ->
-// 1.30 -> 1.48 against --card; dark had collapsed to 1.06 -> 1.28 -> 1.76,
-// and 1.06:1 is not a visible line -- the row dividers in the comp tables
-// were simply gone. hair #1E2938 -> #253346 (1.22:1) and line #2A3648 ->
-// #2F3D51 (1.42:1) reopen the ladder. --edge does not move.
+// Rules: dark now sits on light's own ladder, which is the whole rule here.
+// Light steps hair/line/edge 1.15 -> 1.30 -> 1.48 against --card; dark reads
+// 1.22 -> 1.28 -> 1.45. Getting there took three moves on two days:
+//
+//   hair #1E2938 -> #253346  (1.06 -> 1.22)  2026-08-21, kept
+//   line #2A3648 -> #2F3D51  (1.28 -> 1.42)  2026-08-21, REVERTED same day
+//   edge #3D4B5F -> #333E4F  (1.76 -> 1.45)  2026-08-21
+//
+// --hair went up because 1.06:1 is not a visible line at all: the row
+// dividers in the comp tables were simply gone. That one stands.
+//
+// --line and --edge came DOWN after review said the page read as a drawn
+// grid. The measurement is why --edge is the one that mattered: by painted
+// border length in dark, --edge was 80% of every line on a market page and
+// 90% on a report, against --line's 2% and 7%. Reverting --line alone would
+// have been a change nobody could see. --edge had also never been touched by
+// the dark-mode work at all -- it shipped at 1.76:1 against light's 1.48:1,
+// so dark had ALWAYS drawn its boxes about 19% heavier than light, and this
+// is a correction rather than a preference.
+//
+// What separates a card from the page in dark is --lift and the card's own
+// fill; --edge is the hairline around it, not the thing doing the work. If
+// cards ever read as undefined, reach for --lift first. And measure before
+// moving any of these three: which token actually draws the lines on a given
+// page is not guessable, and was wrong on the first attempt here.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
@@ -81,8 +101,8 @@ const THEME_TOKENS = {
   slab:             { light: "#1A2433", dark: "#243044" },
 
   // --- rules ------------------------------------------------------------
-  edge:             { light: "#D8D4C9", dark: "#3D4B5F" }, // primary border
-  line:             { light: "#E4E2DA", dark: "#2F3D51" },
+  edge:             { light: "#D8D4C9", dark: "#333E4F" }, // primary border
+  line:             { light: "#E4E2DA", dark: "#2A3648" },
   hair:             { light: "#F0EFE9", dark: "#253346" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------

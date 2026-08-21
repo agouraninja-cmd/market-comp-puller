@@ -299,6 +299,61 @@ here would change.)
   are covered; only genuinely new utilities need a regen. Commit the updated
   `tailwind.css` alongside the HTML change.
 
+### Design changes: before and after (standing rule)
+
+**Every time you change how something LOOKS, show the owner a before and an
+after picture of it** — a layout, spacing, colour, copy on a rendered surface,
+a new card or section, anything in `index.html`, `vault-page.js`, or the
+server-rendered pages in `server.js`. A diff of a template literal says what
+the markup now is and nothing about what the page now looks like, which is why
+this is a rule and not a nicety.
+
+```bash
+node scripts/shot.js /how-it-works --before      # vs origin/main
+node scripts/shot.js / /markets /brokers --before HEAD~1
+node scripts/shot.js / --size 390x844 --expand   # phone width, accordions open
+```
+
+PNGs land in the git-ignored `screenshots/` as `<page>--before.png` /
+`<page>--after.png`. Zero dependencies: it drives a Chromium the machine
+already has (`desktop.js`'s `findBrowser`, reused rather than copied) over the
+DevTools protocol, boots `server.js` on a free port at each side of the
+comparison, and removes the worktree it made. Five things to know before
+editing it or trusting its output:
+
+- **The "before" is a DETACHED WORKTREE, never `git stash`.** This checkout is
+  routinely shared with another session, and stash moves files under them
+  mid-edit. Detached because git refuses to check out one branch twice, and a
+  comparison needs no branch of its own.
+- **Both servers boot with `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` blanked**, by
+  ASSIGNMENT rather than delete — server.js's `.env` loader fills anything
+  `undefined` and would restore the real ones, pointing a scratch server at
+  production's corpus, market pages and cache (the trap `run-eval.js`
+  documents at more length). The consequence to remember when reading a
+  picture: **anything DB-driven renders its fallback**, so a change to real
+  market figures or to `/vault` will not show. `--env SUPABASE_URL=…` puts a
+  database back deliberately and prints a warning; point it at a scratch
+  project, because the before pass runs OLD code against whatever it is given.
+- **It emulates `prefers-reduced-motion: reduce`,** which is load-bearing, not
+  polite. The server-rendered pages hide below-the-fold content with
+  `.anim .rv{opacity:0}` and reveal it from an IntersectionObserver that never
+  fires in a beyond-viewport capture; without this, `/how-it-works` comes out
+  with blank bands where the Method and FAQ should be, and two runs of
+  IDENTICAL code produce different bytes.
+- **Collapsed `<details>` are invisible unless you pass `--expand`.** Real copy
+  lives inside them (the FAQ accordions on `/`, `/how-it-works` and `/brokers`;
+  the vault's `dbox` panels). A change to a FAQ answer photographs as two
+  identical pages, which reads as "nothing changed" rather than "you
+  photographed a closed drawer" — that is exactly how this was found.
+- **Identical pages produce byte-identical PNGs**, so "this changed nothing
+  visually" is provable with `sha256` rather than eyeballed. Treat a
+  same-bytes result on a change you expected to see as a question about the
+  capture (a closed accordion, a DB-driven surface) before concluding the code
+  is wrong.
+
+Pure helpers are tested in `test/shot.test.js`; requiring the module starts
+nothing.
+
 ## Configuration (environment / `.env`)
 
 `server.js` has a tiny built-in `.env` loader, so a local `.env` works without any

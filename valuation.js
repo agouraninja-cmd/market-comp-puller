@@ -152,7 +152,8 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
-  //   distance     free pass within 1 mile, then a half-life (4 miles for
+  //   distance     free pass out to the search radius (10 miles for CRE,
+  //                1 for Residential), then a half-life (4 miles for
   //                CRE, 2 miles for Residential — a sale five miles away is
   //                a different pocket; the 4-mile CRE half-life still let
   //                cheaper houses a few miles over pull a $2M home to $1M)
@@ -170,10 +171,24 @@
     return propType === "Residential" ? 2 : 4;
   }
 
+  // How far a comp may sit before distance starts costing it weight, when the
+  // caller names no radius. ⚠ MIRRORS blend-corpus.js radiusMilesFor, which is
+  // the module that already decides what "in this market" means: RADIUS_MILES
+  // 10 for CRE, RESIDENTIAL_RADIUS_MILES 1 for houses. That file's own header
+  // says the blend radius and this free pass must agree; they did not. This
+  // fell back to a bare 1 mile for every type, so a warehouse comp 13 miles
+  // out — an ordinary distance in a secondary market, and one the corpus blend
+  // was already treating as in-market — took 0.5^((13-1)/4) = 0.125 and floored
+  // to Weak. Whole comp tables read Weak under a confident range because of it.
+  // Houses are unchanged at 1: they trade by neighborhood, and the search
+  // prompt asks for a mile.
+  function defaultFreePassMiles(propType) {
+    return propType === "Residential" ? 1 : 10;
+  }
+
   // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
-  // not name a distance: the type default (1 mile for houses, 1-mile free
-  // pass for CRE) stands. Capped at 50 so a stray "1000 miles" cannot
-  // become the blend radius.
+  // not name a distance: the type default above stands. Capped at 50 so a
+  // stray "1000 miles" cannot become the blend radius.
   function parseRadiusMiles(note) {
     if (note == null || note === "") return null;
     const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
@@ -213,7 +228,7 @@
     }
     const mi = distanceMiles(c);
     const halfLife = distanceHalfLifeMiles(propType);
-    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : defaultFreePassMiles(propType);
     if (mi !== null && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
     if (propType === "Residential") w *= priceTierFactor(salePsfOf(c), o.subjectPsf);
     const tier = tierOf(c);
@@ -560,6 +575,7 @@
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
+    defaultFreePassMiles,
     parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,

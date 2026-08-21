@@ -59,31 +59,43 @@
 // a UI affordance rather than text, so 3:1 is its bar and dark clears it
 // while light does not -- a light-mode finding, not a dark-mode one.
 //
-// Rules: dark now sits on light's own ladder, which is the whole rule here.
-// Light steps hair/line/edge 1.15 -> 1.30 -> 1.48 against --card; dark reads
-// 1.22 -> 1.28 -> 1.45. Getting there took three moves on two days:
+// Rules: dark sits on light's own ladder. That is the whole rule, and every
+// number below is derived from it rather than chosen.
 //
-//   hair #1E2938 -> #253346  (1.06 -> 1.22)  2026-08-21, kept
-//   line #2A3648 -> #2F3D51  (1.28 -> 1.42)  2026-08-21, REVERTED same day
-//   edge #3D4B5F -> #333E4F  (1.76 -> 1.45)  2026-08-21
+//   token   light (on --card)   dark (on --card)
+//   hair          1.15                1.15
+//   line          1.30                1.28
+//   edge          1.48                1.45
 //
-// --hair went up because 1.06:1 is not a visible line at all: the row
-// dividers in the comp tables were simply gone. That one stands.
+// Getting there took four moves over 2026-08-21, and the order matters
+// because three of them were corrections of the one before:
 //
-// --line and --edge came DOWN after review said the page read as a drawn
-// grid. The measurement is why --edge is the one that mattered: by painted
-// border length in dark, --edge was 80% of every line on a market page and
-// 90% on a report, against --line's 2% and 7%. Reverting --line alone would
-// have been a change nobody could see. --edge had also never been touched by
-// the dark-mode work at all -- it shipped at 1.76:1 against light's 1.48:1,
-// so dark had ALWAYS drawn its boxes about 19% heavier than light, and this
-// is a correction rather than a preference.
+//   hair #1E2938 -> #253346  (1.06 -> 1.22)  the comp tables had no dividers
+//   line #2A3648 -> #2F3D51  (1.28 -> 1.42)  reverted, see below
+//   edge #3D4B5F -> #333E4F  (1.76 -> 1.45)  never touched before this
+//   hair #253346 -> #222F40  (1.22 -> 1.15)  the app's search card
 //
-// What separates a card from the page in dark is --lift and the card's own
-// fill; --edge is the hairline around it, not the thing doing the work. If
-// cards ever read as undefined, reach for --lift first. And measure before
-// moving any of these three: which token actually draws the lines on a given
-// page is not guessable, and was wrong on the first attempt here.
+// --hair started at 1.06:1, which is not a visible line: the comp tables' row
+// dividers were genuinely absent. It over-corrected to 1.22, above light's own
+// weight, and the surface that showed it was the app's search card -- eight
+// rules on one small card (the pane divider, two headings, three rows, two
+// cell dividers), invisible before and a drawn grid after. It sits at light's
+// 1.15 now, so those rules are exactly as heavy as the same card's are in
+// light, and the table dividers it was raised for are still there.
+//
+// MEASURE BEFORE MOVING ANY OF THESE. Which token draws the lines on a given
+// page is not guessable, and was guessed wrong twice here. By painted border
+// length in dark, --edge was 80% of every line on a market page and 90% on a
+// report, against --line's 2% and 7% -- so reverting --line, the obvious fix
+// when the pages were called too ruled, would have been a change nobody could
+// see. Meanwhile the app's search card uses --hair for all eight of its rules
+// and --line for none at all. Three surfaces, three different answers.
+//
+// --edge had never been touched by the dark-mode work: it shipped at 1.76:1
+// against light's 1.48:1, so dark had always drawn its boxes about 19%
+// heavier. What separates a card from the page in dark is --lift and the
+// card's own fill; --edge is the hairline around it, not the thing doing the
+// work. If cards ever read as undefined, reach for --lift first.
 const THEME_TOKENS = {
   // --- surfaces ---------------------------------------------------------
   paper:            { light: "#FBFBF9", dark: "#121826" }, // page
@@ -103,7 +115,7 @@ const THEME_TOKENS = {
   // --- rules ------------------------------------------------------------
   edge:             { light: "#D8D4C9", dark: "#333E4F" }, // primary border
   line:             { light: "#E4E2DA", dark: "#2A3648" },
-  hair:             { light: "#F0EFE9", dark: "#253346" }, // hairline/divider
+  hair:             { light: "#F0EFE9", dark: "#222F40" }, // hairline/divider
 
   // --- ink --------------------------------------------------------------
   ink:              { light: "#1A2433", dark: "#E4E9F0" },

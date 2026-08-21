@@ -38,7 +38,7 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
-  edge: "#333E4F", line: "#2A3648", hair: "#253346",
+  edge: "#333E4F", line: "#2A3648", hair: "#222F40",
   ink: "#E4E9F0", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
   "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
   "ink-faint": "#5E6978", "ink-4": "#475569",

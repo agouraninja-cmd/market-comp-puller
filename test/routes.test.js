@@ -729,9 +729,30 @@ test("bare environment", async (t) => {
     const r = await fetch(srv.base + "/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ plan: "single_report" }),
+      body: JSON.stringify({ plan: "pro_monthly" }),
     });
     assert.notEqual(r.status, 200, "checkout must not report success with no Stripe configured");
+  });
+
+  // The $20 single-report unlock was RETIRED on 2026-08-21. The PLANS map's
+  // no-fallthrough design makes retirement one deletion: an absent plan is a
+  // 400, never a silent substitution onto some other price. A source scan
+  // rather than a booted 400: reaching the map behaviorally needs Stripe env
+  // and a signed-in user, and the invariant is the map's contents. Re-adding
+  // the plan must be a deliberate act with a failing test in front of it.
+  // Purchases already made stay honored — /api/report-access (tested above)
+  // keeps answering, and the webhook and entitlements branches remain.
+  await t.test("the single_report plan stays retired from the PLANS map", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    const start = src.indexOf("const PLANS = {");
+    assert.ok(start > 0, "the checkout PLANS map should still exist");
+    const map = src.slice(start, src.indexOf("};", start));
+    assert.ok(!/single_report:\s*\{/.test(map),
+      "single_report is back in the PLANS map — the sale was retired 2026-08-21 " +
+      "with purchases honored; reselling it is an owner decision, not a merge accident");
+    assert.match(map, /pro_monthly:/, "the map itself must still be the one being scanned");
   });
 
   // The PLANS table is an explicit map with no fallthrough. It once mapped

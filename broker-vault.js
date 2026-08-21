@@ -43,6 +43,14 @@ const TEMPLATE_COLUMNS = [
   "price",
   "size_sqft",
   "cap_rate",
+  // The lease half of the book. price/price_per_sqft describe a sale and are
+  // left blank on a lease (the template says so), so without these a leasing
+  // broker's comps carried no figure at all and every median read "no priced
+  // sales yet". rent_basis sits next to rent_psf rather than being inferred —
+  // see parseRentBasis for why guessing it is a 12x error.
+  "rent_psf",
+  "rent_basis",
+  "lease_type",
   "tenancy",
   "year_built",
   "notes",
@@ -233,9 +241,29 @@ const HEADER_ALIASES = {
   tenancy:       ["tenancy_type"],
   year_built:    ["yr_built", "built", "year_constructed"],
   notes:         ["comments", "remarks", "note"],
+  // Rent headers are rate-shaped by nature ("Rent/SF", "$/SF/Yr", "Rent PSF"),
+  // which is why RATE_TARGETS below exempts this target from the rate-header
+  // guard rather than the guard being loosened for everyone.
+  // Two families here, and the second is easy to get wrong: normalizeHeader
+  // STRIPS punctuation rather than turning it into a separator, so the headers
+  // brokers actually use — "Rent/SF", "Rent/SF/Yr", "$/SF/YR" — normalize to
+  // rentsf, rentsfyr and sfyr with no underscore anywhere. Writing the
+  // underscored forms alone (rent_sf) matches none of them, which is how the
+  // first pass at this shipped aliases that could never fire.
+  rent_psf:      ["rent", "rental_rate", "asking_rent", "base_rent", "lease_rate",
+                  "annual_rent", "rent_rate", "rent_per_sf",
+                  "rentsf", "rentsfyr", "rentsfmo", "rentpsf", "rentpsfyr",
+                  "sfyr", "psfyr", "annualrentsf"],
+  rent_basis:    ["rent_period", "rent_frequency", "basis", "per"],
+  lease_type:    ["lease_structure", "lease_basis", "expense_type", "service_type"],
   lat:           ["latitude"],
   lng:           ["longitude", "long", "lon"],
 };
+
+// Targets that ARE a rate, and may therefore be claimed by a rate-shaped
+// header. Everything else a rate-shaped header touches would be a measure it
+// was derived from, which is the corruption isRateHeader exists to prevent.
+const RATE_TARGETS = ["rent_psf", "price_per_unit", "price_per_acre"];
 
 // A rate-shaped header names a DERIVED figure, never the measure itself:
 // "$/SF" is a price divided by a size, and mapping it onto either side of
@@ -293,11 +321,20 @@ function suggestMapping(headers) {
     const h = norm[i];
     if (!h) continue;
     if (MAPPABLE_TARGETS.includes(h)) { push(exact, h, h); continue; }
-    // A derived-rate column ("$/SF", "Rent/SF/Yr") may claim nothing by
-    // alias — see isRateHeader. The check reads the RAW header because the
-    // "/" carrying the meaning does not survive normalization.
-    if (isRateHeader(raw[i])) continue;
+    // A derived-rate column ("$/SF") may claim nothing by alias — see
+    // isRateHeader. The check reads the RAW header because the "/" carrying
+    // the meaning does not survive normalization.
+    //
+    // Except onto a target that IS a rate. "Rent/SF", "$/SF/Yr" and "Rent PSF"
+    // are rate-shaped by construction and are the ordinary way a broker's
+    // export names the rent column, so the blanket guard would leave the one
+    // header that unambiguously means rent unable to claim rent. The hazard
+    // the guard exists for is a rate landing on one of the MEASURES it was
+    // divided from (a "$/SF" column importing 68.11 as a 68 sq ft building);
+    // a rate landing on a rate is the correct answer, not that failure.
+    const rateShaped = isRateHeader(raw[i]);
     for (const [target, list] of Object.entries(HEADER_ALIASES)) {
+      if (rateShaped && !RATE_TARGETS.includes(target)) continue;
       if (list.includes(h)) push(alias, target, h);
     }
   }
@@ -572,6 +609,53 @@ function parseTransaction(v) {
   return { ok: false, error: `"${raw}" is not "sale" or "lease"` };
 }
 
+/**
+ * annual | monthly. Required whenever a rent is given, and deliberately NOT
+ * defaulted.
+ *
+ * The quoting convention is regional, not national: California industrial and
+ * retail quote rent MONTHLY ("$1.35/SF NNN" means per month) while most of the
+ * US quotes annually ("$16.20/SF/yr"). Those two strings describe the same
+ * deal. Defaulting to annual would silently store a Los Angeles broker's 1.35
+ * as $1.35/SF/yr — twelve times low, in their own records, looking entirely
+ * plausible. This module rejects "1.2M" rather than guessing what it meant for
+ * exactly the same reason: a rejected row is fixed in a minute, and a wrong
+ * number is never noticed at all.
+ *
+ * The vocabulary is generous (yr/annum/pa, mo/month/pcm) because brokers write
+ * it a dozen ways; the RESULT is one of two values.
+ */
+function parseRentBasis(v) {
+  const raw = text(v, 40).toLowerCase().replace(/[^a-z]/g, "");
+  if (!raw) return { ok: true, value: null };
+  if (/^(annual|annually|annum|perannum|pa|year|yearly|yr|peryear|persfyr|nnnyr)$/.test(raw)) {
+    return { ok: true, value: "annual" };
+  }
+  if (/^(monthly|month|mo|permonth|pcm|persfmo)$/.test(raw)) {
+    return { ok: true, value: "monthly" };
+  }
+  return { ok: false, error: `rent_basis: "${text(v, 40)}" is not "annual" or "monthly"` };
+}
+
+/**
+ * NNN | FS | MG, or nothing.
+ *
+ * Optional on purpose, which is the deliberate asymmetry with rent_basis
+ * above. Mixing annual and monthly rents makes a median WRONG, so it is
+ * refused. Mixing triple-net and full-service makes the same median WEAKER —
+ * $28.50 NNN and $28.50 full-service are genuinely different deals — so it is
+ * disclosed on the page instead. Different problems, different answers; a
+ * broker who does not track lease structure should still get their book in.
+ */
+function parseLeaseType(v) {
+  const raw = text(v, 40).toLowerCase().replace(/[^a-z]/g, "");
+  if (!raw) return { ok: true, value: null };
+  if (/^(nnn|triplenet|net|absolutenet|nn)$/.test(raw)) return { ok: true, value: "NNN" };
+  if (/^(fs|fsg|fullservice|fullservicegross|gross)$/.test(raw)) return { ok: true, value: "FS" };
+  if (/^(mg|modifiedgross|modified|ig|industrialgross)$/.test(raw)) return { ok: true, value: "MG" };
+  return { ok: false, error: `lease_type: "${text(v, 40)}" is not NNN, FS or MG` };
+}
+
 function parsePropertyType(v) {
   const raw = text(v, 40);
   if (!raw) return { ok: false, error: "property_type is required" };
@@ -725,6 +809,54 @@ function normalizeRow(raw) {
     row.transaction === "sale" && row.price != null && row.size_sqft > 0
       ? Math.round((row.price / row.size_sqft) * 100) / 100
       : null;
+
+  // --- the lease side ------------------------------------------------------
+  //
+  // Rent is an INPUT, not a derivation. There is nothing to derive it from:
+  // `price` is blank on a lease by the template's own instruction, and a
+  // broker who typed something there could have meant the annual rent, the
+  // monthly rent, or the total value over the term — three numbers that differ
+  // by more than an order of magnitude. Reading rent out of `price` would be
+  // guessing, so a lease rent has its own column and comes with its own basis.
+  const rent = parseMoney(src.rent_psf);
+  if (rent.ok) row.rent_psf = rent.value; else errors.push(`rent_psf: ${rent.error}`);
+
+  const basis = parseRentBasis(src.rent_basis);
+  if (basis.ok) row.rent_basis = basis.value; else errors.push(basis.error);
+
+  const leaseType = parseLeaseType(src.lease_type);
+  if (leaseType.ok) row.lease_type = leaseType.value; else errors.push(leaseType.error);
+
+  // The basis is required WITH a rent and meaningless without one. Refusing
+  // here rather than defaulting is the whole point — see parseRentBasis.
+  // `basis.ok` guards this: a rent_basis that failed to PARSE has already said
+  // so, and adding "rent_basis is required" underneath it tells the broker
+  // their filled-in column is missing. Only a genuinely absent basis reaches
+  // this line.
+  if (basis.ok && row.rent_psf != null && row.rent_basis == null) {
+    errors.push('rent_basis is required with a rent — "annual" or "monthly", ' +
+      "because $1.35/SF means a very different deal in each");
+  }
+
+  // Derived, exactly like price_per_sqft above: one canonical annual figure so
+  // the medians, the chart and the filter cannot quote three different numbers
+  // for one lease. A rent on a SALE row is kept as typed but never annualized
+  // — a sale-leaseback may legitimately carry both, and inventing a lease
+  // metric for a sale would put it in the lease median.
+  row.rent_psf_yr =
+    row.transaction === "lease" && row.rent_psf != null && row.rent_basis
+      ? Math.round(row.rent_psf * (row.rent_basis === "monthly" ? 12 : 1) * 100) / 100
+      : null;
+
+  // The other way this field gets filled in wrong: the TOTAL rent typed into a
+  // per-square-foot column. $356,250/yr on a 12,500 SF suite is $28.50/SF, and
+  // the two are easy to transpose in a spreadsheet. Manhattan trophy retail
+  // reaches the high hundreds per square foot, so the ceiling is set well above
+  // any real quoted rent and only catches figures that cannot be per-SF at all.
+  if (row.rent_psf_yr != null && row.rent_psf_yr > 2000) {
+    errors.push(`rent_psf: ${row.rent_psf} is too large to be a rent per square foot ` +
+      "— give the rent per SF, not the total for the space");
+  }
 
   // One explicit key rather than a multi-column unique constraint, matching
   // comp_corpus's dedupe_key. The reason is Postgres, not taste: NULLs compare
@@ -1024,6 +1156,13 @@ function templateCsv() {
     "deal_date: 2025-03-14. Slash dates work too and are read US style, month first: 3/14/2025 means 14 March 2025.",
     "price and size_sqft: $1,250,000 and 45,000 SF are both fine. 1.2M is not - write it out in full.",
     "cap_rate: 5.75 or 5.75%.",
+    // Stated as a pair, and the basis line says WHY it is required rather than
+    // just that it is: a broker who reads "annual or monthly" as boilerplate
+    // and leaves it blank gets a rejected row, and the reason has to be on the
+    // page they are already looking at.
+    "Leases: put the rent per SF in rent_psf and say which in rent_basis - annual or monthly.",
+    "rent_basis has no default on purpose. $1.35/SF is a normal California monthly rent and an impossible annual one, so we ask rather than guess.",
+    "lease_type: NNN, FS (full service) or MG (modified gross). Optional, but a median mixing them is a weaker number and we will say so.",
     // Filled in on the sale example rather than left blank, because a blank
     // column reads as "leave this alone" and these two are what keep a private
     // address from being sent to a third party to place its map pin.
@@ -1045,8 +1184,12 @@ function templateCsv() {
     {
       address: "#", property_type: "Office", transaction: "lease",
       deal_date: "2025-06-01", size_sqft: "12500",
+      rent_psf: "28.50", rent_basis: "annual", lease_type: "NNN",
       tenancy: "Multi-tenant", year_built: "2004",
-      notes: "5-year term, $28.50/SF NNN. Leave price blank on a lease.",
+      // The rent used to live in this sentence as prose, which is where it
+      // stayed: unqueryable, absent from every median, and the reason a
+      // leasing book showed "no priced sales yet" on every card.
+      notes: "5-year term. Leave price blank on a lease - the rent goes in rent_psf.",
     },
     {
       address: "#", property_type: "Retail", transaction: "sale",
@@ -1207,6 +1350,56 @@ function creditName(profile) {
     || "";
 }
 
+// The license number backing a profile's public claims, or "" if there is
+// none. Trimmed through the same `text` helper as the identity fields so a
+// profile holding a single space is absent rather than present-but-blank.
+function licenseOf(profile) {
+  return text((profile || {}).license_number, MAX_SHORT_TEXT) || "";
+}
+
+/**
+ * May this profile publish a comp, and under what name?
+ *
+ * ONE answer, called by both /api/vault/publish and /api/vault/publish-many.
+ * The batch route's own comment gives the reason: the rules it enforces are
+ * the same rules "because a second set would be a second place for the public
+ * corpus to grow a hole". The credit-name refusal was already duplicated
+ * across the two; the license refusal joins it here instead of beside it.
+ *
+ * Two requirements, in the order a broker meets them:
+ *
+ *  1. A credit name. Credit is the compensation (Ecosystem Plan §4), so a comp
+ *     with nothing to credit is not worth publishing.
+ *  2. A license number. "Verified · via <firm>" claims a NAMED LICENSED BROKER
+ *     vouched for the deal in public. Nothing checked the licensed half, so
+ *     the badge could be made to say something untrue by anyone who reached a
+ *     vault -- the owner included, who is not a licensed broker. Decided
+ *     2026-08-12; the number is never rendered publicly, it backs the badge
+ *     rather than appearing beside it.
+ *
+ * Credit name is checked FIRST so an existing broker's refusal does not change
+ * shape: someone with neither still meets the message they met before.
+ */
+function canPublishAs(profile) {
+  const by = creditName(profile);
+  if (!by) {
+    return {
+      ok: false,
+      code: "needs_credit_name",
+      error: "Add your firm or display name before publishing. Published comps are credited to it.",
+    };
+  }
+  const license = licenseOf(profile);
+  if (!license) {
+    return {
+      ok: false,
+      code: "needs_license",
+      error: "Add your license number before publishing. The Verified badge says a licensed broker vouched for the deal.",
+    };
+  }
+  return { ok: true, by, license };
+}
+
 // The identity a broker states for their published comps: a firm, a personal
 // name, or both. Pure so `npm test` covers the rules on strings that become
 // PUBLIC — the "via <firm>" credit on every report the comp reaches, and the
@@ -1227,10 +1420,16 @@ function validateIdentity(input) {
     text(String(v == null ? "" : v).replace(/[\u0000-\u001F\u007F-\u009F]+/g, " "), MAX_SHORT_TEXT);
   const display_name = clean(src.display_name);
   const company = clean(src.company);
+  // OPTIONAL here on purpose, and required at publish time instead (see
+  // canPublishAs). A broker sets their name the first time they open the
+  // vault and may not have their number to hand; refusing the whole identity
+  // save over it would block the credit name too, and the credit name is what
+  // the page needs before it can say anything useful about publishing.
+  const license_number = clean(src.license_number);
   if (!display_name && !company) {
     return { ok: false, error: "Enter your firm, or your own name if you work under it." };
   }
-  return { ok: true, identity: { display_name, company } };
+  return { ok: true, identity: { display_name, company, license_number } };
 }
 
 /**
@@ -1517,6 +1716,8 @@ module.exports = {
   enforceVerifiedFlags,
   canPublish,
   creditName,
+  licenseOf,
+  canPublishAs,
   validateIdentity,
   submissionRowFrom,
   parseCsv,

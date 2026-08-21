@@ -16,7 +16,7 @@ const {
   parseTransaction, parsePropertyType, addressKey, normalizeRow, parseUpload,
   templateCsv, TEMPLATE_COLUMNS, OPTIONAL_SPEC_COLUMNS, PROPERTY_TYPES,
   isCommentRow, MAX_ROWS_PER_UPLOAD,
-  canPublish, creditName, validateIdentity, submissionRowFrom,
+  canPublish, creditName, licenseOf, canPublishAs, validateIdentity, submissionRowFrom,
   matchOffered, enforceVerifiedFlags,
   suggestMapping, HEADER_ALIASES, MAPPABLE_TARGETS,
   validateMapping, applyHeaderMapping,
@@ -870,14 +870,17 @@ test("an identity needs at least one of firm or name", () => {
 });
 
 test("either field alone is enough, and both are kept separate", () => {
+  // license_number joined the shape in 034 and is always present, always a
+  // string, and empty unless given -- it is optional to SAVE and required to
+  // PUBLISH, which canPublishAs answers rather than this.
   assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE" }).identity,
-    { display_name: "", company: "Hawkins Ridge CRE" });
+    { display_name: "", company: "Hawkins Ridge CRE", license_number: "" });
   assert.deepEqual(validateIdentity({ display_name: "Chuck Hawkins" }).identity,
-    { display_name: "Chuck Hawkins", company: "" });
+    { display_name: "Chuck Hawkins", company: "", license_number: "" });
   // Separate all the way down: broker-directory.js lists them independently,
   // and a firm is not a person.
   assert.deepEqual(validateIdentity({ company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins" }).identity,
-    { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE" });
+    { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", license_number: "" });
 });
 
 test("identity text is trimmed, collapsed, capped and stripped of control characters", () => {
@@ -1759,4 +1762,216 @@ test("extractWasTruncated is true for Anthropic max_tokens and Gemini MAX_TOKENS
   assert.equal(extractWasTruncated("STOP"), false);
   assert.equal(extractWasTruncated(""), false);
   assert.equal(extractWasTruncated(undefined), false);
+});
+
+// ---------------------------------------------------------------------------
+// The lease side (migration 028)
+//
+// Until this shipped the vault only really worked for investment sales: the
+// template told brokers to leave `price` blank on a lease and put the rent in
+// notes as prose, so a leasing book carried no figure any median could read.
+// The refusals below are the point, as everywhere else in this module — a rent
+// stored against the wrong basis is a number twelve times wrong sitting in a
+// broker's own records, which is precisely what nobody ever notices.
+// ---------------------------------------------------------------------------
+
+const leaseRow = (extra) => ({
+  address: "100 Main St", property_type: "Office", transaction: "lease",
+  deal_date: "2025-06-01", size_sqft: "12500", ...extra,
+});
+
+test("an annual rent is stored as given and annualizes to itself", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual", lease_type: "NNN" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 28.5);
+  assert.equal(r.row.rent_basis, "annual");
+  assert.equal(r.row.rent_psf_yr, 28.5);
+  assert.equal(r.row.lease_type, "NNN");
+});
+
+test("a monthly rent is annualized once, on the server, into rent_psf_yr", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "1.35", rent_basis: "per month" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 1.35, "what the broker typed is kept as typed");
+  assert.equal(r.row.rent_psf_yr, 16.2, "and the canonical annual figure rides beside it");
+});
+
+// The whole reason rent_basis exists. $1.35/SF is an ordinary California
+// monthly rent and an impossible annual one; defaulting either way stores a
+// figure 12x wrong in the broker's own book.
+test("a rent with no basis is REFUSED, never defaulted to annual", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /rent_basis is required/);
+});
+
+test("an unreadable basis says so once, without also claiming the column is missing", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "quarterly" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /not "annual" or "monthly"/);
+  assert.equal(r.errors.filter((e) => /required/.test(e)).length, 0,
+    "a filled-in column must not also be reported as missing");
+});
+
+// The other way this field gets filled in wrong: the total for the space typed
+// into a per-square-foot column.
+test("a total rent typed into the per-SF column is refused with the reason", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "356250", rent_basis: "annual" }));
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join(" "), /too large to be a rent per square foot/);
+});
+
+test("a real Manhattan rent is not caught by that guard", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "295", rent_basis: "annual" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf_yr, 295);
+});
+
+test("a rent on a SALE row is kept but never annualized into the lease median", () => {
+  const r = normalizeRow(leaseRow({
+    transaction: "sale", price: "12500000", rent_psf: "28.50", rent_basis: "annual",
+  }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.rent_psf, 28.5);
+  assert.equal(r.row.rent_psf_yr, null,
+    "rent_psf_yr is the lease measure; a sale-leaseback must not enter the rent median");
+  assert.ok(r.row.price_per_sqft > 0, "and its sale side is unaffected");
+});
+
+test("lease_type is optional — a broker who does not track it still gets their book in", () => {
+  const r = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual" }));
+  assert.equal(r.ok, true);
+  assert.equal(r.row.lease_type, null);
+});
+
+test("lease_type vocabulary is generous about wording, strict about the result", () => {
+  const t = (v) => normalizeRow(leaseRow({ rent_psf: "28.5", rent_basis: "annual", lease_type: v })).row.lease_type;
+  assert.equal(t("triple net"), "NNN");
+  assert.equal(t("Full Service"), "FS");
+  assert.equal(t("modified gross"), "MG");
+  assert.equal(normalizeRow(leaseRow({ rent_psf: "28.5", rent_basis: "annual", lease_type: "whatever" })).ok, false);
+});
+
+// isRateHeader stops a derived rate landing on a MEASURE it was divided from
+// ("$/SF" importing 68.11 as a 68 sq ft building). A rent column is itself a
+// rate, so the guard has to make room for it or the one header that
+// unambiguously means rent could never claim rent.
+test("a rate-shaped header may claim rent, but still may not claim size", () => {
+  // normalizeHeader strips the "/" rather than making it a separator, so these
+  // arrive as rentsfyr / rentsf. Both real headers, both rate-shaped.
+  assert.equal(suggestMapping(["Address", "Rent/SF/Yr"]).mapping["rentsfyr"], "rent_psf");
+  assert.equal(suggestMapping(["Address", "Rent/SF"]).mapping["rentsf"], "rent_psf");
+  assert.equal(suggestMapping(["Address", "Asking Rent"]).mapping["asking_rent"], "rent_psf");
+
+  const psf = suggestMapping(["Address", "Bldg SF", "$/SF"]);
+  assert.equal(psf.mapping["sf"], undefined,
+    "a $/SF column must still never be read as the building size");
+  assert.equal(psf.mapping["bldg_sf"], "size_sqft",
+    "and the real size column is still found beside it");
+});
+
+test("the template documents the rent columns, including why the basis is asked for", () => {
+  const csv = templateCsv();
+  for (const c of ["rent_psf", "rent_basis", "lease_type"]) {
+    assert.ok(csv.includes(c), "the template header needs " + c);
+  }
+  assert.match(csv, /annual or monthly/i);
+  assert.match(csv, /California/i, "the reason the basis has no default belongs on the page");
+});
+
+// comp_corpus has no rent column, and an unknown column 400s PostgREST — the
+// documented shape of a silent harvest outage. submissionRowFrom is an
+// explicit allowlist, so this holds by construction; the test is what keeps it
+// holding when someone later reaches for a spread.
+test("publishing a lease carries no rent column into the public records", () => {
+  const comp = normalizeRow(leaseRow({ rent_psf: "28.50", rent_basis: "annual", lease_type: "NNN" })).row;
+  const sub = submissionRowFrom(comp, { creditName: "Adler & Co", email: "b@example.com" });
+  for (const k of ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"]) {
+    assert.equal(Object.prototype.hasOwnProperty.call(sub, k), false,
+      k + " must not travel to comp_submissions");
+  }
+  assert.equal(sub.transaction, "Lease");
+});
+
+// --- who may publish, and under what name (2026-08-19) --------------------
+//
+// "Verified · via <firm>" is the strongest provenance a report shows and the
+// entire currency the broker tier trades in. It claims a NAMED LICENSED
+// broker vouched for the deal. Nothing enforced the licensed half, so anyone
+// who reached a vault could make the badge say something untrue -- the owner
+// included, who is not a licensed broker. Decided 2026-08-12, migration 034.
+
+test("publishing needs a credit name AND a license number", () => {
+  assert.equal(canPublishAs({ company: "Hawkins Ridge CRE", license_number: "01899123" }).ok, true);
+  assert.equal(canPublishAs({ display_name: "Dana Reyes", license_number: "01899123" }).ok, true);
+});
+
+test("the credit name is refused FIRST, so an existing refusal keeps its shape", () => {
+  // A broker with neither meets the message they met before this shipped,
+  // and the vault turns that same code into the form that fixes it.
+  const neither = canPublishAs(null);
+  assert.equal(neither.ok, false);
+  assert.equal(neither.code, "needs_credit_name");
+  assert.match(neither.error, /credited to it/);
+});
+
+test("a credit name with no license is refused, and says which half is missing", () => {
+  const g = canPublishAs({ company: "Hawkins Ridge CRE" });
+  assert.equal(g.ok, false);
+  assert.equal(g.code, "needs_license");
+  assert.match(g.error, /license number/i);
+  // The reason is stated rather than implied: the badge is a claim about a
+  // person, and a broker asked for a number deserves to know what it buys.
+  assert.match(g.error, /vouched/i);
+});
+
+test("a blank or whitespace license is absent, not present", () => {
+  // NOT NULL DEFAULT '' in 034 means every existing profile arrives here as
+  // "". Two flavours of absent is exactly how this check grows a hole.
+  for (const v of ["", "   ", "\t", null, undefined]) {
+    assert.equal(canPublishAs({ company: "X", license_number: v }).code, "needs_license",
+      `license ${JSON.stringify(v)} must read as absent`);
+  }
+  assert.equal(licenseOf({ license_number: "  01899123  " }), "01899123");
+  assert.equal(licenseOf(null), "");
+});
+
+test("the gate returns the name to publish under, so callers never re-derive it", () => {
+  // Both publish routes take `by` from here. If they computed it themselves
+  // the batch route and the single route could credit differently.
+  assert.equal(canPublishAs({ company: "Hawkins Ridge CRE", display_name: "Dana Reyes",
+    license_number: "01899123" }).by, "Hawkins Ridge CRE");
+  assert.equal(canPublishAs({ display_name: "Dana Reyes", license_number: "01899123" }).by,
+    "Dana Reyes");
+});
+
+test("saving an identity does NOT require a license, only publishing does", () => {
+  // A broker sets their name the first time they open the vault and may not
+  // have the number to hand. Refusing the whole save would block the credit
+  // name too, and the credit name is what the page needs before it can say
+  // anything useful about publishing at all.
+  const saved = validateIdentity({ company: "Hawkins Ridge CRE" });
+  assert.equal(saved.ok, true);
+  assert.equal(saved.identity.license_number, "");
+  assert.equal(canPublishAs(saved.identity).code, "needs_license");
+});
+
+test("a license number is trimmed and stripped of control characters like the rest", () => {
+  const v = validateIdentity({ company: "X", license_number: " 018\u000199123 " });
+  assert.equal(v.ok, true);
+  assert.doesNotMatch(v.identity.license_number, /[\u0000-\u001F]/);
+});
+
+test("the profile SELECT carries license_number, or every publish refuses", () => {
+  // canPublishAs reads the column off the row findBrokerProfile returns. Drop
+  // it from the SELECT and the gate sees undefined on EVERY profile and
+  // refuses every publish, with a message about a field the broker has
+  // already filled in. Nothing else in the suite would notice.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const m = server.match(/const SELECT = "select=([^"]+)"/);
+  assert.ok(m, "the broker profile SELECT must still be findable");
+  assert.ok(m[1].split(",").includes("license_number"),
+    `broker profile SELECT is missing license_number: ${m[1]}`);
 });

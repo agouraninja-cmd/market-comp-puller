@@ -18,8 +18,10 @@ from a nearby search can sit in the store while the next report's Low / Likely
    array with no extra click. Exclude still works (existing curation).
 2. **Lookback window.** Only deals whose date `parseDealDate`s inside the
    selected lookback. Active listings and other unparseable dates stay out.
-3. **10-mile radius**, even across city lines. Same property type. Not "same
-   city" and not metro-group membership as a distance proxy.
+3. **10-mile radius for CRE, 1-mile for Residential**, even across city
+   lines. Same property type. Not "same city" and not metro-group membership
+   as a distance proxy. Houses were amended to 1 mile after a $2M home came
+   back at ~$1M with 19 comps drawn from the CRE circle.
 4. **Server merge at serialization** (approach 1). Same funnel as vault blend:
    cache, harvest, and market snapshots keep seeing the search-only public
    report. The extras are attached on the way out, then the paywall runs, then
@@ -37,7 +39,12 @@ the model can still drop one).
 No I/O, no clock reads (caller passes `now`), no Census. server.js owns the
 read and the geocode.
 
-- `RADIUS_MILES`: `10`.
+- `RADIUS_MILES`: `10` (CRE). `RESIDENTIAL_RADIUS_MILES`: `1`.
+  `radiusMilesFor(type, note)` picks. A market note that names a radius
+  ("2.5 miles") wins over the type default — shrinking a typed 2.5-mile
+  neighborhood to one mile fights the instruction. Houses trade by
+  neighborhood; auto-including the CRE circle priced a $2M home off cheaper
+  sales from the next pocket (amended 2026-08-14, owner report).
 - `milesBetween(a, b)`: haversine, earth radius 3959, matching `index.html`.
 - `parseCoords(row)`: both lat and lng finite, in range, and not the
   `Number(null) === 0` trap. Null / "" / one-sided → `null`. A deal we cannot
@@ -48,10 +55,15 @@ read and the geocode.
   - `opts.subject`: `{ lat, lng }`. Prefer `report.subject_lat` / `subject_lng`
     when finite; else this. Missing both → return the same report object.
   - `opts.months`, `opts.now`, `opts.parseDealDate`, `opts.keyOf`,
-    `opts.subjectAddress`, `opts.isAggregateAddress`.
+    `opts.subjectAddress`, `opts.isAggregateAddress`, `opts.propertyType`,
+    `opts.marketNote`, `opts.subjectSize` / `opts.subjectPsf`.
   - Keep a row when: priced, not aggregate, parseable date `>=` lookback
-    cutoff (same year-fraction math as `retrieveCorpusComps`), coords, `<= 10`
-    miles, address is not the subject, key is not already in `report.comps`.
+    cutoff (same year-fraction math as `retrieveCorpusComps`), coords, `<=`
+    `radiusMilesFor(propertyType, marketNote)` miles, address is not the
+    subject, key is not already in `report.comps`.
+  - **Residential price tier:** when the subject's implied $/SF is known
+    (ask ÷ size), drop an extra more than 1.5× off that figure. Missing ask
+    or size is neutral. CRE is not filtered this way.
   - Estimate and news rows that pass those bars are included (owner chose
     auto-include over provenance filtering). Leases too: they join the table;
     the hero already ignores them.
@@ -138,9 +150,13 @@ Vault `broker_comps` are never read. The privacy wall is unchanged.
   address, no coords, subject address, and duplicate key are all dropped.
 - Empty extras return the same object with no `corpus_count`.
 - Estimate/news/lease that pass the bars are kept.
-- Inclusive boundary: `<= 10` in, `> 10` out.
+- Inclusive boundary: `<= radiusMilesFor(type)` in, outside out. CRE 10,
+  Residential 1.
+- Residential extras 2× off the asking $/SF are dropped even inside a mile;
+  missing ask is neutral.
 - `gate()` source: `blendNearbyComps` before `gateReport` before
   `blendPrivateComps`. `harvestComps(` does not appear inside `gate`.
+  `propertyType: typeOk` is passed.
 
 ## Docs
 

@@ -49,6 +49,12 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
+// Who is in a firm, and what their membership lets them do (migration 032).
+// Same pure, fails-closed contract as report-access.js, and it feeds that
+// file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
+// consults, so there is exactly one place that decides a pending invite is not
+// a membership. "org" is the internal noun here, "firm" is the word on screen.
+const ORG = require("./org-access.js");
 // Who may read, write and add to a messaging hub. Same pure, fails-closed
 // contract as report-access.js: this file owns the reads, that one owns the
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
@@ -116,7 +122,10 @@ const BOVSVC = require("./bov-log");
 // tightening of that rule, and a second copy would be one more mirrored pair to
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
+const { parseDealDate } = require("./deal-date");
+const HARVEST = require("./corpus-harvest");
 const { isAggregateAddress } = AUDIT;
+const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
 const LINKCHECK = require("./link-check");
@@ -128,7 +137,15 @@ const BACKTEST = require("./backtest");
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
 const BRANDING = require("./branding.js");
+// Account profile photo — the picture in the account circle. Pure and tested;
+// server.js owns the route (GET|PUT|DELETE /api/account/avatar) and the
+// avatar_rev field on GET /api/account/me.
+const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+const MARKETHERO = require("./market-hero");
+const HEROQUALITY = require("./market-hero-quality");
+const HEROREVIEW = require("./market-hero-review");
+const SVAIM = require("./streetview-aim");
 // "The market under this saved property moved since you last looked" — the
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
@@ -170,7 +187,10 @@ const SEARCH_PROVIDERS = {
 // Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
 // measured it better on every scored metric of the 12-target eval AND 3.9x
 // cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
-// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// docs/evals/2026-08-10-gemini-pipeline-validation.md. That $0.092 used
+// USD_PER_MTOK's standard rate; billed today at Google's introductory rate
+// (in effect through 2026-12-31) the same measured tokens cost ~$0.045 — see
+// search-provider-gemini.js.
 // Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
 // deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
 // PAID-tier Google project: a free-tier key authenticates and runs the model
@@ -278,6 +298,11 @@ const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
   singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // The per-seat firm plan (2026-08-16). Unset means firm checkout 503s and
+  // the buy control never renders — the same "a button that can only fail is
+  // worse than no button" rule the individual plans follow, and it is how
+  // seats stay hand-granted until somebody actually asks to pay.
+  firmMonthly: (process.env.STRIPE_PRICE_FIRM_MONTHLY || "").trim(),
   // No broker price. One subscription (2026-08-05): the vault is a Pro
   // capability, so STRIPE_PRICE_BROKER_MONTHLY is gone rather than unset. If a
   // second tier is ever revived it needs a deliberate decision, not a dormant
@@ -352,6 +377,23 @@ function allMarketPages() {
   return out;
 }
 
+// The standing /market/<slug> page covering a market + property type, if one
+// exists (seeded or explorer-published) — { slug, market } or null. This is
+// the cross-link between the report surfaces and the market pages: /api/comps
+// attaches it to every served report, /api/portfolio and the watchlist feed
+// attach it per item, so My Desk and every report can offer a door into the
+// standing page. Pure in-memory lookups (MARKET_PAGES / DYNAMIC_MARKET_PAGES),
+// so it costs nothing on those hot paths, and it re-resolves per serve — a
+// market page published after a report was cached still lights the link up.
+// Presentation only: absence hides a link and nothing else, so a miss (a
+// non-"City, ST" market, a type with no page) just returns null.
+function marketPageInfo(marketKey, propertyType) {
+  const mm = String(marketKey || "").match(/^(.+),\s([A-Z]{2})$/);
+  if (!mm || !propertyType) return null;
+  const slug = slugifyMarket(String(propertyType), mm[1], mm[2]);
+  return getMarketPage(slug) ? { slug, market: marketKey } : null;
+}
+
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
 //
@@ -365,12 +407,13 @@ function allMarketPages() {
 // and indistinguishable from simply typing the wrong key.
 const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 
-// Optional Google Maps key powering the Street View photos in map pin
+// Optional Google Maps key powering the Street View overlay in map pin
 // popups (served through GET /api/streetview so the key never reaches the
-// browser). Unset = the route 404s and popups are text-only, as before.
+// browser). Unset = the route 404s and popups stay on the aerial close-up.
 const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
-// lat,lng -> boolean "imagery exists" from the free metadata endpoint, so
-// repeat popup opens never re-ask Google. In-memory, capped, process-lifetime.
+// loc -> false | { heading, panoId, plat, plng }. The honesty gate
+// (streetview-aim.js) runs on the metadata response, so a far pano is a
+// cached miss, not a billed image of the neighbor. In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
 
 // Optional email ping on every new lead / broker comp submission, sent via
@@ -996,6 +1039,52 @@ async function setUserVaultBeta(id) {
   const u = (await accountStore()).users.find((x) => x.id === id);
   if (u) { u.vault_beta = true; await saveAccountStore(); }
 }
+// The public account payload — email, name, and whether a photo exists.
+// Never password_hash, never the photo bytes. Login, signup, /me and the
+// avatar write all answer through this so a new field cannot appear on one
+// door and vanish on another.
+function publicAccount(user) {
+  return {
+    email: user.email,
+    name: user.name || "",
+    avatarRev: String(user.avatarRev || user.avatar_rev || ""),
+  };
+}
+
+async function findUserAvatar(userId) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET",
+      `user_avatars?user_id=eq.${encodeURIComponent(userId)}&select=data_uri&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === userId);
+  return u && u.avatar_url ? { data_uri: u.avatar_url } : null;
+}
+
+async function setUserAvatar(id, { dataUri, rev }) {
+  if (DB_CONFIGURED) {
+    if (dataUri) {
+      // Blob first, then the rev: a circle that 404s is better than /me
+      // advertising a photo GET cannot serve.
+      await sbRequest("POST", "user_avatars?on_conflict=user_id",
+        [{ user_id: id, data_uri: dataUri, updated_at: new Date().toISOString() }],
+        { prefer: "resolution=merge-duplicates,return=minimal" });
+      await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { avatar_rev: rev });
+    } else {
+      await sbRequest("DELETE",
+        `user_avatars?user_id=eq.${encodeURIComponent(id)}`, undefined,
+        { prefer: "return=minimal" });
+      await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(id)}`, { avatar_rev: "" });
+    }
+    return;
+  }
+  const u = (await accountStore()).users.find((x) => x.id === id);
+  if (!u) return;
+  if (dataUri) { u.avatar_url = dataUri; u.avatar_rev = rev; }
+  else { delete u.avatar_url; u.avatar_rev = ""; }
+  await saveAccountStore();
+}
+
 async function deleteUserCascade(id) {
   if (DB_CONFIGURED) {
     // FK "on delete cascade" wipes sessions/portfolio/watchlist rows.
@@ -1092,6 +1181,10 @@ async function getSessionUser(req) {
       // no vault and nothing anywhere failed. Caught only by granting it to a
       // real account and looking. test/routes.test.js now pins the pairing.
       vault_beta: Boolean(user.vault_beta),
+      // Short content hash of the profile photo (migration 027). Empty means
+      // no photo. The bytes themselves live in user_avatars so this lookup
+      // never pulls them; presence here is what paints the account circle.
+      avatarRev: String(user.avatar_rev || ""),
     } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
@@ -1340,9 +1433,18 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     unseen += fresh.length;
     // Median $/SF: sale rows only, trailing ~6 months — matches the
     // client-side rule that lease $/SF never mixes into valuation.
+    // parseDealDate != null is the CLOSED-DEAL gate, and it is load-bearing
+    // since the corpus began storing on-market listings (2026-08-20): those
+    // carry deal_date "Active" or "Listed Mon YYYY", neither of which parses.
+    // Note this list is windowed on `ts` — when we HARVESTED the row, not when
+    // the deal closed — so a freshly harvested asking price would otherwise
+    // land straight in the median with nothing to exclude it. That median is
+    // quoted on My Desk and again in the watchlist digest email, which is the
+    // one message this product sends on its own initiative.
     const salePsf = rows
       .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
       .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .filter((r) => parseDealDate(r.deal_date) != null)
       .map((r) => corpusNum(r.price_per_sqft))
       .filter(Boolean)
       .sort((a, b) => a - b);
@@ -1356,9 +1458,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
     const median_trend = curWin.length >= 3 && priWin.length >= 3
       ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    // The watched market's standing /market/<slug> page, when one exists —
+    // the desk's feed section links each market it reports on to the page
+    // that covers it. Absent key = no page = no link; the digest builder
+    // ignores keys it does not read, so this rides the shared feed shape
+    // harmlessly.
+    const marketPage = marketPageInfo(w.market, w.property_type);
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
+      ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
@@ -1611,9 +1720,133 @@ async function getEntitlements(user, reportId, admin = false) {
   // Per-account vault grant (migration 023) — the broker-onboarding door.
   // Reads as undefined until the column exists, which Boolean()s to false.
   const vaultBeta = Boolean(user && user.vault_beta);
-  return ENT.computeEntitlements({
+  const own = ENT.computeEntitlements({
     user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
   });
+  // The firm's seat, as a FALLBACK (migration 033). Their own plan always
+  // wins; the firm is consulted only when nothing else already grants Pro, so
+  // a member who pays for themselves keeps their own billing portal and their
+  // own renewal date, and a firm seat can never quietly take over an
+  // individual subscription.
+  //
+  // entitlements.js learns NOTHING about firms — spec §8, and the division
+  // this whole file already follows: server.js owns the reads, that file owns
+  // the rules. A firm seat is handed in as an ordinary subscription row, and
+  // the rules that then apply to it (lapse, grace, the 24h renewal slack) are
+  // the same ones a personal subscription gets, which is exactly what should
+  // be true of it.
+  if (own.pro) return own;
+  const seat = await firmSeatSubscriptionFor(user);
+  if (!seat) return own;
+  const viaFirm = ENT.computeEntitlements({
+    user, subscription: seat.subscription, purchase, usage, reportId, now,
+    enabled: true, tester, vaultBeta,
+  });
+  if (!viaFirm.pro) return own;
+  // `viaFirm` is presentation only and the reason it exists is one concrete
+  // wrong answer: the plan card offers the Stripe billing portal off
+  // `status !== "none"`, and sending a colleague who has never paid us
+  // anything to a portal for their firm's card would be both confusing and,
+  // if it worked, wrong. It rides here rather than in entitlements.js because
+  // it is a fact about the READ, not a rule.
+  return { ...viaFirm, viaFirm: { id: seat.orgId, name: seat.name, canManage: seat.canManage } };
+}
+
+// Does this person hold a seat on a firm's subscription?
+//
+// Three things decide it, and the third is the one worth reading twice:
+//
+//   1. An ACTIVE membership — org-access.js's own predicate, so a pending
+//      invite and a removed colleague are both nobody.
+//   2. A firm subscription row.
+//   3. A SEAT. Members are ordered by joined_at ascending and the first
+//      `orgs.seats` of them hold the seats. Invites are refused past the cap,
+//      so this only bites when a firm SHRINKS its plan in the Stripe portal —
+//      something we cannot prevent and must therefore have a defined answer
+//      for. Oldest-first means the answer is stable and explicable ("the two
+//      most recently added lost access") rather than arbitrary.
+//
+// Never throws: a failure here resolves to no seat, i.e. the member's own
+// tier, which is the fail-closed direction.
+// Memoized exactly like subCache above, and for a sharper reason than
+// convenience: getEntitlements runs on EVERY /api/config, which runs on every
+// page load — and this lookup is reached by every signed-in visitor who is not
+// already Pro, which is most of them. Uncached it added a database read to the
+// hot path for people who are in no firm at all, which is the thing CLAUDE.md
+// keeps /api/pricing out of /api/config to avoid.
+//
+// ONLY THE NEGATIVE IS CACHED — "this person is in no firm" — and that is the
+// whole point rather than a limitation. It is the answer for almost every
+// visitor, it costs one read to reach, and it changes only when they accept an
+// invitation (which drops their entry explicitly). A member who IS in a firm
+// re-reads every time, so their seat reflects a seat count or a lapsed plan
+// immediately instead of up to a minute later. Caching that side too would buy
+// a few reads from a small population and pay for it in stale ENTITLEMENTS,
+// which is the one thing here worth being exact about.
+const SEAT_CACHE_TTL_MS = SUB_CACHE_TTL_MS;
+const seatCache = new Map(); // user_id -> { at }  (presence = "in no firm")
+
+function cacheNoSeat(userId) {
+  if (!userId) return null;
+  seatCache.set(userId, { at: Date.now() });
+  // Same crude cap as subCache: it repopulates on demand, and an unbounded
+  // map on a long-lived process is the only way this could hurt.
+  if (seatCache.size > 5000) seatCache.clear();
+  return null;
+}
+
+// Dropped whenever a firm's membership or billing changes under this process,
+// so a colleague who just accepted an invitation is not told for another
+// minute that they have no seat.
+function dropSeatCache(userId) {
+  if (userId) seatCache.delete(userId);
+  else seatCache.clear();
+}
+
+async function firmSeatSubscriptionFor(user) {
+  const cached = user && user.id ? seatCache.get(user.id) : null;
+  if (cached && Date.now() - cached.at < SEAT_CACHE_TTL_MS) return null;
+  try {
+    if (!DB_CONFIGURED || !user || !user.email) return null;
+    const memberships = await orgMembershipsFor(user.email);
+    const mine = memberships.filter(ORG.isActive);
+    // Cached too — "in no firm" is the common answer and the one worth not
+    // paying for on every page load.
+    if (!mine.length) return cacheNoSeat(user.id);
+    for (const membership of mine) {
+      const orgId = String(membership.org_id);
+      const [subRows, org, roster] = await Promise.all([
+        sbRequest("GET", `org_subscriptions?org_id=eq.${encodeURIComponent(orgId)}&limit=1`),
+        orgsByIds([orgId]).then((m) => m.get(orgId) || null),
+        orgMemberRows(orgId),
+      ]);
+      const subscription = (subRows && subRows[0]) || null;
+      if (!subscription) continue;
+      const seats = seatCapOf(org);
+      const holders = roster
+        .filter(ORG.isActive)
+        .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")))
+        .slice(0, seats)
+        .map((r) => String(r.id));
+      if (!holders.includes(String(membership.id))) continue;
+      return {
+        subscription, orgId,
+        name: (org && org.name) || "your firm",
+        canManage: ORG.roleOf(membership) === "owner",
+      };
+    }
+    // In a firm, but holding no seat on it. NOT cached: this is the state a
+    // seat purchase is about to change, and a member watching for it should
+    // not wait out a TTL.
+    return null;
+  } catch (err) {
+    console.error("Firm seat lookup failed (falling back to the member's own tier):", err.message);
+    // No seat, and NOT cached, so the next request retries. Fail-closed here
+    // rather than findSubscription's serve-the-last-answer, because the only
+    // thing cached on this path is an absence: there is no previous grant to
+    // hold on to, and inventing one would mint Pro from a database error.
+    return null;
+  }
 }
 
 // --- Stripe writes -----------------------------------------------------------
@@ -1838,6 +2071,16 @@ async function handleStripeEvent(evt) {
 
       if (obj.mode !== "subscription" || !obj.subscription) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${obj.subscription}`);
+      // A FIRM checkout (migration 033). Checked before the user path and
+      // returned from, because the two write different tables and a firm
+      // session must never land a row in `subscriptions` keyed on whoever
+      // happened to click Buy — that would give one person a personal
+      // subscription their firm is paying for and leave the firm with none.
+      const orgId = obj.metadata && obj.metadata.org_id;
+      if (orgId) {
+        await applyOrgSubscription(sub, { orgId, label: "✅ Firm subscription active" });
+        return;
+      }
       const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
       if (!row) return console.error(`Checkout ${obj.id} completed for a price we don't sell — ignored.`);
       await upsertSubscription(row);
@@ -1861,6 +2104,19 @@ async function handleStripeEvent(evt) {
     case "customer.subscription.created":
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
+      // The firm path first, by metadata and then by customer — the second
+      // matters because a portal cancellation of an old subscription can
+      // arrive with metadata Stripe never had.
+      const orgId = (obj.metadata && obj.metadata.org_id)
+        || await orgIdForStripeCustomer(typeof obj.customer === "string" ? obj.customer : obj.customer && obj.customer.id);
+      if (orgId) {
+        await applyOrgSubscription(obj, {
+          orgId,
+          statusOverride: evt.type === "customer.subscription.deleted" ? "canceled" : null,
+          label: `Firm subscription ${evt.type.split(".").pop()}`,
+        });
+        return;
+      }
       const userId = (obj.metadata && obj.metadata.user_id)
         || await userIdForStripeCustomer(typeof obj.customer === "string" ? obj.customer : obj.customer && obj.customer.id);
       if (!userId) return console.error(`Subscription ${obj.id} has no user we recognize — ignored.`);
@@ -1881,6 +2137,13 @@ async function handleStripeEvent(evt) {
         && obj.parent.subscription_details.subscription);
       if (!subId) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const orgId = (sub.metadata && sub.metadata.org_id) || await orgIdForStripeCustomer(sub.customer);
+      if (orgId) {
+        // A renewal is also where a seat-count change lands, since a firm
+        // that adds seats mid-cycle is invoiced for them.
+        await applyOrgSubscription(sub, { orgId, label: "💳 Firm payment succeeded" });
+        return;
+      }
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
       const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
@@ -1896,6 +2159,22 @@ async function handleStripeEvent(evt) {
         && obj.parent.subscription_details.subscription);
       if (!subId) return;
       const sub = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `subscriptions/${subId}`);
+      const failedOrgId = (sub.metadata && sub.metadata.org_id) || await orgIdForStripeCustomer(sub.customer);
+      if (failedOrgId) {
+        const orgRow = await applyOrgSubscription(sub, {
+          orgId: failedOrgId, statusOverride: "past_due", label: "⚠ Firm payment failed",
+        });
+        // Owner-facing only, like the individual path: dunning mail to the
+        // customer is Stripe's job. Named as a FIRM because the consequence is
+        // wider — every colleague on that plan loses Pro at the same moment.
+        if (orgRow) {
+          sendEmail(LEAD_NOTIFY_EMAIL, "CompNinja: a firm subscription payment failed",
+            `A firm payment failed for org ${failedOrgId} (${orgRow.plan}).\n` +
+            `Every member on that plan keeps access until ${orgRow.grace_until}, then downgrades.\n` +
+            `Stripe will retry automatically.`);
+        }
+        return;
+      }
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
       const existing = await findSubscription(userId);
@@ -2186,58 +2465,45 @@ async function accuracyReport(force) {
 // exact-address search cache misses, so it never touches the cache key.
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
+  const empty = { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0, listed: [], listedCount: 0 };
   try {
     const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    // A second, separate read so the shared single-market helper keeps its
-    // exact contract for its four other callers.
     const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
-    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    if (!rows.length && !nearbyRows.length) return empty;
 
-    // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
+    const split = HARVEST.splitRetrieved(rows, { parseDealDate, cutoffFrac, corpusNum });
+    const usable = split.usable;
+    const listedAll = CORPUS_LISTED ? split.listed : [];
+
     const isUsable = (r) => {
-      // Only feed higher-confidence provenance; a rough guess ("estimate") or a
-      // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
       if (st === "estimate" || st === "news") return false;
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
     };
-    const usable = rows.filter(isUsable);
-    // Nearby rows clear the identical bar: provenance better than estimate or
-    // news, a parseable price, and a deal date inside the requested window.
     const nearbyUsable = nearbyRows.filter(isUsable);
 
-    // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
-    // freshest we hold for this market. Stale coverage → fall back to the web.
-    // 75 days (was 45 until 2026-07-31): the 2026-07-30 speed work flagged
-    // this gate as the top untested cost lever, and the exposure is narrow —
-    // the only deals a corpus-assisted search can miss are ones that surfaced
-    // during the staleness gap, the 2-3 fresh searches are aimed at exactly
-    // that gap, and `usable` below is window-filtered, so a market whose
-    // comps have aged out of the requested lookback stops qualifying no
-    // matter what this constant says. Judge it by the /admin corpus hit rate
-    // and spot-checks of corpus-tagged reports; it is one constant to revert.
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
     return {
       comps: usable.slice(0, maxComps * 2),
-      // coverage stays EXACT-market only: corpusIsStrong and the search budget
-      // read it, and nearby rows must never buy a smaller budget.
       coverage: usable.length,
       fresh,
       nearby: nearbyUsable.slice(0, maxComps),
       nearbyCount: nearbyUsable.length,
+      listed: listedAll.slice(0, maxComps),
+      listedCount: listedAll.length,
     };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    return empty;
   }
 }
 
@@ -2281,10 +2547,32 @@ const PARALLEL_SEARCH = /^(1|on|true|yes)$/i.test(String(process.env.PARALLEL_SE
 // immediate neighbors (market.js's METRO_GROUPS). Candidates only, never a
 // reason to search less. Default ON; `off` restores exact-market matching.
 const CORPUS_METRO = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_METRO || ""));
+// Lead matching across a metro: a broker covering Boise industrial also sees
+// Meridian industrial leads. Reads the SAME curated METRO_GROUPS as
+// CORPUS_METRO but is switched separately, because the two answer different
+// questions about the same table -- one decides which comps a search may
+// draw on, the other decides which PEOPLE see a stranger's enquiry, and
+// wanting to roll back one is no reason to roll back the other.
+// `LEAD_METRO=off` restores exact-market matching everywhere below.
+const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || ""));
+// One bulk-publish request's ceiling. Each comp costs an insert plus a patch,
+// so this bounds the request, not the broker's book: over it, the route
+// publishes what it can and reports how many are left, and running it again is
+// safe because an already-published comp is skipped rather than re-submitted.
+const VAULT_PUBLISH_BATCH = 100;
+// One expression, three call sites (inbox, intro gate, new-lead alert), so the
+// flag cannot end up half-applied and show a broker a lead they may not act on.
+const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 
-// Saved deals within 10 miles join the report at serialization. Default ON;
-// `off` restores search-only reports. Harvest still writes either way.
+// Saved deals within 10 miles (CRE) / 1 mile (houses) join the report at
+// serialization. Default ON; `off` restores search-only reports. Harvest
+// still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
+
+// On-market listing rows (unparseable deal_date) offered as extra candidates.
+// Default ON; `off` hides the prompt block and returns listed: []. The harvest
+// filter (no estimate/news) has no flag.
+const CORPUS_LISTED = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_LISTED || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -2723,13 +3011,17 @@ async function getShareRecord(id) {
     try {
       const rows = await sbRequest("GET",
         `shared_reports?id=eq.${encodeURIComponent(id)}` +
-        `&select=id,payload,user_id,visibility,include_private,revoked_at,created_at&limit=1`);
+        `&select=id,payload,user_id,visibility,include_private,revoked_at,created_at,org_id&limit=1`);
       const row = rows && rows[0];
       if (!row) return null;
       const share = {
         id: row.id, user_id: row.user_id, visibility: row.visibility,
         include_private: row.include_private, revoked_at: row.revoked_at,
         created_at: row.created_at,
+        // Migration 030. Selected by NAME above, which is why an unrun 030
+        // breaks every share read and not just a firm one — see the file's
+        // header and verify.js's note.
+        org_id: row.org_id || null,
       };
       // Only an invited share needs its viewer list, and only then is the
       // extra round trip worth paying on a page load.
@@ -2755,15 +3047,24 @@ async function getShareRecord(id) {
   const payload = mem || (await loadSharedReportsFile())[id];
   if (!payload) return null;
   sharedReportsMem.set(id, payload);
-  return { payload, share: { id, user_id: null, visibility: "public", revoked_at: null }, viewers: [] };
+  return { payload, share: { id, user_id: null, visibility: "public", revoked_at: null, org_id: null }, viewers: [] };
 }
 
 async function storeSharedReport(id, payload, opts = {}) {
-  const { userId = null, visibility = "public", includePrivate = false, viewers = [] } = opts;
+  const {
+    userId = null, visibility = "public", includePrivate = false, viewers = [],
+    orgId = null,
+  } = opts;
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
+      // Only ever set on a firm share. The `visibility !== "public"` guards
+      // below already refuse to write this row to the file store, so a firm
+      // share is covered by the same refusal an invited one is — the file has
+      // no column for org_id either, and a firm share landing there would
+      // come back out of getShareRecord as a PUBLIC link.
+      org_id: visibility === "org" ? orgId : null,
     };
     try {
       await sbRequest("POST", "shared_reports", [row], { prefer: "return=minimal" });
@@ -2865,7 +3166,7 @@ async function revokeShare(shareId, userId) {
 async function listSharesForOwner(userId) {
   return (await sbRequest("GET",
     `shared_reports?user_id=eq.${encodeURIComponent(userId)}` +
-    `&select=id,payload,visibility,include_private,revoked_at,created_at,report_viewers(email,invited_at,first_viewed_at,last_viewed_at)` +
+    `&select=id,payload,visibility,include_private,revoked_at,created_at,org_id,report_viewers(email,invited_at,first_viewed_at,last_viewed_at)` +
     `&order=created_at.desc&limit=200`)) || [];
 }
 
@@ -2874,6 +3175,338 @@ async function listSharesForViewer(email) {
     `report_viewers?email=eq.${encodeURIComponent(email)}` +
     `&select=share_id,invited_at,shared_reports(id,payload,visibility,revoked_at,created_at)` +
     `&order=invited_at.desc&limit=200`)) || [];
+}
+
+// ---------------------------------------------------------------------------
+// Firms (migration 032) — the reads and writes behind /api/org*.
+//
+// Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
+//
+// EVERY access decision in this section belongs to org-access.js. This part
+// owns only the I/O — the org row, the membership rows, the session — and
+// hands them in, which is the same division report-access.js, hub-access.js
+// and entitlements.js already carry. A second opinion here about who is in a
+// firm is how the gate on other people's reports grows a hole.
+//
+// DATABASE ONLY, no file fallback: 013's, 018's and 024's stance, for their
+// reason. An access-control list in a JSON file on an ephemeral disk is not
+// one, so every route 503s when DB_CONFIGURED is false.
+//
+// NOTHING HERE WIDENS AN EXISTING READ. There is no `or=(user_id.eq.X,
+// org_id.eq.Y)` anywhere in this file and there must never be one: a firm read
+// is a new query against the new tables, which is migration 013's
+// separate-tables rule. The vault, the portfolio, the watchlist, the BOV log
+// and the lead inbox are all untouched by this feature.
+// ---------------------------------------------------------------------------
+
+// Every membership row for one person, across every firm — pending invites
+// included, because /desk renders both and org-access.js is what tells them
+// apart. Keyed on the EMAIL, never the user id: migration 018's decision,
+// which is what lets a colleague be invited before they have an account.
+async function orgMembershipsFor(email) {
+  const mine = ORG.normalizeEmail(email);
+  if (!DB_CONFIGURED || !mine) return [];
+  return (await sbRequest("GET",
+    `org_members?email=eq.${encodeURIComponent(mine)}` +
+    `&select=id,org_id,email,role,invited_at,joined_at,removed_at,auto_share` +
+    `&order=invited_at.desc&limit=100`)) || [];
+}
+
+// Firms for a set of ids, as a Map of id -> the row. A SECOND QUERY rather
+// than a PostgREST embedded `orgs(id,name)` on the membership read — 016's
+// note names this as the house pattern ("where it needs a join it runs two
+// queries and stitches them in JS"), and it keeps the membership read to
+// filters a fake PostgREST can parse, which is what lets test/org-run.test.js
+// execute this whole feature rather than only its refusals.
+//
+// It carries `share_default` as well as the name because the auto-share rule
+// needs both, and a second read for the setting would be a second thing to
+// keep in step with membership.
+//
+// AND `seats`, which is not optional: every caller of seatCapOf() is fed by
+// this function, and seatCapOf() falls back to MAX_MEMBERS when the column is
+// absent. Omitting it here does not read as zero seats, it reads as 200 — so
+// the invite gate, the billing display and the entitlement read all silently
+// stop enforcing what a firm bought, and `orgs.seats` becomes a column the
+// webhook writes and nothing reads. Shipped that way on 2026-08-16 and found
+// on 2026-08-19 by a firm whose seats were 2 accepting a third member without
+// a word. MAX_MEMBERS and 030's column default are both 200, which is what
+// hid it. If a column is added to this select, add it to findOrg() too.
+//
+// Never throws. A name is a label — a firm whose row could not be read still
+// admits its members, and the desk says "your firm". Note what that failure
+// does to auto-share: org-access.js reads a missing row as share_default
+// 'none', so a database blip suppresses automatic publishing rather than
+// causing it. That is the right direction and it is not an accident.
+async function orgsByIds(ids) {
+  const out = new Map();
+  try {
+    const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+    if (!DB_CONFIGURED || !list.length) return out;
+    const rows = await sbRequest("GET",
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats&limit=${list.length}`);
+    for (const r of rows || []) out.set(String(r.id), r);
+  } catch (err) {
+    console.error("Firm read failed (membership is unaffected):", err.message);
+  }
+  return out;
+}
+
+// The firm's default, set by an owner or an admin. Scoped by id alone because
+// the route has already proven the caller manages this firm; the value is
+// validated against org-access.js's vocabulary before it gets here.
+async function setOrgShareDefault(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { share_default: value }, { prefer: "return=minimal" });
+}
+
+// The member's own override (migration 033). Scoped by BOTH the org and the
+// caller's own email IN THE QUERY, never checked after the fact: this is the
+// switch that lets somebody refuse an admin's decision about their work, so
+// knowing an org id must not be enough to flip anybody else's.
+async function setMemberAutoShare(orgId, email, value) {
+  return sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=eq.${encodeURIComponent(ORG.normalizeEmail(email))}&removed_at=is.null`,
+    { auto_share: value }, { prefer: "return=representation" });
+}
+
+// The org ids whose firm shares this person may open. THE widest thing in the
+// file — an id reaching this array is an id whose shared reports the caller
+// can read — so it goes through org-access.js's activeOrgIds rather than
+// filtering here, and it returns [] on any failure.
+//
+// Fails CLOSED on purpose, unlike most enrichment reads in server.js: an
+// error resolving membership must narrow the audience to the viewer list, not
+// widen it. The caller (GET /api/shared) has its own catch that refuses the
+// read outright, so a firm member sees a 503 during a database blip rather
+// than a wrong answer either way.
+async function activeOrgIdsFor(user) {
+  if (!user || !user.email) return [];
+  const rows = await orgMembershipsFor(user.email);
+  return ORG.activeOrgIds(rows, user.email);
+}
+
+// One firm's member list. Used for the roster, for the invite dedupe, and for
+// canRemoveMember's last-owner rule — which is why it returns removed rows
+// too: org-access.js filters them, and counting owners from a list that had
+// already dropped them would be a second opinion about who is active.
+async function orgMemberRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,org_id,email,role,invited_at,joined_at,removed_at,user_id` +
+    `&order=invited_at.asc&limit=${ORG.MAX_MEMBERS + 1}`)) || [];
+}
+
+async function findOrg(orgId) {
+  if (!DB_CONFIGURED || !orgId) return null;
+  const rows = await sbRequest("GET",
+    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,created_at&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
+// Create the firm and its first member in that order, and make the creator an
+// OWNER who has already joined: they are the one person whose membership needs
+// no accept step, because they are the one who asked for it.
+async function createOrgWithOwner(name, user) {
+  const rows = await sbRequest("POST", "orgs",
+    // `seats` is written explicitly rather than left to 030's column default.
+    // A hand-granted firm is the ordinary case (§9: seats are granted by hand
+    // until somebody asks to pay), and code that reads this column should
+    // never have to distinguish "not set" from "set to the structural cap".
+    [{ name, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
+  const org = rows && rows[0];
+  if (!org) throw new Error("Firm row was not returned.");
+  await sbRequest("POST", "org_members", [{
+    org_id: org.id,
+    email: ORG.normalizeEmail(user.email),
+    user_id: user.id,
+    role: "owner",
+    invited_by: user.id,
+    joined_at: new Date().toISOString(),
+  }], { prefer: "return=minimal" });
+  return org;
+}
+
+// Invites, as rows with joined_at NULL. `ignore-duplicates` on the natural key
+// so re-inviting somebody already on the list is a no-op rather than an error
+// — and note that a person previously REMOVED keeps their old row, so a
+// re-invite does not silently resurrect them: it needs the un-remove PATCH
+// below, which is a deliberate, separate act.
+async function inviteOrgMembers(orgId, emails, invitedBy) {
+  if (!emails.length) return;
+  await sbRequest("POST", "org_members?on_conflict=org_id,email",
+    emails.map((email) => ({
+      org_id: orgId, email, role: "member", invited_by: invitedBy,
+    })), { prefer: "resolution=ignore-duplicates,return=minimal" });
+  // A previously-removed person who is invited again gets their row cleared
+  // back to a PENDING invite — never straight back to active. They accept
+  // again, exactly like anybody else, so returning to a firm is always
+  // something the returning person did.
+  await sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=in.(${pgInList(emails)})&removed_at=not.is.null`,
+    { removed_at: null, joined_at: null, invited_at: new Date().toISOString() },
+    { prefer: "return=minimal" });
+}
+
+// Accept: stamp joined_at and the user id. Scoped by BOTH the org and the
+// caller's own email in the query, not checked after the fact — knowing an org
+// id must never be enough to join it. `joined_at=is.null` keeps it idempotent
+// and stops a second click rewriting the date somebody actually joined.
+async function acceptOrgInvite(orgId, user) {
+  dropSeatCache(user && user.id);
+  return sbRequest("PATCH",
+    `org_members?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=eq.${encodeURIComponent(ORG.normalizeEmail(user.email))}` +
+    `&removed_at=is.null&joined_at=is.null`,
+    { joined_at: new Date().toISOString(), user_id: user.id },
+    { prefer: "return=representation" });
+}
+
+// Removal is a stamp, never a DELETE: the row is the record that somebody was
+// here, and 030 makes removed_at beat everything precisely so it can be read
+// rather than inferred from an absence.
+async function removeOrgMember(orgId, memberId) {
+  // The removed person becomes "in no firm" and must not be told otherwise
+  // from a stale entry — and they are not necessarily the only one, since
+  // their seat passes to the next member in joined_at order.
+  dropSeatCache();
+  return sbRequest("PATCH",
+    `org_members?id=eq.${encodeURIComponent(memberId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+    { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
+}
+
+// How many people this firm may hold. One definition, because the invite gate
+// and the entitlement read must never disagree about it — one refusing a
+// colleague the other would have given Pro to is a support ticket nobody can
+// reproduce. See the note at the invite gate for why an unreadable count
+// resolves to the structural cap rather than to zero or one.
+function seatCapOf(org) {
+  const n = Number(org && org.seats);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : ORG.MAX_MEMBERS;
+}
+
+// Firm billing (migration 033). Upsert on org_id, 008's rule keyed on the
+// firm: a second checkout must UPDATE the row, never insert a rival one that
+// could out-rank it.
+async function upsertOrgSubscription(row) {
+  if (!DB_CONFIGURED || !row || !row.org_id) return false;
+  await sbRequest("POST", "org_subscriptions?on_conflict=org_id", [row],
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return true;
+}
+
+async function findOrgSubscription(orgId) {
+  if (!DB_CONFIGURED || !orgId) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `org_subscriptions?org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+    return (rows && rows[0]) || null;
+  } catch (err) {
+    console.error("Firm subscription lookup failed:", err.message);
+    return null;
+  }
+}
+
+// Which firm a Stripe customer belongs to, for the events that carry no
+// metadata of ours (a portal change on an older subscription, mostly).
+async function orgIdForStripeCustomer(customerId) {
+  if (!DB_CONFIGURED || !customerId) return null;
+  try {
+    const rows = await sbRequest("GET",
+      `org_subscriptions?stripe_customer_id=eq.${encodeURIComponent(customerId)}&select=org_id&limit=1`);
+    return (rows && rows[0] && rows[0].org_id) || null;
+  } catch (err) {
+    console.error("Firm customer lookup failed:", err.message);
+    return null;
+  }
+}
+
+// Seats bought = seats enforced. Written from the SUBSCRIPTION rather than
+// from the checkout request, so the number a firm can actually use is always
+// the number Stripe is billing them for — including after a portal change we
+// never saw the request for.
+//
+// NEVER LOWERS BELOW THE PEOPLE ALREADY IN THE FIRM by deleting anybody: it
+// only writes the count. Members past the cap lose their SEAT (oldest-first,
+// see firmSeatSubscriptionFor) and keep their membership, so a firm that
+// downgrades and then upgrades again finds its people still there.
+async function setOrgSeats(orgId, seats) {
+  // Only the negative is cached, so this is belt and braces rather than
+  // load-bearing — but a seat count change is exactly when somebody is
+  // watching, and it is rare enough that clearing the map costs nothing.
+  dropSeatCache();
+  if (!DB_CONFIGURED || !orgId) return;
+  try {
+    await sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+      { seats: Math.max(1, Number(seats) || 1) }, { prefer: "return=minimal" });
+  } catch (err) {
+    console.error("Firm seat count write failed:", err.message);
+  }
+}
+
+// One firm subscription event, applied. Mirrors the individual path's shape
+// including its grace rule: a second failed payment inside the window must not
+// buy another seven days.
+async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
+  const source = statusOverride ? { ...sub, status: statusOverride } : sub;
+  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, { graceDays: ENT.GRACE_DAYS });
+  if (!row) {
+    console.error(`Firm subscription ${sub && sub.id} carries a price we do not sell — ignored.`);
+    return null;
+  }
+  row.org_id = orgId;
+  if (row.status === "grace") {
+    const existing = await findOrgSubscription(orgId);
+    if (existing && existing.status === "grace" && existing.grace_until) {
+      row.grace_until = existing.grace_until;
+    }
+  }
+  await upsertOrgSubscription(row);
+  await setOrgSeats(orgId, STRIPE.seatsOf(sub));
+  console.log(`${label}: ${row.plan} -> ${row.status}, ${STRIPE.seatsOf(sub)} seat(s) (firm ${orgId})`);
+  return row;
+}
+
+// THE SHELF: every report anybody has shared with this firm.
+//
+// EVERYONE'S, including the caller's own. Slice 1 excluded them, which was
+// right for a "shared with you" list and wrong for a shelf: the point of the
+// thing is that it is the firm's whole record, and a record with your own work
+// missing from it is one you cannot trust to answer "has anybody valued this
+// building". They are attributed instead, and the browser marks yours.
+//
+// The 1000-row cap is the vault's, with the vault's rule attached: past it the
+// page SAYS it is truncated rather than quietly under-reporting. A firm that
+// reaches four figures of shared reports needs paging, and finding out from a
+// silently short list is the wrong way to learn that.
+async function orgShelfRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `shared_reports?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&visibility=eq.org&revoked_at=is.null` +
+    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=1000`)) || [];
+}
+
+// Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
+// the house pattern, for the reason orgsByIds gives.
+//
+// Never throws, and the caller falls back to "a colleague": attribution is a
+// label on a shelf row, and losing it must not cost the row.
+async function usersByIds(ids) {
+  const out = new Map();
+  try {
+    const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+    if (!DB_CONFIGURED || !list.length) return out;
+    const rows = await sbRequest("GET",
+      `users?id=in.(${pgInList(list)})&select=id,name,email&limit=${list.length}`);
+    for (const r of rows || []) out.set(String(r.id), { name: r.name || "", email: r.email || "" });
+  } catch (err) {
+    console.error("Shelf attribution read failed (rows are unaffected):", err.message);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -3330,17 +3963,17 @@ async function harvestComps(type, searchAddress, payload) {
     const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
     const rows = [];
     for (const c of comps) {
-      if (!c || !String(c.address || "").trim()) continue;
-      // A comp with no price at all is not data worth keeping.
-      if (!String(c.price_or_rate || "").trim() && !String(c.price_per_sqft || "").trim()) continue;
-      // Backstop for the prompt's individual-property rule: a market median or
-      // research benchmark formatted as a comp would otherwise sit in the
-      // permanent corpus looking like a real transaction.
-      if (isAggregateAddress(c.address)) {
-        console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+      if (!HARVEST.shouldHarvest(c)) {
+        if (c && isAggregateAddress(c.address)) {
+          console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+        }
         continue;
       }
-      const key = corpusKeyOf(c);
+      // Fill empty listing dates before the dedupe key so "" and "Active"
+      // cannot both occupy the store for the same address + price.
+      const date = HARVEST.listingDateForHarvest(c);
+      const keyed = { ...c, date };
+      const key = corpusKeyOf(keyed);
       if (corpusSeen.has(key)) continue;
       corpusSeen.add(key);
       rows.push({
@@ -3350,14 +3983,11 @@ async function harvestComps(type, searchAddress, payload) {
         market: marketOf(c.address),
         address: String(c.address).trim(),
         transaction: String(c.transaction || ""),
-        deal_date: String(c.date || ""),
+        deal_date: date,
         size_sqft: String(c.size_sqft || ""),
         price_or_rate: String(c.price_or_rate || ""),
         price_per_sqft: String(c.price_per_sqft || ""),
         cap_rate: String(c.cap_rate || ""),
-        // Per-type specs (TYPE_COMP_FIELDS). One flat row per comp regardless
-        // of type, so every key is always present — the columns a given type
-        // doesn't use just stay empty.
         ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),
@@ -3547,6 +4177,66 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
+// A colleague invited to a firm (migration 032). Rides the same outbound gate
+// as everything else, so it silently no-ops until EMAIL_FROM is set.
+//
+// It says who invited them and from what address, because this mail arrives
+// unsolicited: an invitation naming nobody is indistinguishable from spam, and
+// the recipient's only way to check it is real is to recognise the sender.
+// Nothing about the firm's reports travels here — the invite grants no access
+// on its own, and does not until the person accepts it themselves.
+function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
+  for (const to of emails) {
+    const who = fromName ? `${fromName} (${fromEmail})` : fromEmail;
+    sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
+      `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
+      `A firm is a shared shelf: reports and BOVs a colleague shares with the firm ` +
+      `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
+      `Accept here: ${SITE_URL}/desk\n\n` +
+      `Sign in with this email address (${to}) — a free account is all it takes. ` +
+      `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
+      `If you were not expecting this, ignore it: an unaccepted invitation gives nobody access to anything.`);
+  }
+}
+
+// Is outbound mail actually going to leave the building? The two env vars
+// sendOutboundEmail checks, asked as a question the CALLER can answer, because
+// a hub needs to tell a broker whether their client was emailed or whether
+// they have to send the link themselves. Without it the create panel has to
+// guess, and it guessed wrong in both directions: it hard-coded "CompNinja
+// does not email them yet", which becomes a lie the day a domain is verified.
+const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
+
+// The hub invitation.
+//
+// Rides the same EMAIL_FROM gate as every other outbound mail, so on a
+// deployment with no verified domain this logs "Outbound email skipped" and
+// the broker copies the link by hand — which is exactly how hubs have worked
+// since they shipped. Nothing here changes behaviour today; it means the day
+// the domain is verified, invitations start sending with no code change.
+//
+// THE LINK CARRIES THE TOKEN, and that is the point: it is the credential, and
+// mailing it is the delivery mechanism, the same trade a password reset makes.
+// It is why the copy names the address the hub was shared with — a forwarded
+// invite lets somebody READ, and only signing in as the invited address lets
+// them post.
+//
+// Fire and forget, ALWAYS: the hub and its participants are already written
+// when this runs. A mail provider having a bad afternoon must never turn a
+// created hub into an error, and the broker still holds every link.
+function sendHubInvites(invites, { hubTitle, fromName }) {
+  for (const inv of invites) {
+    const who = fromName ? `${fromName} has` : "A broker has";
+    const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
+    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+      `${who} shared ${what} with you on CompNinja.\n\n` +
+      `Open it here: ${inv.url}\n\n` +
+      `You can read it without an account. To reply or shortlist a building, ` +
+      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `Every CompNinja valuation is an automated estimate, not an appraisal.`);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Prompt builder — property-type aware
 // ---------------------------------------------------------------------------
@@ -3608,8 +4298,15 @@ const TYPE_COMP_FIELDS = {
   // search budget (6-8 calls total) doesn't stretch to a per-comp assessor
   // lookup for a list this size, and general listing search rarely surfaces it.
   Residential: {
-    fields: ["beds_baths"],
-    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba"`,
+    fields: ["beds_baths", "condition"],
+    // `condition` is a CLOSED vocabulary, not free text: the four words are
+    // named here and the gate that enforces them is RPARSE.normalizeConditions,
+    // which drops anything else to "". The instruction spells the words out and
+    // says what each one means, because the whole value of the field is that a
+    // homeowner picking from a dropdown and the model reading a listing land on
+    // the same word for the same house. If fill rate is poor, fix THIS text —
+    // never loosen the parser (see the note above CONDITION_VALUES).
+    instruction: `"beds_baths" = the bedroom and bathroom count formatted like "4 bd / 3 ba". "condition" = how updated the home is, as EXACTLY ONE of these four words and nothing else: "Needs work" (deferred maintenance, sold as a fixer), "Original" (sound but largely original finishes), "Updated" (some rooms modernized, e.g. kitchen or baths), "Renovated" (comprehensively renovated recently). Read it from the listing description or sale writeup; if the page does not say, use "" - do not infer it from price, age or photos`,
   },
 };
 
@@ -3617,12 +4314,24 @@ const TYPE_COMP_FIELDS = {
 // for a prompt. Keep only the keys this property type actually reports, force
 // them to short strings, and drop blanks. Everything else is discarded rather
 // than sanitized in place.
+// Fields whose VALUE is a closed vocabulary, not just a string. The key
+// whitelist below stops an undeclared field getting through; this stops a
+// declared one carrying arbitrary text. It matters because subject details are
+// interpolated into the prompt and stored in the report's meta, so a 40-char
+// free-text "condition" would be attacker-chosen text in both places, and the
+// comp column beside it would be showing a vocabulary the subject does not use.
+// Declarative rather than an `if (key === "condition")` so the next enum field
+// is one line.
+const SUBJECT_FIELD_ENUMS = { condition: RPARSE.normalizeConditionValue };
+
 function sanitizeSubjectDetails(type, raw) {
   const spec = TYPE_COMP_FIELDS[type];
   if (!spec || !raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const out = {};
   for (const key of spec.fields) {
-    const v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    let v = String(raw[key] == null ? "" : raw[key]).trim().slice(0, 40);
+    const enumOf = SUBJECT_FIELD_ENUMS[key];
+    if (enumOf) v = enumOf(v);
     if (v) out[key] = v;
   }
   return out;
@@ -3659,6 +4368,7 @@ const FIELD_LABELS = {
   zoning: "Zoning",
   price_per_acre: "$/Acre",
   beds_baths: "Beds / Baths",
+  condition: "Condition",
   cap_rate: "Cap Rate",
   tenancy: "Tenancy",
   year_built: "Year Built",
@@ -3705,7 +4415,7 @@ Rules:
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -3724,7 +4434,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // pricier pocket a mile away) and the hero range lands far above what
     // the subject's own street trades at (seen live 2026-08-04: a ~$750k
     // house shown a $927k LOW end off 4 such comps).
-    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size and vintage: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Include beds/baths, year built, and lot size in notes. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate.",
+    Residential: "Focus on single-family homes, townhomes, and condos. Closed home sales are documented in county assessor/recorder records and on 'recently sold' listing pages (zillow.com, redfin.com, realtor.com) - prefer those sources over news coverage. Keep comps in the subject's own neighborhood and price tier, matched to its size, vintage, AND bedroom count: a modest sale on the subject's own streets is a better comp than a newer or larger sale from a pricier pocket nearby, so never reach for the latter just to fill the list. A 2-bed is a different product from a 4-bed even at the same square footage and on the same street, so prefer comps within one bedroom of the subject; if SUBJECT DETAILS include beds/baths, treat that as ground truth. A new-construction or teardown-rebuild sale is a different product from a 1990s resale even on the next street, so prefer comps within about 15 years of the subject's year built. If the only findable sales skew newer, larger, a different bed count, or better-located than the subject, say so plainly in \"summary\". Report sale price and price/SF for sales, or monthly rent for leases/rentals. Beds/baths and year built have their own columns — do not restate them in notes. Lot size belongs in notes only when a source shows it. Leave cap_rate empty unless it is an investment/rental sale with a stated cap rate. Leave tenancy empty.",
   };
 
   // The subject-size lookup belongs to whichever lane searches assessor data:
@@ -3819,8 +4529,22 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
   ].join("\n") : "";
 
+  const listedBlock = (corpusListed && corpusListed.length) ? [
+    ``,
+    `ON-MARKET LISTINGS: our prior research surfaced these asking-price listings in this market that are currently on the market, not closed sales. They are already sourced.`,
+    ...corpusListed.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Include one only when it is genuinely comparable to the target. These are asking prices, not closed transactions: copy source_url, set source_type to "listing", keep the date string as given (Active or Listed Mon YYYY), and the notes caveat that the price is asking rather than a closed sale must fire. Do not treat an asking price as a closed sale. Set "verified": false on these unless they also appear in the verified list above.`,
+  ].join("\n") : "";
+
   return [
-    `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
+    // Residential is a home-buyer CMA, not a CRE analyst write-up. The CRE
+    // role line sent the model hunting LoopNet-shaped deals and writing
+    // warehouse prose around a house. Neighborhood / vintage / beds rules
+    // below still apply; only the job description changes.
+    type === "Residential"
+      ? `You are preparing a comparable market analysis for a home buyer. Use web search to find recent comparable closed home sales. Cite the page you found each sale on. This is an automated estimate with sources, not an appraisal.`
+      : `You are a commercial real estate analyst. Use web search to find recent comparable transactions.`,
     ``,
     `TARGET PROPERTY:`,
     `- Address: ${address}`,
@@ -3842,7 +4566,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // across the county, and the count rules elsewhere in this prompt do not
     // say that on their own.
     type === "Residential"
-      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past about a mile when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
+      ? `NEIGHBORHOOD (Residential, overrides RADIUS above): a home's value is set by its own neighborhood, so comps must come from the subject's immediate area — the same subdivision, or within roughly one mile, and on the same side of any boundary a buyer would notice (school attendance area, a highway or river, a distinctly different price tier). If the market note names a radius in miles (e.g. "2.5 miles"), that radius IS the neighborhood for this search — do not shrink it to one mile, and do not reach past it to pad the list. A cheaper or pricier pocket inside that circle is still a different product; do not include it just because it sits within the named radius. Do NOT widen to the wider town, county, or metro to reach a comp count: returning 3 comps from the subject's own streets is BETTER than returning 8 that include homes miles away, and a distant comp drags the estimate toward a neighborhood the subject is not in. Only reach past the named radius (or about a mile when none was named) when the immediate area genuinely has fewer than 3 sales in the window; when you do, say so in "summary" and say roughly how far you went.`
       : "",
     ``,
     `TASK: Find 3 to ${maxComps} RECENT ${
@@ -3885,19 +4609,33 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
         ? ` (${subjectSizeSqft.toLocaleString("en-US")} SF, so roughly ${Math.round(subjectSizeSqft / 2).toLocaleString("en-US")} to ${(subjectSizeSqft * 2).toLocaleString("en-US")} SF)`
         : ` (once you determine the target's size)`
     } where the market offers them - a small building and a very large one trade at different $/SF. If you must include comps materially larger or smaller to reach 3, keep them, but say so in "summary".`,
+    // Bedroom count is not in the valuation math (beds_baths is a display
+    // field), so the prompt is the only place a 2-bed can be stopped from
+    // pulling a 4-bed headline. Same "fewer local matches beat a padded
+    // list" shape as NEIGHBORHOOD above.
+    type === "Residential"
+      ? `BEDS FIT: a home's bedroom count is a product line, not a footnote. Prefer comps within one bedroom of the subject. A 2-bed must not set the price of a 4-bed (or the reverse) just because the square footage is close. If you must include a different bed count to reach 3 local sales, keep them and say so in "summary".`
+      : "",
     `PRICED BUT UNSIZED COMPS: a sale comp that has a price but no building size cannot support the valuation math. If a sale comp you are including has a price but you could not find its size, spend one of your searches specifically on that building's size (an assessor or listing page) before finalizing. Completing the size on 2-3 priced sale comps matters more than adding one more marginal comp.`,
     subjectDetailBlock,
     typeSpec
       ? `For EACH comp, also report ${["one", "two", "three"][typeSpec.fields.length - 1]} ${type.toLowerCase()} specific${typeSpec.fields.length > 1 ? "s" : ""}: ${typeSpec.instruction}. Search listing pages, brokerage flyers, and property records for these. If one genuinely can't be found, use an empty string "" — do not guess.`
       : "",
-    !isLand
+    type === "Residential"
+      ? `For EACH comp, also report "year_built" = the year the home was constructed as a 4-digit year (e.g. "1998"). If it genuinely can't be found, use "". Do not guess. Leave "tenancy" empty — it is a commercial occupancy field, not a house field.`
+      : !isLand
       ? `For EACH comp, also report "tenancy" = who occupies the building and the lease structure, naming the tenant when it is a single-tenant property (e.g. "Single-tenant NNN - Starbucks", "Multi-tenant, 85% occupied", "Owner-user", "Vacant"). Tenant quality moves pricing, so name national or credit tenants specifically when a source shows one. Also report "year_built" = the year the building was constructed as a 4-digit year (e.g. "1998"). If either genuinely can't be found, use an empty string "" — do not guess.`
       : "",
     verifiedBlock,
     corpusBlock,
     nearbyBlock,
+    listedBlock,
     ``,
-    LANE_GUIDANCE[lane] || "",
+    // LoopNet / Crexi / brokerage-listing lane copy is for commercial
+    // assets. A house search that starts there comes back empty or padded
+    // with the wrong product; residential sources are already named in
+    // typeGuidance (assessor + recently-sold listing pages).
+    type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
     `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
@@ -3941,7 +4679,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = for a closed sale or a signed lease, the closing or signing month-year like "Mar 2025"; for an active listing, "Active" when the page has no post date, or "Listed Mar 2025" when it does. Never write a bare "Mar 2025" for an active listing. "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
     // because of how long it takes to WRITE, not to search (see the streaming
@@ -4005,9 +4743,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // tests. normalizeSourceTypes takes the corpus-audit rule as an argument
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
-const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+const normalizeSourceTypes = (parsed, propertyType) =>
+  RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
-        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt } = RPARSE;
+        normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
+        normalizeSubjectSize, normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4632,7 +5372,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        subjectDetails, lane),
+                        corpus && corpus.listed, subjectDetails, lane),
     maxComps,
     searchUses,
     stream: useStream,
@@ -4863,7 +5603,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
-    const parsed = normalizeSubjectAssessed(
+    const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
       normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
@@ -4871,8 +5611,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               normalizeTrendPct(
                 normalizeCurrency(
                   normalizeSourceTypes(
-                    expandCompKeys(parseCompJson(raw, stats), type)))))))),
-      new Date());
+                    normalizeConditions(
+                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+      new Date()));
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };
@@ -5385,7 +6126,9 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav [hidden]{display:none!important}
 .hdr nav .acct summary{display:flex;align-items:center}
 .hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
-  font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block}
+  font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block;
+  background-size:cover;background-position:center;background-repeat:no-repeat;overflow:hidden}
+.hdr nav .acct .ini.photo{color:transparent;background-color:transparent}
 .hdr nav .dd .em{padding:6px 12px 7px;font-size:12px;color:var(--ink-3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:176px}
 /* Menu rows that act rather than navigate. Restates .dd a's box so the two
@@ -5400,18 +6143,33 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav #themeToggle{display:inline-flex;align-items:center;padding:0;border:0;background:none;
   color:var(--ink-3);cursor:pointer;line-height:0}
 .hdr nav #themeToggle:hover{color:var(--ink)}
+.theme-sun{display:none}
+@media screen{
+  [data-theme="dark"] .theme-moon{display:none}
+  [data-theme="dark"] .theme-sun{display:block}
+  [data-theme="dark"] .hdr nav .dd{box-shadow:var(--lift)}
+}
 `;
 
 // The nav slots. `desk: false` for /how-it-works, which already renders its own
 // My Desk / Log in server-side and would otherwise show two of each.
-function accountNavSlots({ desk = true } = {}) {
+function accountNavSlots({ desk = true, upsell = true } = {}) {
+  // `upsell` exists for ONE surface: a hub. A client reading their broker's
+  // hub is that broker's guest, and the spec's tenant rule is that the hub
+  // carries no Pro prompt of any kind — "a tenant who hits a paywall inside
+  // their own broker's hub is a lost acquisition and an embarrassed broker".
+  // The Pricing link is dropped there by passing ACCOUNT_NAV_PRICING: "";
+  // this drops the Upgrade button, which lives inside the account menu and so
+  // cannot be removed from outside. Every other page keeps both by default.
   // The theme toggle. Rendered here and nowhere else -- the pages that use
   // this helper each render exactly one nav, so a second copy anywhere
   // would double it. Not hidden like the account slots: it needs no
   // knowledge of the visitor, so it is correct on the very first frame.
   return `<button id="themeToggle" type="button" aria-label="Switch colour theme" title="Switch colour theme">` +
-    `<svg viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
-    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg></button>` +
+    `<svg class="theme-moon" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>` +
+    `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
+    `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
     (desk
     ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
@@ -5421,7 +6179,7 @@ function accountNavSlots({ desk = true } = {}) {
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
     `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
-    `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` +
+    (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
     `</div></details>`;
@@ -5453,7 +6211,10 @@ const ACCOUNT_NAV_JS =
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
   `var lab=String(me.name||me.email||"").trim();` +
-  `var ini=$("navAcctInitial");if(ini)ini.textContent=lab.slice(0,1).toUpperCase();` +
+  `var ini=$("navAcctInitial");if(ini){` +
+  `if(me.avatarRev){ini.className="ini photo";ini.style.backgroundImage="url(/api/account/avatar?v="+encodeURIComponent(me.avatarRev)+")";ini.textContent="";}` +
+  `else{ini.className="ini";ini.style.backgroundImage="";ini.textContent=lab.slice(0,1).toUpperCase();}` +
+  `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navUpgrade"),live&&!isPro);` +
@@ -5546,7 +6307,7 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    render 2-4 of these depending on the data, so a fixed column count that
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:22px 0}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:16px 18px;box-shadow:var(--lift)}
 .tile .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);font-weight:600}
 .tile .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:25px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
@@ -5557,10 +6318,10 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
    paper, red label. The .tiles grid above stays for its OTHER consumers
    (the Explorer preview page and the /markets client tiles); only the
    market page itself moved to the ledger. */
-.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0}
+.ledger{display:flex;border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin:22px 0;box-shadow:var(--lift)}
 .lcell{flex:1;min-width:0;padding:14px 18px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
@@ -5578,7 +6339,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 /* Cards. Headings stay serif at reading size rather than the uppercase
    micro-label used elsewhere — these are sentence-length ("What's driving
    Industrial prices in Ontario"), which uppercase 10px would make unreadable. */
-.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0}
+.card{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:22px;margin:18px 0;box-shadow:var(--lift)}
 .card h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:0 0 12px;letter-spacing:normal;text-transform:none}
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
@@ -5590,7 +6351,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .bkhead{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:28px 0 0;letter-spacing:normal;text-transform:none}
 .sub + .bkhead,.kicker + .bkhead{margin-top:8px}
-.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px}
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
 .bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
@@ -5668,7 +6429,7 @@ td:first-child,th:first-child{min-width:180px}
 th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
 td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card)}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift)}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
@@ -5676,7 +6437,7 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
 /* CTA — the calm bordered block from the landing page, not the old gradient. */
-.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;margin:26px 0;text-align:center;box-shadow:var(--lift)}
 .cta h2{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);
   margin:0 0 8px;letter-spacing:normal;text-transform:none}
 /* The BOV band at the top of a covered market page. Same card, tighter to the
@@ -5688,6 +6449,16 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
 button.btn{border:0;cursor:pointer;font-family:inherit}
+/* "Value a property here" mini-form in the market-page CTA — the door back
+   into a pre-filled search on /. 16px input, or iOS Safari zooms on focus and
+   stays zoomed (the .mfilter rule, restated because the two are unrelated
+   selectors). */
+.vform{display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+.vform input{flex:1;min-width:220px;font-size:16px;padding:9px 12px;border:1px solid var(--edge);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+.vform input::placeholder{color:var(--ink-3)}
+.vform input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.cta p.vform-lead{margin:18px auto 10px}
 .cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
   text-decoration:underline;text-decoration-color:var(--edge)}
 .cta button.alt:hover{color:var(--ink)}
@@ -5709,7 +6480,7 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .related a{background:var(--card);border:1px solid var(--edge);border-radius:4px;padding:6px 14px;font-size:13px;color:var(--ink-body)}
 .related a:hover{border-color:var(--ink-3);color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
-.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit}
+.mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit;box-shadow:var(--lift)}
 .mcard:hover{border-color:var(--ink-3)}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
@@ -5728,6 +6499,25 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mfilter input::placeholder{color:var(--ink-3)}
 .mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+/* Market page city hero. The photograph does not theme (same rule as Street
+   View and aerial thumbs): it is a picture of a place. Overlay and caption
+   stay literal dark/white so the title reads on any photo, in either theme. */
+body.has-hero main.wrap{padding-top:20px}
+.mkt-hero{position:relative;height:340px;overflow:hidden;background:var(--slab);color:#fff}
+.mkt-hero-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%}
+.mkt-hero::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(10,14,22,.82) 0%,rgba(10,14,22,.35) 48%,rgba(10,14,22,.18) 100%)}
+.mkt-hero-inner{position:relative;z-index:1;max-width:1024px;margin:0 auto;padding:0 16px 28px;
+  height:100%;display:flex;flex-direction:column;justify-content:flex-end;box-sizing:border-box}
+.mkt-hero h1{color:#fff;margin:8px 0 6px;text-shadow:0 1px 18px rgba(0,0,0,.45)}
+.mkt-hero .sub{color:rgba(255,255,255,.86);margin:0}
+.mkt-hero .sub a{color:rgba(255,255,255,.86);text-decoration-color:rgba(255,255,255,.35)}
+.mkt-hero .sub a:hover{color:#fff}
+.mkt-hero-credit{position:absolute;right:12px;bottom:8px;z-index:2;margin:0;font-size:10px;
+  line-height:1.3;color:rgba(255,255,255,.7);max-width:60%}
+.mkt-hero-credit a{color:rgba(255,255,255,.7)}
+.mkt-hero-credit a:hover{color:#fff}
+@media(max-width:700px){.mkt-hero{height:240px}.mkt-hero h1{font-size:24px}.mkt-hero-inner{padding-bottom:22px}}
 .disc{color:var(--ink-3);font-size:12.5px;margin-top:26px}
 /* Legal pages (/terms, /privacy) — document style: flowing prose under serif
    section headings, a readable measure, no cards or boxes. */
@@ -5763,9 +6553,45 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 ${ACCOUNT_NAV_CSS}`;
 
-// The shared header for every server-rendered page. Takes `signedIn` for the
-// same reason renderHowItWorksHTML does, and the rule recorded there governs
-// here too: these pages are the site's entry points from Google, so an
+// The Explore menu's browse links — ONE list for every header on the site
+// (2026-08-20; this menu used to live as three hand-copied lists that CLAUDE.md
+// told editors to "keep in step", and they drifted more than once). Consumers:
+//   - marketBar() below, the header of every server-rendered page — including
+//     /how-it-works, whose own hand-copied header was retired for marketBar.
+//   - index.html's #exploreMenu, which carries a NAV_LINKS_MARKER comment that
+//     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
+//     file holds no copy of the list any more.
+// Order is the owner's (2026-08-09): Pricing first (rendered separately —
+// it is a door to index.html's pricing modal, not a page), then these four.
+const NAV_LINKS = [
+  ["/brokers", "Brokers"],
+  ["/markets", "Markets"],
+  ["/how-it-works", "How it works"],
+  ["/1031-exchange", "1031 Guide"],
+];
+// `current` is the path of the page being rendered: its own link gets the
+// `.on` style and aria-current so the menu shows where the reader already is.
+const navLinksHtml = (current = "") =>
+  NAV_LINKS.map(([href, label]) =>
+    href === current
+      ? `<a href="${href}" class="on" aria-current="page">${label}</a>`
+      : `<a href="${href}">${label}</a>`).join("");
+// index.html's rendering of the same list. The class string must be made of
+// classes index.html ALREADY uses (#pricingLink, one line above the marker,
+// carries this identical set): tailwind.css is purged against index.html
+// alone, so a utility that existed only in this server-side string would
+// silently stop styling on the next regen. The dark-mode literal-hex bridge
+// in index.html's <style> covers these classes for the same reason.
+const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
+const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label]) =>
+  `<a href="${href}" class="${APP_NAV_LINK_CLASS}">${label}</a>`).join("");
+
+// The shared header for every server-rendered page — since 2026-08-20 that
+// includes /how-it-works, which used to render its own hand-kept copy of this
+// exact markup (the two drifted by an `aria-current` and nothing else, which
+// is how close they were to being one function). Takes `signedIn` because
+// these pages are the site's entry points from Google, so an
 // anonymous visitor needs both auth doors (before 2026-08-08 there were none
 // at all, and a returning customer landing on a market page had nowhere to
 // click), while a member must not be told to create an account they have.
@@ -5774,18 +6600,13 @@ ${ACCOUNT_NAV_CSS}`;
 // a forged cookie changes which buttons are drawn and nothing else.
 // Callers must pair this with sendShellPage()'s headers, or the cached
 // anonymous copy is re-served to someone who has just signed in.
-const marketBar = (signedIn = false) =>
+const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  // Owner's order (2026-08-09): Pricing, Brokers, Markets, How it works, 1031
-  // Guide — mirrored in index.html's menu and /how-it-works'; keep the three
-  // in step.
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
-  `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
-  `<a href="/1031-exchange">1031 Guide</a></div></details>` +
+  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -5898,7 +6719,10 @@ async function findBrokerProfile(email, userId) {
   // unknown SELECTed columns, which would take the email fallback down too);
   // the user_id=eq. filter read is individually caught, so it alone may
   // reference the column.
-  const SELECT = "select=email,slug,display_name,company,public";
+  const SELECT = "select=email,slug,display_name,company,public,license_number";
+  // license_number rides along because VAULT.canPublishAs reads it off this
+  // row. Omit it and the gate sees undefined on every profile and refuses
+  // every publish, with a message about a field the broker already filled.
   if (userId) {
     try {
       const rows = await sbRequest("GET",
@@ -6017,29 +6841,6 @@ function renderBrokerProfileHTML(profile, subs, signedIn) {
 // unparseable dates drop out of trends but stay in counts. Cached in-process
 // like MARKET_CREDIT: one corpus query per TTL, no per-request DB reads.
 // ---------------------------------------------------------------------------
-const MONTHS_IDX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-// "2025" | "Q1 2025" | "Apr 2026" | "April 2026" | "04/2026" | "2026-04(-15)"
-// -> fractional year (mid-period), else null.
-function parseDealDate(s) {
-  const t = String(s || "").trim().toLowerCase();
-  if (!t) return null;
-  let m;
-  if ((m = t.match(/^(19|20)\d{2}$/))) return Number(t) + 0.5;
-  if ((m = t.match(/^q([1-4])\s*((19|20)\d{2})$/))) return Number(m[2]) + (Number(m[1]) * 3 - 1.5) / 12;
-  if ((m = t.match(/^([a-z]{3,9})\.?\s+((19|20)\d{2})$/))) {
-    const mo = MONTHS_IDX[m[1].slice(0, 3)];
-    return mo ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^(\d{1,2})\/((19|20)\d{2})$/))) {
-    const mo = Number(m[1]);
-    return mo >= 1 && mo <= 12 ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^((19|20)\d{2})-(\d{2})(-\d{2})?$/))) {
-    const mo = Number(m[3]);
-    return mo >= 1 && mo <= 12 ? Number(m[1]) + (mo - 0.5) / 12 : null;
-  }
-  return null;
-}
 // Sale rows with a parseable date and numeric $/SF — the trendable subset.
 function saleRowsWithDates(rows) {
   return (rows || [])
@@ -6183,14 +6984,28 @@ const MARKET_FOOTER =
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
-// stack (Census proxy first, Nominatim fallback with 1.1s spacing, hits AND
-// misses cached in localStorage geoCache.v1 — same key shape, so the app and
-// these pages share a cache). Comps geocode sequentially, not in a burst, to
-// stay friendly to /api/geocode's per-IP rate limit. If not a single pin
-// resolves, the whole card hides rather than showing an empty map.
+// stack (Census proxy first — a POST since 2026-08-17, so the address stays out
+// of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
+// localStorage). Comps geocode sequentially, not in a burst, to stay friendly
+// to /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// card hides rather than showing an empty map — which is also what a market
+// page cached from before that deploy does for its last hour of life.
+//
+// --- This cache is DELIBERATELY NOT the app's, and must not be re-joined to
+// it. The two stores held the same key until 2026-08-04, when index.html went
+// to geoCache.v2 so every entry carries the geocoder's echoed label; photos
+// and footprint sizing gate on that label through geoLabelMatches, which
+// returns false when it is missing. This script has no use for labels — it
+// draws pins and nothing else — so it stores {lat, lng} alone. Sharing one
+// key again would let a market-page visit write a label-less entry that the
+// app then reads for the same address, silently costing that property its
+// subject photo and its footprint size estimate, and costing it persistently,
+// because the miss is what got cached. A separate NAME rather than a lower
+// version number: version numbers invite being re-synced by anyone who reads
+// the two as having drifted apart, which is exactly how this comes back. ---
 const MARKET_MAP_JS = `(function(){
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
-  var CACHE_KEY = "geoCache.v1";
+  var CACHE_KEY = "mktGeoCache.v1";
   var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
   function save(k, v) {
     cache[k] = v;
@@ -6200,11 +7015,18 @@ const MARKET_MAP_JS = `(function(){
       localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
     } catch (e) {}
   }
-  function jfetch(u) {
+  function jfetch(u, o) {
     return Promise.race([
-      fetch(u).then(function (r) { return r.json(); }),
+      fetch(u, o).then(function (r) { return r.json(); }),
       new Promise(function (_, rej) { setTimeout(function () { rej(new Error("timeout")); }, 7000); }),
     ]);
+  }
+  function postJson(u, payload) {
+    return jfetch(u, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   }
   var nq = Promise.resolve();
   function nominatim(a) {
@@ -6223,7 +7045,7 @@ const MARKET_MAP_JS = `(function(){
     var k = String(a || "").trim().toLowerCase();
     if (!k) return Promise.resolve(null);
     if (k in cache) { var h = cache[k]; return Promise.resolve(h && isFinite(h.lat) ? h : null); }
-    return jfetch("/api/geocode?address=" + encodeURIComponent(a))
+    return postJson("/api/geocode", { address: a })
       .then(function (j) { return (j && isFinite(j.lat) && isFinite(j.lng)) ? { lat: j.lat, lng: j.lng } : null; })
       .catch(function () { return null; })
       .then(function (f) { return f || nominatim(a); })
@@ -6261,6 +7083,25 @@ const MARKET_MAP_JS = `(function(){
     });
     chain.then(function () {
       if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+    });
+  });
+})();`;
+
+// The market-page CTA's "value a property here" form(s): store the typed
+// address under the key index.html's startup already consumes (the
+// /how-it-works landing form's exact mechanism), then navigate to the
+// form's data-dest — /?type=<type> for a member, the signup door otherwise.
+// Inlined like MARKET_MAP_JS so the page stays self-contained. No ${} — this
+// string is interpolated into a <script>.
+const MARKET_VALUE_FORM_JS = `(function(){
+  [].forEach.call(document.querySelectorAll("form.vform"), function (f) {
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = f.querySelector("input");
+      var addr = ((input && input.value) || "").trim();
+      if (!addr) return;
+      try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+      location.href = f.getAttribute("data-dest") || "/";
     });
   });
 })();`;
@@ -6447,7 +7288,8 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
+  const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
@@ -6459,17 +7301,23 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<meta property="og:title" content="${escHtml(title)}"/>\n` +
     `<meta property="og:description" content="${escHtml(description)}"/>\n` +
     `<meta property="og:url" content="${canonical}"/>\n` +
-    `<meta property="og:image" content="${SITE_URL}/og-image.png"/>\n` +
+    `<meta property="og:image" content="${escHtml(shareImage)}"/>\n` +
     `<meta name="twitter:card" content="summary_large_image"/>\n` +
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // The install identity rides on every public page, not just the app:
+    // under the wall an anonymous visitor at / gets the landing render, and
+    // without this link Chrome/Edge never offer "Install CompNinja" to the
+    // people who haven't signed up yet — the exact audience a download door
+    // exists for.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
-    `</head>\n<body>\n${marketBar(signedIn)}\n<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -6508,6 +7356,18 @@ function sendNotFound(req, res, message) {
   }));
 }
 
+// Coarse on purpose: this only keeps the obvious non-humans (search
+// crawlers, link previewers, monitoring curls, the test suite's bare
+// fetches) out of a human-traffic count — it is not bot defense, and a
+// count it feeds should be read as "roughly people". An empty UA counts as
+// a bot: every real browser sends one, and undici/curl by default do not
+// send a browser-shaped one.
+function isCrawlerUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return /bot|crawl|spider|slurp|preview|headless|curl|wget|python|monitor|undici|node/i.test(s);
+}
+
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
   const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
   res.writeHead(200, {
@@ -6517,6 +7377,102 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
     ...(headers || {}),
   });
   res.end(render(signedIn));
+}
+
+function marketHeroBanner(p, title) {
+  const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys });
+  const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
+  const heading = `<h1>${escHtml(title)}</h1>`;
+  const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
+  if (!hero) return { banner: "", intro: crumb + heading + blurb, ogImage: null };
+  const creditInner = escHtml(hero.credit) + (hero.license ? " · " + escHtml(hero.license) : "");
+  const credit = hero.commonsUrl
+    ? `<a href="${escHtml(hero.commonsUrl)}" target="_blank" rel="noopener noreferrer">${creditInner}</a>`
+    : creditInner;
+  return {
+    banner:
+      `<div class="mkt-hero">` +
+        `<img class="mkt-hero-img" src="${escHtml(hero.src)}"${hero.srcset ? ` srcset="${escHtml(hero.srcset)}" sizes="100vw"` : ""} alt="${escHtml(hero.alt)}" width="${MARKETHERO.HERO_WIDTH}" height="${MARKETHERO.HERO_HEIGHT}" decoding="async" fetchpriority="high"/>` +
+        `<div class="mkt-hero-inner">${crumb}${heading}${blurb}</div>` +
+        `<p class="mkt-hero-credit">${credit}</p>` +
+      `</div>`,
+    intro: "",
+    ogImage: hero.kind === "photo" ? SITE_URL + hero.src : null,
+  };
+}
+
+function readJpegHead(file) {
+  try {
+    const st = fs.statSync(file);
+    const fd = fs.openSync(file, "r");
+    try {
+      const n = Math.min(st.size, 65536);
+      const buf = Buffer.alloc(n);
+      fs.readSync(fd, buf, 0, n, 0);
+      return { bytes: st.size, dims: HEROQUALITY.jpegDimensions(buf) };
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return { bytes: 0, dims: null };
+  }
+}
+
+function sampleMarketPathForHero(key) {
+  const merged = allMarketPages();
+  for (const [slug, p] of Object.entries(merged)) {
+    if (MARKETHERO.cityKey(p.city, p.state) === key) return "/market/" + slug;
+  }
+  return null;
+}
+
+function inspectMarketHeroes() {
+  const dir = path.join(__dirname, "market-heroes");
+  const rows = [];
+  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) {
+    const main = readJpegHead(path.join(dir, row.file));
+    const sib = readJpegHead(path.join(dir, MARKETHERO.srcsetName(row.file)));
+    const g = HEROQUALITY.gradeHero({
+      width: main.dims && main.dims.width,
+      height: main.dims && main.dims.height,
+      bytes: main.bytes,
+      siblingWidth: sib.dims && sib.dims.width,
+      siblingHeight: sib.dims && sib.dims.height,
+      siblingBytes: sib.bytes,
+    });
+    rows.push({
+      key,
+      label: HEROQUALITY.displayCity(key),
+      src: "/market-heroes/" + row.file,
+      alt: row.alt,
+      credit: row.credit,
+      license: row.license,
+      commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
+      samplePath: sampleMarketPathForHero(key),
+      ok: g.ok,
+      grade: g.grade,
+      reasons: g.reasons,
+      bpp: g.bpp,
+      width: g.width,
+      height: g.height,
+      bytes: g.bytes,
+      liveKind: !g.ok ? "satellite" : "photo",
+    });
+  }
+  return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
+}
+
+let HERO_INSPECT_MEM;
+function cachedHeroInspect() {
+  if (!HERO_INSPECT_MEM) {
+    try { HERO_INSPECT_MEM = inspectMarketHeroes(); }
+    catch (err) {
+      console.error("hero inspect failed:", err && err.message);
+      HERO_INSPECT_MEM = { rows: [], look: 0, total: 0 };
+    }
+  }
+  return HERO_INSPECT_MEM;
 }
 
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
@@ -6760,8 +7716,9 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
   // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
-  // under the same localStorage geoCache.v1 the app uses so the two share
-  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // in localStorage under this page's own key, never the app's (see
+  // MARKET_MAP_JS for why the two must stay apart). Only street-numbered
+  // addresses get pins: submarket/aggregate rows
   // geocode to a district point, which reads as a wrong pin (same rule as the
   // report's street-view gate). A rough city-distance gate drops geocoder
   // mismatches that would land a pin in another state. The leading number
@@ -6890,7 +7847,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // The link is the ordinary signup door with this market's type prefilled.
   // There is deliberately no direct BOV form for a logged-out visitor: the
   // request is made against a report, and the report needs an account.
-  const bovLead = brokerList.length && !opts.preview
+  //
+  // ANONYMOUS ONLY, and that is the third condition rather than an oversight.
+  // This band speaks to a property owner arriving from a search engine, and
+  // the CTA below already splits on the same line: a member gets "Use this
+  // market in your work" (watch it, take the comps), because somebody who
+  // signed in is here to work rather than to be pitched an introduction.
+  // Without this the two would stack — a member on a covered market would be
+  // sold a free opinion of value at the top of the page and offered a CSV at
+  // the bottom of it.
+  const bovLead = !signedIn && brokerList.length && !opts.preview
     ? `<div class="cta lead"><h2>Get a broker's opinion of value on your ${escHtml(p.type.toLowerCase())} property, free</h2>` +
       `<p>${escHtml(brokerList[0].company || brokerList[0].display_name)} covers ${escHtml(p.city)} ` +
       `${escHtml(p.type.toLowerCase())} and prepares opinions of value for owners here. Ask, and we make the ` +
@@ -6909,6 +7875,25 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     + "&type=" + encodeURIComponent(p.type);
   const exploreLink =
     `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  // "Value a property here" — the door back into a pre-filled search
+  // (2026-08-20). The address rides sessionStorage's pendingLandingAddress.v1
+  // (the /how-it-works landing form's exact mechanism, so index.html already
+  // consumes it) and the type rides ?type=, which startup marks as an
+  // explicit resolution. Anonymous visitors go through the signup door —
+  // auth=signup is the one query form ACCOUNT_WALL never 302s — and members
+  // land straight on the form. The script is MARKET_VALUE_FORM_JS, emitted
+  // with the body below; it degrades to a plain navigation with the type
+  // still prefilled if JS never runs (the submit falls through to data-dest
+  // only via JS, so the no-JS fallback is the required-input form simply not
+  // submitting — same as the /how-it-works landing form).
+  const valDest = signedIn
+    ? "/?type=" + encodeURIComponent(p.type)
+    : "/?auth=signup&type=" + encodeURIComponent(p.type);
+  const valForm = (btnLabel) =>
+    `<form class="vform" data-dest="${escHtml(valDest)}">` +
+    `<input type="text" required autocomplete="street-address" aria-label="Property address" ` +
+    `placeholder="e.g. 1200 W Main St, ${escHtml(p.city)}, ${escHtml(p.state)}"/>` +
+    `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
       `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
@@ -6916,6 +7901,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
+      `<p class="vform-lead">Or value a property in ${escHtml(p.city)} — comps found live, in about a minute:</p>` +
+      valForm("Value it &rarr;") +
       exploreLink + `</div>`
     : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
       // The BOV half of this promise is made ONLY where a broker actually
@@ -6926,13 +7913,20 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
           `from a licensed local broker who covers ${escHtml(p.city)}.`
         : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
-      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      valForm("Get my free valuation &rarr;") +
       exploreLink + `</div>`;
 
+  const cityHero = marketHeroBanner(p, title);
+  // Contextual door into the 1031 guide: someone reading a replacement
+  // market's numbers mid-exchange is exactly who that page serves, and the
+  // footer link alone is invisible at the moment it matters. One line, after
+  // the CTA so it never competes with the conversion ask above it.
+  const guide1031 =
+    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
+    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
+    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
-    `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>` +
-    `<h1>${escHtml(title)}</h1>` +
-    `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>` +
+    cityHero.intro +
     bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
@@ -6945,6 +7939,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    `<script>${MARKET_VALUE_FORM_JS}</script>` +
+    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -6955,6 +7951,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     noindex: Boolean(opts.preview),
     head: mapHead,
     signedIn,
+    hero: cityHero.banner,
+    ogImage: cityHero.ogImage,
   });
 }
 
@@ -7040,7 +8038,7 @@ function renderMarketDirectoryHTML(signedIn) {
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn, current: "/markets" });
 }
 
 
@@ -7115,7 +8113,7 @@ section{padding:48px 0}
    closing on its double-ruled median. Keep it in step with index.html's
    .rd-ledger and #compsTable rules — when the report changes shape, this
    exhibit is what tells visitors it did. */
-.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
 .cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
 .exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
@@ -7130,7 +8128,7 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash)}
+.lcell.mid{background:var(--wash-2)}
 .lcell.mid .lab{color:var(--red)}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
@@ -7159,14 +8157,14 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
-.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px}
+.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
 .step{padding:22px 24px;border-bottom:1px solid var(--hair)}
 .step:last-child{border-bottom:0}
 .num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
 .step p{font-size:13.5px;color:var(--ink-mute);margin:0}
 /* Brokers ledger — three trades as a statement, not a process. Do not reuse
    .steps: Method's 3-up encodes sequence; Private / Credit / Leads do not. */
-.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px}
+.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
 .bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
@@ -7174,7 +8172,7 @@ table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upper
 .bk .badge{margin:0 0 8px}
 .bkmore{margin:18px 0 40px}
 /* FAQ accordions — chevron marker, matching the home page's disclosure style */
-details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px;box-shadow:var(--lift)}
 details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
 /* This chevron's stroke color is %2394a3b8 -- #94A3B8 URL-encoded inside an
@@ -7189,7 +8187,7 @@ details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transit
 details.q[open] summary::after{transform:rotate(180deg)}
 details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 /* Closing CTA */
-.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px}
+.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px;box-shadow:var(--lift)}
 .cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
@@ -7199,7 +8197,7 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 .btn.sm{padding:7px 14px;font-size:13px}
 .band section{padding:72px 0}
 .landForm{margin-top:0}
-.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden}
+.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden;box-shadow:var(--lift)}
 .landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
 .landRow input::placeholder{color:var(--ink-3)}
 button.btn{border:0;cursor:pointer;font-family:inherit}
@@ -7361,7 +8359,7 @@ const BROKERS_FAQ = [
   ["What does the Verified badge mean?",
    "A named broker vouched for this deal and our team reviewed it. It is the strongest provenance a report shows."],
   ["Is my vault private?",
-   "Yes. Uploaded comps are visible only to you. They never appear in anyone else's report unless you publish one, and publishing is a separate, explicit step."],
+   "Yes. Uploaded comps are visible only to you until you choose otherwise, and there are exactly two ways to choose: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are explicit, and both are reversible. Nothing else is ever read out of your vault."],
   ["How long does review take?",
    "We review every submission by hand. Approved comps start appearing on matching reports after that."],
 ];
@@ -7529,7 +8527,7 @@ function renderBrokersPageHTML(signedIn) {
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
 }
 
 // ---------------------------------------------------------------------------
@@ -7543,7 +8541,7 @@ function renderBrokersPageHTML(signedIn) {
 // contact (no street address; the SOS registry publishes it for anyone who
 // truly needs it).
 // ---------------------------------------------------------------------------
-const LEGAL_UPDATED = "August 3, 2026";
+const LEGAL_UPDATED = "August 14, 2026";
 
 function renderTermsPageHTML(signedIn) {
   const title = "Terms of Service | CompNinja";
@@ -7640,8 +8638,8 @@ function renderPrivacyPageHTML(signedIn) {
     `<ul>` +
     `<li><strong>Search inputs.</strong> The property address, property type, lookback window, and any ` +
     `building attributes you enter, such as size, unit count, or clear height.</li>` +
-    `<li><strong>Account information.</strong> Your email address and a password. Passwords are stored ` +
-    `only as salted scrypt hashes and are never stored in plain text.</li>` +
+    `<li><strong>Account information.</strong> Your email address, a password, and an optional profile ` +
+    `photo you upload. Passwords are stored only as salted scrypt hashes and are never stored in plain text.</li>` +
     `<li><strong>Lead and broker-opinion requests.</strong> Your name, email address, phone number, ` +
     `company, and the property your request concerns.</li>` +
     `<li><strong>Saved work.</strong> Portfolio items and watchlist entries associated with your ` +
@@ -7884,56 +8882,15 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ],
   });
 
+  // The header IS marketBar since 2026-08-20 — this page carried a hand-kept
+  // copy of the identical markup (the diff was one aria-current, now
+  // marketBar's `current` argument), and two copies of a nav drift.
+  // Everything recorded on marketBar holds here: auth chrome on cookie
+  // presence, desk:false slots so My Desk renders exactly once, and the
+  // caching split (no-store + vary: cookie) that keeps the signed-in
+  // variant honest.
   const body = `
-<header class="hdr">
-  <div class="wrap">
-    <div class="hleft">
-      <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-    </div>
-    <nav>
-      <details>
-        <summary>Explore<span class="car">▾</span></summary>
-        <div class="dd">
-          ${ACCOUNT_NAV_PRICING}
-          <a href="/brokers">Brokers</a>
-          <a href="/markets">Markets</a>
-          <a href="/how-it-works" class="on" aria-current="page">How it works</a>
-          <a href="/1031-exchange">1031 Guide</a>
-        </div>
-      </details>
-      ${signedIn
-        ? `<a href="/desk">My Desk</a>
-      <a class="btn sm" href="/">Run a report</a>`
-        : `<a href="/?auth=signin">Log in</a>
-      <a class="btn sm" href="/?auth=signup">Create account</a>`}
-      ${/* This page renders My Desk / Log in server-side already (2026-08-08),
-            so it takes the circle and Pricing only — desk:false, or a member
-            would see My Desk twice. */ ""}
-      ${accountNavSlots({ desk: false })}
-    </nav>
-  </div>
-</header>
-<script>document.addEventListener("click",function(e){
-  document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-    if(!d.contains(e.target))d.open=false;});});
-(function(){
-  // Escape = the page you came from when that was CompNinja; otherwise home.
-  // The visible back button was removed 2026-08-03 at the owner's request;
-  // the key stayed. Same logic as MARKET_BAR — keep the two in step.
-  function goBack(){
-    try{
-      if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
-    }catch(err){}
-    location.href="/";
-  }
-  document.addEventListener("keydown",function(e){
-    if(e.key!=="Escape")return;
-    var dd=document.querySelector(".hdr nav details[open]");
-    if(dd){dd.open=false;return;}
-    goBack();
-  });
-})();</script>
-${ACCOUNT_NAV_JS}
+${marketBar(signedIn, "/how-it-works")}
 
 <main>
   <div class="wrap">
@@ -7953,7 +8910,7 @@ ${ACCOUNT_NAV_JS}
               </div>
             </form>
             <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
-            <p class="landProof">Up to 12 cited comps &middot; about a minute &middot; every source disclosed.</p>
+            <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
         </div>
@@ -8084,10 +9041,10 @@ ${ACCOUNT_NAV_JS}
   if(!document.documentElement.classList.contains("anim"))return;
   var targets=[].slice.call(document.querySelectorAll("[data-rv]"));
   // Split each counting numeral into its own span HERE rather than in the
-  // served HTML, so the page as delivered still reads "Up to 12" and
-  // "$4,580,000" as single strings for crawlers, for anything grepping it,
-  // and for a visitor with no JS at all. data-count carries the numeral as it
-  // is displayed, commas and all, which is what makes it findable in the text.
+  // served HTML, so the page as delivered still reads "$4,580,000" as a
+  // single string for crawlers, for anything grepping it, and for a visitor
+  // with no JS at all. data-count carries the numeral as it is displayed,
+  // commas and all, which is what makes it findable in the text.
   var counters=[];
   [].slice.call(document.querySelectorAll("[data-count]")).forEach(function(el){
     var shown=el.getAttribute("data-count"),text=el.textContent,at=text.indexOf(shown);
@@ -8165,6 +9122,10 @@ ${ACCOUNT_NAV_JS}
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // Same manifest link as marketShell, same reason: this is the landing
+    // page anonymous visitors get at / under the wall, so it is where the
+    // browser must learn the site is installable.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +
@@ -8472,6 +9433,27 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
+    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
+    // skipped at the route, so this is roughly people) against the BOV leads
+    // the guide produced (source "1031" — the localStorage marker the
+    // widget stamps). The split by `source` says which audience is reading:
+    // "visitor" is the SEO traffic the page exists for, "member" is people
+    // already here. Conversion is left for the card to phrase, because the
+    // two counts age out of the 10k-row window at different rates and a
+    // hard percentage would look more solid than it is.
+    guide1031: (() => {
+      const views = rows.filter((r) => r.kind === "guide_1031");
+      const day30 = Date.now() - 30 * 86400000;
+      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
+      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
+      return {
+        views: views.length,
+        views30d: in30(views),
+        members: views.filter((r) => (r.source || "") === "member").length,
+        leads: leads1031.length,
+        leads30d: in30(leads1031),
+      };
+    })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
     // from outside this process, which buys a schedule somebody chose and
     // costs the thing every external scheduler eventually does: it stops, and
@@ -8774,6 +9756,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/hq">HQ</a>
+      <a href="/admin/heroes">Heroes</a>
       <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -8908,6 +9891,22 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
+  // before this shipped. No computed conversion percentage on purpose: the
+  // counts are small and age out of the event window at different rates, so
+  // the honest read is both numbers side by side.
+  var g31=d.guide1031;
+  var guideCard=(g31===undefined)?"":
+    "<div class=card><h2>1031 guide funnel</h2>"+
+    (!g31.views&&!g31.leads
+      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
+        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
+      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
+        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
+        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
+        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
+        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
+    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -8998,6 +9997,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
+    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -10546,7 +11546,8 @@ async function hqSnapshot() {
     // Render's logs — this page is what actually gets looked at.
     audience: PRO_ENABLED && PRO_AUDIENCE.length ? PRO_AUDIENCE.length : 0,
   };
-  return { analytics, submissions, dev, contacts, revenue, alerts };
+  let heroes = cachedHeroInspect();
+  return { analytics, submissions, dev, contacts, revenue, alerts, heroes };
 }
 
 // Self-contained HQ page: same public-shell + key-gate pattern and Research
@@ -10655,6 +11656,51 @@ async function linkVaultProperties(userId, comps) {
   }
 }
 
+// How often each published comp has been cited in a report, read from the
+// count comp_submissions has kept since migration 003 and bumpCitedCounts has
+// been incrementing all along.
+//
+// The number was already public on /broker/<slug> ("Report citations · times
+// used in valuation reports") and was visible NOWHERE to the broker who earned
+// it -- and only reachable there at all by opting the profile into being
+// public, which broker-directory.js's two-consents rule keeps false by default.
+// So a vault-first broker published comps and got no signal back whatsoever.
+// This is a read of an existing figure onto the page of the person it is
+// about; nothing new is counted and no hot path changes.
+//
+// MUTATES rows in place, and NEVER THROWS: the count is a reward, not part of
+// the book. A broker whose vault would not open because a citation read failed
+// would rightly consider that worse than a missing number.
+async function attachCitedCounts(rows) {
+  try {
+    if (!DB_CONFIGURED) return;
+    const ids = [];
+    for (const r of rows || []) {
+      const id = r && r.published_submission_id;
+      if (id != null && String(id).trim() !== "" && ids.indexOf(id) < 0) ids.push(id);
+    }
+    if (!ids.length) return;
+    // Chunked: a broker with hundreds of published comps would otherwise build
+    // an in.() list long enough to be refused as a URL, and the failure would
+    // be silent because this whole function swallows its errors.
+    const counts = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const slice = ids.slice(i, i + 200);
+      const subs = await sbRequest("GET",
+        `comp_submissions?id=in.(${slice.map((v) => encodeURIComponent(v)).join(",")})` +
+        "&select=id,cited_count");
+      for (const sub of subs || []) counts.set(String(sub.id), Number(sub.cited_count) || 0);
+    }
+    for (const r of rows || []) {
+      if (!r || r.published_submission_id == null) continue;
+      const n = counts.get(String(r.published_submission_id));
+      if (n != null) r.cited_count = n;
+    }
+  } catch (err) {
+    console.error("cited_count read failed:", err.message);
+  }
+}
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
@@ -10673,7 +11719,7 @@ async function vaultReadPayload(req, params) {
   }
   query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR, profileR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR, firmR, sharedR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
@@ -10683,6 +11729,13 @@ async function vaultReadPayload(req, params) {
     // settled alongside the rest anyway: an identity read must never be able
     // to fail a vault the broker can otherwise open.
     DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : Promise.resolve(null),
+    // The firm, if any, and which of this broker's comps are already on its
+    // shelf (migration 030). Settled alongside the rest for the reason the
+    // profile is: neither may be able to fail a vault the broker can
+    // otherwise open, and both resolve to "no firm, nothing shared" — the
+    // state that offers no control rather than a broken one.
+    DB_CONFIGURED ? orgMembershipsFor(user.email) : Promise.resolve(null),
+    DB_CONFIGURED ? sharedCompIdsFor(user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -10701,6 +11754,7 @@ async function vaultReadPayload(req, params) {
   if (compsR.status === "rejected") throw compsR.reason;
   if (uploadsR.status === "rejected") throw uploadsR.reason;
   const rows = compsR.value || [];
+  await attachCitedCounts(rows);
 
   return { status: 200, body: {
     // Through the API's own shape, never the raw storage rows. This is the
@@ -10728,12 +11782,33 @@ async function vaultReadPayload(req, params) {
     // and `email` are no business of this page.
     identity: (() => {
       const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      // license_number is sent back to its OWNER's own vault page, which is
+      // the one place it belongs: the page has to refill the field on edit,
+      // and has to be able to say publishing is blocked before the broker
+      // clicks Publish and is refused. It is never rendered publicly and is
+      // deliberately absent from publicBrokerRow.
       return {
         display_name: (p && p.display_name) || "",
         company: (p && p.company) || "",
+        license_number: (p && p.license_number) || "",
         creditedTo: VAULT.creditName(p),
+        canPublish: VAULT.canPublishAs(p).ok,
       };
     })(),
+    // The firm's half of the header, and the per-comp control. `firm: null`
+    // is the ordinary case — a broker in no firm — and the page renders
+    // exactly what it rendered before this feature when it sees one.
+    firm: await (async () => {
+      const rows = (firmR.status === "fulfilled" && firmR.value) || [];
+      const membership = ORG.membershipOf(rows, user.email);
+      if (!membership) return null;
+      const org = (await orgsByIds([membership.org_id])).get(String(membership.org_id));
+      return { id: membership.org_id, name: (org && org.name) || "your firm" };
+    })(),
+    // Ids, not a flag on each comp: the comps array is the vault API's own
+    // contract (vault-api.js's allowlist) and a shelf membership is not a
+    // property of the comp, it is a property of the relationship.
+    sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
   } };
 }
 
@@ -10786,6 +11861,149 @@ async function vaultCompsForReport(req, ent, { market, type, months }) {
     // Deliberately quiet about the rows and loud about the failure: the
     // message may name a column, never a comp.
     console.error("vault blend read failed:", err.message);
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The SHARED vault (migration 032) — a broker's comps, opted in to their firm.
+//
+// Spec §7. Rules in blend-comps.js; this owns the I/O.
+//
+// FOUR THINGS HOLD THE WALL UP HERE, and every one of them is load-bearing:
+//
+//   1. `org_comps` is a SEPARATE TABLE and no read below ever widens a
+//      `user_id=eq.` filter to an org. Migration 013's rule, third time of
+//      asking; test/org-routes.test.js fails the build if the widened form
+//      appears anywhere in this file.
+//   2. Sharing is per comp and OPT-IN. There is no bulk "share my vault", no
+//      default, and nothing an admin can set on a member's behalf. A broker's
+//      book is theirs.
+//   3. It returns [] on ANY failure, like vaultCompsForReport — a firm read is
+//      an enrichment, never a reason to fail a search someone is waiting on,
+//      and an error must never widen what comes back.
+//   4. Nothing PUBLIC reads this table. Firm-shared is not published; the
+//      "0 published" counter on /vault still counts the public records alone.
+// ---------------------------------------------------------------------------
+
+// Copy one or more of the caller's own comps onto their firm's shelf.
+//
+// Upsert on (org_id, source_comp_id) so sharing twice is a no-op and the
+// refresh-on-edit path below is the same write rather than a read-then-write
+// race. The rows are read back scoped by user_id FIRST, so a comp id from
+// somebody else's vault cannot be shared by naming it.
+async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
+  if (!DB_CONFIGURED || !orgId || !compIds.length) return 0;
+  const rows = await sbRequest("GET",
+    `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
+    `&id=in.(${pgInList(compIds)})&limit=${compIds.length}`);
+  const located = await attachPropertyCoords(user.id, Array.isArray(rows) ? rows : []);
+  const payload = [];
+  for (const row of located) {
+    const comp = BLEND.firmCompPayload(row);
+    // A comp with no address or no date cannot render and cannot be filtered
+    // by a lookback. broker-vault.js refuses both at the door, so this is a
+    // guard against a hand-written row, not an expected case.
+    if (!comp) continue;
+    payload.push({
+      org_id: orgId,
+      shared_by_user_id: user.id,
+      shared_by_name: sharedByName || "",
+      source_comp_id: row.id,
+      market: row.market,
+      property_type: row.property_type,
+      deal_date: row.deal_date,
+      comp,
+      updated_at: new Date().toISOString(),
+    });
+  }
+  if (!payload.length) return 0;
+  await sbRequest("POST", "org_comps?on_conflict=org_id,source_comp_id", payload,
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return payload.length;
+}
+
+// Pull a comp back off every firm shelf it is on. Scoped by the SHARER, not by
+// the comp id alone: unsharing is the broker's own control over their own row.
+async function unshareVaultComps(userId, compIds) {
+  if (!DB_CONFIGURED || !compIds.length) return;
+  await sbRequest("DELETE",
+    `org_comps?shared_by_user_id=eq.${encodeURIComponent(userId)}` +
+    `&source_comp_id=in.(${pgInList(compIds)})`, undefined, { prefer: "return=minimal" });
+}
+
+// Which of this broker's comps are already on a firm shelf. Feeds the vault's
+// per-row control and its header count, so the page can say what is shared
+// before anybody clicks anything.
+async function sharedCompIdsFor(userId) {
+  try {
+    if (!DB_CONFIGURED || !userId) return [];
+    const rows = await sbRequest("GET",
+      `org_comps?shared_by_user_id=eq.${encodeURIComponent(userId)}` +
+      `&select=source_comp_id&limit=2000`);
+    return [...new Set((rows || []).map((r) => r.source_comp_id).filter(Boolean))];
+  } catch (err) {
+    console.error("Shared-comp id read failed:", err.message);
+    return [];
+  }
+}
+
+// Re-copy one comp onto every firm shelf it is already on, after its owner
+// edited it. Reads the shelves first and re-shares only where a copy exists,
+// so an edit never PUTS a comp on a shelf the broker did not choose.
+async function refreshSharedComp(user, compId) {
+  if (!DB_CONFIGURED) return;
+  const rows = await sbRequest("GET",
+    `org_comps?shared_by_user_id=eq.${encodeURIComponent(user.id)}` +
+    `&source_comp_id=eq.${encodeURIComponent(compId)}&select=org_id,shared_by_name&limit=20`);
+  for (const r of rows || []) {
+    await shareVaultCompsToOrg(user, r.org_id, [compId], r.shared_by_name || "");
+  }
+}
+
+// A colleague's shared comps, for THIS report. The mirror of
+// vaultCompsForReport, and it repeats that function's four rules for its own
+// reasons:
+//
+//   - `canUseVault` is tested, not `pro` and not membership alone. Blending
+//     private comps into a report is the vault capability; a free colleague
+//     reads the firm's shared REPORTS (which needs no plan, like any invited
+//     share) but does not get a paid capability by being invited to a firm.
+//   - The caller's OWN shared comps are excluded, because they already arrive
+//     through vaultCompsForReport. Without this the broker's own deal appears
+//     twice and is counted twice in the valuation.
+//   - The lookback filter is honesty as much as relevance: a report says it
+//     covers N months, so an older comp would quietly widen the window the
+//     valuation is drawn from.
+//   - [] on any failure.
+async function orgCompsForReport(req, ent, user, { market, type, months }) {
+  try {
+    if (!DB_CONFIGURED) return [];
+    if (!ent || !ent.canUseVault) return [];
+    if (!market || !type || !user) return [];
+    const memberships = await orgMembershipsFor(user.email);
+    const orgIds = ORG.activeOrgIds(memberships, user.email);
+    if (!orgIds.length) return [];
+
+    const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
+      .toISOString().slice(0, 10);
+    const rows = await sbRequest("GET",
+      `org_comps?org_id=in.(${pgInList(orgIds)})` +
+      `&market=eq.${encodeURIComponent(market)}` +
+      `&property_type=eq.${encodeURIComponent(type)}` +
+      `&deal_date=gte.${cutoff}` +
+      `&shared_by_user_id=neq.${encodeURIComponent(user.id)}` +
+      `&order=deal_date.desc&limit=50`);
+    if (!Array.isArray(rows) || !rows.length) return [];
+
+    const firms = await orgsByIds(rows.map((r) => r.org_id));
+    return rows.map((r) => ({
+      ...r, firm: (firms.get(String(r.org_id)) || {}).name || "",
+    }));
+  } catch (err) {
+    // Loud about the failure, quiet about the rows: the message may name a
+    // column, never a comp.
+    console.error("Firm comp blend read failed:", err.message);
     return [];
   }
 }
@@ -10993,6 +12211,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
     <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
     <nav>
       <a href="/admin">Analytics</a>
+      <a href="/admin/heroes">Heroes</a>
       <a href="/dev">Dev hub</a>
       <a href="/contacts">Contacts</a>
       <a href="/">Run a report</a>
@@ -11182,6 +12401,10 @@ function renderAlerts(d){
   if(s&&s.db===true&&s.pending){
     html+='<div class="attn">'+plural(s.pending,"broker comp is","broker comps are")+' awaiting review. <a href="/admin">Review on Analytics</a></div>';
   }
+  var h=d&&d.heroes;
+  if(h&&h.look){
+    html+='<div class="attn">'+plural(h.look,"market photo needs","market photos need")+' a look. <a href="/admin/heroes">Review photos</a></div>';
+  }
   el("alerts").innerHTML=html;
 }
 // Built AFTER the gate passes. In a cookie-unlocked session the links are
@@ -11352,6 +12575,16 @@ const server = http.createServer((req, res) =>
           : await vaultCompsForReport(req, ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
+        // A colleague's comps, opted in to the firm (migration 032). Read
+        // alongside the broker's own and blended in the same place, because
+        // they are the same KIND of row — private, full weight, never public —
+        // and splitting them across two seams would be two chances to blend
+        // one of them upstream of the cache.
+        const firmCompRows = internal
+          ? []
+          : await orgCompsForReport(req, ent, await getSessionUser(req), {
+              market: marketOf(addressOk), type: typeOk, months: monthsOk,
+            });
         // Filled after the guest gate so a blocked anonymous visitor does not
         // pay for a type-wide corpus read. The closure below captures this
         // binding; cache-hit and billed exits both run after it is assigned.
@@ -11376,16 +12609,26 @@ const server = http.createServer((req, res) =>
               keyOf: corpusKeyOf,
               subjectAddress: addressOk,
               isAggregateAddress,
+              propertyType: typeOk,
+              marketNote: noteOk,
+              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
             });
             if (merged && merged.corpus_count) {
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${RADIUSBLEND.RADIUS_MILES} mi of ${addressOk}`);
+              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
+              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
             }
             merged = RADIUSBLEND.attachCompDistances(merged, subject);
           } else {
             merged = RADIUSBLEND.attachCompDistances(merged);
           }
           const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, { asOfMs: Date.now(), subjectSqft });
+          const gated = GATE.gateReport(merged, ent, {
+            asOfMs: Date.now(),
+            subjectSqft,
+            propertyType: typeOk,
+            radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+            subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
+          });
           if (!gated || typeof gated !== "object") return gated;
           // `ent` was resolved with THIS report's id, so it already knows a single-report
           // unlock makes its exports unlimited — /api/config cannot, because it
@@ -11403,6 +12646,14 @@ const server = http.createServer((req, res) =>
           // Serialization-time like everything else here, so the cached object
           // never carries one visitor's entitlement to the next.
           const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+          // Cross-link to the standing /market/<slug> page for this market +
+          // type, when one exists. Serialization-time like everything else in
+          // this closure, so the cached object never carries it and a market
+          // page published later lights up older cached reports too. In-memory
+          // lookup, no I/O. It rides the report payload, so a saved or shared
+          // report keeps its door into the market page.
+          const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+          if (marketPage) withExports.market_page = marketPage;
           // LAST, and only here. Every caller of gate() is an exit — the cache
           // hit, the derived-window hit, the SSE result and the plain JSON
           // result — so this is the one place a private comp can enter, and it
@@ -11411,7 +12662,23 @@ const server = http.createServer((req, res) =>
           // earlier serves one broker's private book to the next visitor who
           // searches that address, because the cache is keyed by property and
           // not by user.
-          return BLEND.blendPrivateComps(withExports, vaultRows);
+          // The broker's own comps first, then the firm's — in that order, so
+          // dedupeFirmComps can drop a colleague's copy of a deal the broker
+          // already holds rather than the other way round. Two people at one
+          // firm were routinely on opposite sides of the same transaction, so
+          // without this the deal is counted twice in the valuation with
+          // nothing on screen explaining the shift.
+          const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
+          if (!firmCompRows.length) return withMine;
+          const firmComps = BLEND.dedupeFirmComps(
+            (withMine.comps || []).filter(BLEND.isPrivateComp),
+            firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
+          if (!firmComps.length) return withMine;
+          return {
+            ...withMine,
+            comps: [...(withMine.comps || []), ...firmComps],
+            private_count: (withMine.private_count || 0) + firmComps.length,
+          };
         };
 
         // The gate's principle applied to live progress: a limited visitor
@@ -11520,6 +12787,9 @@ const server = http.createServer((req, res) =>
           // total, so report both rather than let the count overstate what
           // the model was actually offered.
           console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+        }
+        if (corpus.listedCount) {
+          console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
         }
 
         // Everything above this line answers in plain JSON — the password gate,
@@ -11827,10 +13097,17 @@ const server = http.createServer((req, res) =>
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
           ...(sizeClean ? { size_sqft: sizeClean } : {}),
-          // "bov" = the owner-mode Broker Opinion of Value request; anything
-          // else is the export-unlock form.
-          source: ["export", "bov"].includes(source) ? source : "export",
+          // "bov" = the owner-mode Broker Opinion of Value request; "1031" =
+          // the same request from a browser that recently read the
+          // /1031-exchange guide (index.html tags it — a bov-class lead on
+          // the 45/180-day clock, the highest-intent source the site has);
+          // anything else is the export-unlock form.
+          source: ["export", "bov", "1031"].includes(source) ? source : "export",
         };
+        // Everything BOV-shaped (broker matching, alerts, the follow-up
+        // email) treats "1031" as a bov: the tag is attribution and urgency,
+        // never a different funnel.
+        const bovClass = lead.source === "bov" || lead.source === "1031";
         // Share link for the lead's report. Validated hard against our own
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
@@ -11853,7 +13130,7 @@ const server = http.createServer((req, res) =>
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
-        if (lead.source === "bov") {
+        if (bovClass) {
           const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
@@ -11861,7 +13138,7 @@ const server = http.createServer((req, res) =>
           }
         }
         notifyByEmail(
-          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          `${lead.source === "1031" ? "New BOV request (1031 exchange)" : bovClass ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
             ["Name", lead.name],
             ["Email", lead.email],
@@ -11869,7 +13146,9 @@ const server = http.createServer((req, res) =>
             ["Company", lead.company],
             ["Property", lead.address],
             ["Property type", lead.type],
-            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Came from", lead.source === "1031"
+              ? "Broker Opinion of Value request (read the 1031 guide — likely on the 45/180-day clock)"
+              : bovClass ? "Broker Opinion of Value request" : "Export unlock form"],
             ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
@@ -11883,13 +13162,21 @@ const server = http.createServer((req, res) =>
         // Gated on dest === "db": the inbox is DB-only, so a lead that fell
         // back to the local file is invisible there, and mailing brokers
         // about a lead they can never see would be worse than saying nothing.
-        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+        if (bovClass && DB_CONFIGURED && dest === "db") {
           (async () => {
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
             if (!LEADSVC.isCanonicalMarket(market) || !lead.type) return;
+            // in.() over the lead's whole metro, not eq. on its one city:
+            // the inbox widens a broker's coverage outward, and this has to
+            // meet it from the other end or a Boise broker sees a Meridian
+            // lead they were never told about. Values are canonical "City, ST"
+            // from a curated table, and quoted because they contain a comma.
+            const markets = LEADSVC.coverageMarketsFor(market, leadSiblings());
+            if (!markets.length) return;
+            const inList = markets.map((m) => `"${encodeURIComponent(m)}"`).join(",");
             const cov = await sbRequest("GET",
-              `broker_coverage?market=eq.${encodeURIComponent(market)}` +
+              `broker_coverage?market=in.(${inList})` +
               `&property_type=eq.${encodeURIComponent(lead.type)}&select=user_id&limit=200`);
             const ids = LEADSVC.notifyTargets(cov);
             if (!ids.length) return;
@@ -11899,7 +13186,10 @@ const server = http.createServer((req, res) =>
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
-              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null,
+              // The one extra fact a broker acts on immediately: this seller
+              // is inside a 1031 window and must transact.
+              lead.source === "1031" ? "1031 exchange" : null]
               .filter(Boolean).join(" · ");
             const now = Date.now();
             for (const u of users || []) {
@@ -11928,7 +13218,7 @@ const server = http.createServer((req, res) =>
         }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
-        if (lead.source === "bov") {
+        if (bovClass) {
           sendOutboundEmail(
             lead.email,
             "Your CompNinja report + what happens next",
@@ -12000,7 +13290,7 @@ const server = http.createServer((req, res) =>
           setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
           logEvent("signup", {});
           console.log(`Account created: ${emailOk}`);
-          return sendJson(res, 200, { email: user.email, name: user.name || "" });
+          return sendJson(res, 200, publicAccount(user));
         }
         // login — identical 401 for unknown email and wrong password.
         const ok = await verifyPassword(password, existing ? existing.password_hash : DUMMY_HASH);
@@ -12008,7 +13298,7 @@ const server = http.createServer((req, res) =>
         const token = await createSession(existing.id);
         setSessionCookie(res, req, token, Math.floor(SESSION_TTL_MS / 1000));
         logEvent("login", {});
-        return sendJson(res, 200, { email: existing.email, name: existing.name || "" });
+        return sendJson(res, 200, publicAccount(existing));
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error(`Error handling ${req.url}:`, err);
@@ -12034,12 +13324,88 @@ const server = http.createServer((req, res) =>
   if (req.method === "GET" && req.url === "/api/account/me") {
     getSessionUser(req).then((user) => {
       if (!user) return sendJson(res, 401, { error: "Not signed in." });
-      return sendJson(res, 200, { email: user.email, name: user.name });
+      return sendJson(res, 200, publicAccount(user));
     }).catch((err) => {
       console.error("me error:", err);
       sendJson(res, 500, { error: "Account lookup failed." });
     });
     return;
+  }
+
+  // Profile photo. Bytes live in user_avatars (file fallback: on the user
+  // object). /me only ever carries avatarRev, never the data URI, so the
+  // header hydration on every market page stays small.
+  if (req.url.split("?")[0] === "/api/account/avatar") {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        let row;
+        try { row = await findUserAvatar(user.id); }
+        catch (err) {
+          console.error("Avatar read failed:", err.message);
+          return sendJson(res, 404, { error: "No photo." });
+        }
+        const decoded = row && row.data_uri ? AVATAR.decodeAvatar(row.data_uri) : null;
+        if (!decoded) return sendJson(res, 404, { error: "No photo." });
+        const rev = user.avatarRev || AVATAR.avatarRev(row.data_uri);
+        res.writeHead(200, {
+          "content-type": decoded.mime,
+          "content-length": decoded.bytes.length,
+          "cache-control": "private, max-age=86400",
+          "etag": `"${rev}"`,
+          "x-content-type-options": "nosniff",
+        });
+        return res.end(decoded.bytes);
+      })().catch((err) => {
+        console.error("Avatar GET failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your photo. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (req.method === "PUT") {
+      let body = "";
+      req.setEncoding("utf8");
+      // 80KB image is ~110KB as base64 inside JSON.
+      req.on("data", (c) => { body += c; if (body.length > 1.5e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (rateLimited("avatar:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await getSessionUser(req);
+          if (!user) return sendJson(res, 401, { error: "Please sign in." });
+          const parsed = JSON.parse(body || "{}");
+          const checked = AVATAR.validateAvatar(parsed);
+          if (checked.error) return sendJson(res, 400, { error: checked.error });
+          if (checked.clear) {
+            await setUserAvatar(user.id, { dataUri: "", rev: "" });
+            return sendJson(res, 200, publicAccount({ ...user, avatarRev: "" }));
+          }
+          await setUserAvatar(user.id, { dataUri: checked.dataUri, rev: checked.rev });
+          return sendJson(res, 200, publicAccount({ ...user, avatarRev: checked.rev }));
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Avatar save failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save your photo. Please try again in a minute." });
+        }
+      });
+      return;
+    }
+
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        await setUserAvatar(user.id, { dataUri: "", rev: "" });
+        return sendJson(res, 200, publicAccount({ ...user, avatarRev: "" }));
+      })().catch((err) => {
+        console.error("Avatar delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove your photo. Please try again in a minute." });
+      });
+      return;
+    }
   }
 
   if (req.method === "DELETE" && req.url === "/api/account") {
@@ -12223,7 +13589,16 @@ const server = http.createServer((req, res) =>
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
+        // Each saved property carries its door into the standing market page,
+        // when one exists — the desk is the hub, so a portfolio row links out
+        // to /market/<slug> as well as back into its report. Pure in-memory
+        // decoration (marketPageInfo reads the loaded page stores), applied
+        // after withMarketMovement so its fail-safe copy is what gets marked.
+        const items = (await withMarketMovement(await listPortfolio(user.id))).map((item) => {
+          const mp = marketPageInfo(marketOf(item.address), item.property_type);
+          return mp ? { ...item, market_page: mp } : item;
+        });
+        return sendJson(res, 200, { items });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }
@@ -12944,9 +14319,11 @@ const server = http.createServer((req, res) =>
         if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const [leads, intros] = await Promise.all([
+          // in.(bov,1031): a 1031-tagged lead is a BOV request with a clock
+          // on it — it must be at least as visible as an ordinary one.
           sbRequest("GET",
-            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+            `leads?source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft,source&order=ts.desc&limit=200`),
           sbRequest("GET",
             `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
             `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
@@ -12955,11 +14332,16 @@ const server = http.createServer((req, res) =>
           console.warn("broker leads: 90-day BOV window hit the 200-row cap — brokers in quiet markets may be missing leads");
         }
         const withMarket = (leads || []).map((l) => ({ ...l, market: marketOf(l.address) }));
-        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || []);
+        const mine = LEADSVC.filterLeadsForCoverage(withMarket, cov || [], leadSiblings());
         const introSet = new Set((intros || []).map((r) => String(r.lead_id)));
         return sendJson(res, 200, {
           leads: mine.map((l) => LEADSVC.anonymizeLead(l, introSet)),
-          coverage: cov || [],
+          // `nearby` is how many EXTRA markets each row reaches. Without it a
+          // broker whose coverage says "Boise, ID" sees a Meridian lead in
+          // their inbox and has no way to tell that from a bug.
+          coverage: (cov || []).map((c) => ({
+            ...c, nearby: LEADSVC.nearbyCountFor(c.market, leadSiblings()),
+          })),
         });
       } catch (err) {
         console.error("broker leads read failed:", err.message);
@@ -13193,8 +14575,8 @@ const server = http.createServer((req, res) =>
         // leads outside the product's own contract.
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft,source&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
@@ -13205,7 +14587,7 @@ const server = http.createServer((req, res) =>
         const cov = await sbRequest("GET",
           `broker_coverage?user_id=eq.${encodeURIComponent(user.id)}&select=market,property_type&limit=500`);
         const visible = LEADSVC.filterLeadsForCoverage(
-          [{ ...lead, market: marketOf(lead.address) }], cov || []);
+          [{ ...lead, market: marketOf(lead.address) }], cov || [], leadSiblings());
         if (!visible.length) return sendJson(res, 404, { error: "That lead no longer exists." });
         // Read-then-insert so we can tell "new" from "already requested" (and
         // avoid double-emailing the owner); the upsert below still backstops
@@ -13257,6 +14639,7 @@ const server = http.createServer((req, res) =>
           ["Property", lead.address],
           ["Property type", lead.type],
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
@@ -13828,13 +15211,14 @@ const server = http.createServer((req, res) =>
           // their signup name and copied it into broker_company, which is
           // published as their firm. Unset now means the refusal below,
           // which the vault turns into a one-time question.
-          const by = VAULT.creditName(profile);
-          if (!by) {
-            return sendJson(res, 400, {
-              error: "Add your firm or display name before publishing — published comps are credited to it.",
-              code: "needs_credit_name",
-            });
+          //
+          // canPublishAs answers BOTH requirements (credit name, then license
+          // number) so this route and publish-many cannot drift apart.
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
           }
+          const by = gateBy.by;
 
           const inserted = await sbRequest("POST", "comp_submissions",
             [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
@@ -13857,6 +15241,139 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault publish failed:", err.message);
           return sendJson(res, 502, { error: "That didn't go through. Nothing was changed." });
+        }
+      });
+      return;
+    }
+
+    // Publish a batch, from the filter the broker is already looking at.
+    //
+    // Publishing is how the public corpus grows, and it was one button and one
+    // identical confirm dialog per comp -- a broker with 60 clean sales read 60
+    // dialogs, so in practice nobody published a book, they published a comp.
+    //
+    // Deliberately its own route rather than an `ids` array on the single one:
+    // that route's contract (one comp, 404 if it is not yours, 400 if it is not
+    // publishable) is exactly right for one comp and exactly wrong for fifty,
+    // where "some of these are not ready" is the normal answer rather than a
+    // failure. The rules it enforces are the SAME rules -- same openVault gate,
+    // same user_id scoping, same VAULT.canPublish, same credit-name refusal --
+    // because a second set would be a second place for the public corpus to
+    // grow a hole.
+    if (req.method === "POST" && path === "/api/vault/publish-many") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultpub:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const { ids } = JSON.parse(body || "{}");
+          if (!Array.isArray(ids) || !ids.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Shape-filtered before the query, like the single route's isUuid
+          // check: broker_comps.id is a uuid column, so one malformed entry
+          // would make PostgREST reject the whole in.() list and take the
+          // batch down with it.
+          const clean = [];
+          for (const id of ids) {
+            if (VAULT.isUuid(id) && clean.indexOf(id) < 0) clean.push(id);
+          }
+          // A ceiling on one request, not on a book. Each comp costs an insert
+          // plus a patch, so an uncapped batch would be a single HTTP request
+          // doing thousands of round trips. Over the cap we publish what we can
+          // and say how many are left rather than refusing outright -- the
+          // operation is idempotent (an already-published comp is skipped), so
+          // running it again is safe and is what the page tells them to do.
+          const batch = clean.slice(0, VAULT_PUBLISH_BATCH);
+          const remaining = Math.max(0, clean.length - batch.length);
+          if (!batch.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          // Asked ONCE for the whole batch, before anything is written: fifty
+          // comps published under no credit is fifty rows given away, and the
+          // page turns this exact code into the form that fixes it.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
+          }
+          const by = gateBy.by;
+
+          // user_id in the filter, always. Without it, knowing another broker's
+          // comp ids would be enough to publish their private data.
+          const rows = (await sbRequest("GET",
+            `broker_comps?id=in.(${batch.map((i) => encodeURIComponent(i)).join(",")})` +
+            `&user_id=eq.${encodeURIComponent(user.id)}&limit=${batch.length}`)) || [];
+
+          const skipped = [];
+          const ready = [];
+          for (const comp of rows) {
+            if (comp.published) continue;                 // idempotent, not an error
+            const gate = VAULT.canPublish(comp);
+            if (!gate.ok) { skipped.push({ id: comp.id, address: comp.address, reason: gate.reason }); continue; }
+            ready.push(comp);
+          }
+
+          // Bounded concurrency: sequential would make a 100-comp batch a
+          // minute-long request, and unbounded would open 200 sockets to
+          // PostgREST at once. Each comp's insert and patch stay paired inside
+          // one task, so a submission id can never be matched to the wrong
+          // comp -- which is why this is not one bulk insert with the ids read
+          // back positionally. Repeat properties are a real thing in this
+          // vault (two deals on one building), so the returned rows could not
+          // be re-paired by address afterwards even in principle.
+          let published = 0;
+          const failed = [];
+          const queue = ready.slice();
+          const worker = async () => {
+            for (;;) {
+              const comp = queue.shift();
+              if (!comp) return;
+              let subId = null;
+              try {
+                const inserted = await sbRequest("POST", "comp_submissions",
+                  [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
+                  { prefer: "return=representation" });
+                subId = inserted && inserted[0] && inserted[0].id;
+                if (!subId) throw new Error("comp_submissions insert returned no id");
+                await sbRequest("PATCH",
+                  `broker_comps?id=eq.${encodeURIComponent(comp.id)}` +
+                  `&user_id=eq.${encodeURIComponent(user.id)}`,
+                  { published: true, published_at: new Date().toISOString(), published_submission_id: subId },
+                  { prefer: "return=minimal" });
+                published += 1;
+              } catch (err) {
+                // The submission landed but the comp was never marked: the row
+                // is in the public records crediting a comp the vault still
+                // calls unpublished, and a re-run would credit it TWICE. Take
+                // the submission back out. Best-effort by necessity -- if this
+                // fails too there is nothing further to try from here -- but
+                // leaving it would turn one transient error into a permanent
+                // duplicate nobody would ever go looking for.
+                if (subId) {
+                  await sbRequest("DELETE",
+                    `comp_submissions?id=eq.${encodeURIComponent(subId)}`,
+                    undefined, { prefer: "return=minimal" }).catch(() => {});
+                }
+                failed.push({ id: comp.id, address: comp.address, reason: "Could not publish this one — try again." });
+              }
+            }
+          };
+          await Promise.all(Array.from({ length: Math.min(6, ready.length) }, worker));
+
+          console.log(`📤 Vault bulk publish: ${published} of ${rows.length} by ${by} (user ${user.id})`);
+          return sendJson(res, 200, {
+            ok: true, published, creditedTo: by,
+            skipped: skipped.concat(failed).slice(0, 50),
+            skippedCount: skipped.length + failed.length,
+            remaining,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault bulk publish failed:", err.message);
+          return sendJson(res, 502, { error: "That didn't go through." });
         }
       });
       return;
@@ -13886,7 +15403,7 @@ const server = http.createServer((req, res) =>
           }
           const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
           if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
-          const { display_name, company } = parsed.identity;
+          const { display_name, company, license_number } = parsed.identity;
 
           const existing = await findBrokerProfile(user.email, user.id);
           if (existing) {
@@ -13900,7 +15417,7 @@ const server = http.createServer((req, res) =>
             // user_id rides along to finish adopting that legacy row.
             await sbRequest("PATCH",
               `broker_profiles?email=eq.${encodeURIComponent(String(existing.email || user.email).toLowerCase())}`,
-              { display_name, company, user_id: user.id, updated_at: new Date().toISOString() },
+              { display_name, company, license_number, user_id: user.id, updated_at: new Date().toISOString() },
               { prefer: "return=minimal" });
           } else {
             // First statement creates the row. `public` is NOT passed: the
@@ -13914,7 +15431,7 @@ const server = http.createServer((req, res) =>
                 const ins = await sbRequest("POST", "broker_profiles", {
                   email: String(user.email).toLowerCase(),
                   user_id: user.id,
-                  display_name, company, slug,
+                  display_name, company, license_number, slug,
                 }, { prefer: "return=representation" });
                 created = ins && ins[0];
               } catch (err) {
@@ -13929,7 +15446,7 @@ const server = http.createServer((req, res) =>
               await sbRequest("POST", "broker_profiles", {
                 email: String(user.email).toLowerCase(),
                 user_id: user.id,
-                display_name, company, slug,
+                display_name, company, license_number, slug,
               }, { prefer: "return=minimal" });
             }
           }
@@ -13938,8 +15455,12 @@ const server = http.createServer((req, res) =>
           refreshBrokerProfiles();
           return sendJson(res, 200, {
             ok: true,
-            identity: { display_name, company },
+            identity: { display_name, company, license_number },
             creditedTo: VAULT.creditName({ display_name, company }),
+            // So the page can say whether publishing is unlocked without a
+            // second round trip, and without ever echoing the number back
+            // into anything public.
+            canPublish: VAULT.canPublishAs({ display_name, company, license_number }).ok,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -13987,6 +15508,13 @@ const server = http.createServer((req, res) =>
             // that can fail, so there is no window where retracting turns out
             // to have been premature.
             const unpublished = await retractPublishedComp(user.id, comp);
+            // Pull it off every firm shelf too, and BEFORE the delete rather
+            // than relying on 030's cascade. The cascade is the backstop for
+            // account deletion; doing it explicitly here means the firm copy
+            // is gone even if the FK were ever changed, and it keeps the
+            // "their delete pulls it" promise in code where it can be read.
+            await unshareVaultComps(user.id, [id]).catch((err) =>
+              console.error("firm unshare on delete failed:", err.message));
             await sbRequest("DELETE",
               `broker_comps?id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(user.id)}`,
               undefined, { prefer: "return=minimal" });
@@ -14064,6 +15592,22 @@ const server = http.createServer((req, res) =>
           // failed link costs a join, a failed edit costs the broker their
           // correction.
           await linkVaultProperties(user.id, [row]);
+          // Refresh any firm copy of this comp (migration 032). AFTER the
+          // write and after validation, exactly like retractPublishedComp
+          // above and for the scar that rule came from: a rejected edit must
+          // not disturb what colleagues already hold. It is also the reason a
+          // firm copy is a copy rather than a live join — a colleague must
+          // never read a half-saved row — and the reason the refresh is an
+          // upsert: a comp that is on no shelf simply matches nothing.
+          //
+          // Never throws. The comp is saved; a stale firm copy costs
+          // freshness, while a failure here would cost the broker their
+          // correction.
+          try {
+            await refreshSharedComp(user, id);
+          } catch (err) {
+            console.error("firm comp refresh failed (the edit is saved):", err.message);
+          }
           return sendJson(res, 200, {
             ok: true, unpublished,
             comp: VAULTAPI.toApiComp((saved && saved[0]) || null),
@@ -14072,6 +15616,72 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault comp edit failed:", err.message);
           sendJson(res, 502, { error: "Could not save that change. Please try again." });
+        }
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/vault/firm — opt a comp in to your firm ----------
+    //
+    // Spec §7, and the whole of it is opt-in: per comp, by the comp's owner,
+    // never by an admin, never in bulk over a whole vault, and never a
+    // default. A broker's book is theirs; this is the one door out of it, and
+    // it is one comp at a time by construction.
+    //
+    // It goes through openVault() (401 / 403 canUseVault / 503) and THEN
+    // checks membership, so a broker with no firm is told the truth in the
+    // right order rather than being asked to upgrade for a firm they have.
+    if ((req.method === "POST" || req.method === "DELETE") && path === "/api/vault/firm") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultfirm:" + clientIp(req), 120)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = JSON.parse(body || "{}");
+          const ids = [...new Set((Array.isArray(parsed.compIds) ? parsed.compIds : [])
+            // VAULT.isUuid, the same guard PATCH /api/vault/comp uses: a
+            // malformed id would otherwise make PostgREST reject the whole
+            // query and this route would answer 502 for what is caller-sent
+            // nonsense. Silently dropped rather than refused, because a
+            // partially valid list is a client bug and the valid part is
+            // still exactly what the broker asked to share.
+            .map((v) => String(v || "").trim()).filter((v) => VAULT.isUuid(v)))].slice(0, 200);
+          if (!ids.length) return sendJson(res, 400, { error: "Which comps?" });
+
+          if (req.method === "DELETE") {
+            // No membership check: taking your own comp back is always yours
+            // to do, including from a firm you have since left. Scoped by
+            // shared_by_user_id, so it can only ever reach your own rows.
+            await unshareVaultComps(user.id, ids);
+            return sendJson(res, 200, { ok: true, shared: false });
+          }
+
+          const memberships = await orgMembershipsFor(user.email);
+          const orgId = String(parsed.orgId || "").trim();
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          // The name a colleague reads on the badge. The broker's stated
+          // credit identity first — the same string a publish would credit,
+          // so one broker is named one way across the product — then their
+          // account name. Deliberately never their email: a firm roster
+          // already carries that, and a comp badge is not the place to
+          // restate it.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const sharedByName = VAULT.creditName(profile) || user.name || "";
+          const n = await shareVaultCompsToOrg(user, orgId, ids, sharedByName);
+          logEvent("vault_firm_share", {});
+          return sendJson(res, 200, { ok: true, shared: true, count: n });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault firm share failed:", err.message);
+          sendJson(res, 502, { error: "Could not update firm sharing. Please try again." });
         }
       });
       return;
@@ -14254,44 +15864,67 @@ const server = http.createServer((req, res) =>
   // the front-end re-places map pins from the free US Census geocoder — which
   // has no CORS headers, hence this pass-through. Failures return {} so the
   // browser can fall back to Nominatim (which it can reach directly). ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/api/geocode") {
-    const address = (new URL(req.url, "http://localhost").searchParams.get("address") || "").trim().slice(0, 200);
-    if (!address) return sendJson(res, 400, { error: "address is required." });
-    // Generous cap: one report geocodes the subject plus up to 8 comps.
-    if (rateLimited("geo:" + clientIp(req), 120)) {
-      return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
-    }
-    (async () => {
+  //
+  // **POST, and the address travels in the BODY** (2026-08-17). A query string
+  // is written to the platform's access logs and leaks in every outbound
+  // Referer header, and this route sees a wider set of addresses than any
+  // other: the subject plus every comp of every report, market pages included.
+  // Same reasoning as POST /api/report-access and POST /api/hub/access; this
+  // one simply covers far more of them. It matters most for the comps that are
+  // not public — a broker's private vault comp is geocoded HERE and nowhere
+  // else, because GUARD 2 of the private-comp contract stops it at this hop
+  // rather than letting it reach Nominatim
+  // (docs/superpowers/specs/2026-08-06-private-comp-geocoding.md). Sending an
+  // off-market address to our own proxy and then logging it in a URL undid a
+  // good part of what that guard bought.
+  //
+  // The GET form is REMOVED rather than kept as a deprecated alias: a door
+  // left open is one stale caller away from putting addresses back in URLs,
+  // and nothing here can detect that happening. The cost of removing it is
+  // bounded and self-healing — index.html is served `no-store` so the app
+  // updates on the next load, and the only other caller is MARKET_MAP_JS,
+  // embedded in market pages cached `public, max-age=3600`. For at most an
+  // hour after deploy those cached pages geocode nothing, and that script
+  // hides the whole map card when no pin resolves, so it degrades to no map
+  // rather than a broken one.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/geocode") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
       try {
+        // Generous cap: one report geocodes the subject plus up to 8 comps.
+        if (rateLimited("geo:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many geocode requests. Please wait a few minutes." });
+        }
+        const address = String(JSON.parse(body || "{}").address || "").trim().slice(0, 200);
+        if (!address) return sendJson(res, 400, { error: "address is required." });
         const ll = await geocodeCensus(address);
         if (ll) return sendJson(res, 200, { lat: ll.lat, lng: ll.lng, matchedAddress: ll.matchedAddress, source: "census" });
         return sendJson(res, 200, {});
-      } catch (_) {
-        return sendJson(res, 200, {}); // soft failure — the client falls back
+      } catch (err) {
+        // A malformed body is the caller's bug and says so; everything else is
+        // a soft failure, because the client's own fallback handles {}.
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        return sendJson(res, 200, {});
       }
-    })();
+    });
     return;
   }
 
-  // --- Street View photo proxy. Powers the click-to-load building photo in
-  // map pin popups (docs/superpowers/specs/2026-07-28-streetview-photos-
-  // design.md). Key stays server-side; the FREE metadata endpoint is asked
-  // first (cached) so a spot with no imagery never bills an image request.
-  // Dark when GOOGLE_MAPS_API_KEY is unset. Every failure path is a bare
-  // 404 — the popup <img>'s onerror removes it and the popup stays text-only. ---
+  // --- Street View photo proxy. Aerial is already in the popup; this
+  // overlays a street-level shot ONLY when a camera sits within
+  // SVAIM.MAX_PANO_M of the snapped building and we can aim it at that
+  // building. A far pano (fence, neighbor, warehouse street) 404s and the
+  // aerial stays. Coords only — address aiming photographed the road on
+  // unmapped parcels. Dark when GOOGLE_MAPS_API_KEY is unset. ---
   if (req.method === "GET" && req.url.split("?")[0] === "/api/streetview") {
     const params = new URL(req.url, "http://localhost").searchParams;
-    // Prefer an address: Google geocodes it rooftop-accurate and aims the
-    // camera at the building's front — noticeably better for houses, whose
-    // OSM footprints are often missing so the coordinate path could only aim
-    // at the street centerline. Coordinates remain the fallback.
-    const address = String(params.get("address") || "").trim().slice(0, 200);
     // Number(null) is 0, so missing params must not masquerade as 0,0.
     const lat = params.get("lat") === null ? NaN : Number(params.get("lat"));
     const lng = params.get("lng") === null ? NaN : Number(params.get("lng"));
     const hasCoords = isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-    if (!address && !hasCoords) {
-      return sendJson(res, 400, { error: "address or lat and lng are required." });
+    if (!hasCoords) {
+      return sendJson(res, 400, { error: "lat and lng are required." });
     }
     if (!GOOGLE_MAPS_API_KEY) { res.writeHead(404); return res.end(); }
     // A report has <= ~9 pins; 60/window is generous for a human reader.
@@ -14300,35 +15933,44 @@ const server = http.createServer((req, res) =>
     }
     (async () => {
       try {
-        const loc = address ? encodeURIComponent(address) : lat.toFixed(5) + "," + lng.toFixed(5);
-        let hasImagery = STREETVIEW_META_CACHE.get(loc);
-        if (hasImagery === undefined) {
+        const loc = lat.toFixed(5) + "," + lng.toFixed(5);
+        let aim = STREETVIEW_META_CACHE.get(loc);
+        if (aim === undefined) {
           const mr = await fetch(
             "https://maps.googleapis.com/maps/api/streetview/metadata?location=" + loc +
-              "&source=outdoor&key=" + GOOGLE_MAPS_API_KEY,
+              "&source=outdoor&radius=" + SVAIM.MAX_PANO_M +
+              "&key=" + GOOGLE_MAPS_API_KEY,
             { signal: AbortSignal.timeout(6000) }
           );
           const mj = await mr.json();
-          hasImagery = Boolean(mj && mj.status === "OK");
+          const panoLL = mj && mj.status === "OK" && mj.location
+            ? { lat: Number(mj.location.lat), lng: Number(mj.location.lng) }
+            : null;
+          const aimed = SVAIM.aimAt({ lat, lng }, panoLL);
+          aim = aimed
+            ? {
+                heading: aimed.heading,
+                panoId: String(mj.pano_id || ""),
+                plat: panoLL.lat,
+                plng: panoLL.lng,
+              }
+            : false;
           if (STREETVIEW_META_CACHE.size >= 500) {
             STREETVIEW_META_CACHE.delete(STREETVIEW_META_CACHE.keys().next().value);
           }
-          STREETVIEW_META_CACHE.set(loc, hasImagery);
+          STREETVIEW_META_CACHE.set(loc, aim);
         }
-        if (!hasImagery) { res.writeHead(404); return res.end(); }
-        // No `heading` param: Google then aims the camera at the given point
-        // from the nearest pano — the "look at the building" behavior.
-        // fov=100 + a slight upward pitch: in dense downtowns the pano sits
-        // right against tall buildings, and the old fov=80 straight-on shot
-        // came back as a slice of wall or one storefront window (Boston
-        // Financial District report). The wider, slightly raised frame
-        // shows a recognizable building there while barely changing the
-        // suburban/industrial shots taken from across a parking lot.
-        const ir = await fetch(
-          "https://maps.googleapis.com/maps/api/streetview?size=600x360&location=" + loc +
-            "&source=outdoor&fov=100&pitch=6&key=" + GOOGLE_MAPS_API_KEY,
-          { signal: AbortSignal.timeout(8000) }
-        );
+        if (!aim) { res.writeHead(404); return res.end(); }
+        let imgUrl = "https://maps.googleapis.com/maps/api/streetview?size=600x360"
+          + "&source=outdoor&fov=80&pitch=6"
+          + "&heading=" + Number(aim.heading).toFixed(1)
+          + "&key=" + GOOGLE_MAPS_API_KEY;
+        if (aim.panoId) {
+          imgUrl += "&pano=" + encodeURIComponent(aim.panoId);
+        } else {
+          imgUrl += "&location=" + Number(aim.plat).toFixed(5) + "," + Number(aim.plng).toFixed(5);
+        }
+        const ir = await fetch(imgUrl, { signal: AbortSignal.timeout(8000) });
         if (!ir.ok) { res.writeHead(404); return res.end(); }
         const buf = Buffer.from(await ir.arrayBuffer());
         res.writeHead(200, {
@@ -14436,25 +16078,32 @@ const server = http.createServer((req, res) =>
 
   // --- Address Explorer: corpus-backed address suggestions (see
   // docs/superpowers/specs/2026-08-03-address-explorer-design.md). Returns up
-  // to 8 real, street-numbered addresses for a market+type so a visitor with
-  // no address in hand can still reach a report. Addresses ONLY — no prices,
-  // dates, or transactions; it reads as "buildings you could value", not comp
-  // data. That once made it safe to serve to everyone, but the feature is now
-  // Pro-only (`canExploreAddresses`), so the gate below is what decides — not
-  // the harmlessness of the payload.
-  // The list is deliberately DETERMINISTIC (newest deal first, then alphabetical)
-  // so every visitor sees the same addresses and their clicks concentrate
-  // onto the same search-cache entries: first click bills, repeats are free.
-  // Zero Anthropic cost here; the browser tops up thin markets from OSM
-  // Overpass on its own. Failure-safe: errors answer 200 with an empty list.
+  // to 8 real, street-numbered addresses for a market so a visitor with no
+  // address in hand can still reach a report. Each row carries its property
+  // type: the form no longer has to pick Industrial (or anything) first, and
+  // Tabbing through the chips can see which class each building is. Addresses
+  // ONLY — no prices, dates, or transactions; it reads as "buildings you
+  // could value", not comp data. That once made it safe to serve to everyone,
+  // but the feature is now Pro-only (`canExploreAddresses`), so the gate
+  // below is what decides — not the harmlessness of the payload.
+  // `type` is optional. Present, the list stays that class (the market-page
+  // deep link). Absent, classes interleave so one dense book cannot hide the
+  // rest. The list is DETERMINISTIC either way (newest deal, then
+  // alphabetical, then round-robin) so clicks concentrate onto the same
+  // search-cache entries. Zero Anthropic cost here; the browser tops up thin
+  // markets from OSM Overpass on its own. Failure-safe: errors answer 200
+  // with an empty list.
   if (req.method === "GET" && req.url.split("?")[0] === "/api/explore-addresses") {
     const params = new URL(req.url, "http://localhost").searchParams;
     const cityRaw = (params.get("city") || "").trim().replace(/\s+/g, " ").slice(0, 40);
     const stateOk = (params.get("state") || "").trim().toUpperCase();
-    const typeIn = String(params.get("type") || "");
-    const typeOk = Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
-    if (!typeOk || !US_STATES.has(stateOk) || !/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) {
+    const typeIn = String(params.get("type") || "").trim();
+    const typeOk = typeIn && Object.keys(TYPE_COMP_FIELDS).includes(typeIn) ? typeIn : "";
+    if (typeIn && !typeOk) {
       return sendJson(res, 400, { error: "city, a two-letter state, and a valid property type are required." });
+    }
+    if (!US_STATES.has(stateOk) || !/^[a-zA-Z][a-zA-Z .'\-]{1,39}$/.test(cityRaw)) {
+      return sendJson(res, 400, { error: "city and a two-letter state are required." });
     }
     if (rateLimited("exploreaddr:" + clientIp(req), 30)) {
       return sendJson(res, 429, { error: "Too many requests." });
@@ -14476,41 +16125,45 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 403, { error: "The Address Explorer is a Pro feature.", upgrade: true });
       }
       try {
-        const rows = await corpusRowsForMarket(market, typeOk, 200);
-        const seen = new Set();
-        const picked = [];
-        for (const r of rows) {
-          const a = String(r.address || "").trim();
-          // Same street-number rule as map pins / street view: a leading
-          // number that isn't a quantity, and never an aggregate row —
-          // a submarket blurb is not an address someone can value.
-          if (!/^\d+\s+(?!(sf|sq|sqft|acres?|units?)\b)/i.test(a) || isAggregateAddress(a)) continue;
-          // Portfolio rows name several buildings at once ("3351 E Philadelphia
-          // St & 4450 E Lowell St") — not one address a visitor can value.
-          if (/&|\band\b/i.test(a.split(",")[0])) continue;
-          // Dedupe on the street line alone (the market is fixed), with
-          // common suffixes normalized so "875 W State St" and "875 W State
-          // Street" collapse into one entry.
-          const key = a.split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
-            .replace(/\b(street|avenue|boulevard|drive|road|lane|court|place|parkway|highway)\b/g,
-              (w) => ({ street: "st", avenue: "ave", boulevard: "blvd", drive: "dr", road: "rd", lane: "ln", court: "ct", place: "pl", parkway: "pkwy", highway: "hwy" }[w]));
-          if (seen.has(key)) continue;
-          seen.add(key);
-          picked.push({ address: a.includes(",") ? a : `${a}, ${market}`, dealDate: parseDealDate(r.deal_date) || 0 });
-        }
-        picked.sort((x, y) => (y.dealDate - x.dealDate) || x.address.localeCompare(y.address));
-        const addresses = picked.slice(0, 8).map((p) => ({ address: p.address, source: "corpus" }));
+        const types = typeOk ? [typeOk] : Object.keys(TYPE_COMP_FIELDS);
+        const rowSets = await Promise.all(types.map(async (t) => {
+          const rows = await corpusRowsForMarket(market, t, 200);
+          return (rows || []).map((r) => ({ ...r, property_type: r.property_type || t }));
+        }));
+        const picked = EXPLOREADDR.pickExploreAddresses(rowSets.flat(), {
+          type: typeOk,
+          market,
+          isAggregateAddress,
+          parseDealDate,
+        });
+        const addresses = picked.map((p) => ({ address: p.address, type: p.type, source: "corpus" }));
         // The "instant report" badge: flag addresses a recent cached report
         // already exists for, so the panel can say which clicks are free and
         // immediate. Presence-based and failure-safe (see cachedAddressKeys);
         // the browser's OSM top-up rows never carry the flag — they were
-        // discovered client-side and no probe has seen them.
+        // discovered client-side and no probe has seen them. Probed per
+        // address+type: a mixed list would otherwise badge an office with an
+        // industrial cache hit.
         if (addresses.length) {
-          const cachedSet = await cachedAddressKeys(addresses.map((a) => a.address), typeOk);
+          const byType = new Map();
           for (const a of addresses) {
-            if (cachedSet.has(cacheAddressKey(a.address))) a.cached = true;
+            if (!byType.has(a.type)) byType.set(a.type, []);
+            byType.get(a.type).push(a.address);
           }
-          logEvent("explore_addresses", { prop_type: typeOk, market, cached: cachedSet.size > 0, source: String(addresses.length) });
+          const cachedPairs = new Set();
+          for (const [t, addrs] of byType) {
+            const cachedSet = await cachedAddressKeys(addrs, t);
+            for (const k of cachedSet) cachedPairs.add(k + "|" + t);
+          }
+          for (const a of addresses) {
+            if (cachedPairs.has(cacheAddressKey(a.address) + "|" + a.type)) a.cached = true;
+          }
+          logEvent("explore_addresses", {
+            prop_type: typeOk || "mixed",
+            market,
+            cached: cachedPairs.size > 0,
+            source: String(addresses.length),
+          });
         }
         return sendJson(res, 200, { market, addresses });
       } catch (e) {
@@ -14737,7 +16390,7 @@ const server = http.createServer((req, res) =>
         if (!proEnabledFor(user)) {
           return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
         }
-        const { plan, address, type, months } = JSON.parse(body || "{}");
+        const { plan, address, type, months, orgId, seats } = JSON.parse(body || "{}");
 
         // An EXPLICIT table with no fallthrough. This used to read "founding ?
         // annual : monthly", which mapped every unrecognized plan onto the
@@ -14749,6 +16402,10 @@ const server = http.createServer((req, res) =>
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
           single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // Per-seat, and the ONLY plan whose quantity is not 1. It buys a
+          // FIRM's subscription, so it needs an orgId and the caller must own
+          // that firm — both checked below, before Stripe is ever called.
+          firm_monthly:        { price: STRIPE_PRICES.firmMonthly,    mode: "subscription", firm: true },
           // NO broker plan. One subscription (2026-08-05): the private vault is
           // a Pro capability, so there is nothing separate to sell. The old
           // broker_monthly entry never had a price set and so could never be
@@ -14787,6 +16444,45 @@ const server = http.createServer((req, res) =>
           }
         }
 
+        // --- firm specifics -------------------------------------------------
+        // The firm is the customer, so everything here is about proving the
+        // caller may spend that firm's money and that the seat count is not
+        // smaller than the firm already is.
+        let firmSeats = 0;
+        let firmCustomer = null;
+        if (chosen.firm) {
+          const memberships = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === String(orgId || "")), user.email);
+          if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
+          // OWNER only, deliberately narrower than canManageMembers. An admin
+          // manages people; committing a firm to a recurring charge is not the
+          // same act, and the person who created the firm is the one who can
+          // be assumed to have authority over its card.
+          if (ORG.roleOf(membership) !== "owner") {
+            return sendJson(res, 403, { error: "Only a firm's owner can set up billing." });
+          }
+          const roster = (await orgMemberRows(String(orgId))).filter((r) => !r.removed_at);
+          const asked = Math.floor(Number(seats) || 0);
+          if (!Number.isFinite(asked) || asked < 1 || asked > ORG.MAX_MEMBERS) {
+            return sendJson(res, 400, { error: `Choose between 1 and ${ORG.MAX_MEMBERS} seats.` });
+          }
+          // Refused rather than silently accepted, because the consequence of
+          // buying too few is that named colleagues lose Pro the moment the
+          // webhook lands — a downgrade nobody asked for, applied to people
+          // who are not in the room. Say the number instead.
+          if (asked < roster.length) {
+            return sendJson(res, 400, {
+              error: `${roster.length} people are in this firm, including invitations. Buy at least ${roster.length} seats, or remove somebody first.`,
+              code: "seats_below_headcount",
+              headcount: roster.length,
+            });
+          }
+          firmSeats = asked;
+          const existingOrgSub = await findOrgSubscription(String(orgId));
+          firmCustomer = (existingOrgSub && existingOrgSub.stripe_customer_id) || null;
+        }
+
         // Seat check at checkout CREATION. There is a small race here — two
         // people can pass the check within the same second and both reach 51 —
         // so the webhook re-checks and logs loudly. Deliberate: a hard
@@ -14815,20 +16511,35 @@ const server = http.createServer((req, res) =>
         const returnOrigin = returnOriginFor(req);
         const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
           mode: chosen.mode,
-          line_items: [{ price: priceId, quantity: 1 }],
+          line_items: [{ price: priceId, quantity: chosen.firm ? firmSeats : 1 }],
           success_url: `${returnOrigin}${returnPath}=success`,
           cancel_url: `${returnOrigin}${returnPath}=cancelled`,
           client_reference_id: user.id,
           // Both: metadata rides on the session, and the subscription's or
           // payment intent's own copy lands on the object itself so later
           // events can be traced back to a user without a DB round trip.
-          metadata: { user_id: user.id, ...(reportId ? { report_id: reportId } : {}) },
+          // org_id is what routes every later event to the firm's table
+          // instead of to the buyer's own. It rides on BOTH the session and
+          // the subscription, for the reason user_id already does: a webhook
+          // arriving months later must be traceable without a DB round trip.
+          metadata: {
+            user_id: user.id,
+            ...(chosen.firm ? { org_id: String(orgId) } : {}),
+            ...(reportId ? { report_id: reportId } : {}),
+          },
           ...(chosen.mode === "subscription"
-            ? { subscription_data: { metadata: { user_id: user.id } } }
+            ? { subscription_data: { metadata: {
+                user_id: user.id, ...(chosen.firm ? { org_id: String(orgId) } : {}),
+              } } }
             : { payment_intent_data: { metadata: { user_id: user.id, report_id: reportId } } }),
-          ...(existing && existing.stripe_customer_id
-            ? { customer: existing.stripe_customer_id }
-            : { customer_email: user.email }),
+          // A firm's own customer record, never the buyer's: the card belongs
+          // to the firm, and reusing the owner's personal customer would put
+          // both subscriptions on one invoice and one payment method.
+          ...(chosen.firm
+            ? (firmCustomer ? { customer: firmCustomer } : { customer_email: user.email })
+            : (existing && existing.stripe_customer_id
+              ? { customer: existing.stripe_customer_id }
+              : { customer_email: user.email })),
         },
         // Idempotent per user+report, so a double-click cannot become two
         // sessions and two charges for the same report. Stripe returns the
@@ -14847,8 +16558,13 @@ const server = http.createServer((req, res) =>
   }
 
   // --- Stripe: Customer Portal (cancel, payment method, invoices) ---
+  // Takes an optional { orgId } body: the same route opens a FIRM's portal for
+  // its owner. One route, because the alternative is two places that must
+  // agree about PRO_ENABLED, the audience check, and what to do with a member
+  // who has no customer record — and the difference between them is one lookup.
   if (req.method === "POST" && req.url === "/api/billing-portal") {
-    req.on("data", () => {});
+    let portalBody = "";
+    req.on("data", (c) => { portalBody += c; if (portalBody.length > 1e4) req.destroy(); });
     req.on("end", async () => {
       try {
         if (!PRO_ENABLED || !STRIPE_CONFIGURED) {
@@ -14859,7 +16575,25 @@ const server = http.createServer((req, res) =>
         if (!proEnabledFor(user)) {
           return sendJson(res, 503, { error: "Billing isn't enabled on this deployment yet." });
         }
-        const sub = await findSubscription(user.id);
+        let orgId = "";
+        try { orgId = String((JSON.parse(portalBody || "{}") || {}).orgId || "").trim(); }
+        catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+
+        let sub;
+        if (orgId) {
+          const memberships = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership) return sendJson(res, 403, { error: "You are not a member of that firm." });
+          // OWNER only, matching checkout: the portal can cancel the plan and
+          // change the card, so it is the same authority as buying.
+          if (ORG.roleOf(membership) !== "owner") {
+            return sendJson(res, 403, { error: "Only a firm's owner can manage its billing." });
+          }
+          sub = await findOrgSubscription(orgId);
+        } else {
+          sub = await findSubscription(user.id);
+        }
         const customer = sub && sub.stripe_customer_id;
         if (!customer) return sendJson(res, 400, { error: "No billing account found for you yet." });
         const portal = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "billing_portal/sessions", {
@@ -15005,6 +16739,13 @@ const server = http.createServer((req, res) =>
           // the routes re-resolve entitlements server-side, so editing this
           // response relabels a plan card and unlocks nothing.
           tester: ent.tester === true,
+          // Pro that arrives through a firm's seat (migration 033). The plan
+          // card reads it to say "Pro — through Colliers Boise" and, more
+          // importantly, to keep the personal "Manage billing" button away
+          // from somebody who has never paid us anything: that button opens a
+          // Stripe portal for a customer record they do not have, so it 400s.
+          // Presentation only, like every field in this block.
+          viaFirm: ent.viaFirm || null,
           // Whether this deployment has a tester passkey at all, so the pricing
           // modal can hide a redeem row that could only ever fail. NOT a secret and
           // not an entitlement: it says a door exists, never what opens it.
@@ -15315,7 +17056,16 @@ const server = http.createServer((req, res) =>
           if (brand) safeMeta.branding = brand;
         }
 
-        const visibility = parsed.visibility === "invited" ? "invited" : "public";
+        // Three audiences now. An unrecognized value still falls to "public",
+        // which is the ONE place in this feature that fails open — and it is
+        // the pre-existing behaviour of a route whose default has always been
+        // a public link, not a widening: a caller who asks for nothing gets
+        // the zero-friction share they have always got. Everything downstream
+        // of here (report-access.js, storeSharedReport, the file-fallback
+        // refusal) fails closed on an unrecognized value instead.
+        const visibility = parsed.visibility === "invited" ? "invited"
+          : parsed.visibility === "org" ? "org"
+          : "public";
         const includePrivate = parsed.includePrivate === true;
 
         // A public link that carries private comps is the one mistake this
@@ -15324,6 +17074,51 @@ const server = http.createServer((req, res) =>
         // attempt by luck.
         if (visibility === "public" && includePrivate) {
           return sendJson(res, 400, { error: "A public link cannot include private comps." });
+        }
+        // A FIRM share cannot carry whole vault comps either, and this is a
+        // deliberate slice-1 refusal rather than an oversight. Sharing a
+        // broker's own book across their firm is the spec's §7 — opt-in per
+        // import, attributed, with the vault's "Visible only to you" copy
+        // rewritten to match — and none of that exists yet. Until it does, a
+        // firm share behaves exactly like an invited one: the private comps
+        // are anonymized into the valuation basis, so the colleague's range
+        // matches to the dollar with no address or price travelling.
+        //
+        // 400 rather than a silent strip, for the public link's reason: a
+        // client bug should be loud on the first attempt rather than correct
+        // on every attempt by luck.
+        if (visibility === "org" && includePrivate) {
+          return sendJson(res, 400, {
+            error: "Private vault comps can't be shared with a firm yet. They will be counted in the valuation without their details.",
+          });
+        }
+
+        // The firm audience (migration 032). Same three refusals as the
+        // invited path — signed in, a database, and the audience proven
+        // server-side — with the membership taking the place of the email
+        // list. Two differences worth naming:
+        //
+        //   - It needs NO Pro check of its own. Membership is the gate, and a
+        //     firm can only exist because somebody in it holds canUseOrg. A
+        //     free colleague sharing back to the firm that invited them is the
+        //     feature working, not a hole.
+        //   - The org id is VERIFIED against the sharer's own membership rows,
+        //     never taken from the body. Without that, posting any firm's id
+        //     would publish a report onto that firm's desk.
+        let orgId = null;
+        if (visibility === "org") {
+          if (!user) return sendJson(res, 401, { error: "Please sign in to share a report with your firm." });
+          if (!DB_CONFIGURED) {
+            return sendJson(res, 503, { error: "Firm sharing is unavailable right now. Please try again in a minute." });
+          }
+          const asked = String(parsed.orgId || "").trim();
+          const rows = await orgMembershipsFor(user.email);
+          const membership = ORG.membershipOf(
+            rows.filter((r) => String(r.org_id) === asked), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          orgId = asked;
         }
 
         let viewers = [];
@@ -15389,7 +17184,7 @@ const server = http.createServer((req, res) =>
 
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
-          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers,
+          userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers, orgId,
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
         // The share row is already written. A mail send must never turn this
@@ -15427,7 +17222,14 @@ const server = http.createServer((req, res) =>
       const user = await getSessionUser(req);
       const rec = await getShareRecord(id);
       if (!rec) return sendJson(res, 404, { error: "This shared report was not found." });
-      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user });
+      // Read ONLY for a firm share with somebody signed in. A public link and
+      // an invited one are answered exactly as they were before this feature,
+      // with no extra round trip — /r/<id> is a page-load path and most links
+      // in the world are still public ones.
+      const orgIds = (rec.share.visibility === "org" && user)
+        ? await activeOrgIdsFor(user)
+        : [];
+      const decision = SHAREACCESS.canReadShare({ share: rec.share, viewers: rec.viewers, user, orgIds });
       if (!decision.ok) {
         if (decision.reason === "revoked") {
           // NOT 404 (a client would hunt for a typo in a link that was
@@ -15441,9 +17243,52 @@ const server = http.createServer((req, res) =>
             signin_required: true,
           });
         }
+        // A firm share tells the reader WHICH kind of audience they missed,
+        // because the fix is different: an invited share needs the sender to
+        // add them, a firm share needs them to be in the firm (and they may
+        // have an invitation sitting unaccepted on their desk).
+        if (rec.share.visibility === "org") {
+          return sendJson(res, 403, { error: "This report was shared with a firm, and this account is not a member of it." });
+        }
         return sendJson(res, 403, { error: "This report was shared with specific people, and this account is not one of them." });
       }
       if (decision.reason === "invited") stampShareView(id, SHAREACCESS.normalizeEmail(user.email));
+
+      // Tell a firm reader that this is a FIRM link, and who sent it.
+      //
+      // Without it a firm share is indistinguishable from a public one on
+      // screen, which is the reader's half of the bug already fixed on the
+      // sender's desk ("Anyone with the link"). The concrete mistake it
+      // prevents: a colleague forwarding the link to a client, who gets a 403
+      // — a failure they would only discover after sending.
+      //
+      // Only for somebody entitled BY the firm or by owning it. An outside
+      // client named on a firm share's viewer list is not owed the firm's
+      // internal routing, and the two extra reads are paid only on this path.
+      // The payload is COPIED, never mutated: sharedReportsMem holds that
+      // object for the life of the process, so writing into it would stamp
+      // one reader's context onto every later reader's copy.
+      if (rec.share.visibility === "org" && rec.share.org_id
+        && (decision.reason === "firm" || decision.reason === "owner")) {
+        const [firms, people] = await Promise.all([
+          orgsByIds([rec.share.org_id]),
+          usersByIds([rec.share.user_id]),
+        ]);
+        const who = rec.share.user_id ? people.get(String(rec.share.user_id)) : null;
+        const firmRow = firms.get(String(rec.share.org_id));
+        return sendJson(res, 200, {
+          ...rec.payload,
+          meta: {
+            ...(rec.payload && rec.payload.meta),
+            firmShare: {
+              firm: (firmRow && firmRow.name) || "your firm",
+              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              mine: Boolean(user && rec.share.user_id && String(user.id) === String(rec.share.user_id)),
+              sharedAt: rec.share.created_at || null,
+            },
+          },
+        });
+      }
       return sendJson(res, 200, rec.payload);
     })().catch((err) => {
       console.error("Shared report lookup failed:", err.message);
@@ -15461,10 +17306,20 @@ const server = http.createServer((req, res) =>
       const user = await getSessionUser(req);
       if (!user) return sendJson(res, 401, { error: "Please sign in." });
       if (!DB_CONFIGURED) return sendJson(res, 503, { error: "Sharing is unavailable right now." });
+      // Two lists, as before slice 1. The firm's SHELF is deliberately not
+      // here: it is its own route (GET /api/org/shelf), fetched by the desk
+      // alongside this one, because it reads up to 1000 rows and this is a
+      // page-load path that already does two.
+      //
+      // What survives from the firm work is the NAMES of the firms this
+      // member's own shares went to, so a row can say "Shared with Colliers
+      // Boise" instead of "Anyone with the link". One extra read, and only
+      // when they have actually shared something with a firm.
       const [owned, invited] = await Promise.all([
         listSharesForOwner(user.id),
         listSharesForViewer(SHAREACCESS.normalizeEmail(user.email)),
       ]);
+      const firmRows = await orgsByIds(owned.map((r) => r.org_id).filter(Boolean));
       const brief = (payload) => ({
         address: (payload && payload.meta && payload.meta.address) || "",
         type: (payload && payload.meta && payload.meta.type) || "",
@@ -15472,6 +17327,12 @@ const server = http.createServer((req, res) =>
       return sendJson(res, 200, {
         mine: owned.map((r) => ({
           id: r.id, ...brief(r.payload), visibility: r.visibility,
+          // The firm's NAME, not just its id: /desk says who a link is for,
+          // and "Anyone with the link" was what a firm share used to read as —
+          // a sharer told their firm-only report was public is the one wrong
+          // answer here that could make them forward it.
+          firm: r.org_id
+            ? ((firmRows.get(String(r.org_id)) || {}).name || "Your firm") : "",
           includePrivate: r.include_private, revokedAt: r.revoked_at, createdAt: r.created_at,
           url: `${SITE_URL}/r/${r.id}`,
           viewers: (r.report_viewers || []).map((v) => ({
@@ -15532,6 +17393,14 @@ const server = http.createServer((req, res) =>
         // public link, which canReadShare serves to anyone with the URL,
         // signed in or not. Adding rows here would send that false promise.
         if (owned[0].visibility !== "invited") {
+          // Two audiences reach this, and they need different sentences: a
+          // public link has no list because everyone can already open it, and
+          // a firm share's list is the firm's membership — editable on the
+          // desk's firm section, never here, or removing somebody from one
+          // report would read as removing them from the firm.
+          if (owned[0].visibility === "org") {
+            return sendJson(res, 400, { error: "This report is shared with your firm. Manage who can see it from the firm section on your desk." });
+          }
           return sendJson(res, 400, { error: "This is a public link. Anyone with it can already open it, so there is no viewer list to edit." });
         }
         const before = new Set((owned[0].report_viewers || []).map((v) => v.email));
@@ -15587,6 +17456,494 @@ const server = http.createServer((req, res) =>
       }
     });
     return;
+  }
+
+  // ==========================================================================
+  // Firms — /api/org and /api/org/*   (enterprise accounts, slice 1)
+  //
+  // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
+  // Schema: migrations/030-enterprise-orgs.sql   Gate: org-access.js
+  //
+  // The shape of every route here, copied from the hub's: read the rows and
+  // the session, ask org-access.js, then act. No route makes its own access
+  // decision, and no route trusts anything the browser said about who it is —
+  // including which firm it is in.
+  //
+  // THE ENTITLEMENT SPLIT, which is easy to get backwards: creating a firm and
+  // inviting to it need `canUseOrg` (Pro), because both are surfaces a firm
+  // pays for and the invite endpoint sends email. ACCEPTING an invite and
+  // reading what a firm shared need only an account — the colleague on the
+  // receiving end is exactly an invited share's viewer, who has never needed a
+  // plan. A firm that could only share with people who had already bought the
+  // product would not solve the problem it exists for.
+  // ==========================================================================
+  const orgPath = req.url.split("?")[0];
+  if (orgPath === "/api/org" || orgPath.startsWith("/api/org/")) {
+    const readOrgBody = (max = 1e4) => new Promise((resolve, reject) => {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", () => {
+        if (tooBig) return reject(new Error("too_big"));
+        try { resolve(JSON.parse(body || "{}")); }
+        catch (_) { reject(new SyntaxError("bad_json")); }
+      });
+      req.on("error", () => reject(new Error("aborted")));
+    });
+
+    // 401 not signed in → 503 no database. Deliberately WITHOUT the 403 the
+    // vault's openVault() carries: most routes here are open to any account,
+    // and the two that are not check `canUseOrg` themselves where the refusal
+    // copy can name what it is refusing.
+    const openOrg = async () => {
+      const user = await getSessionUser(req);
+      if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, { error: "Firm accounts are unavailable right now. Please try again in a minute." });
+        return null;
+      }
+      return user;
+    };
+
+    // Resolve the caller's membership of ONE firm from their own rows. Returns
+    // null (and answers 403) when they are not an active member — the whole
+    // point being that the org id came from the browser and proves nothing.
+    const memberOf = async (user, orgId) => {
+      const rows = await orgMembershipsFor(user.email);
+      const mine = rows.filter((r) => String(r.org_id) === String(orgId));
+      const membership = ORG.membershipOf(mine, user.email);
+      if (!membership) {
+        // One message for "no such firm" and "not in it", on purpose: telling
+        // a stranger which firms exist is an answer they have not earned.
+        sendJson(res, 403, { error: "You are not a member of that firm." });
+        return null;
+      }
+      return membership;
+    };
+
+    const orgSummary = (row, firms) => {
+      const org = firms.get(String(row.org_id)) || null;
+      return {
+        id: row.org_id,
+        name: (org && org.name) || "",
+        role: ORG.roleOf(row),
+        canManage: ORG.canManageMembers(row),
+        // The firm's setting, and this member's own answer to it, and the
+        // answer that actually applies. All three, because the desk has to
+        // show a member following a default they did not set WITHOUT making it
+        // look like their own choice — and because an admin needs to see that
+        // a colleague has opted out rather than wonder why nothing arrives.
+        shareDefault: ORG.shareDefaultOf(org),
+        autoShare: row.auto_share === true ? "always"
+          : row.auto_share === false ? "never" : "follow",
+        autoShareOn: ORG.autoShareFor({ org, membership: row }),
+      };
+    };
+
+    // --- GET /api/org — my firms and my pending invites ---------------------
+    if (req.method === "GET" && orgPath === "/api/org") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const rows = await orgMembershipsFor(user.email);
+        const ent = await entitlementsFor(req);
+        const mine = rows.filter((r) => ORG.isActive(r));
+        const pending = rows.filter((r) => ORG.isPending(r));
+        const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
+        // Billing state, only for a firm this caller actually belongs to, and
+        // the SEAT USAGE for everyone in it — a member seeing "6 of 6 seats"
+        // is why an invite refusal makes sense when it comes, rather than
+        // arriving as a surprise from an owner-only number they never saw.
+        const billing = {};
+        for (const r of mine) {
+          const orgId = String(r.org_id);
+          const [sub, roster] = await Promise.all([
+            findOrgSubscription(orgId),
+            orgMemberRows(orgId),
+          ]);
+          const used = roster.filter((m) => !m.removed_at).length;
+          billing[orgId] = {
+            seats: seatCapOf(firms.get(orgId)),
+            used,
+            // Only the owner is offered the buy and portal controls, matching
+            // both routes. Anyone else sees the seat count and nothing to click.
+            canBill: ORG.roleOf(r) === "owner" && PRO_ENABLED && STRIPE_CONFIGURED
+              && Boolean(STRIPE_PRICES.firmMonthly),
+            plan: (sub && sub.plan) || null,
+            status: (sub && sub.status) || "none",
+            currentPeriodEnd: (sub && sub.current_period_end) || null,
+          };
+        }
+        return sendJson(res, 200, {
+          billing,
+          // Whether this account may CREATE one. The browser uses it to decide
+          // between an invitation to start a firm and the paywall; it is
+          // presentation only, and POST /api/org checks it again.
+          canCreate: ent.canUseOrg === true,
+          orgs: mine.map((r) => orgSummary(r, firms)),
+          invites: pending.map((r) => ({
+            id: r.id,
+            orgId: r.org_id,
+            name: (firms.get(String(r.org_id)) || {}).name || "",
+            // Disclosed BEFORE the accept, not after: joining a firm whose
+            // default is on changes what happens to the work you have not run
+            // yet, and being told afterwards is being told too late. The
+            // spec's safeguard, and the reason this rides on the invite rather
+            // than on a settings page nobody opens.
+            shareDefault: ORG.shareDefaultOf(firms.get(String(r.org_id))),
+            invitedAt: r.invited_at,
+          })),
+        });
+      })().catch((err) => {
+        console.error("Firm read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org — create a firm --------------------------------------
+    if (req.method === "POST" && orgPath === "/api/org") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        if (rateLimited("org:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a few minutes." });
+        }
+        const ent = await entitlementsFor(req);
+        if (!ent.canUseOrg) {
+          return sendJson(res, 403, { error: "Firm accounts are part of Pro.", upgrade: true });
+        }
+        const body = await readOrgBody();
+        const check = ORG.validateOrgName(body && body.name);
+        if (!check.ok) return sendJson(res, 400, { error: check.error });
+        // One firm per person, for now. Not a technical limit — the schema is
+        // many-to-many and activeOrgIds already returns a set — but a member of
+        // two firms raises "which firm did I just share that with", and slice 1
+        // has no answer worth shipping. Lifting it is a UI question first.
+        const existing = await orgMembershipsFor(user.email);
+        if (existing.some((r) => ORG.isActive(r))) {
+          return sendJson(res, 409, { error: "You are already part of a firm." });
+        }
+        const org = await createOrgWithOwner(check.name, user);
+        logEvent("org_create", {});
+        return sendJson(res, 200, { id: org.id, name: org.name, role: "owner", canManage: true });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm create failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't create the firm. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/members?id= — the roster ------------------------------
+    if (req.method === "GET" && orgPath === "/api/org/members") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const [org, rows] = await Promise.all([findOrg(orgId), orgMemberRows(orgId)]);
+        // Emails are shown to colleagues, which is what a member list IS —
+        // and is exactly why this route is behind an active membership of
+        // this firm rather than behind knowing its id.
+        return sendJson(res, 200, {
+          id: orgId,
+          name: (org && org.name) || "",
+          role: ORG.roleOf(membership),
+          canManage: ORG.canManageMembers(membership),
+          members: rows.filter((r) => !r.removed_at).map((r) => ({
+            id: r.id, email: r.email, role: ORG.roleOf(r),
+            pending: !r.joined_at, invitedAt: r.invited_at, joinedAt: r.joined_at,
+            self: ORG.normalizeEmail(r.email) === ORG.normalizeEmail(user.email),
+          })),
+        });
+      })().catch((err) => {
+        console.error("Firm roster read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/org/shelf?id= — everything shared with this firm ----------
+    //
+    // The whole shelf in one read, filtered in the BROWSER. That is the
+    // /vault dashboard's rule and it is here for the same two reasons: the
+    // counts and the market list describe the WHOLE shelf, so a server-side
+    // filter would leave the page holding only the current slice and unable
+    // to say how much it was not showing; and a search box that re-queries on
+    // every keystroke is a request per keystroke for a list this size.
+    //
+    // Membership-gated like the roster, and for a stronger reason: this is
+    // every valuation the firm has done.
+    if (req.method === "GET" && orgPath === "/api/org/shelf") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        // Rate-limited unlike the other firm reads: this one returns up to a
+        // thousand rows, so it is the only place here where repeating the
+        // request is expensive. Generous, because the desk fetches it on
+        // every render.
+        if (rateLimited("orgshelf:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await orgShelfRows(orgId);
+        const people = await usersByIds(rows.map((r) => r.user_id));
+        return sendJson(res, 200, {
+          id: orgId,
+          // The vault's rule: say so rather than under-report silently.
+          truncated: rows.length >= 1000,
+          items: rows.map((r) => {
+            const meta = (r.payload && r.payload.meta) || {};
+            const who = r.user_id ? people.get(String(r.user_id)) : null;
+            return {
+              id: r.id,
+              address: meta.address || "",
+              type: meta.type || "",
+              // Computed here with marketOf so the shelf's market filter uses
+              // the SAME canonical form as the corpus and the vault. A second
+              // parse would give a firm two spellings of one city.
+              market: marketOf(meta.address || ""),
+              createdAt: r.created_at,
+              url: `${SITE_URL}/r/${r.id}`,
+              // A colleague's name, or their email, or nothing recognisable —
+              // never an id. Both are already on the roster this member can
+              // read, and an unattributed shelf row is one nobody can follow
+              // up on, which is most of what a shelf is for.
+              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
+            };
+          }),
+        });
+      })().catch((err) => {
+        console.error("Firm shelf read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm's reports. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/invite ----------------------------------------------
+    if (req.method === "POST" && orgPath === "/api/org/invite") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        if (rateLimited("orginvite:" + clientIp(req), 20)) {
+          return sendJson(res, 429, { error: "Too many invitations from this connection. Please wait a few minutes." });
+        }
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can invite people." });
+        }
+        // Checked on the INVITER, after membership: a lapsed firm keeps
+        // everything it has and simply cannot grow.
+        const ent = await entitlementsFor(req);
+        if (!ent.canUseOrg) {
+          return sendJson(res, 403, { error: "Inviting colleagues is part of Pro.", upgrade: true });
+        }
+        const rows = await orgMemberRows(orgId);
+        const live = rows.filter((r) => !r.removed_at);
+        const clean = ORG.normalizeInviteEmails(body && body.emails, {
+          self: user.email,
+          existing: live.map((r) => r.email),
+        });
+        if (!clean.ok) return sendJson(res, 400, { error: clean.error });
+        if (live.length + clean.emails.length > ORG.MAX_MEMBERS) {
+          return sendJson(res, 400, { error: `A firm can hold up to ${ORG.MAX_MEMBERS} people.` });
+        }
+        // The seat cap (migration 033). `orgs.seats` is what the firm pays
+        // for — or, for a hand-granted firm, what was granted — and it is
+        // enforced HERE rather than at accept: refusing an invitation is a
+        // sentence the inviter can act on, while refusing an accept punishes
+        // the wrong person for a decision they had no part in.
+        //
+        // Pending invitations count. A seat is committed the moment somebody
+        // is asked, or a firm could invite its way past the cap and only
+        // discover it as colleagues arrived.
+        const orgRow = (await orgsByIds([orgId])).get(String(orgId));
+        // FALLS BACK TO THE STRUCTURAL CAP, never to 1. A seat count is a
+        // COMMERCIAL limit, not an access-control gate — membership is the
+        // gate, and it lives elsewhere — so when the number cannot be read the
+        // failure worth choosing is an unbilled invitation, not a paying firm
+        // locked out of adding the colleague they just hired.
+        const seats = seatCapOf(orgRow);
+        if (live.length + clean.emails.length > seats) {
+          const room = Math.max(0, seats - live.length);
+          return sendJson(res, 409, {
+            error: room
+              ? `Your firm has ${seats} seats and ${room} left. Add seats to invite more people.`
+              : `Your firm's ${seats} seats are all taken. Add seats to invite more people.`,
+            code: "no_seats", seats, used: live.length,
+          });
+        }
+        await inviteOrgMembers(orgId, clean.emails, user.id);
+        const org = await findOrg(orgId);
+        // Fire and forget, exactly like the share invites: the rows are
+        // written, and a mail provider having a bad minute must not turn this
+        // into an error the inviter has to interpret.
+        try {
+          sendOrgInvites(clean.emails, {
+            firm: (org && org.name) || "", fromName: user.name || "", fromEmail: user.email,
+          });
+        } catch (err) {
+          console.error("Firm invite send failed:", err.message);
+        }
+        logEvent("org_invite", {});
+        // The server's own final count, deduped and cleaned — never what the
+        // browser typed. Same rule as POST /api/share's `invited`.
+        return sendJson(res, 200, { ok: true, invited: clean.emails.length });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm invite failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send those invitations. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/settings — the auto-share switches --------------------
+    //
+    // TWO SWITCHES ON ONE ROUTE, with different permissions, because they are
+    // two halves of one decision and splitting them would let the pair drift:
+    //
+    //   shareDefault  the FIRM's default, owner/admin only. An admin's
+    //                 decision about other people's work.
+    //   autoShare     THIS member's own answer to it, any active member, and
+    //                 always their own row. `never` beats the firm default
+    //                 permanently — that override is the safeguard that let
+    //                 this feature be built at all (spec §5), so it is not a
+    //                 courtesy an admin can revoke.
+    //
+    // A call may carry either, or both.
+    if (req.method === "POST" && orgPath === "/api/org/settings") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+
+        let changed = false;
+        if (body.shareDefault !== undefined) {
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          if (!ORG.SHARE_DEFAULTS.includes(body.shareDefault)) {
+            return sendJson(res, 400, { error: "Unrecognized setting." });
+          }
+          await setOrgShareDefault(orgId, body.shareDefault);
+          changed = true;
+        }
+        if (body.autoShare !== undefined) {
+          const value = ORG.autoShareValue(body.autoShare);
+          // `undefined` is the refusal and `null` is a real value ("follow"),
+          // which is why this tests for undefined explicitly rather than
+          // truthiness — a junk choice must not quietly mean follow.
+          if (value === undefined) return sendJson(res, 400, { error: "Unrecognized setting." });
+          await setMemberAutoShare(orgId, user.email, value);
+          changed = true;
+        }
+        if (!changed) return sendJson(res, 400, { error: "Nothing to change." });
+
+        // Answer with the state that now APPLIES, re-read rather than
+        // predicted: the two switches interact, so a browser that computed the
+        // result itself would be a second copy of autoShareFor.
+        const rows = await orgMembershipsFor(user.email);
+        const mine = ORG.membershipOf(
+          rows.filter((r) => String(r.org_id) === orgId), user.email);
+        const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
+        return sendJson(res, 200, {
+          ok: true,
+          shareDefault: ORG.shareDefaultOf(org),
+          autoShare: mine && mine.auto_share === true ? "always"
+            : mine && mine.auto_share === false ? "never" : "follow",
+          autoShareOn: ORG.autoShareFor({ org, membership: mine }),
+        });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm settings update failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that setting. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/org/accept ------------------------------------------------
+    // No entitlement: accepting is the free half of the split described at the
+    // top of this block.
+    if (req.method === "POST" && orgPath === "/api/org/accept") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const body = await readOrgBody();
+        const orgId = String((body && body.orgId) || "").trim();
+        if (!orgId) return sendJson(res, 400, { error: "Which firm?" });
+        // The invite is matched on the caller's OWN email inside the PATCH,
+        // so an org id alone can never join anybody to anything.
+        const rows = await acceptOrgInvite(orgId, user);
+        if (!rows || !rows.length) {
+          // Covers "no invite", "already accepted" and "was removed" with one
+          // message. The first is the only one that is really an error, and
+          // distinguishing them tells a stranger which firms exist.
+          return sendJson(res, 404, { error: "That invitation is no longer open." });
+        }
+        const org = await findOrg(orgId);
+        logEvent("org_join", {});
+        return sendJson(res, 200, { ok: true, id: orgId, name: (org && org.name) || "" });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Firm accept failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't accept that invitation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- DELETE /api/org/member?id=&org= — remove someone, or leave ---------
+    // ONE route for both, deliberately: "remove" and "leave" are the same
+    // state change under different permissions, and org-access.js's
+    // canRemoveMember owns the difference. A second endpoint for leaving is a
+    // second place the last-owner rule could be forgotten.
+    if (req.method === "DELETE" && orgPath === "/api/org/member") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const orgId = (q.get("org") || "").trim();
+        const memberId = (q.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await orgMemberRows(orgId);
+        const verdict = ORG.canRemoveMember({
+          members: rows, actorEmail: user.email, targetId: memberId,
+        });
+        if (!verdict.ok) {
+          if (verdict.reason === "not_found") {
+            return sendJson(res, 404, { error: "That person is not on the list." });
+          }
+          if (verdict.reason === "last_owner") {
+            return sendJson(res, 400, {
+              error: "A firm needs an owner. Make someone else an owner first.",
+            });
+          }
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can remove people." });
+        }
+        await removeOrgMember(orgId, memberId);
+        return sendJson(res, 200, { ok: true, left: verdict.reason === "left" });
+      })().catch((err) => {
+        console.error("Firm member removal failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update the member list. Please try again in a minute." });
+      });
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
   }
 
   // ==========================================================================
@@ -15739,11 +18096,22 @@ const server = http.createServer((req, res) =>
           }
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
+          const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Fire and forget, AFTER the rows are written. A mail provider having
+          // a bad afternoon must never turn a created hub into an error.
+          try {
+            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+          } catch (err) {
+            console.error("Hub invite send failed:", err.message);
+          }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: inviteLinks,
+            // Whether the invitations actually LEFT. The panel says something
+            // different depending on the answer, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -15894,6 +18262,21 @@ const server = http.createServer((req, res) =>
             // guess from the role string.
             canWrite: HUB.canWriteHub(g).ok,
             canAdd: HUB.canAddItems(g).ok,
+            // The guest list, OWNER ONLY. A broker needs it to add or remove
+            // somebody; a client must not have it, because the other addresses
+            // in a hub are that broker's client relationships and none of a
+            // fellow guest's business. Gated on the same owner-only answer
+            // that governs adding comps, so there is one definition of "this
+            // is the broker" rather than two that can drift.
+            ...(HUB.canAddItems(g).ok ? {
+              people: (g.participants || [])
+                .filter((p) => !p.removed_at)
+                .map((p) => ({
+                  email: p.email,
+                  role: p.role,
+                  opened: !!p.first_viewed_at,
+                })),
+            } : {}),
             // Unconditional, now that a poll carries them too. It was a
             // conditional spread while `since` could suppress the list;
             // leaving that in would be a branch that can no longer be false.
@@ -16002,12 +18385,49 @@ const server = http.createServer((req, res) =>
           }));
           if (!rows.length) return sendJson(res, 404, { error: "Those comps were not found in your vault." });
 
-          // ignore-duplicates against hub_items_live_source_uidx: sending the
-          // same comp twice is a no-op, not an error. Re-sending one that was
-          // REMOVED does insert, which is how a corrected price travels.
-          const saved = await sbRequest("POST",
-            "hub_items?on_conflict=hub_id,source,source_ref&select=id",
-            rows, { prefer: "resolution=ignore-duplicates,return=representation" });
+          // Duplicates are filtered HERE rather than by ON CONFLICT, and the
+          // reason is a bug this route shipped with: it asked PostgREST for
+          // `on_conflict=hub_id,source,source_ref`, but
+          // `hub_items_live_source_uidx` is a PARTIAL index (`where removed_at
+          // is null and source_ref is not null`). PostgREST's on_conflict can
+          // only name COLUMNS, so it cannot supply the index predicate, and
+          // Postgres refuses to infer a partial index without one:
+          //
+          //   42P10 — there is no unique or exclusion constraint matching the
+          //           ON CONFLICT specification
+          //
+          // So EVERY vault send failed, 100% of the time, with the route's
+          // generic 503. It was invisible to `npm test` because the route
+          // tests run against a bare server with no database, where this path
+          // 503s by design long before it reaches SQL. Found by sending a real
+          // comp into a real hub.
+          //
+          // The index stays partial: being able to re-send a comp that was
+          // REMOVED is the snapshot rule's correction path and is worth more
+          // than the convenience of ON CONFLICT.
+          const live = await sbRequest("GET",
+            `hub_items?hub_id=eq.${encodeURIComponent(id)}&removed_at=is.null&source=eq.vault` +
+            `&select=source_ref`);
+          const already = new Set((live || []).map((r) => String(r.source_ref)));
+          const fresh = rows.filter((r) => !already.has(String(r.source_ref)));
+          if (!fresh.length) {
+            // Sending the same comp twice stays a no-op rather than an error,
+            // which is what the ON CONFLICT was there to buy.
+            return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+          }
+          let saved;
+          try {
+            saved = await sbRequest("POST", "hub_items?select=id", fresh,
+              { prefer: "return=representation" });
+          } catch (err) {
+            // The read-then-write above has a race window a second sender can
+            // land in. The index is what actually enforces it, so a duplicate
+            // here is the correct outcome, not a failure to report.
+            if (/\b409\b|23505/.test(String(err.message))) {
+              return sendJson(res, 200, { ok: true, added: 0, requested: wanted.length });
+            }
+            throw err;
+          }
           touchHub(id);
           logEvent("hub_items_added", { market: g.hub.market || "", source: "vault" });
           return sendJson(res, 201, {
@@ -16228,10 +18648,22 @@ const server = http.createServer((req, res) =>
                 { removed_at: new Date().toISOString() }, { prefer: "return=minimal" });
             }
           }
+          const newLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
+          // Only the NEWLY invited are mailed — re-saving an unchanged list, or
+          // only removing people, must email nobody. Same rule as
+          // PUT /api/shares/viewers.
+          if (newLinks.length) {
+            try {
+              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+            } catch (err) {
+              console.error("Hub invite send failed:", err.message);
+            }
+          }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
-            invites: invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` })),
+            invites: newLinks,
+            emailed: OUTBOUND_EMAIL_LIVE(),
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -16371,9 +18803,15 @@ const server = http.createServer((req, res) =>
         "cache-control": "no-store",
         ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
-      // Canonical/og/JSON-LD URLs in index.html are written against the default
-      // origin; rewrite them when SITE_URL is overridden (custom domain).
-      res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
+      // Two serve-time rewrites. The Explore menu's browse links are injected
+      // from NAV_LINKS (declared above marketBar) in place of the marker
+      // comment index.html authors — the app header reads from the same list
+      // as every server-rendered header, so the menus cannot drift. Then
+      // canonical/og/JSON-LD URLs, written against the default origin, are
+      // rewritten when SITE_URL is overridden (custom domain).
+      let html = data.toString("utf8").replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML);
+      if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
+      res.end(html);
     });
     return;
   }
@@ -16399,6 +18837,15 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The desktop/mobile install identity (PWA). Users "download" the app
+    // from the site itself — Chrome/Edge offer Install once this manifest is
+    // reachable — so there is no installer to host or code-sign anywhere.
+    // Short max-age like the CSS: a renamed app or swapped icon should reach
+    // installed copies on their next launch, not a day later.
+    "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json", maxAge: 300 },
+    "/icon-192.png": { file: "icon-192.png", type: "image/png", maxAge: 86400 },
+    "/icon-512.png": { file: "icon-512.png", type: "image/png", maxAge: 86400 },
+    "/icon-maskable-512.png": { file: "icon-maskable-512.png", type: "image/png", maxAge: 86400 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
@@ -16417,6 +18864,24 @@ const server = http.createServer((req, res) =>
         return res.end("Not found");
       }
       res.writeHead(200, { "content-type": type, "cache-control": `public, max-age=${maxAge}` });
+      res.end(data);
+    });
+    return;
+  }
+  // City hero JPEGs for /market/<slug>. Basename + the filename regex is the
+  // whole allowlist — this must never become a generic directory read.
+  if (req.method === "GET" && staticPath.startsWith("/market-heroes/")) {
+    const name = path.basename(staticPath);
+    if (!MARKETHERO.isHeroFilename(name)) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    fs.readFile(path.join(__dirname, "market-heroes", name), (err, data) => {
+      if (err) {
+        res.writeHead(404, { "content-type": "text/plain" });
+        return res.end("Not found");
+      }
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "public, max-age=86400" });
       res.end(data);
     });
     return;
@@ -16493,6 +18958,19 @@ const server = http.createServer((req, res) =>
   // shell. Education, never advice: the compliance strings are pinned by
   // test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
+    // funnel's exit, and until this event nothing counted anyone ENTERING —
+    // "does the guide produce leads" had a numerator with no denominator.
+    // PII-free like every event. Crawler UAs are skipped because this page
+    // is public and sitemapped, so bots would otherwise be most of the
+    // count (vault_visit never needed this — that page is auth-shaped).
+    // `source` = which audience is reading, on cookie PRESENCE (the wall's
+    // cheap rule; getSessionUser is a DB read and this renders per request).
+    if (!isCrawlerUA(req.headers["user-agent"])) {
+      logEvent("guide_1031", {
+        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
+      });
+    }
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
@@ -16504,6 +18982,7 @@ const server = http.createServer((req, res) =>
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
       signedIn,
+      current: "/1031-exchange",
     }));
   }
 
@@ -16820,6 +19299,23 @@ const server = http.createServer((req, res) =>
     });
     return res.end(renderAdminHTML());
   }
+  if (req.method === "GET" && req.url.split("?")[0] === "/admin/heroes") {
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(HEROREVIEW.renderHeroReviewHTML({ CN_LOGO }));
+  }
+  if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/heroes") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    try { return sendJson(res, 200, inspectMarketHeroes()); }
+    catch (err) {
+      console.error("hero inspect failed:", err && err.message);
+      return sendJson(res, 500, { error: "Could not inspect market photos." });
+    }
+  }
 
   // --- HQ: the internal homepage. One aggregate of the three tools' headline
   // numbers. Same gate as /api/stats (404 with ADMIN_KEY unset, 401 on a bad
@@ -16905,8 +19401,19 @@ const server = http.createServer((req, res) =>
       THEME_BOOT,
       ACCOUNT_NAV_CSS,
       ACCOUNT_NAV_JS,
-      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
-      ACCOUNT_NAV_PRICING,
+      // desk: TRUE, and this was wrong for a day. The flag strips TWO links —
+      // `My Desk` and `Sign in` — and exists for /how-it-works, which renders
+      // its own My Desk link and would otherwise show two. The hub page
+      // renders neither, so copying that call left a hub with no way back into
+      // the app and no way to sign in.
+      //
+      // Both symptoms were reported by a real client on a real hub: they read
+      // the comps, left, and could not find the hub again; and the page told
+      // them to sign in with nothing to click. One flag caused both.
+      ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: true, upsell: false }),
+      // Deliberately EMPTY, not ACCOUNT_NAV_PRICING. See the upsell note on
+      // accountNavSlots: a hub sells the client nothing.
+      ACCOUNT_NAV_PRICING: "",
     }));
     return;
   }
@@ -17007,7 +19514,7 @@ server.listen(PORT, () => {
     ? "🔐 Account wall ON — anonymous visitors get the landing page at / (200, not a redirect; /desk redirects home), and GUEST_SEARCH_LIMIT is forced to 0. Set ACCOUNT_WALL=off to reverse."
     : "🔓 Account wall off (ACCOUNT_WALL=off) — the app is open to anonymous visitors.");
   console.log(CORPUS_RADIUS
-    ? "📍 Corpus radius blend ON — saved deals within 10 miles join the report (set CORPUS_RADIUS=off to disable)."
+    ? "📍 Corpus radius blend ON — saved deals within 10 miles join CRE reports, 1 mile for houses (set CORPUS_RADIUS=off to disable)."
     : "📍 Corpus radius blend off (CORPUS_RADIUS=off) — reports are search-only.");
   console.log(GUEST_GATE_ON
     ? `🔐 Guest search cap: ${GUEST_SEARCH_LIMIT} free search(es) per visitor, then free sign-in (set GUEST_SEARCH_LIMIT, "off" disables).`

@@ -317,6 +317,82 @@ test("the print button waits for the raster", () => {
   assert.ok(wait < print, "the raster must be awaited BEFORE the print dialog opens");
 });
 
+// ----------------------------------------------------------------------------
+// Map pin popups — Street View is the photo. The aerial roof is a
+// different tree, swapped in only after a 404. Hover waits until the
+// JPEG has settled so the first paint is already the facade.
+// ----------------------------------------------------------------------------
+
+test("map pin popups show Street View without stacking the aerial underneath", () => {
+  const fn = html.match(/const svPhoto = \(marker, zoom, address\) => \{[\s\S]*?\n    \};\n    \/\/ Popups must never/);
+  assert.ok(fn, "index.html must define svPhoto()");
+  assert.match(fn[0], /popupPhotoLL\(marker, address\)/);
+  assert.match(fn[0], /streetViewThumb\(snapped,/);
+  assert.match(fn[0], /aerialThumb\(snapped,/);
+  assert.match(fn[0], /marker\._svStatus === "fail"/);
+  assert.match(fn[0], /streetviewEnabled/);
+  // The two photos must not share a tree — that is what flashed bird's-eye.
+  assert.doesNotMatch(fn[0], /overlay/);
+  assert.doesNotMatch(fn[0], /cn-sv-fallback/);
+  assert.doesNotMatch(fn[0], /opacity:0/);
+});
+
+test("streetViewThumb has no Esri tiles, and a 404 swaps in aerialThumb", () => {
+  const fn = html.match(/function streetViewThumb\([\s\S]*?\n  function cnAerialFallback/);
+  assert.ok(fn, "index.html must define streetViewThumb()");
+  assert.match(fn[0], /streetViewSrc\(ll\)/);
+  assert.match(fn[0], /cnAerialFallback\(this\)/);
+  assert.match(fn[0], /&copy; Google/);
+  assert.doesNotMatch(fn[0], /arcgisonline|World_Imagery|&copy; Esri/);
+  assert.match(html, /function cnAerialFallback\(img\) \{[\s\S]*?aerialThumb\(/);
+});
+
+test("popupPhotoLL refuses a pin that cannot honestly show a building", () => {
+  const fn = html.match(/function popupPhotoLL\(marker, address\) \{[\s\S]*?\n  \}\n  function streetViewSrc/);
+  assert.ok(fn, "index.html must define popupPhotoLL()");
+  assert.match(fn[0], /marker && marker\._bldgLL/);
+  assert.match(fn[0], /marker\._geoOk !== true/);
+  assert.match(fn[0], /unitDesignatorOf\(address\)/);
+});
+
+test("map pin hover opens in 60ms and closes in 80ms", () => {
+  const fn = html.match(/const wireHoverPreview = \(m\) => \{[\s\S]*?\n    \};\n    const addSubjMarker/);
+  assert.ok(fn, "index.html must define wireHoverPreview()");
+  assert.match(fn[0], /setTimeout\([\s\S]*?,\s*60\)/);
+  assert.match(fn[0], /streetViewStatus/);
+  assert.match(fn[0], /m\.openPopup\(\)/);
+  assert.match(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 80\)/);
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 120\)/);
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.closePopup\(\), 320\)/);
+  // Opening before the JPEG settles is what flashed the roof.
+  assert.doesNotMatch(fn[0], /setTimeout\(\(\) => m\.openPopup\(\), 60\)/);
+});
+
+test("Leaflet popup fade is disabled so hover close is the timer, not a 200ms fade", () => {
+  assert.match(html, /\.leaflet-fade-anim \.leaflet-popup \{ transition: none; opacity: 1 \}/);
+});
+
+test("aerial popup tiles are prefetched after the building snap", () => {
+  assert.match(html, /function prefetchAerialThumbs\(markers\)/);
+  assert.match(html, /function aerialTileSpec\(/);
+  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,400}/);
+  assert.ok(snap, "renderMap must call snapMarkersToBuildings");
+  assert.match(snap[0], /prefetchAerialThumbs\(allMarkers\(\)\)/);
+});
+
+test("Street View is prefetched for photo-eligible pins so hover is the facade", () => {
+  const prefetch = html.match(/function prefetchStreetViewThumbs\(markers\) \{[\s\S]*?\n  \}/);
+  assert.ok(prefetch, "index.html must define prefetchStreetViewThumbs()");
+  assert.match(prefetch[0], /streetviewEnabled/);
+  assert.match(prefetch[0], /popupPhotoLL\(m, m\._addr\)/);
+  assert.match(prefetch[0], /streetViewStatus\(ll\)/);
+  assert.match(html, /function streetViewSrc\(ll\) \{[\s\S]*?\/api\/streetview\?lat=/);
+  assert.match(html, /function streetViewStatus\(ll\)/);
+  const snap = html.match(/snapMarkersToBuildings\(allMarkers\(\)\)[\s\S]{0,400}/);
+  assert.ok(snap, "renderMap must call snapMarkersToBuildings");
+  assert.match(snap[0], /prefetchStreetViewThumbs\(allMarkers\(\)\)/);
+});
+
 test("landing address handoff fills #address from sessionStorage and drops the key", () => {
   // File search, not a browser. The landing cannot reach this script;
   // this only proves the app side of the handoff is actually wired.
@@ -358,6 +434,110 @@ test("the hero has a listing line so an ask the size lookup already saw cannot s
   assert.match(html, /function askingRangeFrom\(/);
   assert.match(html, /Currently listed at/);
   assert.match(html, /askFit\(/);
+  assert.match(html, /a cheaper pocket than this property/);
+  assert.equal(/The ask may be ambitious relative to these comps/.test(html), false,
+    "an estimate below the ask is the cheaper-pocket failure, not an ambitious list price");
+});
+
+test("Residential reports compare list price to Low/Likely/High without a typed Refine size", () => {
+  // The CRE comparison card hid itself unless BOTH a size and a price were
+  // typed. A house buyer who pasted a Zillow address never filled Refine, and
+  // the useful question is ask vs this estimate, not $/SF vs market avg.
+  assert.match(html, /function renderResidentialAskComparison\(/);
+  const fn = html.match(/function renderResidentialAskComparison\(parsed, card\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound renderResidentialAskComparison");
+  assert.match(fn[0], /askingRangeFrom\(parsed\)/);
+  assert.match(fn[0], /lastValuation/);
+  assert.match(fn[0], /askFit\(/);
+  assert.equal(/subjectRangeFromMeta\("size"\)/.test(fn[0]), false,
+    "the house-buyer card is dollars vs dollars; a missing Refine size must not hide it");
+  const gate = html.match(/function renderComparison\(parsed\) \{[\s\S]{0,400}/);
+  assert.ok(gate, "could not bound renderComparison");
+  assert.match(gate[0], /currentMeta\.type === "Residential"/);
+  assert.match(gate[0], /renderResidentialAskComparison/);
+});
+
+test("the house hero passes Residential into the valuation so far comps count less", () => {
+  const hero = html.match(/function renderOwnerHero[\s\S]*?card\.classList\.remove\("hidden"\)/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.match(hero[0], /\.\.\.weightOpts\(meta, parsed\)/,
+    "without weightOpts the house report would ignore the market-note radius and the asking $/SF");
+  assert.match(html, /function weightOpts\(/);
+  assert.match(html, /parseRadiusMiles\(meta && meta\.note\)/);
+});
+
+test("Residential size label is Living area, and the CRE toolkit stays behind Refine", () => {
+  assert.match(html, /Residential: "Living area \(SF\)"/);
+  assert.equal(/Residential: "Property size \(SF\)"/.test(html), false,
+    "the 2026-07-27 spec's Living area label is the live one");
+  const cluster = html.match(/function renderAnalysisCluster\(parsed, meta, resetAssumptions\) \{[\s\S]*?\n  \}/);
+  assert.ok(cluster, "could not bound renderAnalysisCluster");
+  assert.match(cluster[0], /hideResiToolkit/);
+  assert.match(cluster[0], /type === "Residential" && !hasNoi/);
+  assert.match(cluster[0], /reportTabs[\s\S]{0,80}hidden/);
+});
+
+test("a house report's CTA says talk to a local agent and still stores source bov", () => {
+  const src = html.match(/function bovCopy\(meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find bovCopy in index.html — was it renamed or moved?");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\n;this.fn = bovCopy;", { filename: "index.html" }).runInContext(ctx);
+  const house = ctx.fn({ type: "Residential" });
+  const warehouse = ctx.fn({ type: "Industrial" });
+  assert.equal(house.button, "Talk to a local agent");
+  assert.match(house.helper, /not a brokerage/);
+  assert.equal(warehouse.button, "Get a free Broker Opinion of Value");
+  assert.match(html, /openLeadModal\("bov"\)/,
+    "the click still stores source bov; only the label changed");
+  assert.match(html, /id="ownerYearBuilt"/);
+  assert.match(html, /function renderSubjectYearBuilt\(/);
+  assert.match(html, /renderSubjectYearBuilt\(parsed, meta\)/);
+});
+
+test("Residential comps table drops tenancy and keeps year built", () => {
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const fn = html.indexOf("  function columnsForType(type) {", start);
+  const end = html.indexOf("\n  }", fn);
+  assert.ok(start >= 0 && fn > start && end > fn, "could not bound columnsForType");
+  const src = html.slice(start, end + 4);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.columnsForType = columnsForType;", { filename: "index.html" }).runInContext(ctx);
+  const house = ctx.columnsForType("Residential").map((c) => c.key);
+  assert.equal(house.includes("tenancy"), false,
+    "tenancy is a CRE occupancy column; on a house report it was a wide gap before Year Built");
+  assert.ok(house.includes("year_built"));
+  assert.ok(house.includes("beds_baths"));
+  const warehouse = ctx.columnsForType("Industrial").map((c) => c.key);
+  assert.ok(warehouse.includes("tenancy"));
+  assert.ok(warehouse.includes("year_built"));
+  const land = ctx.columnsForType("Land").map((c) => c.key);
+  assert.equal(land.includes("tenancy"), false);
+  assert.equal(land.includes("year_built"), false);
+});
+
+test("comps table rows are compact throughout, and notes stay on one line", () => {
+  assert.match(html, /#compsTable td,\s*#compsTable thead th button \{ padding: 6px 12px; \}/);
+  assert.match(html, /td\.comp-notes/);
+  assert.match(html, /col\.key === "notes" \? "comp-notes/);
+});
+
+test("a glued street number still counts as a house, so the value hero shows", () => {
+  // 1210N17th st (Boise North End) is a real address people type without a
+  // space after the number. The hero used /^\s*\d+\s/, which hid
+  // Low/Likely/High and treated it as a city-only search.
+  const src = html.match(/function houseNumberOf\(address\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find houseNumberOf — was it renamed or moved?");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\n;this.fn = houseNumberOf;", { filename: "index.html" }).runInContext(ctx);
+  assert.equal(ctx.fn("1210N17th st"), "1210");
+  assert.equal(ctx.fn("1210 N 17th St, Boise, ID"), "1210");
+  assert.equal(ctx.fn("Boise ID"), null);
+  assert.equal(ctx.fn("One Wilshire Blvd"), null);
+  const hero = html.match(/function renderOwnerHero\(parsed, meta\) \{[\s\S]{0,1200}/);
+  assert.ok(hero, "could not bound renderOwnerHero");
+  assert.match(hero[0], /houseNumberOf\(meta\.address\)/);
+  assert.equal(/hasStreetNumber = \/\^\\s\*\\d\+\\s\//.test(hero[0]), false,
+    "the hero must not still require a space after the house number");
 });
 
 // ---------------------------------------------------------------------------
@@ -429,7 +609,7 @@ test("the desk hub list has no empty state, and never shows one", () => {
   assert.match(html, /id="deskHubs"/);
   assert.match(html, /id="deskHubRows"/);
   assert.ok(!/id="deskHubsEmpty"/.test(html), "the hub list is hidden when empty, not emptied");
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/);
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/);
   assert.ok(fn, "index.html must define renderDeskHubs()");
   assert.match(fn[0], /if \(!rows\.length\) return;/);
   // Every failure is silent here: this is an extra list at the bottom of a
@@ -446,7 +626,7 @@ test("hub rows render user-authored text through textContent, never innerHTML", 
   // A hub title is typed by the broker who created it, so it is user-authored
   // text like an address or a viewer email — the rule the rest of this desk
   // already follows.
-  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,2000}?\n  \}/)[0];
+  const fn = html.match(/async function renderDeskHubs\(\)[\s\S]{0,4000}?\n  \}/)[0];
   assert.match(fn, /link\.textContent = h\.title/);
   assert.ok(!/innerHTML\s*=\s*[^"']/.test(fn.replace(/innerHTML = "";/g, "")),
     "no interpolated innerHTML in the hub list");
@@ -522,7 +702,8 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(html, /Find out what a property is worth, with comparables to prove it/);
   assert.ok(!html.includes("3–6 cited"), "stale 3–6 cited comps copy must not return");
   assert.ok(!html.includes("3-6 cited"));
-  assert.match(html, /Up to 12 cited comps · about a minute · every source disclosed/);
+  assert.ok(!html.includes("Up to 12"), "a 12-comp cap is a lie once nearby deals join the table");
+  assert.match(html, /Cited comps · about a minute · every source disclosed/);
   assert.match(html, /No address\? Find one/);
   assert.ok(!html.includes("No address? Explore a market"));
 
@@ -533,22 +714,68 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(form[0], /id="exploreAddrLink"/);
   assert.match(form[0], /id="sampleBtn"/);
   assert.match(form[0], /Value a building/);
+  assert.match(form[0], /rd-chamber-head/);
+  // Hidden type select is a form sibling of the address row, not a child of
+  // it. Inside the row it stopped .rd-cell:last-child matching and doubled
+  // the chamber divider on that one row.
+  const addrToSelect = form[0].slice(
+    form[0].indexOf('for="address"'),
+    form[0].indexOf('<select id="propertyType"')
+  );
+  assert.match(
+    addrToSelect,
+    /<\/div>\s*<\/div>\s*(?:<!--[\s\S]*?-->\s*)?$/,
+    "propertyType must sit after the address rd-row has closed"
+  );
 
   const desk = html.match(/class="rd-form rd-desk"[\s\S]*?id="guestSearchHint"/);
   assert.ok(desk, "desk wraps the form and explorer");
   assert.match(desk[0], /id="marketSearch"/);
   assert.match(desk[0], /id="marketSearchResults"/);
   assert.match(desk[0], /Or read a market/);
+  // The chamber is the narrow 1fr column of a max-w-5xl desk. The old
+  // "Try any market, e.g. industrial Boise ID" ran past the input's
+  // inner width and clipped the state. The note above already says
+  // search any market; the placeholder is only the example, with the
+  // comma the rest of the product uses. appearance:none drops the
+  // searchfield cancel gutter that ate the last letters on top of that.
+  assert.match(desk[0], /placeholder="e\.g\. industrial Boise, ID"/);
+  assert.doesNotMatch(desk[0], /Try any market, e\.g\./);
+  assert.match(html, /\.rd-desk-market-in \{[^}]*appearance:\s*none/);
+  assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
+    "both chambers share a rd-chamber-head so the title hairline is one rule");
 
   assert.match(html, /\.rd-desk \{/);
+  assert.match(html, /\.rd-chamber-head \{/);
+  assert.match(html, /\.rd-chamber-head \{[^}]*padding:\s*11px 16px/);
+  assert.match(html, /\.rd-chamber-lab \{[^}]*line-height:\s*1\.5/);
   assert.ok(
     !/\.rd-desk \{[^}]*overflow:\s*hidden/.test(html),
     "overflow:hidden on .rd-desk would clip the explorer dropdown"
   );
+  assert.ok(
+    !/\.rd-desk-market \{[^}]*overflow:\s*hidden/.test(html),
+    "overflow:hidden on .rd-desk-market would clip the explorer dropdown"
+  );
+  // Square heads would poke past the 6px card; the desk cannot clip them.
+  assert.match(html, /\.rd-desk-build > \.rd-chamber-head \{[^}]*border-radius:\s*6px 0 0 0/);
+  assert.match(html, /\.rd-desk-market > \.rd-chamber-head \{[^}]*border-radius:\s*0 6px 0 0/);
+
+  // Focus/Lookback: one site chevron. The background shorthand wiped the SVG
+  // and appearance:auto put the native widget back on top of it (three or four
+  // arrows in dark mode, where color-scheme:dark adds Chrome's own).
+  assert.match(html, /\.rd-in \{[^}]*background-color:\s*transparent/);
+  assert.doesNotMatch(html, /\.rd-in \{[^}]*background:\s*transparent/);
+  assert.doesNotMatch(html, /^\s*select\.rd-in \{[^}]*appearance:\s*auto/m);
+  assert.match(html, /^\s*select\.rd-in \{[^}]*appearance:\s*none/m);
 
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
   assert.match(home, /href="\/how-it-works"/);
   assert.match(home, /href="\/brokers"/);
+  // gap-x-3 was never in the vendored tailwind.css, so the middle dot sat
+  // on the F in "For brokers". gap-x-4 is already generated.
+  assert.match(home, /gap-x-4/);
+  assert.doesNotMatch(home, /gap-x-3/);
   assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
 });
 
@@ -607,6 +834,65 @@ test("the address field and the shared-report lock field both wire Tab-to-fill",
   assert.match(fn[0], /dispatchEvent\(new Event\("change"/);
   assert.match(html, /bindTabFillExample\(document\.getElementById\("address"\)\)/);
   assert.match(html, /bindTabFillExample\(document\.getElementById\("lockAddress"\)\)/);
+  // Tab-fill of a rotating example must also set that building's type, or
+  // the hidden select stays Industrial and the visitor cannot tell.
+  assert.match(fn[0], /exampleTypeForPlaceholder/);
+  assert.match(fn[0], /input\.id === "address"/);
+  assert.match(fn[0], /typeResolution = "explicit"/);
+});
+
+test("every rotating address example names a real property type", () => {
+  const m = html.match(/const ADDRESS_EXAMPLES = \[([\s\S]*?)\];/);
+  assert.ok(m, "ADDRESS_EXAMPLES must still be a list");
+  const types = [...m[1].matchAll(/type:\s*"([^"]+)"/g)].map((x) => x[1]);
+  assert.ok(types.length >= 5, "each example needs a type; found " + types.length);
+  const allowed = new Set(["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"]);
+  for (const t of types) assert.ok(allowed.has(t), t + " is not a property type");
+  assert.ok(new Set(types).size >= 2, "examples must not all be the same class");
+});
+
+test("exampleTypeForPlaceholder maps a rotating placeholder to its type", () => {
+  const fromPh = html.match(/function exampleValueFromPlaceholder\(placeholder\) \{[\s\S]*?\n  \}/);
+  const typeFor = html.match(/function exampleTypeForPlaceholder\(placeholder, examples\) \{[\s\S]*?\n  \}/);
+  assert.ok(fromPh && typeFor, "could not find example helpers in index.html");
+  const ctx = vm.createContext({});
+  new vm.Script(typeFor[0] + "\n;this.typeFor = exampleTypeForPlaceholder;",
+    { filename: "index.html" }).runInContext(ctx);
+  const examples = [
+    { ph: "e.g. 1200 W Industrial Blvd, Dallas, TX", type: "Industrial" },
+    { ph: "e.g. 2300 Peachtree Rd NE, Atlanta, GA", type: "Office" },
+  ];
+  assert.equal(ctx.typeFor("e.g. 2300 Peachtree Rd NE, Atlanta, GA", examples), "Office");
+  assert.equal(ctx.typeFor("E.G. 1200 W Industrial Blvd, Dallas, TX", examples), "Industrial");
+  assert.equal(ctx.typeFor("Property address", examples), "");
+});
+
+test("Address Explorer chips show a type and Find addresses does not send the form's", () => {
+  const start = html.indexOf("async function findAddresses");
+  const end = html.indexOf("link.addEventListener(\"click\"", start);
+  assert.ok(start >= 0 && end > start, "findAddresses / explore link click moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /URLSearchParams/);
+  assert.match(fn, /typeof opts\.type === "string"/);
+  assert.match(fn, /if \(typeFilter\) qs\.set\("type", typeFilter\)/);
+  assert.doesNotMatch(fn, /propertyType"\)\.value/);
+  assert.match(html, /typeTag\.textContent = a\.type/);
+  assert.match(html, /addrExplore\.v3/);
+  assert.match(html, /findAddresses\(deepType \? \{ type: deepType \} : undefined\)/);
+  assert.match(html, /btn\.addEventListener\("click", \(\) => findAddresses\(\)\)/);
+});
+
+test("the form does not ask you to pick a property type before you have an address", () => {
+  const start = html.indexOf("function renderTypeStatus");
+  const end = html.indexOf("function addrTypeStore");
+  assert.ok(start >= 0 && end > start, "renderTypeStatus / addrTypeStore moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /if \(typeResolution === null\) return;/);
+  assert.doesNotMatch(fn, /chosen when you run the report/);
+  assert.doesNotMatch(fn, /pick it now/);
+  assert.match(fn, /makeTypeChangeButton\(\)/);
+  // The confirm dialog is still the place an unresolved type is asked.
+  assert.match(html, /if \(typeResolution === null\) \{\s*showConfirmTypeButtons\(null\);/);
 });
 
 test("once pins settle, the hero re-runs so distance weighting actually moves the range", () => {
@@ -615,4 +901,293 @@ test("once pins settle, the hero re-runs so distance weighting actually moves th
   assert.match(fn[0], /renderOwnerHero\(currentParsed, currentMeta\)/);
   assert.match(html, /farther away/);
   assert.match(html, /nearby/);
+});
+
+test("comp table marks are words, not gray footnote glyphs", () => {
+  assert.match(html, /\.comp-mark \{/);
+  assert.match(html, /function appendCompMark\(/);
+  assert.match(html, /id="compMarksLegend"/);
+  assert.match(html, /appendCompMark\(cell, "calc"/);
+  assert.match(html, /appendCompMark\(cell, "size"/);
+  assert.match(html, /appendCompMark\(cell, "adj"/);
+  assert.match(html, /appendCompMark\(dd, "calc"/);
+  assert.match(html, /appendCompMark\(dd, "size"/);
+  assert.match(html, /appendCompMark\(dd, "adj"/);
+  assert.doesNotMatch(html, /sup\.textContent = "[†‡§]"/);
+  assert.match(html, /adj in the table shows each indexed figure/);
+  assert.match(html, /less \(size in the table\)/);
+});
+
+test("the type chip is followed by the table's own comp count, never a bare digit", () => {
+  const start = html.indexOf("function metaParts(meta)");
+  const end = html.indexOf("function selectedLookbackMonths");
+  assert.ok(start >= 0 && end > start, "metaParts / selectedLookbackMonths moved");
+  const fn = html.slice(start, end);
+  assert.match(fn, /currentComps\.length/);
+  assert.match(fn, /n \+ " comps"/);
+  assert.match(fn, /"Note: " \+ note/);
+  assert.match(html, /function renderReportMeta\(/);
+  assert.match(html, /renderReportMeta\(currentMeta\)/);
+});
+
+test("My Desk and the account circle have a place to put a profile photo", () => {
+  assert.match(html, /id="acctMenuPhoto"/);
+  assert.match(html, /id="acctMenuInitial"/);
+  assert.match(html, /id="deskAvatarFile"/);
+  assert.match(html, /id="deskAvatarChange"/);
+  assert.match(html, /id="menuAvatarBtn"/);
+  assert.match(html, /function applyAvatarUI\(/);
+  assert.match(html, /function readAvatarFile\(/);
+  assert.match(html, /\/api\/account\/avatar/);
+});
+
+test("the loading ninja is a two-frame runner that freezes for reduced motion and on done", () => {
+  // The 20-60s wait used to show an 18px blob hopping 2.5px on the bar.
+  // The replacement has to keep reading as a ninja (body + red band classes,
+  // still the only mascot on the site) and must not keep jogging after
+  // "Report ready!" or under prefers-reduced-motion.
+  assert.match(html, /id="loadingNinja"/);
+  assert.match(html, /class="ninja-run-a"/);
+  assert.match(html, /class="ninja-run-b"/);
+  assert.match(html, /class="ninja-body"/);
+  assert.match(html, /class="ninja-band"/);
+
+  const cssStart = html.indexOf("/* Loading card:");
+  const cssEnd = html.indexOf("#loadingHeadline");
+  assert.ok(cssStart !== -1 && cssEnd > cssStart, "loading-ninja CSS block moved");
+  const css = html.slice(cssStart, cssEnd);
+  assert.match(css, /translateX\(-85%\)/);
+  assert.match(css, /translateY\(-1px\)/);
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(css, /animation:\s*none\s*!important/);
+  assert.match(css, /\.loading-ninja\.done/);
+  assert.ok(!/ninjaJog/.test(css), "old ninjaJog bounce must not remain");
+  assert.ok(!/translateY\(-2\.5px\)/.test(css), "old 2.5px hop must not remain");
+
+  const show = html.match(/function showLoadingCard\([\s\S]*?\n  \}/)[0];
+  const complete = html.match(/function completeLoadingCard\(\) \{[\s\S]*?\n  \}/)[0];
+  const hide = html.match(/function hideLoadingCard\(\) \{[\s\S]*?\n  \}/)[0];
+  assert.match(complete, /classList\.add\("done"\)/);
+  assert.match(show, /classList\.remove\("done"\)/);
+  assert.match(hide, /classList\.remove\("done"\)/);
+});
+
+// ---------------------------------------------------------------------------
+// The two lines that tell a reader what the number can't see: the unexplained
+// gain since the subject's own last sale, and the condition spread the
+// weighting can't explain away. Both are copy over VALUATION math, so these
+// pin the wiring and the wording, not the arithmetic (valuation.test.js owns
+// that).
+// ---------------------------------------------------------------------------
+
+test("the unexplained-gain line is present and wired into the hero", () => {
+  assert.match(html, /id="ownerImproved"/);
+  assert.match(html, /function renderSubjectImproved\(/);
+  assert.match(html, /renderSubjectImproved\(parsed, meta\)/);
+});
+
+test("the unexplained-gain line names physical work only on a house", () => {
+  const src = html.match(/  function renderSubjectImproved\(parsed, meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "could not find renderSubjectImproved in index.html — was it renamed?");
+  const V = require("../valuation");
+  const made = {};
+  const stubEl = () => ({
+    textContent: "", classList: { add() {}, remove() {} },
+    appendChild(n) { this.textContent += n.text; },
+  });
+  const ctx = vm.createContext({
+    document: {
+      getElementById(id) { return (made[id] = made[id] || stubEl()); },
+      createTextNode: (text) => ({ text }),
+    },
+    askingRangeFrom: () => ({ min: 700000, max: 700000 }),
+    unexplainedGain: V.unexplainedGain,
+    numericValue: V.numericValue,
+    trendPctOf: () => 6,
+    asOfOf: () => Date.parse("2026-08-16"),
+    formatUsd: (v) => "$" + Math.round(v).toLocaleString("en-US"),
+  });
+  new vm.Script(src[0] + "\n;this.fn = renderSubjectImproved;", { filename: "index.html" }).runInContext(ctx);
+  const parsed = { subject_last_sale: { date: "June 2021", price: "$400,000" } };
+
+  ctx.fn(parsed, { type: "Residential" });
+  const house = made.ownerImproved.textContent;
+  assert.match(house, /\$540,000 today/);
+  assert.match(house, /\$160,000 above that \(30%\)/);
+  assert.match(house, /work was done since/);
+  // The disclaimer is the point of the line: a dollar figure under a valuation
+  // reads as part of it unless this says otherwise.
+  assert.match(house, /not in the range above/);
+
+  made.ownerImproved = null;
+  ctx.fn(parsed, { type: "Office" });
+  const office = made.ownerImproved.textContent;
+  // On commercial the same gap is as often lease-up as renovation, so the
+  // sentence must not assert physical work.
+  assert.match(office, /improved or its income grew since/);
+  assert.doesNotMatch(office, /work was done since/);
+});
+
+test("the condition-spread clause rides the Residential trust line", () => {
+  const i = html.indexOf('Residential sales mostly live in the MLS');
+  assert.ok(i > 0, "could not find the Residential trust-line block");
+  const block = html.slice(i, i + 2600);
+  assert.match(block, /conditionSpread\(currentPsfBand, subjSFMid\)/);
+  assert.match(block, /mostly condition and finish, which this estimate can't see/);
+  // It reads the band the chips and scatter read, never a hardcoded percentage
+  // standing in for one — that constant would be the only figure in the hero
+  // with no source behind it.
+  assert.doesNotMatch(block, /10-20%|10 to 20%/);
+});
+
+test("the unexplained-gain line is hidden during streaming assembly", () => {
+  // Same trap ownerScatter carries: assembly puts a counts-only hero on screen
+  // a minute before renderResults repaints, so a line left out of this list
+  // hangs the PREVIOUS report's dollar figure under the next report's
+  // placeholder.
+  const i = html.indexOf('["widenSearchWrap", "ownerScatter"');
+  assert.ok(i > 0, "could not find beginAssembly's hidden list");
+  const list = html.slice(i, i + 260);
+  assert.match(list, /"ownerImproved"/);
+  // The mechanics panel carries the same hazard: left out, the previous
+  // report's "How this range is calculated" hangs under the next report's
+  // placeholder hero.
+  assert.match(list, /"ownerTrustHowWrap"/);
+});
+
+// ---------------------------------------------------------------------------
+// The trust line is two halves: property-specific warnings stay visible,
+// mechanics collapse. Measured 2026-08-16, the combined line ran 1,034
+// characters of 12px grey and buried the condition sentence ninth of nine.
+// ---------------------------------------------------------------------------
+
+test("mechanics are routed to the collapsed half, not the visible line", () => {
+  assert.match(html, /id="ownerTrustHowWrap"/);
+  assert.match(html, /id="ownerTrustHow"/);
+  assert.match(html, /id="ownerTrustHowBtn"/);
+  // The weighting note and the MLS caveat are the two mechanics. Neither may
+  // be concatenated into #ownerTrust: the visible half is for notes specific
+  // to THIS property, and the MLS sentence is identical on every house report.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  // Assignment or append only — `if (trustEl.textContent) mechanics.push(...)`
+  // is the correct routing and must not trip this.
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*weighNote/);
+  assert.doesNotMatch(body, /trustEl\.textContent\s*\+?=[^;]*Residential sales mostly live in the MLS/);
+  assert.match(body, /mechanics\.push\("Residential sales mostly live in the MLS/);
+  // Routed into the mechanics array, and only when a trust line actually
+  // rendered — an explanation of the weighting with no range above it explains
+  // nothing. (unshift vs push is ordering, not routing; don't pin the method.)
+  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\(weighNote\)/);
+});
+
+test("the collapsed half is forced open on paper and in the PNG", () => {
+  // An export is the copy that gets forwarded to a client, so it must not be
+  // the one version of the report whose weighting is unexplained. Two separate
+  // mechanisms because html2canvas ignores @media print.
+  const printBlock = html.slice(html.indexOf("@media print {"), html.indexOf("@media print {") + 2000);
+  assert.match(printBlock, /#ownerTrustHow \{ display: block !important; \}/);
+  const clone = html.slice(html.indexOf("onclone: (doc) =>"), html.indexOf("onclone: (doc) =>") + 1400);
+  assert.match(clone, /#ownerTrustHow \{ display: block !important; \}/);
+  // The toggle itself must NOT survive into either — a button in a PNG is
+  // furniture that cannot be clicked.
+  assert.match(html, /id="ownerTrustHowBtn"[\s\S]{0,200}?no-print no-capture/);
+});
+
+test("the agent-intro pointer is screen-only", () => {
+  // #bovCtaWrap is no-print and is dropped by html2canvas's ignoreElements, so
+  // a printed or captured report carrying "the button below" would point at a
+  // button that is not on the page.
+  const i = html.indexOf('cta.className = "no-print no-capture"');
+  assert.ok(i > 0, "the CTA pointer must carry no-print no-capture");
+  // Pin that it POINTS at the on-page control, not the exact phrasing.
+  assert.match(html.slice(i, i + 400), /cta\.textContent = " A local agent below/);
+  // The sentences that stay in both media make no reference to a control.
+  assert.match(html, /can't see without someone walking the property/);
+  assert.match(html, /half of the range is the fairer read/);
+});
+
+test("the mechanics toggle is registered once, not per render", () => {
+  // renderOwnerHero runs on every render and every subject-field edit; an
+  // addEventListener in there would stack handlers until one click fired the
+  // toggle a dozen times.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  assert.doesNotMatch(body, /ownerTrustHowBtn"\)\.addEventListener/);
+  assert.match(html, /document\.getElementById\("ownerTrustHowBtn"\)\.addEventListener\("click"/);
+});
+
+test("the condition steer yields to a listing that disagrees with it", () => {
+  // Seen only by rendering a report: listed at $700,000 against a $1,050,000
+  // estimate, askFit said "50% below this estimate ... the comps are probably a
+  // pricier pocket" (our number may be high) and conditionFit then said "the
+  // upper half of the range is the fairer read". The paragraph argued with
+  // itself. The listing is a hard fact about this property; the condition steer
+  // is a comparison against comps, so the listing wins.
+  const i = html.indexOf("const contradictsAsk");
+  assert.ok(i > 0, "the contradiction guard is gone");
+  assert.match(html.slice(i, i + 200), /askGap && askGap\.skewed && fit && askGap\.dir === fit\.dir/);
+  // askGap is computed well above this line; if it ever moves below, the guard
+  // silently reads undefined and stops suppressing anything.
+  assert.ok(html.indexOf("const askGap = askFit(") < i, "askGap must be computed before the guard");
+});
+
+test("askFit and conditionFit share one direction vocabulary", () => {
+  // The guard is `askGap.dir === fit.dir`. If either function's dir vocabulary
+  // drifts — "higher"/"lower", say — the comparison silently never matches and
+  // the contradiction comes back with nothing failing.
+  const V = require("../valuation");
+  const comp = (condition) => ({ transaction: "Sale", condition });
+  const up = V.conditionFit("Renovated", [comp("Original"), comp("Original"), comp("Original")]);
+  const down = V.conditionFit("Needs work", [comp("Renovated"), comp("Renovated"), comp("Renovated")]);
+  assert.equal(up.dir, "above");
+  assert.equal(down.dir, "below");
+  assert.equal(V.askFit(1000000, 2000000).dir, "above");
+  assert.equal(V.askFit(2000000, 1000000).dir, "below");
+});
+
+// --- the comp table <-> map hover link (2026-08-19) -----------------------
+
+test("the marker index is module-scoped, so the table can reach a pin", () => {
+  // It used to be `const compMarkersByNum = {}` INSIDE renderMap, which is
+  // precisely why hovering a row could never do anything to the map: the only
+  // handle on a marker died with the call that created it. If this regresses
+  // the feature goes silently dead -- setPinLit just stops finding markers,
+  // and nothing throws.
+  const decl = html.match(/^\s*(const|let|var)\s+compMarkersByNum\s*=/gm) || [];
+  assert.equal(decl.length, 1, "compMarkersByNum must be declared exactly once");
+  const i = html.indexOf("compMarkersByNum =");
+  const renderMapAt = html.indexOf("function renderMap(");
+  assert.ok(i < renderMapAt,
+    "compMarkersByNum must be declared BEFORE renderMap, not inside it");
+});
+
+test("every comp row carries the number its pin carries", () => {
+  // data-comp-num is the handle both directions of the link use. The roundel
+  // in the cell is not enough: it is inside the row, and the delegated
+  // listener needs the identity ON the row it matched.
+  assert.match(html, /tr\.dataset\.compNum = comp\._num/);
+  assert.match(html, /tr\[data-comp-num\]/);
+});
+
+test("the row hover listener is delegated once, not re-attached per render", () => {
+  // renderTableBody runs on every sort, filter, exclude and added comp. A
+  // listener attached per row, or per render on the body, would stack up
+  // dozens deep in one sitting and fire the handler once per copy.
+  assert.match(html, /body\.dataset\.mapLinkWired/);
+});
+
+test("a re-render clears every lit pin", () => {
+  // A row removed from under the cursor -- excluded, filtered out, sorted
+  // away -- never fires mouseout, so its pin would stay lit for the rest of
+  // the report. renderTableBody clears them all at the top.
+  const at = html.indexOf("function renderTableBody(");
+  const body = html.slice(at, at + 2500);
+  assert.match(body, /setPinLit\(n, false\)/,
+    "renderTableBody must clear lit pins before rebuilding rows");
+});
+
+test("the pin scale is on the inner dot, never on the Leaflet-positioned element", () => {
+  // Leaflet owns .comp-pin's transform for positioning. Animating that makes
+  // every lit pin drift off its building as the map pans.
+  assert.match(html, /\.comp-pin\.lit \.comp-pin-dot \{[^}]*transform: scale/);
+  assert.doesNotMatch(html, /\.comp-pin\.lit \{[^}]*transform:/);
 });

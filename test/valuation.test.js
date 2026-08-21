@@ -162,6 +162,79 @@ test("compWeight halves at five miles (4-mile half-life after the 1-mile pass)",
   assert.equal(V.compWeight(comp({ distance_mi: "5.0 mi" }), AS_OF, 10000), 0.5);
 });
 
+test("Residential distance half-life is 2 miles, so a 5-mile house counts half as much as CRE", () => {
+  // CRE: 0.5^((5-1)/4) = 0.5. Residential: 0.5^((5-1)/2) = 0.25.
+  assert.equal(V.distanceHalfLifeMiles("Residential"), 2);
+  assert.equal(V.distanceHalfLifeMiles("Industrial"), 4);
+  assert.equal(V.compWeight(comp({ distance_mi: 5 }), AS_OF, 10000, null, "Residential"), 0.25);
+  assert.equal(V.compWeight(comp({ distance_mi: 3 }), AS_OF, 10000, null, { propertyType: "Residential" }), 0.5);
+});
+
+test("a $2M house is not valued off a majority of cheaper houses a few miles over", () => {
+  // 4 nearby sales at $500/SF (the subject's own streets) plus 15 sales at
+  // $250/SF six miles away — the 19-comp flood from a 10-mile residential
+  // blend. CRE's 4-mile half-life still lets the cheap majority win the
+  // weighted median; the house curve does not.
+  const nearby = Array.from({ length: 4 }, (_, i) =>
+    comp({ address: i + " Near St", price_per_sqft: "500", size_sqft: "4000", distance_mi: 0.3 }));
+  const far = Array.from({ length: 15 }, (_, i) =>
+    comp({ address: i + " Far Rd", price_per_sqft: "250", size_sqft: "4000", distance_mi: 6 }));
+  const house = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null, propertyType: "Residential",
+  });
+  const cre = V.valueFromComps(nearby.concat(far), {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+  });
+  assert.ok(house.psfMid > 400, "house likely should sit with the nearby $500/SF comps, got " + house.psfMid);
+  assert.ok(cre.psfMid < house.psfMid, "CRE curve should sit closer to the cheap majority");
+  assert.equal(house.n, 19);
+});
+
+test("parseRadiusMiles reads a market note and refuses junk", () => {
+  assert.equal(V.parseRadiusMiles("2.5 miles"), 2.5);
+  assert.equal(V.parseRadiusMiles("within 2.5 mi"), 2.5);
+  assert.equal(V.parseRadiusMiles("2.5 mile radius"), 2.5);
+  assert.equal(V.parseRadiusMiles(""), null);
+  assert.equal(V.parseRadiusMiles("North Dallas submarket"), null);
+  assert.equal(V.parseRadiusMiles("1000 miles"), null);
+});
+
+test("priceTierFactor floors a 2x $/SF miss and leaves a 1.2x peer full weight", () => {
+  assert.equal(V.priceTierFactor(500, 500), 1);
+  assert.equal(V.priceTierFactor(600, 500), 1);
+  assert.equal(V.priceTierFactor(250, 500), 0.15);
+  assert.equal(V.priceTierFactor(250, 0), 1);
+});
+
+test("a $2M house among cheaper sales inside a 2.5-mile market note recovers via price tier", () => {
+  // Owner typed "2.5 miles" as the market note. All 19 comps sit inside that
+  // circle, so distance cannot separate them. 4 true comps at $500/SF and
+  // 15 cheaper houses at $250/SF — without the asking $/SF the IQR sits at
+  // $1M; with it the cheap majority floors and the headline follows the $2M
+  // product.
+  const peers = Array.from({ length: 4 }, (_, i) =>
+    comp({ address: i + " Peer St", price_per_sqft: "500", size_sqft: "4000", distance_mi: 2.3 }));
+  const cheap = Array.from({ length: 15 }, (_, i) =>
+    comp({ address: i + " Cheap Rd", price_per_sqft: "250", size_sqft: "4000", distance_mi: 2.4 }));
+  const mixed = peers.concat(cheap);
+  const withAsk = V.valueFromComps(mixed, {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  });
+  const noAsk = V.valueFromComps(mixed, {
+    subjectSF: 4000, asOf: AS_OF, trendPct: null,
+    propertyType: "Residential", radiusMiles: 2.5,
+  });
+  assert.ok(withAsk.psfMid > 400, "asking $/SF should recover the $2M tier, got " + withAsk.psfMid);
+  assert.ok(noAsk.psfMid < 350, "without an ask, 2.5-mile cheaper comps still win, got " + noAsk.psfMid);
+  assert.equal(V.compWeight(cheap[0], AS_OF, 4000, null, {
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  }), 0.15);
+  assert.equal(V.compWeight(peers[0], AS_OF, 4000, null, {
+    propertyType: "Residential", radiusMiles: 2.5, subjectPsf: 500,
+  }), 1);
+});
+
 test("compWeight treats missing distance as neutral, never as a penalty", () => {
   assert.equal(V.compWeight(comp({ distance_mi: "" }), AS_OF, 10000), 1);
   assert.equal(V.compWeight(comp(), AS_OF, 10000), 1);
@@ -437,4 +510,217 @@ test("a blended vault comp has a tier, at full weight", () => {
   const vault = comp({ source_type: "broker_vault" });
   const unknown = comp({ source_type: "who knows" });
   assert.equal(V.compWeight(vault, AS_OF), V.compWeight(unknown, AS_OF));
+});
+
+// ---------------------------------------------------------------------------
+// conditionSpread — the spread the six weighting factors can't explain away,
+// which on a house is condition and finish. Derived from the report's own
+// band on purpose, so these tests pin the derivation, never a constant.
+// ---------------------------------------------------------------------------
+
+test("conditionSpread reports the band in $/SF and as a dollar swing", () => {
+  const band = { low: 412, mid: 450, high: 487, trimmed: true };
+  const c = V.conditionSpread(band, 2450);
+  assert.equal(c.psfLow, 412);
+  assert.equal(c.psfHigh, 487);
+  // (487 - 412) / 450 — the same ratio index.html's spreadPhrase reads.
+  assert.equal(c.pct, 17);
+  // (487 - 412) * 2450 = 183,750, heroRound'd to the nearest 5,000.
+  assert.equal(c.swing, 185000);
+});
+
+test("conditionSpread stays quiet below the outlier trim", () => {
+  // trimmed:false means fewer than 4 sale comps, so low/high are the literal
+  // min and max of a tiny sample: that measures scatter, not what the market
+  // pays for condition. smallNNote already speaks for this case.
+  assert.equal(V.conditionSpread({ low: 412, mid: 450, high: 487, trimmed: false }, 2450), null);
+  assert.equal(V.conditionSpread(null, 2450), null);
+});
+
+test("conditionSpread still answers in $/SF with no subject size", () => {
+  const c = V.conditionSpread({ low: 400, mid: 500, high: 600, trimmed: true }, 0);
+  assert.equal(c.psfLow, 400);
+  assert.equal(c.psfHigh, 600);
+  assert.equal(c.pct, 40);
+  // No size, no swing — never a swing computed off a guessed size.
+  assert.equal(c.swing, undefined);
+});
+
+test("conditionSpread refuses an inverted or zero band", () => {
+  assert.equal(V.conditionSpread({ low: 600, mid: 500, high: 400, trimmed: true }, 2450), null);
+  assert.equal(V.conditionSpread({ low: 0, mid: 500, high: 600, trimmed: true }, 2450), null);
+});
+
+// ---------------------------------------------------------------------------
+// unexplainedGain — the part of a subject's gain since its own last sale that
+// the market's drift does not account for. The closest honest answer to "how
+// much was spent on the renovation" without permit data.
+// ---------------------------------------------------------------------------
+
+const GAIN_AS_OF = Date.parse("2026-08-16");
+
+test("unexplainedGain separates market drift from the rest of the gain", () => {
+  // $400k in June 2021, +6%/yr, asking $700k today. 5.21 years of drift
+  // explains roughly $542k of it; the remainder is what the market did not
+  // hand over.
+  const g = V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF,
+  });
+  assert.equal(g.expected, 540000);
+  // Derived from the ROUNDED expected, so the two figures reconcile against
+  // the ask exactly on screen rather than drifting a rounding step apart.
+  assert.equal(g.expected + g.unexplained, 700000);
+  assert.equal(g.unexplained, 160000);
+  assert.equal(g.pct, 30);
+  assert.equal(g.years, 5.2);
+});
+
+test("unexplainedGain stays silent without a market trend", () => {
+  // report-parse.js normalizes annual_price_trend_pct to null unless it is a
+  // nonzero number within +/-30. With no drift model, reading it as flat would
+  // report every appreciating market as a renovation.
+  const args = { lastPrice: 400000, lastDate: "2021-06-01", askPrice: 700000, asOf: GAIN_AS_OF };
+  assert.equal(V.unexplainedGain({ ...args, trendPct: null }), null);
+  assert.equal(V.unexplainedGain({ ...args, trendPct: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, trendPct: 45 }), null);
+});
+
+test("unexplainedGain only speaks in the ABOVE direction", () => {
+  // Asking LESS than drift explains has unknowable causes — distress, a
+  // divorce, deferred maintenance, an overpriced original purchase — and this
+  // report cannot defend naming any of them about a specific home.
+  assert.equal(V.unexplainedGain({
+    lastPrice: 600000, lastDate: "2023-06-01",
+    askPrice: 560000, trendPct: 6, asOf: GAIN_AS_OF,
+  }), null);
+});
+
+test("unexplainedGain holds to the same 25% bar as askFit and outlierOf", () => {
+  // Drift alone takes $400k to ~$540k. An ask inside 25% of that is not a
+  // gap worth naming, and must not disagree with the report's other two
+  // users of OUTLIER_PCT.
+  assert.equal(V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 620000, trendPct: 6, asOf: GAIN_AS_OF,
+  }), null);
+  assert.ok(V.unexplainedGain({
+    lastPrice: 400000, lastDate: "2021-06-01",
+    askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF,
+  }));
+});
+
+test("unexplainedGain is bounded to a decade back and a quarter forward", () => {
+  const args = { lastPrice: 200000, askPrice: 900000, trendPct: 6, asOf: GAIN_AS_OF };
+  // 30 years of one current annual rate is fiction, not a renovation signal.
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "1996-06-01" }), null);
+  // A same-month relist divides by noise.
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "2026-08-01" }), null);
+  // A classic buy-renovate-list flip is inside the window and must speak.
+  assert.ok(V.unexplainedGain({ ...args, lastDate: "2025-02-01" }));
+});
+
+test("unexplainedGain refuses missing or unparseable inputs", () => {
+  const args = { lastPrice: 400000, lastDate: "2021-06-01", askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF };
+  assert.equal(V.unexplainedGain({ ...args, lastPrice: NaN }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastPrice: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, askPrice: 0 }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "last spring" }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: "" }), null);
+  assert.equal(V.unexplainedGain({ ...args, lastDate: null }), null);
+  assert.equal(V.unexplainedGain(), null);
+});
+
+test("unexplainedGain refuses prose Date.parse would coerce to January", () => {
+  // V8 answers Date.parse("sometime in 2021") with 2021-01-01, not NaN, so
+  // without the year-shape guard free text becomes a January anchor under a
+  // dollar figure nobody could check.
+  const args = { lastPrice: 400000, askPrice: 700000, trendPct: 6, asOf: GAIN_AS_OF };
+  ["sometime in 2021", "Sometime 2021", "Q2 2021", "2021", "last spring", "6/2021"]
+    .forEach((d) => assert.equal(V.unexplainedGain({ ...args, lastDate: d }), null, d));
+  // The forms the model actually writes all still work, and all land on the
+  // same June 2021 anchor.
+  ["2021-06-01", "2021-06", "2021/06/01", "June 2021", "june 2021", "Jun 1, 2021", "6/1/2021", "1 June 2021"]
+    .forEach((d) => assert.ok(V.unexplainedGain({ ...args, lastDate: d }), d));
+});
+
+// ---------------------------------------------------------------------------
+// conditionFit — where the subject sits in the condition spread its comps
+// show, once the owner has stated their own. Guidance about which half of the
+// existing band to read, never a change to the band.
+// ---------------------------------------------------------------------------
+
+function condComp(condition, over) {
+  return Object.assign(comp({ condition }), over || {});
+}
+
+test("conditionFit points at the upper half when the comps are less updated", () => {
+  const fit = V.conditionFit("Renovated", [
+    condComp("Original"), condComp("Original"), condComp("Needs work"), condComp("Updated"),
+  ]);
+  assert.equal(fit.dir, "above");
+  assert.equal(fit.rated, 4);
+  assert.equal(fit.below, 4);
+  assert.equal(fit.subject, "Renovated");
+});
+
+test("conditionFit points at the lower half when the comps are more updated", () => {
+  const fit = V.conditionFit("Needs work", [
+    condComp("Renovated"), condComp("Updated"), condComp("Renovated"),
+  ]);
+  assert.equal(fit.dir, "below");
+  assert.equal(fit.above, 3);
+});
+
+test("conditionFit says inline when the subject sits among its comps", () => {
+  // The caller prints nothing for this. A sentence reporting no difference is
+  // exactly what took the trust line to 1,034 characters.
+  const fit = V.conditionFit("Updated", [
+    condComp("Renovated"), condComp("Original"), condComp("Updated"), condComp("Needs work"),
+  ]);
+  assert.equal(fit.dir, "inline");
+});
+
+test("conditionFit needs three rated comps before it claims a direction", () => {
+  assert.equal(V.conditionFit("Renovated", [condComp("Original"), condComp("Original")]), null);
+  // Unrated comps don't count toward the floor — three comps, one rated.
+  assert.equal(V.conditionFit("Renovated", [
+    condComp("Original"), condComp(""), condComp("not a condition"),
+  ]), null);
+  assert.ok(V.conditionFit("Renovated", [
+    condComp("Original"), condComp("Original"), condComp("Original"),
+  ]));
+});
+
+test("conditionFit ignores leases and an unstated subject", () => {
+  // The band it is annotating is sales-only, so its evidence must be too.
+  assert.equal(V.conditionFit("Renovated", [
+    condComp("Original", { transaction: "Lease" }),
+    condComp("Original", { transaction: "Lease" }),
+    condComp("Original", { transaction: "Lease" }),
+  ]), null);
+  const comps = [condComp("Original"), condComp("Original"), condComp("Original")];
+  assert.equal(V.conditionFit("", comps), null);
+  assert.equal(V.conditionFit(undefined, comps), null);
+  // A word outside the vocabulary is not a rank — never a silent "Original".
+  assert.equal(V.conditionFit("Fully renovated", comps), null);
+});
+
+test("conditionFit's vocabulary matches report-parse's, in rank order", () => {
+  // A word here the parser drops to "" would be a rank nothing can reach.
+  const RP = require("../report-parse");
+  assert.deepEqual(Object.keys(V.CONDITION_RANK), RP.CONDITION_VALUES);
+  RP.CONDITION_VALUES.forEach((v) => assert.equal(RP.normalizeConditionValue(v), v));
+});
+
+test("conditionFit is not fooled by inherited Object properties", () => {
+  // CONDITION_RANK["toString"] is a FUNCTION on a plain object literal, and a
+  // function passes an `== null` guard. Before rankOf, this returned
+  // dir "below" and the trust line would have stated confidently that three
+  // comps were more updated than a house whose condition was "constructor".
+  const junk = ["toString", "constructor", "valueOf", "hasOwnProperty", "__proto__"];
+  const comps = junk.map((c) => comp({ condition: c }));
+  junk.forEach((v) => assert.equal(V.conditionFit(v, comps), null, v));
+  // Real subject, junk comps: the comps must not count as rated.
+  assert.equal(V.conditionFit("Renovated", comps), null);
 });

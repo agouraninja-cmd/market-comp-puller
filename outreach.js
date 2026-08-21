@@ -77,7 +77,11 @@ if (!MARKET || !TYPE) {
 
 // Measured cost per report, by provider (2026-08-10 pipeline validation for
 // Gemini, 2026-08-03 for Anthropic). Used only to state the bill up front.
-const COST_PER_REPORT = { gemini: 0.092, anthropic: 0.36 };
+// The Gemini figure is recomputed at Google's introductory per-token rate
+// (search-provider-gemini.js's USD_PER_MTOK, in effect through 2026-12-31);
+// the validation doc's original $0.092 used the standard rate that doesn't
+// apply until 2027-01-01, so it overstated the real bill by ~2x.
+const COST_PER_REPORT = { gemini: 0.045, anthropic: 0.36 };
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return fallback; }

@@ -4,7 +4,7 @@
 // changed light value is a regression in the theme that already ships.
 const test = require("node:test");
 const assert = require("node:assert");
-const { THEME_TOKENS, rootCss } = require("../theme.js");
+const { THEME_TOKENS, DARK_LIFT: DARK_LIFT_SHADOW, DARK_CHROME, AUTOFILL_COVER, rootCss } = require("../theme.js");
 
 // The vocabulary that already exists in five shipped pages. If any light
 // value here drifts, those pages restyle silently.
@@ -22,16 +22,17 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
   }
 });
 
-// The 2026-08-13 lift. Light values stay on EXISTING above; these are the
-// dark floor the owner picked (charcoal, not near-black). A silent revert
-// to slate-950 would still satisfy "has a dark hex" and the index.html
-// mirror (if both copies moved together), so this table is the lock.
+// The 2026-08-13 lift (paper/card/wash) plus the 2026-08-14 ink notch.
+// Light values stay on EXISTING above; paper/card do not move. A silent
+// revert to slate-950 would still satisfy "has a dark hex" and the
+// index.html mirror (if both copies moved together), so this table is
+// the lock.
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
   edge: "#3D4B5F", line: "#2A3648", hair: "#1E2938",
-  ink: "#C9D3E0", "ink-body": "#A8B4C4", "ink-2": "#9AABC0",
-  "ink-mute": "#8A97A8", "ink-3": "#7D8B9C",
+  ink: "#D5DDE8", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
+  "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
   "ink-faint": "#7C8899", "ink-4": "#475569",
 };
 
@@ -51,6 +52,17 @@ test("every token declares both a light and a dark value", () => {
   }
 });
 
+test("estimate and vault badge tokens keep their hues, and do not borrow warn or ok", () => {
+  assert.equal(THEME_TOKENS["est-text"].light, "#9A3412");
+  assert.equal(THEME_TOKENS["est-bg"].light, "#F8E9DC");
+  assert.equal(THEME_TOKENS["bv-text"].light, "#4C3A8C");
+  assert.equal(THEME_TOKENS["bv-bg"].light, "#EDE9F8");
+  assert.notEqual(THEME_TOKENS["est-text"].dark, THEME_TOKENS["warn-text"].dark);
+  assert.notEqual(THEME_TOKENS["est-bg"].dark, THEME_TOKENS["warn-bg"].dark);
+  assert.notEqual(THEME_TOKENS["bv-text"].dark, THEME_TOKENS["ok-text"].dark);
+  assert.notEqual(THEME_TOKENS["bv-bg"].dark, THEME_TOKENS["ok-bg"].dark);
+});
+
 test("the text/fill split exists, because a filled button must stay saturated", () => {
   // --red lightens for contrast as TEXT on a dark page; --red-fill stays
   // saturated because white text sits on top of it.
@@ -62,6 +74,15 @@ test("surfaces already dark in light mode lift rather than stay put", () => {
   // --slab is #1A2433 on light paper. If its dark value equalled --paper it
   // would dissolve into the page and the emphasis would vanish.
   assert.notEqual(THEME_TOKENS["slab"].dark, THEME_TOKENS["paper"].dark);
+});
+
+test("dark mode lifts cards instead of retuning the floor", () => {
+  const css = rootCss();
+  assert.ok(css.includes("--lift:none"), "light --lift must be none so light cards do not gain a shadow");
+  assert.ok(css.includes(`--lift:${DARK_LIFT_SHADOW}`), "dark --lift missing or drifted");
+  assert.ok(css.includes("color-scheme:dark"), "native controls stay light without color-scheme");
+  assert.ok(DARK_LIFT_SHADOW.includes("inset"), "the inset highlight is the card/paper separator");
+  assert.equal(THEME_TOKENS.paper.dark, "#121826", "elevation must not move the lifted-slate floor");
 });
 
 test("rootCss emits both blocks with every token", () => {
@@ -80,6 +101,33 @@ test("rootCss is safe to interpolate into a template literal", () => {
   const css = rootCss();
   assert.equal(css.includes("`"), false);
   assert.equal(css.includes("${"), false);
+});
+
+test("rootCss carries the dark chrome (autofill, caret, scrollbar) so server pages inherit it", () => {
+  const css = rootCss();
+  assert.ok(css.includes(DARK_CHROME), "DARK_CHROME missing from rootCss()");
+  assert.ok(DARK_CHROME.includes("-webkit-autofill"), "autofill rule dropped");
+  assert.ok(DARK_CHROME.includes("scrollbar-color"), "scrollbar-color dropped");
+  assert.ok(DARK_CHROME.startsWith("@media screen{"), "chrome must be screen-only so print stays light");
+  assert.equal(DARK_CHROME.includes("`"), false);
+  assert.equal(DARK_CHROME.includes("${"), false);
+});
+
+test("Chrome's address-paste autofill sheet is covered on the card colour in light too", () => {
+  // Chrome paints a light-blue sheet when it recognises a pasted street
+  // address. DARK_CHROME already covers charcoal; without an UNSCOPED rule
+  // the desk address field goes blue on a white card. var(--card) is #fff
+  // in light. :focus is the state after paste; DARK_CHROME's selector has
+  // no :focus, so this string uniquely identifies the light-mode cover.
+  const css = rootCss();
+  assert.ok(css.includes(AUTOFILL_COVER), "AUTOFILL_COVER missing from rootCss()");
+  assert.ok(AUTOFILL_COVER.includes("input:-webkit-autofill:focus"), "paste restyles on :focus");
+  assert.ok(AUTOFILL_COVER.includes("box-shadow:0 0 0 1000px var(--card) inset"),
+    "must cover with --card (white in light), not a hardcoded cream");
+  assert.ok(!AUTOFILL_COVER.includes("[data-theme"),
+    "a dark-only selector leaves the blue sheet on the white desk");
+  assert.equal(AUTOFILL_COVER.includes("`"), false);
+  assert.equal(AUTOFILL_COVER.includes("${"), false);
 });
 
 test("rootCss's dark block is screen-only, so a print run never resolves dark values", () => {
@@ -141,9 +189,10 @@ test("no in-scope stylesheet references an undefined variable", () => {
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
       // vault-page.js and the market CSS also carry non-colour scales
       // (--t1..--t6 type, --s1..--s9 spacing, --r radius, --serif, and the
-      // vault redesign's --shadow). Those are page-local and not the theme's
+      // vault redesign's --shadow, and --lift which is elevation not a
+      // colour). Those are page-local / non-colour and not the theme table's
       // business.
-      if (/^--(t\d|s\d|r|serif|shadow)$/.test(m[1])) continue;
+      if (/^--(t\d|s\d|r|serif|shadow|lift)$/.test(m[1])) continue;
       assert.ok(defined.has(m[1]), `${where} uses undefined ${m[1]}`);
     }
   }
@@ -204,6 +253,27 @@ test("the toggle is rendered once per page, in the shared nav", () => {
   assert.equal(occurrences, 1, "themeToggle is declared more than once in server.js");
 });
 
+test("the theme toggle shows a moon in light and a sun in dark, on every in-scope header", () => {
+  // Spec §6.1: "sun/moon". A moon-only button reads as "switch to dark"
+  // even when you are already there, and a crescent is easy to miss on
+  // charcoal. Both headers must carry both icons; CSS (not JS) swaps them
+  // so the first paint is already correct.
+  function hasPair(src, where) {
+    assert.ok(src.includes("theme-moon"), `${where} is missing the moon icon`);
+    assert.ok(src.includes("theme-sun"), `${where} is missing the sun icon`);
+  }
+  const slotsStart = SERVER_JS.indexOf("function accountNavSlots(");
+  const slotsEnd = SERVER_JS.indexOf("\nfunction ", slotsStart + 10);
+  hasPair(SERVER_JS.slice(slotsStart, slotsEnd > 0 ? slotsEnd : slotsStart + 8000), "accountNavSlots");
+  hasPair(INDEX.slice(INDEX.indexOf("themeToggleApp"), INDEX.indexOf("themeToggleApp") + 1800), "index.html toggle");
+  assert.match(cssBlock("ACCOUNT_NAV_CSS"), /\.theme-sun\{display:none\}/,
+    "ACCOUNT_NAV_CSS does not hide the sun in light mode");
+  assert.match(INDEX_STYLE, /\.theme-sun \{ display: none \}/,
+    "index.html does not hide the sun in light mode");
+  assert.ok(INDEX_STYLE.includes(`[data-theme="dark"] .theme-sun { display: block }`),
+    "index.html does not reveal the sun in dark mode");
+});
+
 const INDEX = root("index.html");
 const INDEX_STYLE = INDEX.slice(INDEX.indexOf("<style>"), INDEX.indexOf("</style>"));
 
@@ -261,6 +331,44 @@ test("index.html declares the same token values theme.js does", () => {
     assert.ok(INDEX_STYLE.includes(`--${name}:${v.light}`), `index.html light --${name} missing or wrong`);
     assert.ok(INDEX_STYLE.includes(`--${name}:${v.dark}`), `index.html dark --${name} missing or wrong`);
   }
+});
+
+test("index.html mirrors the card-lift custom property and applies it to report cards", () => {
+  assert.ok(INDEX_STYLE.includes("--lift:none"), "index.html light --lift missing");
+  assert.ok(INDEX_STYLE.includes(`--lift:${DARK_LIFT_SHADOW}`), "index.html dark --lift disagrees with theme.js");
+  assert.ok(INDEX_STYLE.includes("color-scheme:dark"), "index.html dark block missing color-scheme");
+  assert.ok(INDEX_STYLE.includes(".rd-bcard") && INDEX_STYLE.includes("box-shadow: var(--lift)"),
+    "report cards (.rd-bcard) must take --lift");
+  assert.ok(INDEX_STYLE.includes(".print-shadow-none"), "print/PNG still strip shadows");
+});
+
+test("index.html hand-copies the dark chrome that rootCss interpolates into server pages", () => {
+  // index.html is static, so DARK_CHROME cannot reach it. The failure is
+  // Chrome painting a cream autofill sheet on a charcoal field -- light
+  // mode looks fine, so this has to be pinned.
+  assert.ok(INDEX_STYLE.includes("input:-webkit-autofill"), "index.html missing autofill chrome");
+  assert.ok(INDEX_STYLE.includes("scrollbar-color"), "index.html missing scrollbar-color");
+  assert.ok(INDEX_STYLE.includes("caret-color: var(--ink)"), "index.html missing caret-color");
+  assert.ok(INDEX_STYLE.includes(".rd-cell:focus-within { box-shadow: inset 0 0 0 2px var(--red); }"),
+    "form focus ring must use --red so it lightens in dark instead of staying #B91C1C");
+});
+
+test("index.html covers Chrome's address-paste autofill sheet in light mode", () => {
+  // index.html is static, so AUTOFILL_COVER cannot reach it. :focus is the
+  // discriminator: the dark chrome copies input:-webkit-autofill without it.
+  // Comments are blanked so a note that names the dark selector cannot
+  // satisfy (or break) the unscoped check.
+  const css = INDEX_STYLE.replace(/\/\*[\s\S]*?\*\//g, " ");
+  assert.match(
+    css,
+    /input:-webkit-autofill:focus[^}]*box-shadow:\s*0 0 0 1000px var\(--card\) inset/,
+    "light-mode paste cover missing; the field would go blue"
+  );
+  assert.doesNotMatch(
+    css,
+    /\[data-theme="dark"\][^{]*input:-webkit-autofill:focus/,
+    "the :focus cover must not live only under dark, or light mode stays blue"
+  );
 });
 
 test("index.html's dark token block is screen-only too, mirroring rootCss's shape exactly", () => {
@@ -371,13 +479,8 @@ test("no raw hex colour remains in index.html's style block outside :root/dark d
   // declaration and in task-4-report.md.
   const ALLOWLIST = new Set([
     "color:#fff",          // text on a filled red/dark surface (::selection)
-    "box-shadow:#b91c1c",  // .rd-cell:focus-within's focus ring -- box-shadow is exempt, same as .card-hover / tileSpot
     "fill:#334155",        // .loading-ninja .ninja-body's light-only base value, fully replaced by an explicit dark-mode rule right below it
     "fill:#dc2626",        // .loading-ninja .ninja-band -- this IS --red-fill's dark value, so tokenizing it would change the light theme
-    "color:#9a3412",       // .rd-badge.e (estimate) -- deliberately sienna, distinct from .li's amber; no matching token
-    "background:#f8e9dc",  // .rd-badge.e's background, same reasoning
-    "color:#4c3a8c",       // .rd-badge.bv (broker vault) -- deliberately purple, not green; no matching token
-    "background:#ede9f8",  // .rd-badge.bv's background, same reasoning
     "color:#46536a",        // .rd-badge.p's text -- kept literal alongside its background (see the fix-round-2 note at the declaration: a half conversion measured 1.28:1)
     "background:#eaeef4",  // .rd-badge.p's background -- pale blue-gray, no matching token
     "background:#fca5a5",  // .spread-fill's gradient start -- this is --red-deep's dark value, so tokenizing it would change the light theme
@@ -734,6 +837,8 @@ test("a dark basemap never ships without the pin recolour", () => {
   const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
   assert.equal(dark, pins,
     "dark_all tiles and the pin recolour must ship together, not one without the other");
+  assert.ok(INDEX.includes(".leaflet-tile-pane"),
+    "dark_all stays the provider; charcoal lift is a tile-pane filter, not a new basemap");
 });
 
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {

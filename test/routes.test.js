@@ -77,6 +77,29 @@ test("bare environment", async (t) => {
     }
   });
 
+  // Address Explorer: type is optional so Find addresses can return a mixed
+  // list, each chip labelled. A typed request still works (market-page deep
+  // link). An unrecognized type is still a 400 — never silently mixed.
+  await t.test("explore-addresses accepts a city without a property type", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID");
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(Array.isArray(j.addresses), "mixed list is an addresses array");
+  });
+
+  await t.test("explore-addresses still accepts a typed request", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID&type=Industrial");
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(Array.isArray(j.addresses));
+    assert.ok(j.addresses.every((a) => !a.type || a.type === "Industrial"));
+  });
+
+  await t.test("explore-addresses refuses a bogus property type", async () => {
+    const r = await fetch(srv.base + "/api/explore-addresses?city=Boise&state=ID&type=Spaceship");
+    assert.equal(r.status, 400);
+  });
+
   // /vault's inline script calls into the global GUTCHECK the moment the
   // benchmarks arrive; a stale or missing /gut-check.js must degrade (the
   // page guards with typeof), but the file being UNREACHABLE would silently
@@ -163,11 +186,12 @@ test("bare environment", async (t) => {
   // account circle in one go and read as having been logged out mid-browse.
   // Nothing touched the session — the bar just stopped mentioning it.
   //
-  // There are now FOUR headers that have to agree (index.html's, MARKET_BAR,
-  // /how-it-works', and /vault) and the site's own convention is that two
-  // copies of a nav drift. This is what catches a fifth server-rendered page
-  // shipping without the chrome: accountNavSlots() is one call, so forgetting
-  // it is the easy mistake, not getting it subtly wrong.
+  // Since 2026-08-20 marketBar IS the header for every server-rendered page
+  // (/how-it-works' hand-kept copy retired) and the Explore links come from
+  // one NAV_LINKS list, index.html included — but /vault still composes its
+  // own bar from the shared slots. This is what catches a server-rendered
+  // page shipping without the chrome: accountNavSlots() is one call, so
+  // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
       "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
@@ -178,11 +202,30 @@ test("bare environment", async (t) => {
       assert.match(html, /id="navSignOut"/, p + " is missing the account menu");
       // The hydration script is what fills any of it in; markup alone is inert.
       assert.match(html, /\/api\/account\/me/, p + " never asks who the visitor is");
+      assert.match(html, /avatarRev/, p + " must paint a profile photo when /me says one exists");
       // Load-bearing: .hdr nav .dd a sets display:block, which out-specifies
       // the [hidden] attribute's UA rule. Without this line every page paints
       // signed-out and signed-in chrome at the same time.
       assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/,
         p + " can't actually hide the slots it ships");
+    }
+  });
+
+  // One nav, no copies (2026-08-20). index.html authors only a marker comment
+  // in its Explore menu; the `/` handler replaces it at serve time with the
+  // same NAV_LINKS list marketBar renders on every server-rendered header.
+  // Two failure modes, both pinned: an unreplaced marker (the injection
+  // broke, or the marker string drifted) leaves the app with no browse links
+  // at all, and a link present in one header but not the other is exactly
+  // the hand-sync drift this replaced.
+  await t.test("the app's Explore menu is injected from the shared nav list", async () => {
+    const app = await (await fetch(srv.base + "/")).text();
+    assert.ok(!app.includes("<!--NAV_LINKS-->"),
+      "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    for (const href of ["/brokers", "/markets", "/how-it-works", "/1031-exchange"]) {
+      assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
+      assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
   });
 
@@ -507,6 +550,79 @@ test("bare environment", async (t) => {
     }
   });
 
+  await t.test("every profile-photo route refuses an anonymous caller", async () => {
+    const routes = [
+      ["GET", "/api/account/avatar", null],
+      ["PUT", "/api/account/avatar", { avatar: "" }],
+      ["DELETE", "/api/account/avatar", null],
+    ];
+    for (const [method, p, body] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(body ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      assert.notEqual(r.status, 404, `${method} ${p} should exist and refuse, not be absent`);
+    }
+  });
+
+  await t.test("a signed-in account can set, serve, and remove a profile photo", async () => {
+    const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+    const PNG = "data:image/png;base64," + PNG_B64;
+    const email = `avatar-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery", name: "Ava" }),
+    });
+    assert.equal(signup.status, 200);
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    assert.ok(cookie.startsWith("cn_session="), "expected a session cookie");
+    const signed = { cookie };
+
+    const me0 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me0.avatarRev, "");
+    assert.equal(JSON.stringify(me0).includes("data:image"), false,
+      "/me must never carry the photo bytes");
+
+    const missing = await fetch(srv.base + "/api/account/avatar", { headers: signed });
+    assert.equal(missing.status, 404, "no photo yet must 404, not 200");
+
+    const badUrl = await fetch(srv.base + "/api/account/avatar", {
+      method: "PUT", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ avatar: "https://example.com/me.png" }),
+    });
+    assert.equal(badUrl.status, 400, "a URL must be refused");
+
+    const saved = await fetch(srv.base + "/api/account/avatar", {
+      method: "PUT", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ avatar: PNG }),
+    });
+    assert.equal(saved.status, 200, "a real PNG must save against the file store");
+    const savedBody = await saved.json();
+    assert.ok(savedBody.avatarRev, "save must return a rev");
+    assert.equal(JSON.stringify(savedBody).includes("data:image"), false,
+      "the save response must not echo the bytes");
+
+    const me1 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me1.avatarRev, savedBody.avatarRev);
+    assert.equal(JSON.stringify(me1).includes("data:image"), false);
+
+    const img = await fetch(srv.base + "/api/account/avatar?v=" + me1.avatarRev, { headers: signed });
+    assert.equal(img.status, 200);
+    assert.match(img.headers.get("content-type") || "", /image\/png/);
+    const bytes = Buffer.from(await img.arrayBuffer());
+    assert.deepEqual(bytes, Buffer.from(PNG_B64, "base64"));
+
+    const cleared = await fetch(srv.base + "/api/account/avatar", {
+      method: "DELETE", headers: signed,
+    });
+    assert.equal(cleared.status, 200);
+    assert.equal((await cleared.json()).avatarRev, "");
+    const gone = await fetch(srv.base + "/api/account/avatar", { headers: signed });
+    assert.equal(gone.status, 404);
+  });
+
   await t.test("a share from an anonymous visitor cannot carry a brand it supplied", async () => {
     // The browser hands /api/share its own meta. Without the server-side strip
     // a visitor could publish a report under someone else's firm name.
@@ -530,7 +646,7 @@ test("bare environment", async (t) => {
   // deployment.
 
   await t.test("admin endpoints do not exist when ADMIN_KEY is unset", async () => {
-    for (const p of ["/api/stats", "/api/leads", "/api/accuracy"]) {
+    for (const p of ["/api/stats", "/api/leads", "/api/accuracy", "/api/admin/heroes"]) {
       const r = await fetch(srv.base + p);
       assert.equal(r.status, 404, p + " should be disabled, not merely unauthorized");
     }
@@ -696,6 +812,67 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+    // The 1031 guide funnel block must be present even at zero — /admin
+    // treats a missing key as a stale pre-feature response and hides the
+    // card, so a dropped key here silently blinds the funnel.
+    for (const k of ["views", "views30d", "members", "leads", "leads30d"]) {
+      assert.equal(typeof body.guide1031[k], "number", `guide1031.${k}`);
+    }
+  });
+
+  // The guide-read event is the 1031 funnel's denominator, and the page is
+  // public + sitemapped, so the count is only meaningful if crawlers stay
+  // out of it. One browser read must count exactly once; Googlebot and the
+  // suite's own bare fetch (no browser UA) must count zero. Events are
+  // fire-and-forget file appends, hence the short poll.
+  await t.test("a guide read is counted once, and crawlers are not", async () => {
+    const views = async () => (await (await fetch(srv.base + "/api/stats",
+      { headers: { "x-admin-key": ADMIN } })).json()).guide1031.views;
+    const before = await views();
+    const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    for (const ua of [browserUA, "Googlebot/2.1 (+http://www.google.com/bot.html)", null]) {
+      const r = await fetch(srv.base + "/1031-exchange",
+        ua ? { headers: { "user-agent": ua } } : undefined);
+      assert.equal(r.status, 200);
+    }
+    let after = before;
+    for (let i = 0; i < 40 && after < before + 1; i++) {
+      await new Promise((res) => setTimeout(res, 50));
+      after = await views();
+    }
+    assert.equal(after, before + 1, "one browser read = one view");
+    // Settle, then re-read: a late-landing bot event would pass the check
+    // above and only show here.
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(await views(), before + 1, "bot reads must not land late");
+  });
+
+  await t.test("market-hero review is gated like the other admin APIs", async () => {
+    const denied = await fetch(srv.base + "/api/admin/heroes");
+    assert.equal(denied.status, 401);
+    const r = await fetch(srv.base + "/api/admin/heroes", { headers: { "x-admin-key": ADMIN } });
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.ok(Array.isArray(body.rows) && body.rows.length >= 20, "every curated city should be listed");
+    assert.equal(body.total, body.rows.length);
+    const ontario = body.rows.find((row) => row.key === "ontario, ca");
+    assert.ok(ontario, "Ontario, CA must be on the list");
+    assert.equal(ontario.ok, false, "Ontario's small original should still need a look");
+    assert.equal(ontario.liveKind, "satellite");
+    const dallas = body.rows.find((row) => row.key === "dallas, tx");
+    assert.ok(dallas && dallas.ok, "Dallas should pass the file checks");
+    assert.match(dallas.src, /dallas-tx\.jpg/);
+    assert.match(dallas.samplePath || "", /\/market\//);
+  });
+
+  await t.test("the hero review page is noindex and does not embed the grades", async () => {
+    const r = await fetch(srv.base + "/admin/heroes");
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
+    assert.equal(r.headers.get("cache-control"), "no-store");
+    const html = await r.text();
+    assert.match(html, /Market heroes/);
+    assert.doesNotMatch(html, /ontario, ca/, "grades belong behind the API, not in the HTML");
   });
 
   // The confirm dialog's type picker logs outcome "dialog_pick". The route's
@@ -1670,6 +1847,38 @@ test("/api/vault/extract sniffs the media type and never takes it from the body"
     "the data: prefix stripper must not be PDF-only");
 });
 
+test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst write-up", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+
+  assert.match(body, /type === "Residential"/,
+    "Residential must branch the role line, not share the CRE analyst opener");
+  assert.match(body, /comparable market analysis for a home buyer/);
+  assert.match(body, /You are a commercial real estate analyst/,
+    "the CRE role stays for every other type");
+  assert.match(body, /BEDS FIT:/,
+    "bedroom match has to be a prompt rule; it is not in compWeight");
+  assert.match(body, /within one bedroom of the subject/);
+  // LoopNet/Crexi lane copy is for commercial assets. A house search that
+  // still interpolates it starts in the wrong places.
+  assert.match(body, /type === "Residential" \? "" : \(LANE_GUIDANCE/);
+  const laneLine = body.split("\n").find((l) => l.includes("LANE_GUIDANCE[lane]"));
+  assert.ok(laneLine, "LANE_GUIDANCE interpolation should still exist");
+  assert.match(laneLine, /Residential/,
+    "Residential must skip LANE_GUIDANCE, not merely fall through when lane is solo");
+  assert.match(body, /Leave "tenancy" empty/,
+    "a house prompt must not ask for NNN / credit-tenant occupancy");
+  assert.match(body, /do not restate them in notes/,
+    "beds and year built already have columns; restating them puffed the first rows");
+  assert.match(body, /If the market note names a radius in miles/,
+    "a typed 2.5-mile market note must override the 1-mile neighborhood default");
+});
+
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -1687,6 +1896,23 @@ test("buildPrompt asks for subject_assessed next to last-sale, not in summary", 
   const assessedRule = body.slice(body.indexOf('"subject_assessed" ='));
   assert.equal(assessedRule.includes('mention it in "summary"'), false,
     "assessed must not earn last-sale's protected summary slot");
+});
+
+test("buildPrompt splits close dates from on-market listing dates", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  assert.ok(start >= 0, "buildPrompt should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /ON-MARKET LISTINGS/,
+    "on-market listing rows need their own prompt block, like NEARBY COMPS");
+  assert.match(body, /Listed Mar 2025/,
+    "active listings must be told to write Listed Mon YYYY, not a bare close month");
+  assert.equal(body.includes("lease/listing was signed or posted"), false,
+    "the old combined date sentence treats a list date as a close");
 });
 
 test("finishReport and mergeLaneReports wire subject_assessed", () => {
@@ -1899,6 +2125,187 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   const distAt = body.indexOf("RADIUSBLEND.attachCompDistances");
   assert.ok(distAt >= 0, "gate() must stamp distance_mi before the paywall");
   assert.ok(distAt < paywallAt, "distance must be on the comps (and then locked_basis) before gateReport");
+  assert.match(body, /propertyType:\s*typeOk/,
+    "house reports must pass the type so the blend uses the 1-mile radius, not CRE's 10");
+  assert.match(body, /marketNote:\s*noteOk/,
+    "a typed 2.5-mile market note must set the blend radius");
   assert.equal(/harvestComps\s*\(\s*typeOk/.test(body), false,
     "harvest must not run inside gate() — extras would re-enter the corpus from a serialization-only merge");
+});
+
+// --- hub invitations by email (2026-08-14) --------------------------------
+
+test("hub invites are wired to the outbound mail gate", async () => {
+  // Hubs shipped with copy-link invitations and NOTHING that could email one:
+  // sendHubInvites did not exist, so verifying a Resend domain would not have
+  // made invitations start working. This pins that both minting sites call it
+  // and that it rides the same EMAIL_FROM gate as every other outbound mail,
+  // so an un-verified deployment stays copy-link and a verified one just works.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  assert.match(src, /function sendHubInvites\(invites, \{ hubTitle, fromName \}\)/);
+  // It must go through sendOutboundEmail, which is the gate. Calling sendEmail
+  // directly would mail from an unverified domain.
+  const fn = src.match(/function sendHubInvites[\s\S]*?\n\}/)[0];
+  assert.match(fn, /sendOutboundEmail\(/);
+  assert.ok(!/\bsendEmail\(/.test(fn), "must not bypass the outbound gate");
+
+  // Both places that mint a token send it.
+  assert.equal((src.match(/sendHubInvites\(/g) || []).length, 3,
+    "declaration + create route + participants route");
+
+  // And the client is told whether anything actually left, so the panel's copy
+  // cannot claim "we do not email" on a deployment that does.
+  assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && EMAIL_FROM\)/);
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\)/g) || []).length, 2);
+});
+
+test("only newly invited people are mailed when a participant list is replaced", () => {
+  // Re-saving an unchanged list, or only REMOVING somebody, must email nobody.
+  // Same rule as PUT /api/shares/viewers, and the reason the route builds its
+  // link list from `invites` (the new tokens) rather than from `wanted`.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const route = src.match(/PUT" && hubPath === "\/api\/hub\/participants"[\s\S]*?\n    \}/)[0];
+  assert.match(route, /if \(newLinks\.length\) \{/);
+  assert.match(route, /sendHubInvites\(newLinks/);
+});
+
+// --- The geocode proxy takes a POST, and no longer takes a GET --------------
+//
+// The address of every comp on every report goes through this route, private
+// vault comps included (GUARD 2 of the private-comp contract stops them here
+// and never lets them reach Nominatim). On a query string all of those landed
+// in the platform's access logs and in outbound Referer headers, which is what
+// moving it to POST fixes.
+//
+// The GET form was removed rather than kept as an alias, so the half of this
+// worth testing is that it is really GONE: a deprecated door nobody notices is
+// exactly how the addresses come back. The source check is the other half —
+// the route can be perfect and still leak if a caller was missed, and both
+// callers live in files this suite already has on disk.
+//
+// Costs nothing: an empty address is refused before geocodeCensus is reached,
+// so no test here ever calls the Census API.
+
+test("the geocode proxy is POST-only and no caller builds a query string", async (t) => {
+  const srv = await boot({});
+  t.after(() => srv.stop());
+
+  await t.test("the GET form is gone, not merely unused", async () => {
+    const r = await fetch(srv.base + "/api/geocode?address=" + encodeURIComponent("1600 Pennsylvania Ave NW, Washington, DC"));
+    assert.equal(r.status, 404);
+  });
+
+  await t.test("a POST with no address is refused before any lookup", async () => {
+    const r = await fetch(srv.base + "/api/geocode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /address is required/i);
+  });
+
+  await t.test("a malformed body is a 400, not a soft empty answer", async () => {
+    const r = await fetch(srv.base + "/api/geocode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    assert.equal(r.status, 400);
+  });
+
+  await t.test("neither caller puts the address in a URL", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    for (const file of ["server.js", "index.html"]) {
+      const src = fs.readFileSync(path.join(__dirname, "..", file), "utf8");
+      // Catches the exact shape that was removed and any revival of it,
+      // including a differently-named param on the same route.
+      assert.ok(
+        !/["'`]\/api\/geocode\?/.test(src),
+        file + " builds a /api/geocode query string — the address must ride in a POST body"
+      );
+    }
+  });
+});
+
+// --- The two geocode caches keep separate localStorage names ----------------
+//
+// The app (index.html) and the market pages' map (MARKET_MAP_JS in server.js)
+// run the same geocoding stack against the same addresses, and until
+// 2026-08-04 they shared one localStorage key on purpose, to share hits. They
+// must not any more, and nothing at runtime would say so if they did.
+//
+// index.html went to geoCache.v2 that day so every entry carries the
+// geocoder's echoed label. geoLabelMatches returns false when the label is
+// missing, and it is the gate on subject photos and footprint sizing — the
+// two claims a report makes about a specific building. MARKET_MAP_JS draws
+// pins only, so it stores {lat, lng} with no label.
+//
+// Share one key again and a market-page visit writes a label-less entry for
+// an address the app later reads, which costs that property its photo and its
+// size estimate — silently, and persistently, since the entry is cached. The
+// harm runs one way and shows up nowhere near the change that caused it,
+// which is why it is worth a test rather than a comment alone.
+//
+// Names, not version numbers, and the test checks the names really differ:
+// two keys that differ only by a digit read as drift, and the obvious tidy-up
+// is to re-sync them.
+
+test("the app's geocode cache and the market map's stay separate stores", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+
+  const appKey = read("index.html").match(/GEO_CACHE_KEY = "([^"]+)"/);
+  const mktKey = read("server.js").match(/var CACHE_KEY = "([^"]+)"/);
+
+  assert.ok(appKey, "index.html no longer declares GEO_CACHE_KEY — update this test with it");
+  assert.ok(mktKey, "MARKET_MAP_JS no longer declares CACHE_KEY — update this test with it");
+
+  assert.notEqual(
+    appKey[1],
+    mktKey[1],
+    "the market map and the app share a localStorage geocode key again: the market map "
+      + "caches no geocoder label, and a label-less entry read by the app fails "
+      + "geoLabelMatches, costing that address its subject photo and footprint size"
+  );
+
+  // A market-page entry must stay recognisable as one from its name alone,
+  // so a future reader does not take the pair for accidental drift.
+  assert.ok(
+    /^mkt/.test(mktKey[1]),
+    "the market map's cache key should name itself a market-page store, not sit one "
+      + "version number away from the app's"
+  );
+});
+
+// --- the watchlist feed's median is closed sales only (2026-08-20) ---------
+//
+// The corpus began storing on-market listings in the same commit as this
+// test. buildWatchlistFeed's median_psf windows on `ts` — when we HARVESTED
+// the row, not when the deal closed — and filters only leases out, so a
+// freshly harvested asking price would land straight in the median with
+// nothing to exclude it. That median is quoted on My Desk and again in the
+// watchlist digest email, the one message this product sends on its own
+// initiative, so a contaminated one is mailed to people unprompted.
+//
+// A source scan rather than a booted feed: the median needs a database, a
+// signed-in user and a populated corpus, and the invariant is one line.
+test("the watchlist feed's median $/SF requires a parseable deal date", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const salePsf = rows");
+  assert.ok(start >= 0, "buildWatchlistFeed's salePsf chain is gone or renamed");
+  const chain = src.slice(start, src.indexOf(".sort(", start));
+  assert.match(chain, /parseDealDate\([^)]*\)\s*!=\s*null/,
+    "salePsf must drop rows whose deal_date does not parse — an on-market " +
+    "listing is stored with deal_date \"Active\"/\"Listed Mon YYYY\" and is an " +
+    "ASKING price, not a comparable sale");
 });

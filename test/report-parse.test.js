@@ -270,7 +270,21 @@ test("reconcile fills a missing $/SF from the comp's own price and size", () => 
     transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "" }] };
   RP.reconcilePricePerSqft(parsed);
   assert.equal(parsed.comps[0].price_per_sqft, "$133");
-  assert.equal(parsed.comps[0].psf_reconciled, true);
+});
+
+// The prompt asks the model to OMIT $/SF on a priced, sized sale, so a fill is
+// the normal path and must NOT raise the "calc" mark - that mark means "we did
+// not trust the figure we were handed", and firing it on every row would empty
+// it of meaning. Pinned in both directions, here and in the test below.
+test("a filled $/SF is not flagged as reconciled - only a correction is", () => {
+  const parsed = { currency: "USD", comps: [
+    { transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000" },
+    { transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "" },
+  ] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "$133");
+  assert.ok(!("psf_reconciled" in parsed.comps[0]), "an omitted $/SF is a fill, not a correction");
+  assert.ok(!("psf_reconciled" in parsed.comps[1]), 'an empty-string $/SF is a fill too');
 });
 
 test("reconcile replaces a stated $/SF that disagrees by more than 10%", () => {
@@ -278,6 +292,7 @@ test("reconcile replaces a stated $/SF that disagrees by more than 10%", () => {
     transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "$100" }] };
   RP.reconcilePricePerSqft(parsed);
   assert.equal(parsed.comps[0].price_per_sqft, "$133");
+  assert.equal(parsed.comps[0].psf_reconciled, true, "a corrected figure still earns the mark");
 });
 
 test("reconcile leaves a stated $/SF within 10% untouched", () => {

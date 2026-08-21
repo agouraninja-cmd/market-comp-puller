@@ -209,6 +209,40 @@ if (!PROVIDER) {
 // MODEL still overrides, so an existing MODEL=... deployment is unaffected.
 const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
 
+// How hard the model is allowed to think before it answers. Empty = leave the
+// vendor's own default alone, which is what every deployment does today and
+// what keeps the request byte-identical to the pre-knob wire format.
+//
+// This exists because on the default provider thinking is not a rounding error
+// on generation time, it IS generation time: a measured Gemini call spent
+// 4,207 in / 928 out / 6,473 thought, so roughly seven of every eight generated
+// tokens were reasoning and only one in eight was the report. Report-JSON trims
+// are real but they are attacking the small half; this knob is the big one.
+//
+// It ships UNSET on purpose. Google's guidance calls the default level the best
+// quality for agentic work, and comp selection accuracy is the product, so
+// turning this down is a thing to MEASURE (a run-eval.js --compare pair, about
+// $8.60 and one restart) rather than a thing to assume. Every field the
+// scorecard needs is already in eval-score.js.
+//
+// No fallthrough, same rule as SEARCH_PROVIDER above and /api/checkout's PLANS:
+// an unrecognized level exits at boot rather than being silently dropped, and a
+// level this provider cannot act on is refused rather than accepted and
+// ignored - a knob that appears to work and changes nothing is the worst of the
+// three outcomes. Read through capabilities, never through PROVIDER.name.
+const THINKING_LEVEL = (process.env.THINKING_LEVEL || "").trim().toLowerCase();
+if (THINKING_LEVEL) {
+  const levels = PROVIDER.capabilities.thinkingLevels;
+  if (!levels) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" but the ${PROVIDER.name} provider has no tunable reasoning depth. Unset it, or switch SEARCH_PROVIDER.`);
+    process.exit(1);
+  }
+  if (!levels.includes(THINKING_LEVEL)) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" is not one of: ${levels.join(", ")}`);
+    process.exit(1);
+  }
+}
+
 // The provider names its own credential var, so this stays a lookup rather
 // than a branch. Testing PROVIDER.name here would be the first crack in the
 // never-branch-on-name rule, and credential selection is exactly where such
@@ -4642,30 +4676,61 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // typeGuidance (assessor + recently-sold listing pages).
     type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
-    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
+    // $/SF used to be REQUIRED on every sale comp and is arithmetic we already
+    // do: reconcilePricePerSqft derives price ÷ size server-side and has always
+    // overridden the model's figure when the two disagreed by more than 10%. So
+    // on a priced, sized sale the field was output tokens spent restating a
+    // number that could not survive contradicting its own row. Asking the model
+    // to OMIT it there (2026-08-21) buys back ~11 characters per comp on the
+    // slow write leg for no loss of information.
+    // Two things keep this from being a quality regression. The cross-check the
+    // field was really doing is retained as an instruction — verify the source's
+    // own $/SF against its own price and size — it is just no longer WRITTEN
+    // out. And the field is still asked for wherever it is not derivable: lease
+    // rates (a rent is not price ÷ size) and sales missing a price or a size,
+    // which are exactly the rows reconcilePricePerSqft skips.
+    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft". When a sale comp carries BOTH of those, OMIT "price_per_sqft" entirely - we compute it as the sale price divided by the building size, so writing it out again only costs you tokens. Do still check the source's own stated $/SF against its own stated price and size: if they disagree, recheck the figures rather than copying the inconsistency. Report "price_per_sqft" only where we cannot derive it: on LEASE comps (the quoted rate, which is not a price divided by a size), and on a sale where the price or the size genuinely could not be found. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
     ``,
-    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
+    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape, and write the keys in this order:`,
     `{`,
+    // FIELD ORDER IS LOAD-BEARING, and the ordering is the OPPOSITE of what
+    // reads naturally (2026-08-21). The model writes this JSON top to bottom,
+    // one token at a time, and the write phase is the slow half of a report
+    // (measured: searches finish in ~5s, writing runs 40-70s). Two consequences
+    // decide this order:
+    //   1. "comps" is the only part of the report the browser can put on screen
+    //      while the model is still writing (makeCompExtractor -> the `comp`
+    //      progress event -> assemblyComp fills the live table). Every field
+    //      written ABOVE it is dead air the visitor stares at. The market block
+    //      that used to sit here measures ~800 chars against the eval-recorded
+    //      narrative lengths, so ~200 output tokens, so ~2.5s of empty table at
+    //      the measured 78 tokens/sec - paid before the first row and again
+    //      before the last.
+    //   2. Everything moved BELOW the comps is a market-level read OF those
+    //      comps - avg_price_per_sqft averages them, transactions_reviewed must
+    //      exceed their count, value_drivers / market_trend / price_discovery
+    //      characterize them. Writing them after the array means the model is
+    //      describing rows it has actually committed to rather than ones it
+    //      still intends to write, so this is a quality change in the same
+    //      direction as the speed one.
+    // What deliberately stays ABOVE "comps":
+    //   - "summary", because it lands in the first seconds and is the one piece
+    //     of prose the loading card can show (makeFieldExtractor). Moving it
+    //     below would trade a visible field for an invisible one. It was
+    //     already written before the comps, so its quality is unchanged.
+    //   - currency/usd_rate, which every price BELOW is quoted in - the model
+    //     has to commit to the unit before it writes figures in it.
+    //   - the subject lookups, which the SUBJECT SIZE step above already told
+    //     the model to resolve FIRST, and which are ~100 chars all told.
+    // Anything added here later belongs below "comps" unless the browser can
+    // render it mid-stream or a later figure depends on it.
+    ...(compsOnly ? [] : [`  "summary": "",`]),
     // Currency rides in BOTH lanes: a foreign-property records lane must quote
     // its comps in the same local currency, and normalizeCurrency needs the
     // code to avoid silently treating those prices as USD on merge.
-    ...(compsOnly ? [] : [`  "summary": "",`]),
-    ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
-    ...(compsOnly ? [] : [
-      `  "subject_lat": "",`,
-      `  "subject_lng": "",`,
-      `  "market_cap_rate_range": { "low": "", "high": "" },`,
-      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
-      `  "value_drivers": ["", ""],`,
-      `  "market_trend": "",`,
-      `  "annual_price_trend_pct": "",`,
-      `  "search_radius": "",`,
-      `  "transactions_reviewed": "",`,
-      `  "price_discovery": { "direction": "", "note": "" },`,
-    ]),
     ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     // Not gated on compsOnly like the other narrative fields: on a lane split
     // the records lane is the one opening assessor pages, so it is the lane
@@ -4680,7 +4745,20 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ] : []),
     `  "comps": [`,
     `    ${compShape}`,
-    `  ]`,
+    `  ]${compsOnly ? "" : ","}`,
+    ...(compsOnly ? [] : [
+      `  "avg_price_per_sqft": "string or null",`,
+      `  "subject_lat": "",`,
+      `  "subject_lng": "",`,
+      `  "market_cap_rate_range": { "low": "", "high": "" },`,
+      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
+      `  "value_drivers": ["", ""],`,
+      `  "market_trend": "",`,
+      `  "annual_price_trend_pct": "",`,
+      `  "search_radius": "",`,
+      `  "transactions_reviewed": "",`,
+      `  "price_discovery": { "direction": "", "note": "" }`,
+    ]),
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
@@ -5381,6 +5459,9 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     maxComps,
     searchUses,
     stream: useStream,
+    // Empty unless the deployment set one; a provider that declares no
+    // thinkingLevels never receives a value, because boot refuses that pairing.
+    thinkingLevel: THINKING_LEVEL,
   });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
@@ -5404,8 +5485,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         });
       })
     : null;
-  // The prompt orders "summary" before the comps array, so this lands in the
-  // first seconds of the write phase. The records lane has no summary at all.
+  // "summary" is deliberately the ONE narrative field the prompt still writes
+  // above the comps array (see the field-order note in buildPrompt's OUTPUT
+  // FORMAT block), precisely so this lands in the first seconds of the write
+  // phase. Everything else the model has to say about the market now comes
+  // after the comps, where it costs the live table nothing. The records lane
+  // has no summary at all.
   let summaryExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeFieldExtractor("summary", (value) =>
         say({ phase: "field", key: "summary", value: stripEmDashes(value) }))
@@ -19010,8 +19095,14 @@ const server = http.createServer((req, res) =>
     // and the only honest answer was a git argument. It is the same class of
     // fact as `provider`, which is already here, and it names a model — not
     // a credential.
+    // thinking_level rides here for the same reason `model` does: it is a
+    // startup constant set by an env var nobody can read from outside the box,
+    // it moves the wall clock more than anything in the report JSON, and
+    // "which setting produced this report?" has to be answerable from the
+    // deployment rather than from the repo. "" means the vendor default.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
-      provider: PROVIDER.name, model: MODEL, search_budget: PROVIDER.capabilities.searchBudget,
+      provider: PROVIDER.name, model: MODEL, thinking_level: THINKING_LEVEL,
+      search_budget: PROVIDER.capabilities.searchBudget,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -19602,6 +19693,10 @@ server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
+  // Said out loud because it is the largest wall-clock setting on this box and
+  // the least visible: unset it looks identical to set-to-the-default in every
+  // report, and only the token counts in the per-call log would ever differ.
+  if (THINKING_LEVEL) console.log(`🧠 Thinking level: ${THINKING_LEVEL} (overrides the ${PROVIDER.name} default; watch the out-token count in the per-call log)`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)

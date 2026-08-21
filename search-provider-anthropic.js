@@ -14,6 +14,12 @@ const capabilities = {
   streaming: true,
   // cache_control is an explicit breakpoint we place ourselves.
   promptCaching: "explicit",
+  // No tunable reasoning depth on this path: extended thinking is a separate
+  // opt-in this product does not use, so there is no level to set. Declared
+  // as null rather than omitted so server.js can REFUSE a THINKING_LEVEL that
+  // this provider would silently ignore - a knob that appears to work and
+  // changes nothing is worse than one that says it does not apply.
+  thinkingLevels: null,
   pdfExtract: true,
   // Screenshots and photos of a deals table, through the same extract call.
   imageExtract: true,

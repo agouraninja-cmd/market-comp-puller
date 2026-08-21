@@ -81,8 +81,12 @@ if (args.includes("--compare")) {
     const arrow = o.delta == null ? "" : (o.delta > 0 ? "  +" : "   ") + fmt(o.delta);
     console.log(`  ${label.padEnd(22)} ${fmt(o.baseline).padStart(10)} -> ${fmt(o.candidate).padStart(10)}${arrow}`);
   };
-  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}, ${a.ranAt})`);
-  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}, ${b.ranAt})\n`);
+  // "" is a recorded answer (the vendor default), null is "not recorded", and
+  // the two must not read the same - a comparison whose only real difference
+  // was the thinking level would otherwise be attributed to the model.
+  const think = (r) => (r.thinkingLevel == null ? "" : `, thinking ${r.thinkingLevel || "vendor default"}`);
+  console.log(`\nbaseline: ${a.label} (${a.model || "model not recorded"}${think(a)}, ${a.ranAt})`);
+  console.log(`candidate: ${b.label} (${b.model || "model not recorded"}${think(b)}, ${b.ranAt})\n`);
   // Two runs over different target sets are not comparable target-for-target:
   // the full set carries four Industrial targets against one Land, so a
   // per-type slice reweights every aggregate below for reasons that have
@@ -216,7 +220,13 @@ async function liveModel() {
     const r = await fetch(`${BASE}/healthz`);
     if (!r.ok) return null;
     const h = await r.json();
-    return h && h.model ? { model: h.model, provider: h.provider || null } : null;
+    return h && h.model
+      ? { model: h.model, provider: h.provider || null,
+          // "" is the vendor default and is a real answer, so null (not "")
+          // is what "this build does not report it" means. Only an OLDER
+          // server, predating the field, yields null here.
+          thinkingLevel: typeof h.thinking_level === "string" ? h.thinking_level : null }
+      : null;
   } catch (e) {
     return null;
   }
@@ -258,7 +268,8 @@ async function runOne(t) {
     // model is about to be scored while there is still time to stop.
     const live = await liveModel();
     console.log(live
-      ? `Target server reports: ${live.provider || "provider unknown"} / ${live.model}`
+      ? `Target server reports: ${live.provider || "provider unknown"} / ${live.model}` +
+        (live.thinkingLevel == null ? "" : ` / thinking ${live.thinkingLevel || "vendor default"}`)
       : "Target server did not report a model (/healthz unreachable or older build); recording the runner's MODEL instead.");
     console.log(`Targets: ${targets.length} (${targetSelection})`);
 
@@ -358,6 +369,12 @@ async function runOne(t) {
       // the fallback when /healthz could not be reached.
       model: (live && live.model) || process.env.MODEL || "(server default)",
       provider: (live && live.provider) || null,
+      // The reasoning depth the server was running. Recorded for the same
+      // reason `model` is: it is the largest wall-clock setting on the box and
+      // it is invisible in the report, so a --compare pair that differs only
+      // in this would otherwise look like unexplained noise. null means the
+      // server did not report it; "" means the vendor's own default.
+      thinkingLevel: live ? live.thinkingLevel : null,
       ranAt: new Date().toISOString(),
       base: BASE,
       setSize: targets.length,

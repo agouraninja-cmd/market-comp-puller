@@ -33,9 +33,14 @@ intent, the devlog states history.
   This gates the whole Archive block, so it sits here rather than in Next: if
   a broker can key 12 comps faster than they can correct 12 extracted ones,
   the archive is data entry with extra steps and none of the ingestion work
-  below is worth doing. **It needs no product code** — `POST /api/vault/extract`
-  already returns `{ values, error }` per row, so the test is 20 real files
-  through the live endpoint scored against hand-keyed ground truth. Measure
+  below is worth doing. **It needs no product code, and the harness exists** —
+  `node scripts/extraction-eval.js` runs the whole thing: drop the files in
+  the git-ignored `extract-eval/`, `--init`, hand-key `truth.json` from the
+  source documents, `--yes`. It signs in itself, paces the route's rate
+  limit, scores through `extract-score.js` (pure, tested — broker-vault.js's
+  own parsers do the comparing so formatting never scores as error), and
+  writes the scorecard to `docs/evals/` with the stopwatch blank left for a
+  human. Measure
   recall, per-field precision, **fabrication rate**, correction time, and
   refusal quality. Fabrication at anything above ~zero is fatal on its own,
   whatever the other numbers say: `normalizeRow` catches a malformed value and

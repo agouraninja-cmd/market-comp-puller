@@ -79,3 +79,4 @@ compninja-ai-costs.csv
 # written to — both are working state, not source.
 outreach-drafts.md
 outreach-seen.json
+extract-eval/

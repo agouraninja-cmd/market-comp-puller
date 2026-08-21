@@ -6480,6 +6480,23 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market momentum, on the comp map card's heading row. Same read, same three
+   words and the same three theme tokens the Explorer dropdown badges with:
+   --green expanding, --ink-mute flat, --red contracting. The dropdown carries
+   its colour in a style attribute only because the vendored tailwind.css has no
+   green utility to name; this stylesheet is ours, so the colours are classes
+   here, like .mkt-trend-* below.
+   .mhead h2 must stay AFTER .card h2 above -- equal specificity, so source
+   order is the only thing zeroing the heading's own bottom margin. */
+.mhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+.mhead h2{margin:0}
+.mdir{font-size:12px;white-space:nowrap;color:var(--ink-3)}
+/* The WORD is the claim and the colour only reinforces it, so the row still
+   reads in a print, on a monochrome screen, and for a colour-blind visitor. */
+.mdirv{font-weight:600}
+.mdirv-expanding{color:var(--green)}
+.mdirv-flat{color:var(--ink-mute)}
+.mdirv-contracting{color:var(--red)}
 /* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
    .grid (the old two-card band). /markets still uses .grid; this page does
    not. Rows are visible on first paint: this sheet has no html.anim. */
@@ -7880,8 +7897,33 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
     };
   });
+  // Market momentum in the map card's heading row, the same read the Explorer
+  // dropdown badges on the way to this page. Nothing is computed here:
+  // freshDirection is the ONE home for both the three-word vocabulary and the
+  // 90-day expiry (market-snapshot.js), and /api/markets calls the same
+  // function, so a market that has gone quiet in the dropdown is quiet here
+  // too. Two surfaces disagreeing about which way a market is moving would be
+  // worse than neither showing it.
+  //
+  // No stored (or no longer current) direction renders NOTHING, never a fourth
+  // "unknown" state: 5 of the 27 seeded pages carry no read at all, and a page
+  // with no badge is exactly what all 27 looked like yesterday.
+  //
+  // "Momentum" labels the word because this badge is not sitting in a list of
+  // markets the way the dropdown's is -- a bare "Expanding" beside "Where these
+  // comps are" would leave the reader to guess what is expanding.
+  const MAP_DIR_CLASS = {
+    expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
+  };
+  // freshDirection is the whitelist: it returns one of those three keys or null,
+  // so no guard against an unrecognized word is needed at this end.
+  const mapDir = freshDirection(p, Date.now());
+  const mapDirBadge = mapDir
+    ? `<span class="mdir">Momentum <span class="mdirv ${MAP_DIR_CLASS[mapDir]}">` +
+      `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
+    : "";
   const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>Where these comps are</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
       `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
       `Comps quoted at the submarket level aren't pinned.</p></div>` +

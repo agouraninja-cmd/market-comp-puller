@@ -150,6 +150,11 @@ const SVAIM = require("./streetview-aim");
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
 const PFDELTA = require("./portfolio-delta");
+// Bulk valuation (Pro): what counts as an address in a pasted list, what one
+// finished report is worth as a portfolio row, and what the totals say. Pure;
+// server.js owns the job tables, the worker and the search itself.
+const BULK = require("./bulk");
+const { renderBulkPageBody } = require("./bulk-page");
 const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
@@ -547,6 +552,26 @@ const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // determined caller with rotating IPs. Counts only genuinely billed searches
 // (cache hits are free and don't count). Override via env for more headroom.
 const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
+
+// The same backstop for bulk valuation, and it is a SEPARATE number for a
+// reason: DAILY_SEARCH_CAP above is site-wide and Pro deliberately bypasses
+// it (`countsDailyCap: !ent.pro`), so a paying subscriber is never told the
+// site is out of searches. That exemption was written for somebody typing
+// one address at a time. Bulk multiplies it by fifty per click: one run is
+// ~17 minutes and ~$18, and with one-job-at-a-time as the only bound a
+// member could start another the moment it finishes — roughly $63/hour,
+// indefinitely. This is PER MEMBER, so one person's ceiling never denies
+// anyone else a search (charging bulk to DAILY_SEARCH_CAP instead would let
+// one 50-address run eat a third of the site's daily allowance and lock out
+// the free visitors it exists to protect).
+//
+// 200 is about four full runs a day, which is far more than the workflow
+// this was built for (a broker valuing one portfolio) and far less than an
+// unbounded afternoon. Env-overridable because the moment it bites is the
+// moment a real customer is blocked mid-workday, and that must not need a
+// deploy. A smoke alarm, not accounting.
+const BULK_DAILY_ADDRESSES = Number(process.env.BULK_DAILY_ADDRESSES) > 0
+  ? Number(process.env.BULK_DAILY_ADDRESSES) : 200;
 
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
@@ -5173,6 +5198,23 @@ const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_A
 // against a live call. Default OFF; see the useStream note in callAnthropicOnce.
 const STREAM_UNVERIFIED = /^(1|on|true|yes)$/i.test(String(process.env.STREAM_UNVERIFIED || ""));
 
+// Where the search actually goes. Overridable ONLY so the suite can stand a
+// stub in front of it — RESEND_API_URL's precedent, for RESEND_API_URL's
+// reason. Bulk valuation's whole point is fifty searches leaving the building,
+// and until this existed the tests could reach the provider call and then had
+// to stop and assume: everything from "a report came back" through valuing it,
+// writing the row and putting it on the member's desk was argued in comments
+// and never executed.
+//
+// Unset everywhere except in tests; production never sets it, so the
+// provider's own endpoint is the live value. It authorizes nothing (the API
+// key still does) but it decides where a billed request is posted, so it
+// belongs in the same trusted place as the key itself.
+//
+// The SEARCH call only. The extract vendor (PDF/screenshot import) keeps its
+// own endpoint deliberately: one override, one thing it can move.
+const SEARCH_API_URL = (process.env.SEARCH_API_URL || "").trim();
+
 // ---------------------------------------------------------------------------
 // Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
 // the data JSON repeats the event name in its own `type`, so we switch on that
@@ -5626,7 +5668,10 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     // a query parameter, so a provider that streams via its URL would otherwise
     // ask for a stream in the body and be answered with ordinary JSON.
     const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: useStream });
-    r = await fetch(init.url, {
+    // SEARCH_API_URL replaces the endpoint WHOLE, query string included — it is
+    // a test stub standing in for the vendor, so there is nothing of the real
+    // URL worth preserving. Unset in production, where init.url is the value.
+    r = await fetch(SEARCH_API_URL || init.url, {
       method: "POST",
       headers: init.headers,
       body: JSON.stringify(body),
@@ -6071,6 +6116,754 @@ async function solo(call, onProgress = null, stats = null) {
   }
 }
 
+// The serialization funnel for one report: radius blend, the paywall, the
+// market-page cross-link, then the private comps. Lifted out of /api/comps
+// on 2026-08-21 so bulk valuation runs the SAME one, because a portfolio
+// whose rows were assembled differently from the reports behind them would
+// disagree with every one of them and there would be no way to see it from
+// either screen. It was a closure over the handler; the variables it closed
+// over are now `ctx`, and nothing else about it changed.
+//
+// Every ordering rule in here is load-bearing and is explained where it
+// happens — above all that this runs at SERIALIZATION, downstream of the
+// cache write, harvestComps() and the market snapshot.
+async function finishReportForViewer(rep, ctx) {
+  const {
+    ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+    corpusRadiusRows = [], vaultRows = [], firmCompRows = [], callStats,
+  } = ctx || {};
+  // An internal caller (x-admin-key, i.e. the seed generator and the eval
+  // harness) gets the whole report, ungated. It also gets what the search
+  // actually cost — tokens, the thought/report split, and dollars — which is
+  // the difference between the eval being able to answer "is thinking less
+  // cheaper AND still accurate?" and only being able to answer the second half.
+  //
+  // Three rules. It is attached HERE, at serialization, so the cache,
+  // harvestComps and maybePublishMarketSnapshot (all of which run upstream of
+  // this) never see it — the same rule gateReport and the vault blend follow,
+  // and the reason a cached report can never carry another run's token counts.
+  // It SPREADS rather than mutates, because `rep` may be the memoized cache
+  // object and writing into it would stamp one call's numbers onto every later
+  // reader. And it is omitted entirely on a cache hit, where callStats is empty
+  // (runCompSearch returns the same object either way): a cached search really
+  // did cost nothing, and reporting zeros as if they were measured would
+  // quietly halve the average cost of any run that hit the cache.
+  if (internal) {
+    return callStats && callStats.billed_calls
+      ? { ...rep, _call: {
+          billed_calls: callStats.billed_calls,
+          searches: callStats.searches || 0,
+          cost_usd: callStats.cost_usd || 0,
+          usage: callStats.usage || {},
+          provider: PROVIDER.name,
+          model: MODEL,
+          thinking_level: THINKING_LEVEL,
+        } }
+      : rep;
+  }
+  // Public saved deals first, then the paywall, then the vault.
+  // Radius blend is before gateReport so extras become locked_basis
+  // for a free visitor instead of printing their addresses. Vault
+  // blend stays last: brokers are Pro, and a private row must never
+  // become a public locked_basis row.
+  let merged = rep;
+  if (CORPUS_RADIUS) {
+    const subject = RADIUSBLEND.coordsFromReport(rep)
+      || await geocodeCensus(addressOk);
+    merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
+      subject,
+      months: monthsOk,
+      now: Date.now(),
+      parseDealDate,
+      keyOf: corpusKeyOf,
+      subjectAddress: addressOk,
+      isAggregateAddress,
+      propertyType: typeOk,
+      marketNote: noteOk,
+      subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
+    });
+    if (merged && merged.corpus_count) {
+      const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
+      console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
+    }
+    merged = RADIUSBLEND.attachCompDistances(merged, subject);
+  } else {
+    merged = RADIUSBLEND.attachCompDistances(merged);
+  }
+  const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+  const gated = GATE.gateReport(merged, ent, {
+    asOfMs: Date.now(),
+    subjectSqft,
+    propertyType: typeOk,
+    radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+    subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
+  });
+  if (!gated || typeof gated !== "object") return gated;
+  // `ent` was resolved with THIS report's id, so it already knows a single-report
+  // unlock makes its exports unlimited — /api/config cannot, because it
+  // takes no report id and would need a purchase lookup on every page
+  // load. Without this the buyer of a report was shown the free monthly
+  // tally ("4 exports left this month") on a report they own outright.
+  // Spread rather than assign: `rep` may be the CACHED object, and the
+  // cache must never carry one visitor's entitlement to the next.
+  // Per-visitor and per-REPORT, for the same reason exports_remaining is:
+  // `ent` was resolved with this report's id, so it knows a $20
+  // single-report unlock carries branding for this property. The
+  // browser cannot work this out for itself — /api/config's canBrand
+  // takes no report id, and lockedCount() === 0 is also true for a free
+  // visitor whose thin market simply returned fewer comps than the gate.
+  // Serialization-time like everything else here, so the cached object
+  // never carries one visitor's entitlement to the next.
+  const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+  // Cross-link to the standing /market/<slug> page for this market +
+  // type, when one exists. Serialization-time like everything else in
+  // this closure, so the cached object never carries it and a market
+  // page published later lights up older cached reports too. In-memory
+  // lookup, no I/O. It rides the report payload, so a saved or shared
+  // report keeps its door into the market page.
+  const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+  if (marketPage) withExports.market_page = marketPage;
+  // LAST, and only here. Every caller of gate() is an exit — the cache
+  // hit, the derived-window hit, the SSE result and the plain JSON
+  // result — so this is the one place a private comp can enter, and it
+  // is downstream of the cache write, harvestComps() and the market
+  // snapshot, all of which keep seeing the public report. Blending any
+  // earlier serves one broker's private book to the next visitor who
+  // searches that address, because the cache is keyed by property and
+  // not by user.
+  // The broker's own comps first, then the firm's — in that order, so
+  // dedupeFirmComps can drop a colleague's copy of a deal the broker
+  // already holds rather than the other way round. Two people at one
+  // firm were routinely on opposite sides of the same transaction, so
+  // without this the deal is counted twice in the valuation with
+  // nothing on screen explaining the shift.
+  const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
+  if (!firmCompRows.length) return withMine;
+  const firmComps = BLEND.dedupeFirmComps(
+    (withMine.comps || []).filter(BLEND.isPrivateComp),
+    firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
+  if (!firmComps.length) return withMine;
+  return {
+    ...withMine,
+    comps: [...(withMine.comps || []), ...firmComps],
+    private_count: (withMine.private_count || 0) + firmComps.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// One search, whole: cache -> derivable window -> daily cap -> size memo ->
+// corpus retrieval -> the billed call, plus every side effect that must see
+// the UNGATED report (the cache write, harvestComps, the market snapshot).
+//
+// Lifted out of the /api/comps handler on 2026-08-21 when bulk valuation
+// needed the same sequence fifty times over. Duplicating it would have meant
+// two answers to every question this pipeline settles — whether a cache hit
+// counts, whether a corpus-strong market shrinks the budget, whether a
+// harvest happens — and the cheapest of those to get wrong (harvesting)
+// swallows its own errors, so nothing would have reported the drift.
+//
+// It returns the report and says HOW it was obtained; it does not serialize,
+// gate, or write a response. Gating is finishReportForViewer's job and stays
+// downstream of everything here, which is what keeps one cached search
+// serving free and Pro visitors alike.
+//
+// `countsDailyCap` is passed rather than derived: DAILY_SEARCH_CAP is a
+// scraper backstop, and who is exempt from it (a subscriber, an internal
+// caller) is the caller's question, not this function's.
+// ---------------------------------------------------------------------------
+async function runCompSearch({
+  address: addressOk, type: typeOk, note: noteOk = "", months: monthsOk,
+  maxComps: maxCompsOk, txFocus: txFocusOk = "both", subjectSizeSqft: sizeOk = null,
+  subjectDetails: detailsOk = {}, skipCache = false, plan = null,
+  countsDailyCap = true, onBilledStart = null, onProgress = null,
+}) {
+  // Verified comps are fetched once, both for the model and as part of the
+  // cache key — approving a new broker comp naturally invalidates any cached
+  // report for that property type.
+  // Declared up here, and RETURNED on every exit, because the serialization
+  // funnel is what hands an internal caller the call's real spend and it runs
+  // after this function is done. Empty on both cache paths, which is what makes
+  // "a cached search cost nothing" true rather than reported as zeros.
+  const callStats = {};
+
+  const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
+  const cacheKey = cacheKeyFor({
+    address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
+    subjectDetails: detailsOk,
+  });
+
+  const cached = skipCache ? null : await getCachedSearch(cacheKey);
+  if (cached) {
+    // Legacy cache entries predate $/SF reconciliation — correct them at
+    // read time (idempotent, so re-hitting the in-memory object is fine).
+    reconcilePricePerSqft(cached);
+    console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, cached);
+    harvestComps(typeOk, addressOk, cached);
+    return { report: cached, kind: "cache", callStats };
+  }
+
+  // Exact key missed — but a shorter lookback is a subset of a longer
+  // one, so a cached longer-window report for the same request can be
+  // filtered down to this window instead of paying for a fresh search
+  // (see findDerivableReport for the quality floors).
+  const dw = skipCache ? null : await findDerivableReport({
+    address: addressOk, type: typeOk, note: noteOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+    verifiedComps, subjectDetails: detailsOk,
+  }, monthsOk, txFocusOk, maxCompsOk);
+  if (dw) {
+    console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+    // Side effects mirror a direct cache hit, fed the PARENT payload —
+    // the harvester dedupes, and the fuller comp list is the better feed.
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
+    harvestComps(typeOk, addressOk, dw.parent);
+    return { report: dw.derived, kind: "derived", callStats };
+  }
+
+  // Thrown rather than returned so no caller can mistake a refusal for a
+  // report. Who is exempt is the caller's call (see countsDailyCap);
+  // /api/comps turns this back into the 429 it always sent.
+  if (countsDailyCap && !tryConsumeDailySearch()) {
+    const capped = new Error("This site has reached its daily search limit. Please try again after midnight UTC.");
+    capped.code = "daily_cap";
+    throw capped;
+  }
+
+  // A blank SF field costs two extra searches for the size lookup — but
+  // if any previous search already looked this building up, reuse the
+  // answer and shrink the budget (see the subject-size memo). The
+  // visitor's own entry (sizeOk) always wins over the memo.
+  const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
+  if (knownSize) {
+    console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
+  }
+  const searchSize = sizeOk || (knownSize ? knownSize.size : null);
+
+  // Cache missed — see what we already hold for this market before paying
+  // for a fresh web search. Corpus-strong markets reuse known comps and
+  // run a much smaller search budget (see searchBudgetFor).
+  const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
+  if (corpusIsStrong(corpus)) {
+    console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+  }
+  if (corpus.nearbyCount) {
+    // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
+    // total, so report both rather than let the count overstate what
+    // the model was actually offered.
+    console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+  }
+  if (corpus.listedCount) {
+    console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
+  }
+
+  // The last moment before anything is billed. /api/comps opens its SSE
+  // stream here (everything above answers in plain JSON with a real status
+  // code — the password gate, the rate limiters, validation and a 43ms
+  // cache hit); the bulk worker uses it to mark the row running.
+  if (typeof onBilledStart === "function") {
+    onBilledStart({ corpus, market: marketOf(addressOk) });
+  }
+
+  // Speed observability: time the whole billed leg (what the visitor
+  // actually waits for server-side). callStats (declared at the top) collects
+  // the call's search count, output size, rescue history and spend.
+  const billedT0 = Date.now();
+  const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
+    typeof onProgress === "function" ? onProgress : null, callStats);
+  // With the size supplied (memo hit), the prompt skips the lookup and
+  // the payload has no subject_size_sqft — carry the remembered size
+  // into the report so the client's hero math and size autofill still
+  // work for a visitor who typed nothing. Source is kept verbatim so
+  // the hero's provenance phrasing stays accurate.
+  if (knownSize && !result.subject_size_sqft) {
+    result.subject_size_sqft = String(knownSize.size);
+    if (knownSize.source) result.subject_size_source = knownSize.source;
+  }
+  // A fresh lookup (no memo, no typed size) is worth remembering for
+  // every future search of this address. Fire-and-forget.
+  if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
+  // meta feeds the instant-badge address index; the Explorer's
+  // market-level store below deliberately passes none.
+  await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
+  logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan,
+    duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
+  maybePublishMarketSnapshot(typeOk, addressOk, result);
+  harvestComps(typeOk, addressOk, result);
+  return { report: result, kind: "fresh", callStats };
+}
+
+// ---------------------------------------------------------------------------
+// Bulk valuation — the job store and the worker (migration 036)
+//
+// A Pro member pastes or uploads a list of addresses and gets a value on each,
+// as one portfolio. Rules live in the pure bulk.js; the SEARCH is runCompSearch
+// and the SERIALIZATION is finishReportForViewer, both shared with /api/comps,
+// so a bulk row and the single-property report behind it can never disagree.
+//
+// Four things shape everything below.
+//
+// A JOB IS AN INVOICE. Every address that misses the cache is its own billed
+// search — ~$0.36 and 40-70 seconds, measured. Fifty of them is real money and
+// half an hour. So: one running job per member, a hard cap on addresses, and
+// the count and the cost shown before the button is pressed rather than after.
+//
+// IT OUTLIVES THE REQUEST. The POST that starts a job answers in milliseconds
+// and the worker runs for half an hour afterwards, so nothing in here may hold
+// `req` or `res`. That is why vaultCompsForReport now takes a user.
+//
+// THE PROCESS CAN DIE UNDER IT. A deploy restarts Render mid-job. There is no
+// queue to recover from and deliberately no timer or boot sweep (migration
+// 025's argument), so a job records a heartbeat and a READ decides it stalled.
+// Nothing is lost when that happens: every finished row was already written,
+// and re-running the same list serves the finished addresses from cache for
+// free.
+//
+// EVERY READ IS SCOPED BY user_id, including the deletes — the vault's rule
+// (013), which is why bulk_job_items carries a denormalized user_id rather
+// than joining to find out whose row it is.
+// ---------------------------------------------------------------------------
+
+// How many addresses are searched at once inside one job. Three, not one,
+// because the wait is upstream I/O rather than our CPU and a fifty-address
+// job at one-at-a-time is 50 minutes; and not ten, because Render's Starter
+// instance is half a core and the person running a bulk job is not the only
+// person on the site. Cache hits cost nothing and fly through regardless.
+const BULK_CONCURRENCY = 3;
+// Jobs listed on the page. A member's whole history, not a window: these are
+// receipts.
+const BULK_JOB_LIST_LIMIT = 25;
+
+// Jobs this process is working, so a second POST cannot start the same job
+// twice and a cancel can stop one between rows. Deliberately in memory: it
+// answers "is THIS process working on it", which is the only thing an
+// in-process worker can honestly know. Whether a job is running at all is
+// answered by the database's status plus the heartbeat.
+const bulkRunning = new Map(); // job id -> { cancelled: boolean }
+
+function bulkJobRow(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    property_type: job.property_type,
+    months: job.months,
+    note: job.note || "",
+    label: job.label || null,
+    total: Number(job.total) || 0,
+    done_count: Number(job.done_count) || 0,
+    created_at: job.created_at,
+    finished_at: job.finished_at || null,
+    heartbeat_at: job.heartbeat_at || null,
+  };
+}
+
+// The row shape the browser sees, as an ALLOWLIST rather than the table row —
+// vault-api.js's rule, for its reason: a column added to storage later must
+// not reach the page by default, and one dropped must fail loudly here rather
+// than render as blank. `job_id` and `user_id` are plumbing and stay behind.
+function bulkItemRow(it) {
+  if (!it) return null;
+  const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : null; };
+  return {
+    id: it.id,
+    position: Number(it.position) || 0,
+    address: it.address,
+    label: it.label || null,
+    status: it.status,
+    error: it.error || null,
+    value_low: n(it.value_low), value_likely: n(it.value_likely), value_high: n(it.value_high),
+    psf_low: n(it.psf_low), psf_mid: n(it.psf_mid), psf_high: n(it.psf_high),
+    size_sqft: n(it.subject_size_sqft), size_source: it.size_source || null,
+    sale_comps: n(it.sale_comps), comp_count: n(it.comp_count),
+    market: it.market || null,
+    trimmed: it.trimmed === true,
+    cached: it.cached === true,
+    portfolio_item_id: it.portfolio_item_id || null,
+    finished_at: it.finished_at || null,
+  };
+}
+
+async function listBulkJobs(userId) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}` +
+    `&order=created_at.desc&limit=${BULK_JOB_LIST_LIMIT}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function getBulkJob(userId, id) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}&limit=1`);
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function listBulkItems(userId, jobId) {
+  const rows = await sbRequest("GET",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
+    `&job_id=eq.${encodeURIComponent(jobId)}&order=position.asc&limit=${BULK.MAX_ADDRESSES}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function patchBulkJob(userId, id, patch) {
+  await sbRequest("PATCH",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+}
+
+async function patchBulkItem(userId, id, patch) {
+  await sbRequest("PATCH",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+}
+
+// How many addresses this member has actually put through a search today.
+//
+// Counts rows that were ATTEMPTED (anything past `queued`), not rows that were
+// created, so cancelling a fifty-address run after two rows costs two and not
+// fifty — otherwise the honest act of stopping a run would be punished harder
+// than letting it finish.
+//
+// Windowed on `created_at` rather than `finished_at`: a job that straddles UTC
+// midnight therefore counts wholly against the day it started, which is the
+// approximation this is happy to make. It is a spend backstop, not accounting
+// — the same stance DAILY_SEARCH_CAP takes about being in-memory.
+//
+// Capped at cap+1 rows so the query cost cannot grow with a heavy user: the
+// only question is whether the number is at or over the ceiling.
+async function bulkAddressesUsedToday(userId, cap) {
+  const since = todayUTC() + "T00:00:00Z";
+  const rows = await sbRequest("GET",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
+    `&created_at=gte.${encodeURIComponent(since)}` +
+    `&status=neq.queued&select=id&limit=${Math.max(1, cap) + 1}`);
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+// What the workspace needs before it can draw a form: the member's runs, the
+// two caps, and the property types. ONE builder, used by both the /bulk page's
+// boot payload and the GET route the page polls — they were two copies for
+// about an hour and the page shipped without the daily allowance, which is a
+// number the form is supposed to show BEFORE somebody pastes fifty addresses.
+async function bulkListPayload(user, ent) {
+  const jobs = [];
+  for (const j of await listBulkJobs(user.id)) {
+    jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
+  }
+  // Best-effort: a failed count reports the full ceiling, matching the route's
+  // own fail-open, so the page can never be more pessimistic than the gate.
+  let leftToday = BULK_DAILY_ADDRESSES;
+  try {
+    leftToday = Math.max(0, BULK_DAILY_ADDRESSES -
+      await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES));
+  } catch (err) {
+    console.error("bulk daily count failed (reporting the full ceiling):", err.message);
+  }
+  return {
+    jobs,
+    maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
+    leftToday,
+    dailyLimit: BULK_DAILY_ADDRESSES,
+    types: VAULT.PROPERTY_TYPES,
+  };
+}
+
+// One live job per member. Read from the DATABASE rather than from
+// bulkRunning, so a job orphaned by a restart still blocks a new one until a
+// read has marked it interrupted — otherwise a deploy during a fifty-address
+// run would silently let somebody start the same list again and pay twice.
+async function activeBulkJob(userId) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&status=eq.running` +
+    `&order=created_at.desc&limit=1`);
+  return rows && rows[0] ? rows[0] : null;
+}
+
+// A running job whose worker is gone. Decided at READ time and written once,
+// so the page can say "this run was interrupted" instead of showing a
+// progress bar that will never move again. Idempotent: a second read finds
+// the status already changed and does nothing.
+async function reapStalledBulkJob(userId, job) {
+  if (!job || job.status !== "running") return job;
+  if (bulkRunning.has(String(job.id))) return job;   // this process is on it
+  const beat = Date.parse(job.heartbeat_at || job.created_at || "");
+  if (Number.isFinite(beat) && Date.now() - beat < BULK.STALL_MS) return job;
+  const patch = { status: "interrupted", finished_at: new Date().toISOString() };
+  try { await patchBulkJob(userId, job.id, patch); } catch (err) {
+    console.error("bulk reap failed:", err.message);
+    return job;
+  }
+  return { ...job, ...patch };
+}
+
+// ---------------------------------------------------------------------------
+// The worker
+// ---------------------------------------------------------------------------
+
+// One address: search it, value it, write the row, and put the valuation on
+// the member's desk. Returns nothing — every outcome is a row update, because
+// a bulk job's whole contract is that you can close the tab.
+async function runBulkItem(item, ctx) {
+  // `ent` was resolved when the job was STARTED and is reused for every row.
+  // A subscription that lapses mid-run therefore finishes the run it paid to
+  // start, which is the honest reading of a job somebody committed to twenty
+  // minutes ago — and the alternative, re-resolving per row, would leave a
+  // portfolio half-valued with nothing on screen explaining why.
+  const { user, ent, job, shared, priv } = ctx;
+  const address = String(item.address || "");
+  const market = marketOf(address);
+  const started = Date.now();
+
+  try {
+    await patchBulkItem(user.id, item.id, { status: "running" });
+
+    const size = Number(item.size_sqft) > 0 ? Math.round(Number(item.size_sqft)) : null;
+    const searched = await runCompSearch({
+      address, type: job.property_type, note: job.note || "",
+      months: job.months,
+      // The same 12 the single-property form asks for. A smaller ask would
+      // make a bulk row's range thinner than the report it links to — the one
+      // difference between the two screens nobody could explain.
+      maxComps: 12,
+      txFocus: "both", subjectSizeSqft: size, subjectDetails: {},
+      plan: ent.plan,
+      // Pro, so the daily cap does not apply — it is a scraper backstop, and
+      // /api/bulk has its own, tighter ceilings (one job at a time, capped
+      // addresses) which is what actually bounds the spend here.
+      countsDailyCap: false,
+    });
+
+    // The same serialization funnel /api/comps uses, fed the same private
+    // comps: a broker's own vault deals count toward their own portfolio
+    // exactly as they count toward their own report.
+    const report = await finishReportForViewer(searched.report, {
+      ent, internal: false,
+      addressOk: address, typeOk: job.property_type, noteOk: job.note || "",
+      monthsOk: job.months, sizeOk: size,
+      corpusRadiusRows: shared.corpusRadiusRows,
+      vaultRows: (priv && priv.vault) || [],
+      firmCompRows: (priv && priv.firm) || [],
+    });
+
+    const valued = BULK.valueFromReport(report, {
+      subjectSizeSqft: size,
+      asOf: Date.now(),
+      note: job.note || "",
+      propertyType: job.property_type,
+    });
+
+    if (!valued) {
+      await patchBulkItem(user.id, item.id, {
+        status: "done", finished_at: new Date().toISOString(),
+        cached: searched.kind !== "fresh", market,
+        comp_count: Array.isArray(report.comps) ? report.comps.length : 0,
+        sale_comps: 0,
+        // Customer copy, not a developer message: it is printed in the row
+        // and again in the CSV that outlives the screen.
+        error: "No priced sale comps in this window — try a longer lookback.",
+      });
+      return;
+    }
+
+    // The valuation goes on the desk too, as if the address had been searched
+    // by hand — same table, same shape, same `meta`, so the row re-renders
+    // into a whole report and every desk feature (movement, sharing, the
+    // market-page link) works on it with no bulk-specific branch anywhere.
+    let portfolioItemId = null;
+    try {
+      portfolioItemId = await saveBulkValuationToDesk(user, ent, job, item, report, valued);
+    } catch (err) {
+      // A desk write must never lose a valuation that has already been paid
+      // for. The row keeps its numbers and simply has no link.
+      console.error("bulk desk save failed:", err.message);
+    }
+
+    await patchBulkItem(user.id, item.id, {
+      status: "done",
+      finished_at: new Date().toISOString(),
+      cached: searched.kind !== "fresh",
+      market,
+      value_low: valued.value_low, value_likely: valued.value_likely, value_high: valued.value_high,
+      psf_low: round2(valued.psf_low), psf_mid: round2(valued.psf_mid), psf_high: round2(valued.psf_high),
+      subject_size_sqft: valued.size_sqft, size_source: valued.size_source,
+      sale_comps: valued.sale_comps, comp_count: valued.comp_count,
+      trimmed: valued.trimmed,
+      error: valued.sized ? null : "No building size found — showing the $/SF range only.",
+      portfolio_item_id: portfolioItemId,
+    });
+    console.log(`Bulk ${job.id}: ${address} — ${searched.kind} in ${Math.round((Date.now() - started) / 1000)}s`);
+  } catch (err) {
+    console.error(`bulk item failed (${address}):`, err.message);
+    await patchBulkItem(user.id, item.id, {
+      status: "failed", finished_at: new Date().toISOString(), market,
+      // clientErrorMessage is the one thing that decides what a customer
+      // reads about an upstream failure — the same guard /api/comps uses, so
+      // an Anthropic billing message can never surface here either.
+      error: String(clientErrorMessage(err) || "That search did not complete.").slice(0, 300),
+    }).catch(() => {});
+  }
+}
+
+function round2(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+// Write one finished bulk valuation onto My Desk. Upserts on address + type,
+// exactly as a signed-in search does, so re-running a list updates the
+// properties already there rather than duplicating them.
+async function saveBulkValuationToDesk(user, ent, job, item, report, valued) {
+  const payload = {
+    // The shape index.html saves, field for field. A desk row written here
+    // has to be indistinguishable from one written by a search, or the
+    // report it reopens will render differently from every other one.
+    meta: {
+      address: item.address,
+      type: job.property_type,
+      note: job.note || "",
+      months: job.months,
+      txFocus: "both",
+      subject: {
+        sizeMin: valued.size_sqft || null,
+        sizeMax: valued.size_sqft || null,
+        priceMin: null, priceMax: null, noi: null, capRate: null, details: {},
+      },
+      assumptions: null,
+      curation: null,
+    },
+    data: report,
+  };
+  const snapshot = {
+    low: valued.value_low, likely: valued.value_likely, high: valued.value_high,
+    median_psf: valued.psf_mid,
+  };
+  // portfolio-match.js owns "is this the same property", and the bulk worker
+  // has to route through it for the reason it exists: one building typed three
+  // ways was three desk rows with three value histories. `findPortfolioMatch`
+  // was this line until 2026-08-21 and is gone.
+  //
+  // No verified key, deliberately: that key comes from the BROWSER's geocoder
+  // confirmation, and a bulk row is never confirmed by anybody — fifty confirm
+  // dialogs is not a workflow. Passing "" falls through to the typed-address
+  // rule, which is exactly what this did before the column existed, and a later
+  // hand-run of the same address adopts the key and absorbs this row rather
+  // than duplicating it.
+  const items = await listPortfolio(user.id);
+  const existing = PFMATCH.findMatch(items, {
+    address: item.address, propertyType: job.property_type, verifiedKey: "",
+  });
+  if (existing) {
+    const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: cleanSnapshot(snapshot) });
+    logEvent("portfolio_refresh", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+    return updated ? updated.id : existing.id;
+  }
+  // The cap is the member's, read from the entitlement like every other
+  // portfolio write. A full desk stops the row landing there and nothing
+  // else: the valuation is still in the job, still exportable, and saying so
+  // is better than silently dropping the fifty-first property.
+  const cap = Number(ent.portfolioMaxItems) || ENT.FREE_PORTFOLIO_MAX_ITEMS;
+  if (items.length >= cap) return null;
+  const saved = await insertPortfolioItem(user.id, {
+    address: item.address, property_type: job.property_type,
+    payload, snapshot: cleanSnapshot(snapshot),
+  });
+  logEvent("portfolio_add", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+  return saved ? saved.id : null;
+}
+
+/**
+ * Work a whole job. Fire-and-forget from the route: it is awaited by nobody
+ * and must therefore never reject.
+ */
+async function runBulkJob(job, items, user, ent) {
+  const control = { cancelled: false };
+  bulkRunning.set(String(job.id), control);
+  const t0 = Date.now();
+
+  // Read once per JOB, not once per address. The radius-blend corpus rows are
+  // a whole-type read (2000 rows) and the vault/firm comps are per market, so
+  // fifty addresses in one metro would otherwise repeat the same three
+  // queries fifty times for identical answers.
+  //
+  // The map holds a PROMISE, not the rows. Caching the rows and filling them
+  // in later means the second and third concurrent rows in a market find the
+  // key present, read the placeholder, and value themselves with an empty
+  // vault — a broker's own comps silently missing from two rows in three,
+  // which is invisible on screen because an empty vault is a normal state.
+  const marketReads = new Map();   // market -> Promise<{ vault, firm }>
+  const compsForMarket = (market) => {
+    if (!marketReads.has(market)) {
+      marketReads.set(market, Promise.all([
+        vaultCompsForReport(user, ent, { market, type: job.property_type, months: job.months }),
+        orgCompsForReport(ent, user, { market, type: job.property_type, months: job.months }),
+      ]).then(([vault, firm]) => ({ vault, firm }))
+        // Both readers already swallow their own errors and return []; this is
+        // the belt for a rejection neither anticipated. A missing private comp
+        // must never fail a row that would otherwise value fine.
+        .catch(() => ({ vault: [], firm: [] })));
+    }
+    return marketReads.get(market);
+  };
+  const shared = { corpusRadiusRows: [] };
+
+  try {
+    if (CORPUS_RADIUS) {
+      shared.corpusRadiusRows = await corpusRowsForType(job.property_type, 2000);
+    }
+  } catch (err) {
+    console.error("bulk radius corpus read failed:", err.message);
+  }
+
+  let done = 0;
+  const queue = items.slice();
+  const worker = async () => {
+    for (;;) {
+      if (control.cancelled) return;
+      const item = queue.shift();
+      if (!item) return;
+      try {
+        const priv = await compsForMarket(marketOf(String(item.address || "")));
+        await runBulkItem(item, { user, ent, job, shared, priv });
+      } catch (err) {
+        // runBulkItem writes its own failures; this catches a failure to
+        // WRITE one. One bad row never stops the rest of the list — the same
+        // rule the watchlist digest run follows, for the same reason: the
+        // other forty-nine are still owed their answer.
+        console.error("bulk worker row error:", err.message);
+      }
+      done++;
+      try {
+        await patchBulkJob(user.id, job.id, {
+          done_count: done, heartbeat_at: new Date().toISOString(),
+        });
+      } catch (err) { console.error("bulk heartbeat failed:", err.message); }
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, queue.length || 1) }, worker));
+    const finalStatus = control.cancelled ? "cancelled" : "done";
+    await patchBulkJob(user.id, job.id, {
+      status: finalStatus, done_count: done, finished_at: new Date().toISOString(),
+      heartbeat_at: new Date().toISOString(),
+    });
+    logEvent("bulk_finish", {
+      prop_type: job.property_type, source: finalStatus,
+      duration_ms: Date.now() - t0,
+    });
+    console.log(`Bulk ${job.id}: ${finalStatus} — ${done}/${items.length} in ${Math.round((Date.now() - t0) / 1000)}s`);
+  } catch (err) {
+    console.error("bulk job failed:", err.message);
+    try {
+      await patchBulkJob(user.id, job.id, {
+        status: "failed", done_count: done, finished_at: new Date().toISOString(),
+      });
+    } catch (_) { /* the stall reaper is the backstop */ }
+  } finally {
+    bulkRunning.delete(String(job.id));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
@@ -6389,6 +7182,7 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
     `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
+    `<a id="navBulk" class="vault" href="/bulk" hidden>Bulk valuation</a>` +
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
@@ -6427,6 +7221,7 @@ const ACCOUNT_NAV_JS =
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
+  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this
@@ -12198,12 +12993,16 @@ async function vaultReadPayload(req, params) {
 // The lookback filter matters for honesty as much as relevance: a report says
 // it covers N months, so a private comp older than that would quietly widen
 // the window the valuation is drawn from.
-async function vaultCompsForReport(req, ent, { market, type, months }) {
+// Takes the USER, not the request (changed 2026-08-21). It only ever wanted
+// getSessionUser(req), and the bulk worker outlives the request that started
+// it — there is no `req` to hand it half an hour later. orgCompsForReport
+// already took a user beside its unused `req`; both now take one and nothing
+// else about either changed.
+async function vaultCompsForReport(user, ent, { market, type, months }) {
   try {
     if (!DB_CONFIGURED) return [];
     if (!ent || !ent.canUseVault) return [];
     if (!market || !type) return [];
-    const user = await getSessionUser(req);
     if (!user) return [];
 
     const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
@@ -12340,7 +13139,7 @@ async function refreshSharedComp(user, compId) {
 //     covers N months, so an older comp would quietly widen the window the
 //     valuation is drawn from.
 //   - [] on any failure.
-async function orgCompsForReport(req, ent, user, { market, type, months }) {
+async function orgCompsForReport(ent, user, { market, type, months }) {
   try {
     if (!DB_CONFIGURED) return [];
     if (!ent || !ent.canUseVault) return [];
@@ -12914,16 +13713,6 @@ const server = http.createServer((req, res) =>
         const noteOk = note ? String(note).trim() : "";
         const detailsOk = sanitizeSubjectDetails(typeOk, subjectDetails);
 
-        // Verified comps are fetched once, both for the model and as part of
-        // the cache key — approving a new broker comp naturally invalidates
-        // any cached report for that property type.
-        const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
-        const cacheKey = cacheKeyFor({
-          address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
-          subjectDetails: detailsOk,
-        });
-
         // Gating happens at SERIALIZATION, never at generation: the cache, the
         // corpus harvest, and the market-snapshot publisher all keep seeing
         // whole reports, so one cached search serves free and Pro visitors
@@ -12936,7 +13725,7 @@ const server = http.createServer((req, res) =>
         // response is byte-identical to what it was before this feature.
         const vaultRows = internal
           ? []
-          : await vaultCompsForReport(req, ent, {
+          : await vaultCompsForReport(await getSessionUser(req), ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
         // A colleague's comps, opted in to the firm (migration 032). Read
@@ -12946,7 +13735,7 @@ const server = http.createServer((req, res) =>
         // one of them upstream of the cache.
         const firmCompRows = internal
           ? []
-          : await orgCompsForReport(req, ent, await getSessionUser(req), {
+          : await orgCompsForReport(ent, await getSessionUser(req), {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
         // Filled after the guest gate so a blocked anonymous visitor does not
@@ -12954,130 +13743,16 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
-        // Declared HERE rather than beside the search below because gate()
-        // closes over it: an internal caller is handed the call's real spend,
-        // and gate is the only funnel every exit routes through.
-        const callStats = {};
-        const gate = async (rep) => {
-          // An internal caller (x-admin-key, i.e. the seed generator and the
-          // eval harness) gets the whole report, ungated. It also gets what
-          // the search actually cost — tokens, the thought/report split, and
-          // dollars — which is the difference between the eval being able to
-          // answer "is thinking less cheaper AND still accurate?" and only
-          // being able to answer the second half.
-          //
-          // Three rules. It is attached HERE, at serialization, so the cache,
-          // harvestComps and maybePublishMarketSnapshot (all of which run on
-          // `result` above this) never see it — the same rule gateReport and
-          // the vault blend follow, and the reason a cached report can never
-          // carry another run's token counts. It SPREADS rather than mutates,
-          // because `rep` may be the memoized cache object and writing into it
-          // would stamp one call's numbers onto every later reader. And it is
-          // omitted entirely on a cache hit, where callStats is empty: a cached
-          // search really did cost nothing, and reporting zeros as if they were
-          // measured would quietly halve the average cost of any run that hit
-          // the cache.
-          if (internal) {
-            return callStats.billed_calls
-              ? { ...rep, _call: {
-                  billed_calls: callStats.billed_calls,
-                  searches: callStats.searches || 0,
-                  cost_usd: callStats.cost_usd || 0,
-                  usage: callStats.usage || {},
-                  provider: PROVIDER.name,
-                  model: MODEL,
-                  thinking_level: THINKING_LEVEL,
-                } }
-              : rep;
-          }
-          // Public saved deals first, then the paywall, then the vault.
-          // Radius blend is before gateReport so extras become locked_basis
-          // for a free visitor instead of printing their addresses. Vault
-          // blend stays last: brokers are Pro, and a private row must never
-          // become a public locked_basis row.
-          let merged = rep;
-          if (CORPUS_RADIUS) {
-            const subject = RADIUSBLEND.coordsFromReport(rep)
-              || await geocodeCensus(addressOk);
-            merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
-              subject,
-              months: monthsOk,
-              now: Date.now(),
-              parseDealDate,
-              keyOf: corpusKeyOf,
-              subjectAddress: addressOk,
-              isAggregateAddress,
-              propertyType: typeOk,
-              marketNote: noteOk,
-              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
-            });
-            if (merged && merged.corpus_count) {
-              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
-            }
-            merged = RADIUSBLEND.attachCompDistances(merged, subject);
-          } else {
-            merged = RADIUSBLEND.attachCompDistances(merged);
-          }
-          const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, {
-            asOfMs: Date.now(),
-            subjectSqft,
-            propertyType: typeOk,
-            radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
-            subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
-          });
-          if (!gated || typeof gated !== "object") return gated;
-          // `ent` was resolved with THIS report's id, so it already knows a single-report
-          // unlock makes its exports unlimited — /api/config cannot, because it
-          // takes no report id and would need a purchase lookup on every page
-          // load. Without this the buyer of a report was shown the free monthly
-          // tally ("4 exports left this month") on a report they own outright.
-          // Spread rather than assign: `rep` may be the CACHED object, and the
-          // cache must never carry one visitor's entitlement to the next.
-          // Per-visitor and per-REPORT, for the same reason exports_remaining is:
-          // `ent` was resolved with this report's id, so it knows a $20
-          // single-report unlock carries branding for this property. The
-          // browser cannot work this out for itself — /api/config's canBrand
-          // takes no report id, and lockedCount() === 0 is also true for a free
-          // visitor whose thin market simply returned fewer comps than the gate.
-          // Serialization-time like everything else here, so the cached object
-          // never carries one visitor's entitlement to the next.
-          const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
-          // Cross-link to the standing /market/<slug> page for this market +
-          // type, when one exists. Serialization-time like everything else in
-          // this closure, so the cached object never carries it and a market
-          // page published later lights up older cached reports too. In-memory
-          // lookup, no I/O. It rides the report payload, so a saved or shared
-          // report keeps its door into the market page.
-          const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
-          if (marketPage) withExports.market_page = marketPage;
-          // LAST, and only here. Every caller of gate() is an exit — the cache
-          // hit, the derived-window hit, the SSE result and the plain JSON
-          // result — so this is the one place a private comp can enter, and it
-          // is downstream of the cache write, harvestComps() and the market
-          // snapshot, all of which keep seeing the public report. Blending any
-          // earlier serves one broker's private book to the next visitor who
-          // searches that address, because the cache is keyed by property and
-          // not by user.
-          // The broker's own comps first, then the firm's — in that order, so
-          // dedupeFirmComps can drop a colleague's copy of a deal the broker
-          // already holds rather than the other way round. Two people at one
-          // firm were routinely on opposite sides of the same transaction, so
-          // without this the deal is counted twice in the valuation with
-          // nothing on screen explaining the shift.
-          const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
-          if (!firmCompRows.length) return withMine;
-          const firmComps = BLEND.dedupeFirmComps(
-            (withMine.comps || []).filter(BLEND.isPrivateComp),
-            firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
-          if (!firmComps.length) return withMine;
-          return {
-            ...withMine,
-            comps: [...(withMine.comps || []), ...firmComps],
-            private_count: (withMine.private_count || 0) + firmComps.length,
-          };
-        };
+        // One serialization funnel, shared with the bulk worker (see
+        // finishReportForViewer). The arrow is evaluated per call, so both
+        // bindings below are read at EXIT time: corpusRadiusRows is filled
+        // after the guest gate, and `searched` carries the call's real spend,
+        // which only exists once the search has run.
+        const gate = (rep) => finishReportForViewer(rep, {
+          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+          corpusRadiusRows, vaultRows, firmCompRows,
+          callStats: searched ? searched.callStats : null,
+        });
 
         // The gate's principle applied to live progress: a limited visitor
         // never receives more identified comps than the report itself will
@@ -13122,114 +13797,48 @@ const server = http.createServer((req, res) =>
           corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
         }
 
-        const cached = skipCache ? null : await getCachedSearch(cacheKey);
-        if (cached) {
-          // Legacy cache entries predate $/SF reconciliation — correct them at
-          // read time (idempotent, so re-hitting the in-memory object is fine).
-          reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, cached);
-          harvestComps(typeOk, addressOk, cached);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(cached));
-        }
-
-        // Exact key missed — but a shorter lookback is a subset of a longer
-        // one, so a cached longer-window report for the same request can be
-        // filtered down to this window instead of paying for a fresh search
-        // (see findDerivableReport for the quality floors).
-        const dw = skipCache ? null : await findDerivableReport({
-          address: addressOk, type: typeOk, note: noteOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
-          verifiedComps, subjectDetails: detailsOk,
-        }, monthsOk, txFocusOk, maxCompsOk);
-        if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
-          // Side effects mirror a direct cache hit, fed the PARENT payload —
-          // the harvester dedupes, and the fuller comp list is the better feed.
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
-          harvestComps(typeOk, addressOk, dw.parent);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(dw.derived));
-        }
-
-        // A paying subscriber must never be told the site is out of searches
-        // for the day — the cap is a scraper backstop, not a product limit.
-        if (!ent.pro && !internal && !tryConsumeDailySearch()) {
-          return sendJson(res, 429, {
-            error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+        // One search pipeline, shared with the bulk worker: cache, derivable
+        // window, daily cap, size memo, corpus retrieval, the billed call and
+        // every side effect that must see the WHOLE report. See runCompSearch.
+        let searched;
+        try {
+          searched = await runCompSearch({
+            address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+            maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+            subjectDetails: detailsOk, skipCache, plan: ent.plan,
+            // The cap is a scraper backstop, not a product limit: a paying
+            // subscriber must never be told the site is out of searches for
+            // the day, and neither must an internal caller.
+            countsDailyCap: !ent.pro && !internal,
+            // The stream opens HERE and nowhere earlier. Everything the
+            // pipeline answers before this point — the cache hit that matters
+            // most, at 43ms — is plain JSON with a real status code, and the
+            // client picks how to read the body off its content-type, never
+            // off the fact that it asked to stream.
+            onBilledStart: ({ corpus, market }) => {
+              if (!wantsStream) return;
+              sse = openSse(res);
+              if (corpusIsStrong(corpus)) {
+                sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market });
+              }
+            },
+            // null when not streaming, exactly as before: getComps skips its
+            // per-attempt event wrapper entirely on a non-streaming call.
+            onProgress: wantsStream
+              ? (evt) => { if (sse) sse.send("progress", guardComp(evt)); }
+              : null,
           });
-        }
-
-        // A blank SF field costs two extra searches for the size lookup — but
-        // if any previous search already looked this building up, reuse the
-        // answer and shrink the budget (see the subject-size memo). The
-        // visitor's own entry (sizeOk) always wins over the memo.
-        const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
-        if (knownSize) {
-          console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
-        }
-        const searchSize = sizeOk || (knownSize ? knownSize.size : null);
-
-        // Cache missed — see what we already hold for this market before paying
-        // for a fresh web search. Corpus-strong markets reuse known comps and
-        // run a much smaller search budget (see searchBudgetFor).
-        const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
-        if (corpusIsStrong(corpus)) {
-          console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
-        }
-        if (corpus.nearbyCount) {
-          // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
-          // total, so report both rather than let the count overstate what
-          // the model was actually offered.
-          console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
-        }
-        if (corpus.listedCount) {
-          console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
-        }
-
-        // Everything above this line answers in plain JSON — the password gate,
-        // the rate limiters, validation, and (the fast path that matters) a
-        // 43ms cache hit. Only the genuinely slow leg streams. The client picks
-        // how to read the response off its content-type, never off what it asked
-        // for, so all of those keep working untouched.
-        if (wantsStream) {
-          sse = openSse(res);
-          if (corpusIsStrong(corpus)) {
-            sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market: marketOf(addressOk) });
+        } catch (err) {
+          if (err && err.code === "daily_cap") {
+            return sendJson(res, 429, {
+              error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+            });
           }
+          throw err;
         }
-
-        // Speed observability: time the whole billed leg (what the visitor
-        // actually waits for server-side) and collect the call's search
-        // count, output size, and rescue history for the analytics event.
-        const billedT0 = Date.now();
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
-          sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
-        // With the size supplied (memo hit), the prompt skips the lookup and
-        // the payload has no subject_size_sqft — carry the remembered size
-        // into the report so the client's hero math and size autofill still
-        // work for a visitor who typed nothing. Source is kept verbatim so
-        // the hero's provenance phrasing stays accurate.
-        if (knownSize && !result.subject_size_sqft) {
-          result.subject_size_sqft = String(knownSize.size);
-          if (knownSize.source) result.subject_size_source = knownSize.source;
-        }
-        // A fresh lookup (no memo, no typed size) is worth remembering for
-        // every future search of this address. Fire-and-forget.
-        if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
-        // meta feeds the instant-badge address index; the Explorer's
-        // market-level store below deliberately passes none.
-        await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan,
-          duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
-        maybePublishMarketSnapshot(typeOk, addressOk, result);
-        harvestComps(typeOk, addressOk, result);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", await gate(result));
-        return sendJson(res, 200, await gate(result));
+        if (sse) return sse.finish("result", await gate(searched.report));
+        return sendJson(res, 200, await gate(searched.report));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success
@@ -15120,6 +15729,288 @@ const server = http.createServer((req, res) =>
   //
   // Publishing (step 2) is what will eventually move a comp across, one comp at
   // a time by explicit broker action. Nothing here writes `published`.
+  // --- Bulk valuation (Pro) ------------------------------------------------
+  //
+  // Paste or upload a list of addresses, get a value on each, as one
+  // portfolio. Rules in bulk.js; storage and worker above; migration 036.
+  if (req.url.split("?")[0].startsWith("/api/bulk")) {
+    const path = req.url.split("?")[0];
+
+    // Every bulk route answers through this. THREE REFUSALS IN ORDER — 401
+    // not signed in, 403 not entitled, 503 no database — which is a
+    // deliberate third copy of the vault's openVault() and the lead inbox's
+    // requireBroker(). test/routes.test.js exists to catch the three drifting
+    // apart; a shared helper was rejected there because each one's 403 copy
+    // is different product text and the ladder is what has to match.
+    //
+    // The 503 is the vault's rule reached by another road: there is no file
+    // fallback (see migration 036), because a bulk job is a receipt for real
+    // spend and Render erases its disk on every deploy.
+    const openBulk = async () => {
+      const user = await requireUser(req, res);
+      if (!user) return null;
+      const ent = await entitlementsFor(req);
+      if (!ent.canBulkValue) {
+        // Reaches the screen verbatim.
+        sendJson(res, 403, { error: "Bulk valuation is part of Pro.", code: "pro_required" });
+        return null;
+      }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, {
+          error: "Bulk valuation is unavailable right now — nothing was started. Please try again in a minute.",
+        });
+        return null;
+      }
+      return { user, ent };
+    };
+
+    // Start a run. Answers immediately with the job; the worker runs on
+    // behind it for as long as it takes.
+    if (req.method === "POST" && path === "/api/bulk") {
+      let body = "";
+      let tooBig = false;
+      // A list of 50 addresses is a few KB; 256KB leaves room for somebody
+      // pasting a whole spreadsheet we are about to refuse most of anyway.
+      req.on("data", (c) => { body += c; if (body.length > 2.6e5 && !tooBig) { tooBig = true; req.destroy(); } });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user, ent } = opened;
+          // Its own limiter, tighter than a search's: starting a run is one
+          // deliberate act that commits up to fifty billed searches.
+          if (rateLimited("bulk:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+
+          const { text, type, months, note, label } = JSON.parse(body || "{}");
+          const typeOk = VAULT.PROPERTY_TYPES.find((t) => t === String(type));
+          if (!typeOk) {
+            return sendJson(res, 400, { error: `Pick a property type: ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+          }
+          const monthsOk = ENT.clampLookback(months, ent);
+          const noteOk = String(note || "").trim().slice(0, 200);
+          const labelOk = String(label || "").trim().slice(0, 120);
+
+          const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses });
+          if (!parsed.rows.length) {
+            return sendJson(res, 400, {
+              error: "No usable addresses in that list.",
+              skipped: parsed.skipped, warnings: parsed.warnings,
+            });
+          }
+
+          // One live job per member. Checked against the DATABASE, and a
+          // stalled one is reaped first so a deploy mid-run cannot lock
+          // somebody out of their own tool until the stall window expires.
+          const live = await reapStalledBulkJob(user.id, await activeBulkJob(user.id));
+          if (live && live.status === "running") {
+            return sendJson(res, 409, {
+              error: "A bulk run is already going. Wait for it to finish, or cancel it first.",
+              code: "job_running", job: bulkJobRow(live),
+            });
+          }
+
+          // The per-member daily ceiling. Checked BEFORE the job is created,
+          // so a refusal costs nothing and leaves nothing to clean up — and
+          // refusing the whole list rather than quietly running the part that
+          // fits, because a list silently shortened reads as a list fully
+          // valued. It says how many are left and when it resets, which is
+          // what makes it actionable rather than merely a wall.
+          //
+          // Fails OPEN on a read error: a member must not be locked out of a
+          // tool they pay for because one count query failed, and
+          // one-job-at-a-time plus the 50-address cap still bound the damage.
+          let usedToday = 0;
+          try {
+            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
+          } catch (err) {
+            console.error("bulk daily count failed (allowing the run):", err.message);
+          }
+          const leftToday = Math.max(0, BULK_DAILY_ADDRESSES - usedToday);
+          if (parsed.rows.length > leftToday) {
+            return sendJson(res, 429, {
+              error: leftToday === 0
+                ? `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`
+                : `That list is ${parsed.rows.length} addresses and you have ${leftToday} left today (the daily limit is ${BULK_DAILY_ADDRESSES}). Trim the list, or come back after midnight UTC.`,
+              code: "daily_limit",
+              left_today: leftToday,
+              daily_limit: BULK_DAILY_ADDRESSES,
+            });
+          }
+
+          // Checked HERE, before a job exists, because callAnthropicOnce has
+          // no key guard of its own — /api/comps guards at the route and this
+          // is the second route that reaches it. Without this a keyless
+          // deployment would create a job and then fire fifty outbound
+          // requests carrying an empty key, one per address.
+          if (!providerApiKey()) {
+            return sendJson(res, 503, {
+              error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`,
+            });
+          }
+
+          const now = new Date().toISOString();
+          const jobRows = await sbRequest("POST", "bulk_jobs", {
+            user_id: user.id, property_type: typeOk, months: monthsOk,
+            note: noteOk, label: labelOk || null,
+            status: "running", total: parsed.rows.length, done_count: 0,
+            heartbeat_at: now, created_at: now,
+          }, { prefer: "return=representation" });
+          const job = jobRows && jobRows[0];
+          if (!job) return sendJson(res, 503, { error: "Could not start that run. Please try again." });
+
+          const itemRows = await sbRequest("POST", "bulk_job_items",
+            parsed.rows.map((r, i) => ({
+              job_id: job.id, user_id: user.id, position: i,
+              address: r.address, label: r.label, size_sqft: r.size_sqft,
+              status: "queued", created_at: now,
+            })), { prefer: "return=representation" });
+          if (!Array.isArray(itemRows) || !itemRows.length) {
+            await patchBulkJob(user.id, job.id, { status: "failed", finished_at: new Date().toISOString() });
+            return sendJson(res, 503, { error: "Could not start that run. Please try again." });
+          }
+
+          // Sorted once, for both consumers: the worker needs a defined order
+          // and the page needs the rows in the order they were pasted.
+          // PostgREST returns an insert's rows in insertion order today; that
+          // is not something to depend on for a list somebody is reading.
+          const ordered = itemRows.slice().sort((a, b) => a.position - b.position);
+
+          logEvent("bulk_start", { prop_type: typeOk, source: parsed.header ? "upload" : "paste" });
+          // Fire and forget, deliberately: the run outlives this request by
+          // half an hour, so awaiting it would hold a socket open for the
+          // whole job and time out long before it finished. The member closes
+          // the tab; the rows land anyway.
+          runBulkJob(job, ordered, user, ent)
+            .catch((err) => console.error("bulk job crashed:", err.message));
+
+          return sendJson(res, 200, {
+            job: bulkJobRow(job),
+            items: ordered.map(bulkItemRow),
+            skipped: parsed.skipped, warnings: parsed.warnings,
+            duplicates: parsed.duplicates, truncated: parsed.truncated,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk POST error:", err.message);
+          return sendJson(res, 500, { error: "Could not start that run." });
+        }
+      });
+      return;
+    }
+
+    // Stop one between rows. There is no way to abort a search already in
+    // flight — it is billed the moment it starts — so a cancel stops the
+    // QUEUE, and the rows already running finish and are kept. Saying that
+    // plainly beats pretending the money comes back.
+    if (req.method === "POST" && path === "/api/bulk/cancel") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const job = await getBulkJob(user.id, String(id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const control = bulkRunning.get(String(job.id));
+          if (control) control.cancelled = true;
+          // Written here as well as by the worker: a job this process is not
+          // working (a restart orphaned it) has nobody left to write it.
+          if (job.status === "running" && !control) {
+            await patchBulkJob(user.id, job.id, { status: "cancelled", finished_at: new Date().toISOString() });
+          }
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk cancel error:", err.message);
+          return sendJson(res, 500, { error: "Could not cancel that run." });
+        }
+      });
+      return;
+    }
+
+    // The whole job as a spreadsheet. Same shape as the page, plus the totals
+    // and the automated-estimate line, because the file outlives the screen
+    // that explained it.
+    if (req.method === "GET" && path === "/api/bulk/export.csv") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+        const job = await getBulkJob(user.id, id);
+        if (!job) return sendJson(res, 404, { error: "Not found." });
+        const items = await listBulkItems(user.id, id);
+        const stamp = String(job.created_at || "").slice(0, 10);
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="compninja-bulk-${stamp}.csv"`,
+          "cache-control": "no-store",
+          "x-robots-tag": "noindex, nofollow",
+        });
+        res.end(BULK.exportCsv(job, items.map(bulkItemRow)));
+      })().catch((err) => {
+        console.error("bulk export error:", err.message);
+        sendJson(res, 500, { error: "Could not build that file." });
+      });
+      return;
+    }
+
+    // Delete a run. The VALUATIONS are not deleted with it — they are on the
+    // desk, where they belong to the property rather than to the run that
+    // produced them. Deleting a receipt must not delete the work.
+    if (req.method === "DELETE" && path === "/api/bulk") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (!isUuidish(id)) return sendJson(res, 200, { ok: true }); // same no-op as deleting a nonexistent scoped row
+        const control = bulkRunning.get(id);
+        if (control) control.cancelled = true;
+        // Scoped by user_id, like every other delete in this app: without it,
+        // knowing another member's job id would be enough to delete it.
+        await sbRequest("DELETE",
+          `bulk_jobs?user_id=eq.${encodeURIComponent(user.id)}&id=eq.${encodeURIComponent(id)}`);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("bulk DELETE error:", err.message);
+        sendJson(res, 500, { error: "Could not delete that run." });
+      });
+      return;
+    }
+
+    // `?id=` is one job with its rows (what the page polls); bare is the list.
+    if (req.method === "GET" && path === "/api/bulk") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user, ent } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (id) {
+          if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+          const job = await reapStalledBulkJob(user.id, await getBulkJob(user.id, id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const items = (await listBulkItems(user.id, id)).map(bulkItemRow);
+          return sendJson(res, 200, {
+            job: bulkJobRow(job), items, summary: BULK.summarize(items),
+          });
+        }
+        return sendJson(res, 200, await bulkListPayload(user, ent));
+      })().catch((err) => {
+        console.error("bulk GET error:", err.message);
+        sendJson(res, 500, { error: "Could not read your runs." });
+      });
+      return;
+    }
+  }
+
   if (req.url.split("?")[0].startsWith("/api/vault")) {
     const path = req.url.split("?")[0];
 
@@ -17161,6 +18052,11 @@ const server = http.createServer((req, res) =>
           // so editing this response reveals a nav link and nothing behind it.
           broker: ent.broker === true,
           canUseVault: ent.canUseVault === true,
+          // Bulk valuation. Presentation only, like everything else in this
+          // block: /api/bulk re-resolves entitlements, so editing this
+          // response reveals a nav link and a paste box that answers 403.
+          canBulkValue: ent.canBulkValue === true,
+          bulkMaxAddresses: ent.bulkMaxAddresses,
           // Presentation only, like canUseVault: the POST /api/portfolio
           // route re-resolves entitlements, so editing this response
           // relabels the desk and unlocks nothing.
@@ -19759,6 +20655,56 @@ const server = http.createServer((req, res) =>
   // the page now carries the signed-in viewer's own rows. If the payload
   // can't be built, the page ships without one and falls back to fetching
   // /api/vault exactly as it did before.
+  // The bulk valuation workspace. Its own route rather than another
+  // index.html path, which is what makes it exempt from ACCOUNT_WALL — the
+  // wall lives inside the static handler, and this page renders its own
+  // refusals from the boot payload anyway (401 sign in, 403 Pro, 503 no
+  // database), so an anonymous visitor is told which door to use rather than
+  // being bounced to the landing page.
+  if (req.method === "GET" && req.url.split("?")[0] === "/bulk") {
+    (async () => {
+      // Resolved HERE, through the same gate the routes use, so the page can
+      // never paint a working paste box at somebody it would then refuse.
+      // vault-page.js's boot pattern, for its reason.
+      let boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Not signed in." } };
+        else {
+          const ent = await entitlementsFor(req);
+          if (!ent.canBulkValue) boot = { s: 403, j: { error: "Bulk valuation is part of Pro.", code: "pro_required" } };
+          else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+          else boot = { s: 200, j: await bulkListPayload(user, ent) };
+        }
+      } catch (err) {
+        console.error("bulk boot failed:", err.message);
+      }
+      // PII-free and market-free, like vault_visit and for the same reason: a
+      // member's own address list is their business. `source` is the boot
+      // outcome, which is the only way to see whether people reach this page
+      // and what stops them.
+      logEvent("bulk_visit", { source:
+        boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Bulk valuation \u00b7 CompNinja",
+        description: "Value a whole list of addresses at once.",
+        canonical: `${SITE_URL}/bulk`,
+        noindex: true,
+        // Cookie PRESENCE, the wall's own cheap rule and what every other
+        // marketShell page uses — the real gate is the boot payload above.
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/bulk",
+        body: renderBulkPageBody(boot),
+      }));
+    })();
+    return;
+  }
+
   if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
     (async () => {
       let boot = null;

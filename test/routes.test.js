@@ -725,6 +725,44 @@ test("bare environment", async (t) => {
     }
   });
 
+  // openBulk (server.js) is a deliberate THIRD copy of the same ladder — 401
+  // not signed in, 403 not entitled, 503 no database. A shared helper was not
+  // taken because each copy's 403 is different product copy ("The private
+  // vault is part of Pro", "The lead inbox is part of Pro", "Bulk valuation is
+  // part of Pro") and it is the ORDER that has to match, not the strings.
+  // These tests exist to catch the three drifting apart.
+  await t.test("every bulk route refuses an anonymous caller, before the 503", async () => {
+    const routes = [
+      ["GET",    "/api/bulk"],
+      ["POST",   "/api/bulk"],
+      ["POST",   "/api/bulk/cancel"],
+      ["GET",    "/api/bulk/export.csv?id=00000000-0000-0000-0000-000000000000"],
+      ["DELETE", "/api/bulk?id=00000000-0000-0000-0000-000000000000"],
+    ];
+    for (const [method, p] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(method === "POST"
+          ? { headers: { "content-type": "application/json" }, body: "{}" }
+          : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      const body = await r.json().catch(() => ({}));
+      assert.match(String(body.error || ""), /signed in/i, `${method} ${p} should say not signed in`);
+    }
+  });
+
+  await t.test("bulk valuation cannot be started by a header, only by a session", async () => {
+    // /api/comps has a header-only `internal` bypass for the seed generator.
+    // Bulk deliberately has none: it is a spend amplifier, and a bypass a
+    // browser was never meant to have must not grow one here. ADMIN_KEY is
+    // unset on this server, so this only proves the route does not treat the
+    // header as an identity — the entitlement branch is covered in
+    // entitlements.test.js and the route-level one in bulk-routes.test.js.
+    const r = await fetch(srv.base + "/api/bulk", { headers: { "x-admin-key": "anything" } });
+    assert.equal(r.status, 401);
+  });
+
   // requireBroker (server.js) is a deliberate second copy of the vault's
   // openVault gate — same three refusals in the same order (401 not signed
   // in, 403 not a broker, 503 no database). These tests exist to catch DRIFT
@@ -2333,10 +2371,14 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const start = src.indexOf("const gate = async (rep)");
-  assert.ok(start >= 0, "gate() should still exist as an async closure");
-  const end = src.indexOf("const maxIdentified", start);
-  assert.ok(end > start, "could not bound gate()");
+  // gate() was a closure inside /api/comps until 2026-08-21; it is now the
+  // module-level finishReportForViewer, shared with the bulk worker so a
+  // portfolio row and the report behind it are assembled the same way. The
+  // ORDER inside it is what this test is about, and none of it changed.
+  const start = src.indexOf("async function finishReportForViewer(rep, ctx) {");
+  assert.ok(start >= 0, "finishReportForViewer() should still be the one serialization funnel");
+  const end = src.indexOf("\n}\n", start);
+  assert.ok(end > start, "could not bound finishReportForViewer()");
   const body = src.slice(start, end);
   const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
   const paywallAt = body.indexOf("GATE.gateReport");

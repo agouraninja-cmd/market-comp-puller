@@ -24,6 +24,7 @@
 // "test/*.test.js"`, so this is a helper, not a suite.
 
 const http = require("node:http");
+const crypto = require("node:crypto");
 
 // PostgREST filter values arrive percent-encoded and, for in.(), quoted.
 function decodeValue(raw) {
@@ -51,6 +52,18 @@ function matches(row, key, expr) {
   // value so it matches, which is the one place this could have been wrong.
   if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
+  // `gte.` is taught deliberately, like `neq.` above and for the same reason:
+  // server.js sends it (every date-windowed read — the vault blend, the firm
+  // blend, bulk's daily ceiling), and a fake that 400s on it cannot exercise
+  // those paths at all.
+  //
+  // STRING comparison, which is correct for exactly the values this app sends
+  // through it: ISO-8601 UTC timestamps and yyyy-mm-dd dates both sort
+  // lexicographically in the same order they sort chronologically. It is NOT
+  // Postgres's comparison — a mixed-offset timestamp or a numeric column would
+  // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
+  // needs this taught properly rather than reused.
+  if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);
@@ -154,7 +167,14 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
               // not returned as inserted.
               continue;
             }
-            const row = { id: `${table}-${tables[table].length + 1}`, ...r };
+            // A UUID, because every table server.js inserts into declares
+            // `id uuid primary key default gen_random_uuid()` — and because
+            // several routes guard an id with isUuidish() before it reaches a
+            // Postgres uuid cast. A `${table}-1` id sails through the insert
+            // and is then 404'd by the caller's own guard on the very next
+            // read, which looks like a broken feature and is only a broken
+            // fake. Seeded rows keep whatever id the test gave them.
+            const row = { id: crypto.randomUUID(), ...r };
             tables[table].push(row);
             stored.push(row);
           }

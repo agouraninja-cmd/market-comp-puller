@@ -3,6 +3,18 @@
 Written 2026-07-31. **Last updated 2026-08-03**, after phase 8 Stages A–E6 and
 the export cap. Read this first when picking the Pro tier back up.
 
+**⚠ 2026-08-21: the single-report unlock is RETIRED.** Every mention of it
+below is HISTORY, kept because the setup record must not be rewritten — do
+not follow it forward. `single_report` is deleted from `/api/checkout`'s
+PLANS map (a source scan in `test/routes.test.js` fails the build if it
+returns), `STRIPE_PRICE_SINGLE_REPORT` is no longer read and can be unset
+in Render with the price archived in Stripe, and the free tier itemizes
+every comp (`FREE_MAX_COMPS: "all"`, same date). Purchases already made
+are honored forever — the webhook, `report_purchases`,
+`/api/report-access` and the per-property entitlement all remain. The
+current sellable plans are `pro_monthly`, `pro_annual_founding` and
+`firm_monthly`. See CLAUDE.md's "single-report unlock — RETIRED" section.
+
 **⚠ Stripe is in LIVE mode as of 2026-08-03.** Earlier revisions of this file
 said "test mode"; that is no longer true and the difference is real money. See
 the warning below before touching anything.

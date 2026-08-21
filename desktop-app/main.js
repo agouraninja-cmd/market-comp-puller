@@ -23,6 +23,17 @@ const { app, BrowserWindow, shell } = require("electron");
 
 const APP_URL = process.env.COMPNINJA_URL || "https://compninja.co/";
 
+// How the site knows a page is being viewed from inside this app. Electron
+// reports `display-mode: browser` (measured, Electron 43), so the media query
+// an installed PWA answers to does NOT fire here and the user agent is the
+// only honest signal. The site hides its "Download the app" link on seeing
+// this token; server.js declares the same string as INAPP_UA_TOKEN and
+// test/inapp-nav.test.js fails the build if the two ever drift, because a
+// rename on one side alone breaks nothing loudly — the link simply comes
+// back. Appended rather than replacing the UA, so nothing that sniffs for
+// Chrome/Electron stops working.
+const UA_TOKEN = "CompNinjaDesktop/1";
+
 // Where navigation may stay inside the app window. Everything else opens in
 // the system browser — a support article or a comp's source_url should not
 // take over the app frame. Stripe is in-window on purpose: Pro checkout and
@@ -53,6 +64,8 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+
+  win.webContents.setUserAgent(`${win.webContents.getUserAgent()} ${UA_TOKEN}`);
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (inAppHost(url)) return { action: "allow" };

@@ -177,6 +177,25 @@ are **unsigned** until the owner buys a Windows code-signing cert and
 Apple notarization ($99/yr) — first-run SmartScreen/Gatekeeper warnings
 are expected and the /download page says so honestly.
 
+**A door you are already through is hidden** (2026-08-20; `INAPP_BOOT` /
+`INAPP_UA_TOKEN` in server.js, `test/inapp-nav.test.js`). Inside the desktop
+app or an installed PWA, the Explore menu drops "Download the app". Nothing
+detects an app INSTALLED on the machine — browsers refuse to answer that and
+any attempt is a guess; what is knowable is whether THIS page is being viewed
+from inside the app. **Two signals, because one is not enough**: an installed
+PWA matches `display-mode: standalone`, but Electron reports
+`display-mode: browser` (measured via CDP, Electron 43) and is identifiable
+only by the UA token `desktop-app/main.js` appends — the test fails the build
+if the two spellings drift, since a rename on one side alone just quietly
+brings the link back inside the shipped app. One constant carries the script
+AND its CSS into all three surfaces (marketShell, the landing render, and
+index.html via an `<!--INAPP_BOOT-->` marker replaced at serve time like
+NAV_LINKS — never a hand-copy, THEME_BOOT being the cautionary tale). It runs
+inline in `<head>` so the link is never painted then snatched away, and
+`!important` is load-bearing for the `.hdr nav [hidden]` reason: `.hdr nav
+.dd a` sets `display:block` at higher specificity, as does the app menu's
+Tailwind `block`. Presentation only — `/download` itself stays reachable.
+
 **Users can also install from the site itself** (2026-08-20) — `desktop.js`
 is the owner/dev door; the site is an installable web app (PWA).
 `manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the

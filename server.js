@@ -6113,6 +6113,43 @@ const THEME_BOOT =
   `if(t==="dark")document.documentElement.setAttribute("data-theme","dark");` +
   `}catch(e){}})();</script>\n`;
 
+// --- "You are already in the app" (2026-08-20) -------------------------------
+// A door the visitor has already walked through is worse than no door: inside
+// the desktop app, "Download the app" offers to install what they are using.
+// Nothing here detects an app INSTALLED on the machine — browsers deliberately
+// refuse to answer that (it is a fingerprinting vector), and any attempt would
+// be a guess. What is knowable, exactly, is whether THIS page is being viewed
+// from inside the app, which is the case that matters.
+//
+// Two signals, because measurement (2026-08-20, Electron 43 via CDP) showed
+// one is not enough: an installed PWA matches `display-mode: standalone`, but
+// the Electron shell reports `display-mode: browser` and is identifiable only
+// by its user-agent token. Hence INAPP_UA_TOKEN, which desktop-app/main.js
+// appends to the UA — test/inapp-nav.test.js pins the two spellings together,
+// because a token renamed on one side alone fails silently and invisibly.
+//
+// Injected as ONE constant into every surface (marketShell, the landing
+// render, and index.html via a marker) so no page hand-copies it, and it
+// carries its own CSS rather than leaving a rule to be restated per
+// stylesheet. `!important` is load-bearing for the same reason the
+// `.hdr nav [hidden]` line above needs it: `.hdr nav .dd a` sets
+// display:block at higher specificity, and in the app menu a Tailwind
+// `block` utility does the same.
+//
+// It runs inline in <head>, before first paint, so the link is never drawn
+// and then snatched away. It is presentation only: the /download page itself
+// stays reachable and unchanged for anyone who types the URL.
+const INAPP_UA_TOKEN = "CompNinjaDesktop/";
+const INAPP_BOOT =
+  `<style>[data-inapp="1"] .nav-dl{display:none!important}</style>\n` +
+  `<script>(function(){try{` +
+  `var m=function(q){return matchMedia(q).matches};` +
+  `if(m("(display-mode: standalone)")||m("(display-mode: window-controls-overlay)")||` +
+  `navigator.standalone===true||(navigator.userAgent||"").indexOf(${JSON.stringify(INAPP_UA_TOKEN)})>-1)` +
+  `document.documentElement.setAttribute("data-inapp","1");` +
+  `}catch(e){}})();</script>\n`;
+const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
+
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =
   `<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>\n` +
@@ -6520,15 +6557,19 @@ const NAV_LINKS = [
   // Appended 2026-08-20 (the four above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
-  ["/download", "Download the app"],
+  // The third element is a class, and only this entry has one: `nav-dl` is
+  // what INAPP_BOOT's rule hides when the page is already being viewed
+  // inside the app. Keep it in step with that rule.
+  ["/download", "Download the app", "nav-dl"],
 ];
 // `current` is the path of the page being rendered: its own link gets the
 // `.on` style and aria-current so the menu shows where the reader already is.
 const navLinksHtml = (current = "") =>
-  NAV_LINKS.map(([href, label]) =>
-    href === current
-      ? `<a href="${href}" class="on" aria-current="page">${label}</a>`
-      : `<a href="${href}">${label}</a>`).join("");
+  NAV_LINKS.map(([href, label, cls]) => {
+    const classes = [cls, href === current ? "on" : ""].filter(Boolean).join(" ");
+    return `<a href="${href}"${classes ? ` class="${classes}"` : ""}` +
+      `${href === current ? ' aria-current="page"' : ""}>${label}</a>`;
+  }).join("");
 // index.html's rendering of the same list. The class string must be made of
 // classes index.html ALREADY uses (#pricingLink, one line above the marker,
 // carries this identical set): tailwind.css is purged against index.html
@@ -6537,8 +6578,8 @@ const navLinksHtml = (current = "") =>
 // in index.html's <style> covers these classes for the same reason.
 const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
 const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
-const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label]) =>
-  `<a href="${href}" class="${APP_NAV_LINK_CLASS}">${label}</a>`).join("");
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls]) =>
+  `<a href="${href}" class="${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}">${label}</a>`).join("");
 
 // The shared header for every server-rendered page — since 2026-08-20 that
 // includes /how-it-works, which used to render its own hand-kept copy of this
@@ -7270,6 +7311,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
+    INAPP_BOOT +
     `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
@@ -9091,6 +9133,7 @@ ${marketBar(signedIn, "/how-it-works")}
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +
     THEME_BOOT +
+    INAPP_BOOT +
     // The ONE thing that arms the scroll choreography. Every rule that hides
     // anything is scoped under html.anim, so a visitor with JS off — or a
     // crawler, or anyone whose network drops this byte — gets the finished
@@ -18770,7 +18813,12 @@ const server = http.createServer((req, res) =>
       // as every server-rendered header, so the menus cannot drift. Then
       // canonical/og/JSON-LD URLs, written against the default origin, are
       // rewritten when SITE_URL is overridden (custom domain).
-      let html = data.toString("utf8").replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML);
+      let html = data.toString("utf8")
+        .replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML)
+        // Same one-source rule as the nav list: index.html carries a marker,
+        // never a hand-copy of the in-app detection (THEME_BOOT is the
+        // cautionary tale — a copy that has to be kept in step by comment).
+        .replace(INAPP_BOOT_MARKER, INAPP_BOOT);
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
     });

@@ -53,6 +53,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        here could serve /valuation.js stale relative to this HTML — the exact
        failure the max-age:0 rule on that file exists to prevent. -->
   <link rel="manifest" href="/manifest.webmanifest" />
+  <!-- Replaced at serve time with INAPP_BOOT (server.js), which marks the
+       page when it is being viewed from INSIDE the desktop app or an
+       installed PWA and hides the "Download the app" nav link — an offer to
+       install what you are already using. A marker, not a hand-copy, for the
+       reason the NAV_LINKS marker above exists. -->
+  <!--INAPP_BOOT-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

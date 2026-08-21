@@ -48,6 +48,9 @@ test("the /download page links exactly the files the release carries", () => {
 
 test("the page is reachable: route, nav link, and sitemap entry all exist", () => {
   assert.ok(serverSrc.includes('=== "/download"'), "no GET /download route");
-  assert.ok(serverSrc.includes('["/download", "Download the app"],'), "NAV_LINKS has no /download entry");
+  // The trailing class is pinned by test/inapp-nav.test.js (it is what hides
+  // this link inside the app); matched loosely here so the two suites do not
+  // both have to change when only that class does.
+  assert.ok(/\["\/download", "Download the app"/.test(serverSrc), "NAV_LINKS has no /download entry");
   assert.ok(serverSrc.includes("/download</loc>"), "sitemap does not list /download");
 });

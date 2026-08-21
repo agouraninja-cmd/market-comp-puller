@@ -69,7 +69,7 @@ const HUBCOMP = require("./hub-comp.js");
 const { renderVaultHTML } = require("./vault-page");
 // The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
 const { renderHubHTML } = require("./hub-page");
-// The 1031 exchange guide's content. A web page, so it is not server code —
+// The 1031 identification worksheet. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
 // The vault API's comp shape — the seam between how comps are STORED and how
@@ -8632,10 +8632,10 @@ function renderBrokersPageHTML(signedIn) {
     // holding a comp. Bordered button, not .btn: the red button stays the
     // submit door's alone.
     `<div class="card"><h2>Working a 1031 exchange?</h2>` +
-    `<p>A plain guide to the 45 and 180 day deadlines. Send it to your client.</p>` +
+    `<p>An identification worksheet for the 45 and 180 day deadlines. Send it to your client.</p>` +
     `<a href="/1031-exchange" style="display:inline-block;background:var(--paper);border:1px solid var(--edge);` +
     `color:var(--ink);font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
-    `Open the 1031 guide</a></div>` +
+    `Open the worksheet</a></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
@@ -19079,11 +19079,12 @@ const server = http.createServer((req, res) =>
     return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL, signedIn }));
   }
 
-  // --- 1031 exchange guide — public education page (v4 slice 3). Content
-  // lives in guide-1031.js (a web page, so it is not server code — the
-  // vault-page.js precedent); this route only dresses it in the shared
-  // shell. Education, never advice: the compliance strings are pinned by
-  // test/guide-1031.test.js. ---
+  // --- 1031 identification worksheet. Content lives in guide-1031.js (a
+  // web page, so it is not server code — the vault-page.js precedent);
+  // this route only dresses it in the shared shell. Worksheet on top,
+  // explainer below; education, never advice. signedIn chooses the Value
+  // handoff (`/` vs `/?auth=signup`) so a member is not sent through the
+  // signup door. Compliance strings are pinned by test/guide-1031.test.js. ---
   if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
     // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
     // funnel's exit, and until this event nothing counted anyone ENTERING —
@@ -19102,7 +19103,7 @@ const server = http.createServer((req, res) =>
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
       canonical: `${SITE_URL}/1031-exchange`,
-      body: G1031.renderGuide1031Body(),
+      body: G1031.renderGuide1031Body(signedIn),
       head: `<style>${G1031.GUIDE_CSS}</style>`,
       jsonLd: JSON.stringify({
         "@context": "https://schema.org",

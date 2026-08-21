@@ -1541,30 +1541,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `MARKET_BAR` / `MARKET_FOOTER` style it and it likewise does NOT depend
   on `tailwind.css`. Listed in `sitemap.xml`. Do not confuse this with
   `GET /broker/<slug>`, the per-contributor public profile.
-- `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
-  spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
-  content lives in the pure **`guide-1031.js`** (the vault-page.js
-  precedent) — FAQ array feeding both the accordions and the FAQPage
-  JSON-LD, the education-not-advice compliance box, and a client-side
-  45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server — since 2026-08-20 the widget also
-  hands both deadlines over as an `.ics` calendar file, built as a `data:`
-  URI in the browser under the same promise, and deterministic for a given
-  closing date because its DTSTAMP derives from the closing, never the
-  clock). server.js only dresses it in
-  `marketShell` and spreads the module's JSON-LD nodes into the shared
-  `brandGraph()` @graph. Education, never advice — the compliance strings
-  are test-pinned in both directions (must-appear and must-never-appear).
-  The widget script also stamps localStorage `cnRef1031.v1` (guarded — no
-  storage, no marker), which is how a later BOV request gets tagged
-  `source: "1031"` — see `POST /api/lead`; the key is test-pinned because
-  index.html reads the identical string. The route logs a PII-free
+- `GET /1031-exchange` — public **1031 identification worksheet** (education
+  page underneath; v4 slice 3 as amended 2026-08-14). Spec
+  `docs/superpowers/specs/2026-08-14-1031-identification-worksheet-design.md`
+  (amends `2026-08-08-1031-guide-design.md`). All content lives in the pure
+  **`guide-1031.js`** — worksheet on top (relinquished property, closing date
+  → 45/180 calendar dates, three replacement slots, each with a Value handoff
+  through `pendingLandingAddress.v1`), then the explainer, FAQ array feeding
+  both the accordions and the FAQPage JSON-LD, a **Choosing a qualified
+  intermediary** vetting card, and the education-not-advice box. The date
+  widget computes calendar dates only, never taxes or dollars, and hands both
+  deadlines over as an `.ics` file built as a `data:` URI in the browser —
+  deterministic for a given closing date, because its DTSTAMP derives from
+  the closing rather than the clock. Sharing rides the URL fragment (`#p=`),
+  so a street address never lands in a server log; reading stays free and
+  unauthenticated. `renderGuide1031Body(signedIn)` picks the Value door (`/`
+  vs `/?auth=signup`). The script also stamps localStorage `cnRef1031.v1`
+  (guarded — no storage, no marker), which is how a later BOV request gets
+  tagged `source: "1031"` — see `POST /api/lead`; the key is test-pinned
+  because index.html reads the identical string. The route logs a PII-free
   `guide_1031` event per read (`source`: member/visitor on cookie presence;
-  crawler UAs skipped via `isCrawlerUA` — coarse on purpose, the page is
-  public and sitemapped so bots would otherwise dominate), feeding the
-  "1031 guide funnel" card on `/admin` (reads beside 1031-tagged leads;
-  deliberately no computed conversion %, the counts age out of the event
-  window at different rates). Listed in `sitemap.xml`; linked
+  crawler UAs skipped via `isCrawlerUA`), feeding the "1031 guide funnel"
+  card on `/admin`. server.js only dresses it in `marketShell` and spreads
+  the module's JSON-LD nodes into the shared `brandGraph()` `@graph`.
+  Education, never advice — the compliance strings are test-pinned in both
+  directions (must-appear and must-never-appear), including that this is not
+  a written identification and not an exchange CompNinja created, and that
+  CompNinja is not a QI and holds no funds. Listed in `sitemap.xml`; linked
   from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
   contextual one-liner after the CTA on every `/market/<slug>` page
   (`guide1031` in `renderMarketPageHTML`).

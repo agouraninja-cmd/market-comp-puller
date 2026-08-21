@@ -7363,7 +7363,14 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-heigh
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
+/* 1120px, not a new number: /vault has run at 1120 since it was built, so the
+   widest surface in the product already answered this question. 1024 dates
+   from before the market pages carried 3840px photographs and before the comp
+   tables grew their per-type columns, and it is narrow enough on a modern
+   laptop to read as a site that has not been touched in a while. Kept in step
+   with HOW_CSS's copy below; the four dashboards and /bulk keep their own
+   widths deliberately. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
@@ -7748,7 +7755,14 @@ const marketBar = (signedIn = false, current = "") =>
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
   `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}${navLinksHtml(current)}</div></details>` +
+  `<div class="dd">${navLinksHtml(current)}</div></details>` +
+  // Pricing sits in the bar itself rather than one click inside Explore. It is
+  // the question a prospect arrives with, and a B2B site that hides its price
+  // behind a browse menu reads as one that would rather not say. The
+  // visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
+  // (`live && !isPro`), so it still hides for a Pro member and on a deployment
+  // with no billing configured; only the position moved.
+  ACCOUNT_NAV_PRICING +
   (signedIn
     ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
@@ -9318,7 +9332,8 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Matches MARKET_CSS's .wrap exactly; the reasoning is on that copy. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing

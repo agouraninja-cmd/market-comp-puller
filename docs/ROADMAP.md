@@ -51,6 +51,13 @@ intent, the devlog states history.
   the rent roll feeds the DCF cash flows instead of sitting beside them.
 - **White-label exports**, riding on the branding profile once its UI
   exists.
+- **Bulk valuation follow-ons** (the feature shipped 2026-08-21; spec
+  `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md` §7). Three
+  questions the first real run should answer rather than a design should:
+  whether 50 is the right cap, whether a firm should be able to share a run
+  (which is exactly the case the enterprise shelf's own note says makes an
+  `org_shelf_items` table worth building), and whether per-address property
+  type is worth the mixed-list case it keeps being asked for.
 - **Market digest pages**, once the corpus holds 2+ quarters of history.
 
 ## Later (broker-tier phases, in order)

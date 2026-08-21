@@ -64,7 +64,11 @@ invited person accepts it) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
 picture rather than someone else's skyline) and **`market-hero-quality.js`**
 (whether a stored hero JPEG is the right size and dense enough to not be an
-upscale) and **`test/routes.test.js`**, which boots a real
+upscale) and **`bulk.js`** (bulk valuation's rules: what counts as an
+address in a pasted list — a line is ONE address however many commas it
+holds — what one finished report is worth as a portfolio row, and the rule
+that a total sums only what was actually valued rather than counting a
+failed lookup as zero) and **`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -804,7 +808,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`server.js`** — zero-dependency Node HTTP server. Routes:
 - `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
   builds the prompt, calls Anthropic with the `web_search` tool enabled, and
-  returns parsed JSON. Body takes optional `maxComps` (allowed 4/6/8/10/12,
+  returns parsed JSON. **Its two halves are module-level functions, shared
+  with the bulk worker since 2026-08-21**: `runCompSearch()` (cache →
+  derivable window → daily cap → size memo → corpus retrieval → the billed
+  call, plus every side effect that must see the UNGATED report) and
+  `finishReportForViewer()` (the old `gate()` closure). Nothing about
+  either changed in the move, and the ordering rules inside them are
+  pinned by source-scanning tests that name them. Body takes optional `maxComps` (allowed 4/6/8/10/12,
   default 12 — the Explorer/seed pipeline stays pinned at 8) and optional
   `subjectSizeSqft`; when absent the prompt also asks the model to look up
   the building's size (returned as `subject_size_sqft` +
@@ -1888,6 +1898,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   those numbers: Free My Desk is an address list (cap 100), Pro is the book
   of values (cap 500), and the pricing compare table's Portfolio row restates
   it.
+  **Bulk valuation** is Pro-only as well (`canBulkValue` / `bulkMaxAddresses`)
+  — see its own section below.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the
@@ -2081,6 +2093,68 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Enforce it with **separate tables read by separate functions**, not a
   `private` column filtered in the corpus queries — the corpus read path
   swallows its own errors, so one missed filter would leak silently.
+- **Bulk valuation** (2026-08-21; migration `035-bulk-valuations.sql`, **run
+  before deploying**; spec
+  `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md`). A Pro member
+  pastes or uploads a list of addresses and gets a value on each, as one
+  portfolio, at **`/bulk`**. Rules live in the pure, tested **`bulk.js`**; the
+  page is **`bulk-page.js`** (a marketShell BODY, the /brokers pattern, so it
+  carries no chrome of its own); server.js owns the job tables and the worker.
+  Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
+  `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
+  THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
+  catches the three drifting). Every finished row is also upserted into
+  `portfolio_items`, so the valuation lands on My Desk as an ordinary saved
+  property and **`?property=<id>`** on index.html opens it.
+  Seven rules a future editor will otherwise break:
+  - **One number, one place.** A bulk row runs `runCompSearch` and
+    `finishReportForViewer` — the same two functions `/api/comps` runs — and
+    values the result with `VALUATION.valueFromComps`. Those two came OUT of
+    the /api/comps handler for this feature. A second path would make fifty
+    rows disagree with the fifty reports behind them, and nothing on either
+    screen could show it.
+  - **A pasted line is ONE address, whatever commas it holds.** Splitting
+    `123 Main St, Boise, ID 83702` searches for `123 Main St` in no city and
+    reads `83702` as a square footage. Columns are read ONLY when a header row
+    names an address column; then the vault's own `parseCsv` handles the BOM,
+    the quotes and the `#` note lines.
+  - **A job is an invoice.** Every address that misses the cache is its own
+    billed search (~$0.36, 40-70s). Hence `BULK.MAX_ADDRESSES` = 50 as a hard
+    ceiling, `bulkMaxAddresses` as the per-visitor half (the parser clamps the
+    entitlement to its own ceiling, so entitlements can never widen a job),
+    ONE live job per member read from the DATABASE, and the count and wall
+    clock said BEFORE the button. There is deliberately **no header-only
+    bypass** like `/api/comps`' `internal`: a bypass a browser was never meant
+    to have must not grow one on a spend amplifier.
+  - **`canBulkValue` is withheld on a dark deployment AND from a tester.** The
+    vault's asymmetry sharpened: this is not merely an access surface but a
+    SPEND surface, so `PRO_ENABLED=off` (the default) must not hand an
+    unmetered invoice to every visitor, and one `TESTER_PASSKEY` string handed
+    to a group must not become a fan-out. The retired $20 unlock does not
+    reach it either (the Address Explorer's argument: a tool for running fifty
+    OTHER addresses cannot be scoped to one address+type).
+  - **The worker outlives the request, so it holds no `req`/`res`.** That is
+    why `vaultCompsForReport` takes a `user` (2026-08-21) and
+    `orgCompsForReport` dropped the `req` it never read. The per-market vault
+    and firm reads are memoized as PROMISES, not rows: caching rows and
+    filling them in later hands the second and third concurrent rows in a
+    market an empty vault, which is invisible because an empty vault is a
+    normal state.
+  - **A stalled job is decided at READ time**, never by a timer or a boot
+    sweep (migration 025's argument): a worker writes `heartbeat_at` after
+    every row, and a read older than `BULK.STALL_MS` marks the job
+    `interrupted` once. Nothing is lost — finished rows are already written,
+    and re-running the list serves them from cache for free. Reaping also runs
+    before the one-job-at-a-time check, so a deploy mid-run cannot lock
+    somebody out of their own tool for the stall window.
+  - **Nothing is dropped silently, and a failure is not $0.** Places rather
+    than properties, duplicates, unparseable sizes and truncation past the cap
+    are each reported by line number; `BULK.summarize` sums only rows that
+    produced a figure and says how many. `sale_comps` is what a row shows, not
+    the comp count — the band comes from the sales.
+  Deliberately not built (see the spec's §5): mixed types in one job,
+  per-address lookback/details, an automatic resume (re-running IS the resume,
+  free from cache), a shareable portfolio, and any scheduling.
 - **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
   /api/vault*` — the broker's private comp store. DDL in
   `migrations/013-broker-vault.sql` (**run before deploying**); plan in

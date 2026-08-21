@@ -2,6 +2,12 @@
   {
     "date": "2026-08-21",
     "type": "improvement",
+    "title": "A one-command kit sets up a local CompNinja folder, hook and all",
+    "details": "setup/local-session builds a complete working folder — clone, .env, and the two Claude Code files a clone cannot carry. .gitignore ignores everything under .claude/ except skills/, so a fresh clone had no .claude/hooks/regen-tailwind.js even though CLAUDE.md describes it as part of the project; a new checkout therefore edited index.html and left tailwind.css stale, which shows up as one unstyled corner rather than an error. The hook is installed from the kit, prints the byte delta so a regeneration can be checked rather than assumed, and never fails an edit. .env.example now documents GEMINI_API_KEY and SEARCH_PROVIDER: the default provider is gemini, so an Anthropic-only .env booted a server whose startup output looked perfectly healthy and whose every search returned an error. Re-running the kit is safe — it leaves .env and any edited .claude file alone."
+  },
+  {
+    "date": "2026-08-21",
+    "type": "improvement",
     "title": "The Markets link moved from the Explore menu to the Market Explorer",
     "details": "Browsing markets now starts where markets are searched: an “Our markets →” link sits under the Market Explorer's input on the app page, and “Markets” left the Explore menu on every header (one shared NAV_LINKS list feeds them all). Nothing is stranded — the footer on every page still links /markets, and market pages keep their own “All markets” breadcrumbs."
   },

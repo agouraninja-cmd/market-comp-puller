@@ -1,0 +1,16 @@
+{
+  "$comment": "Installed by setup/local-session. .gitignore excludes all of .claude/ except skills/, so this file is local-only by design -- edit it freely, nothing here is committed.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/regen-tailwind.js"
+          }
+        ]
+      }
+    ]
+  }
+}

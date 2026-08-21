@@ -48,15 +48,35 @@ function runMap(seed, opts) {
     mktMapCard: card,
   };
   const mapObj = { setView() { return this; }, fitBounds() {} };
+  const tileUrls = [];
+  const observers = [];
+  // Mutable, because the theme toggle fires AFTER the page has loaded and the
+  // point of the observer is to notice that.
+  let theme = o.theme || null;
   const ctx = {
-    document: { getElementById: (id) => els[id] || { style: {}, textContent: "{}" } },
+    // documentElement carries the theme: the basemap follows it, so a stub
+    // without one both crashes the script and would silently test only the
+    // light path. `theme` defaults to light, matching a visitor with no
+    // preference stored.
+    document: {
+      getElementById: (id) => els[id] || { style: {}, textContent: "{}" },
+      documentElement: { getAttribute: (k) => (k === "data-theme" ? theme : null) },
+    },
+    MutationObserver: function (fn) { observers.push(fn); this.observe = () => {}; },
     localStorage: {
       getItem: (k) => (k in store ? store[k] : null),
       setItem: (k, v) => { store[k] = v; },
     },
     L: {
       map: () => mapObj,
-      tileLayer: () => ({ addTo: () => {} }),
+      // addTo returns the layer, as real Leaflet's does; a stub that returned
+      // undefined would pass code that cannot work in a browser.
+      tileLayer: (url) => {
+        tileUrls.push(url);
+        const layer = { setUrl: (u) => { tileUrls.push(u); return layer; } };
+        layer.addTo = () => layer;
+        return layer;
+      },
       marker: (ll) => ({ addTo: () => ({ bindPopup: () => { pins.push(ll); } }) }),
     },
     fetch: (url, init) => {
@@ -74,9 +94,42 @@ function runMap(seed, opts) {
   // The script geocodes the city then chains the comps, all through resolved
   // promises here, so a macrotask tick is enough for it to settle.
   return new Promise((resolve) => setTimeout(
-    () => resolve({ store, pins, requests, card }), 50
+    () => resolve({
+      store, pins, requests, card, tileUrls, observers,
+      setTheme: (t) => { theme = t; },
+    }), 50
   ));
 }
+
+// The basemap was pinned to CARTO's light_all, so a dark market page rendered
+// a white rectangle in the middle of it. It follows the theme now.
+test("the market map's basemap follows the theme", async (t) => {
+  await t.test("a light visitor gets the light basemap", async () => {
+    const { tileUrls } = await runMap({});
+    assert.equal(tileUrls.length, 1);
+    assert.match(tileUrls[0], /light_all/);
+  });
+
+  await t.test("a dark visitor gets the dark basemap", async () => {
+    const { tileUrls } = await runMap({}, { theme: "dark" });
+    assert.equal(tileUrls.length, 1);
+    assert.match(tileUrls[0], /dark_all/);
+  });
+
+  // The toggle lives in the shared header and can fire long after the pins
+  // are placed, so the layer's URL is swapped rather than the layer rebuilt —
+  // re-adding it would drop every pin already on the map.
+  await t.test("a theme change swaps the URL without rebuilding the layer", async () => {
+    const { tileUrls, observers, pins, setTheme } = await runMap({});
+    assert.equal(observers.length, 1, "the map must watch for a theme change");
+    const pinsBefore = pins.length;
+    setTheme("dark");
+    observers[0]();
+    assert.equal(tileUrls.length, 2, "expected a setUrl, not a second tileLayer");
+    assert.match(tileUrls[1], /dark_all/);
+    assert.equal(pins.length, pinsBefore, "pins must survive a theme change");
+  });
+});
 
 const APP_KEY = "geoCache.v2";
 const LEGACY_KEY = "geoCache.v1";

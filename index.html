@@ -99,13 +99,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       --lift:none}
     @media screen{
     [data-theme="dark"]{--paper:#121826;--card:#1A2433;--wash:#243044;--wash-2:#334155;--slab:#243044;
-      --edge:#3D4B5F;--line:#2A3648;--hair:#1E2938;
-      --ink:#D5DDE8;--ink-body:#B6C1CF;--ink-2:#A8B6C6;--ink-mute:#96A3B4;--ink-3:#8B98A8;
-      --ink-faint:#7C8899;--ink-4:#475569;
+      --edge:#3D4B5F;--line:#2F3D51;--hair:#253346;
+      --ink:#E4E9F0;--ink-body:#B6C1CF;--ink-2:#A8B6C6;--ink-mute:#96A3B4;--ink-3:#8B98A8;
+      --ink-faint:#5E6978;--ink-4:#475569;
       --red:#F87171;--red-deep:#FCA5A5;--red-fill:#DC2626;--red-fill-hover:#B91C1C;
       --green:#34D399;--ok-text:#6EE7B7;--ok-bg:#0C2B21;--ok-rule:#155E43;
       --warn-text:#FCD34D;--warn-bg:#2A2410;--warn-rule:#5B4A16;
-      --err-text:#F87171;--err-bg:#2A1517;--err-rule:#C27070;
+      --err-text:#F87171;--err-bg:#2A1517;--err-rule:#943F3F;
       --est-text:#FDBA74;--est-bg:#2A1C12;--bv-text:#C4B5FD;--bv-bg:#1C1730;
       color-scheme:dark;
       --lift:0 1px 0 rgba(213,221,232,.14) inset,0 10px 28px -10px rgba(0,0,0,.55)}
@@ -174,7 +174,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .text-\[\#5A6473\] { color: var(--ink-mute) }
       [data-theme="dark"] .text-\[\#68707E\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#8A8577\] { color: var(--ink-3) }
-      [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-faint) }
+      /* #8F99A8 is the footer's small print, and in LIGHT mode it sits on
+         the DARK slab, where it reads 5.42:1 -- it was never a whisper.
+         Mapping it to --ink-faint gave it 3.69:1 on the dark slab, and the
+         2026-08-21 ramp change would have taken it lower still. --ink-3
+         (4.52:1 on --slab) is the honest equivalent. #9AA2AD IS a whisper
+         in both modes (2.58:1 on white) and keeps --ink-faint. */
+      [data-theme="dark"] .text-\[\#8F99A8\] { color: var(--ink-3) }
       [data-theme="dark"] .text-\[\#9AA2AD\] { color: var(--ink-faint) }
       /* --ink-4 is right for an OUTLINE (see the focus-visible outline rule
          below) but nearly invisible as TEXT on a dark surface -- its dark
@@ -260,6 +266,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
       [data-theme="dark"] .leaflet-popup-content-wrapper,
       [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+      /* Three pieces of Leaflet chrome the block above missed. The container
+         is the loud one: leaflet.css paints it #ddd, so a light grey slab
+         the size of the whole map shows through every tile gap and for the
+         whole of a slow tile load. --wash is the nearest surface to what the
+         darkened raster settles at, so the seams stop flashing. The layers
+         control is plain white (it is not a .leaflet-bar, so the rule above
+         never reached it), and attribution links keep Leaflet's own #0078A8,
+         which measures 3.16:1 on --card. */
+      [data-theme="dark"] .leaflet-container { background: var(--wash) }
+      [data-theme="dark"] .leaflet-control-layers {
+        background: var(--card); color: var(--ink); border-color: var(--edge);
+      }
+      [data-theme="dark"] .leaflet-control-attribution a { color: var(--ink-2) }
       /* dark_all tiles are near-black; the page paper is charcoal. Lift the
          raster toward the page without swapping providers (Street View and
          aerial photos are not in this pane). */
@@ -278,6 +297,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .rd-scat-tick { background: var(--ink-3) }
       [data-theme="dark"] .rd-tile-hi { border-color: var(--edge) }
 
+      /* Text inside a --wash-2 panel steps up one rung. --wash-2 is the only
+         surface in dark that LIFTS above the card (#334155 on #1A2433), so
+         the ramp step chosen against the card lands too dim on it: the
+         workhorse --ink-3 measures 5.32:1 on --card but only 3.53:1 here,
+         and the ledger's red LIKELY label 3.74:1. --ink-2 (5.02:1) and
+         --red-deep (5.46:1) are the same relationships one rung up. Dark
+         only -- in light --wash-2 is identical to --wash and none of this
+         applies. Specificity clears the component rules further down the
+         sheet (0,3,0 and 0,5,0 against their 0,1,0 and 0,4,0), so source
+         order is not doing the work here. */
+      [data-theme="dark"] .rd-tile .rd-lab,
+      [data-theme="dark"] .rd-lcell.mid .rd-lab { color: var(--ink-2) }
+      [data-theme="dark"] .rd-tile .text-\[\#68707E\],
+      [data-theme="dark"] .rd-lcell.mid .text-\[\#68707E\] { color: var(--ink-2) }
+      [data-theme="dark"] .rd-ledger .rd-lcell.mid .rd-lab { color: var(--red-deep) }
+
       /* Member logos are uploaded as data URIs and are almost always drawn
          for white paper, so a black-on-transparent mark disappears on a
          dark letterhead. The chip is presentation only -- the stored
@@ -287,9 +322,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
 
       /* Dark chrome that is not a colour token. Mirrors theme.js DARK_CHROME
-         (index.html is static and never templates that file). Autofill is
-         the one that actually looks broken: Chrome paints a cream sheet
-         over the field, which on charcoal reads as a light-mode leftover. */
+         (index.html is static and never templates that file). The field
+         background is the one that actually looked broken: not one input on
+         this site carries a bg-* class, which in light was invisible luck
+         (the UA default is white, which IS --card) but in dark handed every
+         field Chrome's own #3B3B3B -- a neutral grey, off-palette against
+         cool slate, 1.39:1 against the card it sits on. They take --paper,
+         one step DOWN from that card, because on charcoal a 1.76:1 border
+         alone is too thin to read as an edge. Autofill then has to match:
+         Chrome paints a cream sheet over the field, which on charcoal reads
+         as a light-mode leftover. */
       [data-theme="dark"] {
         scrollbar-color: var(--wash-2) var(--paper);
         -webkit-font-smoothing: antialiased;
@@ -298,12 +340,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] input,
       [data-theme="dark"] textarea,
       [data-theme="dark"] select { caret-color: var(--ink) }
+      [data-theme="dark"] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset]),
+      [data-theme="dark"] textarea,
+      [data-theme="dark"] select { background-color: var(--paper) }
       [data-theme="dark"] input:-webkit-autofill,
       [data-theme="dark"] textarea:-webkit-autofill,
       [data-theme="dark"] select:-webkit-autofill {
         -webkit-text-fill-color: var(--ink);
         caret-color: var(--ink);
-        box-shadow: 0 0 0 1000px var(--card) inset;
+        box-shadow: 0 0 0 1000px var(--paper) inset;
         transition: background-color 9999s ease-out;
       }
       /* Tailwind's shadow-* utilities are tuned for cream paper; on charcoal

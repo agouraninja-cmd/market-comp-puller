@@ -7286,6 +7286,57 @@ const ACCOUNT_NAV_JS =
 // /how-it-works, so a visitor arriving from search lands on something that
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab is
+// #1A2433 light, #243044 dark), so every ink token runs backwards on it: the
+// ramp is built to lighten as the page darkens, and here the page never
+// lightened. Measured on /brokers before this existed, in dark:
+//   footer a / footer li a   --ink-4      1.75:1   (light: 9.60:1)
+//   footer p                 --ink-faint  2.38:1   (light: 6.06:1)
+//   footer .cols .ch         --ink-faint  2.38:1   (light: 6.06:1)
+// Nine footer links and the contact address, effectively invisible, on every
+// server-rendered page. theme.js's header already documents this trap for
+// --ink-4 and index.html's bridge already fixes it there (.text-[#B8C0CC] and
+// .text-[#D5DAE2] both redirect to --ink-3); the server-rendered footers use
+// var(--ink-4) DIRECTLY, so no class bridge could ever have reached them.
+//
+// Dark keeps light's own relationship rather than flattening it: links are the
+// loud thing (7.28:1 vs light's 9.60:1) and the small print is about 1.6x
+// quieter (4.52:1 vs light's 6.06:1), which is the same gap light has.
+// --ink-faint is deliberately NOT used here at all any more -- it is a whisper
+// token, below AA by design in both themes now (see theme.js), and this
+// footer's small print is a legal disclaimer that has to be readable.
+//
+// ONE copy, interpolated into MARKET_CSS and HOW_CSS and handed to
+// vault-page.js through the chrome object. The footer block is already
+// duplicated three times with a "keep the three in step" comment on it, and
+// three copies of a fix is three chances to fix two of them.
+// Leaflet's own chrome, dark. index.html carries the same block for the report
+// map; the market pages have their OWN comp map (#mktMap, MARKET_MAP_JS) and
+// had none of it, so in dark the container showed leaflet.css's #ddd -- a
+// light grey slab the size of the map, through every tile gap and for the
+// whole of a slow tile load -- with white zoom controls and a white popup on
+// top. Found by a leak scan across all nine pages, not by reading the diff.
+//
+// This is a HAND-COPY of index.html's block, like DARK_CHROME is: index.html
+// is static and never templates this file, so the two cannot share a constant
+// and can only be kept in step deliberately. A test pins that they agree.
+const LEAFLET_DARK_CSS = `
+[data-theme="dark"] .leaflet-container{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution,
+[data-theme="dark"] .leaflet-bar a{background:var(--card);color:var(--ink-3);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-bar a:hover{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution a{color:var(--ink-2)}
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
+[data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+`;
+
+const FOOTER_DARK_CSS = `
+[data-theme="dark"] footer{color:var(--ink-body)}
+[data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
+[data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
+`;
+
 const MARKET_CSS = `
 ${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
@@ -7360,6 +7411,17 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
+/* Text inside a --wash-2 cell steps up one rung, dark only. --wash-2 is the
+   only dark surface that lifts ABOVE the card, so a ramp step chosen against
+   the card lands too dim on it: --ink-3 measures 5.32:1 on --card and 3.53:1
+   here, and the red LIKELY label 3.74:1. Mirrors the same fix on
+   index.html's .rd-lcell (2026-08-21); the two ledgers are separate class
+   vocabularies, so neither rule reaches the other's markup. In light
+   --wash-2 is identical to --wash and none of this applies. */
+[data-theme="dark"] .lcell.mid .k,[data-theme="dark"] .lcell.mid .lab,
+[data-theme="dark"] .lcell.mid .n{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .k{color:var(--red-deep)}
+
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
@@ -7597,6 +7659,8 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
+${LEAFLET_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -8112,14 +8176,32 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { return f || nominatim(a); })
       .then(function (f) { save(k, f); return f; });
   }
-  var map = null, pts = [];
+  var map = null, pts = [], tiles = null;
+  // The basemap follows the theme, the way index.html's basemapUrl() does. It
+  // was pinned to light_all, so a dark market page rendered a white rectangle
+  // in the middle of it. setUrl on a theme change rather than a rebuild: the
+  // toggle lives in the shared header and can fire long after this ran, and
+  // re-adding the layer would drop every pin already placed.
+  function baseUrl() {
+    var el = document.documentElement;
+    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
+  }
   function ensureMap(center) {
     if (map) return map;
     map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    // Assigned before addTo rather than from its return value: Leaflet does
+    // return the layer, but the theme swap below depends on holding it, and a
+    // chained assignment makes that dependency invisible.
+    tiles = L.tileLayer(baseUrl(), {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map);
+    });
+    tiles.addTo(map);
+    try {
+      new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    } catch (e) {}
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
@@ -9244,6 +9326,11 @@ section{padding:48px 0}
 .lcell:last-child{border-right:0}
 .lcell.mid{background:var(--wash-2)}
 .lcell.mid .lab{color:var(--red)}
+/* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
+   exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
+   and .n, which is why the rule cannot be shared. Dark only. */
+[data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
 .fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
@@ -9336,6 +9423,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .steps{grid-template-columns:repeat(3,1fr)}
@@ -20781,6 +20869,7 @@ const server = http.createServer((req, res) =>
       res.end(renderVaultHTML(boot, {
         CN_LOGO,
         MARKET_CSS,
+        FOOTER_DARK_CSS,
         THEME_CSS,
         THEME_BOOT,
         ACCOUNT_NAV_CSS,

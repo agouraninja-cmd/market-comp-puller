@@ -775,6 +775,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* ---------------- Research Desk landing system ---------------- */
     .rd-kicker { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--red); font-weight: 600; }
     .rd-h { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
+    /* The header bar could not wrap, so at 390px it squeezed instead: the theme
+       toggle sat flush against the wordmark with a 0px gap, and "My Desk" and
+       "Sign in" each broke across two lines to fit. Nothing overflowed, which
+       is why it went unnoticed -- it just looked cramped.
+       These are the three rules server.js's .hdr already had and this bar did
+       not (flex-wrap on the row, flex-wrap on the nav, nowrap on the labels),
+       so the two front doors now behave the same on a phone: brand on one
+       line, controls beneath it, no label broken mid-word. */
+    .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
+    .rd-appbar > nav { flex-wrap: wrap; }
+    .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
+    /* The home hero used to stack kicker / claim / lead down the left, each
+       capped at 22ch and 58ch inside a max-w-5xl band, so the right ~450px of
+       it was empty and the band ran 326px tall before the search form -- the
+       thing a returning member actually came for -- began. Setting the lead
+       BESIDE the claim fills that space and lifts the form 90px. Baselines
+       align at the bottom (align-items:end) so the two blocks sit on one line
+       rather than floating at different heights.
+       Written by hand rather than as utilities on purpose: tailwind.css is a
+       vendored, purged build (see the note at the <link>), so a new utility
+       class here would silently not style until someone re-runs the CLI. */
+    @media (min-width: 900px) {
+      .rd-heroband { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 40px; align-items: end; }
+      .rd-heroband h1 { max-width: none; margin-top: 8px; }
+      .rd-heroband .rd-herolead { margin-top: 0; }
+    }
     .rd-hairline { border-color: var(--line); }
     .rd-wordmark { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: var(--ink); }
     .rd-wordmark b { color: var(--red); font-weight: 600; }
@@ -1679,7 +1705,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   <!-- Header -->
   <header class="no-print border-b rd-hairline bg-[#FBFBF9]">
-    <div class="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+    <div class="rd-appbar max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
       <a href="/" class="flex items-center gap-2.5" aria-label="CompNinja home">
         <svg class="h-7 w-7 shrink-0" viewBox="0 0 30 30" aria-hidden="true">
           <rect x="2" y="4" width="26" height="22" rx="2" fill="var(--ink)"/>
@@ -1763,9 +1789,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <!-- Hero -->
   <div id="hero" class="no-print bg-[#FBFBF9]">
     <div class="max-w-5xl mx-auto px-4 pt-12 sm:pt-14 pb-4">
-      <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
-      <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] mt-2 enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
-      <p class="text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property, searched live from public records and listings, every comp cited, delivered in about a minute.</p>
+      <div class="rd-heroband">
+        <div>
+          <div class="rd-kicker enter enter-1">Commercial Comp Reports</div>
+          <h1 class="rd-h text-4xl sm:text-[42px] leading-[1.1] max-w-[22ch] mt-2 enter enter-1">Find out what a property is worth, with comparables to prove it.</h1>
+        </div>
+        <p class="rd-herolead text-[#4C5665] mt-4 text-[16.5px] max-w-[58ch] enter enter-1">Recent sale and lease comparables for any U.S. commercial property, searched live from public records and listings, every comp cited, delivered in about a minute.</p>
+      </div>
     </div>
   </div>
 
@@ -3498,7 +3528,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="rd-lab">Follow</div>
             <ul class="mt-3 space-y-2" aria-label="Follow">
               <li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Instagram</a></li>
-              <li><a href="https://www.tiktok.com/@comp.ninja?_r=1%_t=ZP-98bbfnZBMoo" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">TikTok</a></li>
+              <li><a href="https://www.tiktok.com/@comp.ninja" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">TikTok</a></li>
               <li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">X</a></li>
             </ul>
           </div>

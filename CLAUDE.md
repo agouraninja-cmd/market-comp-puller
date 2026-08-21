@@ -1724,7 +1724,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose
   updates feed reads the comp corpus. Signed-in searches auto-save to
-  `portfolio_items` (upsert on address + type); Free My Desk is an address
+  `portfolio_items`, upserted on the **verified** address + type since
+  2026-08-21 (migration 035, **run before deploying** — `listPortfolio`
+  SELECTs `verified_key` by name and PostgREST 400s an unknown column, which
+  throws and takes the desk read down until it exists). It upserted on the
+  TYPED address, compared with `===`, which made one building typed three ways
+  three saved properties with three value histories — measured on a real desk
+  (`1210N17th st` / `1210 N 17th st Boise Idaho 83702` / `1210N17th st Boise
+  Id`), all of which the confirm dialog had already geocoded to one place
+  before running the report. Rules live in the pure, tested
+  **`portfolio-match.js`**; the browser sends the label the geocoder verified
+  and server.js stores it normalized. Four rules: it **misses rather than
+  guesses** (a miss costs a duplicate row somebody can delete, a wrong merge
+  destroys one of two value histories and nothing on the desk would show it),
+  so a key that names no street number — `boise, id` is a real geocoder answer
+  — is refused rather than shared; the **typed-address rule is unchanged** as
+  the fallback, which is what keeps every pre-035 row and every report
+  restored from history or a share behaving exactly as before; a stored key is
+  **only ever filled, never rewritten**, so a property keeps its identity even
+  if a later save geocodes differently; and the browser **refuses to send one
+  for an address naming a unit** (`unitDesignatorOf`, the same helper the
+  footprint estimate and the Street View gate use) because geocoders silently
+  drop the unit, so Apt 3 and Apt 5 verify identically. Nothing merges the
+  duplicates already on a desk — that is a decision about whose numbers to
+  keep, and the column has no business making it silently; Free My Desk is an address
   list, Pro is the book of values, and the caps (100 / 500) live in
   `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The (retired)
   `$20` unlock does not auto-save. Auth is built into server.js — scrypt

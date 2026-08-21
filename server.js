@@ -150,6 +150,7 @@ const SVAIM = require("./streetview-aim");
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
 const PFDELTA = require("./portfolio-delta");
+const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -1288,15 +1289,11 @@ async function listPortfolio(userId) {
       `portfolio_items?user_id=eq.${encodeURIComponent(userId)}` +
       // Must be ≥ PRO_PORTFOLIO_MAX_ITEMS or the cap count and the upsert
       // match both go blind past 200.
-      `&select=id,address,property_type,snapshots,created_at,updated_at&order=updated_at.desc&limit=500`) || [];
+      `&select=id,address,property_type,verified_key,snapshots,created_at,updated_at&order=updated_at.desc&limit=500`) || [];
   }
   return (await accountStore()).portfolio.filter((x) => x.user_id === userId)
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
     .map(({ payload, ...rest }) => rest);
-}
-async function findPortfolioMatch(userId, address, property_type) {
-  const items = await listPortfolio(userId);
-  return items.find((x) => x.address === address && x.property_type === property_type) || null;
 }
 async function getPortfolioItem(userId, id) {
   if (DB_CONFIGURED) {
@@ -1306,13 +1303,18 @@ async function getPortfolioItem(userId, id) {
   }
   return (await accountStore()).portfolio.find((x) => x.user_id === userId && x.id === id) || null;
 }
-async function insertPortfolioItem(userId, { address, property_type, payload, snapshot }) {
+async function insertPortfolioItem(userId, { address, property_type, payload, snapshot, verifiedKey }) {
   const now = new Date().toISOString();
   const row = {
     user_id: userId, address, property_type, payload,
     snapshots: snapshot ? [snapshot] : [],
     created_at: now, updated_at: now,
   };
+  // Conditional spread, the shape migration 015's size_sqft uses and for the
+  // same reason: PostgREST 400s an insert naming a column the table does not
+  // have, and that failure would take the whole SAVE down, not just the key.
+  // Absent the migration nothing sends it and saving behaves as it always has.
+  if (verifiedKey) row.verified_key = verifiedKey;
   if (DB_CONFIGURED) {
     const rows = await sbRequest("POST", "portfolio_items", row, { prefer: "return=representation" });
     return rows[0];
@@ -1322,7 +1324,7 @@ async function insertPortfolioItem(userId, { address, property_type, payload, sn
   await saveAccountStore();
   return row;
 }
-async function updatePortfolioItem(userId, id, { payload, snapshot }) {
+async function updatePortfolioItem(userId, id, { payload, snapshot, verifiedKey }) {
   const existing = await getPortfolioItem(userId, id);
   if (!existing) return null;
   const snapshots = Array.isArray(existing.snapshots) ? existing.snapshots.slice() : [];
@@ -1335,6 +1337,12 @@ async function updatePortfolioItem(userId, id, { payload, snapshot }) {
   }
   while (snapshots.length > PORTFOLIO_MAX_SNAPSHOTS) snapshots.shift();
   const patch = { payload, snapshots, updated_at: new Date().toISOString() };
+  // Only ever FILLS a key, never rewrites one — decided here rather than at
+  // the call sites because `existing` is already in hand here, so neither
+  // caller has to read the row again to be safe. A property that has already
+  // been verified keeps that identity even if a later save geocodes
+  // differently: an identity that moves is worse than one slightly stale.
+  if (verifiedKey && !existing.verified_key) patch.verified_key = verifiedKey;
   if (DB_CONFIGURED) {
     await sbRequest("PATCH",
       `portfolio_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
@@ -13742,7 +13750,7 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireUser(req, res);
           if (!user) return;
-          const { id, payload, snapshot } = JSON.parse(body || "{}");
+          const { id, payload, snapshot, verifiedKey } = JSON.parse(body || "{}");
           if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
@@ -13752,15 +13760,30 @@ const server = http.createServer((req, res) =>
           const snap = cleanSnapshot(snapshot);
           if (id) {
             if (!isUuidish(String(id))) return sendJson(res, 404, { error: "Not found." });
-            const updated = await updatePortfolioItem(user.id, String(id), { payload, snapshot: snap });
+            const updated = await updatePortfolioItem(user.id, String(id), {
+              payload, snapshot: snap, verifiedKey: PFMATCH.verifiedKeyFor(verifiedKey),
+            });
             if (!updated) return sendJson(res, 404, { error: "Not found." });
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
           }
           const items = await listPortfolio(user.id);
-          const existing = items.find((x) => x.address === address && x.property_type === property_type);
+          // Verified location first, typed address second — portfolio-match.js
+          // owns both rules and the reasons. The key is normalized there; a
+          // useless one (empty, no street number, absurdly long) returns "" and
+          // simply falls through to the address rule this line used to be.
+          const vkey = PFMATCH.verifiedKeyFor(verifiedKey);
+          const existing = PFMATCH.findMatch(items, {
+            address, propertyType: property_type, verifiedKey: vkey,
+          });
           if (existing) {
-            const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: snap });
+            // Backfill: a row saved before this column existed, or before the
+            // browser could verify this address, adopts the key on its next
+            // save — so the duplicate stops being created from then on without
+            // anything having to sweep the table.
+            const updated = await updatePortfolioItem(user.id, existing.id, {
+              payload, snapshot: snap, verifiedKey: vkey,
+            });
             if (!updated) return sendJson(res, 404, { error: "Not found." });
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
@@ -13770,7 +13793,9 @@ const server = http.createServer((req, res) =>
           if (items.length >= cap) {
             return sendJson(res, 400, { error: `Portfolio is full (${cap} properties).` });
           }
-          const item = await insertPortfolioItem(user.id, { address, property_type, payload, snapshot: snap });
+          const item = await insertPortfolioItem(user.id, {
+            address, property_type, payload, snapshot: snap, verifiedKey: vkey,
+          });
           logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
           return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
         } catch (err) {

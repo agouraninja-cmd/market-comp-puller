@@ -3611,6 +3611,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
 
+  // The address the geocoder verified for the report now on screen, and the
+  // typed string it was verified FROM. Set at the confirm step, read only by
+  // verifiedKeyForSave(). Null whenever nothing was verified — a report
+  // restored from history or a shared link, a geocoder outage, or an address
+  // naming one unit of a building (see the capture site for why that one is a
+  // refusal rather than an omission).
+  let lastVerified = null;
+
+  // The value that rides with a portfolio save. Guarded on the address still
+  // being the one that was verified, so a second search cannot file its
+  // property under the first one's identity. portfolio-match.js normalizes and
+  // validates it server-side; this only decides whether to send it.
+  function verifiedKeyForSave(address) {
+    if (!lastVerified || !address) return undefined;
+    return String(lastVerified.typed).trim().toLowerCase() === String(address).trim().toLowerCase()
+      ? lastVerified.label : undefined;
+  }
+
   function renderSubjectFields(type) {
     const wrap = document.getElementById("subjectTypeFields");
     wrap.innerHTML = "";                       // switching type discards stale values
@@ -9990,6 +10008,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
           id: refreshId, payload: { meta, data }, snapshot: lastValuation,
+          verifiedKey: verifiedKeyForSave(meta.address),
         }).then(() => {
           markPortfolioSaved(meta.address, meta.type);
           syncPortfolioButton();
@@ -10006,6 +10025,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       setTimeout(() => {
         acctApi("POST", "/api/portfolio", {
           payload: { meta: payloadMeta, data }, snapshot: lastValuation,
+          verifiedKey: verifiedKeyForSave(meta.address),
         }).then(() => {
           markPortfolioSaved(meta.address, meta.type);
           syncPortfolioButton();
@@ -10829,6 +10849,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       await acctApi("POST", "/api/portfolio", {
         payload: { meta, data: currentParsed },
         snapshot: lastValuation,
+        verifiedKey: verifiedKeyForSave(currentMeta.address),
       });
       label.textContent = "Save to portfolio";
       markPortfolioSaved(currentMeta.address, currentMeta.type);
@@ -16949,6 +16970,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // Montana market report). "Run anyway" still goes through, so a down
       // geocoder or an address the geocoders don't know costs one click, never
       // the search.
+      // The verified address, kept so the SAVE can identify the property by
+      // the place rather than by the spelling. One building typed three ways
+      // was three rows on the desk, each with its own value history, and this
+      // is the answer that makes them one — the dialog below already shows it
+      // to the visitor as "we matched this to".
+      //
+      // Held against the typed string, not globally: run report A then B and
+      // the key must be B's or a save would file B under A's property.
+      //
+      // REFUSED for an address naming one unit of a site. Geocoders silently
+      // drop the unit — Census answers "6728 W Fairview Ave Trailer 51" with
+      // "6728 FAIRVIEW AVE" — so Apt 3 and Apt 5 verify identically, and
+      // merging two units into one saved property destroys one of their
+      // histories. Same rule, same helper, as the footprint estimate and the
+      // Street View gate. A refusal costs nothing: the address rule below it
+      // is exactly today's behavior.
+      lastVerified = (geo && geo.label && !unitDesignatorOf(address))
+        ? { typed: address, label: geo.label } : null;
       openConfirmModal({ typed: address, key: confirmKey, geo });
       return;
     }

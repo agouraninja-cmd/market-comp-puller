@@ -2153,6 +2153,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span id="deskCount" class="dk-note"></span>
         </div>
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
+        <!-- The other empty state, and the reason they are two elements: a
+             failed read used to render as "Run a report — it will show up
+             here", which tells somebody with a book of sixteen properties
+             that it is gone. Same rule the vault's comps table, the lead
+             inbox and the hub list each had to learn — an outage must never
+             be reported as an absence. Shown by renderMyDesk(); the rows and
+             the count are left exactly as they were rather than wiped. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost — refresh in a moment.</p>
         <!-- Statement table container (was a 3-col card grid). The id keeps
              every existing reference; renderMyDesk builds the table inside.
              The book line (#deskLedger) that used to sit above it is now the
@@ -10913,7 +10921,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (el) el.scrollIntoView({ block: "center" });
     }
     let items = [];
-    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    let loadFailed = false;
+    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) { loadFailed = true; }
+    document.getElementById("deskLoadError").classList.toggle("hidden", !loadFailed);
+    if (loadFailed) {
+      // Everything below this line describes a portfolio we could not read.
+      // The count would say "0 properties", the invitation would say the
+      // book is empty, and portfolioKeys.clear() would make "Save to
+      // portfolio" offer to re-save a property that is already in it — three
+      // confident statements about data we do not have. The rest of the desk
+      // does not depend on this read, so it still renders.
+      document.getElementById("deskEmpty").classList.add("hidden");
+      document.getElementById("deskCount").textContent = "";
+      renderDeskRest();
+      return;
+    }
     portfolioKeys.clear();
     items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
     syncPortfolioButton();
@@ -11108,6 +11130,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       grid.appendChild(table);
     }
+    renderDeskRest();
+  }
+
+  // The rest of the desk, which does not depend on the portfolio read — so a
+  // failed one must not take the watchlist, the shares table and the firm
+  // sections down with it. Extracted rather than duplicated at the two exits
+  // of renderMyDesk, so a future section added here cannot be added to only
+  // one of them.
+  function renderDeskRest() {
     renderWatchFeed();
     renderBrokerDesk();
     renderShares();

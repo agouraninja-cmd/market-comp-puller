@@ -1046,6 +1046,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
     .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
+    /* Desk decks (2026-08-21): the vault's Direction-U grouping applied to My
+       Desk — a serif label on a heavy ink rule per product area, so the dozen
+       dk-rule sections read as five shelves instead of one flat stack. A deck
+       whose sections are all hidden is hidden too (refreshDeckVisibility in
+       the script below) — a deck heading over nothing is the stray-rule trap
+       /vault's .deck.hide exists for. */
+    .dk-deck { margin-top: 48px; }
+    .dk-deck-h { display: flex; align-items: baseline; gap: 12px; }
+    .dk-deck-lab { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 19px; letter-spacing: -.015em; color: var(--ink); white-space: nowrap; }
+    .dk-deck-ln { flex: 1; height: 0; border-top: 2px solid var(--ink); transform: translateY(-5px); }
+    /* First section under a deck heading sits closer than the mt-8 the
+       sections carry between themselves — the heading already separates. */
+    .dk-deck > .dk-deck-h + * { margin-top: 18px; }
     @media (max-width: 639.98px) {
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
@@ -2021,12 +2034,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            handleCheckoutReturn(). -->
       <div id="checkoutNotice" class="hidden mt-4 rounded-lg border px-4 py-3 text-sm"></div>
 
+      <!-- The desk-level reading strip (Direction K, owner-approved
+           2026-08-09; promoted from the Portfolio section 2026-08-21):
+           combined value on the warm cell, markets cell filled by
+           renderWatchFeed once the feed answers. Rendered and toggled by
+           renderMyDesk() — hidden with 0 properties (a 0-0 scoreboard over
+           an empty desk is the vault first-run lesson) and on sign-out. -->
+      <div id="deskLedger" class="hidden rd-ledger mt-4 bg-white"></div>
+
+      <!-- Signed-out prompt for the account-backed areas -->
+      <div id="deskSignIn" class="hidden mt-8 border border-[#D8D4C9] rounded-lg bg-white p-4">
+        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps, free.</p>
+        <button id="deskSignInBtn" type="button"
+          class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
+      </div>
+
       <!-- Search history — one row per property, stored in this browser only.
            The newest few keep their full report (Open is free); older rows keep
            only their inputs (Re-run is a fresh billed search). The filter input
            is static markup on purpose: a search completing re-renders the rows
            three times over, and regenerating the input would eat what the user
-           is typing. -->
+           is typing. Deliberately OUTSIDE #myDesk: it is browser-local and
+           still renders signed out (the account wall permitting). -->
       <div id="historyWrap" class="hidden mt-6">
         <div class="dk-rule flex-wrap">
           <span class="rd-lab">Recent searches</span>
@@ -2040,28 +2069,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="historyRows" class="mt-2"></div>
       </div>
 
-      <!-- Signed-out prompt for the account-backed areas -->
-      <div id="deskSignIn" class="hidden mt-8 border border-[#D8D4C9] rounded-lg bg-white p-4">
-        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps, free.</p>
-        <button id="deskSignInBtn" type="button"
-          class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
-      </div>
-
-      <!-- My Desk — the signed-in areas: portfolio, watchlist, updates feed -->
+      <!-- My Desk — the signed-in areas, grouped into five decks (2026-08-21;
+           the vault's Direction-U pattern): Your properties, Sharing, Your
+           firm, Broker, Account. Every section keeps its id and its own
+           hidden toggling — the deck wrappers are presentation only, and
+           refreshDeckVisibility() hides any deck whose sections are all
+           hidden so a heading never floats over nothing. -->
       <section id="myDesk" class="hidden mt-4">
+      <div class="dk-deck" data-deck id="deckProperties">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
       <div class="mt-4">
         <div class="dk-rule">
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
         <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
-        <!-- The book line (Direction K): combined value on the warm cell,
-             markets cell filled by renderWatchFeed once the feed answers.
-             Hidden with 0 properties — a 0-0 scoreboard over an empty desk
-             is the vault first-run lesson. -->
-        <div id="deskLedger" class="hidden rd-ledger mt-3 bg-white"></div>
         <!-- Statement table container (was a 3-col card grid). The id keeps
-             every existing reference; renderMyDesk builds the table inside. -->
+             every existing reference; renderMyDesk builds the table inside.
+             The book line (#deskLedger) that used to sit above it is now the
+             desk-level reading strip under the page header. -->
         <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
       </div>
       <div id="deskWatch" class="mt-8">
@@ -2082,25 +2108,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </form>
         <div id="feedWrap" class="mt-3 space-y-4"></div>
       </div>
-      <div id="deskBroker" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Broker</span>
-          <span id="brokerStats" class="dk-note"></span>
-        </div>
-        <div id="brokerRows" class="mt-2 space-y-1.5"></div>
-        <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
-          <button id="brokerSubmitBtn" type="button"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Submit another comp</button>
-          <label id="brokerProfileWrap" class="hidden flex items-center gap-2 text-[#4C5665] cursor-pointer">
-            <input id="brokerProfileToggle" type="checkbox" class="accent-[#B91C1C]" />
-            <span>Public broker profile</span>
-          </label>
-          <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
-          <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
-        </div>
-        <p class="text-xs text-[#68707E] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
-      </div>
+      </div><!-- /deckProperties -->
 
+      <div class="dk-deck" data-deck id="deckSharing">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
       <!-- Client sharing — two lists, one GET (/api/shares) covers both. A 401
            (signed out) hides both silently, since the sign-in card above
            already covers that case; a 503 shows this one line instead and
@@ -2117,6 +2128,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="sharedWithMeRows" class="mt-2 space-y-1.5"></div>
       </div>
 
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the two share lists above, which teach a feature this
+           member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      </div>
+      </div><!-- /deckSharing -->
+
+      <div class="dk-deck" data-deck id="deckFirm">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
            below follows, and the opposite of the two lists above: those teach
@@ -2143,11 +2175,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
            Three states in one section, exactly one visible at a time
-           (renderFirm owns that). Deliberately BELOW the share lists: this is
-           the plumbing, they are the point. -->
+           (renderFirm owns that). Deliberately BELOW the firm shelf: this is
+           the plumbing, the shelf is the point. The deck heading says "Your
+           firm", so this section's own label names what it actually holds. -->
       <div id="deskFirm" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Your firm</span>
+          <span class="rd-lab">Membership &amp; settings</span>
           <span id="firmStats" class="dk-note"></span>
         </div>
 
@@ -2215,25 +2248,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
+      </div><!-- /deckFirm -->
 
-      <!-- Hubs someone has invited this member into. The TENANT side only —
-           a broker's own hubs live on /vault beside the pipeline deck (the
-           owner's answer, 2026-08-13), because creating one is a broker
-           surface gated on canUseVault and this page is seen by every free
-           account. Spec:
-           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-           NOT the connection hub at /brokers.
-
-           Rendered ONLY when there is something in it: a member who has
-           never been invited into a hub should not be shown an empty
-           section for a feature they have no way to start. That is the
-           opposite of the two share lists above, which teach a feature this
-           member can use themselves. -->
-      <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
-        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      <!-- Broker deck: the public contributor side (submissions, profile) and
+           the private vault door. Each section keeps its own gate — the deck
+           hides itself for everyone who is neither. -->
+      <div class="dk-deck" data-deck id="deckBroker">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Broker</span><span class="dk-deck-ln"></span></div>
+      <div id="deskBroker" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Contributions</span>
+          <span id="brokerStats" class="dk-note"></span>
+        </div>
+        <div id="brokerRows" class="mt-2 space-y-1.5"></div>
+        <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+          <button id="brokerSubmitBtn" type="button"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Submit another comp</button>
+          <label id="brokerProfileWrap" class="hidden flex items-center gap-2 text-[#4C5665] cursor-pointer">
+            <input id="brokerProfileToggle" type="checkbox" class="accent-[#B91C1C]" />
+            <span>Public broker profile</span>
+          </label>
+          <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
+          <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
+        </div>
+        <p class="text-xs text-[#68707E] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
       </div>
 
+      <!-- The broker vault, for people who have one. Visibility is
+           refreshBillingUI()'s, off canUseVault — same rule as the
+           account-menu link, and /api/vault re-checks it server-side
+           regardless. An <a>, not a button: /vault is a real page, so
+           middle-click and open-in-new-tab should work. -->
+      <div id="vaultCard" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Broker vault</span></div>
+        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+          <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
+          <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
+          <div id="vaultCardLeads" class="hidden text-xs text-[#68707E] mt-1"></div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <a id="vaultOpenBtn" href="/vault"
+              class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
+          </div>
+        </div>
+      </div>
+      </div><!-- /deckBroker -->
+
+      <div class="dk-deck" data-deck id="deckAccount">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Account</span><span class="dk-deck-ln"></span></div>
       <!-- Report branding — the mark THIS member's own reports and exports
            carry (Task 7/8 apply it; this card only saves it). Saving is open
            to anyone signed in, whether or not they currently hold an
@@ -2294,25 +2355,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <!-- Plan + billing. Shown only when the deployment actually sells
            something (proConfig.billing); everything in it is rendered by
            refreshBillingUI() from /api/config, never from local state. -->
-      <!-- The broker vault, for people who have one. Sits above Plan because a
-           broker opens their vault far more often than they look at billing.
-           Visibility is refreshBillingUI()'s, off canUseVault — same rule as the
-           account-menu link, and /api/vault re-checks it server-side regardless.
-           An <a>, not a button: /vault is a real page, so middle-click and
-           open-in-new-tab should work. -->
-      <div id="vaultCard" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Broker vault</span></div>
-        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
-          <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
-          <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
-          <div id="vaultCardLeads" class="hidden text-xs text-[#68707E] mt-1"></div>
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <a id="vaultOpenBtn" href="/vault"
-              class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
-          </div>
-        </div>
-      </div>
-
       <div id="billingCard" class="hidden mt-8">
         <div class="dk-rule"><span class="rd-lab">Plan</span></div>
         <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
@@ -2331,6 +2373,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p id="billingError" class="hidden text-sm text-red-600 mt-2"></p>
         </div>
       </div>
+      </div><!-- /deckAccount -->
       </section>
     </section>
 
@@ -10602,7 +10645,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   async function renderMyDesk() {
     const desk = document.getElementById("myDesk");
-    if (!currentUser) { desk.classList.add("hidden"); return; }
+    if (!currentUser) {
+      desk.classList.add("hidden");
+      // The reading strip sits outside #myDesk (under the page header), so
+      // sign-out must drop it here or it would outlive the account it sums.
+      document.getElementById("deskLedger").classList.add("hidden");
+      return;
+    }
     desk.classList.remove("hidden");
     document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
     applyAvatarUI(currentUser);
@@ -10848,6 +10897,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
     applySearchLock();
   }
+  // Desk deck visibility (2026-08-21). The desk's sections are grouped under
+  // five [data-deck] headings, but each section keeps its own hidden toggling,
+  // written from a dozen render functions (renderShares, renderFirm,
+  // refreshBillingUI, …). A deck whose sections are all hidden must hide too —
+  // a serif heading over an ink rule with nothing under it is the stray-rule
+  // trap /vault's .deck.hide exists for. Recomputed from a MutationObserver
+  // rather than called at the end of every render function, so a future
+  // section toggle cannot miss it; the changed-state guard is what lets the
+  // observer converge instead of re-triggering itself forever.
+  function refreshDeckVisibility() {
+    document.querySelectorAll("#myDesk [data-deck]").forEach((deck) => {
+      const anyVisible = Array.from(deck.children).some(
+        (el) => !el.classList.contains("dk-deck-h") && !el.classList.contains("hidden")
+      );
+      if (deck.classList.contains("hidden") === anyVisible) deck.classList.toggle("hidden", !anyVisible);
+    });
+  }
+  new MutationObserver(refreshDeckVisibility).observe(
+    document.getElementById("myDesk"),
+    { attributes: true, attributeFilter: ["class"], subtree: true }
+  );
+  refreshDeckVisibility();
+
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
   function enterDesk({ markSeen } = {}) {
     if (location.pathname !== "/desk") history.pushState({}, "", "/desk");

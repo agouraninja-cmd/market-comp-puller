@@ -1859,14 +1859,29 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
 - **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). Paid plan
-  gating free reports to **4 comps**, a **36-month** lookback ceiling, and
+  holding free reports to a **36-month** lookback ceiling and
   **5 exports/month** (0 for anonymous visitors — exporting requires an
   account), against Pro's unlimited everything plus report branding.
+  **The comp-list gate is GONE as of 2026-08-21**: `FREE_MAX_COMPS` is
+  `"all"`, so a free account itemizes every comparable the search found,
+  addresses and sources included. It went because the headline value range was
+  already computed from the FULL comp set (comp-gate.js's `locked_basis`), so
+  the gate was withholding the evidence for a number it had already published —
+  and because the same "a crippled free report is not a demo of the paid one"
+  argument had already widened the lookback. `gateReport()` is NOT dead code:
+  it still caps whenever `maxComps` is a number, this tier just stops
+  supplying one, and `test/comp-gate.test.js` keeps exercising the cap through
+  an explicit `cappedEnt` so the machinery stays covered. **Known
+  consequence, accepted:** the $20 single-report tile only renders when
+  something is actually locked (`updateSingleReportTile()` keys on
+  `lockedCount() > 0`), so inside the 36-month window it now rarely appears;
+  the purchase still buys the ten-year window, branding and unlimited exports
+  for one property.
   The free lookback was **12 months until 2026-08-04**. It was widened because
   at 12 months the free report often could not compute a valuation at all (the
   hero needs two priced sale comps and dense markets returned one), and because
-  a window that short usually returned ≤4 comps, so the 4-comp gate withheld
-  nothing and the $39 tile never appeared. Not widened further: the window is
+  a window that short usually returned ≤4 comps, so the then-4-comp gate
+  withheld nothing and the $39 tile never appeared. Not widened further: the window is
   clamped BEFORE the search and the model is asked for up to 12 comps
   regardless of plan, so a longer free window grows output — the cost and
   wall-clock driver — on the majority of traffic. The numbers live in

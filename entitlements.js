@@ -16,11 +16,31 @@
 // date, or a missing row all resolve to the free tier rather than to Pro.
 // ---------------------------------------------------------------------------
 
-// Free tier. 10 comps is the conversion driver — a free report is still a real
-// report (the valuation is computed from the FULL comp set; see the
-// locked-basis rows in server.js), but the itemized list is short enough that
-// a professional wants the rest.
-const FREE_MAX_COMPS = 10;
+// Free tier. The itemized LIST stopped being the conversion driver on
+// 2026-08-21: a free account now sees every comparable the search found,
+// addresses and sources included. What Pro sells is the ten-year window (this
+// tier stops at 36 months), unlimited exports, the vault, Address Explorer and
+// branding.
+//
+// The reasoning, so it is not re-litigated from the number alone: the headline
+// value range was ALREADY computed from the full comp set (comp-gate.js's
+// locked_basis rows), because an inaccurate free number costs more in
+// credibility than the tier earns. So the gate withheld the evidence for a
+// figure it had already published — which reads as withholding proof rather
+// than withholding product. The same argument widened the free lookback from
+// 12 to 36 months on 2026-08-04: a crippled free report is not a demo of the
+// paid one.
+//
+// "all" is not a new code path. Pro, the $20 single-report unlock and the
+// PRO_ENABLED=off branch already resolve to it, and gateReport() still runs
+// for any numeric cap — this tier simply stops supplying one.
+//
+// KNOWN CONSEQUENCE, decided deliberately: the $20 single-report tile only
+// renders when something is actually locked (updateSingleReportTile() in
+// index.html keys on lockedCount() > 0), so within the 36-month window that
+// tile now rarely appears. The purchase still exists and still buys the
+// ten-year window, branding and unlimited exports for one property.
+const FREE_MAX_COMPS = "all";
 // Free lookback stops at 36 months — WIDENED from 12 on 2026-08-04, and the
 // reason matters more than the number.
 //
@@ -31,10 +51,10 @@ const FREE_MAX_COMPS = 10;
 // "-" "-" "-". A free tier that cannot answer its own headline question
 // converts nobody, because a broken demo is no evidence the paid version works.
 //
-// It also disarmed the OTHER gate. A 12-month search often returned four or
-// fewer comps, so the 4-comp limit withheld nothing and the single-report tile — which
-// only appears when something is actually locked — never rendered. Widening the
-// window is what gives the comp gate something to hold back.
+// It also used to disarm the OTHER gate: a 12-month search often returned four
+// or fewer comps, so a shortened itemized list withheld nothing. That gate is
+// gone as of 2026-08-21 (see FREE_MAX_COMPS). 36 months stays because it is
+// what makes a valuation possible at all, not because it feeds a paywall.
 //
 // Not unlimited, deliberately: the window is clamped BEFORE the search, and the
 // model is asked for up to 12 comps regardless of plan, so a 120-month free

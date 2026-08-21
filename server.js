@@ -19662,7 +19662,7 @@ server.listen(PORT, () => {
       ? "⚠  GOOGLE_SITE_VERIFICATION is set but unusable — expected google<token>.html or the bare token."
       : "🔎 Search Console not verified by file — set GOOGLE_SITE_VERIFICATION to see indexing data (or use a DNS TXT record).");
   if (PRO_ENABLED) {
-    console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
+    console.log(`⭐ Pro tier ENABLED — free reports itemize ${ENT.FREE_MAX_COMPS === "all" ? "every comp found" : ENT.FREE_MAX_COMPS + " comps"}, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);
     // Loud on purpose: an audience left set is a launch that silently reaches
     // nobody, and it looks exactly like a working deployment.

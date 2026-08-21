@@ -1237,7 +1237,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        that would 409 on click is worse than not showing it. -->
   <div id="pricingModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-start justify-center p-4 no-print overflow-y-auto">
     <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6 my-8">
-      <h2 id="pricingTitle" class="text-lg font-semibold text-[#1A2433]">Unlock the full comp set</h2>
+      <h2 id="pricingTitle" class="text-lg font-semibold text-[#1A2433]">Go Pro</h2>
       <!-- Lead with the LOOKBACK, not the comp count. Measured 2026-08-03 on the
            then-12-month free window: dense industrial markets (Dallas, Ontario
            CA, Phoenix) each returned four or fewer comps, so "Pro itemizes all
@@ -1250,7 +1250,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            FREE_MAX_LOOKBACK_MONTHS moves again, this paragraph, the Pro bullet
            and both plan-card strings all have to move with it. -->
       <p id="pricingSubtitle" class="text-sm text-[#68707E] mt-1">
-        Free reports look back 3 years and itemize ten of the comps found.
+        Free reports look back 3 years and itemize every comparable the search finds.
         Pro widens the search to ten years — the change that actually surfaces more
         transactions — and itemizes every one it finds, with the sources.
       </p>
@@ -1266,7 +1266,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Free</span>
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
-          <p class="pr-sum">The same value range Pro sees, ten itemized comps, a 3-year window.</p>
+          <p class="pr-sum">Every comparable itemized, the same value range Pro sees, a 3-year window.</p>
           <p class="text-xs text-[#68707E] mt-3">Your current plan</p>
         </div>
         <!-- Pro monthly -->
@@ -1332,7 +1332,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Cancellation copy lives here once, not per-tile. -->
       <div class="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t border-[#ECEAE3] text-xs text-[#4C5665]">
         <span>10-year lookback</span>
-        <span>Every comparable the search finds, itemized</span>
         <span>Unlimited exports</span>
         <span>Private comp vault</span>
         <span>Address Explorer</span>
@@ -1346,7 +1345,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            rule. The first row leads with what the tiers SHARE — the full-set
            value range — the same honesty rule the free report itself keeps
            (comp-gate.js's locked_basis). Numbers here restate
-           entitlements.js (10 comps, 36 months, 5 exports/month with an
+           entitlements.js (every comparable itemized, 36 months, 5 exports/month with an
            account) and must move with it, like the subtitle above. -->
       <button id="pricingCompareBtn" type="button" aria-expanded="false"
         class="text-xs text-[#68707E] hover:text-[#1A2433] underline decoration-[#D8D4C9] mt-3">Compare plans in detail</button>
@@ -1362,7 +1361,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  out loud costs one row and removes the guess. -->
             <tr><td>Reports you can run</td><td class="c">Unlimited</td><td class="c">Unlimited</td></tr>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
-            <tr><td>Comps itemized, with sources</td><td class="c">10</td><td class="c">All found</td></tr>
+            <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
             <tr><td>CSV, image, PDF and Excel exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
@@ -13544,7 +13543,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // is a statement of fact, not a reassurance we cannot keep.
       return { title: "Free", detail: "Your Pro subscription has ended. Reports are limited to 10 itemized comps and a 3-year lookback, and your vault is closed until you resubscribe. Nothing in it has been deleted." };
     }
-    return { title: "Free", detail: "Reports itemize 10 comps and look back 3 years. The valuation still uses every comp we find." };
+    return { title: "Free", detail: "Reports itemize every comparable we find and look back 3 years. Pro widens the window to ten years." };
   }
 
   // Single owner of every billing control's visibility. Called after both

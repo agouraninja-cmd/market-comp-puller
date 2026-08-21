@@ -1,9 +1,10 @@
-# Divide and conquer: the six blocks, two people, by August 27
+# Divide and conquer: the six blocks, two builders and a consultant, by August 27
 
 **Date:** 2026-08-21 (Thursday). Six working days to Wednesday the 27th.
-**People:** Chuck (owner — Render, Supabase SQL editor, DNS, Stripe, Google
-Cloud, the Resend account) and Owen.
-**Split, as agreed:** Chuck takes four building blocks — **1 Archive,
+**People:** Jacob (owner — Render, Supabase SQL editor, DNS, Stripe, Google
+Cloud, the Resend account), Owen (developer), and Chuck (consultant — no code;
+his asks are in §4b).
+**Split, as agreed:** Jacob takes four building blocks — **1 Archive,
 3 Production, 5 Attribution & Accuracy, 6 Market Data Fill**. Owen takes two —
 **2 Organization, 4 Delivery** — which is where his three tenant items and all
 the firm-facing work live.
@@ -35,14 +36,14 @@ One demo, run start to finish on production:
    *(already LIVE, never driven by two people — QA it together, day 5)*
 8. A report search consults the broker's **own vault before the public corpus
    before the web**, and is measurably cheaper when the vault has content.
-   *(Chuck, new — the plan's §4.3 inversion)*
+   *(Jacob, new — the plan's §4.3 inversion)*
 9. The **extraction verdict** exists: 20 real PDFs, scored, pass or fail
-   declared in writing. *(Chuck, day 1–2 — gates the whole Archive block)*
+   declared in writing. *(Jacob, day 1–2 — gates the whole Archive block)*
 10. **Firm seats are buyable** — `STRIPE_PRICE_FIRM_MONTHLY` set, the plan
-    card renders. *(Chuck, ~1 hour — the code shipped in 033; the env var is
+    card renders. *(Jacob, ~1 hour — the code shipped in 033; the env var is
     the launch)*
 11. A dev shop's **project dashboard v1**: costs, NOI, cap rate, DCF on the
-    owner's own saved properties, CompNinja-branded. *(Chuck, stretch)*
+    owner's own saved properties, CompNinja-branded. *(Jacob, stretch)*
 
 ## 2. Read this before writing anything: the wishlist is mostly built
 
@@ -61,9 +62,9 @@ something that already shipped**. The wishlist, mapped:
 | Dev-shop dashboard (costs/NOI/cap/IRR) | NOI, cap rate, DCF, debt & refi, op-ex all computed client-side today; portfolio stores `meta.assumptions` per property | A deck that reads them across properties. **IRR needs cost inputs that do not exist yet.** v1 is single-user; firm-wide hits the §5 consent rule. |
 | Tenant org type, lease report, renewal watch | Owen's three, already scoped | His week's core. |
 
-## 3. Chuck's week (blocks 1, 3, 5, 6)
+## 3. Jacob's week (blocks 1, 3, 5, 6)
 
-Chuck's list is deliberately front-loaded with the things **only the owner can
+Jacob's list is deliberately front-loaded with the things **only the owner can
 do** — accounts, DNS, Stripe, counsel, real PDFs — because every one of them
 has latency, and two of them gate Owen.
 
@@ -85,7 +86,7 @@ has latency, and two of them gate Owen.
   emails per the spec's open question 3). Claude builds the scoring harness —
   recall, per-field precision, fabrication rate against a ground-truth file,
   in the `run-eval.js`/`eval-score.js` pattern; **the stopwatch half is
-  Chuck's**: a real person correcting a 10-comp file, timed. Deliverable: the
+  Jacob's**: a real person correcting a 10-comp file, timed. Deliverable: the
   numbers and a written pass/fail in `docs/evals/`. Pass condition is already
   fixed in the archive spec §9 so it cannot be moved after the numbers arrive.
 - **C4 · Launch firm seats** *(block 5's pricing step; ~1h).* Create the
@@ -138,9 +139,9 @@ has latency, and two of them gate Owen.
 
 ### Days 1–2
 
-- **O1 · Tenant rep shop type** *(~1h; built — review + hand Chuck the
+- **O1 · Tenant rep shop type** *(~1h; built — review + hand Jacob the
   migration).* Third org type beside broker shop and development shop.
-  Migration file goes to Chuck to run **before** the deploy (018/030's
+  Migration file goes to Jacob to run **before** the deploy (018/030's
   ordering rule — if any read selects the new column by name, deploy-first
   breaks existing reads).
 - **O2 · Lease report headlines rent** *(~0.5 day).* "Leases only" reports
@@ -177,7 +178,7 @@ has latency, and two of them gate Owen.
   - **Gated on C1.** If the Resend domain is not verified, the send path is
     a silent no-op and the digest's own rule applies: refuse (503), never
     advance a marker for mail nobody received.
-  Migration (lease fields) goes to Chuck to run before deploy. Done when: a
+  Migration (lease fields) goes to Jacob to run before deploy. Done when: a
   seeded lease 60 days from notice produces a Preview email quoting the
   market's current rent figures, and a second run sends nothing.
 - **O5 · Tenant contacts v1** *(~0.5–1 day; after O4, cut second if O4 runs
@@ -193,11 +194,32 @@ has latency, and two of them gate Owen.
 - **O6 + C: drive the messaging hub end to end as two people** *(half a
   day).* The hub spec's own status block says nobody ever has: production
   holds one hub, one comp still at `new`, zero messages, and the tenant
-  write half has never been used by a person. Chuck plays the tenant, Owen
+  write half has never been used by a person. Jacob plays the tenant, Owen
   the broker: open a hub, invite by email (now armed by C1), trade comps,
   message both ways, close it. File and fix what breaks. This is the
   cheapest possible version of "message people through CompNinja" — proving
   the messaging that exists before building messaging that does not.
+
+
+## 4b. Chuck's asks (consultant — no code)
+
+Chuck's role this week is the work the transition plan itself put in his
+column, none of which is engineering:
+
+- **Source the 20 comp PDFs for the extraction test (feeds C3, needed Friday
+  morning).** Different brokerages, real files, the messier the better — his
+  network is exactly where they live, and the same twenty files open the
+  free-audit conversations later. Jacob supplies the 5 body-text-only emails.
+- **Drive the counsel conversation (C2).** Jacob sends the intro day 1 to
+  start the clock; Chuck owns the follow-up and brings back the cleared
+  data-rights paragraph. It gates the free audit, not this week's code.
+- **Sanity-check the firm seat price before C4 sets it in Stripe.** Pricing
+  is Chuck's open question on the roadmap; the transition plan proposes
+  ~$79/seat with a 5-seat minimum. Fifteen minutes on the phone beats
+  archiving a wrong price in Stripe next week.
+- **Review the extraction verdict and the free-audit pitch** once C3's
+  numbers exist — the audit is his channel argument, so he should see the
+  evidence before anyone pitches with it.
 
 ## 5. Two privacy-wall decisions this plan forces — settle them Friday, together
 
@@ -247,10 +269,10 @@ person builds the surface.
   has already filed one person's work under the other's branch once
   (2026-08-20). `git log origin/main..HEAD` before every push.
 - **Migration numbers are assigned here, now:** Owen takes **037–039**
-  (tenant rep type, renewal-watch lease fields, contacts). Chuck takes
+  (tenant rep type, renewal-watch lease fields, contacts). Jacob takes
   **040+** (archive tables, when they unlock). Both people renumbering at
   merge time is how 036 got renumbered; assigned ranges make it not happen.
-- **Chuck runs all SQL** in the Supabase editor and logs each in
+- **Jacob runs all SQL** in the Supabase editor and logs each in
   `migrations/APPLIED.md` with the verification query — the existing
   convention. **Migrate before deploy** for any column a read selects by
   name (018's rule; it has bitten twice).

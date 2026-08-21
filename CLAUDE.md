@@ -763,10 +763,28 @@ dependency. `.env` is git-ignored — never commit it.
   for agentic work, and comp selection accuracy IS the product, so the
   honest way to spend it is a `run-eval.js --compare` pair (about $8.60 and
   a restart between runs — `MODEL` and this are both read once at startup).
-  The scorecard already carries every field the decision needs; the run
-  summary now records `thinkingLevel` beside `model`, and `--compare` prints
-  it, so a pair that differs only in this can never be misread as model
-  noise. `GET /healthz` reports the live value for the same reason it
+  **`node scripts/compare-thinking.js` runs that whole pair as one command**
+  (boot → score → restart at the candidate depth → score → compare). Prefer
+  it over doing the steps by hand: it spawns the server with an EXPLICIT
+  env, which makes the PowerShell `$env:SUPABASE_URL = ""` delete-vs-empty
+  trap in run-eval.js's header impossible rather than merely documented; it
+  enforces the restart, refuses to run against the main checkout, verifies
+  via `/healthz` that the server is at the depth asked for BEFORE spending,
+  and prints the bill and stops without `--yes`.
+  The run summary records `thinkingLevel` beside `model` and `--compare`
+  prints it, so a pair that differs only in this can never be misread as
+  model noise. The scorecard also carries **spend** as of 2026-08-21 —
+  `costUsd`, `billedCalls`, `inputTokens`, `outputTokens`, `thoughtTokens`,
+  `reportTokens`, `thoughtShare` — because until then it measured quality
+  and wall clock and nothing about cost, which is the half of this question
+  that decides it. Those ride on a `_call` block that `gate()` attaches for
+  an INTERNAL caller only and only on a billed leg: never cached, never
+  harvested, never served to a customer, and absent (not zero) on a cache
+  hit, so a run that hit the cache reports "no cost data" rather than
+  halving its own average. `thought_tokens` is a **subset** of
+  `output_tokens`, never an addition — summing them double-counts the
+  thinking and doubles the bill; `reportTokens` is the remainder, and it is
+  the figure every prompt trim in this project has actually been aiming at. `GET /healthz` reports the live value for the same reason it
   reports `model` — ask the deployment, never the repo; `""` there means the
   vendor default, and an absent field means a build older than this.
   Three rules, all pinned by tests. It is read through

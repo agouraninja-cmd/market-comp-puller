@@ -107,6 +107,65 @@ if (args.includes("--compare")) {
   row("subject size found", d.subjectSizeFoundRate);
   row("failures", d.failures);
   Object.keys(d.metrics).sort().forEach((k) => row(k, d.metrics[k]));
+
+  // The averages above are the raw record and stay exactly as they were. This
+  // block is the DECISION: a speed/cost change is only ever worth taking if
+  // the quality it was bought with held, and reading that off an alphabetical
+  // list of eighteen averages is how a provenance drop gets missed next to an
+  // exciting duration delta. So the two are put side by side, per report,
+  // in the units the question is actually asked in.
+  const m = (k) => (d.metrics[k] || { baseline: null, candidate: null });
+  const pctMove = (o) => (o.baseline ? ((o.candidate - o.baseline) / o.baseline) * 100 : null);
+  const has = (k) => m(k).baseline != null && m(k).candidate != null;
+  if (has("durationMs") || has("costUsd")) {
+    console.log("\n  --- per report ---");
+    const line = (label, o, fmtv) => {
+      if (o.baseline == null || o.candidate == null) return;
+      const pc = pctMove(o);
+      const tag = pc == null ? "" : `   ${pc > 0 ? "+" : ""}${pc.toFixed(1)}%`;
+      console.log(`  ${label.padEnd(22)} ${fmtv(o.baseline).padStart(10)} -> ${fmtv(o.candidate).padStart(10)}${tag}`);
+    };
+    const secs = (v) => (v / 1000).toFixed(1) + "s";
+    const usd = (v) => "$" + v.toFixed(4);
+    const tok = (v) => Math.round(v).toLocaleString("en-US");
+    line("time", m("durationMs"), secs);
+    line("cost", m("costUsd"), usd);
+    line("tokens generated", m("outputTokens"), tok);
+    line("  of which thinking", m("thoughtTokens"), tok);
+    line("  the report itself", m("reportTokens"), tok);
+    line("thinking share", m("thoughtShare"), (v) => (v * 100).toFixed(1) + "%");
+    // Cost is per report, so the number the owner actually budgets against is
+    // what a month of them costs. Stated at a round volume rather than a
+    // guessed one, so it reads as arithmetic instead of a forecast.
+    const cb = m("costUsd");
+    if (cb.baseline != null && cb.candidate != null) {
+      console.log(`  per 1,000 reports      ${("$" + (cb.baseline * 1000).toFixed(2)).padStart(10)} -> ${("$" + (cb.candidate * 1000).toFixed(2)).padStart(10)}`);
+    }
+    // Quality is what a speed change is being traded against, so it is printed
+    // in the same breath and never left to be looked up elsewhere.
+    console.log("\n  --- what it cost in quality (higher is better, except the two rates) ---");
+    line("priced sale comps", m("pricedSales"), (v) => v.toFixed(2));
+    line("provenance score", m("provenanceScore"), (v) => v.toFixed(3));
+    line("comps returned", m("comps"), (v) => v.toFixed(2));
+    line("estimate rate", m("estimateRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("aggregate rate", m("aggregateRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("in-window rate", m("inWindowRate"), (v) => (v * 100).toFixed(1) + "%");
+    line("market match rate", m("marketMatchRate"), (v) => (v * 100).toFixed(1) + "%");
+    const vp = d.valuationPossibleRate || {};
+    if (vp.baseline != null && vp.candidate != null) {
+      console.log(`  valuation possible     ${(vp.baseline * 100).toFixed(0).padStart(9)}% -> ${(vp.candidate * 100).toFixed(0).padStart(9)}%`);
+    }
+    console.log("\n  Read it as a trade: the top block is what you gained, the bottom is what you paid.");
+    console.log("  valuation possible and priced sale comps are the two that decide it — a faster,");
+    console.log("  cheaper report that cannot value the building is not a cheaper report.");
+  } else if (!has("costUsd")) {
+    // Silence here would read as "no cost difference" rather than "no cost
+    // data", which is the same misreport-absence-as-a-value trap the corpus
+    // health alarm and the lead inbox each had to fix.
+    console.log("\n  ! No spend data in one or both runs, so cost is not compared.");
+    console.log("    Cost accounting rides on an internal-caller field added 2026-08-21; a run made");
+    console.log("    before that, or one served entirely from cache, carries none.");
+  }
   console.log("\nDeltas only. A dozen stochastic searches per run means small moves are noise; read the direction, not the decimal.\n");
   process.exit(0);
 }

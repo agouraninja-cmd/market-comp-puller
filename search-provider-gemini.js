@@ -168,6 +168,16 @@ function normalizeUsage(raw) {
     // what makes costOf correct and makes the log line comparable across
     // providers.
     output_tokens: n(u.total_output_tokens) + n(u.total_thought_tokens),
+    // ...and reported SEPARATELY as well, because the fold above hides the one
+    // number that explains this provider's wall clock: a measured call was 928
+    // report tokens against 6,473 thought, so "output_tokens: 7,401" reads as a
+    // gigantic report when it is a small report and a long think. Without the
+    // split, a THINKING_LEVEL A/B cannot show WHY it got faster, only that it
+    // did.
+    // TRAP: this is a SUBSET of output_tokens, never an addition to it. Anyone
+    // summing the two double-counts the thinking, and costOf would double the
+    // bill. Report it as "of which", never as another column to add up.
+    thought_tokens: n(u.total_thought_tokens),
     cache_read_tokens: n(u.total_cached_tokens),
     cache_write_tokens: 0,
   };

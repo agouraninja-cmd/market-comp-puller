@@ -121,6 +121,13 @@ function normalizeUsage(raw) {
   return {
     input_tokens: n(u.input_tokens),
     output_tokens: n(u.output_tokens),
+    // Always 0 here: extended thinking is a separate opt-in this product does
+    // not use on the search path (hence capabilities.thinkingLevels: null), so
+    // no output token is a thought token. Present rather than omitted so every
+    // consumer of a normalized usage object sees the same keys whichever
+    // provider produced it - the eval scorecard averages this field, and an
+    // undefined would poison the average rather than read as zero.
+    thought_tokens: 0,
     cache_read_tokens: n(u.cache_read_input_tokens),
     cache_write_tokens: n(u.cache_creation_input_tokens),
   };

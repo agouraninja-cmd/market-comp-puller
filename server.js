@@ -5684,7 +5684,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
   console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
-  if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
+  if (stats) {
+    stats.searches = searches; stats.out_tokens = usage.output_tokens || 0;
+    // The two fields above are ASSIGNED, so on a retry or a two-lane split the
+    // last call wins and the earlier one's spend disappears from the analytics
+    // row. Left alone rather than quietly redefined - that column has years of
+    // history read as "the last call's size". The eval needs the truth about
+    // what a search COST, though, so these accumulate across every billed call
+    // instead: one report can be several of them.
+    stats.billed_calls = (stats.billed_calls || 0) + 1;
+    stats.cost_usd = (stats.cost_usd || 0) + PROVIDER.costOf(usage);
+    stats.usage = stats.usage || {};
+    for (const k of Object.keys(usage)) {
+      stats.usage[k] = (stats.usage[k] || 0) + (Number(usage[k]) || 0);
+    }
+  }
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
@@ -12794,8 +12808,42 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
+        // Declared HERE rather than beside the search below because gate()
+        // closes over it: an internal caller is handed the call's real spend,
+        // and gate is the only funnel every exit routes through.
+        const callStats = {};
         const gate = async (rep) => {
-          if (internal) return rep;
+          // An internal caller (x-admin-key, i.e. the seed generator and the
+          // eval harness) gets the whole report, ungated. It also gets what
+          // the search actually cost — tokens, the thought/report split, and
+          // dollars — which is the difference between the eval being able to
+          // answer "is thinking less cheaper AND still accurate?" and only
+          // being able to answer the second half.
+          //
+          // Three rules. It is attached HERE, at serialization, so the cache,
+          // harvestComps and maybePublishMarketSnapshot (all of which run on
+          // `result` above this) never see it — the same rule gateReport and
+          // the vault blend follow, and the reason a cached report can never
+          // carry another run's token counts. It SPREADS rather than mutates,
+          // because `rep` may be the memoized cache object and writing into it
+          // would stamp one call's numbers onto every later reader. And it is
+          // omitted entirely on a cache hit, where callStats is empty: a cached
+          // search really did cost nothing, and reporting zeros as if they were
+          // measured would quietly halve the average cost of any run that hit
+          // the cache.
+          if (internal) {
+            return callStats.billed_calls
+              ? { ...rep, _call: {
+                  billed_calls: callStats.billed_calls,
+                  searches: callStats.searches || 0,
+                  cost_usd: callStats.cost_usd || 0,
+                  usage: callStats.usage || {},
+                  provider: PROVIDER.name,
+                  model: MODEL,
+                  thinking_level: THINKING_LEVEL,
+                } }
+              : rep;
+          }
           // Public saved deals first, then the paywall, then the vault.
           // Radius blend is before gateReport so extras become locked_basis
           // for a free visitor instead of printing their addresses. Vault
@@ -13011,7 +13059,6 @@ const server = http.createServer((req, res) =>
         // Speed observability: time the whole billed leg (what the visitor
         // actually waits for server-side) and collect the call's search
         // count, output size, and rescue history for the analytics event.
-        const callStats = {};
         const billedT0 = Date.now();
         const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
           sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);

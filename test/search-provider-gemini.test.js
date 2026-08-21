@@ -198,3 +198,19 @@ test("lowering the thinking level cannot outrun the deadline budget", () => {
   // direction this knob moves.
   assert.equal(P.deadlineTokens(), 12000);
 });
+
+test("thought tokens are reported alongside output, not instead of or on top of it", () => {
+  const u = P.normalizeUsage(FIXTURE.usage);
+  assert.equal(u.thought_tokens, 6473, "the split is what explains this provider's wall clock");
+  assert.equal(u.output_tokens, 928 + 6473, "output still folds them in, because they bill as output");
+  // The trap: thought_tokens is a SUBSET of output_tokens. Adding them would
+  // double the bill and double-count the thinking in any scorecard.
+  assert.ok(u.thought_tokens < u.output_tokens);
+  assert.equal(u.output_tokens - u.thought_tokens, 928, "the remainder is the report itself");
+});
+
+test("both providers normalize to the same keys, so a scorecard can average them", () => {
+  assert.deepEqual(Object.keys(P.normalizeUsage({})).sort(),
+                   Object.keys(A.normalizeUsage({})).sort(),
+                   "a key present on one provider and undefined on the other poisons an average");
+});

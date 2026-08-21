@@ -6918,7 +6918,15 @@ const ACCOUNT_NAV_JS =
   `show($("navVault"),Boolean(pro.canUseVault));` +
   `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
+    // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
+  // step: the app hid this button for a colleague on a FIRM seat and this
+  // copy did not, so every server-rendered page offered them a portal that
+  // belongs to their firm's customer record — it opens their firm's card or,
+  // having no customer of their own, 400s. `live` is the same reason: a
+  // deployment with no Stripe keys 503s the portal, and a button that can
+  // only fail is worse than no button. test/routes.test.js pins both.
+  `show($("navBilling"),live&&Boolean(pro.status)&&pro.status!=="none"` +
+  `&&!pro.admin&&!pro.tester&&!(pro.viaFirm&&pro.viaFirm.id));` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +

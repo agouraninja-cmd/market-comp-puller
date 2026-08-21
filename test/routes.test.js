@@ -246,6 +246,21 @@ test("bare environment", async (t) => {
       "ACCOUNT_NAV_JS's navBilling visibility must exclude pro.tester alongside pro.admin");
   });
 
+  // Same button, the third exclusion. A colleague holding Pro through a FIRM
+  // seat has a real Stripe status belonging to their firm's customer record,
+  // not their own: the portal opens their firm's card or 400s. index.html's
+  // hasBillingHistory() has excluded them since firm billing shipped and this
+  // copy did not, so the app hid the button while every server-rendered page
+  // still offered it. `live` is pinned in the same assertion because a
+  // deployment with no Stripe keys 503s the portal.
+  await t.test("the account-nav billing button excludes firm-seat colleagues", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.match(html, /!\(pro\.viaFirm&&pro\.viaFirm\.id\)/,
+      "ACCOUNT_NAV_JS's navBilling visibility must exclude a colleague on a firm seat");
+    assert.match(html, /show\(\$\("navBilling"\),live&&/,
+      "ACCOUNT_NAV_JS's navBilling must also require billing to be live, as index.html does");
+  });
+
   // /brokers' "Upgrade to Pro" link hides itself for members via the shared
   // hydration script. Two halves that must both exist or the link either
   // never hides (id missing from the script) or never renders (id missing

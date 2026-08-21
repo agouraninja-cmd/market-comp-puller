@@ -859,8 +859,13 @@ dependency. `.env` is git-ignored — never commit it.
   corpus-first retrieval remains a quality lever there but stops being a cost
   lever. Server code must branch on `PROVIDER.capabilities.*`, never on
   `PROVIDER.name`.
-  **`GET /healthz` reports the live `provider` AND `model`** — ask the
-  deployment, never the repo. `MODEL` is read once at startup from an env var
+  **`GET /healthz` reports the live `provider`, `model`, `commit` and
+  `started`** — ask the deployment, never the repo. `commit` is the deployed
+  SHA (`RENDER_GIT_COMMIT`, falling back to a `.git` read locally, `""` when
+  unknown) and it is how a deploy is verified from outside when the change has
+  no anonymous-visible byte — a server-side rule, a budget, a cache decision.
+  Grepping a served page proves nothing for those, and on 2026-08-09 two
+  deploys failed back to back while every page answered 200. `MODEL` is read once at startup from an env var
   nobody can see from here, and a provider's `defaultModel` moves with the
   code, so a checkout only proves what the source says. The Gemini default is
   `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
@@ -1641,7 +1646,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   would be served the thinner report without the private rows that justified
   it (corpus-strong entries stay cacheable, because the comps that shrank
   THAT budget are in the cached body). Firm-shared comps deliberately do not
-  count, and internal callers pass no vault rows. Rollback is
+  count, and internal callers pass no vault rows. **It is also gated on
+  `PROVIDER.capabilities.searchBudget`**, which means it is INERT on the
+  default provider: Gemini's `google_search` takes no `max_uses`, so the
+  floored budget is ignored and setting the flag would skip the cache write
+  for no saving at all — worse than not having the feature, and invisible.
+  It becomes a cost lever under `SEARCH_PROVIDER=anthropic`. Rollback is
   `ARCHIVE_FIRST=off`.
   **Metro matching (2026-08-10).** Corpus-first retrieval, and ONLY it, also
   reads the subject market's immediate neighbors from `market.js`'s curated

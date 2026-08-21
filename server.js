@@ -2657,6 +2657,32 @@ const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADI
 // `off` restores corpus-then-web for everyone.
 const ARCHIVE_FIRST = !/^(0|off|false|no)$/i.test(String(process.env.ARCHIVE_FIRST || ""));
 
+// Which build is serving, answerable from outside the box (see /healthz).
+// Resolved ONCE at startup and never on a request: the env vars are set by the
+// host, and the .git fallback touches the disk, which a health check hit by an
+// uptime monitor must not do per call.
+//
+// The env var comes first because the deploy target sets it and is right even
+// when no .git exists — Render ships RENDER_GIT_COMMIT, and the others are the
+// same fact under other hosts' names. The .git read is for a local checkout,
+// where it is the only source. Everything is best-effort: a missing commit is
+// "" (unknown), never a thrown error, because nothing about the app depends on
+// knowing its own version.
+const BOOT_AT = new Date().toISOString();
+const BUILD_COMMIT = (() => {
+  const fromEnv = process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION
+    || process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || "";
+  if (fromEnv) return String(fromEnv).trim().slice(0, 40);
+  try {
+    const head = require("fs").readFileSync(require("path").join(__dirname, ".git", "HEAD"), "utf8").trim();
+    // Detached HEAD holds the sha itself; otherwise it names the ref to read.
+    if (/^[0-9a-f]{40}$/i.test(head)) return head;
+    const ref = (head.match(/^ref:\s*(.+)$/) || [])[1];
+    if (!ref) return "";
+    return require("fs").readFileSync(require("path").join(__dirname, ".git", ref), "utf8").trim().slice(0, 40);
+  } catch (_) { return ""; }
+})();
+
 // On-market listing rows (unparseable deal_date) offered as extra candidates.
 // Default ON; `off` hides the prompt block and returns listed: []. The harvest
 // filter (no estimate/news) has no flag.
@@ -6399,7 +6425,17 @@ async function runCompSearch({
   // same as ever — nothing here hands them to the model, because the model's
   // output is cached and harvested, and a prompt that had seen a private row
   // would leak it through both.
+  //
+  // Gated on the PROVIDER honoring a search budget, and that gate is
+  // load-bearing rather than tidy. Gemini's google_search takes no max_uses
+  // (capabilities.searchBudget === false), so on the default provider the
+  // floored budget is silently ignored and the billed call is byte-identical
+  // to a full-budget one. Setting the flag anyway would buy nothing and still
+  // skip the cache write below — strictly worse than not having the feature,
+  // and invisible, because the report itself looks perfectly normal. Read the
+  // capability, never the provider name (the standing rule).
   const archiveStrong = ARCHIVE_FIRST
+    && PROVIDER.capabilities.searchBudget
     && BLEND.archiveIsStrong(BLEND.archiveCoverage(vaultRows));
   if (archiveStrong) {
     corpus.archiveStrong = true;
@@ -20632,9 +20668,22 @@ const server = http.createServer((req, res) =>
     // it moves the wall clock more than anything in the report JSON, and
     // "which setting produced this report?" has to be answerable from the
     // deployment rather than from the repo. "" means the vendor default.
+    // `commit` and `started` answer the one question a deploy could not be
+    // checked against from outside: IS THIS THE BUILD I PUSHED? Render
+    // auto-deploys main, and a blocked deploy looks exactly like a slow one
+    // from the outside — on 2026-08-09 two deploys failed back to back and
+    // production served the old build for an hour with every page answering
+    // 200. The workaround was grepping a served page for a string the change
+    // introduced, which fails for any change with no anonymous-visible byte
+    // (a server-side rule, a budget, a cache decision) and reports a healthy
+    // deploy as failed when the grep hits the wrong page. A commit answers it
+    // for every change, and `started` separates "deployed" from "restarted".
+    // Neither is a credential: the repo is the owner's and the SHA is already
+    // public on GitHub.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
       provider: PROVIDER.name, model: MODEL, thinking_level: THINKING_LEVEL,
       search_budget: PROVIDER.capabilities.searchBudget,
+      commit: BUILD_COMMIT, started: BOOT_AT,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 

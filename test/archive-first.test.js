@@ -80,17 +80,31 @@ async function startStubProvider() {
     req.on("end", () => {
       let sent = {};
       try { sent = JSON.parse(body || "{}"); } catch (_) { /* count still matters */ }
+      const tool = (sent.tools && sent.tools[0]) || {};
+      // Which provider is calling, read off the request rather than
+      // configured in: Anthropic asks for web_search with a max_uses, Gemini
+      // for google_search with nothing. The stub answers in that provider's
+      // own response shape, so one stub serves both boots and the recorded
+      // `maxUses` is null for the provider that genuinely cannot cap.
+      const gemini = tool.type === "google_search";
       calls.push({
-        maxUses: sent.tools && sent.tools[0] ? sent.tools[0].max_uses : null,
-        promptChars: JSON.stringify(sent.messages || "").length,
-        prompt: JSON.stringify(sent.messages || ""),
+        provider: gemini ? "gemini" : "anthropic",
+        maxUses: tool.max_uses == null ? null : tool.max_uses,
+        prompt: JSON.stringify(sent.messages || sent.input || sent.contents || ""),
       });
+      const text = JSON.stringify(reportFor("Boise, ID"));
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({
-        stop_reason: "end_turn",
-        usage: { input_tokens: 1000, output_tokens: 500 },
-        content: [{ type: "text", text: JSON.stringify(reportFor("Boise, ID")) }],
-      }));
+      res.end(JSON.stringify(gemini
+        ? {
+            status: "completed",
+            steps: [{ type: "model_output", content: [{ type: "text", text }] }],
+            usage: { input_tokens: 1000, output_tokens: 500 },
+          }
+        : {
+            stop_reason: "end_turn",
+            usage: { input_tokens: 1000, output_tokens: 500 },
+            content: [{ type: "text", text }],
+          }));
     });
   });
   await new Promise((r) => server.listen(0, r));
@@ -241,4 +255,52 @@ test("ARCHIVE_FIRST=off restores corpus-then-web for everyone", async (t) => {
   assert.equal(last.maxUses, 10, "with the lever off, a full vault buys no budget cut");
   await until(() => ctx.tables.search_cache.length >= 1,
     "with the lever off the search caches normally");
+});
+
+// The capability gate. Gemini's google_search takes no max_uses, so on a
+// provider that cannot honor a search budget the floored number is silently
+// ignored and the billed call is identical to a full-budget one — at which
+// point skipping the cache write (which archiveStrong also does) is pure loss
+// with nothing on screen showing it. Boot the same vault against Gemini and
+// assert the flag never fires: full budget, normal cache write, no tag.
+//
+// This shipped WRONG on the first pass and production runs Gemini, so this is
+// the single most important assertion in the file.
+test("a provider that cannot cap searches never takes the archive path", async (t) => {
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+
+  const gem = await shared.boot({
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on",
+    SUPABASE_URL: ctx.db.url, SUPABASE_SERVICE_KEY: "service-key",
+    SITE_URL: "https://compninja.co",
+    SEARCH_PROVIDER: "gemini", GEMINI_API_KEY: "test-key-not-a-real-one",
+    STREAM_ANTHROPIC: "off", SEARCH_API_URL: ctx.stub.url,
+  });
+  t.after(() => gem.stop());
+
+  const health = await (await fetch(gem.base + "/healthz")).json();
+  assert.equal(health.search_budget, false, "precondition: this provider caps nothing");
+
+  const before = ctx.tables.search_cache.length;
+  const res = await search(gem.base, "700 Gemini Way, Boise, ID 83702");
+  assert.equal(res.status, 200);
+  await res.json();
+
+  await until(() => ctx.tables.search_cache.length > before,
+    "an archive-strong search on a budget-less provider must still be cached — nothing was saved by skipping it");
+  const tagged = ctx.tables.analytics_events.filter((e) => e.kind === "search" && e.source === "archive");
+  assert.equal(tagged.length, 0,
+    "the search was tagged archive on a provider that ignored the budget — the tag claims a saving that did not happen");
+});
+
+// /healthz answers "is this the build I pushed?" — the question a deploy with
+// no anonymous-visible byte could not be checked against from outside.
+test("/healthz names the build and the boot time", async (t) => {
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const h = await (await fetch(ctx.srv.base + "/healthz")).json();
+  assert.ok(typeof h.commit === "string", "commit is always present, even as ''");
+  assert.match(h.commit, /^([0-9a-f]{40})?$/i, "a commit is a full sha or empty, never a branch name or a guess");
+  assert.ok(!Number.isNaN(Date.parse(h.started)), "started is an ISO timestamp");
 });

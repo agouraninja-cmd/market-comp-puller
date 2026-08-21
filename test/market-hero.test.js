@@ -42,12 +42,12 @@ test("Ontario, CA is not Ontario, Canada", () => {
 });
 
 test("a failed Ontario file falls through to Esri of Ontario, CA, not Canada", () => {
-  const live = heroFor("Ontario", "CA", { skipKeys: ["ontario, ca"] });
+  const live = heroFor("Ontario", "CA", { skipFiles: ["ontario-ca.jpg"] });
   const ll = CITY_COORDS["ontario, ca"];
   assert.equal(live.kind, "satellite");
   assert.equal(live.src, esriAerialUrl(ll.lat, ll.lng));
   assert.equal(live.credit, "Esri, Maxar");
-  assert.equal(heroFor("Ontario", "ON", { skipKeys: ["ontario, ca"] }), null);
+  assert.equal(heroFor("Ontario", "ON", { skipFiles: ["ontario-ca.jpg"] }), null);
 });
 
 test("every curated city has coordinates so a failed file can fall through to Esri", () => {
@@ -152,7 +152,7 @@ test("a curated photograph still wins over a generated one", () => {
 });
 
 test("a generated file that fails the quality grade drops to the satellite, like a curated one", () => {
-  const h = heroFor("Casper", "WY", { auto: AUTO_FIXTURE, skipKeys: ["casper, wy"] });
+  const h = heroFor("Casper", "WY", { auto: AUTO_FIXTURE, skipFiles: ["casper-wy.jpg"] });
   assert.equal(h.kind, "satellite");
   assert.equal(h.src, esriAerialUrl(42.85, -106.32));
 });
@@ -197,5 +197,69 @@ test("every generated hero on disk is a real, safe, attributed file", () => {
     assert.ok(hero.credit && hero.license, key + " has no attribution");
     assert.ok(hero.commons, key + " has no Commons title to link back to");
     assert.equal(HEROES[key], undefined, key + " is generated AND curated — the curated one would always win");
+  }
+});
+
+// --- a failed curated file, and the directory thumbnails ------------------
+
+test("a curated file that fails the grade hands off to the generated one, not to a tile", () => {
+  // The reason the skip list names FILES. Ontario, CA's curated JPEG is an
+  // upscale; a city-keyed skip took the understudy down with it.
+  const auto = {
+    cities: {
+      "ontario, ca": {
+        coords: { lat: 34.056, lng: -117.6012 },
+        hero: {
+          file: "ontario-ca-auto.jpg", credit: "Somebody", license: "CC BY 4.0",
+          commons: "Ontario CA from the air.jpg", alt: "Ontario, CA from above",
+        },
+      },
+    },
+  };
+  const live = heroFor("Ontario", "CA", { auto, skipFiles: ["ontario-ca.jpg"] });
+  assert.equal(live.kind, "photo");
+  assert.equal(live.src, "/market-heroes/ontario-ca-auto.jpg");
+  // Both failing means the tile, still of Ontario, CALIFORNIA.
+  const both = heroFor("Ontario", "CA", { auto, skipFiles: ["ontario-ca.jpg", "ontario-ca-auto.jpg"] });
+  assert.equal(both.kind, "satellite");
+  assert.equal(both.src, esriAerialUrl(34.056, -117.6012));
+  // And with nothing failing, the person's pick still wins.
+  assert.equal(heroFor("Ontario", "CA", { auto }).src, "/market-heroes/ontario-ca.jpg");
+});
+
+test("the directory thumbnail is the same picture as the page it links to", () => {
+  const { thumbFor, thumbName, HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT } = require("../market-hero");
+  const hero = heroFor("Dallas", "TX");
+  const thumb = thumbFor("Dallas", "TX");
+  assert.equal(thumb.kind, "photo");
+  assert.equal(thumb.src, "/market-heroes/" + thumbName("dallas-tx.jpg"));
+  assert.equal(thumb.src, hero.src.replace(/\.jpg$/, "-" + HERO_THUMB_WIDTH + ".jpg"));
+  assert.equal(thumb.alt, hero.alt);
+  // The thumbnail keeps the header's crop exactly, so a card cannot show a
+  // differently-framed version of the same photograph.
+  assert.equal(HERO_THUMB_WIDTH / HERO_THUMB_HEIGHT, HERO_WIDTH / HERO_HEIGHT);
+});
+
+test("a satellite city gets a small tile, and an unknown city gets no card picture", () => {
+  const { thumbFor, HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT } = require("../market-hero");
+  const t = thumbFor("Boise", "ID", { auto: { cities: {} } });
+  assert.equal(t.kind, "satellite");
+  assert.equal(t.src, esriAerialUrl(CITY_COORDS["boise, id"].lat, CITY_COORDS["boise, id"].lng,
+    HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT));
+  assert.equal(thumbFor("Narnia", "XX", { auto: { cities: {} } }), null);
+});
+
+test("every stored hero has its directory thumbnail on disk", () => {
+  const { autoCities, autoHeroFor, thumbName } = require("../market-hero");
+  const files = [
+    ...Object.values(HEROES).map((r) => r.file),
+    ...Object.keys(autoCities()).map((k) => (autoHeroFor(k) || {}).file).filter(Boolean),
+  ];
+  for (const file of files) {
+    const thumb = thumbName(file);
+    assert.ok(isHeroFilename(thumb), thumb + " is not a safe name");
+    assert.ok(fs.existsSync(path.join(DIR, thumb)),
+      thumb + " is missing — run: node scripts/auto-market-heroes.js --thumbs");
+    assert.ok(fs.statSync(path.join(DIR, thumb)).size > 4 * 1024, thumb + " looks empty");
   }
 });

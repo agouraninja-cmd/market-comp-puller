@@ -7597,6 +7597,13 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
 .mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit;box-shadow:var(--lift)}
 .mcard:hover{border-color:var(--ink-3)}
+/* A card with a picture puts the photograph above the words, edge to edge, so
+   the padding moves off the card and onto the body. The image keeps the
+   header's 4.8:1 crop and its own width/height attributes, so the grid does
+   not reflow as the lazy images arrive. */
+.mcard.haspic{padding:0;overflow:hidden}
+.mcard .mthumb{display:block;width:100%;height:auto;aspect-ratio:${MARKETHERO.HERO_THUMB_WIDTH} / ${MARKETHERO.HERO_THUMB_HEIGHT};object-fit:cover;background:var(--wash);border-bottom:1px solid var(--hair)}
+.mcard .mbody{padding:14px 18px 16px}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
@@ -8536,7 +8543,7 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
 }
 
 function marketHeroBanner(p, title) {
-  const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
   // A page published since the last run of scripts/auto-market-heroes.js has
   // no curated photo, no generated photo and no entry in either committed
   // coordinate table — but it does carry the city coordinates its own publish
@@ -8546,7 +8553,7 @@ function marketHeroBanner(p, title) {
   const coords = (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
     ? { lat: Number(p.lat), lng: Number(p.lng) }
     : null;
-  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys, coords });
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipFiles, coords });
   const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
   const heading = `<h1>${escHtml(title)}</h1>`;
   const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
@@ -8600,8 +8607,10 @@ function sampleMarketPathForHero(key) {
 function allHeroRows() {
   const rows = [];
   for (const [key, row] of Object.entries(MARKETHERO.HEROES)) rows.push({ key, row, auto: null });
+  // A generated photograph for a city that IS curated is not a duplicate: it
+  // is the understudy for a curated file that fails the grade (Ontario, CA).
+  // Both are listed so both are graded, and heroFor picks between them.
   for (const [key, city] of Object.entries(MARKETHERO.autoCities())) {
-    if (MARKETHERO.HEROES[key]) continue;
     const hero = MARKETHERO.autoHeroFor(key);
     if (hero) rows.push({ key, row: hero, auto: city });
   }
@@ -8631,6 +8640,7 @@ function inspectMarketHeroes() {
       license: row.license,
       commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
       samplePath: sampleMarketPathForHero(key),
+      file: row.file,
       picked: auto ? "auto" : "curated",
       judge: (auto && row.judge) || null,
       ok: g.ok,
@@ -8640,8 +8650,17 @@ function inspectMarketHeroes() {
       width: g.width,
       height: g.height,
       bytes: g.bytes,
-      liveKind: !g.ok ? "satellite" : "photo",
     });
+  }
+  // What each city ACTUALLY shows, asked of heroFor rather than inferred: a
+  // failing file no longer implies a satellite aerial, because the generated
+  // photograph behind a failing curated one can take over.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(rows);
+  for (const r of rows) {
+    const parts = String(r.key).split(",");
+    const live = MARKETHERO.heroFor((parts[0] || "").trim(), (parts[1] || "").trim(), { skipFiles });
+    r.liveKind = live ? live.kind : "none";
+    r.live = Boolean(live && live.src === r.src);
   }
   return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
 }
@@ -9177,6 +9196,9 @@ function renderMarketDirectoryHTML(signedIn) {
   // Trimmed to the ~160 characters Google renders; it was 169.
   const description =
     "Price-per-square-foot and cap-rate snapshots by city and property type — industrial, office, retail, and multifamily — built from real comparable sales.";
+  // One grade read for the whole page: cachedHeroInspect memoizes, but the
+  // list is walked per card and this keeps that explicit.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
   const cards = slugs.map((s) => {
     const p = merged[s];
     // Everything a visitor might reasonably type for this card, flattened into
@@ -9186,9 +9208,26 @@ function renderMarketDirectoryHTML(signedIn) {
     const haystack = [
       p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
     ].join(" ").toLowerCase();
-    return `<a class="mcard" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+    // The same picture that heads the market's own page, drawn small. It is
+    // decorative here — the card already names the city in text — so the alt
+    // is empty rather than a repeat for a screen reader to read twice.
+    const thumb = MARKETHERO.thumbFor(p.city, p.state, {
+      skipFiles,
+      coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+    });
+    // loading="lazy" matters more here than anywhere else on the site: this is
+    // the one page that carries every market at once.
+    const pic = thumb
+      ? `<img class="mthumb" src="${escHtml(thumb.src)}" alt="" width="${MARKETHERO.HERO_THUMB_WIDTH}" ` +
+        `height="${MARKETHERO.HERO_THUMB_HEIGHT}" loading="lazy" decoding="async"/>`
+      : "";
+    return `<a class="mcard${thumb ? " haspic" : ""}" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+      pic +
+      `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
-      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
+      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
+      `</div></a>`;
   }).join("");
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",

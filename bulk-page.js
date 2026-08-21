@@ -72,6 +72,11 @@ const BULK_CSS = `
 .bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
   color:var(--ink-mute);font-size:12px;max-width:70ch}
 .bulk .hide{display:none}
+/* The Tab hint's key cap. Inline in the button so the shortcut is named where
+   the action is, rather than in a legend somebody has to go and find. */
+.bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
+  border-radius:4px;color:var(--ink-mute);text-decoration:none;vertical-align:1px}
 `;
 
 /**
@@ -109,6 +114,13 @@ function renderBulkPageBody(boot) {
       <p class="acts" style="margin-top:10px">
         <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
         <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
+        <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
+             for somebody whose hands are already in the box; this is how it is
+             DISCOVERED, and how anyone who cannot or would rather not press
+             Tab reaches the same thing. Hidden the moment the box has content
+             (refreshCount owns that), because the offer only applies to an
+             empty one. -->
+        <button type="button" class="lnk" id="useExample">Try it with example addresses <span class="kbd">Tab</span></button>
         <span class="cost" id="count"></span>
       </p>
 
@@ -222,6 +234,11 @@ function countLines(text){
 function refreshCount(){
   parsedCount=Math.min(countLines($("bulkText").value),MAX);
   $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
+  // The offer applies to an empty box only, so it leaves once there is
+  // anything to lose — a control that would overwrite nothing is noise, and
+  // one that WOULD overwrite something should not be a stray keystroke.
+  var ex=$("useExample");
+  if(ex)ex.className=$("bulkText").value===""?"lnk":"lnk hide";
   // One run at a time, and the button says so rather than letting somebody
   // press it into a 409. The server enforces it either way; this is the
   // Buy-button rule — a control that can only fail is worse than none.
@@ -252,6 +269,29 @@ function refreshCount(){
 function capNoteText(){
   var base="Up to "+MAX+" addresses per run";
   return LEFT===null?base:base+" · "+LEFT+" left today";
+}
+
+// Fill the box with the example addresses.
+//
+// The examples live in the textarea's PLACEHOLDER and are read back out of it
+// here, so there is one copy. Writing them twice would let the greyed text and
+// the thing Tab inserts drift into disagreeing about what a valid list looks
+// like, which is the one job this feature has.
+//
+// insertText rather than assigning .value, so Ctrl+Z / Cmd+Z undoes it like
+// any other typing. It is a deprecated API and universally supported; the
+// assignment is the fallback, and costs only the undo entry.
+function fillExamples(){
+  var ta=$("bulkText");
+  if(ta.value!=="")return false;
+  var text=ta.placeholder||"";
+  if(!text)return false;
+  ta.focus();
+  var ok=false;
+  try{ok=document.execCommand("insertText",false,text);}catch(e){ok=false;}
+  if(!ok){ta.value=text;}
+  refreshCount();
+  return true;
 }
 
 function statusChip(s){
@@ -444,6 +484,24 @@ function start(boot){
   if(live)poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  $("useExample").addEventListener("click",function(){fillExamples();});
+  // Tab fills the box — but ONLY while it is empty, and never with a modifier.
+  //
+  // Tab is how a keyboard user leaves a field, so taking it is a real cost and
+  // the guards are what keep it payable. An empty box is the one state where
+  // Tab-to-leave and Tab-to-fill can be told apart by intent: there is nothing
+  // to move on FROM. The moment there is any content the key does its ordinary
+  // job again, so the surprise can happen at most once, is visible when it
+  // does (three lines of text appear under the cursor), and is undone with
+  // Ctrl+Z or one more Tab press to carry on.
+  //
+  // Shift+Tab is never intercepted: moving focus BACKWARDS out of an empty box
+  // is unambiguous, and stealing it would trap somebody at the top of the form.
+  $("bulkText").addEventListener("keydown",function(e){
+    if(e.key!=="Tab"||e.shiftKey||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(!fillExamples())return;   // non-empty (or no placeholder): Tab moves focus, as it must
+    e.preventDefault();
+  });
   $("run").addEventListener("click",run);
   $("pickFile").addEventListener("click",function(){$("bulkFile").click();});
   $("bulkFile").addEventListener("change",function(){

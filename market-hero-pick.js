@@ -98,6 +98,14 @@ const HISTORIC_TITLE_RE = /\b(1[6-9]\d{2}|19[0-5]\d|historic photograph|old phot
 // means the reviewer is spent on the described photographs first.
 const STOCK_IMPORT_RE = /\(unsplash\s+[a-z0-9_-]{4,}\)/i;
 
+// The Historic American Buildings Survey and its siblings: black-and-white
+// archival elevations of ONE building, shot with a film edge and a ruler, and
+// uploaded in bulk with the city in every title. They pass every other filter
+// — big, free, geotagged, named after the city — and Ontario, CA's entire
+// shortlist was six of them. Refused rather than sunk: the whole genre is
+// documentation of a facade, so none of them can be a city view.
+const ARCHIVAL_SURVEY_RE = /\b(habs|haer|hals)\b/i;
+
 // Where a candidate came from, worth more than anything its title says. The
 // English Wikipedia article's own lead image is a human's pick of the one
 // picture that represents the city, which is the same judgement being
@@ -106,6 +114,11 @@ const STOCK_IMPORT_RE = /\(unsplash\s+[a-z0-9_-]{4,}\)/i;
 const SOURCE_SCORE = {
   wikipedia: 60,
   "category-aerial": 45,
+  // Every other photograph the city's article uses. Editors picked these to
+  // illustrate the city, which is a weaker signal than the lead image and a
+  // much stronger one than "filed in the city's category" — and for a small
+  // town it is often the only place a real cityscape exists at all.
+  "wikipedia-article": 35,
   category: 22,
   geosearch: 18,
   search: 6,
@@ -115,7 +128,7 @@ const SOURCE_SCORE = {
 // image, a city category, a photograph geotagged inside the city. Only
 // full-text search has to prove it in the title, because Commons search
 // happily answers "Casper Wyoming skyline" with Skyline Drive, Virginia.
-const CITY_PROVEN_BY_SOURCE = new Set(["wikipedia", "category-aerial", "category", "geosearch"]);
+const CITY_PROVEN_BY_SOURCE = new Set(["wikipedia", "wikipedia-article", "category-aerial", "category", "geosearch"]);
 
 const FREE_LICENSE_RE = /^(cc|public domain|pd|no restrictions|attribution)/i;
 const NONFREE_LICENSE_RE = /(fair use|non-?free|all rights reserved|copyright|©)/i;
@@ -192,6 +205,9 @@ function gradeCandidate(cand, ctx) {
   }
   if (SUBJECT_TITLE_RE.test(title)) {
     return { ok: false, score: 0, reasons: ["a photograph of one thing in the city, not of the city"], title };
+  }
+  if (ARCHIVAL_SURVEY_RE.test(title)) {
+    return { ok: false, score: 0, reasons: ["an archival building survey, not a view of the city"], title };
   }
   if (!CITY_PROVEN_BY_SOURCE.has(source) && !titleNamesCity(title, city)) {
     return { ok: false, score: 0, reasons: ["a search hit that never names " + city], title };
@@ -297,6 +313,7 @@ module.exports = {
   MIN_SOURCE_WIDTH,
   NEAR_CITY_M,
   STOCK_IMPORT_RE,
+  ARCHIVAL_SURVEY_RE,
   PREFERRED_WIDTH,
   MAX_ASPECT,
   OK_MIME,

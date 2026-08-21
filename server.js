@@ -49,7 +49,7 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
-// Who is in a firm, and what their membership lets them do (migration 032).
+// Who is in a firm, and what their membership lets them do (migration 030).
 // Same pure, fails-closed contract as report-access.js, and it feeds that
 // file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
 // consults, so there is exactly one place that decides a pending invite is not
@@ -3217,7 +3217,7 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Firms (migration 032) — the reads and writes behind /api/org*.
+// Firms (migration 030) — the reads and writes behind /api/org*.
 //
 // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 //
@@ -3299,7 +3299,7 @@ async function setOrgShareDefault(orgId, value) {
     { share_default: value }, { prefer: "return=minimal" });
 }
 
-// The member's own override (migration 033). Scoped by BOTH the org and the
+// The member's own override (migration 031). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
 // knowing an org id must not be enough to flip anybody else's.
@@ -4216,7 +4216,7 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
-// A colleague invited to a firm (migration 032). Rides the same outbound gate
+// A colleague invited to a firm (migration 030). Rides the same outbound gate
 // as everything else, so it silently no-ops until EMAIL_FROM is set.
 //
 // It says who invited them and from what address, because this mail arrives
@@ -17316,7 +17316,7 @@ const server = http.createServer((req, res) =>
           });
         }
 
-        // The firm audience (migration 032). Same three refusals as the
+        // The firm audience (migration 030). Same three refusals as the
         // invited path — signed in, a database, and the audience proven
         // server-side — with the membership taking the place of the email
         // list. Two differences worth naming:

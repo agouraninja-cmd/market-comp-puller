@@ -56,7 +56,12 @@ async function boot(env) {
 }
 
 async function bootOnce(env) {
-  const port = await freePort();
+  // An explicit PORT is honoured, which is what lets a caller know the URL
+  // BEFORE the server starts — scripts/firm-sandbox.js needs it, because
+  // SITE_URL is read once at startup and every link the app generates is
+  // built from it. Every suite omits it and keeps the OS-assigned port.
+  const fixedPort = env && env.PORT ? Number(env.PORT) : 0;
+  const port = fixedPort || await freePort();
   // The responder-identity nonce: /healthz echoes TEST_BOOT_ID, and this boot
   // accepts only a responder echoing ITS nonce. "Something answers on my
   // port" is not "my child is ready" — a foreign server (another suite run,
@@ -111,7 +116,9 @@ async function bootOnce(env) {
         + (excerpt ? " — " + excerpt : ""));
       // Only this one failure retries (see boot()): the port was stolen in
       // freePort()'s close-to-bind window, which says nothing about the code.
-      err.portRace = /EADDRINUSE/.test(stderr);
+      // Never retried when the caller named the port: a different port is not
+      // what they asked for, and retrying the SAME one would just loop.
+      err.portRace = !fixedPort && /EADDRINUSE/.test(stderr);
       throw err;
     }
     try {

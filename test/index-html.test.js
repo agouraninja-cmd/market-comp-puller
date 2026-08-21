@@ -941,28 +941,41 @@ test("My Desk and the account circle have a place to put a profile photo", () =>
   assert.match(html, /\/api\/account\/avatar/);
 });
 
-test("the loading ninja is a two-frame runner that freezes for reduced motion and on done", () => {
-  // The 20-60s wait used to show an 18px blob hopping 2.5px on the bar.
-  // The replacement has to keep reading as a ninja (body + red band classes,
-  // still the only mascot on the site) and must not keep jogging after
-  // "Report ready!" or under prefers-reduced-motion.
+test("the loading ninja is a three-pose runner that freezes for reduced motion and on done", () => {
+  // The 20-60s wait used to show an 18px blob hopping 2.5px on the bar; the
+  // two-frame runner that replaced it was mostly scarf, with limbs thin
+  // enough to vanish at 24px. The current one has to keep reading as a ninja
+  // (body + red band classes, still the only mascot on the site), keep its
+  // limbs as STROKES so they survive that size, and must not keep jogging
+  // after "Report ready!" or under prefers-reduced-motion.
   assert.match(html, /id="loadingNinja"/);
-  assert.match(html, /class="ninja-run-a"/);
-  assert.match(html, /class="ninja-run-b"/);
+  assert.match(html, /class="ninja-pose-1"/);
+  assert.match(html, /class="ninja-pose-2"/);
+  assert.match(html, /class="ninja-pose-3"/);
   assert.match(html, /class="ninja-body"/);
   assert.match(html, /class="ninja-band"/);
+  assert.match(html, /class="ninja-limb"/);
+  assert.match(html, /class="ninja-limb-far"/);
 
   const cssStart = html.indexOf("/* Loading card:");
   const cssEnd = html.indexOf("#loadingHeadline");
   assert.ok(cssStart !== -1 && cssEnd > cssStart, "loading-ninja CSS block moved");
   const css = html.slice(cssStart, cssEnd);
   assert.match(css, /translateX\(-85%\)/);
-  assert.match(css, /translateY\(-1px\)/);
+  assert.match(css, /@keyframes ninjaBob/);
+  assert.match(css, /stroke-linecap:\s*round/);
+  // A limb drawn with no stroke-width is a limb that is not there.
+  assert.match(css, /\.ninja-limb\s*\{[^}]*stroke-width/);
+  assert.match(css, /\.ninja-limb-far\s*\{[^}]*stroke-width/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
   assert.match(css, /animation:\s*none\s*!important/);
   assert.match(css, /\.loading-ninja\.done/);
+  // The pass pose is shown twice per stride, which is the whole reason the
+  // cycle is four steps rather than two -- two frames read as a twitch.
+  assert.match(css, /@keyframes ninjaPose2 \{.*75%,\s*100%\s*\{\s*opacity:\s*1/);
   assert.ok(!/ninjaJog/.test(css), "old ninjaJog bounce must not remain");
   assert.ok(!/translateY\(-2\.5px\)/.test(css), "old 2.5px hop must not remain");
+  assert.ok(!/ninjaStride[AB]/.test(css), "old two-frame stride must not remain");
 
   const show = html.match(/function showLoadingCard\([\s\S]*?\n  \}/)[0];
   const complete = html.match(/function completeLoadingCard\(\) \{[\s\S]*?\n  \}/)[0];

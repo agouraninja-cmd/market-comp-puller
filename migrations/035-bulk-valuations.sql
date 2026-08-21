@@ -92,9 +92,12 @@ create index if not exists bulk_jobs_user_idx
 -- re-running this file stays safe.
 alter table bulk_jobs enable row level security;
 
-comment on table bulk_jobs is
-  'One bulk valuation run. Pro-only, user-scoped, no file fallback (see 035). '
-  'A row is the record of the RUN; the valuations themselves also land in portfolio_items.';
+-- One literal, not two adjacent ones. SQL concatenates string literals
+-- separated by a newline, which is valid Postgres and a paste hazard: a
+-- browser or editor that reflows the line turns it into a syntax error that
+-- aborts the whole script. Not hypothetical -- this file's first run in the
+-- SQL editor did nothing, and this was the likeliest reason.
+comment on table bulk_jobs is 'One bulk valuation run. Pro-only, user-scoped, no file fallback (see 035). A row is the record of the RUN; the valuations themselves also land in portfolio_items.';
 
 -- ---------------------------------------------------------------------------
 -- 2. One address in it.
@@ -162,6 +165,4 @@ create index if not exists bulk_job_items_user_idx
 -- Same rule, and this is the table that actually holds the addresses.
 alter table bulk_job_items enable row level security;
 
-comment on table bulk_job_items is
-  'One address inside a bulk valuation run. user_id is denormalized from the '
-  'job so every read is scoped without a join (013''s rule).';
+comment on table bulk_job_items is 'One address inside a bulk valuation run. user_id is denormalized from the job so every read is scoped without a join (013''s rule).';

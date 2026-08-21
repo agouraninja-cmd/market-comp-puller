@@ -306,3 +306,14 @@ test("035 re-runs cleanly", () => {
     if (/^create index/i.test(st)) assert.match(st, /create index if not exists/i);
   }
 });
+
+test("035 relies on no implicit string concatenation", () => {
+  // Two string literals separated by a newline are concatenated by SQL. Valid
+  // Postgres, and a paste hazard: a browser or editor that reflows the line
+  // turns it into a syntax error, and the SQL editor aborts the WHOLE script
+  // — so the migration silently does nothing and the tables never appear.
+  // That is the likeliest reason 035's first run in the SQL editor landed
+  // nothing (2026-08-21), which is why it is pinned rather than just fixed.
+  assert.deepEqual(LIVE_SQL.match(/'\s*\n\s*'/g) || [], [],
+    "035 has adjacent string literals across a newline — join them into one");
+});

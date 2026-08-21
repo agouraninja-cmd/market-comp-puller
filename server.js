@@ -7286,6 +7286,36 @@ const ACCOUNT_NAV_JS =
 // /how-it-works, so a visitor arriving from search lands on something that
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab is
+// #1A2433 light, #243044 dark), so every ink token runs backwards on it: the
+// ramp is built to lighten as the page darkens, and here the page never
+// lightened. Measured on /brokers before this existed, in dark:
+//   footer a / footer li a   --ink-4      1.75:1   (light: 9.60:1)
+//   footer p                 --ink-faint  2.38:1   (light: 6.06:1)
+//   footer .cols .ch         --ink-faint  2.38:1   (light: 6.06:1)
+// Nine footer links and the contact address, effectively invisible, on every
+// server-rendered page. theme.js's header already documents this trap for
+// --ink-4 and index.html's bridge already fixes it there (.text-[#B8C0CC] and
+// .text-[#D5DAE2] both redirect to --ink-3); the server-rendered footers use
+// var(--ink-4) DIRECTLY, so no class bridge could ever have reached them.
+//
+// Dark keeps light's own relationship rather than flattening it: links are the
+// loud thing (7.28:1 vs light's 9.60:1) and the small print is about 1.6x
+// quieter (4.52:1 vs light's 6.06:1), which is the same gap light has.
+// --ink-faint is deliberately NOT used here at all any more -- it is a whisper
+// token, below AA by design in both themes now (see theme.js), and this
+// footer's small print is a legal disclaimer that has to be readable.
+//
+// ONE copy, interpolated into MARKET_CSS and HOW_CSS and handed to
+// vault-page.js through the chrome object. The footer block is already
+// duplicated three times with a "keep the three in step" comment on it, and
+// three copies of a fix is three chances to fix two of them.
+const FOOTER_DARK_CSS = `
+[data-theme="dark"] footer{color:var(--ink-body)}
+[data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
+[data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
+`;
+
 const MARKET_CSS = `
 ${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
@@ -7608,6 +7638,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -9352,6 +9383,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .steps{grid-template-columns:repeat(3,1fr)}
@@ -20797,6 +20829,7 @@ const server = http.createServer((req, res) =>
       res.end(renderVaultHTML(boot, {
         CN_LOGO,
         MARKET_CSS,
+        FOOTER_DARK_CSS,
         THEME_CSS,
         THEME_BOOT,
         ACCOUNT_NAV_CSS,

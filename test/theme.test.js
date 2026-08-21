@@ -188,6 +188,60 @@ function cssBlock(name) {
   return SERVER_JS.slice(from, end);
 }
 
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab), so the
+// ink ramp runs backwards on it: --ink-4, which is a pale outline colour in
+// light, is a dark slate in dark. Measured on /brokers before the fix, every
+// footer link sat at 1.75:1 and the legal small print at 2.38:1. index.html
+// was protected by its class bridge; the three server-rendered footers set
+// var(--ink-4) DIRECTLY, so no bridge could reach them.
+//
+// The footer block already carried a "Mirrored in HOW_CSS and in index.html's
+// footer; keep the three in step" comment that it had NOT been kept in step
+// with, which is exactly why the fix is one shared constant and why this test
+// checks it arrives in all three rather than trusting the comment.
+test("the dark-mode footer ink reaches all three server-rendered footers", () => {
+  const rule = /\[data-theme="dark"\] footer a[^{]*\{color:var\(--ink-body\)\}/;
+
+  // Defined once, not restated per stylesheet.
+  const definitions = SERVER_JS.match(/const FOOTER_DARK_CSS =/g) || [];
+  assert.equal(definitions.length, 1, "FOOTER_DARK_CSS must be defined exactly once");
+  assert.match(SERVER_JS, rule, "server.js does not define the dark footer link rule");
+
+  // Interpolated into both server-side stylesheets, and handed to the vault.
+  const uses = SERVER_JS.match(/\$\{FOOTER_DARK_CSS\}/g) || [];
+  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate it");
+  assert.match(SERVER_JS, /renderVaultHTML\(boot, \{[^}]*FOOTER_DARK_CSS/s,
+    "the vault must be handed FOOTER_DARK_CSS through the chrome object");
+  assert.match(VAULT_JS, /chrome\.FOOTER_DARK_CSS/, "vault-page.js must read it");
+  assert.match(VAULT_JS, /\$\{FOOTER_DARK_CSS\}/, "vault-page.js must interpolate it");
+
+  // And it must not have quietly gone back to a token that inverts.
+  assert.equal(/\[data-theme="dark"\] footer[^{]*\{color:var\(--ink-4\)\}/.test(SERVER_JS), false,
+    "--ink-4 is 1.75:1 on the dark footer slab; it must not be the dark value");
+});
+
+test("the footer's dark ink clears AA on the slab it actually sits on", () => {
+  const lum = (hex) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const ratio = (a, b) => {
+    const x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const slab = THEME_TOKENS.slab.dark;
+  // Links carry navigation and the contact address; the small print is a
+  // legal disclaimer. Both have to be readable, which --ink-faint no longer
+  // is by design -- it is a whisper token in both themes now.
+  assert.ok(ratio(THEME_TOKENS["ink-body"].dark, slab) >= 4.5,
+    "footer links must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-3"].dark, slab) >= 4.5,
+    "footer small print must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-faint"].dark, slab) < 4.5,
+    "--ink-faint is a whisper; if it now clears AA this test's premise changed");
+});
+
 test("no in-scope stylesheet references an undefined variable", () => {
   const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));
   const blocks = {

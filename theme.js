@@ -34,10 +34,30 @@
 //
 // Note what --ink-faint's drop means: it is a whisper token again, below AA
 // by design, exactly as it already is in light. Anything that needs to be
-// READ must not use it. The footer disclaimer did, and was remapped to
-// --ink-3 in the index.html bridge on the same date (in light that class
-// sits on the DARK slab, where it reads 5.42:1 -- the bridge had been
-// treating it as a whisper it never was).
+// READ must not use it, and a sweep of every consumer on 2026-08-21 turned
+// up two places that did.
+//
+// The FOOTER is the important one, and the reason is a trap worth naming
+// once: --slab is dark in BOTH themes (#1A2433 light, #243044 dark), so on
+// that one surface the whole ink ramp runs backwards. It is built to lighten
+// as the page darkens, and the footer never lightened. Measured on /brokers:
+// footer links (--ink-4) 9.60:1 in light and 1.75:1 in dark; the legal small
+// print (--ink-faint) 6.06:1 and 2.38:1. index.html survived it because its
+// bridge already redirects .text-[#B8C0CC] and .text-[#D5DAE2] to --ink-3 for
+// exactly this reason -- but the three SERVER-RENDERED footers write
+// var(--ink-4) directly, where no class bridge can reach them. They take
+// FOOTER_DARK_CSS in server.js now, one shared constant rather than a fourth
+// copy of a block that already says "keep the three in step".
+//
+// The other was index.html's .text-[#8F99A8] (also the footer's small print,
+// also on the slab, 5.42:1 in light), remapped to --ink-3 in the bridge.
+//
+// What the sweep deliberately did NOT change: .text-[#9AA2AD] and the nav's
+// disclosure caret. Both measure BETTER in dark than in light (2.80:1 vs
+// 2.58:1, and 3.18:1 vs 2.58:1), because they sit on surfaces that really do
+// invert. They are whispers in both themes, which is the intent. The caret is
+// a UI affordance rather than text, so 3:1 is its bar and dark clears it
+// while light does not -- a light-mode finding, not a dark-mode one.
 //
 // Rules were re-laddered the same day. Light steps hair/line/edge 1.15 ->
 // 1.30 -> 1.48 against --card; dark had collapsed to 1.06 -> 1.28 -> 1.76,

@@ -6350,7 +6350,7 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
    not. Rows are visible on first paint: this sheet has no html.anim. */
 .bkhead{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:28px 0 0;letter-spacing:normal;text-transform:none}
-.sub + .bkhead{margin-top:8px}
+.sub + .bkhead,.kicker + .bkhead{margin-top:8px}
 .bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
@@ -6358,7 +6358,58 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .bk h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
 .bk p{font-size:13.5px;color:var(--ink-mute);margin:0}
 .bk .badge{margin:0 0 8px}
-.bklinks{margin:14px 0 0}
+.bklinks{margin:14px 0 28px}
+.bklinks + .kicker{margin-top:20px}
+/* /brokers page chrome beyond the two ledgers (hero split, submission path,
+   FAQ). /markets does not use these; do not invent a third stylesheet.
+   .bkex is a DIV list, never a <table>: MARKET_CSS tables carry min-width
+   640px so a real table would overflow the hero column on a laptop. */
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.bkhero{display:grid;grid-template-columns:1fr;gap:28px;margin:4px 0 12px}
+.bkhero .sub{margin-bottom:0;max-width:48ch}
+.bkex{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.bkexcap{padding:12px 16px;border-bottom:1px solid var(--hair);font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.bkexbody{padding:16px}
+.bkexaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:16px;color:var(--ink);
+  letter-spacing:-.005em}
+.bkexmeta{font-size:11px;color:var(--ink-mute);margin:6px 0 12px}
+.bkexlab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink);
+  border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:4px}
+.bkexrow{padding:8px 0;border-bottom:1px solid var(--hair)}
+.bkexrow:last-child{border-bottom:0}
+.bkexrow.on{background:var(--wash);margin:0 -8px;padding:8px;border-radius:4px;border-bottom:0}
+.bkexline{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink);font-weight:500}
+.bkexrow.on .badge{margin:6px 0 0}
+.bkpath{display:grid;grid-template-columns:1fr;border:1px solid var(--edge);border-radius:6px;
+  overflow:hidden;background:var(--card);margin:12px 0 0}
+.bk + .kicker,.disc + .kicker{margin-top:36px}
+.bkbeat{padding:22px;border-bottom:1px solid var(--hair)}
+.bkbeat:last-child{border-bottom:0}
+.bknum{font-family:Georgia,'Times New Roman',serif;font-size:13px;color:var(--red);margin-bottom:8px}
+.bkbeat h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
+.bkbeat p{font-size:13.5px;color:var(--ink-mute);margin:0}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  cursor:pointer;font-weight:600;color:var(--ink)}
+details.q summary::-webkit-details-marker{display:none}
+/* /brokers FAQ chevron. Stroke is %2394a3b8 (#94A3B8 URL-encoded) -- the same
+   marker HOW_CSS uses. var() cannot reach a data URI; this is --ink-3's dark
+   value and happens to read in both themes. Keep the two in step. */
+details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
+details.q[open] summary::after{transform:rotate(180deg)}
+details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
+.faqhead{margin-bottom:20px}
+/* Last FAQ row used to sit 12px+26px above the Submit card and read as
+   part of it. This junction is the only #faq in MARKET_CSS. */
+#faq + .cta{margin-top:56px}
+@media(min-width:900px){
+  .bkhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
+  .bkpath{grid-template-columns:1fr 1fr 1fr}
+  .bkbeat{border-bottom:0;border-right:1px solid var(--hair)}
+  .bkbeat:last-child{border-right:0}
+}
 /* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
    trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
    approach as .cn-logo above, and for the same reason: colours in generated
@@ -8301,6 +8352,22 @@ const HOW_FAQ = [
    "A private comp database for Pro members. Upload your own comp book and it folds into your reports, benchmarked against the market, visible to you and no one else. It never appears in anyone else's report unless you explicitly share yours."],
 ];
 
+// One Q/A array feeds both the /brokers FAQ block and its FAQPage JSON-LD, so
+// the two can never drift. Broker-specific: do not copy HOW_FAQ, which answers
+// owners. No em dashes. Never "appraisal". Never claim CompNinja is a broker.
+const BROKERS_FAQ = [
+  ["Do I have to pay to submit a comp?",
+   "No. Submitting is free. Pro is the private vault, the pipeline, and the rest of the paid product."],
+  ["Who sees an owner's contact details?",
+   "Nobody but our team. Introductions are made by hand. We never pass your details to an owner, or theirs to you, without asking first."],
+  ["What does the Verified badge mean?",
+   "A named broker vouched for this deal and our team reviewed it. It is the strongest provenance a report shows."],
+  ["Is my vault private?",
+   "Yes. Uploaded comps are visible only to you until you choose otherwise, and there are exactly two ways to choose: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are explicit, and both are reversible. Nothing else is ever read out of your vault."],
+  ["How long does review take?",
+   "We review every submission by hand. Approved comps start appearing on matching reports after that."],
+];
+
 // ---------------------------------------------------------------------------
 // /download — where users get the standalone desktop app (desktop-app/, an
 // Electron shell around this site with its own installer and no visible
@@ -8408,16 +8475,27 @@ function renderBrokersPageHTML(signedIn) {
           ],
         },
       },
+      {
+        "@type": "FAQPage",
+        mainEntity: BROKERS_FAQ.map(([q, a]) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: { "@type": "Answer", text: a },
+        })),
+      },
     ],
   });
 
-  // Reworked 2026-08-13 (two stacked ledgers). Standing rules:
+  // Reworked 2026-08-14 (hero exhibit + path + FAQ around the two ledgers).
+  // Standing rules:
   //   - ONE submit door: the bottom CTA. Nothing above it links to the form.
   //   - Compliance line stays: we connect, we never broker.
   //   - The Verified chip is SHOWN (inline green on span.badge — NOT
   //     class="badge v", whose .v collides with .tile .v in MARKET_CSS).
   //   - Contribute and Pro are two ledgers, not one list, so the vault does
   //     not read as free. Proof line is real MARKET_CREDIT or nothing.
+  //   - The path is .bkpath/.bkbeat, never .steps (Method's sequence).
+  //   - BROKERS_FAQ feeds both the accordions and the FAQPage JSON-LD.
 
   // Proof: up to four real firm · market credits. byMarket keys are
   // lowercased "city, st"; re-case for display (title-case city, upper state).
@@ -8457,20 +8535,51 @@ function renderBrokersPageHTML(signedIn) {
     (chip ? chip : "") +
     `<p>${escHtml(p)}</p></div></div>`).join("");
 
+  const faqBlock = BROKERS_FAQ.map(([q, a]) =>
+    `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
+
   const body =
+    `<div class="bkhero">` +
+    `<div><div class="kicker">For brokers</div>` +
     `<h1>Your comps, your name, on every report that uses them.</h1>` +
     `<p class="sub">We build valuation reports from public data. Comps confirmed by a local ` +
-    `broker rank highest, and they carry that broker's name.</p>` +
+    `broker rank highest, and they carry that broker's name.</p></div>` +
+    `<div class="bkex">` +
+    `<div class="bkexcap"><span>On a live report</span><span>Illustrative</span></div>` +
+    `<div class="bkexbody">` +
+    `<div class="bkexaddr">9020 Center Ave, Rancho Cucamonga, CA</div>` +
+    `<div class="bkexmeta">Industrial &middot; 21,600 SF &middot; 5 comparables</div>` +
+    `<div class="bkexlab">Comparable properties</div>` +
+    `<div class="bkexrow on"><div class="bkexline"><span>9020 Center Ave</span><span>$238</span></div>` +
+    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></div>` +
+    `<div class="bkexrow"><div class="bkexline"><span>11215 4th St</span><span>$226</span></div></div>` +
+    `<div class="bkexrow"><div class="bkexline"><span>8933 Utica Ave</span><span>$219</span></div></div>` +
+    `</div></div></div>` +
 
     `<h2 class="bkhead">For submitting a comp.</h2>` +
     `<div class="bk">${ledgerHtml(contributeRows)}</div>` +
     proof +
+
+    `<div class="kicker">How a submission works</div>` +
+    `<h2 class="bkhead">Four facts. We review. Your name stays on it.</h2>` +
+    `<div class="bkpath">` +
+    `<div class="bkbeat"><div class="bknum">I.</div><h3>Four facts</h3>` +
+    `<p>Address, date, price, and size. About a minute.</p></div>` +
+    `<div class="bkbeat"><div class="bknum">II.</div><h3>We review</h3>` +
+    `<p>Our team checks the deal before it can carry the Verified badge.</p></div>` +
+    `<div class="bkbeat"><div class="bknum">III.</div><h3>Your name</h3>` +
+    `<p>Every report that uses it shows Verified &middot; via your firm.</p></div>` +
+    `</div>` +
 
     `<h2 class="bkhead">With Pro.</h2>` +
     `<div class="bk">${ledgerHtml(proRows)}</div>` +
     `<p class="bklinks"><a href="/vault">Open your vault &rarr;</a>` +
     `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
     `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p>` +
+
+    `<div class="kicker">Questions</div>` +
+    `<h2 class="bkhead faqhead">FAQ</h2>` +
+    `<div id="faq">${faqBlock}</div>` +
 
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +

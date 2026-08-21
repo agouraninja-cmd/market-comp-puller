@@ -7310,6 +7310,27 @@ const ACCOUNT_NAV_JS =
 // vault-page.js through the chrome object. The footer block is already
 // duplicated three times with a "keep the three in step" comment on it, and
 // three copies of a fix is three chances to fix two of them.
+// Leaflet's own chrome, dark. index.html carries the same block for the report
+// map; the market pages have their OWN comp map (#mktMap, MARKET_MAP_JS) and
+// had none of it, so in dark the container showed leaflet.css's #ddd -- a
+// light grey slab the size of the map, through every tile gap and for the
+// whole of a slow tile load -- with white zoom controls and a white popup on
+// top. Found by a leak scan across all nine pages, not by reading the diff.
+//
+// This is a HAND-COPY of index.html's block, like DARK_CHROME is: index.html
+// is static and never templates this file, so the two cannot share a constant
+// and can only be kept in step deliberately. A test pins that they agree.
+const LEAFLET_DARK_CSS = `
+[data-theme="dark"] .leaflet-container{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution,
+[data-theme="dark"] .leaflet-bar a{background:var(--card);color:var(--ink-3);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-bar a:hover{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution a{color:var(--ink-2)}
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
+[data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+`;
+
 const FOOTER_DARK_CSS = `
 [data-theme="dark"] footer{color:var(--ink-body)}
 [data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
@@ -7639,6 +7660,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 ${FOOTER_DARK_CSS}
+${LEAFLET_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -8154,14 +8176,32 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { return f || nominatim(a); })
       .then(function (f) { save(k, f); return f; });
   }
-  var map = null, pts = [];
+  var map = null, pts = [], tiles = null;
+  // The basemap follows the theme, the way index.html's basemapUrl() does. It
+  // was pinned to light_all, so a dark market page rendered a white rectangle
+  // in the middle of it. setUrl on a theme change rather than a rebuild: the
+  // toggle lives in the shared header and can fire long after this ran, and
+  // re-adding the layer would drop every pin already placed.
+  function baseUrl() {
+    var el = document.documentElement;
+    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
+  }
   function ensureMap(center) {
     if (map) return map;
     map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    // Assigned before addTo rather than from its return value: Leaflet does
+    // return the layer, but the theme swap below depends on holding it, and a
+    // chained assignment makes that dependency invisible.
+    tiles = L.tileLayer(baseUrl(), {
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map);
+    });
+    tiles.addTo(map);
+    try {
+      new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    } catch (e) {}
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }

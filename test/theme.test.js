@@ -173,6 +173,7 @@ const root = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8").repla
 // here: they declare their own :root and are out of scope (spec section 1).
 const SERVER_JS = root("server.js");
 const VAULT_JS = root("vault-page.js");
+const INDEX_HTML = root("index.html");
 
 // Slice one template-literal CSS constant out of server.js by name.
 function cssBlock(name) {
@@ -199,6 +200,60 @@ function cssBlock(name) {
 // footer; keep the three in step" comment that it had NOT been kept in step
 // with, which is exactly why the fix is one shared constant and why this test
 // checks it arrives in all three rather than trusting the comment.
+// index.html and the market pages each own a Leaflet map, and index.html is
+// static so the two cannot share a constant -- the same hand-copy relationship
+// DARK_CHROME already has. The market pages had NO Leaflet dark rules at all
+// until 2026-08-21, so in dark the container showed leaflet.css's #ddd behind
+// every tile gap. This pins the copies together: a rule added to one and not
+// the other is the failure mode a comment alone has never prevented in this
+// file.
+test("the market pages' Leaflet dark chrome matches index.html's copy", () => {
+  // Both sides are parsed into selector -> declaration-set, because the two
+  // files format identically-meaning CSS differently: index.html keeps its
+  // selector lists on separate lines with spaces and a trailing semicolon,
+  // server.js writes them compact. Comparing text would fail on whitespace.
+  const parse = (css) => {
+    const map = new Map();
+    css.replace(/\/\*[\s\S]*?\*\//g, "").split("}").forEach((chunk) => {
+      const at = chunk.indexOf("{");
+      if (at < 0) return;
+      const sels = chunk.slice(0, at).split(",").map((x) => x.replace(/\s+/g, " ").trim());
+      const decls = chunk.slice(at + 1).split(";")
+        .map((d) => d.replace(/\s+/g, " ").replace(/\s*:\s*/, ":").trim())
+        .filter(Boolean).sort().join(";");
+      sels.filter(Boolean).forEach((sel) => { if (sel.includes("leaflet")) map.set(sel, decls); });
+    });
+    return map;
+  };
+
+  const block = SERVER_JS.match(/const LEAFLET_DARK_CSS = `([\s\S]*?)`;/);
+  assert.ok(block, "LEAFLET_DARK_CSS must exist in server.js");
+  const market = parse(block[1]);
+  const index = parse(INDEX_HTML.split("</style>")[0]);
+
+  assert.ok(market.size >= 6, `expected the whole block, got ${market.size} selectors`);
+  for (const [sel, decls] of market) {
+    assert.ok(index.has(sel), `index.html has no dark Leaflet rule for ${sel}`);
+    assert.equal(index.get(sel), decls, `${sel} disagrees between index.html and LEAFLET_DARK_CSS`);
+  }
+});
+
+// The market map used to hardcode CARTO's light_all basemap, so a dark market
+// page rendered a white rectangle in the middle of it. It follows the theme
+// now, and swaps by setUrl rather than rebuilding the layer, because the
+// theme toggle lives in the shared header and can fire long after the pins
+// have been placed.
+test("the market map's basemap follows the theme", () => {
+  assert.match(SERVER_JS, /basemaps\.cartocdn\.com\/" \+ \(dark \? "dark_all" : "light_all"\)/,
+    "the market basemap must be chosen from the theme, not pinned");
+  assert.equal(/cartocdn\.com\/light_all/.test(SERVER_JS), false,
+    "no hardcoded light_all basemap should remain");
+  assert.match(SERVER_JS, /attributeFilter: \["data-theme"\]/,
+    "a theme change must reach the tile layer");
+  assert.match(SERVER_JS, /tiles\.setUrl\(baseUrl\(\)\)/,
+    "swap the URL rather than re-adding the layer, which would drop the pins");
+});
+
 test("the dark-mode footer ink reaches all three server-rendered footers", () => {
   const rule = /\[data-theme="dark"\] footer a[^{]*\{color:var\(--ink-body\)\}/;
 

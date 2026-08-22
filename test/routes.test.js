@@ -2425,7 +2425,67 @@ test("hub invites are wired to the outbound mail gate", async () => {
   // And the client is told whether anything actually left, so the panel's copy
   // cannot claim "we do not email" on a deployment that does.
   assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && EMAIL_FROM\)/);
-  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\)/g) || []).length, 2);
+});
+
+test("the emailed flag is the send's answer, not a restatement of the config", () => {
+  // `emailed: OUTBOUND_EMAIL_LIVE()` was a LIE with a cost. That function only
+  // asks whether RESEND_API_KEY and EMAIL_FROM are set; the send was
+  // fire-and-forget and a Resend rejection reached nothing but a console.error
+  // on a host Owen cannot read. So the broker was told "each person has been
+  // emailed their link" whether or not Resend accepted it.
+  //
+  // On the hub page that is not cosmetic: showPeopleInvites HIDES the links
+  // when it believes they were mailed, and a hub token cannot be shown twice.
+  // A refused send therefore destroyed the invitation and reported success —
+  // the same shape as the 2026-08-19 splitter bug, whose damage was likewise
+  // "the link hidden because emailed was true".
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  // The whole chain has to carry the answer back, or the route cannot know it.
+  assert.match(src, /async function sendEmail\(/, "sendEmail must resolve to whether Resend accepted");
+  assert.match(src, /async function sendOutboundEmail\(/);
+  assert.match(src, /async function sendHubInvites\(/);
+
+  // sendHubInvites reports WHO was not mailed, per person: a partial failure
+  // must not withhold the links of the people it did fail.
+  const fn = src.match(/async function sendHubInvites[\s\S]*?\n\}/)[0];
+  assert.match(fn, /return invites\.filter\(/, "must return the addresses that were not mailed");
+
+  // Neither route may go back to asserting it.
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\),/g) || []).length, 0,
+    "the bare config flag must not be reported as the send result");
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\) && emailFailed\.length === 0/g) || []).length, 2,
+    "both the create route and the participants route report the real result");
+
+  // And both must actually WAIT for it. Dropping the await silently restores
+  // the bug: emailFailed stays [] and every send reads as a success.
+  assert.equal((src.match(/await sendHubInvites\(/g) || []).length, 2,
+    "an un-awaited send makes emailFailed empty and the flag wrong again");
+});
+
+test("the three invitation emails say 'a free account is all it takes' the same way", () => {
+  // Not a style rule imported from outside: sendShareInvites already writes
+  // this exact sentence as two plain sentences ("...to open it. A free account
+  // is all it takes."), and its two siblings wrote it with an em dash instead.
+  // Three emails that arrive at the same person from the same product should
+  // not read as though three people wrote them.
+  //
+  // Scoped to the BODIES of the three invite senders on purpose. Em dashes in
+  // comments and in internal owner notifications are nobody's business.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  for (const name of ["sendShareInvites", "sendOrgInvites", "sendHubInvites"]) {
+    const fn = src.match(new RegExp(`function ${name}[\\s\\S]*?\\n\\}`))[0];
+    // Only the emitted copy, which is what a recipient reads.
+    const copy = (fn.match(/`[^`]*`/g) || []).join(" ");
+    assert.ok(!copy.includes("—"), `${name}'s email copy should not use an em dash`);
+    assert.match(copy, /A free account is all it takes/,
+      `${name} should phrase the account line like its siblings`);
+  }
 });
 
 test("only newly invited people are mailed when a participant list is replaced", () => {

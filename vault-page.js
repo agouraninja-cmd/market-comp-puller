@@ -3725,12 +3725,21 @@ if(dd)dd.open=false;});</script>
     // reports as the emailed flag. This used to hard-code "CompNinja does not email
     // them yet" — true when hubs shipped, and a lie the day a domain is
     // verified in Resend, told to the one person relying on it.
+    // THREE cases, because "we did not try" and "we tried and it failed" are
+    // different things to tell a broker. emailed is now the send's own answer
+    // rather than a restatement of the configuration, so a partial failure is
+    // reportable and names who still needs a link.
+    var failed = Array.isArray(j.emailFailed) ? j.emailFailed : [];
     var head = j.emailed
       ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
         'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
-      : '<p class="note">Your hub is ready. Copy each link and send it to that '+
-        'person yourself: CompNinja cannot email them until a sending domain is verified, '+
-        'and these links cannot be shown again.</p>';
+      : failed.length && failed.length < list.length
+        ? '<p class="note">Your hub is ready, but '+esc(failed.join(", "))+
+          ' could not be emailed. Copy their link below and send it yourself; '+
+          'these links cannot be shown again.</p>'
+        : '<p class="note">Your hub is ready. Copy each link and send it to that '+
+          'person yourself: CompNinja could not email them, '+
+          'and these links cannot be shown again.</p>';
     if(!list.length){
       box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
         '">Open the hub</a> and add people to it when you are ready.</p>';

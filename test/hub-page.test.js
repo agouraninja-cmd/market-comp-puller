@@ -476,10 +476,26 @@ test("the invite splitter survives the template literal, and keeps plus-addresse
     "whitespace still separates, which is the whole reason for the escape");
 });
 
-test("invite links are shown only when the server could NOT email them", () => {
+test("invite links are shown only for the people the server could NOT email", () => {
   // When it did email, the links are still secrets and there is no reason to
   // put them on screen.
-  assert.match(pageScript(html), /if \(!list\.length \|\| j\.emailed\)\{ show\("peopleInvites", false\)/);
+  //
+  // PER PERSON, and that is the fix rather than a refinement. The panel used
+  // to hide every link on a single all-or-nothing `j.emailed`, which the
+  // server answered from its own configuration — so a send Resend refused hid
+  // the link anyway, and a hub token cannot be shown a second time. The
+  // invitation was destroyed and the broker was told it had been sent.
+  const js = pageScript(html);
+  assert.match(js, /var failed = j\.emailFailed;/,
+    "the panel must decide from who was actually mailed");
+  assert.match(js, /failed\.indexOf\(inv\.email\) >= 0/,
+    "a failed address keeps its link; a mailed one does not");
+  // The fallback direction is load-bearing: a response with no emailFailed
+  // must show the links, because a link shown needlessly costs a copy-paste
+  // and a link withheld wrongly costs the invitation.
+  assert.match(js, /Array\.isArray\(failed\) \? all\.filter\(/);
+  assert.doesNotMatch(js, /if \(!list\.length \|\| j\.emailed\)/,
+    "the all-or-nothing gate is the bug and must not come back");
 });
 
 test("show() is never handed a DOM node", () => {

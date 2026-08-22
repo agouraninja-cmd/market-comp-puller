@@ -2,6 +2,12 @@
   {
     "date": "2026-08-22",
     "type": "fix",
+    "title": "A hub invitation that could not be sent no longer reports itself as sent",
+    "details": "Creating a hub, or adding somebody to one, told the broker \"each person has been emailed their link\" whenever the mail settings were configured. It never asked whether the mail actually went. The send was fire-and-forget and a rejection from the mail provider reached nothing but a log on the server, so a refused invitation and a delivered one looked identical from the app. On the hub page that cost more than a wrong sentence: the People panel hides the invite links when it believes they were mailed, and a hub link cannot be shown a second time, so a refused send destroyed the invitation and reported success. The send is now awaited and the flag is its real answer, per person: anyone the mail provider would not accept keeps their link on screen, and the panel says plainly that they could not be emailed. A hub still cannot fail to be created because of a mail problem, which was the original reason the send was abandoned rather than awaited. Also: the hub and firm invitations phrase the free-account line the way the report-share invitation always has, so three emails from one product stop reading as three."
+  },
+  {
+    "date": "2026-08-22",
+    "type": "fix",
     "title": "A failed read on the desk says the same reassuring thing everywhere",
     "details": "When the desk cannot load your shared reports it hides those sections rather than pretending you have none, which is right and was already the case. What it said was thinner than the portfolio's version of the same failure: one bare line naming the failure, where the portfolio adds that nothing has been lost and to refresh in a moment. The shares line covers the sections that name colleagues and their work, so it is the one where a bare could-not-load reads most like somebody's shared reports having gone missing. Both now say what failed and then that nothing is gone."
   },

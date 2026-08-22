@@ -4511,25 +4511,37 @@ const STATE_NAMES = {
 // posted, so it belongs in the same trusted place as the key itself.
 const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
 
-function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
-  if (!RESEND_API_KEY) return;
-  fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: from || "CompNinja <onboarding@resend.dev>",
-      to: [to],
-      subject,
-      text,
-      ...(html ? { html } : {}),
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
-    signal: AbortSignal.timeout(8000),
-  })
-    .then(async (r) => {
-      if (!r.ok) console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
-    })
-    .catch((err) => console.error(`Email send failed (${subject}):`, err.message));
+// RESOLVES TO WHETHER RESEND ACCEPTED IT, and never rejects. Almost every
+// caller ignores the promise and stays fire-and-forget, which is why this
+// swallows its own failures — but a caller that has to TELL somebody the mail
+// went can now await the truth instead of inferring it from configuration.
+// The difference is not academic: a hub invite carries the only copy of a
+// token, and the panel hides that link when it believes the mail was sent.
+async function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
+  if (!RESEND_API_KEY) return false;
+  try {
+    const r = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: from || "CompNinja <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        text,
+        ...(html ? { html } : {}),
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) {
+      console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Email send failed (${subject}):`, err.message);
+    return false;
+  }
 }
 
 // Internal notification to the owner. Empty fields are dropped from the body.
@@ -4546,12 +4558,16 @@ function notifyByEmail(subject, fields) {
 // the SAME text — the text stays the source of truth and the fallback part,
 // so a call site edits its copy in one place and plain-text clients lose
 // nothing. Owner-facing notifyByEmail stays deliberately plain.
-function sendOutboundEmail(to, subject, text) {
+// Resolves to whether the mail was accepted, like sendEmail. A gated-off
+// deployment resolves FALSE rather than throwing: "we did not send it" and
+// "we tried and it bounced" are the same fact to a caller deciding whether to
+// show somebody a link they must now copy by hand.
+async function sendOutboundEmail(to, subject, text) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
-    return;
+    return false;
   }
-  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
+  return sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -4592,7 +4608,7 @@ function sendOrgInvites(emails, { firm, kind, fromName, fromEmail }) {
       `A firm is a shared shelf: ${arrivals} a colleague shares with the firm ` +
       `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
       `Accept here: ${SITE_URL}/desk\n\n` +
-      `Sign in with this email address (${to}) — a free account is all it takes. ` +
+      `Sign in with this email address (${to}). A free account is all it takes. ` +
       `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
       `If you were not expecting this, ignore it: an unaccepted invitation gives nobody access to anything.`);
   }
@@ -4620,20 +4636,26 @@ const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
 // invite lets somebody READ, and only signing in as the invited address lets
 // them post.
 //
-// Fire and forget, ALWAYS: the hub and its participants are already written
-// when this runs. A mail provider having a bad afternoon must never turn a
-// created hub into an error, and the broker still holds every link.
-function sendHubInvites(invites, { hubTitle, fromName }) {
-  for (const inv of invites) {
+// NEVER FATAL, but no longer blind: the hub and its participants are already
+// written when this runs, so a mail provider having a bad afternoon must never
+// turn a created hub into an error. It must not be reported as a success
+// either. This RESOLVES TO THE ADDRESSES THAT WERE NOT MAILED, so the caller
+// can hand those people's links back to the broker to send by hand.
+//
+// Sent in parallel, because the caller is holding an HTTP response open: one
+// round trip for a list of twenty, bounded by sendEmail's own 8s abort.
+async function sendHubInvites(invites, { hubTitle, fromName }) {
+  const sent = await Promise.all(invites.map((inv) => {
     const who = fromName ? `${fromName} has` : "A broker has";
     const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
-    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+    return sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
       `${who} shared ${what} with you on CompNinja.\n\n` +
       `Open it here: ${inv.url}\n\n` +
       `You can read it without an account. To reply or shortlist a building, ` +
-      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `sign in with this email address (${inv.email}). A free account is all it takes.\n\n` +
       `Every CompNinja valuation is an automated estimate, not an appraisal.`);
-  }
+  }));
+  return invites.filter((_, i) => !sent[i]).map((inv) => inv.email);
 }
 
 // ---------------------------------------------------------------------------
@@ -20417,21 +20439,27 @@ const server = http.createServer((req, res) =>
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
           const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
-          // Fire and forget, AFTER the rows are written. A mail provider having
-          // a bad afternoon must never turn a created hub into an error.
+          // AFTER the rows are written, and awaited rather than abandoned. A
+          // mail provider having a bad afternoon still must not turn a created
+          // hub into an error — it turns into `emailFailed`, which costs the
+          // broker a copy-paste instead of costing them the invitation.
+          let emailFailed = [];
           try {
-            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+            emailFailed = await sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
           } catch (err) {
             console.error("Hub invite send failed:", err.message);
+            emailFailed = inviteLinks.map((i) => i.email);
           }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
             invites: inviteLinks,
-            // Whether the invitations actually LEFT. The panel says something
-            // different depending on the answer, and it must not guess.
-            emailed: OUTBOUND_EMAIL_LIVE(),
+            // Whether the invitations actually LEFT — the send's own answer,
+            // not a restatement of the configuration. The panel says something
+            // different depending on it, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0,
+            emailFailed,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -20972,18 +21000,24 @@ const server = http.createServer((req, res) =>
           // Only the NEWLY invited are mailed — re-saving an unchanged list, or
           // only removing people, must email nobody. Same rule as
           // PUT /api/shares/viewers.
+          let emailFailed = [];
           if (newLinks.length) {
             try {
-              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+              emailFailed = await sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
             } catch (err) {
               console.error("Hub invite send failed:", err.message);
+              emailFailed = newLinks.map((i) => i.email);
             }
           }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
             invites: newLinks,
-            emailed: OUTBOUND_EMAIL_LIVE(),
+            // This panel HIDES the links when it believes they were mailed, and
+            // a token cannot be shown twice. Guessing here loses the invitation
+            // outright, so the flag is the send's answer.
+            emailed: OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0,
+            emailFailed,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

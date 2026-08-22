@@ -41,7 +41,7 @@ function seedTables() {
       user_id: BRAD.id, plan: "pro_monthly", status: "active",
       current_period_end: YEAR_OUT, cancel_at_period_end: false,
     }],
-    orgs: [], org_members: [], shared_reports: [], report_viewers: [],
+    orgs: [], org_members: [], shared_reports: [], report_viewers: [], org_contacts: [],
     analytics_events: [], export_usage: [], report_purchases: [],
   };
 }
@@ -841,14 +841,15 @@ test("what an invited colleague actually receives", async (t) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migration 036) — Transition Plan v2 §6's two customer types.
+// Shop kind (migrations 036 and 037) — Transition Plan v2 §6's customer
+// types, plus the tenant rep shop added on top of it 2026-08-21.
 //
 // The rules worth executing rather than arguing: the question cannot be
 // answered by silence, changing the answer is an admin's job, and the answer
 // survives a fresh read. org-access.test.js proves the pure half with no
 // database; this is the half that writes a column.
 // ---------------------------------------------------------------------------
-test("a firm is one of two shops, and says which", async (t) => {
+test("a firm is one of three shops, and says which", async (t) => {
   const tables = seedTables();
   const ctx = await bootWithDb(tables);
   t.after(() => ctx.stop());
@@ -863,7 +864,8 @@ test("a firm is one of two shops, and says which", async (t) => {
                         { name: "Colliers Boise", kind: "enterprise" }]) {
       const r = await create(body);
       assert.equal(r.status, 400, JSON.stringify(body));
-      assert.match((await r.json()).error, /broker shop or a development shop/);
+      assert.match((await r.json()).error,
+        /broker shop, a development shop or a tenant rep shop/);
     }
     assert.equal(tables.orgs.length, 0, "and nothing was written");
   });
@@ -899,21 +901,296 @@ test("a firm is one of two shops, and says which", async (t) => {
     assert.equal((await settings(BRAD, { kind: "broker" })).status, 200);
     assert.equal((await myOrg(MIKE)).orgs[0].kind, "broker", "the colleague reads the new words too");
 
-    for (const junk of ["enterprise", "", true, "dev", "brokerage"]) {
+    for (const junk of ["enterprise", "", true, "dev", "brokerage",
+                        "tenant", "tenant rep", "tenant-rep"]) {
       assert.equal((await settings(BRAD, { kind: junk })).status, 400, JSON.stringify(junk));
     }
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "broker", "a refused change changed nothing");
 
     // Case and padding are NORMALIZED on the way in rather than refused, the
     // way validateOrgName collapses a name. The column may only ever hold the
-    // two exact values (036's CHECK says so), and that is what this proves:
-    // the write path cleans, the read path in org-access.js stays strict.
+    // three exact values (037's CHECK says so, widening 036's), and that is
+    // what this proves: the write path cleans, the read path in org-access.js
+    // stays strict.
     assert.equal((await settings(BRAD, { kind: "  DEVELOPMENT " })).status, 200);
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "development");
     assert.equal(tables.orgs[0].kind, "development", "stored lower case, never as typed");
+
+    // 037's value, driven all the way to the column. The fake database does
+    // not enforce a CHECK, so this cannot prove Supabase will accept it — that
+    // is what running the migration before the deploy is for — but it does
+    // prove every layer above the column agrees on the exact string, which is
+    // the half that a typo would break silently.
+    assert.equal((await settings(BRAD, { kind: " Tenant_Rep " })).status, 200);
+    assert.equal(tables.orgs[0].kind, "tenant_rep", "underscored, lower case, never as typed");
+    assert.equal((await myOrg(MIKE)).orgs[0].kind, "tenant_rep",
+      "and the colleague reads the new words too");
   });
 
   await t.test("the fake never had to guess at a query it did not understand", () => {
     assert.deepEqual(ctx.db.unparsed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The deal board's attribution after somebody leaves (038).
+//
+// This is the split the snapshot column exists to close. `org_comps` has
+// denormalized `shared_by_name` since 032, so a member who deletes their
+// account keeps their attribution on their COMPS; `shared_reports` had no name
+// column and 018 sets `user_id` to null on delete, so the same person lost it
+// on their REPORTS. The board keys on the id first and the name second, so one
+// person arrived as TWO rows — once by name, once unattributed — with correct
+// totals and a wrong-looking roster.
+// ---------------------------------------------------------------------------
+test("a departed member is one row on the deal board, not two", async (t) => {
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+    method: "POST", body: JSON.stringify({ orgId: org.id }),
+  }));
+
+  // Mike shares a report with the firm while his account still exists.
+  const share = await fetch(srv.base + "/api/share", as(MIKE, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+  assert.equal(share.status, 200);
+
+  // The name is snapshotted at share time — the half that makes the rest work.
+  const row = tables.shared_reports.find((r) => r.user_id === MIKE.id);
+  assert.ok(row, "the share was written");
+  assert.equal(row.shared_by_name, "Mike",
+    "the sharer's name is stored, not merely joined from users at read time");
+
+  // Now Mike deletes his account: 018's rule nulls user_id and the users row
+  // is gone, so the live lookup can no longer answer who shared this.
+  tables.shared_reports.forEach((r) => { if (r.user_id === MIKE.id) r.user_id = null; });
+  tables.users = tables.users.filter((u) => u.id !== MIKE.id);
+
+  const board = (await (await fetch(srv.base +
+    `/api/org/board?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).board;
+  assert.ok(board, "the firm has shared something, so there is a board");
+
+  const mike = board.members.filter((m) => m.name === "Mike");
+  assert.equal(mike.length, 1, "Mike is one row");
+  assert.equal(mike[0].reports, 1);
+  // And crucially NOT an extra anonymous row beside him.
+  const anon = board.members.filter((m) => !m.name);
+  assert.deepEqual(anon, [],
+    "a departed member with a stored name never also appears as an unattributed row");
+});
+
+test("the live name wins over the snapshot while the account exists", async (t) => {
+  // The opposite ordering to report branding's, deliberately: a mark must look
+  // the way it looked when it was sent, while an attribution should say what a
+  // colleague is called TODAY. Somebody who fixes a typo in their profile
+  // should not read the old spelling back on their own shelf row.
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/share", as(BRAD, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+
+  // Brad renames himself after sharing. The snapshot still says "Brad".
+  tables.users.find((u) => u.id === BRAD.id).name = "Bradley";
+
+  const shelf = await (await fetch(srv.base +
+    `/api/org/shelf?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+  assert.equal(shelf.items[0].sharedBy, "Bradley",
+    "the shelf shows the current name, not the one snapshotted at share time");
+});
+
+// ---------------------------------------------------------------------------
+// The firm's tenant contacts (039).
+//
+// Firm-wide by design, so the assertion that matters most is the one about
+// ANOTHER firm: this list is the only place the product stores tenant names
+// and addresses a customer typed, and a scoping mistake here hands one
+// brokerage another's client list.
+// ---------------------------------------------------------------------------
+const CONTACT_CSV = [
+  "name,email,company",
+  "# a note line the importer skips",
+  "Dana Wu,dana@acme.com,Acme Logistics",
+  "Ray Ortiz,,Nordic Cold",
+  "Bad Row,not-an-email,X",
+].join("\n");
+
+async function firmWithMike(t) {
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "tenant_rep" }),
+  }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+    method: "POST", body: JSON.stringify({ orgId: org.id }),
+  }));
+  return { tables, db, srv, org };
+}
+
+test("a firm's tenant contacts", async (t) => {
+  await t.test("one member adds, every member sees, and who added it is recorded", async () => {
+    const { srv, org } = await firmWithMike(t);
+
+    const add = await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(MIKE, {
+      method: "POST",
+      body: JSON.stringify({ name: "Dana Wu", email: "Dana@Acme.com", company: "Acme Logistics" }),
+    }));
+    assert.equal(add.status, 200);
+    assert.equal((await add.json()).imported, 1);
+
+    // Brad reads what Mike typed — the whole point of firm-scoping it.
+    const list = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(list.contacts.length, 1);
+    assert.equal(list.contacts[0].name, "Dana Wu");
+    assert.equal(list.contacts[0].email, "dana@acme.com", "stored lowercased");
+    assert.equal(list.contacts[0].addedBy, "Mike",
+      "the member who added it is recorded, which is what keeps the private-by-default option open");
+    assert.equal(list.contacts[0].mine, false, "and Brad is told it is not his");
+  });
+
+  await t.test("a CSV imports, refuses its bad rows by line, and counts its note lines", async () => {
+    const { srv, org } = await firmWithMike(t);
+    const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    }))).json();
+    assert.equal(r.imported, 2);
+    assert.equal(r.total, 3, "the note line is not counted as data");
+    assert.equal(r.commented, 1);
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /^Line 5:/);
+    assert.match(r.errors[0], /not an email address/);
+  });
+
+  await t.test("importing the same file twice never doubles an emailed contact", async () => {
+    const { srv, org } = await firmWithMike(t);
+    const post = () => fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    })).then((x) => x.json());
+
+    await post();
+    const again = await post();
+
+    // The EMAILED contact is recognised and dropped; the un-emailed one is
+    // not, and that asymmetry is deliberate rather than a gap. Merging Ray
+    // would mean deciding that two contacts sharing a name are one person,
+    // which is exactly the guess this module refuses to make — the same rule
+    // that keeps two "Dana Wu"s apart. The cost is a duplicate somebody can
+    // delete; the cost of the alternative is quietly destroying one of two
+    // real contacts, which nothing on screen would show.
+    assert.equal(again.duplicates, 1, "the emailed one is recognised and reported");
+    assert.equal(again.imported, 1, "the un-emailed one is imported again, by design");
+
+    const list = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(list.contacts.filter((c) => c.email === "dana@acme.com").length, 1,
+      "so the firm never ends up with two rows for one address");
+
+    // And Ray, who has no email, is imported AGAIN — the visible cost of
+    // refusing to merge on a name. The fake models Postgres here (a NULL in a
+    // unique key never conflicts), which it did not until this feature was
+    // built: it was collapsing two un-emailed rows into one, so this exact
+    // assertion would have proved the opposite of what production does.
+    assert.equal(list.contacts.filter((c) => c.name === "Ray Ortiz").length, 2,
+      "an un-emailed contact is never merged, so a re-import duplicates it");
+  });
+
+  await t.test("an edit is refused when it would make a row the import would reject", async () => {
+    const { srv, org } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = (await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).contacts[0].id;
+
+    const bad = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`, as(BRAD, {
+        method: "PATCH", body: JSON.stringify({ email: "nope" }),
+      }));
+    assert.equal(bad.status, 400);
+
+    const good = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`, as(BRAD, {
+        method: "PATCH", body: JSON.stringify({ company: "Nordic Cold" }),
+      }));
+    assert.equal(good.status, 200);
+    const after = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(after.contacts[0].company, "Nordic Cold");
+    assert.equal(after.contacts[0].name, "Dana Wu", "an untouched field survives the edit");
+  });
+
+  await t.test("another firm cannot read, edit or delete these contacts", async () => {
+    const { srv, org, tables } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = tables.org_contacts[0].id;
+
+    // The outsider is in no firm at all.
+    for (const [method, path] of [
+      ["GET", `/api/org/contacts?id=${encodeURIComponent(org.id)}`],
+      ["PATCH", `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`],
+      ["DELETE", `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`],
+    ]) {
+      const res = await fetch(srv.base + path, as(OUTSIDER, {
+        method, ...(method === "PATCH" ? { body: JSON.stringify({ name: "Stolen" }) } : {}),
+      }));
+      assert.equal(res.status, 403, `${method} ${path}`);
+    }
+    assert.equal(tables.org_contacts.length, 1, "and nothing was written or removed");
+    assert.equal(tables.org_contacts[0].name, "Dana Wu");
+  });
+
+  await t.test("a delete is scoped to the firm as well as the id", async () => {
+    const { srv, org, tables } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = tables.org_contacts[0].id;
+
+    // Brad's own firm, a real id, but the WRONG org in the query — the shape a
+    // scoping bug would let through.
+    const wrongOrg = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent("00000000-0000-4000-8000-000000000000")}` +
+      `&contact=${encodeURIComponent(id)}`, as(BRAD, { method: "DELETE" }));
+    assert.equal(wrongOrg.status, 403, "membership is checked before the row is ever looked up");
+    assert.equal(tables.org_contacts.length, 1);
+
+    const ok = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`,
+      as(BRAD, { method: "DELETE" }));
+    assert.equal(ok.status, 200);
+    assert.equal(tables.org_contacts.length, 0);
+  });
+
+  await t.test("the fake understood every filter these routes sent", async () => {
+    const { srv, org, db } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    }));
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD));
+    assert.deepEqual(db.unparsed, [],
+      `fake-supabase refused a filter: ${db.unparsed.join(", ")}`);
   });
 });

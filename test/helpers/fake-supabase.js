@@ -64,6 +64,17 @@ function matches(row, key, expr) {
   // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
   // needs this taught properly rather than reused.
   if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
+  // `lte.` is `gte.`'s mirror and is taught for the same reason and with the
+  // same caveat: server.js sends it (the renewal watch windows a lease
+  // deadline BETWEEN two dates, so it sends both on one column), and the
+  // comparison is a STRING one, correct only for the ISO dates and timestamps
+  // this app puts through it. A numeric column would be wrong here.
+  //
+  // Note the two arrive as separate entries under one key and applyFilters
+  // ANDs every entry, which is PostgREST's own semantics — a fake that read
+  // params into an object would keep only the last and silently widen the
+  // window to everything before the horizon.
+  if (expr.startsWith("lte.")) return String(val) <= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);
@@ -152,11 +163,24 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
           // else is left to the plain-insert path rather than guessed at.
           const conflict = (url.searchParams.get("on_conflict") || "")
             .split(",").map((s) => s.trim()).filter(Boolean);
+          // A NULL in any part of the key means the row can never conflict,
+          // which is Postgres's own rule for a unique index and NOT what a
+          // naive String(r[c]) does — that turns two nulls into "null" and
+          // "null" and silently drops the second row.
+          //
+          // Taught 2026-08-22, found while building `org_contacts` (039),
+          // where a contact with no email is an ordinary and explicitly
+          // allowed row: two of them upserted here and only the first was
+          // stored, so a test would have proved the second was rejected while
+          // production accepted it. The divergence ran the WRONG way round
+          // for once — the fake was stricter than the database — which is
+          // exactly the shape that makes a green suite untrustworthy.
+          const nullKey = (r) => conflict.some((c) => r[c] === null || r[c] === undefined);
           const keyOf = (r) => conflict.map((c) => String(r[c])).join("\u0000");
           const stored = [];
           for (const r of rows) {
-            const existing = conflict.length
-              ? tables[table].find((t) => keyOf(t) === keyOf(r))
+            const existing = (conflict.length && !nullKey(r))
+              ? tables[table].find((t) => !nullKey(t) && keyOf(t) === keyOf(r))
               : null;
             if (existing) {
               if (prefer.includes("resolution=merge-duplicates")) {

@@ -71,6 +71,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        the same reason: it must never be cached stale against the HTML. -->
   <script src="/dev-returns.js"></script>
   <script src="/explore-query.js"></script>
+  <script src="/market-snapshot.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -712,6 +713,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          that gets forwarded to a client, so it carries the whole explanation
          — the toggle button is .no-print and disappears on its own. */
       #ownerTrustHow { display: block !important; }
+      /* Same rule as the line above, for the same reason: the approaches that
+         produced no figure are collapsed on screen so the ledger leads with
+         the one that did, and an export is the copy that gets forwarded, so
+         it carries every approach whether it ran or not. The toggle itself is
+         .no-print. Restated in downloadImage's onclone, which never sees this
+         block. */
+      #apOff { display: table-row-group !important; }
       #compsTable tr { break-inside: avoid; page-break-inside: avoid; }
       #compsTable thead { display: table-header-group; }
       /* Paper cannot scroll sideways: unclip the table and let cells wrap. */
@@ -1064,6 +1072,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .ap-stmt .ap-lab { font-weight: 600; color: var(--ink); }
     .ap-stmt tr.muted td { font-size: 12px; color: var(--ink-3); }
     .ap-stmt tr.muted .ap-lab { color: var(--ink-3); }
+    /* ⚠ LOAD-BEARING, and the third time this file has been bitten by it (see
+       .deck.hide in vault-page.js and the .hdr nav [hidden] line in
+       ACCOUNT_NAV_CSS). The phone treatment below sets `.ap-stmt tbody
+       { display: block }`, which at (0,1,1) out-specifies Tailwind's plain
+       `.hidden` at (0,1,0) — so the collapsed approaches rendered anyway on
+       every screen under 560px while looking correct on a desktop. Measured
+       at 375px, not read: 165px of rows that were supposed to be behind the
+       toggle. This wins at (0,2,1) and needs no !important; the print and
+       onclone rules stay above it on their own !important. */
+    .ap-stmt tbody.hidden { display: none; }
     /* Two columns need a phone treatment. The value column is nowrap by
        design (a wrapped "$7,925,000 – $8,625,000" is unreadable), which at
        343px leaves the evidence about 150px and turns every row into a
@@ -1127,6 +1145,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
     .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
+    /* The deal board (O3). One row shape for all three lists — leaderboard,
+       markets, months — because they are the same statement read three ways,
+       and three different treatments would imply three different kinds of
+       number. Built on .dk-crow's hairline rhythm with a rank column and
+       tabular figures, so a column of counts lines up. */
+    .db-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; color: var(--ink-body); }
+    .db-row:last-child { border-bottom: 0; }
+    .db-rank { flex: 0 0 18px; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .db-name { flex: 1 1 auto; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .db-you { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-left: 6px; }
+    /* An unattributed bucket reads in the quiet voice, never as a person. */
+    .db-name.db-anon { color: var(--ink-3); font-style: italic; }
+    .db-split { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .db-total { flex: 0 0 auto; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 22px; text-align: right; }
+    .db-tabs { display: inline-flex; border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; }
+    .db-tab { font-size: 11.5px; padding: 5px 11px; color: var(--ink-3); background: transparent; cursor: pointer; border: 0; }
+    .db-tab + .db-tab { border-left: 1px solid var(--hair); }
+    /* --paper, never #fff: --ink flips to a near-white in dark mode, so a
+       hardcoded white label on it is white on white. The pair is the same one
+       the primary button uses. */
+    .db-tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
     /* Desk decks (2026-08-21): the vault's Direction-U grouping applied to My
        Desk — a serif label on a heavy ink rule per product area, so the dozen
        dk-rule sections read as five shelves instead of one flat stack. A deck
@@ -2249,15 +2288,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
         <!-- The other empty state, and the reason they are two elements: a
-             failed read used to render as "Run a report — it will show up
-             here", which tells somebody with a book of sixteen properties
-             that it is gone. Same rule the vault's comps table, the lead
-             inbox and the hub list each had to learn — an outage must never
-             be reported as an absence. Shown by renderMyDesk(); the rows and
-             the count are left exactly as they were rather than wiped. -->
-        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost — refresh in a moment.</p>
+             failed read used to render as the invitation above, which tells
+             somebody with a book of sixteen properties that it is gone. Same
+             rule the vault's comps table, the lead inbox and the hub list
+             each had to learn: an outage must never be reported as an
+             absence. Shown by renderMyDesk(); the rows and the count are left
+             exactly as they were rather than wiped.
+             ⚠ This wording is the MODEL for every other failed read on the
+             desk, and the reassurance is the load-bearing half: a bare
+             "couldn't load" on a section that holds saved work reads as data
+             loss to the person most likely to be looking at it. Keep the two
+             sentences (what failed, then that nothing is gone) on any new
+             one. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
         <!-- Statement table container (was a 3-col card grid). The id keeps
              every existing reference; renderMyDesk builds the table inside.
              The book line (#deskLedger) that used to sit above it is now the
@@ -2295,7 +2340,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            it is a firm-level record with its own rules (whole-shelf count,
            1000-row truncation notice, its own search) and lives in the firm
            deck below. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports.</p>
+      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+           only "Couldn't load your shared reports", which is the failure
+           without the reassurance — and this line covers the sections that
+           name COLLEAGUES and their work, so it is the one where a bare
+           "couldn't load" is likeliest to read as somebody's shared reports
+           having been lost. It already hides the sections rather than
+           fabricating a "0 shares" empty state; this only finishes the
+           sentence. -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
       <div id="deskShares" class="hidden mt-8">
         <div class="dk-rule">
           <span class="rd-lab">Shared reports</span>
@@ -2364,6 +2417,95 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="firmShelfNoMatch" class="hidden text-sm text-[#5A6473] mt-2">Nothing on the shelf matches that.</p>
       </div>
 
+      <!-- The deal board (O3): who shared what to the firm, by member, by
+           market and by month. Presentation over the shelf and the firm's
+           shared comps — no new tables, and nothing here reads a colleague's
+           own book. Hidden until the firm has shared something; the shelf's
+           empty state above already says what to do about that, and better. -->
+      <div id="deskDealBoard" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Deal board</span>
+          <span id="dealBoardStats" class="dk-note"></span>
+        </div>
+        <!-- Said on the panel, not only in the code. The wishlist asked to see
+             who is closing what; this counts what people SHARE, and a reader
+             who assumes otherwise would be reading a wrong number that looks
+             exactly like a right one. -->
+        <p class="text-xs text-[#68707E] mt-2">Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.</p>
+        <p id="dealBoardTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span class="rd-lab">Most shared</span>
+          <div class="db-tabs" role="group" aria-label="Leaderboard window">
+            <button type="button" class="db-tab" data-window="month" aria-pressed="true">This month</button>
+            <button type="button" class="db-tab" data-window="quarter" aria-pressed="false">This quarter</button>
+          </div>
+        </div>
+        <div id="dealBoardLeaders" class="mt-1"></div>
+        <p id="dealBoardLeadersEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nothing has been shared with the firm in this window yet.</p>
+
+        <div class="mt-6 grid sm:grid-cols-2 gap-6">
+          <div>
+            <div class="dk-rule"><span class="rd-lab">By market</span></div>
+            <div id="dealBoardMarkets" class="mt-1"></div>
+          </div>
+          <div>
+            <!-- "Shared by month", not "By month": the only date both sources
+                 have in common is when something reached the firm, so the
+                 heading names it rather than leaving a reader to assume it
+                 means when the deal closed. -->
+            <div class="dk-rule"><span class="rd-lab">Shared by month</span></div>
+            <div id="dealBoardMonths" class="mt-1"></div>
+            <!-- Declared rather than folded in silently: a share whose date we
+                 cannot read still counts in the totals above, so the months
+                 below them would otherwise quietly sum to less. -->
+            <p id="dealBoardUndated" class="hidden text-xs text-[#68707E] mt-1.5"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- The firm's own tenant contacts (039). Typed or imported, NEVER
+           collected: nothing on this panel is populated from a CompNinja lead
+           or a hub participant, which the plan made a condition of building it
+           — see migrations/039 for the reasoning. Firm-wide, with the member
+           who added each one shown, because that is what keeps the
+           private-by-default option open later. -->
+      <div id="deskContacts" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Tenant contacts</span>
+          <span id="contactsStats" class="dk-note"></span>
+        </div>
+        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a CSV — nothing here is ever filled in from CompNinja enquiries.</p>
+
+        <form id="contactAddForm" class="mt-3 flex flex-wrap items-end gap-2">
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Name</span>
+            <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Email</span>
+            <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Company</span>
+            <input id="contactCompany" type="text" maxlength="120" placeholder="optional"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+          <!-- A second door for a list somebody already keeps in a
+               spreadsheet. It posts to the same route the Add button does. -->
+          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a CSV</button>
+          <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
+        </form>
+        <p id="contactMsg" class="hidden text-sm mt-2"></p>
+        <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
+
+        <div id="contactRows" class="mt-3"></div>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a CSV with a name column.</p>
+      </div>
+
       <!-- The firm itself: create one, accept an invitation, see who is in it.
            Three states in one section, exactly one visible at a time
            (renderFirm owns that). Deliberately BELOW the firm shelf: this is
@@ -2382,11 +2524,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- 2. No firm yet. -->
         <div id="firmCreate" class="hidden mt-2">
           <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
-          <!-- The shop question (036), asked once, here. It has no default on
-               purpose: the answer decides the words every colleague reads from
-               then on, the creator is the only person who knows it, and a
-               preselected option is a question answered by silence. The empty
-               first option is not a value the server accepts. -->
+          <!-- The shop question (036, third kind 037), asked once, here. It
+               has no default on purpose: the answer decides the words every
+               colleague reads from then on, the creator is the only person who
+               knows it, and a preselected option is a question answered by
+               silence. The empty first option is not a value the server
+               accepts. -->
           <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
             <label for="firmKindSelect">What kind of shop is this?</label>
             <select id="firmKindSelect"
@@ -2394,6 +2537,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
+              <option value="tenant_rep">Tenant rep shop</option>
             </select>
           </div>
           <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
@@ -2436,6 +2580,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
+                <option value="tenant_rep">Tenant rep shop</option>
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
@@ -2923,7 +3068,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               class="no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
             <p id="ownerTrustHow" class="hidden text-xs text-[#68707E] mt-2"></p>
           </div>
-          <p class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <!-- Set per render by renderOwnerHero: the noun is "sales" for every
+               value branch and "leases" for the rent one, because a rent range
+               disclaimed as an estimate from comparable SALES describes a
+               different report. -->
+          <p id="ownerEstimateNote" class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
@@ -3695,8 +3844,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     { key: "year_built", label: "Year Built", numeric: true  },
   ];
 
-  function columnsForType(type) {
+  // `txFocus` only ever changes a LABEL here, never which columns exist. On a
+  // leases-only report the $/SF column holds an annual rent, and the hero
+  // above it may be quoting the same figure per MONTH (leaseQuoteBasis), so an
+  // unlabelled 13.5 under a headline of $1.18 is the one number on the page a
+  // reader could take for a monthly rate and be 12x out. The figures are NOT
+  // converted to match the hero: this column is shared with sale reports and
+  // feeds sorting and the exports, and a column meaning different things on
+  // different reports is the two-bases hazard broker-vault.js refuses to take
+  // on. Label it, move nothing.
+  function columnsForType(type, txFocus) {
     const cols = BASE_COLUMNS.slice();
+    if (txFocus === "leases") {
+      const psf = cols.findIndex((c) => c.key === "price_per_sqft");
+      if (psf >= 0) cols[psf] = { ...cols[psf], label: "$/SF/yr" };
+    }
     if (type !== "Land") {
       const capIdx = cols.findIndex((c) => c.key === "cap_rate");
       const building = type === "Residential"
@@ -3810,9 +3972,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const n = assetNoun(type);
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
-  function setHeroTitle(type) {
+  function setHeroTitle(type, txFocus) {
     const el = document.getElementById("ownerHeroTitle");
-    if (el) el.textContent = `What This ${assetNounTitle(type)} Is Worth`;
+    if (!el) return;
+    // A leases-only report answers what space RENTS for, and it says so at
+    // BOTH seams: the form's live select while a search assembles, and the
+    // report's own meta once it renders. Split across the two call sites, a
+    // leases-only search would sit under "What This Building Is Worth" for the
+    // whole minute the comps take to arrive, then flip — which is the same
+    // failure the type noun had here before it was centralized.
+    const verb = txFocus === "leases" ? "Rents For" : "Is Worth";
+    el.textContent = `What This ${assetNounTitle(type)} ${verb}`;
   }
   const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
 
@@ -4223,12 +4393,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .filter((v) => isFinite(v) && v >= 0)
       .sort((a, b) => a - b);
     // Below three it is a list of facts, not a spread worth summarizing.
-    if (mi.length < 3) { el.classList.add("hidden"); el.textContent = ""; return; }
+    if (mi.length < 3) { el.classList.add("hidden"); el.textContent = ""; reconcileRadiusClaim(null); return; }
     const far = mi[mi.length - 1];
     el.textContent = far < 0.1
       ? `All ${mi.length} located comps sit within a tenth of a mile of your property.`
       : `Located comps sit ${fmtMiles(mi[0]).replace("< ", "under ")} to ${fmtMiles(far)} from your property.`;
     el.classList.remove("hidden");
+    reconcileRadiusClaim(far);
+  }
+
+  // The measured line above is the truth; the radius line three elements up
+  // is the search model's claim about the same thing. When the two disagree
+  // the reader is handed a contradiction and no way to resolve it, so the
+  // claim gives way and the measurement stands alone. Called from
+  // renderDistanceNote because that is where the measurement lands, and it
+  // lands a beat AFTER the radius line is painted (geocoding settles later),
+  // which is why this cannot live at the radius line's own render.
+  //
+  // Passing null means "no measurement" and restores whatever the model
+  // said: a report whose comps never geocoded has nothing to contradict it,
+  // and re-running curation must be able to put the line back.
+  function reconcileRadiusClaim(farthestMiles) {
+    const el = document.getElementById("searchRadiusNote");
+    if (!el || !el.dataset.claim) return;
+    const hide = farthestMiles != null
+      && VALUATION.radiusClaimContradicted(el.dataset.claim, farthestMiles);
+    el.classList.toggle("hidden", hide);
   }
 
   // Called once the map's geocoding pass settles. Re-prunes the columns first:
@@ -4238,7 +4428,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function refreshDistances() {
     if (!currentParsed || !currentMeta) return;
     if (!applyCompDistances(currentParsed, currentComps)) return;
-    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
     renderTableHead();
     renderTableBody(false);   // no entrance cascade — the rows are already on screen
     renderDistanceNote();
@@ -4695,7 +4885,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // real render repaints it, so without this a house sits under the previous
     // report's noun for the whole search. The running search's type is the
     // hidden select's own value by definition.
-    setHeroTitle(propertyTypeSel.value);
+    setHeroTitle(propertyTypeSel.value, document.getElementById("txFocus").value);
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
@@ -5452,7 +5642,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerScatterLo").textContent = fmt(lo);
     document.getElementById("ownerScatterHi").textContent = fmt(hi);
     document.getElementById("ownerScatterNote").textContent =
-      `Each gray tick is one of the ${vals.length} sale comps at its own ${o.unitPhrase}. `
+      `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at its own ${o.unitPhrase}. `
       + "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
       + "the firmer this estimate.";
     // The meaning lives entirely in mark positions, so the accessible name has
@@ -5626,7 +5816,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
     const noun = assetNoun(meta.type);
-    setHeroTitle(meta.type);
+    setHeroTitle(meta.type, meta.txFocus);
     renderSubjectLastSale(parsed, meta);
     renderSubjectAsking(parsed, meta);
     renderSubjectYearBuilt(parsed, meta);
@@ -5767,6 +5957,44 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .map((c) => salePsfOf(c))
       .filter((v) => v > 0);
 
+    // The lease side of the same shelf. A leases-only report has no sale comps
+    // by construction, so every sales branch below declines and the hero used
+    // to land on "No priced sale comps came back in this window" over three
+    // dashes, plus a button offering to re-run the search as SALES. Somebody
+    // asking what space costs was told their question was the wrong one.
+    //
+    // MARKETSNAP.rentFromComps is the function the market pages have used
+    // since 2026-08-19, reached from the browser rather than copied: it owns
+    // the monthly-vs-annual parse (leaseRentPsfYr, where "$1.08/SF/month
+    // ($12.96/SF/yr)" must not read as 1.08) and the two-comp floor, and a
+    // second answer to either would be a report and a market page disagreeing
+    // about one building.
+    //
+    // Gated on the SEARCH being leases-only, not on "no sale comps came back",
+    // so a sales report that returned nothing usable still says so and still
+    // offers the wider re-run. Curated the same way the sale side is
+    // (valuationComps, not currentComps), because excluding a comp has to move
+    // this range too or the ledger stops matching the table under it.
+    const leaseComps = meta.txFocus === "leases"
+      ? valuationComps().filter((c) => MARKETSNAP.isLease(c))
+      : [];
+    const leaseRates = leaseComps.map((c) => MARKETSNAP.leaseRentPsfYr(c)).filter((v) => v > 0);
+    const leaseRent = leaseComps.length ? MARKETSNAP.rentFromComps(leaseComps) : null;
+    // Whether the rent branch actually RENDERED, which is not the same as
+    // leaseRent being non-null: a leases-only search where somebody typed an
+    // NOI and a cap rate still leads with the income approach. The mechanics
+    // half below describes how the headline was computed, so it has to know
+    // which one it is describing.
+    let leaseHero = false;
+    // Pre-exclusion, the same pair allSaleComps/ppsfs keeps on the sale side
+    // and for the same reason: the copy below has to tell "the window returned
+    // one lease" apart from "the owner excluded four of five".
+    const wantLeases = meta.txFocus === "leases";
+    const allLeaseRates = wantLeases
+      ? currentComps.filter((c) => MARKETSNAP.isLease(c))
+        .map((c) => MARKETSNAP.leaseRentPsfYr(c)).filter((v) => v > 0)
+      : [];
+
     // heroRound, not Math.round: totals display at estimate-honest precision
     // (see heroRound). $/SF sub-labels below keep their exact figures.
     const fmtTotal = (v) => formatUsd(heroRound(v), { maximumFractionDigits: 0 });
@@ -5781,6 +6009,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Hidden by default every render: only the branches whose ledger quotes
     // the same unit the line plots call renderCompScatter to re-show it.
     document.getElementById("ownerScatter").classList.add("hidden");
+    // Reset every render for the same reason the scatter is: renderOwnerHero
+    // runs again on every subject-field edit, so a report that switched
+    // branches would otherwise keep the previous branch's noun.
+    const estimateNoteEl = document.getElementById("ownerEstimateNote");
+    estimateNoteEl.textContent = "Automated estimate from recent comparable sales. "
+      + "Not an appraisal and not a broker opinion of value.";
     // Hidden by default every render; only the no-estimate branch re-shows it.
     const widenWrap = document.getElementById("widenSearchWrap");
     widenWrap.classList.add("hidden");
@@ -5812,7 +6046,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       head.appendChild(hLab);
       head.appendChild(hNum);
       table.appendChild(head);
-      entries.forEach((e) => {
+      const buildRow = (e) => {
         const tr = document.createElement("tr");
         if (e.muted) tr.className = "muted";
         const td = document.createElement("td");
@@ -5840,8 +6074,67 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         } else {
           td.colSpan = 2;
         }
-        table.appendChild(tr);
-      });
+        return tr;
+      };
+      // An entry with no `value` is an APPROACH THAT PRODUCED NO FIGURE, and
+      // on an ordinary report there are two of them under one real answer:
+      // the income approach ("not run: enter your NOI") and the cost approach,
+      // whose forty-word explanation of why nobody models it is the longest
+      // thing in the ledger. Read top to bottom, two thirds of the block was
+      // about methods that did not run, and the method that produced the
+      // headline was outnumbered on its own statement.
+      //
+      // So the figures lead and the absences collapse behind one toggle. They
+      // are NOT dropped: an unrun approach is a real disclosure about how the
+      // number was reached, and a reader who wants to know why there is no
+      // income line should be one click from the answer.
+      //
+      // Keyed on `value` rather than on `muted` because the right-hand column
+      // is literally "Indicated value", so its absence is the thing being
+      // described. The two agree today (every muted entry lacks a value and
+      // vice versa) and this survives them diverging.
+      const led = entries.filter((e) => e.value);
+      // Nothing produced a figure: then the absences ARE the report's answer
+      // and collapsing them would leave an empty ledger under a live heading.
+      // Reached today by no branch that renders a table, and kept because the
+      // next branch that forgets is the one this protects.
+      const off = led.length ? entries.filter((e) => !e.value) : [];
+      (led.length ? led : entries).forEach((e) => table.appendChild(buildRow(e)));
+      if (off.length) {
+        // A tbody rather than loose rows so there is ONE element to hide, to
+        // reveal on paper, and to name in aria-controls. Rows cannot live in a
+        // <details>, which is why this is a button and a class rather than the
+        // disclosure element the same job would use anywhere else on the page.
+        const body = document.createElement("tbody");
+        body.id = "apOff";
+        body.className = "hidden";
+        off.forEach((e) => body.appendChild(buildRow(e)));
+        const toggleRow = document.createElement("tr");
+        toggleRow.className = "no-print no-capture ap-toggle";
+        const cell = document.createElement("td");
+        cell.colSpan = 2;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "apOffBtn";
+        btn.setAttribute("aria-expanded", "false");
+        btn.setAttribute("aria-controls", "apOff");
+        btn.className = "text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+        btn.textContent = "Why the other approaches produced no figure";
+        // Assignment, not addEventListener: this element is rebuilt on every
+        // render, but so is the closure, and a stacked handler would toggle
+        // twice and land back where it started.
+        btn.onclick = () => {
+          const open = body.classList.toggle("hidden") === false;
+          btn.setAttribute("aria-expanded", open ? "true" : "false");
+          btn.textContent = open
+            ? "Hide the approaches that produced no figure"
+            : "Why the other approaches produced no figure";
+        };
+        cell.appendChild(btn);
+        toggleRow.appendChild(cell);
+        table.appendChild(body);
+        table.appendChild(toggleRow);
+      }
       approachesEl.appendChild(table);
       approachesEl.classList.remove("hidden");
     };
@@ -6177,6 +6470,76 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       entries.push(costApproachEntry);
       // rr is $/SF here, not a dollar total — no disagreement sentence.
       renderApproaches(withAssessed(entries, NaN, NaN));
+    } else if (leaseRent) {
+      leaseHero = true;
+      const n = leaseRent.count;
+      // Quote the market back in its own basis. The stored/computed figure is
+      // ALWAYS annual (see leaseQuoteBasis for why that half never bends);
+      // this divides for DISPLAY only, so there is still exactly one canonical
+      // number behind the three tiles, the chart and the annual translation.
+      // A monthly market reading "$16.20/SF/yr" is being quoted a number
+      // nobody there says out loud.
+      const monthlyBasis = MARKETSNAP.leaseQuoteBasis(leaseComps) === "monthly";
+      const perDiv = monthlyBasis ? 12 : 1;
+      const unitSuffix = monthlyBasis ? "/SF/mo" : "/SF/yr";
+      // Two decimals, always. Rents are quoted in cents in both bases, and the
+      // whole-dollar rounding the sale hero uses would flatten a real spread to
+      // nothing: $12.40 to $13.60 would print as $12 to $14 at best and $12 to
+      // $12 at worst, and every monthly figure would round to $1. lastValuation
+      // stays null through this branch on purpose — a rent is not a value, and
+      // everything downstream of it (the asking-price check, the BOV, a
+      // portfolio save) means dollars of building.
+      const rate = (v) => formatUsd(v / perDiv, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      animateValue(lowEl, leaseRent.low, rate);
+      animateValue(midEl, leaseRent.median, rate);
+      animateValue(highEl, leaseRent.high, rate);
+      // The unit rides on the tiles rather than only in the basis line. Three
+      // figures reading "$12.50" under Low / Likely / High, with the unit in
+      // small grey type off at the top right, is a number that gets carried
+      // away meaning something else entirely.
+      const unitLabel = monthlyBasis ? "per SF/mo" : "per SF/yr";
+      setPpsf("ownerLowPpsf", unitLabel);
+      setPpsf("ownerMidPpsf", unitLabel + " · comp median");
+      setPpsf("ownerHighPpsf", unitLabel);
+      basisEl.textContent = `${n} priced lease comps`
+        + (currentComps.length > n ? ` (${currentComps.length} in the table)` : "")
+        + ", asking and closed";
+      const spreadRatio = leaseRent.median > 0
+        ? (leaseRent.high - leaseRent.low) / leaseRent.median : 0;
+      const spreadPhrase = spreadRatio <= 0.15 ? "The comps agree closely."
+        : spreadRatio <= 0.35 ? "A typical spread for this market."
+        : "The comps span a wide range, so treat the midpoint loosely.";
+      // What the rate actually costs, which is the question somebody came
+      // with. Only when the size is known, and always a span rather than one
+      // figure, because a single number here would get quoted back as a quote.
+      // "Before any pass-throughs" is not a hedge: these comps are a mix of
+      // gross and net rates (leaseRentPsfYr reads the number, not the basis),
+      // so the annual figure is the rent line and never the occupancy cost.
+      const annualNote = sizeR
+        ? ` At ${Math.round((sizeR.min + sizeR.max) / 2).toLocaleString()} SF that is about `
+          + `${fmtTotal(leaseRent.low * sizeR.min)} to ${fmtTotal(leaseRent.high * sizeR.max)} `
+          + `a year, before any pass-throughs.`
+        : "";
+      // The sale hero leans on robustPpsfRange's `trimmed` flag to know
+      // whether its band was an interquartile one or the raw spread.
+      // rentFromComps has no such flag because it interpolates quartiles at
+      // any count, so below four leases the band is a narrow reading of very
+      // little and has to say so itself.
+      const thinNote = n < 4
+        ? ` Only ${n} priced lease comps back this range, so treat it as a rough guide.`
+        : "";
+      trustEl.textContent = `Based on ${n} lease comps. ${spreadPhrase}` + annualNote + thinNote;
+      trustEl.classList.remove("hidden");
+      // The ledger and the line quote the same unit here, which is the whole
+      // condition for showing it. `trimmed: true` is the truth rather than a
+      // convenience: rentFromComps ALWAYS takes the interquartile band, unlike
+      // robustPpsfRange, and the scatter's own four-value floor is what keeps
+      // it off a thin set.
+      renderCompScatter(leaseRates,
+        { low: leaseRent.low, mid: leaseRent.median, high: leaseRent.high, trimmed: true },
+        { fmt: (v) => rate(v) + unitSuffix, unitPhrase: "$" + unitSuffix, compNoun: "lease comps" });
+      estimateNoteEl.textContent = "Automated estimate from recent comparable leases. "
+        + "Not an appraisal and not a broker opinion of value.";
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -6192,7 +6555,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // guidance rather than the generic "not enough came back" copy, since
       // the fix here is to restore a comp, not to wait for a fresh search.
       const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
-      basisEl.textContent = altCompN >= 3
+      // Same shape, the lease side. Reached first, because every sale-flavoured
+      // answer below it is about comps a leases-only search never asked for:
+      // altCompN counts SALE comps published per unit, and curatedShortfall
+      // reads allSaleComps, so both are 0/false here and the reader would have
+      // fallen through to "No priced sale comps came back in this window" — the
+      // exact sentence this whole change exists to stop showing them.
+      const leaseCuratedShortfall = wantLeases && allLeaseRates.length >= 2 && leaseRates.length < 2;
+      basisEl.textContent = wantLeases
+        ? (leaseCuratedShortfall
+          ? (meta.shared
+            ? "Not enough included lease comps to compute a rent range: the report owner excluded some comps."
+            : "Not enough included lease comps to compute a rent range: restore an excluded comp or add your own.")
+          : allLeaseRates.length === 0
+            ? "No priced lease comps came back in this window, so there's no rent range to build."
+            : `Only ${allLeaseRates.length} priced lease comp came back in this window; a rent range needs at least two.`)
+        : altCompN >= 3
         ? `Enter your ${altSpec.askFor} under 'Details for comps': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
         : curatedShortfall
           ? (meta.shared
@@ -6219,21 +6597,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // clamps regardless; this keeps the button honest about what it runs),
       // and never narrower than the window already searched. A re-run is a
       // billed search, so it only ever fires on the visitor's own click.
-      if (!meta.shared && !curatedShortfall && altCompN < 3) {
+      if (!meta.shared && !curatedShortfall && !leaseCuratedShortfall && altCompN < 3) {
         const ceiling = (!proConfig || !proConfig.enabled)
           ? PRO_LOOKBACK_CEILING
           : (Number(proConfig.maxLookbackMonths) || PRO_LOOKBACK_CEILING);
         const months = Number(meta.months) || 0;
         const target = Math.min(Math.max(60, months), ceiling);
-        if (target >= months && (target > months || meta.txFocus !== "sales")) {
+        // The re-run keeps the QUESTION and widens the window. Offering a
+        // leases-only search a sales-only re-run was the same wrong-question
+        // failure as the headline: the fix for a thin lease window is more
+        // months of leases. For a leases-only report the focus already matches,
+        // so the offer needs target > months or it is the identical search.
+        const focus = wantLeases ? "leases" : "sales";
+        if (target >= months && (target > months || meta.txFocus !== focus)) {
           const widenBtn = document.getElementById("widenSearchBtn");
-          widenBtn.textContent = `Search ${target} months, sales only`;
+          widenBtn.textContent = `Search ${target} months, ${focus} only`;
           // Through rerunHistory -> the form's ordinary submit path, so the
           // cache, the guest gate, entitlement clamps and the address-confirm
           // step all apply exactly as they would to a manual search.
           // Assignment, not addEventListener: this runs once per render and
           // must replace the previous report's handler, never stack on it.
-          widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: "sales" });
+          widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: focus });
           widenWrap.classList.remove("hidden");
         }
       }
@@ -6276,7 +6660,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // told, and in the visible line it crowded out the notes that are
     // specific to THIS property. Still on paper and in the PNG.
     if (meta.type === "Residential") {
-      mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
+      // Not on a rent range. The sentence is a claim about SALE comp coverage
+      // — MLS, a CMA, an appraisal are all sale-price instruments — and a
+      // house that rents is not thin for that reason: residential rental
+      // listings are ordinarily web-visible in a way MLS sales are not. There
+      // is no true rewrite of it for leases, so it is omitted rather than
+      // reworded.
+      if (!leaseHero) mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
       // What the weighting can't reach, named in this report's own numbers.
       // Reads the same currentPsfBand the outlier chips and the scatter read,
       // so all three describe one band. It is null when no $/SF valuation was
@@ -6366,7 +6756,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // weighting with no range above it explains nothing.
     // unshift, not push: the panel is titled "How this range is calculated",
     // so the weighting leads and the MLS coverage caveat follows it.
-    if (trustEl.textContent) mechanics.unshift(weighNote);
+    // The weighting note describes compWeight and the trend index, and the rent
+    // range applies NEITHER — rentFromComps takes plain unweighted quartiles.
+    // Left as it was, the mechanics half explained how a figure was computed
+    // using math that did not run on it, which is worse than the wrong-noun
+    // copy bugs above it: those read oddly, this one is untrue. The lease
+    // sentence says what actually happened, including the annualization,
+    // because a reader in a monthly market is looking at a converted number.
+    const leaseWeighNote = "Every priced lease comp counts the same here, and the range is the "
+      + "middle half of them; rates quoted monthly are converted to a year before it is taken.";
+    if (trustEl.textContent) mechanics.unshift(leaseHero ? leaseWeighNote : weighNote);
     const howWrap = document.getElementById("ownerTrustHowWrap");
     const howBody = document.getElementById("ownerTrustHow");
     howBody.textContent = mechanics.join(" ");
@@ -6611,7 +7010,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // comp may carry the report's only cap rate, and removing it takes the
     // column back out — so re-prune before the head renders.
     applyCompDistances(currentParsed, currentComps);
-    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
     renderTableHead();
     renderTableBody(false);
     renderDistanceNote();
@@ -10098,7 +10497,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // spread bar below is what reflects the user's comp set. Labeled
       // "Market" so it can't be read as the average of the table's comps
       // (the hero's median is the comp-set statistic).
-      { label: "Market Avg $/SF", value: displayMoney(parsed.avg_price_per_sqft) || "" },
+      // Same rule as the $/SF column: on a leases-only report this is an annual
+      // rent sitting a few inches under a hero that may be quoting per month.
+      { label: meta.txFocus === "leases" ? "Market Avg $/SF/yr" : "Market Avg $/SF",
+        value: displayMoney(parsed.avg_price_per_sqft) || "" },
       // The comp count used to sit here; it is already in the chip beside the
       // table header, and exclusions are spelled out in the curation note.
       { label: "Median Comp Age",
@@ -10204,7 +10606,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // geocoding lands.
     applyCompDistances(parsed, currentComps);
     // Industrial adds Clear Height + Dock Doors; then columns no comp populates drop.
-    COLUMNS = pruneEmptyColumns(columnsForType(meta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(meta.type, meta.txFocus), currentComps);
 
     // Sale/Lease filter — reset per report; only shown when comps carry a transaction type.
     txFilter = "all";
@@ -10232,6 +10634,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const radiusTxt = parsed && parsed.search_radius ? String(parsed.search_radius).trim().slice(0, 140) : "";
     radiusNote.textContent = radiusTxt ? "Search radius: " + radiusTxt : "";
     radiusNote.classList.toggle("hidden", !radiusTxt);
+    // The raw claim, kept for reconcileRadiusClaim() to re-check once the
+    // real distances arrive. Stashed rather than re-parsed off textContent,
+    // which by then carries the "Search radius: " prefix too.
+    radiusNote.dataset.claim = radiusTxt;
 
     // Breadth framing (a user suggestion): "selected the N most comparable from
     // ~M reviewed". Numerator is the real returned-comp count; denominator is the
@@ -11915,6 +12321,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // screen after a sign-out is the same class of mistake as a stale share
       // list, and this one names colleagues.
       document.getElementById("deskSharedWithFirm").classList.add("hidden");
+      // The board names colleagues too, so it hides on the same signal.
+      document.getElementById("deskDealBoard").classList.add("hidden");
+      // The contact list is the most personal thing on this deck — real names
+      // and addresses a customer typed — so it hides on the same signal.
+      document.getElementById("deskContacts").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
     };
     if (!currentUser) { hideAll(); return; }
@@ -11941,6 +12352,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // on a sign-out-then-sign-in is somebody else's.
     await renderFirm();
     await renderFirmShelf();
+    // Last, and for renderFirmShelf's own reason: the board reads myFirm() too,
+    // so it has to come after the membership load. Its own read is independent
+    // of the shelf's, so a slow board never holds the shelf back.
+    await renderDealBoard();
+    await renderContacts();
   }
 
   // ---------------------------------------------------------------------------
@@ -11958,7 +12374,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
-  // The two shops (migration 036), Transition Plan v2 §6.
+  // The three shops (migrations 036 and 037), Transition Plan v2 §6.
   //
   // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
   // require. test/index-html.test.js pins the two together, which is the
@@ -11975,6 +12391,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       label: "Development shop",
       arrivals: "land comps, rent comps, absorption studies and feasibility packets",
       shelfType: "Land",
+    },
+    tenant_rep: {
+      label: "Tenant rep shop",
+      arrivals: "lease abstracts, rent comps and market surveys",
+      // Empty on purpose, not an oversight: no property type names a tenant
+      // rep's subject the way Land names a development shop's.
+      shelfType: "",
     },
   };
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
@@ -12084,6 +12507,307 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("firmShelfType").addEventListener("change", () => {
     firmShelfTypeTouched = true;
     applyFirmShelfFilter();
+  });
+
+  // ---------------------------------------------------------------------------
+  // The deal board (O3) — who shared what to the firm, by member, market, month.
+  //
+  // Presentation ONLY. Every judgment in the counting lives in deal-board.js
+  // and is settled server-side: who counts as one person, which month a share
+  // falls in, what an undated row does to a total, where a window starts. This
+  // file draws what it is handed and decides nothing, which is deliberate —
+  // index.html cannot require a module, so any rule restated here would be a
+  // second copy of one `npm test` already covers.
+  //
+  // Two rules it does own, both about not lying on screen:
+  //   - **The window switch never re-fetches.** Both leaderboards arrive in one
+  //     payload, so switching cannot show a month counted at a different moment
+  //     from the quarter beside it, and cannot fail halfway.
+  //   - **A failure hides the panel; it never renders zeros.** A board reading
+  //     "0 shared this month" because a read failed is the shelf's own
+  //     misreport-an-outage-as-absence trap, and this one would tell a firm
+  //     their colleagues did nothing.
+  // ---------------------------------------------------------------------------
+  let dealBoard = null;              // the server's computed board, or null
+  let dealBoardWindow = "month";     // which leaderboard is showing
+
+  const DB_MONTHS = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+
+  // "2026-08" -> "August 2026". Parsed off the string rather than through Date,
+  // because a bare "2026-08" parses as UTC midnight and would render as July in
+  // any timezone west of Greenwich — the board is bucketed in UTC server-side,
+  // so the label has to be read the same way.
+  function dbMonthLabel(key) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(key || ""));
+    if (!m) return String(key || "");
+    const i = Number(m[2]) - 1;
+    return (DB_MONTHS[i] || m[2]) + " " + m[1];
+  }
+
+  function dbCountLabel(reports, comps) {
+    const bits = [];
+    if (reports) bits.push(reports + (reports === 1 ? " report" : " reports"));
+    if (comps) bits.push(comps + (comps === 1 ? " comp" : " comps"));
+    return bits.join(" · ");
+  }
+
+  // One row builder for all three lists. textContent throughout — a member's
+  // display name and a market string are both user-authored, the same rule the
+  // shelf rows above follow.
+  function dbRow({ rank, name, anon, mine, reports, comps, total }) {
+    const row = document.createElement("div");
+    row.className = "db-row";
+    if (rank != null) {
+      const r = document.createElement("span");
+      r.className = "db-rank";
+      r.textContent = rank;
+      row.appendChild(r);
+    }
+    const n = document.createElement("span");
+    n.className = "db-name" + (anon ? " db-anon" : "");
+    n.textContent = name;
+    row.appendChild(n);
+    if (mine) {
+      const you = document.createElement("span");
+      you.className = "db-you";
+      you.textContent = "you";
+      n.appendChild(you);
+    }
+    const split = document.createElement("span");
+    split.className = "db-split";
+    split.textContent = dbCountLabel(reports, comps);
+    row.appendChild(split);
+    const t = document.createElement("span");
+    t.className = "db-total";
+    t.textContent = total;
+    row.appendChild(t);
+    return row;
+  }
+
+  function drawDealBoard() {
+    const box = document.getElementById("deskDealBoard");
+    if (!dealBoard) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+
+    const t = dealBoard.totals || {};
+    document.getElementById("dealBoardStats").textContent =
+      `${t.total} shared · ${t.members} ${t.members === 1 ? "person" : "people"} · ${t.markets} ${t.markets === 1 ? "market" : "markets"}`;
+    document.getElementById("dealBoardTruncated").classList.toggle("hidden", !dealBoard.truncated);
+
+    // The leaderboard for the selected window.
+    const lead = (dealBoard.leaderboard && dealBoard.leaderboard[dealBoardWindow]) || { rows: [] };
+    const leaders = document.getElementById("dealBoardLeaders");
+    leaders.innerHTML = "";
+    lead.rows.forEach((r, i) => leaders.appendChild(dbRow({
+      rank: i + 1,
+      // The wire carries the absence of a name; the words are chosen here.
+      name: r.name || "A former colleague",
+      anon: !r.name,
+      mine: r.mine,
+      reports: r.reports, comps: r.comps, total: r.total,
+    })));
+    document.getElementById("dealBoardLeadersEmpty").classList.toggle("hidden", lead.rows.length > 0);
+    document.querySelectorAll("#deskDealBoard .db-tab").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.window === dealBoardWindow));
+    });
+
+    const markets = document.getElementById("dealBoardMarkets");
+    markets.innerHTML = "";
+    (dealBoard.markets || []).forEach((m) => markets.appendChild(dbRow({
+      name: m.market, reports: m.reports, comps: m.comps, total: m.total,
+    })));
+
+    const months = document.getElementById("dealBoardMonths");
+    months.innerHTML = "";
+    (dealBoard.months || []).forEach((m) => months.appendChild(dbRow({
+      name: dbMonthLabel(m.month), reports: m.reports, comps: m.comps, total: m.total,
+    })));
+    // Said, not hidden — see the markup comment.
+    const undated = document.getElementById("dealBoardUndated");
+    undated.textContent = t.undated
+      ? (t.undated === 1
+        ? "1 share is counted above but carries no readable date, so it is not in this breakdown."
+        : `${t.undated} shares are counted above but carry no readable date, so they are not in this breakdown.`)
+      : "";
+    undated.classList.toggle("hidden", !t.undated);
+  }
+
+  async function renderDealBoard() {
+    const box = document.getElementById("deskDealBoard");
+    const firm = myFirm();
+    if (!firm) { box.classList.add("hidden"); dealBoard = null; return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/board?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below, the same way a non-ok response is */ }
+    // A failed read and a firm that has shared nothing both end here, and both
+    // hide the panel rather than draw zeros. They differ in what the desk says
+    // about it, and the shelf above says it in both cases: its own empty state
+    // invites the first share, and its load error covers the outage.
+    dealBoard = (data && data.board) || null;
+    drawDealBoard();
+  }
+
+  document.querySelectorAll("#deskDealBoard .db-tab").forEach((b) => {
+    b.addEventListener("click", () => {
+      dealBoardWindow = b.dataset.window === "quarter" ? "quarter" : "month";
+      drawDealBoard();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The firm's tenant contacts (039).
+  //
+  // Presentation only, like the deal board above it: every refusal lives in
+  // org-contacts.js and is enforced server-side, so this file never decides
+  // whether an address is real. It shows what came back and repeats what the
+  // server said about what it refused.
+  //
+  // TYPED OR IMPORTED, NEVER COLLECTED. There is deliberately no control here
+  // that fills the list from a lead, a hub or a BOV — the plan made that a
+  // condition of the feature, and a button is how it would arrive by accident.
+  // ---------------------------------------------------------------------------
+  function contactsMsg(text, bad) {
+    const el = document.getElementById("contactMsg");
+    el.textContent = text || "";
+    el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
+  }
+
+  async function renderContacts() {
+    const box = document.getElementById("deskContacts");
+    const firm = myFirm();
+    if (!firm) { box.classList.add("hidden"); return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    // A failed read hides the panel rather than rendering an empty list — the
+    // shelf's rule, and the reason is the same one: "no contacts" and "we
+    // could not reach the database" must never look identical, because the
+    // first invites somebody to retype a list they already have.
+    if (!data) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+
+    const rows = Array.isArray(data.contacts) ? data.contacts : [];
+    document.getElementById("contactsStats").textContent =
+      rows.length ? `${rows.length} ${rows.length === 1 ? "contact" : "contacts"}` : "";
+    document.getElementById("contactsTruncated").classList.toggle("hidden", !data.truncated);
+    document.getElementById("contactsEmpty").classList.toggle("hidden", rows.length > 0);
+
+    const wrap = document.getElementById("contactRows");
+    wrap.innerHTML = "";
+    rows.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "db-row";
+      const name = document.createElement("span");
+      name.className = "db-name";
+      // textContent throughout: every one of these is text a person typed.
+      name.textContent = c.name;
+      row.appendChild(name);
+
+      const meta = document.createElement("span");
+      meta.className = "db-split";
+      const bits = [];
+      if (c.company) bits.push(c.company);
+      if (c.email) bits.push(c.email);
+      // "you" rather than the reader's own name, the shelf's rule: reading
+      // your own name in a list of colleagues is a beat of confusion.
+      bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "db-total text-xs underline";
+      del.textContent = "Remove";
+      del.addEventListener("click", async () => {
+        // No confirm: a contact is four fields somebody can retype, unlike a
+        // vault comp, and the vault's own Undo exists because a comp is not.
+        del.disabled = true;
+        try {
+          const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}` +
+            `&contact=${encodeURIComponent(c.id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
+          contactsMsg("");
+          await renderContacts();
+        } catch (err) {
+          del.disabled = false;
+          contactsMsg(err.message || "That didn't go through.", true);
+        }
+      });
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  // One writer for both doors — the typed form and the CSV — because they are
+  // the same POST with the same validation behind it.
+  async function postContacts(body) {
+    const firm = myFirm();
+    if (!firm) return;
+    const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok && out.error) throw new Error(out.error);
+    return out;
+  }
+
+  // What the server refused is repeated verbatim and IN FULL up to a limit,
+  // never summarised as a count: "3 rows were skipped" gives somebody no way
+  // to find them, and these errors already carry line numbers for that reason.
+  function importSummary(out) {
+    const parts = [];
+    parts.push(`${out.imported} of ${out.total} imported`);
+    if (out.duplicates) parts.push(`${out.duplicates} already on the list`);
+    if (out.commented) parts.push(`${out.commented} note ${out.commented === 1 ? "line" : "lines"} skipped`);
+    let text = parts.join(" · ");
+    if (out.errors && out.errors.length) {
+      text += "\n" + out.errors.slice(0, 8).join("\n");
+      if (out.errors.length > 8) text += `\n...and ${out.errors.length - 8} more.`;
+    }
+    return text;
+  }
+
+  document.getElementById("contactAddForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("contactName").value.trim();
+    const email = document.getElementById("contactEmail").value.trim();
+    const company = document.getElementById("contactCompany").value.trim();
+    try {
+      const out = await postContacts({ name, email, company });
+      if (out.errors && out.errors.length) return contactsMsg(out.errors.join("; "), true);
+      ["contactName", "contactEmail", "contactCompany"].forEach((id) => { document.getElementById(id).value = ""; });
+      contactsMsg(out.duplicates ? "That email is already on your firm's list." : "Added.");
+      await renderContacts();
+    } catch (err) {
+      contactsMsg(err.message || "That didn't go through.", true);
+    }
+  });
+
+  document.getElementById("contactImportBtn").addEventListener("click", () => {
+    document.getElementById("contactCsvFile").click();
+  });
+
+  document.getElementById("contactCsvFile").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    // The input is cleared immediately so picking the SAME file twice still
+    // fires a change event — otherwise a failed import cannot be retried
+    // without choosing a different file first.
+    e.target.value = "";
+    if (!file) return;
+    contactsMsg("Reading " + file.name + "...");
+    try {
+      const csv = await file.text();
+      const out = await postContacts({ csv });
+      contactsMsg(importSummary(out), out.imported === 0);
+      await renderContacts();
+    } catch (err) {
+      contactsMsg(err.message || "That file couldn't be imported.", true);
+    }
   });
 
   // ---------------------------------------------------------------------------
@@ -12312,7 +13036,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sel = document.getElementById("firmShopSelect");
     const state = document.getElementById("firmShopState");
     const copy = shopCopy(firm.kind);
-    sel.value = firm.kind === "development" ? "development" : "broker";
+    // Was a two-way ternary until 037. Reading the kind back through the
+    // same map the words come from means a fourth shop is a map entry and an
+    // <option>, not a third branch somebody forgets: an unrecognized kind
+    // lands on broker here for exactly the reason shopCopy() does.
+    sel.value = SHOP_COPY[firm.kind] ? firm.kind : "broker";
     sel.disabled = !firm.canManage;
     state.textContent = firm.canManage
       ? `Your shelf holds ${copy.arrivals}`
@@ -12486,7 +13214,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // arrive as a sentence under the name box about a question further up the
     // form. Same words either way (org-access.js validateShopKind owns them).
     if (!kind) {
-      err.textContent = "Choose whether this is a broker shop or a development shop.";
+      err.textContent = "Choose whether this is a broker shop, a development shop or a tenant rep shop.";
       err.classList.remove("hidden");
       return;
     }
@@ -16539,7 +17267,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // is unexplained. The toggle button is .no-capture and is dropped by
           // ignoreElements, so only the prose lands.
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }"
-            + " #ownerTrustHow { display: block !important; }";
+            + " #ownerTrustHow { display: block !important; }"
+            // Same argument one row down the hero: the approaches that produced
+            // no figure are collapsed on screen, and a PNG pasted into a
+            // client's deck must not be the one copy of the report that never
+            // says why there is no income line. Its toggle is .no-capture and
+            // is dropped by ignoreElements, so only the rows land.
+            + " #apOff { display: table-row-group !important; }";
           doc.head.appendChild(s);
           // .print-only keeps the raster off the screen, and html2canvas
           // honours the screen stylesheet, so it has to be revealed in the
@@ -16641,6 +17375,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         emptyBtn: "Talk to a local agent",
       };
     }
+    // A leases-only report headlines a RENT, and "Get a free Broker Opinion of
+    // Value / Want a real number?" sitting under it offers a sale price and
+    // reads as the report disowning the figure it just published. Same fix as
+    // the Residential branch above and for the same reason: the words change,
+    // the lead does not. It is still stored as `bov`, so the broker inbox, the
+    // coverage-gated intro and the BOV tracker are all untouched.
+    //
+    // BELOW Residential on purpose. A house that rents is a Residential report
+    // first — "leasing broker" is CRE vocabulary for it — and the trust line's
+    // screen-only pointer ("A local agent below can confirm it") is Residential
+    // only and names that button by its noun. Put this branch first and a
+    // Residential leases-only report would say agent above and leasing broker
+    // below, which is exactly the drift that block's ⚠ warns about.
+    if ((meta && meta.txFocus) === "leases") {
+      return {
+        button: "Talk to a local leasing broker",
+        helper: "Want a broker's read on this space? We'll connect you with a licensed local broker who knows this market. No cost, no obligation.",
+        confirm: "We'll review your request and connect you with a licensed local broker who knows this market, usually within a couple of business days. There's no cost and no obligation.",
+        modalTitle: "Talk to a local leasing broker",
+        modalSubtitle: "Leave your details and we'll connect you with a licensed local broker who knows this market. No cost, no obligation.",
+        modalSubmit: "Request an introduction",
+        emptyBtn: "Talk to a local leasing broker",
+      };
+    }
     return {
       button: "Get a free Broker Opinion of Value",
       helper: "Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.",
@@ -16738,9 +17496,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // I thought you said I could only run 4?"). Running reports is unlimited on
     // every plan; only the downloads are metered, so the counter has to say
     // which of the two it is counting.
+    //
+    // TWO SENTENCES, not one line joined by a middot (2026-08-22). The fix
+    // above was right about the facts and wrong about the punctuation: a middot
+    // everywhere else in this app separates facets of ONE thing ("Cited comps ·
+    // about a minute · every source disclosed"), so using it to join two
+    // different subjects put a number and the word "unlimited" in one breath
+    // and left the reader deciding which applied to what. A full stop says they
+    // are two statements. Do not collapse this back into one clause, and do not
+    // drop the second sentence: it is the whole reason the first is not
+    // misread. The verbs also used to drift ("stay" at zero, "are" otherwise)
+    // for no reason; one sentence now serves both branches.
+    const free = "Running reports is always free.";
     el.textContent = n === 0
-      ? "No downloads left this month · reports stay unlimited"
-      : `${n} download${n === 1 ? "" : "s"} left this month · reports are unlimited`;
+      ? `No downloads left this month. ${free}`
+      : `${n} download${n === 1 ? "" : "s"} left this month. ${free}`;
   }
 
   async function claimExport() {

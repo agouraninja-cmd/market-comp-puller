@@ -128,7 +128,7 @@ function validateOrgName(raw) {
 // unrecognized kind renders what its members have already been reading rather
 // than switching a firm's vocabulary on the strength of a typo.
 // ---------------------------------------------------------------------------
-const SHOP_KINDS = ["broker", "development"];
+const SHOP_KINDS = ["broker", "development", "tenant_rep"];
 
 // The nouns, in one place, because two of them are read by a server that
 // writes an email and a browser that writes a page. index.html carries its
@@ -157,6 +157,20 @@ const SHOP_COPY = {
     // is a DEFAULT and not a filter the firm is stuck behind.
     shelfType: "Land",
   },
+  // The third kind (migration 037). Same architecture, third vocabulary: a
+  // tenant rep's subject is a lease rather than a sale, so the sentence names
+  // what they hand a tenant rather than what they hand an owner.
+  tenant_rep: {
+    label: "Tenant rep shop",
+    arrivals: "lease abstracts, rent comps and market surveys",
+    // EMPTY, unlike development, and this is the interesting one. Land earned
+    // development its default because exactly one property type names that
+    // shop's subject. Nothing in VAULT.PROPERTY_TYPES names a tenant rep's:
+    // office, industrial and retail tenant reps all exist and are all normal,
+    // so picking one would open two shops out of three on a filtered shelf.
+    // No honest default is the honest default.
+    shelfType: "",
+  },
 };
 
 function kindOf(org) {
@@ -181,11 +195,15 @@ function shopCopyOf(org) {
  * Missing and unrecognized are the SAME refusal on purpose: a browser that
  * sends nothing and a browser that sends "enterprise" are both a client this
  * route should not be guessing on behalf of.
+ *
+ * The sentence names every kind rather than saying "choose one", because it
+ * is read under a select the reader may have scrolled past. It is mirrored in
+ * index.html for the same reason SHOP_COPY is, and pinned by the same suite.
  */
 function validateShopKind(raw) {
   const kind = String(raw == null ? "" : raw).trim().toLowerCase();
   if (!SHOP_KINDS.includes(kind)) {
-    return { ok: false, error: "Choose whether this is a broker shop or a development shop." };
+    return { ok: false, error: "Choose whether this is a broker shop, a development shop or a tenant rep shop." };
   }
   return { ok: true, kind };
 }

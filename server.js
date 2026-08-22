@@ -55,6 +55,15 @@ const SHAREACCESS = require("./report-access.js");
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+// A firm's own tenant contacts: what may be stored and what a CSV of them
+// means (039). Pure and tested, and deliberately holding NO way to build a
+// contact from a lead or a hub participant — see its header.
+const CONTACTS = require("./org-contacts.js");
+// Who shared what to the firm, by market and by month. Pure and clockless like
+// org-access.js — this file owns the two reads and hands the rows in. It counts
+// CONTRIBUTION to the firm, never closings; see its header for why that is the
+// only number a firm can honestly be shown.
+const BOARD = require("./deal-board.js");
 // Who may read, write and add to a messaging hub. Same pure, fails-closed
 // contract as report-access.js: this file owns the reads, that one owns the
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
@@ -91,6 +100,10 @@ const EMAILSHELL = require("./email-shell");
 // tested, because every judgment in it is about what a person is worth
 // interrupting for — see its header.
 const DIGEST = require("./watchlist-digest");
+// The renewal watch's copy and its send/skip rule (038). The SECOND thing this
+// product sends on its own initiative, and it inherits the digest's bar rather
+// than forking it — same purity, same "when in doubt send nothing", same run.
+const RENEWAL = require("./renewal-watch");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -1619,6 +1632,89 @@ async function markWatchlistDigested(userId, ids) {
     `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
     { last_digest_at: now });
 }
+// Leases whose renewal deadline is inside the watch window and that nobody has
+// been mailed about yet (038). The renewal watch's half of the digest run.
+//
+// TWO QUERIES AND A UNION IN JS, not one `or=(and(...),and(...))`. The house
+// pattern — this codebase runs two queries and stitches rather than asking
+// PostgREST for a nested boolean — and here it also keeps each shape simple
+// enough for test/helpers/fake-supabase to answer, which 400s a shape it does
+// not recognize rather than matching everything.
+//
+// The split is renewal-watch.js's own deadline rule expressed as SQL: the
+// option notice wins wherever it exists, so the second query takes only rows
+// with NO notice date and falls back to the expiry. Without that exclusion a
+// lease with a near expiry and a far-off notice would be selected here and
+// then correctly dropped by `isDue` — harmless but confusing, and it would
+// make the read's count disagree with the mail's.
+//
+// Neither query is trusted to be exactly right: `RENEWAL.isDue` re-checks
+// every row it is handed, so a widened filter here can only ever cost a read.
+// The reverse is not true, which is why the window below is generous by a day.
+async function leasesDueForRenewal(now = Date.now()) {
+  if (!DB_CONFIGURED) return [];
+  const day = 24 * 3600 * 1000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  // One day either side of the module's window: a `date` column compares by
+  // calendar day and this process's clock may sit either side of midnight UTC
+  // from the deadline's point of view. The module makes the real decision.
+  const from = iso(now - day);
+  const to = iso(now + (RENEWAL.LEAD_DAYS + 1) * day);
+  const cols = "id,user_id,address,market,property_type,transaction," +
+    "lease_expiry,option_notice_date,renewal_notified_at,rent_psf_yr,rent_basis";
+  const [byNotice, byExpiry] = await Promise.all([
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null` +
+      `&option_notice_date=gte.${from}&option_notice_date=lte.${to}` +
+      `&select=${cols}&order=option_notice_date.asc&limit=2000`),
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null&option_notice_date=is.null` +
+      `&lease_expiry=gte.${from}&lease_expiry=lte.${to}` +
+      `&select=${cols}&order=lease_expiry.asc&limit=2000`),
+  ]);
+  // Deduped by id, because the two filters are disjoint by construction and a
+  // change to either could quietly stop being so.
+  const seen = new Map();
+  for (const row of [...(byNotice || []), ...(byExpiry || [])]) {
+    if (row && row.id && !seen.has(row.id)) seen.set(row.id, row);
+  }
+  return [...seen.values()];
+}
+
+// The same high-water discipline as markWatchlistDigested, and its reason: one
+// email per lease, ever, enforced by a column rather than by remembering.
+async function markLeasesNotified(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  await sbRequest("PATCH",
+    `broker_comps?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
+    { renewal_notified_at: new Date().toISOString() });
+}
+
+// What comparable space is quoting, for one lease's market and type.
+//
+// Read from the STANDING MARKET PAGE's stored snapshot, which is the same
+// public figure `/market/<slug>` already publishes — an in-memory lookup, so
+// it costs nothing per lease, and it can never quote a number the market page
+// itself would not. Deliberately NOT computed from the broker's own vault:
+// "what comparable space rents for" is a market claim, and answering it out of
+// the reader's own book would tell them their own rents back.
+//
+// Null whenever there is no page, no rent band, or fewer than two leases
+// behind it (`rentFromComps`'s own floor). The email drops the line rather
+// than printing a figure it cannot stand behind — Owen, 2026-08-22.
+function marketRentFor(marketKey, propertyType) {
+  try {
+    const info = marketPageInfo(marketKey, propertyType);
+    if (!info) return null;
+    const page = getMarketPage(info.slug);
+    const rent = page && page.rent;
+    const median = Number(rent && rent.median);
+    if (!Number.isFinite(median) || median <= 0) return null;
+    return { median, count: Number(rent.count) || 0 };
+  } catch (_) {
+    // A decoration, never the message. See the module header.
+    return null;
+  }
+}
+
 async function setDigestOptout(userId, optout) {
   if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
   await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
@@ -3195,12 +3291,26 @@ async function getShareRecord(id) {
 async function storeSharedReport(id, payload, opts = {}) {
   const {
     userId = null, visibility = "public", includePrivate = false, viewers = [],
-    orgId = null,
+    orgId = null, sharedByName = "",
   } = opts;
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
+      // Who shared it, snapshotted (038). 032's pattern and 032's reason: 018
+      // sets `user_id` to null when an account is deleted, and the name was
+      // only ever joined from `users`, so a departed member's shelf rows lost
+      // their attribution entirely while their shared COMPS kept theirs. One
+      // person then appeared twice on the firm's deal board — once by name and
+      // once as an unattributed row.
+      //
+      // NAME ONLY, never the email, which is also 032's rule. The shelf's live
+      // read falls back to an email when a member has no display name, but
+      // that is a lookup against a row that still exists; persisting an address
+      // here would outlive the account it belongs to, which is the opposite of
+      // what deleting an account should mean. A member with no name still
+      // lands in the board's declared unattributed bucket, honestly.
+      shared_by_name: String(sharedByName || "").trim().slice(0, 120),
       // Only ever set on a firm share. The `visibility !== "public"` guards
       // below already refuse to write this row to the file store, so a firm
       // share is covered by the same refusal an invited one is — the file has
@@ -3648,7 +3758,7 @@ async function orgShelfRows(orgId) {
   return (await sbRequest("GET",
     `shared_reports?org_id=eq.${encodeURIComponent(orgId)}` +
     `&visibility=eq.org&revoked_at=is.null` +
-    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=1000`)) || [];
+    `&select=id,payload,org_id,created_at,user_id,shared_by_name&order=created_at.desc&limit=1000`)) || [];
 }
 
 // Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
@@ -3668,6 +3778,55 @@ async function usersByIds(ids) {
     console.error("Shelf attribution read failed (rows are unaffected):", err.message);
   }
   return out;
+}
+
+// The comps a firm's members have opted in to it (032), for the deal board.
+//
+// A SECOND read of `org_comps` beside `orgCompsForReport`, deliberately, and
+// the two must not be merged. That one answers "which of my colleagues' comps
+// belong in THIS report" — one market, one type, inside the lookback, the
+// caller's own excluded — and it feeds a valuation. This one answers "what has
+// this firm put on its shelf", which is every row, every market, nobody
+// excluded, and feeds a count. Folding the board's needs into the blend read
+// would mean widening the filters a valuation depends on.
+//
+// **No `comp` jsonb.** The board renders counts and never a comp, so the
+// payload stays out of the select: the whole point of this table is that it
+// holds copies of brokers' deals, and a read that does not need them should
+// not carry them across the wire to be counted. `shared_by_name` is
+// denormalized at write time (032), so attribution needs no second query here
+// the way the shelf's does.
+//
+// The 1000 cap is `orgShelfRows`' cap, for its reason and with its rule
+// attached: past it the board SAYS it is truncated rather than under-reporting.
+// A firm's tenant contacts (039). Firm-scoped by design, with the member who
+// added each one recorded — see the migration for why that column exists even
+// though nothing gates on it yet.
+async function orgContactRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,name,email,company,notes,added_by_user_id,added_by_name,created_at` +
+    `&order=created_at.desc&limit=2000`)) || [];
+}
+
+// Just the emails, for the import's dedupe. A separate, narrower read than the
+// list above because an import of two thousand rows should not also pull two
+// thousand names and notes it will never look at.
+async function orgContactEmails(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const rows = await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=not.is.null&select=email&limit=5000`);
+  return (rows || []).map((r) => r.email).filter(Boolean);
+}
+
+async function orgCompRowsForBoard(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,market,property_type,created_at,shared_by_user_id,shared_by_name` +
+    `&order=created_at.desc&limit=1000`)) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -10322,8 +10481,18 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
+    // "not read from a stale database" was cut 2026-08-21. It was written when
+    // a live web search was the whole product, and it had become false: the
+    // corpus layer means every search DOES read what we already hold first
+    // (retrieveCorpusComps runs on a cache miss, before anything is billed,
+    // and its rows are offered to the model), and archive-first retrieval
+    // landed the same day. The line was telling visitors that reading stored
+    // comps is the shoddy way to do this, on a page selling a product whose
+    // stored comps are the asset. The heading stays "Search live" on the
+    // owner's call: the live search is still the front door and this is a
+    // correction, not a repositioning.
     ["I.", "Search live",
-     "Public records, listings, and news are searched at request time, not read from a stale database."],
+     "We check what we already hold, then search public records, listings and news for anything missing."],
     ["II.", "Cite everything",
      "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
     ["III.", "Value the subject",
@@ -15207,9 +15376,100 @@ const server = http.createServer((req, res) =>
             summary.failed += 1;
           }
         }
+        // --- the renewal watch rides this same run (038) -------------------
+        //
+        // ONE trigger, not two. The plan's words are that it "rides the
+        // watchlist digest, not a second mailer", and the operational reason
+        // is stronger than the tidiness one: whatever cron, Action or person
+        // drives this route already drives the renewal watch, so it cannot be
+        // the feature somebody forgets to schedule. It inherits every refusal
+        // above it — no database, no outbound mail, dry-run — because it sits
+        // below them in the same handler.
+        //
+        // A SEPARATE LOOP over a different population, deliberately. The
+        // digest iterates watchers (people with watchlist markets); this
+        // iterates brokers with a lease deadline coming up, and those two sets
+        // barely overlap. Folding the leases into the digest email would mean
+        // a broker who watches no markets is never told about their own
+        // deadline, because `buildDigest` returns null with no market news.
+        summary.renewals = { brokers: 0, sent: 0, leases: 0, failed: 0 };
+        try {
+          const due = await leasesDueForRenewal(Date.now());
+          const byBroker = new Map();
+          for (const row of due) {
+            if (!row || !row.user_id) continue;
+            if (!byBroker.has(row.user_id)) byBroker.set(row.user_id, []);
+            byBroker.get(row.user_id).push(row);
+          }
+          summary.renewals.brokers = byBroker.size;
+          const brokers = await findUsersByIds([...byBroker.keys()]);
+          for (const account of brokers) {
+            // The same opt-out governs both. Somebody who turned these emails
+            // off turned OFF EMAILS, and honouring that for one self-initiated
+            // message and not the other is how an unsubscribe stops meaning
+            // anything.
+            if (account.digest_optout) continue;
+            try {
+              const leases = (byBroker.get(account.id) || []).map((row) => {
+                const market = marketRentFor(row.market, row.property_type);
+                return {
+                  id: row.id,
+                  address: row.address,
+                  market: row.market,
+                  lease_expiry: row.lease_expiry,
+                  option_notice_date: row.option_notice_date,
+                  renewal_notified_at: row.renewal_notified_at,
+                  rent_psf_yr: row.rent_psf_yr,
+                  // The broker's OWN basis decides how both figures read. They
+                  // recorded this lease monthly or annually, and quoting the
+                  // market back at them in the other unit is the 12x confusion
+                  // 029 exists to prevent.
+                  quote_basis: row.rent_basis === "monthly" ? "monthly" : "annual",
+                  market_rent_psf_yr: market ? market.median : null,
+                  market_rent_comps: market ? market.count : 0,
+                };
+              });
+              const now = Date.now();
+              const mail = RENEWAL.buildRenewalNotice({
+                leases, now,
+                deskUrl: `${SITE_URL}/vault`,
+                unsubscribeUrl: unsubscribeUrlFor(account.id),
+              });
+              if (!mail) continue;
+              if (dryRun) {
+                summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+                continue;
+              }
+              sendOutboundEmail(account.email, mail.subject, mail.text);
+              // Marked AFTER the send is handed off, and only the leases that
+              // were actually in it — markWatchlistDigested's rule and its
+              // reason. A failed mark costs one duplicate next run; marking
+              // first would lose the reminder outright, and a lost reminder is
+              // invisible where a duplicate is merely annoying.
+              const mailed = RENEWAL.dueLeases(leases, now).map((l) => l.id).filter(Boolean);
+              await markLeasesNotified(account.id, mailed);
+              summary.renewals.sent += 1;
+              summary.renewals.leases += mailed.length;
+            } catch (err) {
+              // One bad broker never stops the run, and never stops the
+              // DIGEST either — this whole block is downstream of it.
+              console.error(`Renewal watch failed for ${account.id}:`, err.message);
+              summary.renewals.failed += 1;
+            }
+          }
+        } catch (err) {
+          // The renewal watch failing must not fail the digest that already
+          // sent. Counted and logged, never thrown.
+          console.error("Renewal watch read failed:", err.message);
+          summary.renewals.failed += 1;
+        }
+
         logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
         console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
-          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed` +
+          ` · renewal watch: ${summary.renewals.sent} sent covering ` +
+          `${summary.renewals.leases} ${summary.renewals.leases === 1 ? "lease" : "leases"}` +
+          `${summary.renewals.failed ? `, ${summary.renewals.failed} failed` : ""}`);
         return sendJson(res, 200, summary);
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -18946,6 +19206,7 @@ const server = http.createServer((req, res) =>
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
           userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers, orgId,
+          sharedByName: user ? (user.name || "") : "",
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
         // The share row is already written. A mail send must never turn this
@@ -19489,7 +19750,16 @@ const server = http.createServer((req, res) =>
               // never an id. Both are already on the roster this member can
               // read, and an unattributed shelf row is one nobody can follow
               // up on, which is most of what a shelf is for.
-              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              //
+              // The LIVE row wins and the snapshot (038) is the fallback, which
+              // is the opposite ordering to report branding's and deliberately
+              // so: branding must look the way it looked when it was sent, while
+              // an attribution should show what a colleague is called TODAY —
+              // somebody who fixes a typo in their profile should not read a
+              // stale name on their own shelf row. The snapshot only speaks
+              // once the account is gone, which is exactly the case that used
+              // to lose the name altogether.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "a colleague",
               mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
             };
           }),
@@ -19499,6 +19769,270 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 503, { error: "Couldn't load your firm's reports. Please try again in a minute." });
       });
       return;
+    }
+
+    // --- GET /api/org/board?id= — the deal board ---------------------------
+    //
+    // Who shared what to the firm, by member, by market, by month, with a
+    // leaderboard of contribution this month and this quarter.
+    //
+    // AGGREGATED SERVER-SIDE, which is the opposite of the shelf directly
+    // above it, and the two reasons are the shelf's own reasons read backwards.
+    // The shelf ships whole because its filters are interactive and its counts
+    // describe the whole list; the board ships counted because a firm with a
+    // thousand shares needs about forty numbers to draw it, and because every
+    // judgment in that counting — who is one person, which month a share falls
+    // in, what an undated row does to a total — is a rule worth a test, and
+    // `deal-board.js` is where `npm test` can reach it. index.html cannot
+    // require a module, so a browser-side board would be a second copy of
+    // those rules, which is the drift `test/index-html.test.js` exists to
+    // catch elsewhere and would be better off not creating here.
+    //
+    // NO NEW TABLES AND NO WIDENED READ. Both sources are already attributed
+    // at write time (018's `user_id`, 032's `shared_by_user_id` +
+    // `shared_by_name`), so this is presentation over reads that exist. In
+    // particular it does not touch `broker_comps` or `broker_bovs` — a
+    // member's own book and their won/lost record are private to the USER, not
+    // to the firm, and the leaderboard's honest limit follows from that rather
+    // than from a query nobody has written yet. See deal-board.js's header.
+    if (req.method === "GET" && orgPath === "/api/org/board") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        // Rate-limited like the shelf, and for the same reason: this pays for
+        // two thousand-row reads. Same generosity, since the desk fetches it
+        // on every render.
+        if (rateLimited("orgboard:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+
+        const [shelf, comps] = await Promise.all([
+          orgShelfRows(orgId),
+          orgCompRowsForBoard(orgId),
+        ]);
+        // Only the shelf needs the attribution stitch — `org_comps` carries the
+        // name already. Same failure-safe read the shelf uses: losing a name
+        // must not cost the row it belongs to.
+        const people = await usersByIds(shelf.map((r) => r.user_id));
+
+        const board = BOARD.build({
+          reports: shelf.map((r) => {
+            const meta = (r.payload && r.payload.meta) || {};
+            const who = r.user_id ? people.get(String(r.user_id)) : null;
+            return {
+              id: r.id,
+              // marketOf here, not the stored address, so the board's markets
+              // are the SAME canonical strings the shelf filter, the corpus and
+              // the vault use. A second parse would give one firm two spellings
+              // of one city and split its own board in half.
+              market: marketOf(meta.address || ""),
+              at: r.created_at,
+              // "" rather than the shelf's "a colleague" fallback: the board
+              // groups on this, and a literal fallback string would merge every
+              // unreadable row into one plausible-looking person. An empty name
+              // goes to deal-board.js's declared unattributed bucket instead.
+              // Live first, snapshot second, then the declared unattributed
+              // bucket (038). This is the line that closed the departed-member
+              // split: `org_comps` has carried a snapshotted name since 032,
+              // so a member who deleted their account kept their attribution
+              // on their COMPS and lost it on their REPORTS, and the board
+              // showed one person as two rows — once by name, once as "a
+              // former colleague". Both sources snapshot now.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "",
+              sharedById: r.user_id || "",
+              mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
+            };
+          }),
+          comps: comps.map((r) => ({
+            id: r.id,
+            market: r.market || "",
+            at: r.created_at,
+            sharedBy: r.shared_by_name || "",
+            sharedById: r.shared_by_user_id || "",
+            mine: Boolean(r.shared_by_user_id && String(r.shared_by_user_id) === String(user.id)),
+          })),
+          now: Date.now(),
+          truncated: shelf.length >= 1000 || comps.length >= 1000,
+        });
+
+        // null when the firm has shared nothing — the desk's existing empty
+        // state says it better, so the panel simply does not render.
+        return sendJson(res, 200, { id: orgId, board });
+      })().catch((err) => {
+        console.error("Firm deal board read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm's deal board. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- /api/org/contacts — the firm's own tenant list (039) --------------
+    //
+    // FIRM-WIDE and membership-gated, exactly like the shelf: every member
+    // reads and writes the whole list. Owen's call 2026-08-22, weighed against
+    // the shared-vault shape (private, opt in one at a time) that comps use —
+    // the migration records the argument. `added_by` is stored so that
+    // decision stays reversible without a data cleanup.
+    //
+    // NOTHING HERE IS EVER POPULATED FROM A LEAD OR A HUB. The plan makes it a
+    // condition of the feature existing: lead routing is owner-mediated and
+    // anonymized by standing rule, and hub participants are tenants who agreed
+    // to talk to one broker about one deal. A firm's contact list is data the
+    // firm typed or imported. There is no code path from either here, and
+    // org-contacts.js deliberately exports no function that could become one.
+    if (orgPath === "/api/org/contacts") {
+      const contactsFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const rows = await orgContactRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            // The vault's rule: say so rather than under-report silently.
+            truncated: rows.length >= 2000,
+            contacts: rows.map((r) => ({
+              id: r.id,
+              name: r.name,
+              email: r.email || "",
+              company: r.company || "",
+              notes: r.notes || "",
+              // Live name first, stored snapshot second — 038's ordering, and
+              // its reason: an attribution should say what a colleague is
+              // called today, and the snapshot only speaks once they are gone.
+              addedBy: r.added_by_name || "",
+              mine: Boolean(r.added_by_user_id && String(r.added_by_user_id) === String(ctx.user.id)),
+              createdAt: r.created_at,
+            })),
+          });
+        })().catch((err) => {
+          console.error("Firm contacts read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's contacts. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // POST adds ONE contact, or imports a CSV when the body carries `csv`.
+      // One route for both because they are the same write with the same gate
+      // and the same validation; splitting them would be two places to keep
+      // the org scoping right.
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          let body;
+          try { body = await readOrgBody(2e6); } catch (err) {
+            if (err.message === "too_big") return sendJson(res, 413, { error: "That file is too large to import in one go." });
+            return sendJson(res, 400, { error: "Bad request." });
+          }
+
+          const addedBy = {
+            added_by_user_id: ctx.user.id,
+            // Snapshotted for 032's and 038's reason: `on delete set null`
+            // means the join disappears with the account, and a contact
+            // nobody can attribute is one nobody can ask about. Name only.
+            added_by_name: String(ctx.user.name || "").trim().slice(0, 120),
+          };
+
+          let rows = [];
+          let errors = [];
+          let commented = 0;
+          let total = 0;
+
+          if (typeof body.csv === "string") {
+            const parsed = CONTACTS.parseContactsCsv(body.csv, {
+              parseCsv: VAULT.parseCsv,
+              isCommentRow: VAULT.isCommentRow,
+              normalizeHeader: VAULT.normalizeHeader,
+            });
+            rows = parsed.rows; errors = parsed.errors;
+            commented = parsed.commented; total = parsed.total;
+          } else {
+            const one = CONTACTS.normalizeContact(body);
+            total = 1;
+            if (one.errors.length) errors = one.errors; else rows = [one.row];
+          }
+
+          // Dedupe against what the firm already holds. Reported, never
+          // silent — parseUpload's "imported N of M" rule.
+          const existing = rows.length ? await orgContactEmails(ctx.orgId) : [];
+          const deduped = CONTACTS.dropExisting(rows, existing);
+
+          let imported = 0;
+          if (deduped.rows.length) {
+            const payload = deduped.rows.map((r) => ({ org_id: ctx.orgId, ...addedBy, ...r }));
+            // on_conflict so a race with another member adding the same email
+            // is a no-op rather than a 409 the importer cannot act on. The
+            // unique index is partial (email only), so unemailed contacts are
+            // unaffected and are never merged.
+            await sbRequest("POST", "org_contacts?on_conflict=org_id,email", payload,
+              { prefer: "resolution=ignore-duplicates,return=minimal" });
+            imported = deduped.rows.length;
+          }
+
+          logEvent("org_contacts", { source: `add:${imported}` });
+          return sendJson(res, errors.length && !imported ? 400 : 200, {
+            imported, total, commented,
+            duplicates: deduped.duplicates,
+            errors,
+          });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that contact. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "PATCH" || req.method === "DELETE") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const contactId = (ctx.url.searchParams.get("contact") || "").trim();
+          if (!contactId) return sendJson(res, 400, { error: "Which contact?" });
+
+          // Scoped by org_id as well as id on EVERY call, including the
+          // DELETE — the vault's rule. Without it, knowing a contact's id
+          // would be enough to edit or delete another firm's row.
+          const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}` +
+            `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const found = await sbRequest("GET", `${scope}&select=id,name,email,company,notes&limit=1`);
+          const existing = (found || [])[0];
+          if (!existing) return sendJson(res, 404, { error: "That contact is not in this firm." });
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+            return sendJson(res, 200, { ok: true, deleted: contactId });
+          }
+
+          let patch;
+          try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          // Validated as the WHOLE row it would become — broker-vault.js's
+          // validateEdit rule, so an edit cannot accept what an import refuses.
+          const { row, errors } = CONTACTS.validateContactEdit(existing, patch);
+          if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
+
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() },
+            { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, contact: { id: contactId, ...row } });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
     }
 
     // --- POST /api/org/invite ----------------------------------------------
@@ -20632,6 +21166,10 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // And again: a leases-only report headlines MARKETSNAP.rentFromComps, the
+    // same function the market pages read, so the browser copy must never be
+    // stale relative to the page that calls it.
+    "/market-snapshot.js": { file: "market-snapshot.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.

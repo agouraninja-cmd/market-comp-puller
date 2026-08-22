@@ -13,11 +13,108 @@ const test = require("node:test");
 const assert = require("node:assert");
 const {
   isBetterSnapshot, distillMarketSnapshot, safeHttpUrl, leaseRentPsfYr,
-  rentFromComps, opexRangeFrom, trendPctFrom, directionFrom,
+  rentFromComps, leaseQuoteBasis, opexRangeFrom, trendPctFrom, directionFrom,
   freshDirection, DIRECTION_MAX_AGE_DAYS,
 } = require("../market-snapshot");
 
 const snap = (generatedAt, count) => ({ generatedAt, ppsf: { count } });
+
+// ---------------------------------------------------------------------------
+// One copy of the rent math, in both runtimes (2026-08-21).
+//
+// A leases-only report headlines rentFromComps, and the report is rendered in
+// the browser and recomputed whenever a reader excludes a comp, so the figure
+// cannot be computed once on the server and shipped. The module is therefore
+// dual-exported the way valuation.js, gut-check.js and explore-query.js are.
+//
+// This runs the FILE, in a context with no `module`, and checks the global it
+// leaves behind answers identically. A copy-paste of leaseRentPsfYr into
+// index.html would be two answers to "is this rate monthly or annual" — the
+// exact parse the function exists to get right — and nothing else would catch
+// the day they diverged.
+// ---------------------------------------------------------------------------
+test("market-snapshot.js loads in a browser as MARKETSNAP, with the same answers", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const vm = require("node:vm");
+  const src = fs.readFileSync(path.join(__dirname, "..", "market-snapshot.js"), "utf8");
+  const sandbox = {};
+  sandbox.self = sandbox;                      // a browser, so no `module`
+  vm.createContext(sandbox);
+  new vm.Script(src, { filename: "market-snapshot.js" }).runInContext(sandbox);
+
+  const browser = sandbox.MARKETSNAP;
+  assert.ok(browser, "index.html calls MARKETSNAP and would throw on load without it");
+  for (const fn of ["rentFromComps", "leaseRentPsfYr", "isLease"]) {
+    assert.equal(typeof browser[fn], "function", fn);
+  }
+
+  // The monthly/annual trap, asked of both copies at once.
+  const comps = [
+    { transaction: "Lease", price_or_rate: "$1.08/SF/month NNN ($12.96/SF/yr NNN)" },
+    { transaction: "Lease", price_per_sqft: 14 },
+    { transaction: "Lease", price_per_sqft: 16 },
+    { transaction: "Sale", price_per_sqft: 240 },
+  ];
+  assert.deepEqual(browser.rentFromComps(comps), rentFromComps(comps));
+  assert.equal(browser.rentFromComps(comps).count, 3, "the sale comp is not a rent");
+  assert.deepEqual(comps.map(browser.leaseRentPsfYr), comps.map(leaseRentPsfYr));
+  assert.equal(typeof browser.leaseQuoteBasis, "function");
+});
+
+// ---------------------------------------------------------------------------
+// Which basis a market QUOTES in (2026-08-21).
+//
+// The figure stays annual — that half never bends, for broker-vault.js 029's
+// reason. This is the display half of the same rule: California industrial and
+// retail quote monthly, so "$16.20/SF/yr" in Fontana is a number nobody there
+// says out loud, while $1.35/SF is an ordinary monthly rent and an impossible
+// annual one.
+//
+// The vault REFUSES to default `rent_basis` because it writes a stored figure
+// and a wrong guess is 12x wrong forever. This may default, because nothing is
+// stored and the annual number is already correct — at worst unidiomatic,
+// never incorrect. These pin that asymmetry.
+// ---------------------------------------------------------------------------
+test("a market's quoting basis is read off the comps, never guessed", () => {
+  const L = (rate) => ({ transaction: "Lease", price_or_rate: rate });
+
+  // The LEADING quote wins. This exact string is how a monthly market's comps
+  // actually arrive, and counting both halves would make it one vote each.
+  assert.equal(leaseQuoteBasis([
+    L("$1.08/SF/month NNN ($12.96/SF/yr NNN)"),
+    L("$1.15/SF/mo"),
+  ]), "monthly");
+
+  assert.equal(leaseQuoteBasis([L("$13.50/SF/yr"), L("$15.00/SF/year")]), "annual");
+
+  // Evidence only. A bare numeric price_per_sqft states no basis and votes for
+  // neither, so a whole set of them falls back to annual rather than to the
+  // last thing anyone happened to see.
+  assert.equal(leaseQuoteBasis([
+    { transaction: "Lease", price_per_sqft: 14 },
+    { transaction: "Lease", price_per_sqft: 16 },
+  ]), "annual");
+  assert.equal(leaseQuoteBasis([]), "annual");
+  assert.equal(leaseQuoteBasis(null), "annual");
+
+  // A tie is not a monthly market. Monthly has to WIN, not merely appear,
+  // because annual is the safe direction to be wrong in.
+  assert.equal(leaseQuoteBasis([L("$1.08/SF/mo"), L("$13.50/SF/yr")]), "annual");
+
+  // Sales are not leases, whatever they are quoted in.
+  assert.equal(leaseQuoteBasis([{ transaction: "Sale", price_or_rate: "$240/SF/mo" }]), "annual");
+
+  // And the basis is a DISPLAY choice that never touches the figure: the same
+  // comps annualize identically whichever way they were quoted.
+  const monthlyQuoted = [
+    { transaction: "Lease", price_or_rate: "$1.00/SF/month ($12.00/SF/yr)" },
+    { transaction: "Lease", price_or_rate: "$1.50/SF/month ($18.00/SF/yr)" },
+  ];
+  assert.equal(leaseQuoteBasis(monthlyQuoted), "monthly");
+  assert.equal(rentFromComps(monthlyQuoted).median, 15,
+    "the median is annual in a monthly market too — one canonical figure, 029's rule");
+});
 
 test("market snapshot refresh rule", async (t) => {
   await t.test("newer and equally deep replaces", () => {

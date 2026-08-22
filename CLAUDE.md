@@ -1460,40 +1460,60 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
-  **Two shops, one architecture** (migration `036-org-shop-kind.sql`, **run it
-  before deploying**; Business Model Transition Plan v2 §6, 2026-08-17).
-  `orgs.kind` is `'broker'` or `'development'` and decides two things: the
-  nouns a firm reads (a development shop is told its shelf holds land comps,
-  rent comps, absorption studies and feasibility packets, in the invite email
-  and on the desk) and which property type the firm shelf opens on (Land for a
-  development shop, everything for a broker shop). Nothing is gated on it and
-  nothing is published by it. Four rules:
+  **Three shops, one architecture** (migrations `036-org-shop-kind.sql` and
+  `037-org-shop-kind-tenant-rep.sql`, **run both before deploying**; Business
+  Model Transition Plan v2 §6, 2026-08-17, third kind added 2026-08-21).
+  `orgs.kind` is `'broker'`, `'development'` or `'tenant_rep'` and decides two
+  things: the nouns a firm reads (a development shop is told its shelf holds
+  land comps, rent comps, absorption studies and feasibility packets, a tenant
+  rep shop that it holds lease abstracts, rent comps and market surveys, in the
+  invite email and on the desk) and which property type the firm shelf opens on
+  (Land for a development shop, everything for the other two). Nothing is gated
+  on it and nothing is published by it. Five rules:
   - **Required at creation, not defaulted.** `POST /api/org` refuses without a
     valid kind (`ORG.validateShopKind`), because the creator is the only person
     who knows the answer and a default would be answered by silence. Changing
     it later is an owner/admin call on `POST /api/org/settings`, the same
     authority as `share_default` and for the same reason: it re-labels every
     colleague's desk, not one person's own work.
-  - **The migration is 030's hazard, not 031's.** `orgsByIds()` and
+  - **036 is 030's hazard; 037 is a smaller one.** `orgsByIds()` and
     `findOrg()` name `kind` in their SELECTs and PostgREST 400s an unknown
-    column, so deploying first takes down every firm surface at once. Migrate,
-    then deploy.
+    column, so deploying 036 second takes down every firm surface at once. 037
+    only WIDENS the CHECK, so nothing goes down, but until it runs the database
+    refuses the value the new third `<option>` sends and the owner who picks it
+    gets a 503 from a route that looks like it should have worked. Migrate,
+    then deploy, both times.
   - **An unrecognized kind reads as `broker`** (`ORG.kindOf`), which is
     incumbency rather than safety: every firm predating 036 has only ever been
     shown broker-shop words, so a typo must not re-label their desk. The write
     path normalizes case and padding; the read path stays strict.
+  - **Only one kind has a saved view, and that is deliberate.** Land is a
+    default VIEW rather than a claim about what a development shop may file,
+    and it exists because exactly one entry in `VAULT.PROPERTY_TYPES` names
+    that shop's subject. Nothing names a tenant rep's: office, industrial and
+    retail tenant reps are all normal, so its `shelfType` is `""` and a shelf
+    that opens filtered for two shops out of three is the bug that was avoided,
+    not a default that was forgotten. `test/org-access.test.js` asserts the
+    empty string on purpose.
   - **The shelf's saved view never hides a row while its filter is off
     screen.** The filter row is furniture under six items, so below six the
     type is cleared rather than merely hidden, and a colleague's own choice of
     filter is never stomped by a re-render. The header count always describes
     the whole shelf.
-  Enterprise is deliberately not a third kind: §6 rules it out as a target
+  Enterprise is still deliberately not a kind: §6 rules it out as a target
   (a research department kills the deal internally) and names its real entry
-  point as somebody who used CompNinja at their last shop.
-  The two shops' words live in `ORG.SHOP_COPY` and are **mirrored** in
-  index.html, which cannot require the module; `test/index-html.test.js` pins
-  the two together, because drift there would invite a firm as a development
-  shop and then greet it with a broker shop's desk.
+  point as somebody who used CompNinja at their last shop. Tenant rep passes
+  the test enterprise fails — it signs up one person at a time like the other
+  two, and reads different nouns off the same shelf — which is the bar a fourth
+  kind has to clear, because a value nothing may select is a value that rots.
+  The shops' words live in `ORG.SHOP_COPY` and are **mirrored** in index.html,
+  which cannot require the module; `test/index-html.test.js` pins the two
+  together, because drift there would invite a firm as a development shop and
+  then greet it with a broker shop's desk. **Two** strings are mirrored, not
+  one: the refusal `validateShopKind` returns is repeated in the browser (which
+  declines to spend a round trip on a question it can answer) and it ENUMERATES
+  the shops, so it goes stale the day a kind is added — the same suite pins it
+  to the module's own words.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -2303,8 +2323,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   cache, `harvestComps()`, and `maybePublishMarketSnapshot()` keep seeing
   **whole** reports, so one cached search serves free and Pro alike and the
   corpus never starves on free traffic. Selection is sales-before-leases
-  (the hero's range is sales-only, so a free list of leases wouldn't support
-  the number above it) then best-first by a weight that **mirrors
+  (on a sales or mixed search the hero's range is sales-only, so a free list
+  of leases would not support the number above it; a leases-only search
+  headlines the rent range instead — see 3f) then best-first by a weight that **mirrors
   index.html's `compWeight()`** — a deliberate second copy that must stay in
   sync; there is a `⚠` comment on both.
   **`locked_basis`** is the load-bearing idea: one anonymized row per
@@ -3389,7 +3410,10 @@ private row has not earned. Two rules matter when editing anything down here:
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
    hero on screen a minute before the real render repaints it, so without the
    second one a house sits under the previous report's noun for the whole
-   search. The basis line reads its field name from `SIZE_LABELS[meta.type]`
+   search. `setHeroTitle` takes the transaction focus as well as the type for
+   the same reason (2026-08-21): worded at only one seam, a leases-only search
+   would read "What This Building Is Worth" for that whole minute and then
+   flip to "Rents For". The basis line reads its field name from `SIZE_LABELS[meta.type]`
    and **not** from `#targetSizeLabel`, because a shared report renders
    somebody else's type into a form still labelled for whatever this visitor
    last searched.
@@ -3477,6 +3501,88 @@ private row has not earned. Two rules matter when editing anything down here:
    failure), not an ambitious list price. **User-typed
    asking price wins** (`askingRangeFrom`); the looked-up listing is the
    fallback that lights the comparison card when the visitor never typed one.
+
+3f. **A leases-only report headlines RENT, not a missing sale price**
+   (2026-08-21). Until this, `txFocus: "leases"` produced a hero with three
+   dashes, the line "No priced sale comps came back in this window", and a
+   button offering to re-run the whole search as SALES. Nothing had failed —
+   the comps were in the table — the report was answering a question nobody
+   asked, and it cost a billed search to find that out. Five rules:
+   - **The figure is `MARKETSNAP.rentFromComps`, the market pages' own
+     function**, reached from the browser rather than copied. `market-snapshot.js`
+     is dual-exported for this (browser global `MARKETSNAP`, `maxAge: 0`,
+     exactly like `valuation.js`, `gut-check.js` and `explore-query.js`). It
+     cannot be computed once on the server and shipped, because excluding a
+     comp has to move it; and a second copy of `leaseRentPsfYr` would be a
+     second answer to whether `$1.08/SF/month ($12.96/SF/yr)` is 1.08 or 12.96.
+   - **Gated on the SEARCH being leases-only** (`meta.txFocus === "leases"`),
+     not on "no sale comps came back", so a sales search that returned nothing
+     usable still says so and still offers the wider re-run.
+   - **Quoted in the market's own basis, off ONE annual figure.** The figure
+     is always annual (`leaseRentPsfYr` normalizes on the way in,
+     `rentFromComps` medians one canonical number) — that half is
+     broker-vault.js 029's rule and never bends, because a book holding two
+     bases quotes three rents for one lease. The DISPLAY is
+     `MARKETSNAP.leaseQuoteBasis`, which reads the basis off the comps'
+     own rate strings and divides by 12 for display only: California
+     industrial and retail quote MONTHLY, so "$16.20/SF/yr" in Fontana is a
+     number nobody there says out loud. **Evidence only, and the leading quote
+     wins** — `$1.08/SF/month ($12.96/SF/yr)` is one monthly vote, not one
+     each; a bare numeric `price_per_sqft` votes for neither; a tie is annual.
+     Note the deliberate asymmetry with `parseRentBasis`, which REFUSES to
+     default: that one writes a stored figure where a guess is 12x wrong
+     forever, while this one only picks a display unit for a number that is
+     already correct, so annual is at worst unidiomatic. The cost translation
+     in the trust line stays a YEAR figure in both bases and says "a year".
+   - **Under-claims like everything else here.** Two priced leases minimum,
+     never a one-comp band. Unlike `robustPpsfRange` there is no `trimmed`
+     flag to lean on — `rentFromComps` interpolates quartiles at any count —
+     so below four leases the trust line says it is a rough guide itself.
+   - **`lastValuation` and `currentPsfBand` stay null through this branch.**
+     A rent is not a value, and everything downstream of those two (the
+     asking-price check, the BOV, a portfolio save) means dollars of building.
+   - **The furniture follows the noun.** The heading (`setHeroTitle`, which
+     takes `txFocus` so BOTH seams word it the same), the scatter caption
+     (`compNoun`), the estimate disclaimer (`#ownerEstimateNote`, reset every
+     render), the no-range copy, and the widen button's re-run focus. Found by
+     rendering one, not by reading the diff: the branch was right the first
+     time and three pieces of furniture around it still said "sales".
+   - **The mechanics half describes the math that actually ran.** The
+     collapsed "How this range is calculated" explained the headline with
+     `compWeight` and the trend index, and the rent range applies NEITHER —
+     `rentFromComps` takes plain unweighted quartiles — so it was not odd
+     phrasing but an untrue account of how the figure was reached. It is
+     chosen off `leaseHero`, a flag set INSIDE the branch and never derived
+     from `leaseRent` being non-null (a leases-only search where somebody
+     typed an NOI and a cap rate still leads with the income approach). The
+     Residential MLS sentence is **omitted rather than reworded** on a rent
+     range: MLS, a CMA and an appraisal are all sale-price instruments, and
+     residential rental listings are ordinarily web-visible in a way MLS sales
+     are not, so there is no true lease version of that claim.
+   - **Every $/SF figure on the page says which rate it is.** The hero may
+     quote per MONTH while the comp table's `price_per_sqft` column and the
+     Market Avg tile hold the ANNUAL figure, so an unlabelled 13.5 under a
+     headline of $1.18 is the one number a reader could take for a monthly
+     rate and be 12x out. `columnsForType(type, txFocus)` relabels that column
+     `$/SF/yr` on a leases-only report and `renderStatTiles` does the same for
+     the tile. **Label only, never convert**: that column is shared with sale
+     reports and feeds sorting and the exports, and a column meaning different
+     things on different reports is the two-bases hazard broker-vault.js
+     refuses to take on. It relabels a COPY, or the first lease report would
+     leave `$/SF/yr` on every sale report after it in the same session, and
+     the test executes both column sets to prove nothing else moved.
+   - **The lead ask follows the noun too, and the lead itself does not.**
+     `bovCopy(meta)` gains a leases branch: "Get a free Broker Opinion of
+     Value / Want a real number?" under a rent range offers a SALE price and
+     reads as the report disowning the figure it just published. It is the
+     Residential branch's fix one report type over, and the same rule — the
+     words change, `openLeadModal("bov")` does not, so the broker inbox, the
+     coverage-gated intro and the BOV tracker are untouched. **Residential is
+     read FIRST**: a house that rents is a Residential report, and the trust
+     line's screen-only pointer ("A local agent below can confirm it") is
+     Residential-only and names that button by its noun, so a lease branch
+     above it would say agent above and leasing broker below — the drift that
+     block's own ⚠ warns about.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

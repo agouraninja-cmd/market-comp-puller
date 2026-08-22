@@ -870,22 +870,39 @@ dependency. `.env` is git-ignored — never commit it.
   code, so a checkout only proves what the source says. The Gemini default is
   `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
   `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.6-flash`.
-- `THINKING_LEVEL` — optional `low`/`medium`/`high`, **unset by default**
-  (2026-08-21). How deeply the model reasons before it answers. Unset means
-  the request is byte-identical to what it was before this knob existed and
-  the vendor's own default applies (`medium` on gemini-3.7-flash), which is
-  what every deployment runs today.
+- `THINKING_LEVEL` — optional `low`/`medium`/`high`. **Production runs
+  `low`** as of 2026-08-22, set in Render's environment rather than in code,
+  so rollback is unsetting it with no deploy. Unset means the request is
+  byte-identical to what it was before this knob existed and the vendor's own
+  default applies (`medium` on gemini-3.7-flash).
   **It is the largest wall-clock setting this deployment has**, and the
   reason is that on Gemini thought tokens are generated and billed as
   OUTPUT: a measured call spent 4,207 in / **928 out / 6,473 thought**, so
   about seven of every eight tokens the model produces are reasoning and
   only one in eight is the report. Every trim to the report JSON is
   attacking that one eighth; this is the other seven.
-  **It ships unset on purpose, because this is a thing to measure rather
-  than assume.** Google's guidance calls the default depth the best quality
-  for agentic work, and comp selection accuracy IS the product, so the
-  honest way to spend it is a `run-eval.js --compare` pair (about $8.60 and
-  a restart between runs — `MODEL` and this are both read once at startup).
+  **It was measured before it was set** (four runs, ~$1.36, full record in
+  `docs/evals/2026-08-22-thinking-level-decision.md`). `low` made reports
+  **3x faster (34.3s → ~10s) and 3x cheaper ($29.56 → ~$9.50 per 1,000)**,
+  and every delta is 3-5x the run-to-run noise floor. It returned about a
+  third fewer comps — but the shorter list was BETTER sourced: provenance
+  up, market match up, and the unsourced-`estimate` rate down from as high
+  as 14% to **2%**, the best this eval has recorded. Valuation stayed
+  possible on 100% of targets in every run, and 8 of 10 kept enough priced
+  sales (4+) for the hero's trimmed band. The cost paid is real and worth
+  knowing: ~20% of reports fall back to a full-spread value range, and the
+  comp table is visibly shorter.
+  **Two things to re-check on real traffic**, both in that record: the 2%
+  estimate rate is the prize, so a climb means re-running the comparison;
+  and comp counts should drift back UP on their own as the radius blend
+  folds saved corpus deals into new reports.
+  **`COMP_FLOOR` was the attempt to buy those comps back, and it failed** —
+  see its own note in server.js. It moved comps by less than the arm's own
+  wobble while more than doubling the estimate rate, and `thoughtTokens`
+  went 0 → 309: telling a model you have deliberately told to reason less to
+  "try harder" spends the saving on deliberation, not on searching. Kept in
+  the tree and off, because a recorded negative result is worth more than a
+  deleted one.
   **`node scripts/compare-thinking.js` runs that whole pair as one command**
   (boot → score → restart at the candidate depth → score → compare). Prefer
   it over doing the steps by hand: it spawns the server with an EXPLICIT

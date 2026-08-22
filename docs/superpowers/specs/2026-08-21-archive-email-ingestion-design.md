@@ -591,6 +591,25 @@ fatal regardless of the other numbers — a wrong number in a broker's own
 records is worse than a rejected row, because nobody will ever notice it, and
 that is the sentence the whole vault module is built around.
 
+**Two properties of the harness protect that verdict, and both were added
+after an audit rather than in the first pass** (`scripts/extraction-eval.js`):
+
+- **It never trips the route's rate limiter.** `/api/vault/extract` allows 8
+  calls per rolling 5 minutes per IP, and `rateLimited()` appends a hit *even
+  when it refuses* — so retrying into a 429 slides the window forward and digs
+  the hole deeper. The runner paces itself to 7 per window instead. Twenty
+  files is about 12 minutes, roughly 7 of it deliberate waiting, and the run
+  says so before it starts so nobody kills a healthy run that looks hung.
+- **An infrastructure failure is EXCLUDED, never scored.** A 429, a 5xx, a
+  network error or a file the route refused (wrong type, over 4 MB) is named
+  and left out of every figure, and the run exits non-zero so a partial run
+  cannot be read as a verdict. Only a genuine empty extraction — the model
+  read the file and found no table — is scored, as the real miss it is.
+  Without this, a rate-limited file counted as 0% recall: a false failure, on
+  the exact number that decides whether the Archive gets built.
+
+Prove the pipeline with `--limit 2` before spending twenty files' worth.
+
 A single deliverable: the numbers, and a written pass or fail. Then 037.
 
 ## 10. Deliberately not built

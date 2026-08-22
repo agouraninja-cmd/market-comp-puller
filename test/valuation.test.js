@@ -216,6 +216,30 @@ test("parseRadiusMiles reads a market note and refuses junk", () => {
   assert.equal(V.parseRadiusMiles("1000 miles"), null);
 });
 
+test("radiusClaimContradicted keeps an approximate claim and drops a false one", () => {
+  // The live sample's own numbers: a claimed ~5 miles against comps 13 to 20
+  // out. That is the contradiction a reader was being handed.
+  assert.equal(V.radiusClaimContradicted("Immediate submarket, ~5 miles", 20), true);
+  assert.equal(V.radiusClaimContradicted("Immediate submarket, ~5 miles", 13), true);
+  // A radius is approximate by nature, so slack before we call it wrong.
+  assert.equal(V.radiusClaimContradicted("about 5 miles", 5), false);
+  assert.equal(V.radiusClaimContradicted("about 5 miles", 6.25), false);
+  assert.equal(V.radiusClaimContradicted("about 5 miles", 6.3), true);
+});
+
+test("radiusClaimContradicted never invents a contradiction out of missing data", () => {
+  // Free-form prose with no mileage in it: nothing to compare, so the line
+  // stays. This is the common case, and treating it as a contradiction would
+  // blank a useful sentence on most reports.
+  assert.equal(V.radiusClaimContradicted("North Dallas submarket", 40), false);
+  assert.equal(V.radiusClaimContradicted("", 40), false);
+  assert.equal(V.radiusClaimContradicted(null, 40), false);
+  // No measurement (nothing geocoded) leaves the model's claim alone.
+  assert.equal(V.radiusClaimContradicted("about 5 miles", null), false);
+  assert.equal(V.radiusClaimContradicted("about 5 miles", 0), false);
+  assert.equal(V.radiusClaimContradicted("about 5 miles", NaN), false);
+});
+
 test("priceTierFactor floors a 2x $/SF miss and leaves a 1.2x peer full weight", () => {
   assert.equal(V.priceTierFactor(500, 500), 1);
   assert.equal(V.priceTierFactor(600, 500), 1);

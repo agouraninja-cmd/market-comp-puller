@@ -17201,9 +17201,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // I thought you said I could only run 4?"). Running reports is unlimited on
     // every plan; only the downloads are metered, so the counter has to say
     // which of the two it is counting.
+    //
+    // TWO SENTENCES, not one line joined by a middot (2026-08-22). The fix
+    // above was right about the facts and wrong about the punctuation: a middot
+    // everywhere else in this app separates facets of ONE thing ("Cited comps ·
+    // about a minute · every source disclosed"), so using it to join two
+    // different subjects put a number and the word "unlimited" in one breath
+    // and left the reader deciding which applied to what. A full stop says they
+    // are two statements. Do not collapse this back into one clause, and do not
+    // drop the second sentence: it is the whole reason the first is not
+    // misread. The verbs also used to drift ("stay" at zero, "are" otherwise)
+    // for no reason; one sentence now serves both branches.
+    const free = "Running reports is always free.";
     el.textContent = n === 0
-      ? "No downloads left this month · reports stay unlimited"
-      : `${n} download${n === 1 ? "" : "s"} left this month · reports are unlimited`;
+      ? `No downloads left this month. ${free}`
+      : `${n} download${n === 1 ? "" : "s"} left this month. ${free}`;
   }
 
   async function claimExport() {

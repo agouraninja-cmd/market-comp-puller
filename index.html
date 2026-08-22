@@ -713,6 +713,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          that gets forwarded to a client, so it carries the whole explanation
          — the toggle button is .no-print and disappears on its own. */
       #ownerTrustHow { display: block !important; }
+      /* Same rule as the line above, for the same reason: the approaches that
+         produced no figure are collapsed on screen so the ledger leads with
+         the one that did, and an export is the copy that gets forwarded, so
+         it carries every approach whether it ran or not. The toggle itself is
+         .no-print. Restated in downloadImage's onclone, which never sees this
+         block. */
+      #apOff { display: table-row-group !important; }
       #compsTable tr { break-inside: avoid; page-break-inside: avoid; }
       #compsTable thead { display: table-header-group; }
       /* Paper cannot scroll sideways: unclip the table and let cells wrap. */
@@ -1065,6 +1072,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .ap-stmt .ap-lab { font-weight: 600; color: var(--ink); }
     .ap-stmt tr.muted td { font-size: 12px; color: var(--ink-3); }
     .ap-stmt tr.muted .ap-lab { color: var(--ink-3); }
+    /* ⚠ LOAD-BEARING, and the third time this file has been bitten by it (see
+       .deck.hide in vault-page.js and the .hdr nav [hidden] line in
+       ACCOUNT_NAV_CSS). The phone treatment below sets `.ap-stmt tbody
+       { display: block }`, which at (0,1,1) out-specifies Tailwind's plain
+       `.hidden` at (0,1,0) — so the collapsed approaches rendered anyway on
+       every screen under 560px while looking correct on a desktop. Measured
+       at 375px, not read: 165px of rows that were supposed to be behind the
+       toggle. This wins at (0,2,1) and needs no !important; the print and
+       onclone rules stay above it on their own !important. */
+    .ap-stmt tbody.hidden { display: none; }
     /* Two columns need a phone treatment. The value column is nowrap by
        design (a wrapped "$7,925,000 – $8,625,000" is unreadable), which at
        343px leaves the evidence about 150px and turns every row into a
@@ -5973,7 +5990,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       head.appendChild(hLab);
       head.appendChild(hNum);
       table.appendChild(head);
-      entries.forEach((e) => {
+      const buildRow = (e) => {
         const tr = document.createElement("tr");
         if (e.muted) tr.className = "muted";
         const td = document.createElement("td");
@@ -6001,8 +6018,67 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         } else {
           td.colSpan = 2;
         }
-        table.appendChild(tr);
-      });
+        return tr;
+      };
+      // An entry with no `value` is an APPROACH THAT PRODUCED NO FIGURE, and
+      // on an ordinary report there are two of them under one real answer:
+      // the income approach ("not run: enter your NOI") and the cost approach,
+      // whose forty-word explanation of why nobody models it is the longest
+      // thing in the ledger. Read top to bottom, two thirds of the block was
+      // about methods that did not run, and the method that produced the
+      // headline was outnumbered on its own statement.
+      //
+      // So the figures lead and the absences collapse behind one toggle. They
+      // are NOT dropped: an unrun approach is a real disclosure about how the
+      // number was reached, and a reader who wants to know why there is no
+      // income line should be one click from the answer.
+      //
+      // Keyed on `value` rather than on `muted` because the right-hand column
+      // is literally "Indicated value", so its absence is the thing being
+      // described. The two agree today (every muted entry lacks a value and
+      // vice versa) and this survives them diverging.
+      const led = entries.filter((e) => e.value);
+      // Nothing produced a figure: then the absences ARE the report's answer
+      // and collapsing them would leave an empty ledger under a live heading.
+      // Reached today by no branch that renders a table, and kept because the
+      // next branch that forgets is the one this protects.
+      const off = led.length ? entries.filter((e) => !e.value) : [];
+      (led.length ? led : entries).forEach((e) => table.appendChild(buildRow(e)));
+      if (off.length) {
+        // A tbody rather than loose rows so there is ONE element to hide, to
+        // reveal on paper, and to name in aria-controls. Rows cannot live in a
+        // <details>, which is why this is a button and a class rather than the
+        // disclosure element the same job would use anywhere else on the page.
+        const body = document.createElement("tbody");
+        body.id = "apOff";
+        body.className = "hidden";
+        off.forEach((e) => body.appendChild(buildRow(e)));
+        const toggleRow = document.createElement("tr");
+        toggleRow.className = "no-print no-capture ap-toggle";
+        const cell = document.createElement("td");
+        cell.colSpan = 2;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.id = "apOffBtn";
+        btn.setAttribute("aria-expanded", "false");
+        btn.setAttribute("aria-controls", "apOff");
+        btn.className = "text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+        btn.textContent = "Why the other approaches produced no figure";
+        // Assignment, not addEventListener: this element is rebuilt on every
+        // render, but so is the closure, and a stacked handler would toggle
+        // twice and land back where it started.
+        btn.onclick = () => {
+          const open = body.classList.toggle("hidden") === false;
+          btn.setAttribute("aria-expanded", open ? "true" : "false");
+          btn.textContent = open
+            ? "Hide the approaches that produced no figure"
+            : "Why the other approaches produced no figure";
+        };
+        cell.appendChild(btn);
+        toggleRow.appendChild(cell);
+        table.appendChild(body);
+        table.appendChild(toggleRow);
+      }
       approachesEl.appendChild(table);
       approachesEl.classList.remove("hidden");
     };
@@ -16978,7 +17054,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // is unexplained. The toggle button is .no-capture and is dropped by
           // ignoreElements, so only the prose lands.
           s.textContent = "#reportArea > *, .row-in, .fade-in { opacity: 1 !important; animation: none !important; transform: none !important; }"
-            + " #ownerTrustHow { display: block !important; }";
+            + " #ownerTrustHow { display: block !important; }"
+            // Same argument one row down the hero: the approaches that produced
+            // no figure are collapsed on screen, and a PNG pasted into a
+            // client's deck must not be the one copy of the report that never
+            // says why there is no income line. Its toggle is .no-capture and
+            // is dropped by ignoreElements, so only the rows land.
+            + " #apOff { display: table-row-group !important; }";
           doc.head.appendChild(s);
           // .print-only keeps the raster off the screen, and html2canvas
           // honours the screen stylesheet, so it has to be revealed in the

@@ -758,7 +758,10 @@ test("what an invited colleague actually receives", async (t) => {
     // to name the address that will work, or a colleague signs in with another
     // one and finds nothing.
     assert.match(mail.text, new RegExp(MIKE.email.replace(".", "\\.") + "\\)"));
-    assert.match(mail.text, /a free account is all it takes/,
+    // Case-insensitive: the sentence moved from a mid-sentence clause after an
+    // em dash to a sentence of its own, matching how sendShareInvites has
+    // always written it. What this asserts is the PROMISE, not its punctuation.
+    assert.match(mail.text, /a free account is all it takes/i,
       "a colleague who needs no plan must not be left assuming they need to buy one");
     // The safeguard, restated to the person it protects: this mail can reach
     // somebody who has never heard of the firm.

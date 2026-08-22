@@ -262,6 +262,29 @@ test("static map tiles are requested in CORS mode, before the src is set", () =>
   assert.ok(co < src, "crossOrigin must be set BEFORE src or the tile loads tainted");
 });
 
+test("the collapsed approaches stay collapsed on a phone, and open on paper", () => {
+  // The approaches that produced no figure hide behind a toggle, and the
+  // whole thing was silently inert under 560px: the phone treatment sets
+  // `.ap-stmt tbody { display: block }` at (0,1,1), which out-specifies
+  // Tailwind's `.hidden` at (0,1,0), so the rows rendered anyway while a
+  // desktop looked perfectly correct. Measured at 375px before this line
+  // existed. Same trap as .deck.hide in vault-page.js and the
+  // `.hdr nav [hidden]` line in ACCOUNT_NAV_CSS, which is why it is pinned
+  // rather than trusted to survive the next tidy-up.
+  assert.match(html, /\.ap-stmt tbody\.hidden \{ display: none; \}/,
+    "without this the toggle does nothing on any screen under 560px");
+  // An export is the copy that gets forwarded, so it carries every approach
+  // whether it ran or not. Two separate reveals because html2canvas ignores
+  // @media print, exactly as #ownerTrustHow already documents.
+  assert.match(html, /#apOff \{ display: table-row-group !important; \}/);
+  const onclone = html.match(/onclone: \(doc\) => \{[\s\S]*?doc\.head\.appendChild\(s\)/);
+  assert.ok(onclone, "downloadImage's onclone must still exist");
+  assert.match(onclone[0], /#apOff \{ display: table-row-group !important; \}/,
+    "the PNG must not be the one copy of the report that hides the unrun approaches");
+  // The control itself is navigation, not report content, in both exports.
+  assert.match(html, /toggleRow\.className = "no-print no-capture ap-toggle"/);
+});
+
 test("print unhides the map card only for a ready, unhidden raster", () => {
   // Three ways this goes wrong and prints something worse than the missing map
   // it replaces: unhiding the card with no raster (an empty box under a

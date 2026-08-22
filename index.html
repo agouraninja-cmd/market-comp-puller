@@ -6833,15 +6833,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // who used it once on an Industrial build keeps it. `firmState` is read
   // defensively and never forced: it is the desk's cache, so on a report page
   // it is often simply absent, and the Land door has to work without it.
+  // `firmState` is the desk's cache and is NOT populated on a report page:
+  // loadMyFirms() is called by the desk, by the share panel, and by
+  // maybeAutoShareToFirm — which is fire-and-forget AND fresh-reports-only.
+  // So a development shop's member saw this card never on a restored report
+  // and only by winning a race on a new one. This kicks the (memoized) load
+  // itself, once per session, and repaints just this card when the answer
+  // lands. Not folded into /api/config, which runs on every page load and
+  // must not grow a database read (the rule /api/pricing already follows).
+  let devFirmAsked = false;
+  function devFirmIsDevelopment() {
+    const orgs = (firmState && firmState.orgs) || [];
+    return orgs.some((o) => o && o.kind === "development");
+  }
   function devCardApplies(meta) {
     if (!currentUser) return false;
     if (meta && meta.type === "Land") return true;
     const a = meta && meta.assumptions && meta.assumptions.devCost;
     if (a && (a.land || a.hard || a.soft)) return true;
-    try {
-      const orgs = (firmState && firmState.orgs) || [];
-      return orgs.some((o) => o && o.kind === "development");
-    } catch (_) { return false; }
+    if (firmState) return devFirmIsDevelopment();
+    if (!devFirmAsked) {
+      devFirmAsked = true;
+      // Repaint only if the answer actually changes the verdict, so this can
+      // never become a render loop.
+      loadMyFirms()
+        .then(() => {
+          if (devFirmIsDevelopment() && currentParsed && currentMeta) {
+            renderDevCard(currentParsed, currentMeta, false);
+          }
+        })
+        .catch(() => {});
+    }
+    return false;
   }
 
   function renderDevCard(parsed, meta, resetAssumptions) {

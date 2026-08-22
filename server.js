@@ -55,6 +55,10 @@ const SHAREACCESS = require("./report-access.js");
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+// A firm's own tenant contacts: what may be stored and what a CSV of them
+// means (039). Pure and tested, and deliberately holding NO way to build a
+// contact from a lead or a hub participant — see its header.
+const CONTACTS = require("./org-contacts.js");
 // Who shared what to the firm, by market and by month. Pure and clockless like
 // org-access.js — this file owns the two reads and hands the rows in. It counts
 // CONTRIBUTION to the firm, never closings; see its header for why that is the
@@ -3795,6 +3799,28 @@ async function usersByIds(ids) {
 //
 // The 1000 cap is `orgShelfRows`' cap, for its reason and with its rule
 // attached: past it the board SAYS it is truncated rather than under-reporting.
+// A firm's tenant contacts (039). Firm-scoped by design, with the member who
+// added each one recorded — see the migration for why that column exists even
+// though nothing gates on it yet.
+async function orgContactRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,name,email,company,notes,added_by_user_id,added_by_name,created_at` +
+    `&order=created_at.desc&limit=2000`)) || [];
+}
+
+// Just the emails, for the import's dedupe. A separate, narrower read than the
+// list above because an import of two thousand rows should not also pull two
+// thousand names and notes it will never look at.
+async function orgContactEmails(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const rows = await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=not.is.null&select=email&limit=5000`);
+  return (rows || []).map((r) => r.email).filter(Boolean);
+}
+
 async function orgCompRowsForBoard(orgId) {
   if (!DB_CONFIGURED || !orgId) return [];
   return (await sbRequest("GET",
@@ -19840,6 +19866,173 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 503, { error: "Couldn't load your firm's deal board. Please try again in a minute." });
       });
       return;
+    }
+
+    // --- /api/org/contacts — the firm's own tenant list (039) --------------
+    //
+    // FIRM-WIDE and membership-gated, exactly like the shelf: every member
+    // reads and writes the whole list. Owen's call 2026-08-22, weighed against
+    // the shared-vault shape (private, opt in one at a time) that comps use —
+    // the migration records the argument. `added_by` is stored so that
+    // decision stays reversible without a data cleanup.
+    //
+    // NOTHING HERE IS EVER POPULATED FROM A LEAD OR A HUB. The plan makes it a
+    // condition of the feature existing: lead routing is owner-mediated and
+    // anonymized by standing rule, and hub participants are tenants who agreed
+    // to talk to one broker about one deal. A firm's contact list is data the
+    // firm typed or imported. There is no code path from either here, and
+    // org-contacts.js deliberately exports no function that could become one.
+    if (orgPath === "/api/org/contacts") {
+      const contactsFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const rows = await orgContactRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            // The vault's rule: say so rather than under-report silently.
+            truncated: rows.length >= 2000,
+            contacts: rows.map((r) => ({
+              id: r.id,
+              name: r.name,
+              email: r.email || "",
+              company: r.company || "",
+              notes: r.notes || "",
+              // Live name first, stored snapshot second — 038's ordering, and
+              // its reason: an attribution should say what a colleague is
+              // called today, and the snapshot only speaks once they are gone.
+              addedBy: r.added_by_name || "",
+              mine: Boolean(r.added_by_user_id && String(r.added_by_user_id) === String(ctx.user.id)),
+              createdAt: r.created_at,
+            })),
+          });
+        })().catch((err) => {
+          console.error("Firm contacts read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's contacts. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // POST adds ONE contact, or imports a CSV when the body carries `csv`.
+      // One route for both because they are the same write with the same gate
+      // and the same validation; splitting them would be two places to keep
+      // the org scoping right.
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          let body;
+          try { body = await readOrgBody(2e6); } catch (err) {
+            if (err.message === "too_big") return sendJson(res, 413, { error: "That file is too large to import in one go." });
+            return sendJson(res, 400, { error: "Bad request." });
+          }
+
+          const addedBy = {
+            added_by_user_id: ctx.user.id,
+            // Snapshotted for 032's and 038's reason: `on delete set null`
+            // means the join disappears with the account, and a contact
+            // nobody can attribute is one nobody can ask about. Name only.
+            added_by_name: String(ctx.user.name || "").trim().slice(0, 120),
+          };
+
+          let rows = [];
+          let errors = [];
+          let commented = 0;
+          let total = 0;
+
+          if (typeof body.csv === "string") {
+            const parsed = CONTACTS.parseContactsCsv(body.csv, {
+              parseCsv: VAULT.parseCsv,
+              isCommentRow: VAULT.isCommentRow,
+              normalizeHeader: VAULT.normalizeHeader,
+            });
+            rows = parsed.rows; errors = parsed.errors;
+            commented = parsed.commented; total = parsed.total;
+          } else {
+            const one = CONTACTS.normalizeContact(body);
+            total = 1;
+            if (one.errors.length) errors = one.errors; else rows = [one.row];
+          }
+
+          // Dedupe against what the firm already holds. Reported, never
+          // silent — parseUpload's "imported N of M" rule.
+          const existing = rows.length ? await orgContactEmails(ctx.orgId) : [];
+          const deduped = CONTACTS.dropExisting(rows, existing);
+
+          let imported = 0;
+          if (deduped.rows.length) {
+            const payload = deduped.rows.map((r) => ({ org_id: ctx.orgId, ...addedBy, ...r }));
+            // on_conflict so a race with another member adding the same email
+            // is a no-op rather than a 409 the importer cannot act on. The
+            // unique index is partial (email only), so unemailed contacts are
+            // unaffected and are never merged.
+            await sbRequest("POST", "org_contacts?on_conflict=org_id,email", payload,
+              { prefer: "resolution=ignore-duplicates,return=minimal" });
+            imported = deduped.rows.length;
+          }
+
+          logEvent("org_contacts", { source: `add:${imported}` });
+          return sendJson(res, errors.length && !imported ? 400 : 200, {
+            imported, total, commented,
+            duplicates: deduped.duplicates,
+            errors,
+          });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that contact. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "PATCH" || req.method === "DELETE") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const contactId = (ctx.url.searchParams.get("contact") || "").trim();
+          if (!contactId) return sendJson(res, 400, { error: "Which contact?" });
+
+          // Scoped by org_id as well as id on EVERY call, including the
+          // DELETE — the vault's rule. Without it, knowing a contact's id
+          // would be enough to edit or delete another firm's row.
+          const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}` +
+            `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const found = await sbRequest("GET", `${scope}&select=id,name,email,company,notes&limit=1`);
+          const existing = (found || [])[0];
+          if (!existing) return sendJson(res, 404, { error: "That contact is not in this firm." });
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+            return sendJson(res, 200, { ok: true, deleted: contactId });
+          }
+
+          let patch;
+          try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          // Validated as the WHOLE row it would become — broker-vault.js's
+          // validateEdit rule, so an edit cannot accept what an import refuses.
+          const { row, errors } = CONTACTS.validateContactEdit(existing, patch);
+          if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
+
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() },
+            { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, contact: { id: contactId, ...row } });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
     }
 
     // --- POST /api/org/invite ----------------------------------------------

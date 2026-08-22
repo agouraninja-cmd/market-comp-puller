@@ -2464,6 +2464,48 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </div>
 
+      <!-- The firm's own tenant contacts (039). Typed or imported, NEVER
+           collected: nothing on this panel is populated from a CompNinja lead
+           or a hub participant, which the plan made a condition of building it
+           — see migrations/039 for the reasoning. Firm-wide, with the member
+           who added each one shown, because that is what keeps the
+           private-by-default option open later. -->
+      <div id="deskContacts" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Tenant contacts</span>
+          <span id="contactsStats" class="dk-note"></span>
+        </div>
+        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a CSV — nothing here is ever filled in from CompNinja enquiries.</p>
+
+        <form id="contactAddForm" class="mt-3 flex flex-wrap items-end gap-2">
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Name</span>
+            <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Email</span>
+            <input id="contactEmail" type="text" maxlength="200" placeholder="optional"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Company</span>
+            <input id="contactCompany" type="text" maxlength="120" placeholder="optional"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+          <!-- A second door for a list somebody already keeps in a
+               spreadsheet. It posts to the same route the Add button does. -->
+          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a CSV</button>
+          <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
+        </form>
+        <p id="contactMsg" class="hidden text-sm mt-2"></p>
+        <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
+
+        <div id="contactRows" class="mt-3"></div>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a CSV with a name column.</p>
+      </div>
+
       <!-- The firm itself: create one, accept an invitation, see who is in it.
            Three states in one section, exactly one visible at a time
            (renderFirm owns that). Deliberately BELOW the firm shelf: this is
@@ -12281,6 +12323,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("deskSharedWithFirm").classList.add("hidden");
       // The board names colleagues too, so it hides on the same signal.
       document.getElementById("deskDealBoard").classList.add("hidden");
+      // The contact list is the most personal thing on this deck — real names
+      // and addresses a customer typed — so it hides on the same signal.
+      document.getElementById("deskContacts").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
     };
     if (!currentUser) { hideAll(); return; }
@@ -12311,6 +12356,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // so it has to come after the membership load. Its own read is independent
     // of the shelf's, so a slow board never holds the shelf back.
     await renderDealBoard();
+    await renderContacts();
   }
 
   // ---------------------------------------------------------------------------
@@ -12609,6 +12655,159 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       dealBoardWindow = b.dataset.window === "quarter" ? "quarter" : "month";
       drawDealBoard();
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // The firm's tenant contacts (039).
+  //
+  // Presentation only, like the deal board above it: every refusal lives in
+  // org-contacts.js and is enforced server-side, so this file never decides
+  // whether an address is real. It shows what came back and repeats what the
+  // server said about what it refused.
+  //
+  // TYPED OR IMPORTED, NEVER COLLECTED. There is deliberately no control here
+  // that fills the list from a lead, a hub or a BOV — the plan made that a
+  // condition of the feature, and a button is how it would arrive by accident.
+  // ---------------------------------------------------------------------------
+  function contactsMsg(text, bad) {
+    const el = document.getElementById("contactMsg");
+    el.textContent = text || "";
+    el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
+  }
+
+  async function renderContacts() {
+    const box = document.getElementById("deskContacts");
+    const firm = myFirm();
+    if (!firm) { box.classList.add("hidden"); return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    // A failed read hides the panel rather than rendering an empty list — the
+    // shelf's rule, and the reason is the same one: "no contacts" and "we
+    // could not reach the database" must never look identical, because the
+    // first invites somebody to retype a list they already have.
+    if (!data) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+
+    const rows = Array.isArray(data.contacts) ? data.contacts : [];
+    document.getElementById("contactsStats").textContent =
+      rows.length ? `${rows.length} ${rows.length === 1 ? "contact" : "contacts"}` : "";
+    document.getElementById("contactsTruncated").classList.toggle("hidden", !data.truncated);
+    document.getElementById("contactsEmpty").classList.toggle("hidden", rows.length > 0);
+
+    const wrap = document.getElementById("contactRows");
+    wrap.innerHTML = "";
+    rows.forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "db-row";
+      const name = document.createElement("span");
+      name.className = "db-name";
+      // textContent throughout: every one of these is text a person typed.
+      name.textContent = c.name;
+      row.appendChild(name);
+
+      const meta = document.createElement("span");
+      meta.className = "db-split";
+      const bits = [];
+      if (c.company) bits.push(c.company);
+      if (c.email) bits.push(c.email);
+      // "you" rather than the reader's own name, the shelf's rule: reading
+      // your own name in a list of colleagues is a beat of confusion.
+      bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "db-total text-xs underline";
+      del.textContent = "Remove";
+      del.addEventListener("click", async () => {
+        // No confirm: a contact is four fields somebody can retype, unlike a
+        // vault comp, and the vault's own Undo exists because a comp is not.
+        del.disabled = true;
+        try {
+          const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}` +
+            `&contact=${encodeURIComponent(c.id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
+          contactsMsg("");
+          await renderContacts();
+        } catch (err) {
+          del.disabled = false;
+          contactsMsg(err.message || "That didn't go through.", true);
+        }
+      });
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  // One writer for both doors — the typed form and the CSV — because they are
+  // the same POST with the same validation behind it.
+  async function postContacts(body) {
+    const firm = myFirm();
+    if (!firm) return;
+    const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok && out.error) throw new Error(out.error);
+    return out;
+  }
+
+  // What the server refused is repeated verbatim and IN FULL up to a limit,
+  // never summarised as a count: "3 rows were skipped" gives somebody no way
+  // to find them, and these errors already carry line numbers for that reason.
+  function importSummary(out) {
+    const parts = [];
+    parts.push(`${out.imported} of ${out.total} imported`);
+    if (out.duplicates) parts.push(`${out.duplicates} already on the list`);
+    if (out.commented) parts.push(`${out.commented} note ${out.commented === 1 ? "line" : "lines"} skipped`);
+    let text = parts.join(" · ");
+    if (out.errors && out.errors.length) {
+      text += "\n" + out.errors.slice(0, 8).join("\n");
+      if (out.errors.length > 8) text += `\n...and ${out.errors.length - 8} more.`;
+    }
+    return text;
+  }
+
+  document.getElementById("contactAddForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("contactName").value.trim();
+    const email = document.getElementById("contactEmail").value.trim();
+    const company = document.getElementById("contactCompany").value.trim();
+    try {
+      const out = await postContacts({ name, email, company });
+      if (out.errors && out.errors.length) return contactsMsg(out.errors.join("; "), true);
+      ["contactName", "contactEmail", "contactCompany"].forEach((id) => { document.getElementById(id).value = ""; });
+      contactsMsg(out.duplicates ? "That email is already on your firm's list." : "Added.");
+      await renderContacts();
+    } catch (err) {
+      contactsMsg(err.message || "That didn't go through.", true);
+    }
+  });
+
+  document.getElementById("contactImportBtn").addEventListener("click", () => {
+    document.getElementById("contactCsvFile").click();
+  });
+
+  document.getElementById("contactCsvFile").addEventListener("change", async (e) => {
+    const file = e.target.files && e.target.files[0];
+    // The input is cleared immediately so picking the SAME file twice still
+    // fires a change event — otherwise a failed import cannot be retried
+    // without choosing a different file first.
+    e.target.value = "";
+    if (!file) return;
+    contactsMsg("Reading " + file.name + "...");
+    try {
+      const csv = await file.text();
+      const out = await postContacts({ csv });
+      contactsMsg(importSummary(out), out.imported === 0);
+      await renderContacts();
+    } catch (err) {
+      contactsMsg(err.message || "That file couldn't be imported.", true);
+    }
   });
 
   // ---------------------------------------------------------------------------

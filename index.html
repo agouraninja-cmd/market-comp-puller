@@ -4223,12 +4223,32 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .filter((v) => isFinite(v) && v >= 0)
       .sort((a, b) => a - b);
     // Below three it is a list of facts, not a spread worth summarizing.
-    if (mi.length < 3) { el.classList.add("hidden"); el.textContent = ""; return; }
+    if (mi.length < 3) { el.classList.add("hidden"); el.textContent = ""; reconcileRadiusClaim(null); return; }
     const far = mi[mi.length - 1];
     el.textContent = far < 0.1
       ? `All ${mi.length} located comps sit within a tenth of a mile of your property.`
       : `Located comps sit ${fmtMiles(mi[0]).replace("< ", "under ")} to ${fmtMiles(far)} from your property.`;
     el.classList.remove("hidden");
+    reconcileRadiusClaim(far);
+  }
+
+  // The measured line above is the truth; the radius line three elements up
+  // is the search model's claim about the same thing. When the two disagree
+  // the reader is handed a contradiction and no way to resolve it, so the
+  // claim gives way and the measurement stands alone. Called from
+  // renderDistanceNote because that is where the measurement lands, and it
+  // lands a beat AFTER the radius line is painted (geocoding settles later),
+  // which is why this cannot live at the radius line's own render.
+  //
+  // Passing null means "no measurement" and restores whatever the model
+  // said: a report whose comps never geocoded has nothing to contradict it,
+  // and re-running curation must be able to put the line back.
+  function reconcileRadiusClaim(farthestMiles) {
+    const el = document.getElementById("searchRadiusNote");
+    if (!el || !el.dataset.claim) return;
+    const hide = farthestMiles != null
+      && VALUATION.radiusClaimContradicted(el.dataset.claim, farthestMiles);
+    el.classList.toggle("hidden", hide);
   }
 
   // Called once the map's geocoding pass settles. Re-prunes the columns first:
@@ -10232,6 +10252,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const radiusTxt = parsed && parsed.search_radius ? String(parsed.search_radius).trim().slice(0, 140) : "";
     radiusNote.textContent = radiusTxt ? "Search radius: " + radiusTxt : "";
     radiusNote.classList.toggle("hidden", !radiusTxt);
+    // The raw claim, kept for reconcileRadiusClaim() to re-check once the
+    // real distances arrive. Stashed rather than re-parsed off textContent,
+    // which by then carries the "Search radius: " prefix too.
+    radiusNote.dataset.claim = radiusTxt;
 
     // Breadth framing (a user suggestion): "selected the N most comparable from
     // ~M reviewed". Numerator is the real returned-comp count; denominator is the

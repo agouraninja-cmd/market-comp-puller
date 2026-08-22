@@ -197,6 +197,36 @@
     return n > 0 && n <= 50 ? n : null;
   }
 
+  // A stated radius is only a CLAIM. The report prints it above the comp
+  // table ("Search radius: Immediate submarket, ~5 miles") and then prints
+  // the measured spread two lines below it ("Located comps sit 13 mi to
+  // 20 mi from your property"), and nothing ever reconciled the two — the
+  // first comes from the search model, the second from real geocodes. A
+  // reader met both and had no way to know which to believe.
+  //
+  // Measurement wins. This says whether the claim survives contact with it,
+  // so the caller can drop a sentence rather than print a contradiction.
+  //
+  // The 25% slack is the same "close enough not to be worth flagging" bar
+  // outlierOf and askFit already use, and it matters here because a radius
+  // is approximate by nature: a model that says "about 5 miles" and returns
+  // a comp at 5.8 was describing the search honestly, and blanking its line
+  // would cost the reader real context ("Immediate submarket") to fix
+  // nothing. A comp at 13 against a claimed 5 is a different statement.
+  //
+  // Returns false whenever there is nothing to compare — no claim, no
+  // parseable mileage in the claim (it is free-form model prose), or no
+  // measured distance. Missing data is never treated as a contradiction,
+  // the same rule compWeight follows.
+  var RADIUS_CLAIM_SLACK = 1.25;
+  function radiusClaimContradicted(radiusText, farthestMiles) {
+    const claimed = parseRadiusMiles(radiusText);
+    if (claimed == null) return false;
+    const far = Number(farthestMiles);
+    if (!isFinite(far) || far <= 0) return false;
+    return far > claimed * RADIUS_CLAIM_SLACK;
+  }
+
   // A house more than 1.5× the subject's implied $/SF is a different
   // pocket, even at 0.3 miles. Same 1.5× bar blend-corpus.js uses on
   // extras (RESIDENTIAL_PRICE_TIER_RATIO). Past it, the weight floors so
@@ -576,7 +606,8 @@
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
     defaultFreePassMiles,
-    parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
+    parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
+    priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
     conditionSpread, unexplainedGain, conditionFit, CONDITION_RANK,

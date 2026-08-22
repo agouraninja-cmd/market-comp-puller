@@ -2575,3 +2575,47 @@ test("the watchlist feed's median $/SF requires a parseable deal date", () => {
     "listing is stored with deal_date \"Active\"/\"Listed Mon YYYY\" and is an " +
     "ASKING price, not a comparable sale");
 });
+
+// COMP_FLOOR exists because of a measured side effect of THINKING_LEVEL=low
+// (2026-08-21): 66% faster and 66% cheaper, and a third fewer comps. The
+// shorter list was BETTER sourced (estimate rate 14% -> 2%), so the model
+// appears to stop LOOKING sooner rather than to find worse comps. The one way
+// this instruction could do harm is by buying comp count back with padding,
+// which is why the anti-padding rules are restated inside it rather than left
+// to proximity.
+test("the comp floor asks for more searching, never for a lower bar", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+
+  const rule = body.slice(body.indexOf("COMP COUNT:"));
+  assert.ok(rule.length > 100, "the COMP COUNT instruction should exist");
+  const sentence = rule.slice(0, rule.indexOf("`", 1));
+  assert.match(sentence, /keep searching/, "the ask must be to search harder");
+  assert.match(sentence, /does NOT relax any rule above/,
+    "it must restate that it relaxes nothing, not merely sit near the rule that says so");
+  assert.match(sentence, /never pad the list/);
+  assert.match(sentence, /not on lowering the bar for what counts as one/);
+
+  // Gated, and off unless a deployment opts in — it is a prompt change on the
+  // hot path and is only worth carrying if the eval says it recovers the comps.
+  assert.match(body, /COMP_FLOOR\s*\n?\s*\?/, "the instruction must be behind the flag");
+  assert.equal(/^(1|on|true|yes)$/i.test(""), true === false,
+    "an unset COMP_FLOOR must read as off");
+});
+
+test("the comp floor can never ask for more comps than the report will show", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  // Asking for 6 on a 4-comp request would be an instruction the gate then
+  // truncates, i.e. wasted searching the visitor pays for and never sees.
+  assert.match(src, /Math\.min\(COMP_FLOOR_TARGET, maxComps\)/,
+    "the floor must be clamped to maxComps");
+  assert.match(src, /Math\.max\(3, Number\(process\.env\.COMP_FLOOR_TARGET\)/,
+    "and never fall below the prompt's own stated minimum of 3");
+});

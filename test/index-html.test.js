@@ -670,8 +670,25 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
 });
 
 test("empty desk copy no longer tells them to press Save", () => {
-  assert.match(html, /id="deskEmpty"[^>]*>Run a report — it will show up here\./);
+  // The em dash came out on 2026-08-22 (owner's standing copy rule), which is
+  // why this pins the new wording. The assertion below it is the one carrying
+  // the test's actual name and must outlive any future rewording.
+  assert.match(html, /id="deskEmpty"[^>]*>Run a report and it will show up here\./);
   assert.doesNotMatch(html, /press "Save to portfolio"/);
+});
+
+test("a failed desk read says nothing has been lost, not just that it failed", () => {
+  // Both lines cover sections holding saved work — one the member's own
+  // portfolio, one the reports colleagues shared with them — and a bare
+  // "couldn't load" there reads as data loss to exactly the person most
+  // likely to be looking at it. The shares line said only that it failed
+  // until 2026-08-22. Neither may go back to one sentence.
+  for (const id of ["deskLoadError", "deskSharesLoadError"]) {
+    const m = html.match(new RegExp('id="' + id + '"[^>]*>([^<]+)<'));
+    assert.ok(m, `${id} is gone`);
+    assert.match(m[1], /Couldn't load/, `${id} must name the failure`);
+    assert.match(m[1], /Nothing has been lost/, `${id} must say nothing is gone`);
+  }
 });
 
 test("auto-save lives inside saveHistory, behind the same three guards", () => {

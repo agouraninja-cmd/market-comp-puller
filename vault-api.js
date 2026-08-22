@@ -63,6 +63,9 @@
 // not pushed.
 const INTERNAL_FIELDS = Object.freeze([
   "user_id", "address_key", "dedupe_key", "property_id",
+  // 038's high-water mark. Written only by the digest run, read by nothing a
+  // browser renders — see API_COMP_FIELDS.
+  "renewal_notified_at",
 ]);
 
 // Every field `GET /api/vault` currently answers with, and therefore every
@@ -90,6 +93,14 @@ const API_COMP_FIELDS = Object.freeze([
   "rent_basis",
   "lease_type",
   "rent_psf_yr",
+  // The renewal watch's two dates (038), plus its high-water mark. The dates
+  // are the broker's own input and the page shows them; the mark is plumbing
+  // and is stripped by INTERNAL_FIELDS below, the same way property_id is —
+  // it says only that we have already mailed about this lease, which is an
+  // answer to a question no dashboard asks.
+  "lease_expiry",
+  "option_notice_date",
+  "renewal_notified_at",
   "clear_height",
   "dock_doors",
   "building_class",

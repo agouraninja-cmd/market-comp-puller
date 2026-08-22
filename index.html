@@ -1128,6 +1128,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
     .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
+    /* The deal board (O3). One row shape for all three lists — leaderboard,
+       markets, months — because they are the same statement read three ways,
+       and three different treatments would imply three different kinds of
+       number. Built on .dk-crow's hairline rhythm with a rank column and
+       tabular figures, so a column of counts lines up. */
+    .db-row { display: flex; align-items: baseline; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 12.5px; color: var(--ink-body); }
+    .db-row:last-child { border-bottom: 0; }
+    .db-rank { flex: 0 0 18px; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .db-name { flex: 1 1 auto; min-width: 0; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .db-you { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin-left: 6px; }
+    /* An unattributed bucket reads in the quiet voice, never as a person. */
+    .db-name.db-anon { color: var(--ink-3); font-style: italic; }
+    .db-split { flex: 0 0 auto; font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+    .db-total { flex: 0 0 auto; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 22px; text-align: right; }
+    .db-tabs { display: inline-flex; border: 1px solid var(--hair); border-radius: 8px; overflow: hidden; }
+    .db-tab { font-size: 11.5px; padding: 5px 11px; color: var(--ink-3); background: transparent; cursor: pointer; border: 0; }
+    .db-tab + .db-tab { border-left: 1px solid var(--hair); }
+    /* --paper, never #fff: --ink flips to a near-white in dark mode, so a
+       hardcoded white label on it is white on white. The pair is the same one
+       the primary button uses. */
+    .db-tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
     /* Desk decks (2026-08-21): the vault's Direction-U grouping applied to My
        Desk — a serif label on a heavy ink rule per product area, so the dozen
        dk-rule sections read as five shelves instead of one flat stack. A deck
@@ -2363,6 +2384,53 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="firmShelfTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
         <div id="sharedWithFirmRows" class="mt-2 space-y-1.5"></div>
         <p id="firmShelfNoMatch" class="hidden text-sm text-[#5A6473] mt-2">Nothing on the shelf matches that.</p>
+      </div>
+
+      <!-- The deal board (O3): who shared what to the firm, by member, by
+           market and by month. Presentation over the shelf and the firm's
+           shared comps — no new tables, and nothing here reads a colleague's
+           own book. Hidden until the firm has shared something; the shelf's
+           empty state above already says what to do about that, and better. -->
+      <div id="deskDealBoard" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Deal board</span>
+          <span id="dealBoardStats" class="dk-note"></span>
+        </div>
+        <!-- Said on the panel, not only in the code. The wishlist asked to see
+             who is closing what; this counts what people SHARE, and a reader
+             who assumes otherwise would be reading a wrong number that looks
+             exactly like a right one. -->
+        <p class="text-xs text-[#68707E] mt-2">Counts what your firm's members shared with the firm — reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.</p>
+        <p id="dealBoardTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span class="rd-lab">Most shared</span>
+          <div class="db-tabs" role="group" aria-label="Leaderboard window">
+            <button type="button" class="db-tab" data-window="month" aria-pressed="true">This month</button>
+            <button type="button" class="db-tab" data-window="quarter" aria-pressed="false">This quarter</button>
+          </div>
+        </div>
+        <div id="dealBoardLeaders" class="mt-1"></div>
+        <p id="dealBoardLeadersEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nothing has been shared with the firm in this window yet.</p>
+
+        <div class="mt-6 grid sm:grid-cols-2 gap-6">
+          <div>
+            <div class="dk-rule"><span class="rd-lab">By market</span></div>
+            <div id="dealBoardMarkets" class="mt-1"></div>
+          </div>
+          <div>
+            <!-- "Shared by month", not "By month": the only date both sources
+                 have in common is when something reached the firm, so the
+                 heading names it rather than leaving a reader to assume it
+                 means when the deal closed. -->
+            <div class="dk-rule"><span class="rd-lab">Shared by month</span></div>
+            <div id="dealBoardMonths" class="mt-1"></div>
+            <!-- Declared rather than folded in silently: a share whose date we
+                 cannot read still counts in the totals above, so the months
+                 below them would otherwise quietly sum to less. -->
+            <p id="dealBoardUndated" class="hidden text-xs text-[#68707E] mt-1.5"></p>
+          </div>
+        </div>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -12121,6 +12189,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // screen after a sign-out is the same class of mistake as a stale share
       // list, and this one names colleagues.
       document.getElementById("deskSharedWithFirm").classList.add("hidden");
+      // The board names colleagues too, so it hides on the same signal.
+      document.getElementById("deskDealBoard").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
     };
     if (!currentUser) { hideAll(); return; }
@@ -12147,6 +12217,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // on a sign-out-then-sign-in is somebody else's.
     await renderFirm();
     await renderFirmShelf();
+    // Last, and for renderFirmShelf's own reason: the board reads myFirm() too,
+    // so it has to come after the membership load. Its own read is independent
+    // of the shelf's, so a slow board never holds the shelf back.
+    await renderDealBoard();
   }
 
   // ---------------------------------------------------------------------------
@@ -12297,6 +12371,154 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("firmShelfType").addEventListener("change", () => {
     firmShelfTypeTouched = true;
     applyFirmShelfFilter();
+  });
+
+  // ---------------------------------------------------------------------------
+  // The deal board (O3) — who shared what to the firm, by member, market, month.
+  //
+  // Presentation ONLY. Every judgment in the counting lives in deal-board.js
+  // and is settled server-side: who counts as one person, which month a share
+  // falls in, what an undated row does to a total, where a window starts. This
+  // file draws what it is handed and decides nothing, which is deliberate —
+  // index.html cannot require a module, so any rule restated here would be a
+  // second copy of one `npm test` already covers.
+  //
+  // Two rules it does own, both about not lying on screen:
+  //   - **The window switch never re-fetches.** Both leaderboards arrive in one
+  //     payload, so switching cannot show a month counted at a different moment
+  //     from the quarter beside it, and cannot fail halfway.
+  //   - **A failure hides the panel; it never renders zeros.** A board reading
+  //     "0 shared this month" because a read failed is the shelf's own
+  //     misreport-an-outage-as-absence trap, and this one would tell a firm
+  //     their colleagues did nothing.
+  // ---------------------------------------------------------------------------
+  let dealBoard = null;              // the server's computed board, or null
+  let dealBoardWindow = "month";     // which leaderboard is showing
+
+  const DB_MONTHS = ["January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"];
+
+  // "2026-08" -> "August 2026". Parsed off the string rather than through Date,
+  // because a bare "2026-08" parses as UTC midnight and would render as July in
+  // any timezone west of Greenwich — the board is bucketed in UTC server-side,
+  // so the label has to be read the same way.
+  function dbMonthLabel(key) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(key || ""));
+    if (!m) return String(key || "");
+    const i = Number(m[2]) - 1;
+    return (DB_MONTHS[i] || m[2]) + " " + m[1];
+  }
+
+  function dbCountLabel(reports, comps) {
+    const bits = [];
+    if (reports) bits.push(reports + (reports === 1 ? " report" : " reports"));
+    if (comps) bits.push(comps + (comps === 1 ? " comp" : " comps"));
+    return bits.join(" · ");
+  }
+
+  // One row builder for all three lists. textContent throughout — a member's
+  // display name and a market string are both user-authored, the same rule the
+  // shelf rows above follow.
+  function dbRow({ rank, name, anon, mine, reports, comps, total }) {
+    const row = document.createElement("div");
+    row.className = "db-row";
+    if (rank != null) {
+      const r = document.createElement("span");
+      r.className = "db-rank";
+      r.textContent = rank;
+      row.appendChild(r);
+    }
+    const n = document.createElement("span");
+    n.className = "db-name" + (anon ? " db-anon" : "");
+    n.textContent = name;
+    row.appendChild(n);
+    if (mine) {
+      const you = document.createElement("span");
+      you.className = "db-you";
+      you.textContent = "you";
+      n.appendChild(you);
+    }
+    const split = document.createElement("span");
+    split.className = "db-split";
+    split.textContent = dbCountLabel(reports, comps);
+    row.appendChild(split);
+    const t = document.createElement("span");
+    t.className = "db-total";
+    t.textContent = total;
+    row.appendChild(t);
+    return row;
+  }
+
+  function drawDealBoard() {
+    const box = document.getElementById("deskDealBoard");
+    if (!dealBoard) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+
+    const t = dealBoard.totals || {};
+    document.getElementById("dealBoardStats").textContent =
+      `${t.total} shared · ${t.members} ${t.members === 1 ? "person" : "people"} · ${t.markets} ${t.markets === 1 ? "market" : "markets"}`;
+    document.getElementById("dealBoardTruncated").classList.toggle("hidden", !dealBoard.truncated);
+
+    // The leaderboard for the selected window.
+    const lead = (dealBoard.leaderboard && dealBoard.leaderboard[dealBoardWindow]) || { rows: [] };
+    const leaders = document.getElementById("dealBoardLeaders");
+    leaders.innerHTML = "";
+    lead.rows.forEach((r, i) => leaders.appendChild(dbRow({
+      rank: i + 1,
+      // The wire carries the absence of a name; the words are chosen here.
+      name: r.name || "A former colleague",
+      anon: !r.name,
+      mine: r.mine,
+      reports: r.reports, comps: r.comps, total: r.total,
+    })));
+    document.getElementById("dealBoardLeadersEmpty").classList.toggle("hidden", lead.rows.length > 0);
+    document.querySelectorAll("#deskDealBoard .db-tab").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.window === dealBoardWindow));
+    });
+
+    const markets = document.getElementById("dealBoardMarkets");
+    markets.innerHTML = "";
+    (dealBoard.markets || []).forEach((m) => markets.appendChild(dbRow({
+      name: m.market, reports: m.reports, comps: m.comps, total: m.total,
+    })));
+
+    const months = document.getElementById("dealBoardMonths");
+    months.innerHTML = "";
+    (dealBoard.months || []).forEach((m) => months.appendChild(dbRow({
+      name: dbMonthLabel(m.month), reports: m.reports, comps: m.comps, total: m.total,
+    })));
+    // Said, not hidden — see the markup comment.
+    const undated = document.getElementById("dealBoardUndated");
+    undated.textContent = t.undated
+      ? (t.undated === 1
+        ? "1 share is counted above but carries no readable date, so it is not in this breakdown."
+        : `${t.undated} shares are counted above but carry no readable date, so they are not in this breakdown.`)
+      : "";
+    undated.classList.toggle("hidden", !t.undated);
+  }
+
+  async function renderDealBoard() {
+    const box = document.getElementById("deskDealBoard");
+    const firm = myFirm();
+    if (!firm) { box.classList.add("hidden"); dealBoard = null; return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/board?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below, the same way a non-ok response is */ }
+    // A failed read and a firm that has shared nothing both end here, and both
+    // hide the panel rather than draw zeros. They differ in what the desk says
+    // about it, and the shelf above says it in both cases: its own empty state
+    // invites the first share, and its load error covers the outage.
+    dealBoard = (data && data.board) || null;
+    drawDealBoard();
+  }
+
+  document.querySelectorAll("#deskDealBoard .db-tab").forEach((b) => {
+    b.addEventListener("click", () => {
+      dealBoardWindow = b.dataset.window === "quarter" ? "quarter" : "month";
+      drawDealBoard();
+    });
   });
 
   // ---------------------------------------------------------------------------

@@ -67,6 +67,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        won't style — see tailwind.config.js for the one-line command. -->
   <link rel="stylesheet" href="/tailwind.css" />
   <script src="/valuation.js"></script>
+  <!-- Development returns (C6). Served max-age 0 like /valuation.js and for
+       the same reason: it must never be cached stale against the HTML. -->
+  <script src="/dev-returns.js"></script>
   <script src="/explore-query.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
@@ -3391,6 +3394,73 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p class="text-xs text-[#68707E] mt-4">Loan terms stay in your browser and your own portfolio, never on shared links. Screening math at market-standard limits, not a loan quote.</p>
         </div>
 
+        <!-- Development returns — cost -> stabilized value -> return. Math in
+             /dev-returns.js (pure, tested, dual-exported); built by
+             renderDevCard(). Costs are private like NOI and debt terms: they
+             never reach the server's search, never enter the cache key, and
+             /api/share strips them. -->
+        <div id="devCard" class="hidden rd-bcard print-shadow-none fade-in">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Development Returns</h2>
+            <span id="devBasis" class="text-xs text-[#68707E] text-right"></span>
+          </div>
+          <div class="no-print grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+            <div>
+              <label class="rd-lab" for="devLand">Land ($)</label>
+              <input id="devLand" type="text" inputmode="numeric" placeholder="e.g. 1,000,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="devHard">Hard costs ($)</label>
+              <input id="devHard" type="text" inputmode="numeric" placeholder="e.g. 4,000,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="devSoft">Soft costs ($)</label>
+              <input id="devSoft" type="text" inputmode="numeric" placeholder="e.g. 800,000"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="devCont">Contingency %</label>
+              <input id="devCont" type="number" min="0" max="50" step="0.5" placeholder="e.g. 5"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+            <div>
+              <label class="rd-lab" for="devMonths">Build (months)</label>
+              <input id="devMonths" type="number" min="1" max="240" step="1" placeholder="e.g. 18"
+                class="mt-1 w-full rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div class="rd-tile">
+              <div class="rd-lab">Total project cost</div>
+              <div id="devTotal" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="devTotalSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Yield on cost</div>
+              <div id="devYoc" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="devYocSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Spread to market</div>
+              <div id="devSpread" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="devSpreadSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+            <div class="rd-tile">
+              <div class="rd-lab">Unlevered IRR</div>
+              <div id="devIrr" class="text-2xl font-semibold text-[#1A2433] mt-1">—</div>
+              <div id="devIrrSub" class="text-xs text-[#68707E] mt-1"></div>
+            </div>
+          </div>
+          <div class="rd-tile-hi mt-4">
+            <div class="rd-lab">Profit over cost</div>
+            <div id="devProfit" class="rd-h text-[30px] mt-1">—</div>
+            <div id="devProfitSub" class="text-xs text-[#5A6473] mt-1"></div>
+          </div>
+          <p class="text-xs text-[#68707E] mt-4">Unlevered, all-cash, straight-line draws with the exit at completion — the screening number, not a capital stack. No construction-loan interest, no lease-up period, no tax treatment. Costs stay in your browser and your own portfolio, never on shared links.</p>
+        </div>
+
         <!-- Sensitivity — DCF value across exit cap × NOI growth. Same math as
              the DCF card (shared dcfValue); built by renderSensCard(). -->
         <div id="sensCard" class="hidden rd-bcard print-shadow-none fade-in">
@@ -6564,6 +6634,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const a = meta.assumptions;
     if (!a.debt || typeof a.debt !== "object") a.debt = { loanAmount: null, ratePct: null, amortYears: 30 };
     if (!a.opex || typeof a.opex !== "object") a.opex = { grossIncome: null };
+    // Development costs (C6). Seeded empty and never guessed: a contingency
+    // default would put a number in a total nobody typed, and every figure in
+    // dev-returns.js is gated on real input for exactly that reason.
+    if (!a.devCost || typeof a.devCost !== "object") {
+      a.devCost = { land: null, hard: null, soft: null, contingencyPct: null, buildMonths: null };
+    }
     if (!(a.holdYears >= 1)) {
       const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
       const capLo = capR ? numericValue(capR.low) : NaN;
@@ -6747,6 +6823,121 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return loan * (i / (1 - Math.pow(1 + i, -n))) * 12;
   }
 
+  // Development returns. Math lives in /dev-returns.js (pure, tested); this
+  // reads inputs, calls it once, and formats. Nothing is computed twice.
+  //
+  // WHO SEES IT: a signed-in visitor whose report is Land (org-access.js's own
+  // reasoning — Land is the type that names a site), or who is in a
+  // development shop, or who has already entered costs here. A broker running
+  // a comp set is not handed a pro forma they did not ask for, and a developer
+  // who used it once on an Industrial build keeps it. `firmState` is read
+  // defensively and never forced: it is the desk's cache, so on a report page
+  // it is often simply absent, and the Land door has to work without it.
+  function devCardApplies(meta) {
+    if (!currentUser) return false;
+    if (meta && meta.type === "Land") return true;
+    const a = meta && meta.assumptions && meta.assumptions.devCost;
+    if (a && (a.land || a.hard || a.soft)) return true;
+    try {
+      const orgs = (firmState && firmState.orgs) || [];
+      return orgs.some((o) => o && o.kind === "development");
+    } catch (_) { return false; }
+  }
+
+  function renderDevCard(parsed, meta, resetAssumptions) {
+    const card = document.getElementById("devCard");
+    if (!card) return;
+    if (!devCardApplies(meta)) { card.classList.add("hidden"); return; }
+    card.classList.remove("hidden");
+
+    const a = ensureAssumptions(meta, parsed);
+    const d = a.devCost;
+    const els = {
+      land: document.getElementById("devLand"), hard: document.getElementById("devHard"),
+      soft: document.getElementById("devSoft"), cont: document.getElementById("devCont"),
+      months: document.getElementById("devMonths"),
+    };
+    if (resetAssumptions || (!els.land.value && !els.hard.value && !els.soft.value)) {
+      els.land.value = d.land > 0 ? Math.round(d.land).toLocaleString() : "";
+      els.hard.value = d.hard > 0 ? Math.round(d.hard).toLocaleString() : "";
+      els.soft.value = d.soft > 0 ? Math.round(d.soft).toLocaleString() : "";
+      els.cont.value = d.contingencyPct > 0 ? d.contingencyPct : "";
+      els.months.value = d.buildMonths > 0 ? d.buildMonths : "";
+    }
+
+    // The stabilized value is the report's OWN valuation — never recomputed
+    // here, because valuation.js already owns that number and a second opinion
+    // would be a second answer on the same screen.
+    const sell = sellTodayEstimate(parsed, meta);
+    const value = lastValuation && lastValuation.likely > 0 ? lastValuation.likely
+      : (sell && sell.value > 0 ? sell.value : null);
+    const capR = parsed && parsed.market_cap_rate_range ? parsed.market_cap_rate_range : null;
+    const capLo = capR ? numericValue(capR.low) : NaN;
+    const capHi = capR ? numericValue(capR.high) : NaN;
+    const capMid = subjectCapRate(meta)
+      || (capLo > 0 && capHi >= capLo ? (capLo + capHi) / 2 : null);
+    const sizeSqft = (meta && meta.subject && meta.subject.sizeMin > 0)
+      ? meta.subject.sizeMin
+      : numericValue(parsed && parsed.subject_size_sqft) || null;
+
+    const r = DEVRETURNS.summarize({
+      cost: d,
+      stabilizedValue: value,
+      stabilizedNoi: meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null,
+      marketCapPct: capMid,
+      sizeSqft,
+    });
+
+    const fmtT = (v) => formatUsd(Math.round(v), { maximumFractionDigits: 0 });
+    const set = (id, txt, sub) => {
+      document.getElementById(id).textContent = txt;
+      document.getElementById(id + "Sub").textContent = sub || "";
+    };
+
+    document.getElementById("devBasis").textContent = value
+      ? "Stabilized value " + fmtT(value) + (sizeSqft ? " · " + Math.round(sizeSqft).toLocaleString() + " SF" : "")
+      : "No value estimate yet";
+
+    set("devTotal", r.cost.total != null ? fmtT(r.cost.total) : "—",
+      r.cost.total != null
+        ? (r.costPerSqft ? fmtT(r.costPerSqft) + " / SF" : "land + hard + soft + contingency")
+        : "enter your costs");
+
+    // Yield on cost and the spread are the build-vs-buy decision, so they are
+    // coloured against the conventional 100bps hurdle rather than left neutral.
+    const yocEl = document.getElementById("devYoc");
+    yocEl.className = "text-2xl font-semibold mt-1 " +
+      (r.spreadBps == null ? "text-[#1A2433]"
+        : r.spreadBps >= 150 ? "text-[#06603A]" : r.spreadBps >= 100 ? "text-[#8A6D1A]" : "text-[#B91C1C]");
+    set("devYoc", r.yieldOnCostPct != null ? r.yieldOnCostPct.toFixed(2) + "%" : "—",
+      r.yieldOnCostPct != null ? "stabilized NOI ÷ total cost" : "enter an NOI in Details");
+
+    set("devSpread", r.spreadBps != null ? (r.spreadBps > 0 ? "+" : "") + r.spreadBps + " bps" : "—",
+      r.spreadBps == null ? (capMid ? "needs an NOI and costs" : "no market cap rate in this report")
+        : r.spreadBps >= 150 ? "well paid for building rather than buying"
+        : r.spreadBps >= 100 ? "at the conventional hurdle"
+        : "thin — buying may beat building here");
+
+    set("devIrr", r.irrPct != null ? r.irrPct.toFixed(1) + "%" : "—",
+      r.irrPct != null ? "unlevered, " + r.buildMonths + "-month build"
+        : (r.cost.total == null ? "enter your costs" : "enter a build length"));
+
+    const profEl = document.getElementById("devProfit");
+    const profSub = document.getElementById("devProfitSub");
+    if (r.profit == null) {
+      profEl.textContent = "—";
+      profSub.textContent = r.missing.length
+        ? "Add " + r.missing.join(", ") + " to see the return."
+        : "";
+    } else {
+      profEl.textContent = fmtT(r.profit);
+      profSub.textContent = (r.profitOnCostPct != null
+        ? (r.profitOnCostPct >= 0 ? "+" : "") + r.profitOnCostPct.toFixed(1) + "% over total cost"
+        : "")
+        + (r.missing.length ? " · add " + r.missing.join(", ") + " for the rest" : "");
+    }
+  }
+
   function renderDebtCard(parsed, meta, resetAssumptions) {
     const card = document.getElementById("debtCard");
     const noi = meta && meta.subject && meta.subject.noi > 0 ? meta.subject.noi : null;
@@ -6829,6 +7020,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const rate = numericValue(document.getElementById("debtRate").value);
         a.debt.ratePct = rate > 0 ? clamp(rate, 0.1, 20, null) : null;
         a.debt.amortYears = clamp(Math.round(numericValue(document.getElementById("debtAmort").value)), 5, 40, 30);
+        persistAssumptions();
+        renderAnalysisCluster(currentParsed, currentMeta, false);
+      }, 250);
+    });
+  });
+
+  // Development-cost inputs. Same debounce-then-recompute shape as the debt
+  // card's, and the same ceilings-not-guesses posture: a value outside a sane
+  // range becomes null (the card then says what is missing) rather than being
+  // clamped into a number nobody typed.
+  let devEditTimer = null;
+  ["devLand", "devHard", "devSoft", "devCont", "devMonths"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("input", () => {
+      if (!currentParsed || !currentMeta) return;
+      clearTimeout(devEditTimer);
+      devEditTimer = setTimeout(() => {
+        const a = ensureAssumptions(currentMeta, currentParsed);
+        const cost = (elId, cap) => {
+          const v = numericValue(document.getElementById(elId).value);
+          return v > 0 ? Math.min(v, cap) : null;
+        };
+        // 20 billion: a runaway guard on a single line item, not a product
+        // limit. It exists so a pasted phone number cannot produce an IRR.
+        a.devCost.land = cost("devLand", 2e10);
+        a.devCost.hard = cost("devHard", 2e10);
+        a.devCost.soft = cost("devSoft", 2e10);
+        const c = numericValue(document.getElementById("devCont").value);
+        a.devCost.contingencyPct = c > 0 && c <= 50 ? c : null;
+        const m = Math.round(numericValue(document.getElementById("devMonths").value));
+        a.devCost.buildMonths = m >= 1 && m <= 240 ? m : null;
         persistAssumptions();
         renderAnalysisCluster(currentParsed, currentMeta, false);
       }, 250);
@@ -7290,6 +7513,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     renderDcfCard(parsed, meta, resetAssumptions);
     renderOpexCard(parsed, meta, resetAssumptions);
     renderDebtCard(parsed, meta, resetAssumptions);
+    renderDevCard(parsed, meta, resetAssumptions);
     renderSensCard(parsed, meta);
     renderRentRollCard(parsed, meta, resetAssumptions);
     const hasNoi = Boolean(meta && meta.subject && meta.subject.noi > 0);

@@ -3004,5 +3004,11 @@
     "type": "improvement",
     "title": "The health check says which build is serving",
     "details": "/healthz now reports the deployed commit and the time the process booted. Render auto-deploys and a blocked deploy looks exactly like a slow one from outside — in one case two failed back to back and the old build served for an hour with every page answering 200. The only check available was grepping a served page for a string the change introduced, which cannot work at all for a change with no visible byte (a server-side rule, a search budget, a caching decision) and reports a perfectly healthy deploy as failed whenever the grep reads the wrong page. Neither field is a secret: the repository is ours and the commit is already public."
+  },
+  {
+    "date": "2026-08-22",
+    "type": "feature",
+    "title": "A development shop can finally see whether the project pencils",
+    "details": "CompNinja knew what a property was worth and nothing about what it cost, so a development shop got different words on its desk and no arithmetic. Five fields — land, hard costs, soft costs, a contingency and how long the build takes — now turn the valuation the report already computes into the four numbers a build decision is actually made on: total cost and cost per foot, yield on cost, the spread over the market cap rate in basis points (coloured against the conventional 100–150bp hurdle, because that is the build-versus-buy call), and an unlevered IRR. Every figure is gated on the inputs it genuinely needs and says what is missing rather than showing a zero — a 0% yield on cost is a real number describing a disaster, and nobody could tell it apart from an empty NOI field. Costs are private like the NOI and the loan terms: they stay in the browser and the owner's own portfolio, never reach the search, and never ride a shared link. Deliberately unlevered and all-cash with the exit at completion, and the card says so — it is the screening number, before anyone models a capital stack."
   }
 ]

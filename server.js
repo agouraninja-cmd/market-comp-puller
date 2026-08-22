@@ -96,6 +96,10 @@ const EMAILSHELL = require("./email-shell");
 // tested, because every judgment in it is about what a person is worth
 // interrupting for — see its header.
 const DIGEST = require("./watchlist-digest");
+// The renewal watch's copy and its send/skip rule (038). The SECOND thing this
+// product sends on its own initiative, and it inherits the digest's bar rather
+// than forking it — same purity, same "when in doubt send nothing", same run.
+const RENEWAL = require("./renewal-watch");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
@@ -1624,6 +1628,89 @@ async function markWatchlistDigested(userId, ids) {
     `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
     { last_digest_at: now });
 }
+// Leases whose renewal deadline is inside the watch window and that nobody has
+// been mailed about yet (038). The renewal watch's half of the digest run.
+//
+// TWO QUERIES AND A UNION IN JS, not one `or=(and(...),and(...))`. The house
+// pattern — this codebase runs two queries and stitches rather than asking
+// PostgREST for a nested boolean — and here it also keeps each shape simple
+// enough for test/helpers/fake-supabase to answer, which 400s a shape it does
+// not recognize rather than matching everything.
+//
+// The split is renewal-watch.js's own deadline rule expressed as SQL: the
+// option notice wins wherever it exists, so the second query takes only rows
+// with NO notice date and falls back to the expiry. Without that exclusion a
+// lease with a near expiry and a far-off notice would be selected here and
+// then correctly dropped by `isDue` — harmless but confusing, and it would
+// make the read's count disagree with the mail's.
+//
+// Neither query is trusted to be exactly right: `RENEWAL.isDue` re-checks
+// every row it is handed, so a widened filter here can only ever cost a read.
+// The reverse is not true, which is why the window below is generous by a day.
+async function leasesDueForRenewal(now = Date.now()) {
+  if (!DB_CONFIGURED) return [];
+  const day = 24 * 3600 * 1000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  // One day either side of the module's window: a `date` column compares by
+  // calendar day and this process's clock may sit either side of midnight UTC
+  // from the deadline's point of view. The module makes the real decision.
+  const from = iso(now - day);
+  const to = iso(now + (RENEWAL.LEAD_DAYS + 1) * day);
+  const cols = "id,user_id,address,market,property_type,transaction," +
+    "lease_expiry,option_notice_date,renewal_notified_at,rent_psf_yr,rent_basis";
+  const [byNotice, byExpiry] = await Promise.all([
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null` +
+      `&option_notice_date=gte.${from}&option_notice_date=lte.${to}` +
+      `&select=${cols}&order=option_notice_date.asc&limit=2000`),
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null&option_notice_date=is.null` +
+      `&lease_expiry=gte.${from}&lease_expiry=lte.${to}` +
+      `&select=${cols}&order=lease_expiry.asc&limit=2000`),
+  ]);
+  // Deduped by id, because the two filters are disjoint by construction and a
+  // change to either could quietly stop being so.
+  const seen = new Map();
+  for (const row of [...(byNotice || []), ...(byExpiry || [])]) {
+    if (row && row.id && !seen.has(row.id)) seen.set(row.id, row);
+  }
+  return [...seen.values()];
+}
+
+// The same high-water discipline as markWatchlistDigested, and its reason: one
+// email per lease, ever, enforced by a column rather than by remembering.
+async function markLeasesNotified(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  await sbRequest("PATCH",
+    `broker_comps?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
+    { renewal_notified_at: new Date().toISOString() });
+}
+
+// What comparable space is quoting, for one lease's market and type.
+//
+// Read from the STANDING MARKET PAGE's stored snapshot, which is the same
+// public figure `/market/<slug>` already publishes — an in-memory lookup, so
+// it costs nothing per lease, and it can never quote a number the market page
+// itself would not. Deliberately NOT computed from the broker's own vault:
+// "what comparable space rents for" is a market claim, and answering it out of
+// the reader's own book would tell them their own rents back.
+//
+// Null whenever there is no page, no rent band, or fewer than two leases
+// behind it (`rentFromComps`'s own floor). The email drops the line rather
+// than printing a figure it cannot stand behind — Owen, 2026-08-22.
+function marketRentFor(marketKey, propertyType) {
+  try {
+    const info = marketPageInfo(marketKey, propertyType);
+    if (!info) return null;
+    const page = getMarketPage(info.slug);
+    const rent = page && page.rent;
+    const median = Number(rent && rent.median);
+    if (!Number.isFinite(median) || median <= 0) return null;
+    return { median, count: Number(rent.count) || 0 };
+  } catch (_) {
+    // A decoration, never the message. See the module header.
+    return null;
+  }
+}
+
 async function setDigestOptout(userId, optout) {
   if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
   await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
@@ -15249,9 +15336,100 @@ const server = http.createServer((req, res) =>
             summary.failed += 1;
           }
         }
+        // --- the renewal watch rides this same run (038) -------------------
+        //
+        // ONE trigger, not two. The plan's words are that it "rides the
+        // watchlist digest, not a second mailer", and the operational reason
+        // is stronger than the tidiness one: whatever cron, Action or person
+        // drives this route already drives the renewal watch, so it cannot be
+        // the feature somebody forgets to schedule. It inherits every refusal
+        // above it — no database, no outbound mail, dry-run — because it sits
+        // below them in the same handler.
+        //
+        // A SEPARATE LOOP over a different population, deliberately. The
+        // digest iterates watchers (people with watchlist markets); this
+        // iterates brokers with a lease deadline coming up, and those two sets
+        // barely overlap. Folding the leases into the digest email would mean
+        // a broker who watches no markets is never told about their own
+        // deadline, because `buildDigest` returns null with no market news.
+        summary.renewals = { brokers: 0, sent: 0, leases: 0, failed: 0 };
+        try {
+          const due = await leasesDueForRenewal(Date.now());
+          const byBroker = new Map();
+          for (const row of due) {
+            if (!row || !row.user_id) continue;
+            if (!byBroker.has(row.user_id)) byBroker.set(row.user_id, []);
+            byBroker.get(row.user_id).push(row);
+          }
+          summary.renewals.brokers = byBroker.size;
+          const brokers = await findUsersByIds([...byBroker.keys()]);
+          for (const account of brokers) {
+            // The same opt-out governs both. Somebody who turned these emails
+            // off turned OFF EMAILS, and honouring that for one self-initiated
+            // message and not the other is how an unsubscribe stops meaning
+            // anything.
+            if (account.digest_optout) continue;
+            try {
+              const leases = (byBroker.get(account.id) || []).map((row) => {
+                const market = marketRentFor(row.market, row.property_type);
+                return {
+                  id: row.id,
+                  address: row.address,
+                  market: row.market,
+                  lease_expiry: row.lease_expiry,
+                  option_notice_date: row.option_notice_date,
+                  renewal_notified_at: row.renewal_notified_at,
+                  rent_psf_yr: row.rent_psf_yr,
+                  // The broker's OWN basis decides how both figures read. They
+                  // recorded this lease monthly or annually, and quoting the
+                  // market back at them in the other unit is the 12x confusion
+                  // 029 exists to prevent.
+                  quote_basis: row.rent_basis === "monthly" ? "monthly" : "annual",
+                  market_rent_psf_yr: market ? market.median : null,
+                  market_rent_comps: market ? market.count : 0,
+                };
+              });
+              const now = Date.now();
+              const mail = RENEWAL.buildRenewalNotice({
+                leases, now,
+                deskUrl: `${SITE_URL}/vault`,
+                unsubscribeUrl: unsubscribeUrlFor(account.id),
+              });
+              if (!mail) continue;
+              if (dryRun) {
+                summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+                continue;
+              }
+              sendOutboundEmail(account.email, mail.subject, mail.text);
+              // Marked AFTER the send is handed off, and only the leases that
+              // were actually in it — markWatchlistDigested's rule and its
+              // reason. A failed mark costs one duplicate next run; marking
+              // first would lose the reminder outright, and a lost reminder is
+              // invisible where a duplicate is merely annoying.
+              const mailed = RENEWAL.dueLeases(leases, now).map((l) => l.id).filter(Boolean);
+              await markLeasesNotified(account.id, mailed);
+              summary.renewals.sent += 1;
+              summary.renewals.leases += mailed.length;
+            } catch (err) {
+              // One bad broker never stops the run, and never stops the
+              // DIGEST either — this whole block is downstream of it.
+              console.error(`Renewal watch failed for ${account.id}:`, err.message);
+              summary.renewals.failed += 1;
+            }
+          }
+        } catch (err) {
+          // The renewal watch failing must not fail the digest that already
+          // sent. Counted and logged, never thrown.
+          console.error("Renewal watch read failed:", err.message);
+          summary.renewals.failed += 1;
+        }
+
         logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
         console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
-          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed` +
+          ` · renewal watch: ${summary.renewals.sent} sent covering ` +
+          `${summary.renewals.leases} ${summary.renewals.leases === 1 ? "lease" : "leases"}` +
+          `${summary.renewals.failed ? `, ${summary.renewals.failed} failed` : ""}`);
         return sendJson(res, 200, summary);
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

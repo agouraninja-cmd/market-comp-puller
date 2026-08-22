@@ -64,6 +64,17 @@ function matches(row, key, expr) {
   // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
   // needs this taught properly rather than reused.
   if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
+  // `lte.` is `gte.`'s mirror and is taught for the same reason and with the
+  // same caveat: server.js sends it (the renewal watch windows a lease
+  // deadline BETWEEN two dates, so it sends both on one column), and the
+  // comparison is a STRING one, correct only for the ISO dates and timestamps
+  // this app puts through it. A numeric column would be wrong here.
+  //
+  // Note the two arrive as separate entries under one key and applyFilters
+  // ANDs every entry, which is PostgREST's own semantics — a fake that read
+  // params into an object would keep only the last and silently widen the
+  // window to everything before the horizon.
+  if (expr.startsWith("lte.")) return String(val) <= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);

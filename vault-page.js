@@ -1297,10 +1297,12 @@ if(dd)dd.open=false;});</script>
   // nowhere to put.
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
                    "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "lease_expiry","option_notice_date",
                    "tenancy","year_built","notes"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
     rent_psf:"Rent $/SF",rent_basis:"Rent per",lease_type:"Lease type",
+    lease_expiry:"Lease expires",option_notice_date:"Option notice by",
     tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
 
   function sheetLabel(k){
@@ -1315,6 +1317,11 @@ if(dd)dd.open=false;});</script>
   // worse than not offering it. Both are refreshed after an edit from the row
   // the server sends back. Every entry here must be in EDIT_FIELDS, or the
   // PATCH would reject the field it just offered.
+  // The renewal watch's two dates (038) are deliberately NOT here. They are
+  // spreadsheet-mode fields for the reason stated above: the compact table has
+  // six columns and a stated budget, they apply to leases only, and 029's rent
+  // fields took the same door. A broker fills them in through the spreadsheet,
+  // the CSV template, or the extract confirm table.
   var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft"];
 
   // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
@@ -2717,7 +2724,7 @@ if(dd)dd.open=false;});</script>
   // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
   // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
   var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
-  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","lease_expiry","option_notice_date","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",

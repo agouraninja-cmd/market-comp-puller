@@ -496,7 +496,7 @@ test("a house report's CTA says talk to a local agent and still stores source bo
 
 test("Residential comps table drops tenancy and keeps year built", () => {
   const start = html.indexOf("  const BASE_COLUMNS = [");
-  const fn = html.indexOf("  function columnsForType(type) {", start);
+  const fn = html.indexOf("  function columnsForType(type, txFocus) {", start);
   const end = html.indexOf("\n  }", fn);
   assert.ok(start >= 0 && fn > start && end > fn, "could not bound columnsForType");
   const src = html.slice(start, end + 4);
@@ -1243,6 +1243,56 @@ test("nothing under a rent range still says 'sales'", () => {
   assert.ok(resetAt > 0 && resetAt < start,
     "the default has to be assigned above the branch chain, or it cannot be a reset");
   assert.match(html, /id="ownerEstimateNote"/);
+});
+
+test("a lease report says which rate its $/SF figures are", () => {
+  // The hero may quote per MONTH (leaseQuoteBasis) while the table and the
+  // market tile hold the annual figure, so an unlabelled 13.5 sitting under a
+  // headline of $1.18 is the one number on the page a reader could take for a
+  // monthly rate and be 12x out.
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const at = html.indexOf("  function columnsForType(type, txFocus) {", start);
+  const end = html.indexOf("\n  }", at);
+  assert.ok(start >= 0 && at > start && end > at, "could not bound columnsForType");
+  const ctx = vm.createContext({});
+  new vm.Script(html.slice(start, end + 4) + "\n;this.columnsForType = columnsForType;",
+    { filename: "index.html" }).runInContext(ctx);
+
+  const sale = ctx.columnsForType("Industrial", "sales");
+  const lease = ctx.columnsForType("Industrial", "leases");
+  const labelOf = (cols) => cols.find((c) => c.key === "price_per_sqft").label;
+  assert.equal(labelOf(sale), "$/SF");
+  assert.equal(labelOf(lease), "$/SF/yr");
+
+  // LABEL ONLY, and nothing else moves. The figures are deliberately not
+  // converted to match the hero: this column is shared with sale reports and
+  // feeds sorting and the exports, and a column meaning different things on
+  // different reports is the two-bases hazard broker-vault.js refuses to take
+  // on. So the two column sets must be identical in every other respect.
+  assert.deepEqual(lease.map((c) => c.key), sale.map((c) => c.key),
+    "the transaction focus may relabel a column, never add, drop or reorder one");
+  for (let i = 0; i < sale.length; i++) {
+    if (sale[i].key === "price_per_sqft") continue;
+    assert.deepEqual(lease[i], sale[i], `${sale[i].key} changed on a lease report`);
+  }
+
+  // A copy is relabelled, not BASE_COLUMNS itself — otherwise the first lease
+  // report would leave "$/SF/yr" on every sale report after it, in the same
+  // browser session.
+  assert.equal(labelOf(ctx.columnsForType("Industrial", "sales")), "$/SF",
+    "a lease report leaked its label into the next sale report");
+
+  // Every render site has to pass the focus or the label never appears. Bare
+  // mentions in prose are not calls, so require a real first argument.
+  const calls = (html.match(/columnsForType\([a-zA-Z][^)]*\)/g) || [])
+    .filter((c) => !c.startsWith("columnsForType(type"));
+  assert.ok(calls.length >= 3, `expected every render site to call it, saw ${calls.length}`);
+  for (const c of calls) {
+    assert.match(c, /txFocus/, `${c} does not pass the transaction focus`);
+  }
+
+  // And the market tile, which sits inches under the hero.
+  assert.match(html, /meta\.txFocus === "leases" \? "Market Avg \$\/SF\/yr" : "Market Avg \$\/SF"/);
 });
 
 test("the mechanics half describes the math that actually ran", () => {

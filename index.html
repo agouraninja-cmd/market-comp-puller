@@ -3703,8 +3703,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     { key: "year_built", label: "Year Built", numeric: true  },
   ];
 
-  function columnsForType(type) {
+  // `txFocus` only ever changes a LABEL here, never which columns exist. On a
+  // leases-only report the $/SF column holds an annual rent, and the hero
+  // above it may be quoting the same figure per MONTH (leaseQuoteBasis), so an
+  // unlabelled 13.5 under a headline of $1.18 is the one number on the page a
+  // reader could take for a monthly rate and be 12x out. The figures are NOT
+  // converted to match the hero: this column is shared with sale reports and
+  // feeds sorting and the exports, and a column meaning different things on
+  // different reports is the two-bases hazard broker-vault.js refuses to take
+  // on. Label it, move nothing.
+  function columnsForType(type, txFocus) {
     const cols = BASE_COLUMNS.slice();
+    if (txFocus === "leases") {
+      const psf = cols.findIndex((c) => c.key === "price_per_sqft");
+      if (psf >= 0) cols[psf] = { ...cols[psf], label: "$/SF/yr" };
+    }
     if (type !== "Land") {
       const capIdx = cols.findIndex((c) => c.key === "cap_rate");
       const building = type === "Residential"
@@ -4274,7 +4287,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function refreshDistances() {
     if (!currentParsed || !currentMeta) return;
     if (!applyCompDistances(currentParsed, currentComps)) return;
-    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
     renderTableHead();
     renderTableBody(false);   // no entrance cascade — the rows are already on screen
     renderDistanceNote();
@@ -6797,7 +6810,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // comp may carry the report's only cap rate, and removing it takes the
     // column back out — so re-prune before the head renders.
     applyCompDistances(currentParsed, currentComps);
-    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
     renderTableHead();
     renderTableBody(false);
     renderDistanceNote();
@@ -10284,7 +10297,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // spread bar below is what reflects the user's comp set. Labeled
       // "Market" so it can't be read as the average of the table's comps
       // (the hero's median is the comp-set statistic).
-      { label: "Market Avg $/SF", value: displayMoney(parsed.avg_price_per_sqft) || "" },
+      // Same rule as the $/SF column: on a leases-only report this is an annual
+      // rent sitting a few inches under a hero that may be quoting per month.
+      { label: meta.txFocus === "leases" ? "Market Avg $/SF/yr" : "Market Avg $/SF",
+        value: displayMoney(parsed.avg_price_per_sqft) || "" },
       // The comp count used to sit here; it is already in the chip beside the
       // table header, and exclusions are spelled out in the curation note.
       { label: "Median Comp Age",
@@ -10390,7 +10406,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // geocoding lands.
     applyCompDistances(parsed, currentComps);
     // Industrial adds Clear Height + Dock Doors; then columns no comp populates drop.
-    COLUMNS = pruneEmptyColumns(columnsForType(meta.type), currentComps);
+    COLUMNS = pruneEmptyColumns(columnsForType(meta.type, meta.txFocus), currentComps);
 
     // Sale/Lease filter — reset per report; only shown when comps carry a transaction type.
     txFilter = "all";

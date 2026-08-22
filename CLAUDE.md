@@ -3559,6 +3559,18 @@ private row has not earned. Two rules matter when editing anything down here:
      range: MLS, a CMA and an appraisal are all sale-price instruments, and
      residential rental listings are ordinarily web-visible in a way MLS sales
      are not, so there is no true lease version of that claim.
+   - **Every $/SF figure on the page says which rate it is.** The hero may
+     quote per MONTH while the comp table's `price_per_sqft` column and the
+     Market Avg tile hold the ANNUAL figure, so an unlabelled 13.5 under a
+     headline of $1.18 is the one number a reader could take for a monthly
+     rate and be 12x out. `columnsForType(type, txFocus)` relabels that column
+     `$/SF/yr` on a leases-only report and `renderStatTiles` does the same for
+     the tile. **Label only, never convert**: that column is shared with sale
+     reports and feeds sorting and the exports, and a column meaning different
+     things on different reports is the two-bases hazard broker-vault.js
+     refuses to take on. It relabels a COPY, or the first lease report would
+     leave `$/SF/yr` on every sale report after it in the same session, and
+     the test executes both column sets to prove nothing else moved.
    - **The lead ask follows the noun too, and the lead itself does not.**
      `bovCopy(meta)` gains a leases branch: "Get a free Broker Opinion of
      Value / Want a real number?" under a rent range offers a SALE price and

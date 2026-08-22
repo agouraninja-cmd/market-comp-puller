@@ -319,7 +319,8 @@ test("autoShareValue maps the three named choices, and refuses anything else", (
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migration 036) — the two customer types of Transition Plan v2 §6.
+// Shop kind (migrations 036 and 037) — the customer types of Transition Plan
+// v2 §6, plus the tenant rep shop added on top of it 2026-08-21.
 //
 // One column, two vocabularies. These pin the two rules that make it safe to
 // read anywhere: an unrecognized kind renders the words a firm has already
@@ -333,9 +334,15 @@ test("an unrecognized kind reads as 'broker' — the words the firm already saw"
   for (const v of ["BROKER", "enterprise", "dev", "", null, undefined, true, 3]) {
     assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
   }
+  // 037's near misses, which are the ones a hand-written row or an older
+  // client would actually produce. None of them is the value.
+  for (const v of ["tenant", "tenant rep", "tenant-rep", "TENANT_REP", "rep"]) {
+    assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
+  }
   assert.equal(ORG.kindOf(null), "broker");
   assert.equal(ORG.kindOf("development"), "broker", "a string is not an org row");
   assert.equal(ORG.kindOf({ kind: "development" }), "development");
+  assert.equal(ORG.kindOf({ kind: "tenant_rep" }), "tenant_rep");
 });
 
 test("creating a firm cannot answer the shop question by silence", () => {
@@ -350,9 +357,30 @@ test("creating a firm cannot answer the shop question by silence", () => {
   for (const junk of ["enterprise", "brokerage", "dev", 1, true, {}]) {
     assert.equal(ORG.validateShopKind(junk).ok, false, JSON.stringify(junk));
   }
+  // The write path normalizes case and padding and NOTHING else: a space or a
+  // hyphen where the underscore goes is a different string, and the CHECK in
+  // 037 would refuse it one layer down anyway. Refusing here keeps the two
+  // layers saying the same thing.
+  for (const near of ["tenant", "tenant rep", "tenant-rep", "tenantrep"]) {
+    assert.equal(ORG.validateShopKind(near).ok, false, JSON.stringify(near));
+  }
   assert.deepEqual(ORG.validateShopKind("  Development "), { ok: true, kind: "development" },
     "trimmed and lowercased, the way validateOrgName collapses a name");
   assert.deepEqual(ORG.validateShopKind("broker"), { ok: true, kind: "broker" });
+  assert.deepEqual(ORG.validateShopKind(" Tenant_Rep "), { ok: true, kind: "tenant_rep" });
+});
+
+test("the refusal names every shop there is", () => {
+  // The sentence is read under a select the reader may have scrolled past, so
+  // it enumerates rather than saying "choose one" — which makes it the one
+  // string that silently goes stale the day a fourth kind lands. index.html
+  // repeats it word for word (the browser refuses before spending a round
+  // trip), and test/org-desk.test.js pins that copy to this one.
+  const { error } = ORG.validateShopKind("");
+  for (const kind of ORG.SHOP_KINDS) {
+    const noun = ORG.SHOP_COPY[kind].label.toLowerCase();
+    assert.ok(error.includes(noun), `the refusal never mentions a ${noun}: ${error}`);
+  }
 });
 
 test("every kind has copy, and only the kinds do", () => {
@@ -366,4 +394,18 @@ test("every kind has copy, and only the kinds do", () => {
   }
   assert.equal(ORG.shopCopyOf({ kind: "development" }).shelfType, "Land");
   assert.equal(ORG.shopCopyOf({ kind: "nonsense" }), ORG.SHOP_COPY.broker);
+
+  // Land is a DEFAULT VIEW and not a claim about what a development shop may
+  // file, which is why only one kind has one. A tenant rep works across
+  // office, industrial and retail, so any single type here would open two
+  // shops out of three on a shelf that looks like it lost rows.
+  assert.equal(ORG.shopCopyOf({ kind: "tenant_rep" }).shelfType, "",
+    "a filtered default nobody chose is worse than no default");
+
+  // Three kinds, three sentences. A copy-paste that left two shops reading the
+  // same nouns would pass every other assertion in this file.
+  const said = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].arrivals);
+  assert.equal(new Set(said).size, said.length, "two shops read the same shelf sentence");
+  const labels = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].label);
+  assert.equal(new Set(labels).size, labels.length, "two shops share a label");
 });

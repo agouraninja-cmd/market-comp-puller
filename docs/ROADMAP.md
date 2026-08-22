@@ -126,10 +126,20 @@ subscription benefit.
   same way: when touched, with tests first.
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
-- Market pages restyle onto the `rd-*` Research Desk tokens. Still
-  outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
-  own header — /how-it-works took the `rd-*` system "rather than the older
-  market-page skin". (The og-image half of this line is done: regenerated
+- Market pages restyle onto the `rd-*` Research Desk tokens. **Shipped
+  2026-08-22.** `MARKET_CSS` gained the section furniture `HOW_CSS` already
+  carried — a bare `section` rhythm, the full-bleed `.band`, `h2.h` at the
+  documented 20-24px section-heading size, and a `.prose` measure — under
+  HOW_CSS's own class names rather than a third vocabulary, so the two sheets
+  converge instead of diverging further. `/market/<slug>` stopped presenting
+  seven equal-weight `.card`s and now keeps a box only where the box means
+  something (the ledger, the comp table's scroller, the map, the CTA); the
+  summary and price drivers share one washed band. Scope was deliberately the
+  market page alone: `/markets`, `/brokers`, `/terms`, `/privacy` and
+  `/1031-exchange` render **byte-identically** to before (checked with
+  `scripts/shot.js`, not assumed), so the older skin they still wear is a
+  separate, smaller decision rather than something this change half-did.
+  (The og-image half of this line was already done: regenerated
   from the cut-card mark 2026-07-15 in `660b563`, and byte-identical today,
   the Sliced Tower attempt having been reverted whole in `017f2c5`.)
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.

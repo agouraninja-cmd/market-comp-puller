@@ -7536,6 +7536,43 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .sub{color:var(--ink-mute);font-size:14px;margin:0 0 22px;max-width:70ch}
 .sub a{color:var(--ink-mute);text-decoration:underline;text-decoration-color:var(--edge)}
 .sub a:hover{color:var(--ink)}
+/* Section rhythm — the Research Desk furniture HOW_CSS already carries,
+   adopted here so a market page reads as a document rather than as seven
+   identical white boxes stacked 18px apart (roadmap engineering track:
+   "market pages restyle onto the rd-* Research Desk tokens"). The class names
+   are HOW_CSS's on purpose: these two sheets are converging on one vocabulary,
+   and a third set of names would be a third thing to keep in step.
+   A bare "section" selector is matched, as it is there. The only other
+   <section> reaching
+   this stylesheet is the 404 page's, which carries an inline padding override
+   and is therefore untouched.
+   THE RULE THE RESTYLE FOLLOWS: a box is kept only where the box means
+   something — the ledger, the comp table's scroller, the map, the CTA. Prose
+   does not get one, because a border around a paragraph says "this is a
+   separate artifact" about text that is simply the next thing to read. */
+section{padding:32px 0}
+.band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
+/* The band gets more room than a plain section because it is the one stretch
+   with a background behind it: at the same padding the wash reads as a tight
+   grey box around the text rather than as ground the text is standing on. */
+.band section{padding:40px 0}
+.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
+/* 22px is DESIGN-SYSTEM's section-heading band (20-24px), NOT HOW_CSS's 27px:
+   that is the landing page's marketing size and a market page is a page. It
+   also has to stay clear of the ledger figure above it, which is 24px. */
+h2.h{font-size:22px;margin:0 0 14px}
+/* Two blocks inside one section (the summary and the price drivers share the
+   narrative band) sit further apart than paragraphs and closer than sections. */
+.sblock + .sblock{margin-top:36px}
+/* Prose that is no longer inside a .card still needs .card's measure and
+   colour; a 1120px line of body copy is unreadable however calm it looks. */
+.prose{max-width:76ch}
+.prose p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
+.prose p:last-child{margin-bottom:0}
+.prose ul{margin:10px 0 0;padding-left:20px}
+.prose li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* The map keeps its frame — it is a picture, and a picture needs an edge. */
+#mktMap{border:1px solid var(--edge);background:var(--wash)}
 /* Tiles — bordered cards rather than the landing page's hairline mesh: pages
    render 2-4 of these depending on the data, so a fixed column count that
    divides evenly (which the mesh needs to avoid a half-empty row) is out. */
@@ -7595,9 +7632,13 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
    its colour in a style attribute only because the vendored tailwind.css has no
    green utility to name; this stylesheet is ours, so the colours are classes
    here, like .mkt-trend-* below.
-   .mhead h2 must stay AFTER .card h2 above -- equal specificity, so source
-   order is the only thing zeroing the heading's own bottom margin. */
-.mhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+   .mhead is the map SECTION's head since the restyle, so it holds the kicker
+   and the heading in one child and the badge beside them. align-items is
+   .mhead is the map SECTION's head since the restyle rather than a card's, so
+   the margin below it is a section head's. .mhead h2 must stay AFTER h2.h
+   above -- equal specificity, so source order is the only thing zeroing the
+   heading's own bottom margin, which the row supplies instead. */
+.mhead{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px;margin:0 0 14px}
 .mhead h2{margin:0}
 .mdir{font-size:12px;white-space:nowrap;color:var(--ink-3)}
 /* The WORD is the claim and the colour only reinforces it, so the row still
@@ -8853,10 +8894,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   ].filter(Boolean).map(([k, v, n, mid]) =>
     `<div class="lcell${mid ? " mid" : ""}"><span class="k">${escHtml(k)}</span><div class="v">${v}</div><div class="n">${escHtml(n)}</div></div>`).join("");
 
+  // A .sblock, not a .card and not a <section>: this and the market summary
+  // are one stretch of narrative and share the washed band below, so they are
+  // two blocks inside one section rather than two sections 44px apart.
   const drivers = (p.value_drivers || []).length
-    ? `<div class="card"><h2>What's driving ${escHtml(p.type)} prices in ${escHtml(p.city)}</h2>` +
+    ? `<div class="sblock"><h2 class="h">What's driving ${escHtml(p.type)} prices in ${escHtml(p.city)}</h2>` +
+      `<div class="prose">` +
       (p.market_trend ? `<p><strong>${escHtml(p.market_trend)}</strong></p>` : "") +
-      `<ul>${p.value_drivers.map((d) => `<li>${escHtml(d)}</li>`).join("")}</ul></div>`
+      `<ul>${p.value_drivers.map((d) => `<li>${escHtml(d)}</li>`).join("")}</ul></div></div>`
     : "";
 
   // Market intelligence — the live corpus view (plus this page's own seeded
@@ -8927,11 +8972,11 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       : null,
   ].filter(Boolean).join(" &middot; ");
   const intelCard =
-    `<div class="card"><h2>Market intelligence</h2>` +
+    `<section><h2 class="h">Market intelligence</h2>` +
     trendSvg +
-    `<p${trendSvg ? ' style="margin-top:10px"' : ""}>${statsBits}.</p>` +
+    `<div class="prose"><p${trendSvg ? ' style="margin-top:10px"' : ""}>${statsBits}.</p>` +
     `<p class="disc" style="margin-top:6px">This quarter: ${quarterBits}. Trend medians use closed-deal dates from our growing comp corpus; automated estimates, not an appraisal.</p>` +
-    `</div>`;
+    `</div></section>`;
 
   // Columns are derived, not hardcoded: this type's TYPE_COMP_FIELDS specs slot
   // in after Size (SF), matching the report table's ordering convention.
@@ -9022,16 +9067,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     : "";
   const compsTable = compRows
     // id="comps" is the target of the BOV band's "read the numbers first"
-    // link. It is on the CARD, not the table, so the heading lands under the
-    // viewport top rather than the first data row.
-    ? `<div class="card" id="comps"><h2>Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
+    // link. It is on the SECTION, not the table, so the heading lands under
+    // the viewport top rather than the first data row.
+    ? `<section id="comps"><h2 class="h">Recent ${escHtml(p.type)} comps in ${escHtml(p.city)}, ${escHtml(p.state)}</h2>` +
       txBar +
       `<div class="scroll"><table class="stmt" id="mktComps"><thead><tr>` +
       compCols.map((col) =>
         `<th data-k="${escHtml(col.key)}"${numCol(col.key) ? " data-num=\"1\"" : ""}>${escHtml(col.label)}</th>`).join("") +
       `</tr></thead><tbody>${compRows}</tbody>${medianRow}</table></div>` +
       `<p class="disc" id="mktTxEmpty" hidden>No comps in this filter.</p>` +
-      `<script>${MARKET_RESEARCH_JS}</script></div>`
+      `<script>${MARKET_RESEARCH_JS}</script></section>`
     : "";
 
   // Analyst extras sit on a second ledger row so the headline strip stays
@@ -9119,10 +9164,10 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
     : "";
   const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>Where these comps are</h2>${mapDirBadge}</div>` +
+    ? `<section id="mktMapCard"><div class="mhead"><h2 class="h">Where these comps are</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
       `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
-      `Comps quoted at the submarket level aren't pinned.</p></div>` +
+      `Comps quoted at the submarket level aren't pinned.</p></section>` +
       `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
       `<script>${MARKET_MAP_JS}</script>`
     : "";
@@ -9146,14 +9191,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const merged = allMarketPages();
   const others = Object.keys(merged).filter((s) => s !== slug).slice(0, 6);
   const related = others.length
-    ? `<div class="card"><h2>Other markets</h2><div class="related">` +
+    ? `<section><h2 class="h">Other markets</h2><div class="related">` +
       // Strips the middle of marketTitle() to a bullet: "Industrial Comps in
       // Dallas, TX" -> "Industrial · Dallas, TX". The needle MUST match
       // marketTitle()'s wording — it changed to " Comps in" on 2026-08-09, and
       // a stale needle here does not throw, it just silently renders the whole
       // untrimmed title in every related-markets link.
       others.map((s) => `<a href="/market/${s}">${escHtml(marketTitle(merged[s]).replace(" Comps in", " ·"))}</a>`).join("") +
-      `<a href="/markets">All markets &rarr;</a></div></div>`
+      `<a href="/markets">All markets &rarr;</a></div></section>`
     : "";
 
   const jsonLd = JSON.stringify({
@@ -9201,14 +9246,14 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // whose job is to look like a market that is worth being in.
   const brokerList = Array.isArray(opts.brokers) ? opts.brokers : [];
   const brokersCard = brokerList.length
-    ? `<div class="card"><h2>Brokers who cover ${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())}</h2>` +
-      `<p>These brokers work this market and have chosen to be listed. CompNinja makes the introduction; ` +
-      `we do not pass your details to anyone without asking you first.</p><ul class="brokers">` +
+    ? `<section><h2 class="h">Brokers who cover ${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())}</h2>` +
+      `<div class="prose"><p>These brokers work this market and have chosen to be listed. CompNinja makes the introduction; ` +
+      `we do not pass your details to anyone without asking you first.</p></div><ul class="brokers">` +
       brokerList.map((b) =>
         `<li><a href="${escHtml(b.url)}">${escHtml(b.display_name || b.company)}</a>` +
         (b.display_name && b.company ? ` <span class="sub">${escHtml(b.company)}</span>` : "") +
         `</li>`).join("") +
-      `</ul></div>`
+      `</ul></section>`
     : "";
 
   // The BOV lead band. Same condition as brokersCard and the CTA below, and
@@ -9307,14 +9352,26 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
     `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
     `The 45/180-day rules, in plain English &rarr;</a></p>`;
+  // The narrative half of the page — what the figures above MEAN — sits on one
+  // full-bleed washed band, so a reader scanning the page can see where the
+  // numbers stop and the interpretation starts. Everything below it is
+  // evidence again and returns to paper. Rendered only when there is something
+  // to put in it: an empty band is a grey stripe with nothing inside it, and
+  // both halves are optional on a thin snapshot.
+  const summaryBlock = p.summary
+    ? `<div class="sblock"><h2 class="h">${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2>` +
+      `<div class="prose"><p>${escHtml(p.summary)}</p></div></div>`
+    : "";
+  const narrative = (summaryBlock || drivers)
+    ? `<div class="band"><section>${summaryBlock}${drivers}</section></div>`
+    : "";
   const body =
     cityHero.intro +
     bovLead +
     previewBanner +
     `<div class="ledger">${tiles}</div>` +
     auxLedger +
-    (p.summary ? `<div class="card"><h2>${escHtml(p.city)}, ${escHtml(p.state)} ${escHtml(p.type.toLowerCase())} market</h2><p>${escHtml(p.summary)}</p></div>` : "") +
-    drivers +
+    narrative +
     intelCard +
     mapCard +
     compsTable +

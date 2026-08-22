@@ -194,7 +194,8 @@ test("bare environment", async (t) => {
   await t.test("the comp map card badges which way the market is moving", async () => {
     const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
     const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
-    assert.match(head, /<h2>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
+    assert.match(head, /<h2 class="h">Where these comps are<\/h2>/,
+      "the map section's own heading must stay in the row");
     assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
       "Ontario's stored read is contracting — the word and its colour class must both render");
     assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
@@ -212,7 +213,7 @@ test("bare environment", async (t) => {
     assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
     assert.ok(!html.includes('class="mdir"'),
       "an unread market must show no momentum, not an Unknown chip");
-    assert.match(html, /<h2>Where these comps are<\/h2>/,
+    assert.match(html, /<h2 class="h">Where these comps are<\/h2>/,
       "and the heading must be untouched when there is no badge beside it");
   });
 

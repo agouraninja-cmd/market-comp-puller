@@ -20621,6 +20621,10 @@ const server = http.createServer((req, res) =>
     // renders its HTML/CSS and looks fine. Nothing else on this allowlist
     // has that single-point-of-failure shape, so nothing else needs this.
     "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Development returns (C6). maxAge 0 for /valuation.js's exact reason:
+    // index.html's inline script calls DEVRETURNS, so a copy cached stale
+    // against the HTML would throw where the card renders.
+    "/dev-returns.js": { file: "dev-returns.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule as /valuation.js, same reason: /vault's inline
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.

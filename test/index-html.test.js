@@ -1265,3 +1265,57 @@ test("index.html's SHOP_COPY is the same map as org-access.js's", () => {
   // key is what makes that fallback a value rather than undefined.
   assert.ok(ctx.copy.broker, "the fallback both halves use is missing from the page's map");
 });
+
+// --- Development returns card (C6) ------------------------------------------
+// renderDevCard is straight-line DOM code: every figure is written with
+// getElementById(...).textContent, so a mistyped or renamed id does not throw
+// anywhere a person would see — it writes into nothing, and the tile silently
+// keeps its "—" forever while the arithmetic behind it is perfectly correct.
+// That is the failure this pins.
+
+test("every element renderDevCard writes to exists in the markup", () => {
+  const ids = [
+    "devCard", "devBasis",
+    "devLand", "devHard", "devSoft", "devCont", "devMonths",
+    "devTotal", "devTotalSub",
+    "devYoc", "devYocSub",
+    "devSpread", "devSpreadSub",
+    "devIrr", "devIrrSub",
+    "devProfit", "devProfitSub",
+  ];
+  for (const id of ids) {
+    assert.ok(html.includes(`id="${id}"`), `renderDevCard writes to #${id}, which index.html does not contain`);
+  }
+});
+
+test("the dev card's set() helper convention holds: every tile has its Sub sibling", () => {
+  // set(id, txt, sub) writes to `id` AND `id + "Sub"`. A tile added without
+  // its Sub element loses its explanatory line with no error.
+  for (const base of ["devTotal", "devYoc", "devSpread", "devIrr"]) {
+    assert.ok(html.includes(`id="${base}"`) && html.includes(`id="${base}Sub"`),
+      `${base} is missing its ${base}Sub sibling`);
+  }
+});
+
+test("dev-returns.js is loaded by the page and served with no caching", () => {
+  assert.ok(/<script src="\/dev-returns\.js"><\/script>/.test(html),
+    "index.html must load /dev-returns.js — the inline script calls DEVRETURNS");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  // Same rule as /valuation.js: a stale copy against fresh HTML throws where
+  // the card renders. The STATIC_FILES entry must carry maxAge: 0.
+  const entry = server.match(/"\/dev-returns\.js":\s*\{[^}]*\}/);
+  assert.ok(entry, "server.js does not serve /dev-returns.js");
+  assert.match(entry[0], /maxAge:\s*0\b/,
+    "/dev-returns.js must be served with maxAge: 0, like /valuation.js");
+});
+
+test("development costs are private: never sent to the server's search", () => {
+  // devCost lives in meta.assumptions beside debt/opex/rentRoll, which
+  // /api/share strips and the search body never carries. If a future edit
+  // ever puts it in the /api/comps body it would enter the cache key and a
+  // stranger's report would be keyed on somebody's construction budget.
+  const body = html.match(/JSON\.stringify\(\{\s*address[\s\S]{0,600}?\}\)/g) || [];
+  for (const b of body) {
+    assert.ok(!/devCost/.test(b), "a development cost reached the /api/comps request body");
+  }
+});

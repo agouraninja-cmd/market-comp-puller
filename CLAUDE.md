@@ -3547,6 +3547,18 @@ private row has not earned. Two rules matter when editing anything down here:
      render), the no-range copy, and the widen button's re-run focus. Found by
      rendering one, not by reading the diff: the branch was right the first
      time and three pieces of furniture around it still said "sales".
+   - **The lead ask follows the noun too, and the lead itself does not.**
+     `bovCopy(meta)` gains a leases branch: "Get a free Broker Opinion of
+     Value / Want a real number?" under a rent range offers a SALE price and
+     reads as the report disowning the figure it just published. It is the
+     Residential branch's fix one report type over, and the same rule — the
+     words change, `openLeadModal("bov")` does not, so the broker inbox, the
+     coverage-gated intro and the BOV tracker are untouched. **Residential is
+     read FIRST**: a house that rents is a Residential report, and the trust
+     line's screen-only pointer ("A local agent below can confirm it") is
+     Residential-only and names that button by its noun, so a lease branch
+     above it would say agent above and leasing broker below — the drift that
+     block's own ⚠ warns about.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

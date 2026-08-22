@@ -16820,6 +16820,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         emptyBtn: "Talk to a local agent",
       };
     }
+    // A leases-only report headlines a RENT, and "Get a free Broker Opinion of
+    // Value / Want a real number?" sitting under it offers a sale price and
+    // reads as the report disowning the figure it just published. Same fix as
+    // the Residential branch above and for the same reason: the words change,
+    // the lead does not. It is still stored as `bov`, so the broker inbox, the
+    // coverage-gated intro and the BOV tracker are all untouched.
+    //
+    // BELOW Residential on purpose. A house that rents is a Residential report
+    // first — "leasing broker" is CRE vocabulary for it — and the trust line's
+    // screen-only pointer ("A local agent below can confirm it") is Residential
+    // only and names that button by its noun. Put this branch first and a
+    // Residential leases-only report would say agent above and leasing broker
+    // below, which is exactly the drift that block's ⚠ warns about.
+    if ((meta && meta.txFocus) === "leases") {
+      return {
+        button: "Talk to a local leasing broker",
+        helper: "Want a broker's read on this space? We'll connect you with a licensed local broker who knows this market. No cost, no obligation.",
+        confirm: "We'll review your request and connect you with a licensed local broker who knows this market, usually within a couple of business days. There's no cost and no obligation.",
+        modalTitle: "Talk to a local leasing broker",
+        modalSubtitle: "Leave your details and we'll connect you with a licensed local broker who knows this market. No cost, no obligation.",
+        modalSubmit: "Request an introduction",
+        emptyBtn: "Talk to a local leasing broker",
+      };
+    }
     return {
       button: "Get a free Broker Opinion of Value",
       helper: "Want a real number? We'll connect you with a licensed local broker who knows your market. No cost, no obligation.",

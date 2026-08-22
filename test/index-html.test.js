@@ -1243,6 +1243,43 @@ test("nothing under a rent range still says 'sales'", () => {
   assert.match(html, /id="ownerEstimateNote"/);
 });
 
+test("a lease report asks for the lead in lease words, and still stores a bov", () => {
+  // "Get a free Broker Opinion of Value / Want a real number?" sitting under a
+  // rent range offers a SALE price and reads as the report disowning the figure
+  // it just published. Same fix as the Residential branch, and the same rule:
+  // the words change, the lead does not.
+  const fn = html.match(/function bovCopy\(meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound bovCopy");
+  assert.match(fn[0], /\(meta && meta\.txFocus\) === "leases"/);
+  assert.match(fn[0], /button: "Talk to a local leasing broker"/);
+  // Bounded to the lease branch itself. Slicing to the end of bovCopy would
+  // run straight into the DEFAULT return, which is where "Want a real number"
+  // correctly still lives.
+  const leaseStart = fn[0].indexOf('txFocus) === "leases"');
+  const leaseBranch = fn[0].slice(leaseStart, fn[0].indexOf("\n    return {", leaseStart));
+  assert.ok(leaseBranch.length > 200, "could not bound the lease branch");
+  assert.doesNotMatch(leaseBranch, /Want a real number/,
+    "the lease branch must not carry the sale-price line it exists to replace");
+  assert.doesNotMatch(leaseBranch, /Broker Opinion of Value/,
+    "a rent range must not be answered with an offer of a sale price");
+
+  // ORDER: Residential is read FIRST. A house that rents is a Residential
+  // report, and the trust line's screen-only pointer ("A local agent below can
+  // confirm it") is Residential-only and names that button by its noun — so a
+  // lease branch above it would say agent above and leasing broker below,
+  // which is the drift that block's own ⚠ warns about.
+  const resAt = fn[0].indexOf('=== "Residential"');
+  const leaseAt = fn[0].indexOf('=== "leases"');
+  assert.ok(resAt > 0 && leaseAt > resAt,
+    "the Residential branch must be read before the leases one");
+  assert.match(html, /A local agent below can confirm it/);
+
+  // The lead is unchanged, which is the whole point: the broker inbox, the
+  // coverage-gated intro and the BOV tracker all key on this string.
+  assert.match(html, /bovCtaBtn"\)\.addEventListener\("click", \(\) => openLeadModal\("bov"\)\)/);
+  assert.doesNotMatch(fn[0], /source:/, "bovCopy words the ask; it does not route the lead");
+});
+
 test("the browser can actually reach MARKETSNAP", () => {
   // The script tag and the allowlist entry are two halves of one thing: the
   // hero throws on a leases-only report without the tag, and the tag 404s

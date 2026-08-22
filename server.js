@@ -249,6 +249,34 @@ if (THINKING_LEVEL) {
   }
 }
 
+// Ask the model to keep hunting until it has a decent number of comps, rather
+// than stopping at the prompt's stated floor of 3.
+//
+// This exists because of a measured side effect of THINKING_LEVEL=low
+// (2026-08-21, 12-target eval): reasoning less made the report 66% faster and
+// 66% cheaper, and it also returned a THIRD fewer comps — 7.1 down to 4.8,
+// priced sales 6.7 down to 4.5. Both moves are 3-5x the run-to-run noise floor,
+// so they are real.
+//
+// The interesting part is that the shorter list was BETTER sourced, not worse:
+// provenance rose 8%, market-match rose 12%, and the unsourced-"estimate" rate
+// fell from 14% to 2%. So low thinking is not finding worse comps, it appears
+// to stop LOOKING sooner — satisficing at the low end of "find 3 to N".
+//
+// Hence a floor rather than a rewrite. The one thing this must never do is buy
+// comp count back by relaxing what counts as a comp: a 2% estimate rate is the
+// best this eval has ever recorded, and trading it for padding would be a worse
+// report that merely scores longer. The wording therefore spends its words on
+// searching harder, and restates the anti-padding rules rather than softening
+// them.
+//
+// Off by default: it is a prompt change on the hot path, and it is only worth
+// carrying if the eval says it recovers the comps.
+const COMP_FLOOR = /^(1|on|true|yes)$/i.test(String(process.env.COMP_FLOOR || ""));
+// How many the floor asks for. Sits just under the default arm's measured 7.1
+// so it is a target the market can actually satisfy, not a quota to pad toward.
+const COMP_FLOOR_TARGET = Math.max(3, Number(process.env.COMP_FLOOR_TARGET) || 6);
+
 // The provider names its own credential var, so this stays a lookup rather
 // than a branch. Testing PROVIDER.name here would be the first crack in the
 // never-branch-on-name rule, and credential selection is exactly where such
@@ -4802,6 +4830,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // dressed up as comps. Those look authoritative, carry no property behind
     // them, and would land in the permanent corpus as fake transactions.
     `EVERY entry in "comps" must be ONE individual property at its own address that actually sold or is actively listed. Never enter a market median, submarket or metro average, research-report benchmark, index, or any other market-level statistic as a comp — market-level figures belong in "summary", "value_drivers", and "market_cap_rate_range" instead. A property whose address is partly withheld is still fine (e.g. "Highland Park Triplex, Pittsburgh, PA 15206"); a row named for a statistic is not. If you cannot find ${maxComps} genuine individual properties, return the smaller number you did find and say so in "summary" — a short honest list is worth more than a padded one.`,
+    // Deliberately AFTER the anti-padding rule above, and it restates that rule
+    // rather than trusting proximity: this is the one instruction in the prompt
+    // whose obvious failure mode is padding, so the sentence that asks for more
+    // comps and the sentence that forbids inventing them have to arrive
+    // together.
+    COMP_FLOOR
+      ? `COMP COUNT: aim for at least ${Math.min(COMP_FLOOR_TARGET, maxComps)} genuinely comparable individual properties, and keep searching until you have them or until you have genuinely exhausted the sources. Stopping at 4 when a 5th and 6th are findable makes the valuation thinner than the market actually supports. This does NOT relax any rule above: never pad the list with a market statistic, a submarket average, or a property you cannot tie to a real source, and a short honest list still beats a padded one. Spend the extra effort on FINDING more real transactions, not on lowering the bar for what counts as one.`
+      : "",
     // The value hero multiplies this number straight into the valuation, so
     // the lookup must not be an afterthought: on corpus-assisted searches the
     // budget is only 3 (searchBudgetFor) and an unordered "also determine..."

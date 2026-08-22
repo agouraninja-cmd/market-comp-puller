@@ -52,7 +52,7 @@ const has = (name) => args.includes("--" + name);
 // expensive way, where a silently-ignored "--only=2" turned an intended $0.72
 // plumbing check into a full run.
 const KNOWN = ["dir", "admin-key", "key-var", "key", "candidate", "baseline",
-  "per-type", "only", "port", "yes", "help"];
+  "candidate-env", "per-type", "only", "port", "yes", "help"];
 for (const a of args) {
   if (!a.startsWith("--")) continue;
   const name = a.slice(2).split("=")[0];
@@ -77,6 +77,18 @@ const CANDIDATE = flag("candidate", "low");
 const BASELINE = flag("baseline", "");     // "" = the vendor's own default
 const PORT = Number(flag("port", "3170"));
 const perType = flag("per-type", null);
+// An extra KEY=VALUE applied to the CANDIDATE arm only. It exists so this
+// script can compare things other than reasoning depth without growing a second
+// harness: hold --baseline and --candidate at the same level and vary this
+// instead, and both arms still run fresh in one session, which controls for the
+// run-to-run wobble that comparing against yesterday's saved file does not.
+const candidateEnvRaw = flag("candidate-env", null);
+let CANDIDATE_ENV = null;
+if (candidateEnvRaw) {
+  const eq = candidateEnvRaw.indexOf("=");
+  if (eq < 1) { console.error(`⛔ --candidate-env must be KEY=VALUE, got "${candidateEnvRaw}".`); process.exit(1); }
+  CANDIDATE_ENV = { key: candidateEnvRaw.slice(0, eq), value: candidateEnvRaw.slice(eq + 1) };
+}
 const only = flag("only", null);
 
 function die(msg) { console.error("⛔ " + msg); process.exit(1); }
@@ -100,7 +112,7 @@ console.log(`\nTHINKING_LEVEL comparison`);
 console.log(`  server dir   ${DIR}`);
 console.log(`  port         ${PORT}`);
 console.log(`  baseline     ${BASELINE || "(vendor default)"}`);
-console.log(`  candidate    ${CANDIDATE}`);
+console.log(`  candidate    ${CANDIDATE}${CANDIDATE_ENV ? `  +  ${CANDIDATE_ENV.key}=${CANDIDATE_ENV.value}` : ""}`);
 console.log(`  targets      ${targetCount} per run, 2 runs`);
 console.log(`  estimated    ~$${bill.toFixed(2)} of real API spend\n`);
 
@@ -124,7 +136,7 @@ async function waitForHealth(url, child) {
   throw new Error(`Server did not answer ${url} within ${HEALTH_TIMEOUT_MS / 1000}s.`);
 }
 
-function startServer(thinkingLevel) {
+function startServer(thinkingLevel, extraEnv) {
   // The whole point of this function: an EXPLICIT env. Empty strings for the
   // Supabase pair are real empty strings here, so server.js's .env loader
   // (which only fills `undefined`) cannot refill them from the worktree's
@@ -162,6 +174,10 @@ function startServer(thinkingLevel) {
     [KEY_VAR]: API_KEY,
   };
   if (thinkingLevel) env.THINKING_LEVEL = thinkingLevel;
+  // Applied last so an explicit --candidate-env wins over the blanks above —
+  // that is the whole point of it, and the blanks exist to stop the worktree's
+  // .env leaking in, not to stop the operator asking for something.
+  if (extraEnv) env[extraEnv.key] = extraEnv.value;
   if (KEY_VAR === "ANTHROPIC_API_KEY") env.SEARCH_PROVIDER = "anthropic";
   // process.execPath, never the string "node": the owner's Node is a portable
   // no-admin copy that is not on PATH (see CLAUDE.md "Running it").
@@ -197,9 +213,9 @@ function newestSummary(label) {
   return path.join(dir, hits[0].f);
 }
 
-async function phase(label, level) {
-  console.log(`\n=== ${label} (thinking: ${level || "vendor default"}) ===`);
-  const child = startServer(level);
+async function phase(label, level, extraEnv) {
+  console.log(`\n=== ${label} (thinking: ${level || "vendor default"}${extraEnv ? `, ${extraEnv.key}=${extraEnv.value}` : ""}) ===`);
+  const child = startServer(level, extraEnv);
   try {
     const health = await waitForHealth(`http://127.0.0.1:${PORT}/healthz`, child);
     // Prove the server really is running what we asked for BEFORE spending.
@@ -223,7 +239,10 @@ async function phase(label, level) {
   try {
     const stamp = Date.now();
     const a = await phase(`thinking-${BASELINE || "default"}-${stamp}`, BASELINE);
-    const b = await phase(`thinking-${CANDIDATE}-${stamp}`, CANDIDATE);
+    // The candidate label names what actually varies, so two arms at the same
+    // thinking level cannot produce two identically-named summaries.
+    const bTag = CANDIDATE_ENV ? `${CANDIDATE_ENV.key}-${CANDIDATE_ENV.value}` : CANDIDATE;
+    const b = await phase(`thinking-${bTag}-${stamp}`, CANDIDATE, CANDIDATE_ENV);
     console.log("\n=== comparison ===");
     await new Promise((resolve, reject) => {
       const child = spawn(process.execPath, ["run-eval.js", "--compare", a, b], {

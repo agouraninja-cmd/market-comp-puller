@@ -3547,6 +3547,18 @@ private row has not earned. Two rules matter when editing anything down here:
      render), the no-range copy, and the widen button's re-run focus. Found by
      rendering one, not by reading the diff: the branch was right the first
      time and three pieces of furniture around it still said "sales".
+   - **The mechanics half describes the math that actually ran.** The
+     collapsed "How this range is calculated" explained the headline with
+     `compWeight` and the trend index, and the rent range applies NEITHER —
+     `rentFromComps` takes plain unweighted quartiles — so it was not odd
+     phrasing but an untrue account of how the figure was reached. It is
+     chosen off `leaseHero`, a flag set INSIDE the branch and never derived
+     from `leaseRent` being non-null (a leases-only search where somebody
+     typed an NOI and a cap rate still leads with the income approach). The
+     Residential MLS sentence is **omitted rather than reworded** on a rent
+     range: MLS, a CMA and an appraisal are all sale-price instruments, and
+     residential rental listings are ordinarily web-visible in a way MLS sales
+     are not, so there is no true lease version of that claim.
    - **The lead ask follows the noun too, and the lead itself does not.**
      `bovCopy(meta)` gains a leases branch: "Get a free Broker Opinion of
      Value / Want a real number?" under a rent range offers a SALE price and

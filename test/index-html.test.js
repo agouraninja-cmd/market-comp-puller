@@ -1077,7 +1077,9 @@ test("mechanics are routed to the collapsed half, not the visible line", () => {
   // Routed into the mechanics array, and only when a trust line actually
   // rendered — an explanation of the weighting with no range above it explains
   // nothing. (unshift vs push is ordering, not routing; don't pin the method.)
-  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\(weighNote\)/);
+  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\([^)]*weighNote[^)]*\)/,
+    "routing, not wording: the note may now be chosen per branch, but it still "
+    + "goes to the mechanics array and still only when a trust line rendered");
 });
 
 test("the collapsed half is forced open on paper and in the PNG", () => {
@@ -1241,6 +1243,33 @@ test("nothing under a rent range still says 'sales'", () => {
   assert.ok(resetAt > 0 && resetAt < start,
     "the default has to be assigned above the branch chain, or it cannot be a reset");
   assert.match(html, /id="ownerEstimateNote"/);
+});
+
+test("the mechanics half describes the math that actually ran", () => {
+  // Worse than the wrong-noun copy bugs, and found the same way — by rendering
+  // one. The mechanics line explained the headline using compWeight and the
+  // trend index, and the rent range applies NEITHER: rentFromComps takes plain
+  // unweighted quartiles. That is not odd phrasing, it is untrue.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+
+  // Chosen off a flag SET INSIDE the branch, never derived from leaseRent
+  // being non-null: a leases-only search where somebody typed an NOI and a cap
+  // rate still leads with the income approach, and would then be described by
+  // the wrong sentence.
+  assert.match(body, /let leaseHero = false;/);
+  assert.match(body, /\} else if \(leaseRent\) \{\n      leaseHero = true;/);
+  assert.match(body, /mechanics\.(un)?shift\(leaseHero \? leaseWeighNote : weighNote\)/);
+  assert.doesNotMatch(body, /leaseHero = leaseRent/, "that would describe a branch that did not render");
+
+  // The MLS sentence is a claim about SALE comp coverage (MLS, a CMA and an
+  // appraisal are all sale-price instruments), so it is omitted on a rent
+  // range rather than reworded — there is no true lease version of it.
+  assert.match(body, /if \(!leaseHero\) mechanics\.push\("Residential sales mostly live in the MLS/);
+
+  // And the lease sentence says what did happen, including the annualization,
+  // because a reader in a monthly market is looking at a converted number.
+  assert.match(body, /const leaseWeighNote = /);
+  assert.match(body, /converted to a year before it is taken/);
 });
 
 test("a lease report asks for the lead in lease words, and still stores a bov", () => {

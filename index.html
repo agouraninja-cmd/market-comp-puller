@@ -5826,6 +5826,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : [];
     const leaseRates = leaseComps.map((c) => MARKETSNAP.leaseRentPsfYr(c)).filter((v) => v > 0);
     const leaseRent = leaseComps.length ? MARKETSNAP.rentFromComps(leaseComps) : null;
+    // Whether the rent branch actually RENDERED, which is not the same as
+    // leaseRent being non-null: a leases-only search where somebody typed an
+    // NOI and a cap rate still leads with the income approach. The mechanics
+    // half below describes how the headline was computed, so it has to know
+    // which one it is describing.
+    let leaseHero = false;
     // Pre-exclusion, the same pair allSaleComps/ppsfs keeps on the sale side
     // and for the same reason: the copy below has to tell "the window returned
     // one lease" apart from "the owner excluded four of five".
@@ -6252,6 +6258,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // rr is $/SF here, not a dollar total — no disagreement sentence.
       renderApproaches(withAssessed(entries, NaN, NaN));
     } else if (leaseRent) {
+      leaseHero = true;
       const n = leaseRent.count;
       // Quote the market back in its own basis. The stored/computed figure is
       // ALWAYS annual (see leaseQuoteBasis for why that half never bends);
@@ -6440,7 +6447,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // told, and in the visible line it crowded out the notes that are
     // specific to THIS property. Still on paper and in the PNG.
     if (meta.type === "Residential") {
-      mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
+      // Not on a rent range. The sentence is a claim about SALE comp coverage
+      // — MLS, a CMA, an appraisal are all sale-price instruments — and a
+      // house that rents is not thin for that reason: residential rental
+      // listings are ordinarily web-visible in a way MLS sales are not. There
+      // is no true rewrite of it for leases, so it is omitted rather than
+      // reworded.
+      if (!leaseHero) mechanics.push("Residential sales mostly live in the MLS, which public web search can't fully reach, so this comp set is thinner than an agent's CMA — treat the range as a starting point, not an appraisal.");
       // What the weighting can't reach, named in this report's own numbers.
       // Reads the same currentPsfBand the outlier chips and the scatter read,
       // so all three describe one band. It is null when no $/SF valuation was
@@ -6530,7 +6543,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // weighting with no range above it explains nothing.
     // unshift, not push: the panel is titled "How this range is calculated",
     // so the weighting leads and the MLS coverage caveat follows it.
-    if (trustEl.textContent) mechanics.unshift(weighNote);
+    // The weighting note describes compWeight and the trend index, and the rent
+    // range applies NEITHER — rentFromComps takes plain unweighted quartiles.
+    // Left as it was, the mechanics half explained how a figure was computed
+    // using math that did not run on it, which is worse than the wrong-noun
+    // copy bugs above it: those read oddly, this one is untrue. The lease
+    // sentence says what actually happened, including the annualization,
+    // because a reader in a monthly market is looking at a converted number.
+    const leaseWeighNote = "Every priced lease comp counts the same here, and the range is the "
+      + "middle half of them; rates quoted monthly are converted to a year before it is taken.";
+    if (trustEl.textContent) mechanics.unshift(leaseHero ? leaseWeighNote : weighNote);
     const howWrap = document.getElementById("ownerTrustHowWrap");
     const howBody = document.getElementById("ownerTrustHow");
     howBody.textContent = mechanics.join(" ");

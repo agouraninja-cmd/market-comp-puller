@@ -105,7 +105,27 @@ if (path.resolve(DIR) === path.resolve(__dirname, "..")) {
 if (!ADMIN_KEY) die("--admin-key is required: it is what makes the eval an internal caller.");
 if (!API_KEY) die(`--key is required (or set ${KEY_VAR}): the isolated server needs the provider's own key.`);
 
-const targetCount = only ? Number(only) : (perType ? Number(perType) * 6 : 12);
+// Counted from the real eval set, not assumed. --per-type N takes at most N of
+// EACH type, and the set is lopsided (four Industrial, one Land, one
+// Residential), so "N x 6" overstated it: --per-type 2 yields 10, not 12. The
+// number is only used to quote the bill before spending it, and over-quoting is
+// the safe direction, but a spend estimate that does not match what runs is the
+// kind of small dishonesty that stops people trusting the preview at all.
+const targetCount = (() => {
+  if (only) return Number(only);
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "eval-set.json"), "utf8"));
+    const targets = Array.isArray(raw) ? raw : (raw.targets || []);
+    if (!targets.length) return perType ? Number(perType) * 6 : 12;
+    if (!perType) return targets.length;
+    const byType = {};
+    for (const t of targets) byType[t.type] = (byType[t.type] || 0) + 1;
+    return Object.values(byType).reduce((a, n) => a + Math.min(n, Number(perType)), 0);
+  } catch (_) {
+    // Never fatal: a bad read costs an approximate quote, not the run.
+    return perType ? Number(perType) * 6 : 12;
+  }
+})();
 const bill = targetCount * 2 * USD_PER_REPORT;
 
 console.log(`\nTHINKING_LEVEL comparison`);

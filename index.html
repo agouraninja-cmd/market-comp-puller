@@ -2288,15 +2288,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report — it will show up here.</p>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
         <!-- The other empty state, and the reason they are two elements: a
-             failed read used to render as "Run a report — it will show up
-             here", which tells somebody with a book of sixteen properties
-             that it is gone. Same rule the vault's comps table, the lead
-             inbox and the hub list each had to learn — an outage must never
-             be reported as an absence. Shown by renderMyDesk(); the rows and
-             the count are left exactly as they were rather than wiped. -->
-        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost — refresh in a moment.</p>
+             failed read used to render as the invitation above, which tells
+             somebody with a book of sixteen properties that it is gone. Same
+             rule the vault's comps table, the lead inbox and the hub list
+             each had to learn: an outage must never be reported as an
+             absence. Shown by renderMyDesk(); the rows and the count are left
+             exactly as they were rather than wiped.
+             ⚠ This wording is the MODEL for every other failed read on the
+             desk, and the reassurance is the load-bearing half: a bare
+             "couldn't load" on a section that holds saved work reads as data
+             loss to the person most likely to be looking at it. Keep the two
+             sentences (what failed, then that nothing is gone) on any new
+             one. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
         <!-- Statement table container (was a 3-col card grid). The id keeps
              every existing reference; renderMyDesk builds the table inside.
              The book line (#deskLedger) that used to sit above it is now the
@@ -2334,7 +2340,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            it is a firm-level record with its own rules (whole-shelf count,
            1000-row truncation notice, its own search) and lives in the firm
            deck below. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports.</p>
+      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+           only "Couldn't load your shared reports", which is the failure
+           without the reassurance — and this line covers the sections that
+           name COLLEAGUES and their work, so it is the one where a bare
+           "couldn't load" is likeliest to read as somebody's shared reports
+           having been lost. It already hides the sections rather than
+           fabricating a "0 shares" empty state; this only finishes the
+           sentence. -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
       <div id="deskShares" class="hidden mt-8">
         <div class="dk-rule">
           <span class="rd-lab">Shared reports</span>
@@ -2417,7 +2431,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              who is closing what; this counts what people SHARE, and a reader
              who assumes otherwise would be reading a wrong number that looks
              exactly like a right one. -->
-        <p class="text-xs text-[#68707E] mt-2">Counts what your firm's members shared with the firm — reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.</p>
+        <p class="text-xs text-[#68707E] mt-2">Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.</p>
         <p id="dealBoardTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
 
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3">

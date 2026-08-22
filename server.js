@@ -20642,6 +20642,10 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // And again: a leases-only report headlines MARKETSNAP.rentFromComps, the
+    // same function the market pages read, so the browser copy must never be
+    // stale relative to the page that calls it.
+    "/market-snapshot.js": { file: "market-snapshot.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.

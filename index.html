@@ -71,6 +71,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        the same reason: it must never be cached stale against the HTML. -->
   <script src="/dev-returns.js"></script>
   <script src="/explore-query.js"></script>
+  <script src="/market-snapshot.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -2926,7 +2927,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               class="no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
             <p id="ownerTrustHow" class="hidden text-xs text-[#68707E] mt-2"></p>
           </div>
-          <p class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
+          <!-- Set per render by renderOwnerHero: the noun is "sales" for every
+               value branch and "leases" for the rent one, because a rent range
+               disclaimed as an estimate from comparable SALES describes a
+               different report. -->
+          <p id="ownerEstimateNote" class="text-xs text-[#68707E] mt-4">Automated estimate from recent comparable sales. Not an appraisal and not a broker opinion of value.</p>
           <div id="bovCtaWrap" class="no-print mt-4 pt-4 border-t border-[#ECEAE3]">
             <button id="bovCtaBtn" type="button"
               class="btn-live w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-5 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
@@ -3813,9 +3818,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const n = assetNoun(type);
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
-  function setHeroTitle(type) {
+  function setHeroTitle(type, txFocus) {
     const el = document.getElementById("ownerHeroTitle");
-    if (el) el.textContent = `What This ${assetNounTitle(type)} Is Worth`;
+    if (!el) return;
+    // A leases-only report answers what space RENTS for, and it says so at
+    // BOTH seams: the form's live select while a search assembles, and the
+    // report's own meta once it renders. Split across the two call sites, a
+    // leases-only search would sit under "What This Building Is Worth" for the
+    // whole minute the comps take to arrive, then flip — which is the same
+    // failure the type noun had here before it was centralized.
+    const verb = txFocus === "leases" ? "Rents For" : "Is Worth";
+    el.textContent = `What This ${assetNounTitle(type)} ${verb}`;
   }
   const SUBJ_INPUT_CLASS = "w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none";
 
@@ -4718,7 +4731,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // real render repaints it, so without this a house sits under the previous
     // report's noun for the whole search. The running search's type is the
     // hidden select's own value by definition.
-    setHeroTitle(propertyTypeSel.value);
+    setHeroTitle(propertyTypeSel.value, document.getElementById("txFocus").value);
     ["ownerLow", "ownerMid", "ownerHigh"].forEach((id) => { document.getElementById(id).textContent = "-"; });
     ["ownerLowPpsf", "ownerMidPpsf", "ownerHighPpsf"].forEach((id) => { document.getElementById(id).textContent = ""; });
     document.getElementById("ownerBasis").textContent = "Valuation computes when all comps are in";
@@ -5475,7 +5488,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("ownerScatterLo").textContent = fmt(lo);
     document.getElementById("ownerScatterHi").textContent = fmt(hi);
     document.getElementById("ownerScatterNote").textContent =
-      `Each gray tick is one of the ${vals.length} sale comps at its own ${o.unitPhrase}. `
+      `Each gray tick is one of the ${vals.length} ${o.compNoun || "sale comps"} at its own ${o.unitPhrase}. `
       + "The shaded span is the range above and the red mark is Likely, so the tighter the ticks cluster, "
       + "the firmer this estimate.";
     // The meaning lives entirely in mark positions, so the accessible name has
@@ -5649,7 +5662,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const card = document.getElementById("ownerHero");
     if (!meta) { card.classList.add("hidden"); return; }
     const noun = assetNoun(meta.type);
-    setHeroTitle(meta.type);
+    setHeroTitle(meta.type, meta.txFocus);
     renderSubjectLastSale(parsed, meta);
     renderSubjectAsking(parsed, meta);
     renderSubjectYearBuilt(parsed, meta);
@@ -5790,6 +5803,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .map((c) => salePsfOf(c))
       .filter((v) => v > 0);
 
+    // The lease side of the same shelf. A leases-only report has no sale comps
+    // by construction, so every sales branch below declines and the hero used
+    // to land on "No priced sale comps came back in this window" over three
+    // dashes, plus a button offering to re-run the search as SALES. Somebody
+    // asking what space costs was told their question was the wrong one.
+    //
+    // MARKETSNAP.rentFromComps is the function the market pages have used
+    // since 2026-08-19, reached from the browser rather than copied: it owns
+    // the monthly-vs-annual parse (leaseRentPsfYr, where "$1.08/SF/month
+    // ($12.96/SF/yr)" must not read as 1.08) and the two-comp floor, and a
+    // second answer to either would be a report and a market page disagreeing
+    // about one building.
+    //
+    // Gated on the SEARCH being leases-only, not on "no sale comps came back",
+    // so a sales report that returned nothing usable still says so and still
+    // offers the wider re-run. Curated the same way the sale side is
+    // (valuationComps, not currentComps), because excluding a comp has to move
+    // this range too or the ledger stops matching the table under it.
+    const leaseComps = meta.txFocus === "leases"
+      ? valuationComps().filter((c) => MARKETSNAP.isLease(c))
+      : [];
+    const leaseRates = leaseComps.map((c) => MARKETSNAP.leaseRentPsfYr(c)).filter((v) => v > 0);
+    const leaseRent = leaseComps.length ? MARKETSNAP.rentFromComps(leaseComps) : null;
+    // Pre-exclusion, the same pair allSaleComps/ppsfs keeps on the sale side
+    // and for the same reason: the copy below has to tell "the window returned
+    // one lease" apart from "the owner excluded four of five".
+    const wantLeases = meta.txFocus === "leases";
+    const allLeaseRates = wantLeases
+      ? currentComps.filter((c) => MARKETSNAP.isLease(c))
+        .map((c) => MARKETSNAP.leaseRentPsfYr(c)).filter((v) => v > 0)
+      : [];
+
     // heroRound, not Math.round: totals display at estimate-honest precision
     // (see heroRound). $/SF sub-labels below keep their exact figures.
     const fmtTotal = (v) => formatUsd(heroRound(v), { maximumFractionDigits: 0 });
@@ -5804,6 +5849,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Hidden by default every render: only the branches whose ledger quotes
     // the same unit the line plots call renderCompScatter to re-show it.
     document.getElementById("ownerScatter").classList.add("hidden");
+    // Reset every render for the same reason the scatter is: renderOwnerHero
+    // runs again on every subject-field edit, so a report that switched
+    // branches would otherwise keep the previous branch's noun.
+    const estimateNoteEl = document.getElementById("ownerEstimateNote");
+    estimateNoteEl.textContent = "Automated estimate from recent comparable sales. "
+      + "Not an appraisal and not a broker opinion of value.";
     // Hidden by default every render; only the no-estimate branch re-shows it.
     const widenWrap = document.getElementById("widenSearchWrap");
     widenWrap.classList.add("hidden");
@@ -6200,6 +6251,75 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       entries.push(costApproachEntry);
       // rr is $/SF here, not a dollar total — no disagreement sentence.
       renderApproaches(withAssessed(entries, NaN, NaN));
+    } else if (leaseRent) {
+      const n = leaseRent.count;
+      // Quote the market back in its own basis. The stored/computed figure is
+      // ALWAYS annual (see leaseQuoteBasis for why that half never bends);
+      // this divides for DISPLAY only, so there is still exactly one canonical
+      // number behind the three tiles, the chart and the annual translation.
+      // A monthly market reading "$16.20/SF/yr" is being quoted a number
+      // nobody there says out loud.
+      const monthlyBasis = MARKETSNAP.leaseQuoteBasis(leaseComps) === "monthly";
+      const perDiv = monthlyBasis ? 12 : 1;
+      const unitSuffix = monthlyBasis ? "/SF/mo" : "/SF/yr";
+      // Two decimals, always. Rents are quoted in cents in both bases, and the
+      // whole-dollar rounding the sale hero uses would flatten a real spread to
+      // nothing: $12.40 to $13.60 would print as $12 to $14 at best and $12 to
+      // $12 at worst, and every monthly figure would round to $1. lastValuation
+      // stays null through this branch on purpose — a rent is not a value, and
+      // everything downstream of it (the asking-price check, the BOV, a
+      // portfolio save) means dollars of building.
+      const rate = (v) => formatUsd(v / perDiv, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      animateValue(lowEl, leaseRent.low, rate);
+      animateValue(midEl, leaseRent.median, rate);
+      animateValue(highEl, leaseRent.high, rate);
+      // The unit rides on the tiles rather than only in the basis line. Three
+      // figures reading "$12.50" under Low / Likely / High, with the unit in
+      // small grey type off at the top right, is a number that gets carried
+      // away meaning something else entirely.
+      const unitLabel = monthlyBasis ? "per SF/mo" : "per SF/yr";
+      setPpsf("ownerLowPpsf", unitLabel);
+      setPpsf("ownerMidPpsf", unitLabel + " · comp median");
+      setPpsf("ownerHighPpsf", unitLabel);
+      basisEl.textContent = `${n} priced lease comps`
+        + (currentComps.length > n ? ` (${currentComps.length} in the table)` : "")
+        + ", asking and closed";
+      const spreadRatio = leaseRent.median > 0
+        ? (leaseRent.high - leaseRent.low) / leaseRent.median : 0;
+      const spreadPhrase = spreadRatio <= 0.15 ? "The comps agree closely."
+        : spreadRatio <= 0.35 ? "A typical spread for this market."
+        : "The comps span a wide range, so treat the midpoint loosely.";
+      // What the rate actually costs, which is the question somebody came
+      // with. Only when the size is known, and always a span rather than one
+      // figure, because a single number here would get quoted back as a quote.
+      // "Before any pass-throughs" is not a hedge: these comps are a mix of
+      // gross and net rates (leaseRentPsfYr reads the number, not the basis),
+      // so the annual figure is the rent line and never the occupancy cost.
+      const annualNote = sizeR
+        ? ` At ${Math.round((sizeR.min + sizeR.max) / 2).toLocaleString()} SF that is about `
+          + `${fmtTotal(leaseRent.low * sizeR.min)} to ${fmtTotal(leaseRent.high * sizeR.max)} `
+          + `a year, before any pass-throughs.`
+        : "";
+      // The sale hero leans on robustPpsfRange's `trimmed` flag to know
+      // whether its band was an interquartile one or the raw spread.
+      // rentFromComps has no such flag because it interpolates quartiles at
+      // any count, so below four leases the band is a narrow reading of very
+      // little and has to say so itself.
+      const thinNote = n < 4
+        ? ` Only ${n} priced lease comps back this range, so treat it as a rough guide.`
+        : "";
+      trustEl.textContent = `Based on ${n} lease comps. ${spreadPhrase}` + annualNote + thinNote;
+      trustEl.classList.remove("hidden");
+      // The ledger and the line quote the same unit here, which is the whole
+      // condition for showing it. `trimmed: true` is the truth rather than a
+      // convenience: rentFromComps ALWAYS takes the interquartile band, unlike
+      // robustPpsfRange, and the scatter's own four-value floor is what keeps
+      // it off a thin set.
+      renderCompScatter(leaseRates,
+        { low: leaseRent.low, mid: leaseRent.median, high: leaseRent.high, trimmed: true },
+        { fmt: (v) => rate(v) + unitSuffix, unitPhrase: "$" + unitSuffix, compNoun: "lease comps" });
+      estimateNoteEl.textContent = "Automated estimate from recent comparable leases. "
+        + "Not an appraisal and not a broker opinion of value.";
     } else {
       lowEl.textContent = "-"; midEl.textContent = "-"; highEl.textContent = "-";
       setPpsf("ownerLowPpsf", ""); setPpsf("ownerMidPpsf", ""); setPpsf("ownerHighPpsf", "");
@@ -6215,7 +6335,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // guidance rather than the generic "not enough came back" copy, since
       // the fix here is to restore a comp, not to wait for a fresh search.
       const curatedShortfall = !!sizeR && allSaleComps.length >= 2 && ppsfs.length < 2;
-      basisEl.textContent = altCompN >= 3
+      // Same shape, the lease side. Reached first, because every sale-flavoured
+      // answer below it is about comps a leases-only search never asked for:
+      // altCompN counts SALE comps published per unit, and curatedShortfall
+      // reads allSaleComps, so both are 0/false here and the reader would have
+      // fallen through to "No priced sale comps came back in this window" — the
+      // exact sentence this whole change exists to stop showing them.
+      const leaseCuratedShortfall = wantLeases && allLeaseRates.length >= 2 && leaseRates.length < 2;
+      basisEl.textContent = wantLeases
+        ? (leaseCuratedShortfall
+          ? (meta.shared
+            ? "Not enough included lease comps to compute a rent range: the report owner excluded some comps."
+            : "Not enough included lease comps to compute a rent range: restore an excluded comp or add your own.")
+          : allLeaseRates.length === 0
+            ? "No priced lease comps came back in this window, so there's no rent range to build."
+            : `Only ${allLeaseRates.length} priced lease comp came back in this window; a rent range needs at least two.`)
+        : altCompN >= 3
         ? `Enter your ${altSpec.askFor} under 'Details for comps': ${altCompN} of these sale comps published a price per ${altSpec.noun}, so we can value it that way without the square footage.`
         : curatedShortfall
           ? (meta.shared
@@ -6242,21 +6377,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // clamps regardless; this keeps the button honest about what it runs),
       // and never narrower than the window already searched. A re-run is a
       // billed search, so it only ever fires on the visitor's own click.
-      if (!meta.shared && !curatedShortfall && altCompN < 3) {
+      if (!meta.shared && !curatedShortfall && !leaseCuratedShortfall && altCompN < 3) {
         const ceiling = (!proConfig || !proConfig.enabled)
           ? PRO_LOOKBACK_CEILING
           : (Number(proConfig.maxLookbackMonths) || PRO_LOOKBACK_CEILING);
         const months = Number(meta.months) || 0;
         const target = Math.min(Math.max(60, months), ceiling);
-        if (target >= months && (target > months || meta.txFocus !== "sales")) {
+        // The re-run keeps the QUESTION and widens the window. Offering a
+        // leases-only search a sales-only re-run was the same wrong-question
+        // failure as the headline: the fix for a thin lease window is more
+        // months of leases. For a leases-only report the focus already matches,
+        // so the offer needs target > months or it is the identical search.
+        const focus = wantLeases ? "leases" : "sales";
+        if (target >= months && (target > months || meta.txFocus !== focus)) {
           const widenBtn = document.getElementById("widenSearchBtn");
-          widenBtn.textContent = `Search ${target} months, sales only`;
+          widenBtn.textContent = `Search ${target} months, ${focus} only`;
           // Through rerunHistory -> the form's ordinary submit path, so the
           // cache, the guest gate, entitlement clamps and the address-confirm
           // step all apply exactly as they would to a manual search.
           // Assignment, not addEventListener: this runs once per render and
           // must replace the previous report's handler, never stack on it.
-          widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: "sales" });
+          widenBtn.onclick = () => rerunHistory({ ...meta, months: target, txFocus: focus });
           widenWrap.classList.remove("hidden");
         }
       }

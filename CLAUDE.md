@@ -2323,8 +2323,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   cache, `harvestComps()`, and `maybePublishMarketSnapshot()` keep seeing
   **whole** reports, so one cached search serves free and Pro alike and the
   corpus never starves on free traffic. Selection is sales-before-leases
-  (the hero's range is sales-only, so a free list of leases wouldn't support
-  the number above it) then best-first by a weight that **mirrors
+  (on a sales or mixed search the hero's range is sales-only, so a free list
+  of leases would not support the number above it; a leases-only search
+  headlines the rent range instead — see 3f) then best-first by a weight that **mirrors
   index.html's `compWeight()`** — a deliberate second copy that must stay in
   sync; there is a `⚠` comment on both.
   **`locked_basis`** is the load-bearing idea: one anonymized row per
@@ -3409,7 +3410,10 @@ private row has not earned. Two rules matter when editing anything down here:
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
    hero on screen a minute before the real render repaints it, so without the
    second one a house sits under the previous report's noun for the whole
-   search. The basis line reads its field name from `SIZE_LABELS[meta.type]`
+   search. `setHeroTitle` takes the transaction focus as well as the type for
+   the same reason (2026-08-21): worded at only one seam, a leases-only search
+   would read "What This Building Is Worth" for that whole minute and then
+   flip to "Rents For". The basis line reads its field name from `SIZE_LABELS[meta.type]`
    and **not** from `#targetSizeLabel`, because a shared report renders
    somebody else's type into a form still labelled for whatever this visitor
    last searched.
@@ -3497,6 +3501,52 @@ private row has not earned. Two rules matter when editing anything down here:
    failure), not an ambitious list price. **User-typed
    asking price wins** (`askingRangeFrom`); the looked-up listing is the
    fallback that lights the comparison card when the visitor never typed one.
+
+3f. **A leases-only report headlines RENT, not a missing sale price**
+   (2026-08-21). Until this, `txFocus: "leases"` produced a hero with three
+   dashes, the line "No priced sale comps came back in this window", and a
+   button offering to re-run the whole search as SALES. Nothing had failed —
+   the comps were in the table — the report was answering a question nobody
+   asked, and it cost a billed search to find that out. Five rules:
+   - **The figure is `MARKETSNAP.rentFromComps`, the market pages' own
+     function**, reached from the browser rather than copied. `market-snapshot.js`
+     is dual-exported for this (browser global `MARKETSNAP`, `maxAge: 0`,
+     exactly like `valuation.js`, `gut-check.js` and `explore-query.js`). It
+     cannot be computed once on the server and shipped, because excluding a
+     comp has to move it; and a second copy of `leaseRentPsfYr` would be a
+     second answer to whether `$1.08/SF/month ($12.96/SF/yr)` is 1.08 or 12.96.
+   - **Gated on the SEARCH being leases-only** (`meta.txFocus === "leases"`),
+     not on "no sale comps came back", so a sales search that returned nothing
+     usable still says so and still offers the wider re-run.
+   - **Quoted in the market's own basis, off ONE annual figure.** The figure
+     is always annual (`leaseRentPsfYr` normalizes on the way in,
+     `rentFromComps` medians one canonical number) — that half is
+     broker-vault.js 029's rule and never bends, because a book holding two
+     bases quotes three rents for one lease. The DISPLAY is
+     `MARKETSNAP.leaseQuoteBasis`, which reads the basis off the comps'
+     own rate strings and divides by 12 for display only: California
+     industrial and retail quote MONTHLY, so "$16.20/SF/yr" in Fontana is a
+     number nobody there says out loud. **Evidence only, and the leading quote
+     wins** — `$1.08/SF/month ($12.96/SF/yr)` is one monthly vote, not one
+     each; a bare numeric `price_per_sqft` votes for neither; a tie is annual.
+     Note the deliberate asymmetry with `parseRentBasis`, which REFUSES to
+     default: that one writes a stored figure where a guess is 12x wrong
+     forever, while this one only picks a display unit for a number that is
+     already correct, so annual is at worst unidiomatic. The cost translation
+     in the trust line stays a YEAR figure in both bases and says "a year".
+   - **Under-claims like everything else here.** Two priced leases minimum,
+     never a one-comp band. Unlike `robustPpsfRange` there is no `trimmed`
+     flag to lean on — `rentFromComps` interpolates quartiles at any count —
+     so below four leases the trust line says it is a rough guide itself.
+   - **`lastValuation` and `currentPsfBand` stay null through this branch.**
+     A rent is not a value, and everything downstream of those two (the
+     asking-price check, the BOV, a portfolio save) means dollars of building.
+   - **The furniture follows the noun.** The heading (`setHeroTitle`, which
+     takes `txFocus` so BOTH seams word it the same), the scatter caption
+     (`compNoun`), the estimate disclaimer (`#ownerEstimateNote`, reset every
+     render), the no-range copy, and the widen button's re-run focus. Found by
+     rendering one, not by reading the diff: the branch was right the first
+     time and three pieces of furniture around it still said "sales".
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

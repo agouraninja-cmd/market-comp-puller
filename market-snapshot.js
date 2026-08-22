@@ -2,6 +2,29 @@
 // market-seed entry shape that renderMarketPageHTML consumes. Used by BOTH
 // gen-market-seed.js (the curated seed script) and server.js's on-demand
 // /api/explore-market endpoint — keep it dependency-free.
+//
+// DUAL-EXPORTED since 2026-08-21 (Node for the two callers above and npm test,
+// a browser global `MARKETSNAP` for index.html), like valuation.js,
+// gut-check.js and explore-query.js, and served with the same maxAge: 0 rule
+// for the same reason: a stale copy against a newer index.html is the failure
+// nobody detects.
+//
+// WHY the browser needs it. A leases-only report headlines a rent range, and
+// that range is rentFromComps — the same function the market pages have used
+// since 2026-08-19. The report recomputes it on every render because a reader
+// can exclude a comp, so the figure cannot be computed once on the server and
+// shipped; and a second copy of leaseRentPsfYr in index.html would be a second
+// answer to "is this rate monthly or annual", which is exactly the parse that
+// function exists to get right.
+//
+// The body below is deliberately NOT re-indented into the factory. The wrapper
+// is the entire change, and a 270-line whitespace diff would bury it.
+
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  else root.MARKETSNAP = api;
+})(typeof self !== "undefined" ? self : this, function () {
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
@@ -81,6 +104,42 @@ function leaseRentPsfYr(c) {
   if (!yr) return NaN;
   const n = num(yr[1]);
   return n > 0 ? n : NaN;
+}
+
+// Which basis a market QUOTES in, read off the comps instead of guessed.
+//
+// The FIGURE is always annual and stays that way: leaseRentPsfYr normalizes on
+// the way in and rentFromComps medians one canonical number, which is
+// broker-vault.js's rule (migration 029) and for its reason — a book holding
+// two bases quotes three different rents for one lease.
+//
+// This is the DISPLAY half of that same rule. California industrial and retail
+// quote rent MONTHLY while most of the country quotes annually, so $1.35/SF is
+// an ordinary monthly rent and an impossible annual one, and a report that
+// says "$16.20/SF/yr" in Fontana is quoting a number nobody there says out
+// loud. The vault REFUSES to default the basis because it is writing a stored
+// figure and a wrong guess is 12x wrong forever. Nothing is stored here and
+// the annual figure is already right, so falling back to annual is safe rather
+// than a guess: it is at worst unidiomatic, never incorrect. That asymmetry is
+// the whole reason this function may have a default and parseRentBasis may not.
+//
+// EVIDENCE ONLY. A comp carrying a bare numeric price_per_sqft states no basis
+// and votes for neither. And the LEADING quote wins: "$1.08/SF/month NNN
+// ($12.96/SF/yr NNN)" is a monthly-quoted comp with an annual parenthetical,
+// not one vote each.
+const PER_MONTH = /\/\s*sf\s*\/\s*(mo\b|month)/i;
+const PER_YEAR = /\/\s*sf\s*\/\s*(yr\b|year)/i;
+function leaseQuoteBasis(comps) {
+  let monthly = 0, annual = 0;
+  for (const c of (comps || [])) {
+    if (!isLease(c)) continue;
+    const raw = String((c && c.price_or_rate) || "");
+    const m = raw.search(PER_MONTH), y = raw.search(PER_YEAR);
+    if (m === -1 && y === -1) continue;
+    if (m !== -1 && (y === -1 || m < y)) monthly++;
+    else annual++;
+  }
+  return monthly > annual ? "monthly" : "annual";
 }
 
 // ≥2 priced leases or null — under-claim, never a one-comp "band".
@@ -264,9 +323,11 @@ function isBetterSnapshot(candidate, current) {
   return n(candidate) >= n(current);
 }
 
-module.exports = {
+return {
   MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot,
-  dateKey, safeHttpUrl, isLease, leaseRentPsfYr, rentFromComps,
+  dateKey, safeHttpUrl, isLease, leaseRentPsfYr, leaseQuoteBasis, rentFromComps,
   opexRangeFrom, trendPctFrom, directionFrom, DIRECTIONS,
   freshDirection, DIRECTION_MAX_AGE_DAYS,
 };
+
+});

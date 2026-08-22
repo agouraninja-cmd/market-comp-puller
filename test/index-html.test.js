@@ -1106,6 +1106,155 @@ test("the agent-intro pointer is screen-only", () => {
   assert.match(html, /half of the range is the fairer read/);
 });
 
+// ---------------------------------------------------------------------------
+// A leases-only report answers a lease question (2026-08-21).
+//
+// Before this, a "Leases only" search put three dashes under Low / Likely /
+// High, said "No priced sale comps came back in this window", and offered a
+// button to re-run the whole thing as SALES. Every part of that was the
+// product telling somebody their question was the wrong one, and it cost a
+// billed search to find out.
+// ---------------------------------------------------------------------------
+test("a leases-only report headlines the rent range, from the market pages' own function", () => {
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  // Reached, not re-implemented. The whole point of serving the module to the
+  // browser is that this stays the only copy of the parse.
+  assert.match(body, /MARKETSNAP\.rentFromComps\(leaseComps\)/);
+  assert.match(body, /MARKETSNAP\.leaseRentPsfYr\(c\)/);
+  assert.match(body, /MARKETSNAP\.isLease\(c\)/);
+  // A second copy would look exactly like this.
+  assert.doesNotMatch(body, /\/\s*sf\s*\?\/\s*yr\/i/i,
+    "a rate parse in the hero is a second answer to monthly-vs-annual");
+
+  // Gated on the SEARCH, so a sales report that came back empty still says so
+  // and still offers the wider re-run.
+  assert.match(body, /meta\.txFocus === "leases"/);
+  // Curated like the sale side: excluding a comp has to move this range too.
+  assert.match(body, /valuationComps\(\)\.filter\(\(c\) => MARKETSNAP\.isLease\(c\)\)/);
+
+  // A rent is not a value. lastValuation feeds the asking-price check, the BOV
+  // and a portfolio save, all of which mean dollars of building.
+  // Bounded from the branch to the give-up branch that follows it. An
+  // indexOf on the dashes would find the NOI branch's copy, further up.
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+  assert.ok(branch.length > 200, "could not bound the lease branch");
+  assert.doesNotMatch(branch, /lastValuation\s*=/,
+    "a $/SF/yr rent written into lastValuation would be read downstream as a price");
+  assert.doesNotMatch(branch, /currentPsfBand\s*=/);
+  // And the sales-only rescue button belongs to the branch below this one.
+  assert.doesNotMatch(branch, /widenWrap\.classList\.remove/);
+  assert.doesNotMatch(branch, /txFocus: "sales"/);
+
+  // The unit is on the tiles. "$12.50" under a label reading "Likely", with
+  // the unit only in grey at the top right, is a number that travels.
+  assert.match(branch, /per SF\/yr/);
+  // Cents, not whole dollars: heroRound would flatten a real spread to none.
+  assert.match(branch, /minimumFractionDigits: 2/);
+  assert.doesNotMatch(branch, /fmtTotal\(leaseRent\.median\)/);
+  // Under-claiming below four, since rentFromComps interpolates quartiles at
+  // any count and has no `trimmed` flag to lean on.
+  assert.match(branch, /n < 4/);
+});
+
+test("the hero quotes the market's own basis, off one annual figure", () => {
+  // The plan's acceptance clause: "$/SF/yr, or /mo where the market quotes
+  // monthly - the vault's rent_basis lesson". The lesson is BOTH halves: one
+  // canonical annual figure (broker-vault 029, because a book holding two
+  // bases quotes three rents for one lease), displayed in the basis the market
+  // actually uses.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+
+  assert.match(branch, /MARKETSNAP\.leaseQuoteBasis\(leaseComps\) === "monthly"/,
+    "the basis is read off the comps, not guessed and not taken from the address");
+  // Divided for DISPLAY only. The band, the scatter and the annual translation
+  // all still read the same annual figure.
+  assert.match(branch, /formatUsd\(v \/ perDiv/);
+  assert.doesNotMatch(branch, /leaseRent\.(low|median|high)\s*\/\s*12/,
+    "dividing the band itself would leave two canonical figures");
+  assert.doesNotMatch(branch, /rentFromComps[^\n]*12/);
+
+  // Unit follows the basis everywhere it appears: tiles, chart, chart legend.
+  assert.match(branch, /monthlyBasis \? "per SF\/mo" : "per SF\/yr"/);
+  assert.match(branch, /monthlyBasis \? "\/SF\/mo" : "\/SF\/yr"/);
+  assert.match(branch, /fmt: \(v\) => rate\(v\) \+ unitSuffix/);
+  assert.doesNotMatch(branch, /"\$\/SF\/yr"/,
+    "a hardcoded annual unit anywhere in this branch is the monthly market reading a number nobody says");
+
+  // The cost translation stays a YEAR figure in both bases — it is the cost of
+  // a lease year and it says so, so it cannot be read as a monthly bill.
+  assert.match(branch, /a year, before any pass-throughs/);
+});
+
+test("a leases-only report says so at both heading seams, and when it has no range", () => {
+  // The heading is set TWICE — once by beginAssembly when the search starts,
+  // once by renderOwnerHero when it lands — because assembly puts the hero on
+  // screen a minute before the real render repaints it. Worded in one place or
+  // a leases-only search sits under "What This Building Is Worth" for that
+  // whole minute and then flips.
+  const fn = html.match(/function setHeroTitle\(type, txFocus\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound setHeroTitle");
+  assert.match(fn[0], /txFocus === "leases" \? "Rents For" : "Is Worth"/);
+  assert.match(html, /setHeroTitle\(propertyTypeSel\.value, document\.getElementById\("txFocus"\)\.value\)/);
+  assert.match(html, /setHeroTitle\(meta\.type, meta\.txFocus\)/);
+
+  // And the branch that CANNOT build a range is the other half of the same
+  // bug: one priced lease used to be reported as "No priced sale comps came
+  // back in this window" with a button offering a sales-only re-run.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  assert.match(body, /basisEl\.textContent = wantLeases/,
+    "the lease case has to be read before the sale-flavoured answers, which are all 0 here");
+  assert.match(body, /no rent range to build/);
+  assert.match(body, /a rent range needs at least two/);
+  assert.match(body, /Not enough included lease comps/);
+  // The re-run keeps the question and widens the window.
+  assert.match(body, /const focus = wantLeases \? "leases" : "sales"/);
+  assert.match(body, /txFocus: focus/);
+  assert.doesNotMatch(body, /txFocus: "sales"/,
+    "offering a leases-only search a sales-only re-run is the wrong-question failure again");
+});
+
+test("nothing under a rent range still says 'sales'", () => {
+  // Found by rendering one, not by reading the diff. The rent branch was
+  // correct and the furniture around it was not: the scatter caption said
+  // "5 sale comps" and the disclaimer said "from recent comparable sales",
+  // both directly under a $/SF/yr band.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+  assert.match(branch, /compNoun: "lease comps"/);
+  assert.match(branch, /comparable leases/);
+
+  // The noun is a parameter with the sale wording as its default, so every
+  // existing caller keeps its copy without being touched.
+  assert.match(html, /\$\{o\.compNoun \|\| "sale comps"\}/);
+
+  // And it is reset on EVERY render, not just set by the branch that needs it.
+  // renderOwnerHero runs again on every subject-field edit, so a report that
+  // switched branches would otherwise keep the previous branch's noun — which
+  // is exactly what happened the first time, rendering a lease report and then
+  // a sale one in the same tab.
+  assert.match(body, /estimateNoteEl\.textContent = "Automated estimate from recent comparable sales\. "/);
+  const resetAt = body.indexOf("estimateNoteEl.textContent");
+  assert.ok(resetAt > 0 && resetAt < start,
+    "the default has to be assigned above the branch chain, or it cannot be a reset");
+  assert.match(html, /id="ownerEstimateNote"/);
+});
+
+test("the browser can actually reach MARKETSNAP", () => {
+  // The script tag and the allowlist entry are two halves of one thing: the
+  // hero throws on a leases-only report without the tag, and the tag 404s
+  // without the entry. maxAge 0 for valuation.js's reason — a cached copy
+  // against a newer index.html is the failure nobody detects.
+  assert.match(html, /<script src="\/market-snapshot\.js"><\/script>/);
+  const serverSrc = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  assert.match(serverSrc,
+    /"\/market-snapshot\.js": \{ file: "market-snapshot\.js", type: "text\/javascript; charset=utf-8", maxAge: 0 \}/);
+});
+
 test("the mechanics toggle is registered once, not per render", () => {
   // renderOwnerHero runs on every render and every subject-field edit; an
   // addEventListener in there would stack handlers until one click fired the

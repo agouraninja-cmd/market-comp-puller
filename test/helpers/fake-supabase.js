@@ -163,11 +163,24 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
           // else is left to the plain-insert path rather than guessed at.
           const conflict = (url.searchParams.get("on_conflict") || "")
             .split(",").map((s) => s.trim()).filter(Boolean);
+          // A NULL in any part of the key means the row can never conflict,
+          // which is Postgres's own rule for a unique index and NOT what a
+          // naive String(r[c]) does — that turns two nulls into "null" and
+          // "null" and silently drops the second row.
+          //
+          // Taught 2026-08-22, found while building `org_contacts` (039),
+          // where a contact with no email is an ordinary and explicitly
+          // allowed row: two of them upserted here and only the first was
+          // stored, so a test would have proved the second was rejected while
+          // production accepted it. The divergence ran the WRONG way round
+          // for once — the fake was stricter than the database — which is
+          // exactly the shape that makes a green suite untrustworthy.
+          const nullKey = (r) => conflict.some((c) => r[c] === null || r[c] === undefined);
           const keyOf = (r) => conflict.map((c) => String(r[c])).join("\u0000");
           const stored = [];
           for (const r of rows) {
-            const existing = conflict.length
-              ? tables[table].find((t) => keyOf(t) === keyOf(r))
+            const existing = (conflict.length && !nullKey(r))
+              ? tables[table].find((t) => !nullKey(t) && keyOf(t) === keyOf(r))
               : null;
             if (existing) {
               if (prefer.includes("resolution=merge-duplicates")) {

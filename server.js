@@ -10322,8 +10322,18 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
+    // "not read from a stale database" was cut 2026-08-21. It was written when
+    // a live web search was the whole product, and it had become false: the
+    // corpus layer means every search DOES read what we already hold first
+    // (retrieveCorpusComps runs on a cache miss, before anything is billed,
+    // and its rows are offered to the model), and archive-first retrieval
+    // landed the same day. The line was telling visitors that reading stored
+    // comps is the shoddy way to do this, on a page selling a product whose
+    // stored comps are the asset. The heading stays "Search live" on the
+    // owner's call: the live search is still the front door and this is a
+    // correction, not a repositioning.
     ["I.", "Search live",
-     "Public records, listings, and news are searched at request time, not read from a stale database."],
+     "We check what we already hold, then search public records, listings and news for anything missing."],
     ["II.", "Cite everything",
      "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
     ["III.", "Value the subject",

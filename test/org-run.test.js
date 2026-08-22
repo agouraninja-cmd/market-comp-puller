@@ -931,3 +931,86 @@ test("a firm is one of three shops, and says which", async (t) => {
     assert.deepEqual(ctx.db.unparsed, []);
   });
 });
+
+// ---------------------------------------------------------------------------
+// The deal board's attribution after somebody leaves (038).
+//
+// This is the split the snapshot column exists to close. `org_comps` has
+// denormalized `shared_by_name` since 032, so a member who deletes their
+// account keeps their attribution on their COMPS; `shared_reports` had no name
+// column and 018 sets `user_id` to null on delete, so the same person lost it
+// on their REPORTS. The board keys on the id first and the name second, so one
+// person arrived as TWO rows — once by name, once unattributed — with correct
+// totals and a wrong-looking roster.
+// ---------------------------------------------------------------------------
+test("a departed member is one row on the deal board, not two", async (t) => {
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+    method: "POST", body: JSON.stringify({ orgId: org.id }),
+  }));
+
+  // Mike shares a report with the firm while his account still exists.
+  const share = await fetch(srv.base + "/api/share", as(MIKE, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+  assert.equal(share.status, 200);
+
+  // The name is snapshotted at share time — the half that makes the rest work.
+  const row = tables.shared_reports.find((r) => r.user_id === MIKE.id);
+  assert.ok(row, "the share was written");
+  assert.equal(row.shared_by_name, "Mike",
+    "the sharer's name is stored, not merely joined from users at read time");
+
+  // Now Mike deletes his account: 018's rule nulls user_id and the users row
+  // is gone, so the live lookup can no longer answer who shared this.
+  tables.shared_reports.forEach((r) => { if (r.user_id === MIKE.id) r.user_id = null; });
+  tables.users = tables.users.filter((u) => u.id !== MIKE.id);
+
+  const board = (await (await fetch(srv.base +
+    `/api/org/board?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).board;
+  assert.ok(board, "the firm has shared something, so there is a board");
+
+  const mike = board.members.filter((m) => m.name === "Mike");
+  assert.equal(mike.length, 1, "Mike is one row");
+  assert.equal(mike[0].reports, 1);
+  // And crucially NOT an extra anonymous row beside him.
+  const anon = board.members.filter((m) => !m.name);
+  assert.deepEqual(anon, [],
+    "a departed member with a stored name never also appears as an unattributed row");
+});
+
+test("the live name wins over the snapshot while the account exists", async (t) => {
+  // The opposite ordering to report branding's, deliberately: a mark must look
+  // the way it looked when it was sent, while an attribution should say what a
+  // colleague is called TODAY. Somebody who fixes a typo in their profile
+  // should not read the old spelling back on their own shelf row.
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/share", as(BRAD, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+
+  // Brad renames himself after sharing. The snapshot still says "Brad".
+  tables.users.find((u) => u.id === BRAD.id).name = "Bradley";
+
+  const shelf = await (await fetch(srv.base +
+    `/api/org/shelf?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+  assert.equal(shelf.items[0].sharedBy, "Bradley",
+    "the shelf shows the current name, not the one snapshotted at share time");
+});

@@ -3287,12 +3287,26 @@ async function getShareRecord(id) {
 async function storeSharedReport(id, payload, opts = {}) {
   const {
     userId = null, visibility = "public", includePrivate = false, viewers = [],
-    orgId = null,
+    orgId = null, sharedByName = "",
   } = opts;
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
+      // Who shared it, snapshotted (038). 032's pattern and 032's reason: 018
+      // sets `user_id` to null when an account is deleted, and the name was
+      // only ever joined from `users`, so a departed member's shelf rows lost
+      // their attribution entirely while their shared COMPS kept theirs. One
+      // person then appeared twice on the firm's deal board — once by name and
+      // once as an unattributed row.
+      //
+      // NAME ONLY, never the email, which is also 032's rule. The shelf's live
+      // read falls back to an email when a member has no display name, but
+      // that is a lookup against a row that still exists; persisting an address
+      // here would outlive the account it belongs to, which is the opposite of
+      // what deleting an account should mean. A member with no name still
+      // lands in the board's declared unattributed bucket, honestly.
+      shared_by_name: String(sharedByName || "").trim().slice(0, 120),
       // Only ever set on a firm share. The `visibility !== "public"` guards
       // below already refuse to write this row to the file store, so a firm
       // share is covered by the same refusal an invited one is — the file has
@@ -3740,7 +3754,7 @@ async function orgShelfRows(orgId) {
   return (await sbRequest("GET",
     `shared_reports?org_id=eq.${encodeURIComponent(orgId)}` +
     `&visibility=eq.org&revoked_at=is.null` +
-    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=1000`)) || [];
+    `&select=id,payload,org_id,created_at,user_id,shared_by_name&order=created_at.desc&limit=1000`)) || [];
 }
 
 // Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
@@ -19166,6 +19180,7 @@ const server = http.createServer((req, res) =>
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
           userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers, orgId,
+          sharedByName: user ? (user.name || "") : "",
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
         // The share row is already written. A mail send must never turn this
@@ -19709,7 +19724,16 @@ const server = http.createServer((req, res) =>
               // never an id. Both are already on the roster this member can
               // read, and an unattributed shelf row is one nobody can follow
               // up on, which is most of what a shelf is for.
-              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              //
+              // The LIVE row wins and the snapshot (038) is the fallback, which
+              // is the opposite ordering to report branding's and deliberately
+              // so: branding must look the way it looked when it was sent, while
+              // an attribution should show what a colleague is called TODAY —
+              // somebody who fixes a typo in their profile should not read a
+              // stale name on their own shelf row. The snapshot only speaks
+              // once the account is gone, which is exactly the case that used
+              // to lose the name altogether.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "a colleague",
               mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
             };
           }),
@@ -19784,7 +19808,14 @@ const server = http.createServer((req, res) =>
               // groups on this, and a literal fallback string would merge every
               // unreadable row into one plausible-looking person. An empty name
               // goes to deal-board.js's declared unattributed bucket instead.
-              sharedBy: (who && (who.name || who.email)) || "",
+              // Live first, snapshot second, then the declared unattributed
+              // bucket (038). This is the line that closed the departed-member
+              // split: `org_comps` has carried a snapshotted name since 032,
+              // so a member who deleted their account kept their attribution
+              // on their COMPS and lost it on their REPORTS, and the board
+              // showed one person as two rows — once by name, once as "a
+              // former colleague". Both sources snapshot now.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "",
               sharedById: r.user_id || "",
               mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
             };

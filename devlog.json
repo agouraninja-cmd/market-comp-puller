@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-23",
+    "type": "fix",
+    "title": "The onboarding docs pointed new contributors at the wrong API key",
+    "details": "A fresh clone followed ONBOARDING.md, put an ANTHROPIC_API_KEY in .env, ran npm start, and got a server that boots, serves every page, and cannot run a single search — because the default provider has been Gemini since 2026-08-10 and nothing in .env.example or the onboarding guide mentioned GEMINI_API_KEY. The banner names the missing variable, but only in the terminal a first-timer has already scrolled past. .env.example now leads with the key the default provider actually needs, says the project must be on a paid Google tier, and gives the free models-list curl that proves a key works without spending anything — including the warning that the key does not necessarily start \"AIza\", which cost an afternoon of hunting for a key that did not exist. ONBOARDING.md is corrected to match on four further points it had drifted on: the cache window is 30 days not 7, a search costs about $0.36 not $0.75, the suite is a couple of thousand tests in ten seconds rather than a handful in one, and the call deadline is derived per search rather than a fixed 100 seconds. The free four-comp cap it described was retired in August. HANDOFF.md, which still called hosting the next step and named a retired model, is now a signpost to the documents that are actually maintained rather than a third decaying copy of the project description."
+  },
+  {
     "date": "2026-08-22",
     "type": "fix",
     "title": "A hub invitation that could not be sent no longer reports itself as sent",

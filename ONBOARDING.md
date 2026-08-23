@@ -41,11 +41,15 @@ That fact drives the most important rule in this document (rule 1 below).
 - [ ] **A collaborator invite** to the repo. Jacob sends it from GitHub;
       you get an email with an "accept invitation" button. Accept it while
       signed in to GitHub.
-- [ ] **Your own Anthropic API key.** Sign up at console.anthropic.com,
-      then go to API Keys, create a key, and copy it somewhere safe. It
-      looks like `sk-ant-...`. You will need to load a few dollars of
-      credit onto the account (Settings, then Billing). Do not share keys;
-      each person uses their own.
+- [ ] **Your own search-provider API key.** The app runs on **Gemini**
+      by default, so what you need is a `GEMINI_API_KEY` from
+      aistudio.google.com/apikey, on a project with **billing enabled**
+      (search grounding refuses on the free tier). Ask Jacob if you are
+      unsure which project to use. Do not share keys; each person uses
+      their own.
+
+      (An `ANTHROPIC_API_KEY` is only needed if you deliberately switch
+      to the Anthropic provider with `SEARCH_PROVIDER=anthropic`.)
 - [ ] **Slack access** to the Compninja workspace (you likely have this).
 
 You do NOT need accounts for Supabase, Stripe, Resend, or Google Maps.
@@ -129,14 +133,18 @@ cp .env.example .env
 
 **Step 2.** Open the new `.env` file in any text editor (Notepad is fine:
 type `notepad .env` in the terminal on Windows). Replace
-`sk-ant-your-key-here` with your real API key, so the line reads:
+`your-gemini-key-here` with your real key, so the line reads:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-api03-...your actual key...
+GEMINI_API_KEY=...your actual key...
 ```
 
 Keep the key on one line with nothing after it, save, and close. That is
 the only line you need; ignore the commented-out optional lines.
+
+To confirm the key is being read, start the app (next section) and visit
+http://localhost:3000/healthz — it should report `"hasKey":true`. The
+startup banner also warns by name when the key is missing.
 
 ## 5. Run the app
 
@@ -166,16 +174,20 @@ Also run the test suite once to see it pass:
 npm test
 ```
 
-It finishes in under a second. The tests cover the paywall logic files
-only, so green tests do not mean the whole app works; they mean the
-billing rules are intact.
+It finishes in about ten seconds and runs a couple of thousand checks.
+They cover the pure rule modules (entitlements, the comp gate, the vault,
+valuation math and so on) plus route-level wiring — but not the app as a
+whole, so green tests do not mean the product works; they mean those rules
+are intact. Trust the summary the run prints over any count written down
+in a document.
 
 ## 6. Searches cost real money
 
-Every fresh search you run locally bills the Anthropic key in YOUR `.env`
-roughly **$0.75**. Two things keep development cheap:
+Every fresh search you run locally bills the provider key in YOUR `.env`
+roughly **$0.36**, and takes 40-70 seconds. Two things keep development
+cheap:
 
-- **Identical searches are cached for 7 days.** Re-running the same
+- **Identical searches are cached for 30 days.** Re-running the same
   address + property type + settings is free and instant. Pick one test
   address and reuse it all day.
 - If you are only working on how things look, you rarely need a fresh
@@ -189,7 +201,7 @@ roughly **$0.75**. Two things keep development cheap:
 | `server.js` | The entire backend. If you edit it, stop the server (Ctrl+C) and `npm start` again or your change does nothing. |
 | `index.html` | The entire front end. Edits show up with just a browser refresh; no restart needed. |
 | `entitlements.js` | The paid tier's decision rules. If you touch it, run `npm test`. |
-| `comp-gate.js` | How free reports get limited to 4 comps. Also tested. |
+| `comp-gate.js` | How a report is trimmed for a plan. The free comp cap was retired in Aug 2026 (free reports now itemize every comp), but the machinery still runs whenever a cap applies. Also tested. |
 | `stripe.js` | Payment plumbing. Owen owns the Stripe account side. |
 | `tailwind.css` | Pre-built styling file, checked in. See rule 3 below. |
 | `devlog.json` | The project changelog, shown at `/dev` on the site. See rule 4. |
@@ -250,6 +262,7 @@ roughly **$0.75**. Two things keep development cheap:
 - A style is not applying: the class is missing from the pre-built
   `tailwind.css` (rule 3).
 - A search fails once and works on retry: known behavior for slow
-  international searches; the timeout is 100 seconds.
+  international searches. The call deadline is derived per search (it
+  scales with the search budget and output size), not a fixed 100 seconds.
 - Anything else: ask in Slack, or ask Claude Code, which knows this
   codebase's failure modes.

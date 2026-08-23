@@ -1,84 +1,27 @@
-# Project Handoff — Market Comp Puller
+# Handoff
 
-> Read this first if you're picking the project up in a new chat. It captures
-> everything done so far, how to run it, the problems already solved, and the
-> next step.
+CompNinja (compninja.co) is live and has been since 2026. This file used to
+be the project handoff, written when the app was a local prototype whose
+next step was finding a host. Everything in it went out of date — it named
+a retired model, a hard-coded Windows path from another machine, and a
+"NOT done" hosting task that was done long ago — so rather than keep a
+second, decaying description of the project, it now points at the ones that
+are maintained.
 
-## What this is
-A web app for a commercial real estate company. A user enters a property address
-+ type; the server asks Claude (with web search) to find comparable sales/leases
-and returns a structured comp report (summary, average $/SF, comp table, target
-vs. market comparison). Single front-end file + a small Node proxy that holds the
-API key.
+**Where to actually look:**
 
-## Current status (as of last session)
+| You want | Read |
+|---|---|
+| To get a local copy running for the first time | [ONBOARDING.md](ONBOARDING.md) |
+| How anything in the product works, and why | [CLAUDE.md](CLAUDE.md) — the project bible, and authoritative |
+| What shipped, and when | `devlog.json`, rendered at `/dev` on the site |
+| What is planned or pending a decision | `docs/ROADMAP.md` |
+| Billing and Stripe setup | [PRO-BILLING-SETUP.md](PRO-BILLING-SETUP.md) |
+| A quick description of the app and how to deploy it | [README.md](README.md) |
 
-| Item | Status |
-|------|--------|
-| App fully built (front-end + backend proxy) | ✅ Done |
-| Returns REAL comps from a live search | ✅ Verified working end-to-end |
-| Password gate (optional) | ✅ Built & tested |
-| Target-vs-market comparison | ✅ Built |
-| CSV export / PNG image / Print-to-PDF | ✅ Built |
-| Usable by the owner locally (localhost) | ✅ Yes, right now |
-| **Hosted so OTHER people can reach it** | ❌ NOT done — this is the next step |
+**The one rule worth repeating here**, because it is the one that costs real
+money to learn: `main` deploys to the live site automatically, within
+minutes, with no review. Work on a branch and open a pull request.
 
-## The files
-- `index.html` — front-end (form, results, comparison, export buttons, password gate UI).
-- `server.js` — zero-dependency Node proxy. Serves the page + `POST /api/comps`.
-- `package.json` — `npm start` runs the server.
-- `.env` — holds the real API key (and optional APP_PASSWORD). **Git-ignored. Do not commit or share.**
-- `.env.example` — template.
-- `README.md` — run + deploy instructions.
-- `.gitignore` — excludes `.env` and `node_modules`.
-
-## How to run it locally (Windows, no admin needed)
-Node was installed as a PORTABLE copy (no admin rights required) here:
-```
-C:\Users\JacobAdler\AppData\Local\node-portable\node-v24.16.0-win-x64\node.exe
-```
-Start the server from the project folder:
-```powershell
-& "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
-```
-Then open http://localhost:3000
-
-(If `npm start` / plain `node` is wanted instead, Node would need to be on PATH,
-which requires the admin installer from nodejs.org. Not necessary — the portable
-copy works.)
-
-## Problems already solved (don't re-debug these)
-1. **Node install needed admin** → worked around with a portable Node zip
-   extracted to `%LOCALAPPDATA%\node-portable` (no admin prompt).
-2. **API key got corrupted in .env** → when pasted in Notepad it merged with the
-   comment line below it (and a smart "—" dash crashed the request). The key was
-   cleaned to exactly 108 chars. If editing `.env` again, keep the key on ONE line
-   with nothing after it.
-3. **Model 404** → the originally-specified model `claude-sonnet-4-20250514` was
-   retired. Now using **`claude-sonnet-4-6`** (current Sonnet). Set in `server.js`
-   as the `MODEL` constant. If it 404s again, list available models with:
-   `GET https://api.anthropic.com/v1/models` using the key.
-
-## Key technical notes
-- API key lives ONLY in `.env` (server-side). The browser never sees it.
-- Web search responses have multiple block types; `server.js` extracts text via
-  `data.content.filter(b => b.type === "text")`.
-- JSON from the model is parsed defensively (strips ```json fences, grabs outer
-  `{...}`).
-- Optional password gate: set `APP_PASSWORD` in `.env`; the front-end shows a lock
-  screen and sends the password as the `x-app-password` header.
-
-## NEXT STEP: hosting / deployment
-Goal: put the app on the internet so other people can reach it via a public URL.
-Open decision still pending from the owner:
-- **Password-protect the public site** (recommended — set `APP_PASSWORD` so randoms
-  can't spend the API credits) vs. **open to anyone with the link**.
-
-Likely path: deploy `server.js` + `index.html` to a host like **Render** or
-**Railway** (Node web service, start command `npm start`), and set
-`ANTHROPIC_API_KEY` (and optionally `APP_PASSWORD`) as environment variables in the
-host's dashboard. See README.md "Deploy it so others can use it".
-
-Reminder: whoever hosts it, every search is billed to the owner's Anthropic
-account — hence the password recommendation and/or a spend cap in the Anthropic
-console.
+If a document and the code disagree, the code is right and the document is
+a bug — CLAUDE.md included. Fix it in the same commit that made it wrong.

@@ -1974,12 +1974,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  and entitlements.js reads `const broker = pro`. A plain link,
                  not a button: /vault is its own server-rendered page. -->
             <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Your vault</a>
-            <!-- Bulk valuation, off canBulkValue for the same reasons as the
-                 vault link above: the entitlement is the only sanctioned way
-                 to ask, and /api/bulk re-checks it server-side, so unhiding
-                 this by hand reveals a link and nothing behind it. Also its
-                 own server-rendered page, so a plain link. -->
-            <a id="menuBulkLink" href="/bulk" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Bulk valuation</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -2318,6 +2312,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
             No address? Find one
           </button>
+          <!-- Bulk valuation's door since it left the account menu (owner's
+               call, 2026-08-24): discoverable beside the search it
+               multiplies, not filed under the vault. Same quiet style as its
+               siblings so the row's look doesn't change; ships hidden and is
+               revealed off canBulkValue in refreshBillingUI — the same
+               entitlement (and the same Buy-button rule) the menu link
+               obeyed. A plain link, not a button: /bulk is its own
+               server-rendered page. The "hidden" class wins over inline-flex
+               in the vendored Tailwind (display utilities end with .hidden —
+               the menu links' own "hidden block" relies on the same order). -->
+          <a id="bulkLink" href="/bulk"
+            class="hidden btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            Have a list? Value them all
+          </a>
         </div>
       </form>
       <!-- Market Explorer: still self-contained (builds standing market pages,
@@ -15621,10 +15629,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // deployment with no Stripe keys, the same exception the billing card makes.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
-    // Bulk valuation. Its own entitlement rather than `pro`, because the two
-    // deliberately part company on the tester passkey — a shared code buys
-    // Pro's reports and not a fan-out that bills fifty searches per click.
-    document.getElementById("menuBulkLink")
+    // Bulk valuation's door — beside the search form since 2026-08-24, no
+    // longer in the account menu (the owner: out of the vault grouping,
+    // without ruining the homepage look). Its own entitlement rather than
+    // `pro`, because the two deliberately part company on the tester
+    // passkey — a shared code buys Pro's reports and not a fan-out that
+    // bills fifty searches per click.
+    document.getElementById("bulkLink")
       .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
     // Same entitlement drives the My Desk card. Signed-in only: the desk's
     // account-backed areas are already hidden signed out, and a vault card

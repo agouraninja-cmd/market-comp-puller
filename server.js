@@ -7606,7 +7606,6 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
     `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
-    `<a id="navBulk" class="vault" href="/bulk" hidden>Bulk valuation</a>` +
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
@@ -7645,7 +7644,6 @@ const ACCOUNT_NAV_JS =
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
-  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this

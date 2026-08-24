@@ -1663,3 +1663,115 @@ test("index.html refuses the shop question in org-access.js's own words", () => 
   assert.ok(html.includes(`"${expected}"`),
     `the page's refusal has drifted from validateShopKind's: ${expected}`);
 });
+
+// ---------------------------------------------------------------------------
+// The collapsed search settings (2026-08-23). Focus, Lookback and Property SF
+// moved behind a line that states their current values, so the form's only
+// open question is the address. The trade is that the line IS the only thing
+// on screen saying what the search will do — three controls the reader can
+// see explain themselves, and a summary that has gone stale does not.
+// ---------------------------------------------------------------------------
+
+test("the collapsed settings line states what the search will actually do", () => {
+  const words = html.match(/const TX_FOCUS_WORDS = \{[^}]*\};/);
+  const fn = html.match(/function refreshSearchSettingsLine\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(words && fn, "could not bound refreshSearchSettingsLine — renamed or moved?");
+
+  const line = { textContent: "" };
+  const focus = { value: "both" };
+  const size = { value: "" };
+  let months = 24;
+  const ctx = vm.createContext({
+    searchSettingsLine: line,
+    txFocusSel: focus,
+    targetSizeInput: size,
+    selectedLookbackMonths: () => months,
+    // valuation.js's, copied rather than required: the browser reads it off
+    // the VALUATION global, which this extraction has no way to destructure.
+    numericValue: (str) => {
+      if (str == null) return NaN;
+      const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+      return m ? parseFloat(m[0]) : NaN;
+    },
+  });
+  new vm.Script(`${words[0]}\n${fn[0]}\n;this.refresh = refreshSearchSettingsLine;`,
+    { filename: "index.html" }).runInContext(ctx);
+
+  // The defaults, which is what nearly every visitor will read. Naming the
+  // size default is the point: somebody who leaves the box empty should learn
+  // it gets looked up, not wonder whether they have cost themselves the
+  // number the hero multiplies.
+  ctx.refresh();
+  assert.equal(line.textContent, "Sales & leases · last 24 months · size from public records");
+
+  focus.value = "leases";
+  months = 6;
+  ctx.refresh();
+  assert.equal(line.textContent, "Leases only · last 6 months · size from public records");
+
+  // A size that IS set replaces the promise to look one up.
+  focus.value = "sales";
+  months = 36;
+  size.value = "24800";
+  ctx.refresh();
+  assert.equal(line.textContent, `Sales only · last 36 months · ${(24800).toLocaleString()} SF`);
+  assert.match(line.textContent, / SF$/);
+
+  // A half-typed custom window. Submit refuses this state, and while the
+  // control is collapsed this line is the only thing that can say why — so it
+  // must not quietly name a window that is not set.
+  months = null;
+  ctx.refresh();
+  assert.match(line.textContent, /lookback not set/);
+});
+
+test("every seam that moves focus, window or size refreshes the settings line", () => {
+  // The failure this guards is invisible on screen: the line keeps describing
+  // the previous search while the controls it describes are collapsed. Only
+  // the lookback has a funnel (setLookbackControls); focus and size are
+  // assigned directly at the restore paths, so each of those needs the call.
+  const seams = [
+    // The user-facing controls.
+    [/txFocusSel\.addEventListener\("change", refreshSearchSettingsLine\)/, "the focus select"],
+    [/function setLookbackControls\(months\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "setLookbackControls"],
+    // Machine writes that fire no "input" event of their own.
+    [/function dropMachineSize\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "dropMachineSize"],
+    [/noteMachineSize\(meta\.address, Math\.round\(found\)\);\s*\n\s*\/\/[\s\S]{0,220}?refreshSearchSettingsLine\(\)/,
+      "the record-backed size autofill"],
+    // Restores, which assign every one of the three without an event.
+    [/function rerunHistory\(m\) \{[\s\S]*?refreshSearchSettingsLine\(\)[\s\S]*?requestSubmit\(\)/, "rerunHistory"],
+    [/function syncSubjectFieldsToType\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "syncSubjectFieldsToType"],
+  ];
+  for (const [re, what] of seams) {
+    assert.match(html, re, `${what} can move a settings value without refreshing the line`);
+  }
+  // The footprint estimate is the one machine write that needs no call of its
+  // own: it dispatches "input" on #targetSize, and that listener refreshes.
+  assert.match(html,
+    /getElementById\("targetSize"\)\.addEventListener\("input", \(e\) => \{[\s\S]*?refreshSearchSettingsLine\(\)/,
+    "the size input listener no longer refreshes the line, which also covers the footprint estimate");
+});
+
+test("the three controls are behind the settings summary, and keep their ids", () => {
+  const open = html.indexOf('<details id="searchSettings"');
+  const close = html.indexOf("</details>", open);
+  assert.ok(open > 0 && close > open, "the search-settings disclosure is gone");
+  const inside = html.slice(open, close);
+  for (const id of ["txFocus", "lookback", "lookbackCustom", "targetSize", "lookbackHint", "targetSizeHint"]) {
+    assert.ok(inside.includes(`id="${id}"`), `#${id} left the settings disclosure`);
+  }
+  // The summary has to carry the line and a word saying it can be opened: a
+  // row of values with only a chevron reads as a status line, not a control.
+  assert.match(inside, /<summary[\s\S]*?id="searchSettingsLine"[\s\S]*?rd-sum-act[\s\S]*?<\/summary>/);
+});
+
+test("the footprint estimate points at where the size actually is", () => {
+  // It said "edit it under Details for comps", which had been wrong since the
+  // size moved back onto the form (2026-08-16): it sent anyone correcting an
+  // estimate to a drawer that does not contain the field.
+  const note = html.match(/estNote\.textContent = `[^`]*`/);
+  assert.ok(note, "could not find the footprint estimate's note");
+  assert.ok(!/Details for comps/.test(note[0]),
+    "the estimate note points at Details for comps, which has not held the size since 2026-08-16");
+  assert.match(note[0], /change it below/);
+});

@@ -25,6 +25,12 @@
   },
   {
     "date": "2026-08-23",
+    "type": "fix",
+    "title": "The sample report states a search radius that covers its own comps",
+    "details": "The sample a prospect reads before signing up claimed a search radius of “Immediate submarket, ~5 miles” while its comps sit 8 to 17 miles out, in Grand Prairie and Arlington. Nothing wrong reached the screen: the reconciliation shipped a day earlier spots exactly this and drops the claim rather than print it beside the measured distances. But that left the demo showing no search radius at all — the one report we control was relying on the product papering over its own data on every render, and quietly not demonstrating a line that real reports do show. The fixture now says “DFW mid-cities, ~20 miles”, which is true of its comps and matches the wording the sample summary already uses. A test computes the farthest comp from the sample’s own coordinates and fails the build if a future edit puts the claim back out of reach — deliberately stricter than the live check, which allows a quarter’s slack because a real search’s radius is an approximation, where ours is written by hand and should simply be right."
+  },
+  {
+    "date": "2026-08-23",
     "type": "feature",
     "title": "A settings panel, and light mode becomes the default",
     "details": "The header gear (where the theme icon sat) opens one panel holding the theme control, the visitor's plan with the upgrade and billing-portal buttons, a watchlist digest email toggle, and the account controls — Change photo and Delete account moved here from the account dropdown, the delete behind a proper two-step confirm whose copy now names the vault. The digest toggle is the first in-app control that column has ever had (it was email-unsubscribe-only) and writes through a new session-authenticated POST /api/account/digest; the email link still works and the panel re-reads /me on every open so the two never disagree. Light is now the default on every surface: the boot scripts no longer consult prefers-color-scheme, so a first visit is light on a dark-OS machine and dark happens only by choosing it — a stored choice keeps working, and scripts/shot.js --dark now seeds that choice since the emulated media query stopped producing a dark render. The plan row hides on a deployment where nothing is for sale rather than describe caps a dark deployment does not impose. Pricing keeps its header link; the panel is a second door, not a relocation."

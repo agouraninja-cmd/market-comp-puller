@@ -1154,6 +1154,10 @@ function publicAccount(user) {
     email: user.email,
     name: user.name || "",
     avatarRev: String(user.avatarRev || user.avatar_rev || ""),
+    // Whether the watchlist digest email is switched off. A missing column
+    // (file store, deploy-then-migrate) coerces to false — emails on — which
+    // matches what the digest run itself assumes about such rows.
+    digestOptout: Boolean(user.digestOptout || user.digest_optout),
   };
 }
 
@@ -1287,6 +1291,13 @@ async function getSessionUser(req) {
       // no vault and nothing anywhere failed. Caught only by granting it to a
       // real account and looking. test/routes.test.js now pins the pairing.
       vault_beta: Boolean(user.vault_beta),
+      // The watchlist-digest opt-out (migration 025). Until the settings
+      // panel this was written only by the email unsubscribe link and read
+      // only by the digest run, which queries users directly — so it never
+      // needed to be here. The panel's toggle reads it off the session user,
+      // and the warning above applies: omit it and the toggle silently
+      // renders "on" for everybody, with nothing failing.
+      digest_optout: Boolean(user.digest_optout),
       // Short content hash of the profile photo (migration 027). Empty means
       // no photo. The bytes themselves live in user_avatars so this lookup
       // never pulls them; presence here is what paints the account circle.
@@ -1716,8 +1727,16 @@ function marketRentFor(marketKey, propertyType) {
 }
 
 async function setDigestOptout(userId, optout) {
-  if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
-  await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+    return;
+  }
+  // File-store branch (the setUserTester pattern): the PREFERENCE stores
+  // fine without a database even though the digest send itself refuses
+  // without one — and it is what lets test/routes.test.js exercise the
+  // settings toggle against account-store.json.
+  const u = (await accountStore()).users.find((x) => x.id === userId);
+  if (u) { u.digest_optout = Boolean(optout); await saveAccountStore(); }
 }
 async function findUsersByIds(ids) {
   if (!DB_CONFIGURED || !ids.length) return [];
@@ -7405,10 +7424,14 @@ const THEME_CSS = THEME.rootCss();
 // Wrapped in try/catch because localStorage throws outright in a Safari
 // private window, and a theme preference must never be able to blank a page.
 //
-// It reads PRESENCE of an explicit choice, falling back to the OS. This is
-// also the feature's rollback lever: nothing else in the codebase ever sets
-// data-theme, so short-circuiting this one string disables dark mode on
-// every surface at once.
+// It reads only an EXPLICIT stored choice. Light is the default for every
+// first-time visitor (owner's call, 2026-08-23) — the boot script used to
+// fall back to the OS's prefers-color-scheme, so a dark-OS machine opened
+// dark; now dark happens only when somebody picks it in the settings panel,
+// and a choice already stored keeps working. This is also the feature's
+// rollback lever: nothing else in the codebase ever sets data-theme, so
+// short-circuiting this one string disables dark mode on every surface at
+// once.
 //
 // ⚠ index.html hand-copies this script into its own <head> (it is a static
 // file server.js never templates, so it cannot interpolate THEME_BOOT).
@@ -7418,7 +7441,6 @@ const THEME_CSS = THEME.rootCss();
 // move between the app and a market page.
 const THEME_BOOT =
   `<script>(function(){try{var t=localStorage.getItem("theme");` +
-  `if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";` +
   `if(t==="dark")document.documentElement.setAttribute("data-theme","dark");` +
   `}catch(e){}})();</script>\n`;
 
@@ -15062,6 +15084,36 @@ const server = http.createServer((req, res) =>
       });
       return;
     }
+  }
+
+  // The settings panel's watchlist-digest toggle. `enabled` speaks the
+  // visitor's language (true = send me the digest) and is inverted into the
+  // stored users.digest_optout; state reads ride /api/account/me, so there is
+  // no GET here. Session-authenticated on purpose — the email unsubscribe
+  // link stays MAC-authenticated (`/watchlist/unsubscribe`) because it must
+  // work signed-out months later; this route is the signed-in door to the
+  // same column. Same analytics event as that link, distinguishable source.
+  if (req.method === "POST" && req.url === "/api/account/digest") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const enabled = JSON.parse(body || "{}").enabled;
+        if (typeof enabled !== "boolean") {
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        await setDigestOptout(user.id, !enabled);
+        logEvent("watchlist_digest_optout", { source: enabled ? "settings-on" : "settings-off" });
+        return sendJson(res, 200, publicAccount({ ...user, digest_optout: !enabled }));
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Digest preference save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that preference. Please try again in a minute." });
+      }
+    });
+    return;
   }
 
   if (req.method === "DELETE" && req.url === "/api/account") {

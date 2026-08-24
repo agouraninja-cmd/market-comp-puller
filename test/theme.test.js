@@ -748,10 +748,21 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     `raw colour literal(s) in index.html's generated markup, outside the allowlist: ${named.join(", ")}`);
 });
 
-test("index.html sets the theme before first paint", () => {
+test("index.html sets the theme before first paint, defaulting to light", () => {
+  // Light is the default (owner's call, 2026-08-23): the boot script applies
+  // only an explicit stored "dark" and never consults the OS. The check
+  // slices out the script itself rather than searching the whole <head>,
+  // because the theme-color <meta> tags legitimately say
+  // "prefers-color-scheme" and would mask a reintroduced OS fallback.
   const head = INDEX.slice(0, INDEX.indexOf("<style>"));
-  assert.ok(head.includes(`setAttribute("data-theme"`), "no boot script in <head>");
-  assert.ok(head.includes("prefers-color-scheme"), "boot script ignores the OS preference");
+  const bootStart = head.indexOf("<script>(function(){try{var t=localStorage");
+  assert.notEqual(bootStart, -1, "no boot script in <head>");
+  const boot = head.slice(bootStart, head.indexOf("</script>", bootStart));
+  assert.ok(boot.includes(`setAttribute("data-theme"`), "boot script never sets data-theme");
+  assert.equal(boot.includes("matchMedia"), false,
+    "boot script consults the OS -- the default is light, not prefers-color-scheme");
+  assert.equal(boot.includes("prefers-color-scheme"), false,
+    "boot script consults the OS -- the default is light, not prefers-color-scheme");
 });
 
 test("the PNG export is never dark", () => {
@@ -823,6 +834,12 @@ test("index.html's theme boot script and toggle handler mirror server.js's THEME
     "index.html's boot script disagrees with THEME_BOOT (storage key / stored values / attribute / element)");
   assert.deepEqual(ternaries(indexBootText), ternaries(serverBootText),
     "index.html's boot script picks \"dark\"/\"light\" in a different branch order than THEME_BOOT -- one of them has an inverted ternary");
+  // Belt and braces on the light default: the mirror comparison would pass
+  // with the OS fallback present in BOTH copies, so pin its absence here too.
+  for (const [name, text] of [["THEME_BOOT", serverBootText], ["index.html's boot script", indexBootText]]) {
+    assert.equal(text.includes("prefers-color-scheme"), false,
+      `${name} consults the OS preference -- the default is light (owner's call, 2026-08-23)`);
+  }
 
   const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
   assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");

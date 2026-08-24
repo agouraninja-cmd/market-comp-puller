@@ -64,10 +64,11 @@ test("parseShotArgs collects paths and defaults to a whole-page shot", () => {
 });
 
 // A dark-mode change is the one kind of design change the default shot
-// cannot show: a scratch profile has no stored theme, so every capture came
-// out light. --dark emulates the media query the page's own boot script
-// falls back to, rather than seeding localStorage, so what gets photographed
-// is the real boot path.
+// cannot show: a scratch profile has no stored theme, so every capture comes
+// out light. --dark seeds localStorage["theme"]="dark" before the boot
+// script runs — since light became the unconditional default (2026-08-23)
+// an explicit stored choice is the only door to dark, so seeding storage IS
+// the real boot path now (the old media-query emulation photographed light).
 test("--dark is off by default and rides alongside the other flags", () => {
   assert.equal(SHOT.parseShotArgs(["/"]).dark, false);
   assert.equal(SHOT.parseShotArgs(["/", "--dark"]).dark, true);

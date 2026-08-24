@@ -3118,5 +3118,23 @@
     "type": "fix",
     "title": "The extraction test can no longer report a false failure",
     "details": "An audit of the harness before its first real run found two problems that would have corrupted the verdict it exists to produce. The extract route allows eight calls per five minutes per IP and counts refused calls too, so the old retry-on-429 slid the window forward and dug the hole deeper on a twenty-file run; the runner now paces itself to seven per window and never trips it, announcing the wall clock up front so a healthy run that pauses is not mistaken for a hung one. Worse, a file that failed for any reason was scored as an empty extraction — so a rate-limited file counted as zero percent recall, a false failure on the precise number that decides whether the archive gets built. Infrastructure failures are now excluded by name and the run exits non-zero, while a genuine empty extraction is still scored as the real miss it is. Also added --limit, so the pipeline can be proven on two files before twenty are spent."
+  },
+  {
+    "date": "2026-08-23",
+    "type": "fix",
+    "title": "The Explore menu opened off the side of the screen on every phone",
+    "details": "The header nav wraps to its own row below about 450px, which puts the Explore dropdown at the left edge of the page -- and it was anchored right:0 to its own trigger, so 105px of a 176px menu hung off-screen and every label was clipped to its last few letters. It affected every server-rendered page (the landing page, /markets, each market page, /brokers, /how-it-works, /1031-exchange), which is exactly the anonymous search traffic most likely to arrive on a phone. The menu is now anchored to the header itself below 640px and opens as a full-width sheet. Anchoring rather than flipping to left:0, because the wrap point moves with what the nav holds -- signed in versus out, and a hub drops Pricing entirely -- so a trigger-anchored menu is off-screen on one page and correct on the next with no way to tell from the CSS."
+  },
+  {
+    "date": "2026-08-23",
+    "type": "improvement",
+    "title": "The comp list on a phone is half as long, and can be sorted",
+    "details": "Sorting lived only in the comp table's column headers, and that table is hidden under 640px, so a phone could not reorder comps at all. There is now a Sort by control above the card list, built from whichever columns that report actually has, and each choice names its direction outright instead of toggling. The cards themselves led with every field a comp carries -- 564px each on the sample report, so five comps was a 3,000px scroll -- and now show the seven a reader scans a list by (date, type, size, price, $/SF, distance, match) with the per-type specs, tenancy, vintage, notes and source behind a More details disclosure: 324px a card, measured. Nothing was removed: the CSV, the print copy and the PNG all still carry every field, the last of those because downloadImage's onclone opens each disclosure first (verified against real html2canvas -- the capture grows from 1527px to 2727px)."
+  },
+  {
+    "date": "2026-08-23",
+    "type": "fix",
+    "title": "A dialog can no longer put its own button out of reach on a short screen",
+    "details": "The confirm-address, sign-in and lead-capture overlays centred their card with align-items, and a centred flex child that outgrows its container has its TOP pushed out of reach with no scrolling able to recover it. Measured on a 375x420 viewport, the confirm dialog -- the one that gates every single search -- put Yes, run the report at y=436 in a 420px window. The card now clamps to the viewport and scrolls inside itself, so it still centres on a desktop where it fits. Also: the landing page's address field went from 14.5px to 16px, below which iOS Safari zooms the page on focus, so the reward for tapping the one field that page exists for was a zoomed, sideways-scrolled page; the header links and the hero's two disclosure links got their hit areas extended to 28-40px with an overlay that has no layout effect at all (padding was tried first and moved the header 5px); and the market pages' comps table, 640px wide in a 295px window, now shows a scrolling shadow so it no longer reads as a table with its right-hand columns simply missing."
   }
 ]

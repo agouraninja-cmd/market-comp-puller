@@ -698,6 +698,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* While grab-dragging the table, show the grabbing hand and suppress text selection. */
     #scrollBody.dragging { cursor: grabbing; user-select: none; }
 
+    /* A modal card can never grow past the viewport. Its overlay centres with
+       align-items, and a centred flex child that outgrows its container has
+       its TOP pushed out of reach — no scrolling recovers it. On a short
+       phone that hid the Confirm button on the dialog that gates every
+       search. Clamping the card instead of switching the overlay to
+       items-start keeps the dialogs centred on a desktop, where they fit;
+       the three overlays that already scroll themselves (pricing, comp,
+       share) are left alone. dvh, not vh: mobile browser chrome moves. The
+       32px is the overlay's own p-4 on both edges. */
+    .mcard { max-height: calc(100dvh - 32px); overflow-y: auto; }
+
+    /* Disclosure links — the hero's "How this range is calculated" and the
+       approaches table's "Why the other approaches produced no figure".
+       Bare text measured ~16px tall, well under the 24px minimum, on two of
+       the controls a phone reader is most likely to reach for. The hit area
+       is an absolutely-positioned overlay rather than padding, so it has no
+       layout effect at all and the report's rhythm is provably unchanged —
+       padding plus a cancelling negative margin was tried first and moved
+       the header it was applied to by 5px. A pseudo-element raises its
+       events on the element that owns it, so both click handlers are
+       untouched. */
+    .disclose { position: relative; }
+    .disclose::after { content: ""; position: absolute; left: 0; right: 0; top: -6px; bottom: -6px; }
+
+    /* The comp card's "More details" disclosure. Padding for the touch
+       target; the UA's own triangle is left in place because it is the only
+       thing marking the row as expandable. */
+    .cardmore > summary { padding: 6px 0; cursor: pointer; }
+
+    /* Price / Rate and Notes take the full width of the two-column card grid,
+       which left the narrow field before each of them alone on a row with a
+       hole beside it — two dead rows per card, measured. `dense` lets the
+       next narrow field backfill the hole instead. It can only reorder
+       within the grid, never across the primary / "More details" split. */
+    .cardgrid { grid-auto-flow: row dense; }
+
     /* Print-only elements: invisible on screen (and to html2canvas), shown when printing. */
     .print-only { display: none; }
 
@@ -1360,7 +1396,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   <!-- Lead-capture modal — unlocks exports on public (lead-magnet) deployments -->
   <div id="leadModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <h2 id="leadTitle" class="text-lg font-semibold text-[#1A2433]">Unlock your export</h2>
       <p id="leadSubtitle" class="text-sm text-[#68707E] mt-1 mb-4">Tell us who you are and we'll unlock CSV, image, and PDF exports for this browser, and follow up about your property and market.</p>
       <form id="leadForm" class="space-y-3">
@@ -1390,7 +1426,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   <!-- Account: one modal, four modes (signin / signup / forgot / reset) -->
   <div id="acctModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <h2 id="acctTitle" class="text-lg font-semibold text-[#1A2433]">Sign in</h2>
       <p id="acctNudge" class="hidden text-sm text-[#68707E] mt-1"></p>
       <div id="acctTabs" class="flex gap-4 mt-3 mb-4 text-sm border-b border-[#E4E2DA]">
@@ -1740,7 +1776,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   <!-- Property confirmation — free geocode check before the billed comp search -->
   <div id="confirmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <div class="rd-lab">Confirm property</div>
       <h2 id="confirmHeading" class="text-lg font-semibold text-[#1A2433] mt-1">Is this the property you're looking for?</h2>
       <p class="text-sm text-[#68707E] mt-3">You searched for:</p>
@@ -3084,7 +3120,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                @media print rule and by downloadImage's onclone. -->
           <div id="ownerTrustHowWrap" class="hidden mt-2">
             <button id="ownerTrustHowBtn" type="button" aria-expanded="false" aria-controls="ownerTrustHow"
-              class="no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
+              class="disclose no-print no-capture text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">How this range is calculated</button>
             <p id="ownerTrustHow" class="hidden text-xs text-[#68707E] mt-2"></p>
           </div>
           <!-- Set per render by renderOwnerHero: the noun is "sales" for every
@@ -3279,6 +3315,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                Deliberately NOT no-print — it must travel in print/PNG so a
                curated report says so. Hidden on shared reports with no edits. -->
           <p id="curationNote" class="hidden text-xs text-[#68707E] px-6 py-2 border-b border-[#F0EFE9]"></p>
+          <!-- Mobile sort. Sorting lives in the table's own column headers, and
+               the table is hidden under sm, so until this existed a phone
+               could not reorder the comps at all. Rebuilt per render by
+               renderCardSort() rather than authored here, because which
+               columns exist depends on the property type and on whether the
+               pins have geocoded yet (Distance) — a fixed list would offer
+               sorts that do nothing. -->
+          <div id="cardSortWrap" class="hidden sm:hidden px-6 py-2 border-b border-[#F0EFE9] no-print no-capture">
+            <label class="text-[10px] font-medium uppercase tracking-wide text-[#68707E]" for="cardSort">Sort by</label>
+            <!-- text-base, not text-sm: iOS zooms the page when a control
+                 under 16px takes focus. -->
+            <select id="cardSort" class="mt-1 block w-full rounded border border-[#D8D4C9] bg-white px-2 py-2 text-base text-[#374253]"></select>
+          </div>
           <!-- Mobile card list: same data as the table, stacked for small screens -->
           <div id="cardList" class="sm:hidden divide-y divide-[#F0EFE9]"></div>
           <!-- Drag-to-scroll region: grab and pan the table left/right with the mouse.
@@ -6137,7 +6186,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         btn.id = "apOffBtn";
         btn.setAttribute("aria-expanded", "false");
         btn.setAttribute("aria-controls", "apOff");
-        btn.className = "text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]";
+        btn.className = "disclose text-xs text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]";
         btn.textContent = "Why the other approaches produced no figure";
         // Assignment, not addEventListener: this element is rebuilt on every
         // render, but so is the closure, and a stacked handler would toggle
@@ -14877,6 +14926,56 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (addCompWrap) addCompWrap.classList.toggle("hidden", !allowCuration);
   }
 
+  // The phone's equivalent of the table's sortable headers. Each entry names
+  // its direction outright rather than toggling, because a select has no
+  // second click to reverse with — see sortBy's `dir` argument.
+  const CARD_SORTS = [
+    { key: "date", dir: -1, label: "Date · newest first" },
+    { key: "date", dir: 1, label: "Date · oldest first" },
+    { key: "distance_mi", dir: 1, label: "Distance · nearest first" },
+    { key: "match", dir: -1, label: "Match · best first" },
+    { key: "price_or_rate", dir: -1, label: "Price · high to low" },
+    { key: "price_or_rate", dir: 1, label: "Price · low to high" },
+    { key: "price_per_sqft", dir: -1, label: "$/SF · high to low" },
+    { key: "price_per_sqft", dir: 1, label: "$/SF · low to high" },
+    { key: "size_sqft", dir: -1, label: "Size · largest first" },
+    { key: "size_sqft", dir: 1, label: "Size · smallest first" },
+  ];
+  function renderCardSort() {
+    const sel = document.getElementById("cardSort");
+    const wrap = document.getElementById("cardSortWrap");
+    if (!sel || !wrap) return;
+    const offered = CARD_SORTS.filter((s) => COLUMNS.some((c) => c.key === s.key));
+    // Under two comps there is nothing to reorder, and a sort control over a
+    // single card reads as a broken filter.
+    const enough = visibleComps().length > 1;
+    wrap.classList.toggle("hidden", !offered.length || !enough);
+    if (!offered.length || !enough) return;
+    sel.innerHTML = "";
+    // "As found" is offered only while it is still true. currentComps is
+    // sorted in place, so the model's own ordering is gone the moment the
+    // first sort runs — an option that claimed to restore it would be a
+    // control that quietly does nothing.
+    if (sortState.key === null) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "As found";
+      sel.appendChild(opt);
+    }
+    offered.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s.key + ":" + s.dir;
+      opt.textContent = s.label;
+      sel.appendChild(opt);
+    });
+    sel.value = sortState.key === null ? "" : sortState.key + ":" + sortState.dir;
+  }
+  document.getElementById("cardSort").addEventListener("change", (e) => {
+    const [key, dir] = String(e.target.value || "").split(":");
+    if (!key) return;
+    sortBy(key, Number(dir));
+  });
+
   // Sale/Lease filter state — reset per report in renderResults().
   let txFilter = "all";
 
@@ -16654,12 +16753,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       `</div>`;
   }
 
+  // What a card shows before the reader asks for more. Everything else — the
+  // per-type specs, tenancy, vintage, notes, the source link — sits behind a
+  // disclosure: those are what you read about ONE comp you have already
+  // picked out, where these are what you scan a list by. Measured on the
+  // sample report, a full card ran 564px, so five comps was a 3,000px scroll
+  // and twelve would be most of a Pro report's length (2026-08-23). The
+  // fields themselves are unchanged and every one still reaches the CSV, the
+  // print copy and the PNG.
+  const CARD_PRIMARY = ["date", "transaction", "size_sqft", "price_or_rate",
+    "price_per_sqft", "distance_mi", "match"];
+
   // Mobile rendering of the same comps: stacked cards instead of the wide
   // table. Shares COLUMNS and visibleComps() with the table, so the Sale/Lease
   // filter, per-type columns, and any active sort all carry over.
   function renderCards(animateIn = true) {
     const list = document.getElementById("cardList");
     list.innerHTML = "";
+    // Here rather than in renderTableHead, which is the obvious-looking home:
+    // every head render is paired with a body render, but the Sale/Lease
+    // filter and the curation controls re-render the BODY alone — and
+    // filtering to a single lease is exactly when a sort control has to go
+    // away. Above the early return, so an empty list hides it too.
+    renderCardSort();
     const comps = visibleComps();
     if (comps.length === 0) {
       const wrap = document.createElement("div");
@@ -16718,7 +16834,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       card.appendChild(head);
 
       const rows = document.createElement("dl");
-      rows.className = "mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm";
+      rows.className = "cardgrid mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm";
+      // The fields below the fold. Same rows, same builders — only which of
+      // the two lists they land in differs.
+      const extra = document.createElement("dl");
+      extra.className = "cardgrid mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-sm";
       COLUMNS.forEach((col) => {
         if (col.key === "address") return;   // already the card header
         const val = MONEY_KEYS.has(col.key) ? displayMoney(comp[col.key]) : comp[col.key];
@@ -16778,9 +16898,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }
         row.appendChild(dt);
         row.appendChild(dd);
-        rows.appendChild(row);
+        (CARD_PRIMARY.includes(col.key) ? rows : extra).appendChild(row);
       });
       card.appendChild(rows);
+      if (extra.children.length) {
+        const det = document.createElement("details");
+        det.className = "cardmore";
+        const sum = document.createElement("summary");
+        // no-capture: it is a control, and the PNG gets the contents instead
+        // (downloadImage's onclone opens every one of these).
+        sum.className = "no-print no-capture text-xs text-[#68707E]";
+        sum.textContent = "More details (" + extra.children.length + ")";
+        det.appendChild(sum);
+        det.appendChild(extra);
+        card.appendChild(det);
+      }
       list.appendChild(card);
     });
     appendLockedCards(list);
@@ -16834,10 +16966,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (dragMoved) { e.stopPropagation(); e.preventDefault(); dragMoved = false; }
   }, true);
 
-  function sortBy(key) {
+  // `dir` is optional and only the mobile Sort by select passes it: a header
+  // click is a toggle (click again to reverse), but a select names the
+  // direction outright, and re-deriving it from the previous state would make
+  // picking "newest first" land on oldest whenever that key was already the
+  // active sort.
+  function sortBy(key, dir) {
     const col = COLUMNS.find((c) => c.key === key);
     if (!col) return;
-    if (sortState.key === key) { sortState.dir *= -1; }
+    if (dir === 1 || dir === -1) { sortState.key = key; sortState.dir = dir; }
+    else if (sortState.key === key) { sortState.dir *= -1; }
     else { sortState.key = key; sortState.dir = 1; }
 
     // FLIP: remember where each row sits now, so after the re-render the rows
@@ -17292,8 +17430,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             // client's deck must not be the one copy of the report that never
             // says why there is no income line. Its toggle is .no-capture and
             // is dropped by ignoreElements, so only the rows land.
-            + " #apOff { display: table-row-group !important; }";
+            + " #apOff { display: table-row-group !important; }"
+            // On a phone the capture is of the CARD list, not the table, and
+            // each card keeps its specs, tenancy, vintage, notes and source
+            // behind a "More details" disclosure. An export that dropped
+            // them would be a comp set with its provenance missing — the one
+            // thing this report is for. Opened below as well; the rule is
+            // the belt to that braces, since html2canvas has its own idea of
+            // how an open <details> lays out.
+            + " #cardList details > dl { display: grid !important; }";
           doc.head.appendChild(s);
+          doc.querySelectorAll("#cardList details").forEach((d) => { d.open = true; });
           // .print-only keeps the raster off the screen, and html2canvas
           // honours the screen stylesheet, so it has to be revealed in the
           // clone or the capture shows an empty card.

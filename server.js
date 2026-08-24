@@ -7711,6 +7711,36 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
 .hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd a.on{color:var(--ink);font-weight:500}
+/* Touch targets. A bare 13.5px nav link measures ~20px tall, under the 24px
+   minimum. The hit area is extended by an absolutely-positioned overlay
+   rather than by padding: padding grew the header 5px (measured — the
+   negative margin meant to cancel it collapses through <details> instead),
+   while a pseudo-element has no layout effect whatever, so the header's
+   geometry is provably untouched. Events on it belong to the originating
+   element, so nothing needs rewiring. 5px a side and no more: the nav's
+   row-gap is 10px, so this exactly meets a wrapped row without overlapping
+   the control above it. Child combinators keep it off .dd a, which already
+   has a 36px box of its own. */
+.hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
+.hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
+  content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* Phones: anchor the menu to the HEADER rather than to its own trigger. The
+   nav wraps to its own row below ~450px, which puts the Explore <details> at
+   the left edge — where right:0 sent 105px of a 176px menu off-screen, every
+   label clipped to its last few letters, on every marketShell page
+   (measured 2026-08-23). Re-anchoring rather than flipping to left:0,
+   because the wrap point moves with what the nav holds (signed in vs out,
+   and a hub drops Pricing entirely), so a trigger-anchored menu is
+   off-screen on one page and correct on the next with no way to tell from
+   the CSS. Against .wrap it is right wherever the trigger landed, and the
+   account menu becomes a full-width sheet for free. Only ever one is open —
+   the outside-click handler in marketBar closes the other. */
+@media (max-width:639.98px){
+  .hdr .wrap{position:relative}
+  .hdr nav details{position:static}
+  .hdr nav .dd{left:16px;right:16px;min-width:0}
+  .hdr nav .dd .em{max-width:none}
+}
 /* Type */
 h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}
@@ -7871,7 +7901,20 @@ td:first-child,th:first-child{min-width:180px}
 th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
 td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift)}
+/* Scrolling shadows. The comps table is ~640px wide inside a ~295px window
+   on a phone, and nothing said so — it read as a table with its right-hand
+   columns simply missing (2026-08-23). The two attachment:local layers are opaque
+   card-coloured patches pinned to the content, so each edge shadow is
+   covered exactly while that end is in view and uncovered as it scrolls
+   away: the hint appears only when there is really more to see, with no
+   script and no scroll listener. */
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift);
+  background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.13),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.13),rgba(0,0,0,0));
+  background-position:left center,right center,left center,right center;
+  background-repeat:no-repeat;
+  background-size:28px 100%,28px 100%,13px 100%,13px 100%;
+  background-attachment:local,local,scroll,scroll}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
@@ -9679,6 +9722,17 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
 .hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd a.on{color:var(--ink);font-weight:500}
+/* Touch targets and the phone menu anchor — see the matching block in
+   MARKET_CSS for why each line is the way it is; keep the two in step. */
+.hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
+.hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
+  content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+@media (max-width:639.98px){
+  .hdr .wrap{position:relative}
+  .hdr nav details{position:static}
+  .hdr nav .dd{left:16px;right:16px;min-width:0}
+  .hdr nav .dd .em{max-width:none}
+}
 /* Type + section furniture */
 .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 .h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
@@ -9826,7 +9880,12 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 .band section{padding:72px 0}
 .landForm{margin-top:0}
 .landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden;box-shadow:var(--lift)}
-.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
+/* 16px, not 14.5: iOS Safari zooms the page when a field smaller than that
+   takes focus, and this is the one field the landing page exists to get
+   typed into — so the reward for tapping it was a zoomed, sideways-scrolled
+   page (2026-08-23). The .vform input on the market pages is already 16px
+   for the same reason; keep any new public field at or above it. */
+.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:16px;color:var(--ink);outline:none}
 .landRow input::placeholder{color:var(--ink-3)}
 button.btn{border:0;cursor:pointer;font-family:inherit}
 .landRow .btn{border-radius:0;flex-shrink:0}

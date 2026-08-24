@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-24",
+    "type": "fix",
+    "title": "The installed desktop app stops offering to download itself",
+    "details": "The shell was tagged desktop-v1.0.0 at 22:29 on 2026-08-20 and its installers were built a minute later; the commit that taught it to identify itself to the site landed at 00:32 the next morning, two hours after the release. It is the only commit that has touched desktop-app/ since, so every installer anyone has downloaded is missing the one thing it added — the CompNinjaDesktop/ user-agent token. The site's own half has been live the whole time, and it checks four signals: display-mode standalone, window-controls-overlay, navigator.standalone, and that token. Electron reports display-mode browser (measured, Electron 43), sets no titleBarStyle so window-controls-overlay never fires, and navigator.standalone is Safari-only — so in the shipped build none of the four are true, data-inapp is never set, and the Explore menu of the desktop app still carries \"Download the app\". Installed PWAs were never affected, because they match display-mode standalone; this was Electron-only. Nothing is broken by it and nothing about the site changes here: the app holds no product code, so it has always been current with every deploy. What was stale was the binary, and the fix is a release rather than an edit. Version bumped to 1.0.1 so the new installers do not report themselves as the same build as the old ones — the artifact names are deliberately version-less, so the /download links do not move and need no edit."
+  },
+  {
+    "date": "2026-08-24",
     "type": "improvement",
     "title": "The header gear is gone; Settings lives in the account menu",
     "details": "The settings panel shipped with two doors — a gear in the header bar and a Settings row in the account menu — and the gear was the redundant one for everybody who could see both. The header is back to Explore / Pricing / My Desk / account circle, and the account menu is now the single door. The panel is therefore signed-in only, which costs a signed-out reader of a shared report the in-app theme switch; every server-rendered header still carries its own toggle, the choice persists across both, and light is the default either way."

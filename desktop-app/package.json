@@ -1,7 +1,7 @@
 {
   "name": "compninja-desktop",
   "productName": "CompNinja",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "CompNinja desktop app — a standalone shell around compninja.co.",
   "author": "CompNinja LLC <info@compninja.co>",

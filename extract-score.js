@@ -42,6 +42,12 @@ const MONEY_FIELDS = new Set(["price", "rent_psf", "price_per_unit", "price_per_
 const NUMERIC_FIELDS = new Set(["size_sqft", "lot_acres", "units", "floor_plate", "year_built"]);
 const PERCENT_FIELDS = new Set(["cap_rate"]);
 
+// Every date field, not just the deal's. lease_expiry and option_notice_date
+// go through parseDate in normalizeRow exactly as deal_date does, so a truth
+// of "2027-03-31" against an extracted "3/31/2027" is ONE value to the vault
+// and was two to this scorer.
+const DATE_FIELDS = new Set(["deal_date", "lease_expiry", "option_notice_date"]);
+
 // Never scored: `address` is the match key (scoring it double-counts every
 // miss), and notes is free prose two honest readers write differently.
 const UNSCORED = new Set(["address", "notes"]);
@@ -50,9 +56,11 @@ function canon(field, value) {
   const raw = String(value == null ? "" : value).trim();
   if (!raw) return null;
   let r = null;
-  if (field === "deal_date") r = VAULT.parseDate(raw);
+  if (DATE_FIELDS.has(field)) r = VAULT.parseDate(raw);
   else if (field === "transaction") r = VAULT.parseTransaction(raw);
   else if (field === "property_type") r = VAULT.parsePropertyType(raw);
+  else if (field === "rent_basis") r = VAULT.parseRentBasis(raw);
+  else if (field === "lease_type") r = VAULT.parseLeaseType(raw);
   else if (MONEY_FIELDS.has(field)) r = VAULT.parseMoney(raw);
   else if (NUMERIC_FIELDS.has(field)) r = VAULT.parseNumber(raw);
   else if (PERCENT_FIELDS.has(field)) r = VAULT.parsePercent(raw);

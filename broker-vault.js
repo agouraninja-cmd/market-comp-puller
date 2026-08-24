@@ -1790,6 +1790,8 @@ module.exports = {
   parseDate,
   parseTransaction,
   parsePropertyType,
+  parseRentBasis,
+  parseLeaseType,
   addressKey,
   normalizeRow,
   validateEdit,

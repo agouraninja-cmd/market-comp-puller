@@ -222,10 +222,19 @@ const DARK_LIFT =
 const DARK_CHROME =
   "@media screen{[data-theme=\"dark\"]{scrollbar-color:var(--wash-2) var(--paper);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}" +
   "[data-theme=\"dark\"] input,[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{caret-color:var(--ink)}" +
-  "[data-theme=\"dark\"] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset])," +
-  "[data-theme=\"dark\"] textarea,[data-theme=\"dark\"] select{background-color:var(--paper)}" +
+  "[data-theme=\"dark\"] input:not(.rd-in):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset])," +
+  "[data-theme=\"dark\"] textarea:not(.rd-in),[data-theme=\"dark\"] select:not(.rd-in){background-color:var(--paper)}" +
   "[data-theme=\"dark\"] input:-webkit-autofill,[data-theme=\"dark\"] textarea:-webkit-autofill,[data-theme=\"dark\"] select:-webkit-autofill{" +
-  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--paper) inset;transition:background-color 9999s ease-out}}";
+  "-webkit-text-fill-color:var(--ink);caret-color:var(--ink);box-shadow:0 0 0 1000px var(--paper) inset;transition:background-color 9999s ease-out}" +
+  // The Research Desk's fields are the one exception, and .rd-in lives only
+  // in index.html -- but the exemption is carried here too so the two copies
+  // of this block stay readable as one rule. On that form the CELL is the
+  // field: .rd-cell draws the box and the focus ring, .rd-in is borderless
+  // and transparent, so recessing it one step below the card put a dark slab
+  // under Property address, Focus, Lookback and Property SF (2026-08-23).
+  // Autofill covers with --card, the cell's own colour, rather than --paper.
+  "[data-theme=\"dark\"] .rd-in:-webkit-autofill,[data-theme=\"dark\"] .rd-in:-webkit-autofill:hover," +
+  "[data-theme=\"dark\"] .rd-in:-webkit-autofill:focus{box-shadow:0 0 0 1000px var(--card) inset}}";
 
 // Chrome paints a light-blue sheet on autofill, including when someone
 // pastes a street address it recognises. background-color cannot override

@@ -344,9 +344,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] input,
       [data-theme="dark"] textarea,
       [data-theme="dark"] select { caret-color: var(--ink) }
-      [data-theme="dark"] input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset]),
-      [data-theme="dark"] textarea,
-      [data-theme="dark"] select { background-color: var(--paper) }
+      [data-theme="dark"] input:not(.rd-in):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]):not([type=submit]):not([type=button]):not([type=reset]),
+      [data-theme="dark"] textarea:not(.rd-in),
+      [data-theme="dark"] select:not(.rd-in) { background-color: var(--paper) }
       [data-theme="dark"] input:-webkit-autofill,
       [data-theme="dark"] textarea:-webkit-autofill,
       [data-theme="dark"] select:-webkit-autofill {
@@ -354,6 +354,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         caret-color: var(--ink);
         box-shadow: 0 0 0 1000px var(--paper) inset;
         transition: background-color 9999s ease-out;
+      }
+      /* ...but NOT the Research Desk's own fields. On that form the CELL is
+         the field: .rd-cell draws the hairline box and owns the red focus
+         ring, and .rd-in is deliberately borderless and transparent so the
+         desk reads as one unit. Recessing them one step below the card put a
+         dark slab under Property address, Focus, Lookback and Property SF,
+         which the owner read as four black bars floating on the form
+         (2026-08-23). They stay the colour of the cell in both themes.
+         The exemption is a :not() on the rule above rather than an override
+         below it, because that selector carries eight :not([type=...]) and so
+         outranks any plain [data-theme="dark"] .rd-in rule.
+         Autofill has to follow: Chrome's sheet is UA-!important and only an
+         inset shadow the size of the field beats it, so these cover with
+         --card (the cell) where every other dark field covers with --paper.
+         Mirrors theme.js DARK_CHROME / RD_FIELD_DARK. */
+      [data-theme="dark"] .rd-in:-webkit-autofill,
+      [data-theme="dark"] .rd-in:-webkit-autofill:hover,
+      [data-theme="dark"] .rd-in:-webkit-autofill:focus {
+        box-shadow: 0 0 0 1000px var(--card) inset;
       }
       /* Tailwind's shadow-* utilities are tuned for cream paper; on charcoal
          they vanish. --lift already exists for report cards; menus and

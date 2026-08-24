@@ -7481,6 +7481,64 @@ const INAPP_BOOT =
   `}catch(e){}})();</script>\n`;
 const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 
+// --- "We already know who this is" (2026-08-23) ------------------------------
+// index.html ships one set of bytes and then corrects them from two fetches
+// (/api/config and /api/account/me), so until those land a signed-in member is
+// looking at a signed-OUT app. Measured on a scratch server with the account
+// read delayed: at 78ms the header reads "Sign in", and at 1170ms — after
+// /api/config lands but before /api/account/me does — the search form is
+// REPLACED by the "Create a free account to run a report" card. Then it all
+// snaps back. That middle frame is the bug as reported ("for a second it has
+// the sign in thing"), and it is a race, so it is worst exactly when the
+// database is slow.
+//
+// The fix is not a faster fetch: it is that this handler ALREADY KNOWS both
+// answers and was throwing them away. `/` is templated at serve time anyway
+// (NAV_LINKS, INAPP_BOOT), so the two facts ride along as one more marker.
+//
+// Both are free — no database read on a route that runs on every page view:
+//   - the wall is a server constant;
+//   - signed-in is cookie PRESENCE, the exact rule the wall itself decides on
+//     twenty lines below. A stale or forged cookie buys the sight of an
+//     account menu and nothing behind it: every limit is still enforced
+//     server-side, which is the same presentation-here/enforcement-there split
+//     the wall already runs on.
+//
+// This is safe to key on a cookie ONLY because index.html is served no-store.
+// /how-it-works does the same swap and has to carry `vary: cookie` and drop
+// its cache to do it (see renderHowItWorksHTML); there is no cached copy of
+// this file to serve to the wrong visitor.
+//
+// It is a STAND-IN, not an answer, and index.html retires it the moment the
+// real one lands: refreshAccountUI() — which runs only after /api/account/me
+// resolves, on every path including the failure one — drops both classes and
+// writes the truth itself. That is what makes `!important` safe here; without
+// the retirement, an expired session would leave the "Sign in" button hidden
+// by CSS the JS could not reach. `test/auth-boot.test.js` pins both halves.
+const AUTH_BOOT_CSS =
+  // The header. Signed OUT is what the markup already ships, so only the
+  // signed-in correction needs stating.
+  `html.cn-in #signInLink{display:none!important}` +
+  `html.cn-in #acctMenuWrap{display:block!important}` +
+  // The search form vs the wall's signup card. Reachable anonymously only on
+  // a shared report or the ?auth= door — /desk redirects and `/` renders the
+  // landing page — so this never fights applySearchLock's own /desk branch.
+  `html.cn-locked #searchSection{display:none!important}` +
+  `html.cn-locked #searchLock{display:block!important}`;
+const AUTH_BOOT_MARKER = "<!--AUTH_BOOT-->";
+// Inline in <head>, before first paint, so nothing is drawn and then taken
+// away. The <script> hands the same two facts to the page as data as well:
+// applySearchLock() has to agree with the CSS above during the window, or the
+// card it owns would flip once on its own first call.
+function authBoot(signedIn) {
+  const locked = ACCOUNT_WALL && !signedIn;
+  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "");
+  return `<style>${AUTH_BOOT_CSS}</style>\n` +
+    `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL })};` +
+    (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
+    `</script>\n`;
+}
+
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =
   `<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>\n` +
@@ -21279,7 +21337,13 @@ const server = http.createServer((req, res) =>
         // Same one-source rule as the nav list: index.html carries a marker,
         // never a hand-copy of the in-app detection (THEME_BOOT is the
         // cautionary tale — a copy that has to be kept in step by comment).
-        .replace(INAPP_BOOT_MARKER, INAPP_BOOT);
+        .replace(INAPP_BOOT_MARKER, INAPP_BOOT)
+        // The third rewrite, and the only one that varies by visitor: what
+        // this handler already knows about them, so the first paint is not a
+        // signed-out app that corrects itself a beat later. Cookie presence
+        // only — see authBoot above for why that is safe and why index.html
+        // being no-store is what makes it safe.
+        .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])));
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
     });

@@ -587,7 +587,11 @@ test("the shared status line matches what the reader can actually see", () => {
   // field would be.
   const fn = html.match(/function showSharedStatus\(\)[\s\S]{0,700}/);
   assert.ok(fn, "showSharedStatus should exist");
-  assert.match(fn[0], /accountWall && !currentUser/, "it must branch on the lock state");
+  // Through looksSignedIn(), not currentUser: this line is drawn from
+  // applySearchLock, which can run before /api/account/me answers, and a
+  // signed-in member opening a shared link was told to create an account for
+  // the length of that fetch. Same question, one answer (see auth-boot.test.js).
+  assert.match(fn[0], /accountWall && !looksSignedIn()/, "it must branch on the lock state");
   assert.match(fn[0], /Create a free account below/, "the locked wording points at the card");
   assert.match(fn[0], /Enter an address above/, "the unlocked wording points at the form");
   assert.match(html, /applySearchLock[\s\S]{0,400}showSharedStatus\(\)/,

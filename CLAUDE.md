@@ -1330,10 +1330,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   - **A firm share can never carry whole vault comps** (400, not a silent
     strip). Private comps are anonymized into the valuation basis exactly as
     on an invited share, so a colleague's range matches to the dollar with no
-    address or price travelling. Sharing a broker's own book across their
-    firm is the spec's §7 and is deliberately NOT built: it needs the opt-in,
-    the attribution, and the vault's "Visible only to you" copy rewritten to
-    match.
+    address or price travelling. Opting an INDIVIDUAL comp into the firm is a
+    different act and it shipped on 2026-08-16 as the spec's §7 — see "The
+    shared vault" below; the three things it was waiting on (the opt-in, the
+    attribution, and the vault's "Visible only to you" copy rewritten to
+    match) all landed with it. This bullet is unaffected either way: a firm
+    SHARE still never carries a whole vault comp.
   - **`canUseOrg` gates creating and inviting, never accepting or reading.**
     It tracks `broker` (one subscription), so it is false on a dark
     deployment and for a tester without `vault_beta` — the invite route sends
@@ -2566,7 +2568,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Deliberately not built (see the spec's §5): mixed types in one job,
   per-address lookback/details, an automatic resume (re-running IS the resume,
   free from cache), a shareable portfolio, and any scheduling.
-- **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
+- **Broker vault** (v1 server side 2026-08-05; the `/vault` page followed on
+  2026-08-06 — see "The `/vault` PAGE lives in `vault-page.js`" below). `GET|POST|DELETE
   /api/vault*` — the broker's private comp store. DDL in
   `migrations/013-broker-vault.sql` (**run before deploying**); plan in
   `docs/superpowers/plans/2026-08-05-broker-vault-v1.md`. Routes:

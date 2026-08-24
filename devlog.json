@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-24",
+    "type": "improvement",
+    "title": "The header gear is gone; Settings lives in the account menu",
+    "details": "The settings panel shipped with two doors — a gear in the header bar and a Settings row in the account menu — and the gear was the redundant one for everybody who could see both. The header is back to Explore / Pricing / My Desk / account circle, and the account menu is now the single door. The panel is therefore signed-in only, which costs a signed-out reader of a shared report the in-app theme switch; every server-rendered header still carries its own toggle, the choice persists across both, and light is the default either way."
+  },
+  {
     "date": "2026-08-23",
     "type": "feature",
     "title": "A settings panel, and light mode becomes the default",

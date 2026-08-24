@@ -635,6 +635,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     #compForm details[open] summary::after { transform: rotate(180deg); }
 
+    /* The search-settings line. Its own rules rather than utilities because
+       the summary's flex layout comes from the chevron rule above: the value
+       line has to take the free space, or "Change" lands mid-row instead of
+       beside the chevron. The id in each selector is doing real work — the
+       summary carries a hover: text colour, which would otherwise repaint
+       "Change" on the way past. */
+    #searchSettings #searchSettingsLine { flex: 1 1 auto; min-width: 0; }
+    #searchSettings .rd-sum-act { flex-shrink: 0; color: var(--red); font-weight: 500; }
+    /* Open, the controls themselves are the invitation and the word has
+       nothing left to offer, so it steps back rather than disappearing (a
+       control that vanishes on use reads as a mis-click). */
+    #searchSettings[open] .rd-sum-act { color: var(--ink-3); font-weight: 400; }
+    /* Separates the summary from the cells it reveals. The cells carry their
+       own vertical dividers, so without this the row starts mid-air. */
+    #searchSettings > .rd-settings { border-top: 1px solid var(--hair); }
+
     /* Soft cross-fade when the example address in the placeholder rotates. */
     #address::placeholder { transition: color .3s ease; }
     #address.ph-fade::placeholder { color: transparent; }
@@ -2134,18 +2150,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
         </div>
-        <!-- Three across on ONE line, the shape this row held before the size
-             came back onto the form. It went 2x2 on 2026-08-16 to fit four
-             cells (Focus / Lookback over Property SF / Asking price); the
-             asking price moved down into "Details for comps" on 2026-08-17
-             (owner's call), which hands the row its single line back. Three
-             cells is the most this row takes: the build chamber is ~552px, so
+        <!-- The everyday settings, behind a line that states what they
+             currently say (owner's call, 2026-08-23). The form asked four
+             questions before it would show anything — Focus, Lookback,
+             Property SF, and the drawer below — and it already held an answer
+             to all three of these: focus and window have defaults, the
+             window's own caption says "Recommended for Industrial", and the
+             size is looked up from public records or the footprint on most
+             searches. Asking is now stating, and the address is the only open
+             question on the form.
+             The line names the VALUES, not the fields, so a reader who never
+             opens this still knows what is about to run — that is the whole
+             trade, and it is why refreshSearchSettingsLine is derived at every
+             seam that can move one of the three rather than written once.
+             Three across on ONE line inside, the shape this row has held since
+             the asking price moved down into "Details for comps" (2026-08-17).
+             Three is still the most it takes: the build chamber is ~552px, so
              a fourth leaves ~106px of content and .rd-lab's tracking wraps the
              label to two lines. With no wrap, .rd-cell:last-child does the
              right-hand border on its own and no nth-child rule is needed —
              that is why .rd-row-2up is gone from the style block rather than
              left sitting unused. -->
-        <div class="rd-row grid grid-cols-1 sm:grid-cols-3">
+        <details id="searchSettings" class="rd-row">
+          <summary class="cursor-pointer select-none px-4 py-3 text-sm text-[#5A6473] hover:text-[#1A2433]">
+            <span id="searchSettingsLine"></span>
+            <span class="rd-sum-act">Change</span>
+          </summary>
+          <div class="rd-settings grid grid-cols-1 sm:grid-cols-3">
           <div class="rd-cell" id="txFocusWrap">
             <label class="rd-lab" for="txFocus">Focus</label>
             <select id="txFocus" class="rd-in">
@@ -2198,7 +2229,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 24800" class="rd-in" />
             <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
           </div>
-        </div>
+          </div>
+        </details>
         <!-- Refine (optional; the address, focus, lookback and size live up
              top). The asking price came back down here on 2026-08-17 (owner's
              call) so the row above holds one line: it is a fact about the
@@ -2218,7 +2250,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  moved down into the first group's note on 2026-08-21, where it is
                  true: it was making a claim about every field behind this
                  summary, and three of them never reach the search at all. -->
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size sits on the form above and only needs a value to override what we found.</p>
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size is behind Change above, and only needs a value to override what we found.</p>
             <!-- Two groups, split on where the data actually goes
                  (2026-08-21). Every field behind this summary looked alike, so
                  the one real difference between them was invisible: the market
@@ -4299,6 +4331,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // only and never applies the recommended WINDOW: a restore is not a fresh
     // decision, and a deep link may carry its own lookback.
     refreshLookbackHint();
+    // Same seam, same reason: both startup restores land the type here and
+    // nowhere else, and Land clears a machine-written size on the way past.
+    refreshSearchSettingsLine();
   }
 
   // Put saved detail values back into the freshly-rendered inputs. Call it
@@ -4381,11 +4416,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     lookbackCustomWrap.classList.toggle("hidden", !custom);
     if (custom) lookbackCustomInput.focus();
     refreshLookbackHint();
+    refreshSearchSettingsLine();
   });
   // The custom box changes the window without touching the select, so it needs
   // its own listener or the hint goes stale exactly where it is hardest to
   // notice — while the reader is typing a number into it.
-  lookbackCustomInput.addEventListener("input", refreshLookbackHint);
+  lookbackCustomInput.addEventListener("input", () => {
+    refreshLookbackHint();
+    refreshSearchSettingsLine();
+  });
 
   // Resolves the selected window to a number of months, or null if the custom
   // box is empty/out of range.
@@ -4402,7 +4441,44 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     lookbackCustomWrap.classList.toggle("hidden", preset);
     if (!preset) lookbackCustomInput.value = months;
     refreshLookbackHint();
+    refreshSearchSettingsLine();
   }
+
+  // The collapsed settings row states its own values, so somebody who never
+  // opens it still knows what the search will do. DERIVED on every seam that
+  // can move one of the three, never written once — the rule refreshLookback-
+  // Hint carries, for a sharper version of its reason: a stale hint mislabels
+  // a control the reader can see, while a stale line here describes a search
+  // that is not the one about to run, with the controls it describes hidden.
+  //
+  // A function DECLARATION, with its three elements resolved ABOVE it rather
+  // than below: setLookbackControls calls this, so it runs from seams earlier
+  // in the file than its own definition, and a `const` it reads that were
+  // still in its temporal dead zone would throw from inside a listener. The
+  // same trap `typeResolution` and `proConfig` each carry a note about.
+  const txFocusSel = document.getElementById("txFocus");
+  const targetSizeInput = document.getElementById("targetSize");
+  const searchSettingsLine = document.getElementById("searchSettingsLine");
+  const TX_FOCUS_WORDS = { both: "Sales & leases", sales: "Sales only", leases: "Leases only" };
+  function refreshSearchSettingsLine() {
+    const months = selectedLookbackMonths();
+    const size = numericValue(targetSizeInput.value);
+    searchSettingsLine.textContent = [
+      TX_FOCUS_WORDS[txFocusSel.value] || TX_FOCUS_WORDS.both,
+      // A half-typed custom window has no number to name. Say so rather than
+      // name a window that is not set: submit refuses this state anyway, and
+      // the line is the only thing on screen that can say why while the
+      // control is collapsed.
+      months ? `last ${months} months` : "lookback not set",
+      // Naming the DEFAULT is the point of the line — a reader who never opens
+      // this should learn the size is looked up, not wonder whether leaving it
+      // blank costs them the number the hero multiplies. Deliberately not
+      // per-type wording: the field itself is "Property SF" for every type
+      // (2026-08-16), one term true of a warehouse, a parcel and a house.
+      size > 0 ? `${Math.round(size).toLocaleString()} SF` : "size from public records",
+    ].join(" · ");
+  }
+  txFocusSel.addEventListener("change", refreshSearchSettingsLine);
 
   // Recommended lookback per property type (a user suggestion): multifamily and
   // residential trade often, so a shorter, fresher window fits; office and land
@@ -4708,6 +4784,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // keep it, and the record-backed autofill hides it at its own site.
   document.getElementById("targetSize").addEventListener("input", (e) => {
     if (e.isTrusted) document.getElementById("sizeEstimateNote").classList.add("hidden");
+    // Covers the footprint estimate too, which dispatches "input" on this
+    // element after filling it. The record-backed autofill does NOT, and
+    // calls the refresh itself.
+    refreshSearchSettingsLine();
   });
   let subjectEditTimer = null;
   ["targetSize", "targetPrice", "capRate", "noi"].forEach((id) => {
@@ -4904,6 +4984,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // an input to restore into; both survive in meta so pre-existing shares
       // keep rendering their range on the subject row.
       if (s.capRate != null) document.getElementById("capRate").value = s.capRate;
+      // The size above was assigned, not typed, so nothing has told the
+      // collapsed settings line that this report's building has one.
+      refreshSearchSettingsLine();
       renderResults(payload.data, meta);
       sharedViewMeta = meta;
       applySharedLock(meta);
@@ -6036,6 +6119,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // Machine-written and address-specific, exactly like the footprint
           // estimate, so it is dropped the same way on the next address.
           noteMachineSize(meta.address, Math.round(found));
+          // Assigning .value fires no "input", so the collapsed settings line
+          // would go on offering to look up a size already found.
+          refreshSearchSettingsLine();
         }
       }
     }
@@ -9478,6 +9564,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (sizeInput.value.trim() === sizeInput.dataset.autoValue) {
       sizeInput.value = "";
       document.getElementById("sizeEstimateNote").classList.add("hidden");
+      // Clearing .value fires no "input" either, and this is the direction
+      // that matters most: the line would keep quoting a square footage for a
+      // building the visitor has navigated away from.
+      refreshSearchSettingsLine();
     }
     delete sizeInput.dataset.autoFor;
     delete sizeInput.dataset.autoValue;
@@ -9503,7 +9593,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // Written at reveal, not in the markup: the estimate is gated to
         // non-Land addresses but fires constantly on houses, which is exactly
         // where "the building's footprint" reads wrong.
-        estNote.textContent = `Size estimated from the ${assetNoun(propertyTypeSel.value)}'s footprint; edit it under Details for comps if it's off.`;
+        // It said "under Details for comps" until 2026-08-23, which had been
+        // wrong since the size moved back onto the form on 2026-08-16 — it
+        // sent anyone correcting an estimate to a drawer that does not hold
+        // the field. "Below" is now literally true: the settings row, which
+        // quotes this very figure, is the next thing under this sentence.
+        estNote.textContent = `Size estimated from the ${assetNoun(propertyTypeSel.value)}'s footprint; change it below if it's off.`;
         estNote.classList.remove("hidden");
         noteMachineSize(typed, est);
       }
@@ -11089,6 +11184,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("capRate").value = m.subject.capRate || "";
       writeSubjectDetails(m.subject.details);
     }
+    // Focus and size were assigned rather than typed. setLookbackControls
+    // refreshed the line for the window alone, and only when the saved report
+    // carried one, so the other two need saying here.
+    refreshSearchSettingsLine();
     document.getElementById("compForm").requestSubmit();
   }
 

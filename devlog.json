@@ -25,6 +25,12 @@
   },
   {
     "date": "2026-08-23",
+    "type": "improvement",
+    "title": "The search form asks for an address and nothing else",
+    "details": "Running a report meant answering four questions before the page would do anything: Focus, Lookback, Property SF and a details drawer. The app already held an answer to three of them — two have defaults, the lookback prints \"Recommended for Industrial\" underneath itself, and the size is looked up from public records or the building footprint on most searches. So the form was asking questions it could answer. Those three now sit behind one line that states what they currently say — \"Sales & leases · last 24 months · size from public records\" — with Change to open them. Nothing was removed and nothing about the search itself moved: every control is one click away, keeps its behaviour, and the line rewrites itself the moment any of the three changes, including when a saved report or a looked-up building size fills them in. Also fixed on the way past: when a size was estimated from the footprint, the note offering to correct it pointed at \"Details for comps\", which has not held that field since it moved back onto the form a week earlier."
+  },
+  {
+    "date": "2026-08-23",
     "type": "feature",
     "title": "A settings panel, and light mode becomes the default",
     "details": "The header gear (where the theme icon sat) opens one panel holding the theme control, the visitor's plan with the upgrade and billing-portal buttons, a watchlist digest email toggle, and the account controls — Change photo and Delete account moved here from the account dropdown, the delete behind a proper two-step confirm whose copy now names the vault. The digest toggle is the first in-app control that column has ever had (it was email-unsubscribe-only) and writes through a new session-authenticated POST /api/account/digest; the email link still works and the panel re-reads /me on every open so the two never disagree. Light is now the default on every surface: the boot scripts no longer consult prefers-color-scheme, so a first visit is light on a dark-OS machine and dark happens only by choosing it — a stored choice keeps working, and scripts/shot.js --dark now seeds that choice since the emulated media query stopped producing a dark render. The plan row hides on a deployment where nothing is for sale rather than describe caps a dark deployment does not impose. Pricing keeps its header link; the panel is a second door, not a relocation."

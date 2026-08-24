@@ -3236,6 +3236,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and an exact `req.url` match 404'd it — along with every campaign link to
   `/?utm_source=…`. Every other route in server.js still tests `req.url`
   directly, so keep the query string in mind when adding one.
+  **It is templated three times at serve time**, and the third one varies by
+  visitor: `NAV_LINKS`, `INAPP_BOOT`, and — since 2026-08-23 —
+  **`authBoot()`** at an `<!--AUTH_BOOT-->` marker in `<head>`. That last one
+  exists because this file ships one set of bytes to everybody and then
+  corrects them from `/api/config` and `/api/account/me`, so until those
+  landed a signed-in member saw a signed-OUT app: measured with the account
+  read slowed, "Sign in" in the header at 78ms and — in the frame where
+  config had answered and the account read had not — the search form replaced
+  by the wall's signup card at 1170ms. A race, so it is worst when the
+  database is slow. It carries two facts, both free of a database read on a
+  route that runs on every page view: `ACCOUNT_WALL` (a server constant, so
+  exact) and session-cookie **presence** (the wall's own cheap rule twenty
+  lines above it). Four rules:
+  - **Keying on a cookie is safe here ONLY because index.html is
+    `no-store`.** `/how-it-works` does the same signed-in swap and has to
+    carry `vary: cookie` and drop its hour cache to do it; there is no cached
+    copy of this file to hand to the wrong visitor.
+  - **It is a stand-in, and index.html retires it.** `refreshAccountUI()` —
+    the one function that runs after `/api/account/me` on every path,
+    including the failed one — drops `cn-in`/`cn-locked` and writes the truth
+    itself. That is what makes the `!important` safe: left standing, an
+    expired session would keep the "Sign in" button hidden by CSS the JS
+    cannot reach, i.e. a member who cannot sign back in.
+  - **`applySearchLock()` reads `looksSignedIn()`, never `currentUser`
+    alone**, and `accountWall` is seeded from the boot object rather than
+    defaulting to false. That pair is what fixes the big flash — the card
+    appeared because that function ran once with the wall off and once with
+    it on. The hint is consulted only until `authKnown` flips.
+  - **Presentation only**, like everything else the wall drives: a forged
+    cookie buys the sight of an account menu with nothing behind it, because
+    every limit is still enforced server-side.
+  `test/auth-boot.test.js` pins the server half (the right classes for the
+  right visitor, in both wall states) and the index.html half (the marker,
+  the retirement, and that every id the boot CSS names still exists).
 
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).

@@ -59,6 +59,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        install what you are already using. A marker, not a hand-copy, for the
        reason the NAV_LINKS marker above exists. -->
   <!--INAPP_BOOT-->
+  <!-- Replaced at serve time with authBoot() (server.js): the two things the
+       server already knows about this visitor before it sends a byte — is
+       there a session cookie, and is the account wall up. Without it this
+       file paints a signed-OUT app to a signed-in member and corrects itself
+       once /api/config and /api/account/me land — and the frame in between
+       (config back, account not) swaps the search form for the wall's signup
+       card. A stand-in only: refreshAccountUI() drops both classes the moment
+       the real answer arrives, so an expired session can never leave CSS
+       hiding a control the JS wants back. -->
+  <!--AUTH_BOOT-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -11107,7 +11117,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Account state — cookie-backed session; the browser sends cn_session
   // automatically on same-origin fetches.
   // ----------------------------------------------------------------------------
-  let accountWall = false;          // from /api/config; drives applySearchLock()
+  // What server.js told us at serve time (authBoot(), injected at the
+  // AUTH_BOOT marker in <head>): the wall setting, which is a server
+  // constant and therefore exact, and whether a session cookie came with
+  // the request, which is a HINT — the same cookie-presence rule the wall
+  // itself decides on, and wrong only for an expired or forged session.
+  //
+  // Both exist so the first paint is already right. Seeding accountWall
+  // here rather than defaulting it to false is the half that matters most:
+  // applySearchLock() used to run once with the wall off and once with it
+  // on, which is what made the signup card appear over a signed-in
+  // member's search form for the length of one fetch.
+  const AUTH_BOOT = (typeof window !== "undefined" && window.CN_AUTH_BOOT) || {};
+  let accountWall = Boolean(AUTH_BOOT.wall);   // seeded here, confirmed by /api/config
+  // The hint, and the flag that retires it. Read only through
+  // looksSignedIn(); nothing else may consult the cookie.
+  const bootSignedIn = Boolean(AUTH_BOOT.signedIn);
+  let authKnown = false;            // set once /api/account/me has answered
   // The meta of a /r/<id> report on screen, or null. Read by showSharedStatus
   // and set once by the share loader.
   let sharedViewMeta = null;
@@ -11159,6 +11185,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return data;
   }
 
+  // "Is this visitor signed in?" — the truth once /api/account/me has
+  // answered, and the serve-time cookie hint until then. The window is short
+  // but it is exactly when the two functions below run for the first time:
+  // /api/config lands first about as often as not, and answering "no" there
+  // is what put the wall's signup card over a member's own search form.
+  function looksSignedIn() { return authKnown ? Boolean(currentUser) : bootSignedIn; }
+
   // One owner of the search form's existence, called from the three places
   // that change it: the config load, sign-in/out, and the desk/home swap.
   //
@@ -11171,7 +11204,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!lock) return;
     const onDeskView = !document.getElementById("deskView").classList.contains("hidden");
     if (onDeskView) { lock.classList.add("hidden"); return; }
-    const locked = accountWall && !currentUser;
+    const locked = accountWall && !looksSignedIn();
     lock.classList.toggle("hidden", !locked);
     document.getElementById("searchSection").classList.toggle("hidden", locked);
     showSharedStatus();
@@ -11188,7 +11221,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // not knowable at the moment the share is drawn.
   function showSharedStatus() {
     if (!sharedViewMeta) return;
-    showStatus(accountWall && !currentUser
+    showStatus(accountWall && !looksSignedIn()
       ? "You're viewing a shared CompNinja report. Create a free account below to run one on your own building."
       : "You're viewing a shared CompNinja report. Enter an address above to run your own live valuation.", "info");
   }
@@ -11251,6 +11284,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function refreshAccountUI() {
+    // The serve-time stand-in has done its job: everything it painted with
+    // !important is written properly below (and by applySearchLock), from an
+    // answer rather than from a cookie. Dropping the classes here — in the
+    // one function that runs after /api/account/me on every path, including
+    // the failed one — is what keeps an expired session from leaving the
+    // "Sign in" button hidden by CSS the JS cannot override.
+    authKnown = true;
+    document.documentElement.classList.remove("cn-in", "cn-locked");
     applySearchLock();
     const on = Boolean(currentUser);
     document.getElementById("signInLink").classList.toggle("hidden", on);

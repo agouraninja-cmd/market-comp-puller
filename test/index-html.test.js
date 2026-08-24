@@ -1833,3 +1833,46 @@ test("the analysis gate names a section that is actually on the form", () => {
   assert.ok(html.includes("+ " + named[1] + " <span"),
     'the analysis gate sends the reader to "' + named[1] + '", which is not the form\'s own summary label');
 });
+
+// The sample report is the one CompNinja a prospect reads before signing up,
+// so its illustrative data has to survive the product's own honesty checks.
+test("the sample report's stated search radius covers its own comps", () => {
+  const V = require("../valuation.js");
+  const i = html.indexOf("const SAMPLE_REPORT");
+  assert.ok(i > 0, "could not find SAMPLE_REPORT");
+  const src = html.slice(i, html.indexOf("\n  };", i) + 5);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.S = SAMPLE_REPORT;", { filename: "index.html" }).runInContext(ctx);
+  const S = ctx.S;
+
+  const R = 3958.8, rad = (d) => (d * Math.PI) / 180;
+  const miles = (a, b, c, d) => {
+    const dLat = rad(c - a), dLon = rad(d - b);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  };
+  const sLat = Number(S.subject_lat), sLng = Number(S.subject_lng);
+  const dists = S.comps
+    .filter((c) => isFinite(Number(c.lat)) && isFinite(Number(c.lng)))
+    .map((c) => miles(sLat, sLng, Number(c.lat), Number(c.lng)));
+  assert.ok(dists.length >= 3, "the sample's comps lost their coordinates");
+  const farthest = Math.max(...dists);
+
+  const claimed = V.parseRadiusMiles(S.search_radius);
+  assert.ok(claimed != null, `the sample's search_radius states no distance: ${S.search_radius}`);
+
+  // The claim said "~5 miles" against comps 8-17 miles out until 2026-08-23.
+  // Nothing wrong reached the screen — reconcileRadiusClaim suppressed the
+  // line once the real distances arrived (that is what #166 shipped) — but
+  // the demo therefore showed no search radius at all, and the fixture was
+  // relying on the product papering over it on every render.
+  assert.ok(!V.radiusClaimContradicted(S.search_radius, farthest),
+    `the sample claims ${claimed} mi but its own comps reach ${farthest.toFixed(1)} mi, so the report suppresses the line`);
+
+  // Stricter than radiusClaimContradicted on purpose: that function allows a
+  // 25% slack because a real search's radius is approximate. This fixture is
+  // written by us, so it should cover its comps outright rather than survive
+  // on the tolerance — otherwise a later comp edit silently spends the slack.
+  assert.ok(claimed >= farthest,
+    `the sample's radius (${claimed} mi) only clears its farthest comp (${farthest.toFixed(1)} mi) on slack`);
+});

@@ -385,13 +385,21 @@ async function captureViaCdp(dt, url, size, fullPage, settleMs, expand, dark) {
     // accessibility path instead of injecting stylesheet overrides that would
     // have to know each surface's class names.
     //
-    // --dark rides in on the same call. The theme boot script (index.html's
-    // inline <script>, THEME_BOOT in server.js) reads localStorage first and
-    // falls back to matchMedia("(prefers-color-scheme: dark)") when nothing
-    // is stored -- and a fresh scratch profile never has anything stored, so
-    // emulating the media query is enough to get a genuine dark render
-    // through the page's OWN boot path. Nothing is injected and no storage is
-    // seeded, which matters because the thing under test IS that boot path.
+    // --dark seeds localStorage["theme"]="dark" before the page's own boot
+    // script runs. It used to only emulate prefers-color-scheme, which the
+    // boot script fell back to when nothing was stored -- but light became
+    // the unconditional default on 2026-08-23 (the OS fallback is gone), so
+    // an emulated media query now produces a LIGHT render and a dark
+    // "comparison" of two light pages. Seeding storage is still exercising
+    // the page's real path: an explicit stored choice is the ONLY way any
+    // visitor reaches dark now, so the capture takes the same door they do.
+    // The media emulation stays for the theme-color <meta> tags, which still
+    // key on the OS.
+    if (dark) {
+      await dt.send("Page.addScriptToEvaluateOnNewDocument", {
+        source: `try{localStorage.setItem("theme","dark")}catch(e){}`,
+      }, sessionId).catch(() => { /* older Chromium: the render stays light and the diff says so */ });
+    }
     await dt.send("Emulation.setEmulatedMedia", {
       features: [
         { name: "prefers-reduced-motion", value: "reduce" },
@@ -555,7 +563,8 @@ Options:
                    throwaway detached worktree
   --size WxH       viewport size (default ${DEFAULT_SIZE.width}x${DEFAULT_SIZE.height})
   --expand         open every <details> first (FAQ accordions, vault panels)
-  --dark           shoot in dark mode (emulates prefers-color-scheme: dark)
+  --dark           shoot in dark mode (seeds the stored theme choice — the
+                   only door to dark since light became the default)
   --viewport       capture the fold only, not the whole page
   --out <dir>      where the PNGs go (default screenshots/)
   --env K=V        an env var for the scratch server (repeatable)

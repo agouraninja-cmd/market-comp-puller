@@ -13,6 +13,9 @@
        purpose: anything deferred paints light first and flashes white on a
        dark page. try/catch because localStorage throws outright in a Safari
        private window, and a theme preference must never blank the app.
+       Light is the default (owner's call, 2026-08-23): only an explicit
+       stored choice boots dark -- the OS prefers-color-scheme fallback is
+       gone, so a first visit is light on every machine.
        This is also the rollback lever -- nothing else ever sets data-theme,
        so short-circuiting this script disables dark mode everywhere.
        ⚠ This is a hand-copy of server.js's THEME_BOOT constant -- this file
@@ -20,7 +23,6 @@
        step but this comment and the "index.html's theme boot script and
        toggle handler mirror server.js" test in test/theme.test.js. -->
   <script>(function(){try{var t=localStorage.getItem("theme");
-if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";
 if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(e){}})();</script>
   <!-- Social sharing previews -->
   <meta property="og:type" content="website" />
@@ -1800,6 +1802,100 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     </div>
   </div>
 
+  <!-- Settings panel (2026-08-23). One home for the theme, the visitor's
+       plan, the watchlist digest email, and the account controls that used
+       to live in the account dropdown (Change photo, Delete account…).
+       Anonymous visitors get the theme and plan rows; #settingsDigestRow and
+       #settingsAcctSection are signed-in only. No second decider anywhere:
+       refreshBillingUI() owns the plan row's copy and buttons, and
+       refreshAccountUI() owns the two signed-in sections. Every button here
+       that opens another surface closes this panel FIRST — the pricing
+       modal shares z-[1200] and the two must never stack. -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
+      <div class="rd-lab">Settings</div>
+      <!-- Appearance. The toggle is the SAME element the header bar used to
+           carry (moved 2026-08-23): same id, same handler, same moon/sun
+           swap, so test/theme.test.js's mirror and icon checks hold. Light
+           is the default; a click flips to dark and is remembered. -->
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <div>
+          <div class="text-sm font-medium text-[#1A2433]">Appearance</div>
+          <p class="text-xs text-[#68707E] mt-0.5">Light unless you switch it. Remembered on this browser.</p>
+        </div>
+        <button id="themeToggleApp" type="button"
+          class="text-[#5A6473] hover:text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5 leading-none"
+          aria-label="Switch colour theme" title="Switch colour theme">
+          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
+        </button>
+      </div>
+      <!-- Plan. Copy comes from billingStatusCopy() (the desk plan card's
+           generator); the buttons obey pricingLink's and menuBillingBtn's
+           exact visibility rules, applied inside refreshBillingUI(). The
+           whole row follows the desk card's own rule and disappears on a
+           deployment where nothing is for sale — billingStatusCopy()'s Free
+           branch names caps that a dark deployment does not impose. -->
+      <div id="settingsPlanRow" class="mt-4 pt-4 border-t border-[#E4E2DA]">
+        <div id="settingsPlanTitle" class="text-sm font-medium text-[#1A2433]">Plan</div>
+        <p id="settingsPlanDetail" class="text-xs text-[#68707E] mt-0.5"></p>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <button id="settingsUpgradeBtn" type="button"
+            class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
+          <button id="settingsBillingBtn" type="button"
+            class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+        </div>
+        <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
+      </div>
+      <!-- Watchlist digest email. Signed-in only; state is
+           currentUser.digestOptout, written through POST /api/account/digest.
+           The email unsubscribe link writes the same column, so the panel
+           re-reads /me on every open rather than trusting boot state. -->
+      <div id="settingsDigestRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <label class="flex items-start justify-between gap-4 cursor-pointer">
+          <span>
+            <span class="block text-sm font-medium text-[#1A2433]">Watchlist digest email</span>
+            <span class="block text-xs text-[#68707E] mt-0.5">An occasional email when a market you watch gets new comps. Off means no watchlist email at all.</span>
+          </span>
+          <input id="settingsDigestToggle" type="checkbox" class="accent-[#B91C1C] mt-1" />
+        </label>
+        <p id="settingsDigestErr" class="hidden text-sm text-red-600 mt-2"></p>
+      </div>
+      <!-- Account. Change photo drives the same hidden #deskAvatarFile input
+           and pipeline the desk header uses; delete is a two-step confirm in
+           place of the old native confirm(), and its copy keeps the plan
+           card's promise that only account deletion removes a vault. -->
+      <div id="settingsAcctSection" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <div class="text-sm font-medium text-[#1A2433]">Account</div>
+        <div id="settingsAcctEmail" class="text-xs text-[#9AA2AD] mt-0.5 truncate"></div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <button id="settingsAvatarBtn" type="button"
+            class="text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Change photo</button>
+          <button id="settingsSignOutBtn" type="button"
+            class="text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Sign out</button>
+          <button id="settingsDeleteBtn" type="button"
+            class="text-sm font-medium text-red-700 border border-[#D8D4C9] hover:bg-red-50 rounded-lg px-3 py-1.5">Delete account…</button>
+        </div>
+        <p id="settingsAvatarMsg" class="hidden text-sm mt-2"></p>
+        <div id="settingsDeleteConfirm" class="hidden mt-3 border border-[#D8D4C9] rounded-lg p-3">
+          <p class="text-sm text-[#1A2433]">This deletes your account, portfolio, watchlist, and everything in your vault. It can't be undone.</p>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <button id="settingsDeleteGo" type="button"
+              class="btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Permanently delete</button>
+            <button id="settingsDeleteKeep" type="button"
+              class="text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Keep my account</button>
+          </div>
+          <p id="settingsDeleteErr" class="hidden text-sm text-red-600 mt-2"></p>
+        </div>
+      </div>
+      <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        <button id="settingsClose" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Header -->
   <header class="no-print border-b rd-hairline bg-[#FBFBF9]">
     <div class="rd-appbar max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
@@ -1817,12 +1913,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              server.js's NAV_LINKS — the same list marketBar renders (as a
              no-JS <details>) on every server-rendered page — so there is no
              second copy of the menu here to keep in step. -->
-        <button id="themeToggleApp" type="button" class="hover:text-[#1A2433] leading-none"
-          aria-label="Switch colour theme" title="Switch colour theme">
-          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
-          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
+        <!-- The gear opens the settings panel; the theme toggle it replaced
+             (2026-08-23) lives inside that panel now, same id and handler. -->
+        <button id="settingsBtn" type="button" class="hover:text-[#1A2433] leading-none"
+          aria-label="Settings" title="Settings">
+          <svg class="w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd"
+            d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 0 1-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 0 1 .947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 0 1 2.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 0 1 2.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 0 1 .947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 0 1-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 0 1-2.287-.947zM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>
         </button>
         <div id="exploreMenuWrap" class="relative">
           <button id="exploreMenuBtn" type="button" aria-haspopup="true" aria-expanded="false"
@@ -1865,7 +1961,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </button>
           <div id="acctMenu" class="dd-fade hidden absolute right-0 top-9 z-[1100] bg-white border border-[#E4E2DA] rounded-lg shadow-lg py-1 w-44 text-left">
             <div id="acctMenuEmail" class="px-3 py-1.5 text-xs text-[#9AA2AD] truncate"></div>
-            <button id="menuAvatarBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Change photo</button>
+            <!-- Change photo and Delete account… moved into the settings
+                 panel (2026-08-23); this row is the door to them. -->
+            <button id="menuSettingsBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Settings</button>
             <!-- The vault's only entrance. Shown from /api/config's
                  canUseVault, so it appears for any Pro member (and for comped
                  admins) and for nobody else. There is no separate broker
@@ -1884,7 +1982,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
             <button id="menuBillingBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Manage billing</button>
             <button id="signOutBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Sign out</button>
-            <button id="deleteAcctBtn" type="button" class="block w-full text-left px-3 py-1.5 text-red-700 hover:bg-red-50">Delete account…</button>
           </div>
         </div>
       </nav>
@@ -11264,6 +11361,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       applyAvatarUI(null);
     }
     syncPortfolioButton();
+    // The settings panel's signed-in rows follow the same account state, so
+    // a sign-in or sign-out repaints them even while the panel is open.
+    if (typeof applySettingsAccountUI === "function") applySettingsAccountUI();
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
@@ -11343,12 +11443,116 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
-  document.getElementById("menuAvatarBtn").addEventListener("click", () => {
+  // ----------------------------------------------------------------------------
+  // The settings panel (2026-08-23). Open it from the header gear or the
+  // account menu's Settings row. Signed-in rows are toggled here AND from
+  // refreshAccountUI(), so a sign-in or sign-out while the panel is open
+  // repaints it; the plan row's copy and buttons stay refreshBillingUI()'s.
+  // ----------------------------------------------------------------------------
+  function applySettingsAccountUI() {
+    const on = Boolean(currentUser);
+    document.getElementById("settingsDigestRow").classList.toggle("hidden", !on);
+    document.getElementById("settingsAcctSection").classList.toggle("hidden", !on);
+    if (on) {
+      document.getElementById("settingsAcctEmail").textContent = currentUser.email;
+      // The stored column is an OPT-OUT; the checkbox speaks the visitor's
+      // language (checked = send me the digest), so the two are inverted.
+      document.getElementById("settingsDigestToggle").checked = !currentUser.digestOptout;
+    }
+  }
+  function resetSettingsDeleteConfirm() {
+    document.getElementById("settingsDeleteConfirm").classList.add("hidden");
+    document.getElementById("settingsDeleteErr").classList.add("hidden");
+  }
+  function openSettingsModal() {
     document.getElementById("acctMenu").classList.add("hidden");
-    if (location.pathname === "/desk") {
-      document.getElementById("deskAvatarFile").click();
-    } else {
-      location.href = "/desk#avatar";
+    resetSettingsDeleteConfirm();
+    document.getElementById("settingsDigestErr").classList.add("hidden");
+    document.getElementById("settingsPlanError").classList.add("hidden");
+    showAvatarMsg("");
+    applySettingsAccountUI();
+    document.getElementById("settingsModal").classList.remove("hidden");
+    // The email unsubscribe link writes the same digest column this panel's
+    // toggle reads, so sync from /me on every open rather than trusting the
+    // copy fetched at boot. Best-effort: a failed read just shows boot state.
+    if (currentUser) {
+      fetch("/api/account/me", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((me) => {
+          if (me && currentUser) {
+            currentUser = Object.assign(currentUser, me);
+            applySettingsAccountUI();
+          }
+        })
+        .catch(() => {});
+    }
+  }
+  function closeSettingsModal() {
+    resetSettingsDeleteConfirm();
+    document.getElementById("settingsModal").classList.add("hidden");
+  }
+  document.getElementById("settingsBtn").addEventListener("click", openSettingsModal);
+  document.getElementById("menuSettingsBtn").addEventListener("click", openSettingsModal);
+  document.getElementById("settingsClose").addEventListener("click", closeSettingsModal);
+  document.getElementById("settingsModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeSettingsModal();
+  });
+  // Change photo drives the same hidden file input and pipeline as the desk
+  // header's controls; the input lives in #deskView's markup but is in the
+  // DOM on every route of this single-page file, so a plain .click() works
+  // from anywhere (the old dropdown item's /desk#avatar redirect is gone).
+  document.getElementById("settingsAvatarBtn").addEventListener("click", () => {
+    document.getElementById("deskAvatarFile").click();
+  });
+  document.getElementById("settingsDigestToggle").addEventListener("change", async (e) => {
+    const toggle = e.target;
+    const enabled = toggle.checked;
+    const err = document.getElementById("settingsDigestErr");
+    err.classList.add("hidden");
+    toggle.disabled = true;
+    try {
+      const next = await acctApi("POST", "/api/account/digest", { enabled });
+      currentUser = Object.assign(currentUser || {}, next);
+      applySettingsAccountUI();
+    } catch (ex) {
+      // Revert rather than lie: an unchecked box over a stored "send it"
+      // would read as unsubscribed when nothing was written.
+      toggle.checked = !enabled;
+      err.textContent = ex.message || "Couldn't save that preference. Please try again.";
+      err.classList.remove("hidden");
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+  document.getElementById("settingsSignOutBtn").addEventListener("click", async () => {
+    closeSettingsModal();
+    await doSignOut();
+  });
+  document.getElementById("settingsDeleteBtn").addEventListener("click", () => {
+    document.getElementById("settingsDeleteConfirm").classList.remove("hidden");
+  });
+  document.getElementById("settingsDeleteKeep").addEventListener("click", resetSettingsDeleteConfirm);
+  // The pricing modal shares z-[1200], so the panel closes before it opens;
+  // openUpgradePrompt (not openPricingModal) so a not-for-sale deployment
+  // still answers with its message instead of an empty modal.
+  document.getElementById("settingsUpgradeBtn").addEventListener("click", () => {
+    closeSettingsModal();
+    openUpgradePrompt();
+  });
+  // The portal is a whole-page navigation, not a modal, so the panel stays
+  // open — an error has to land where the person is looking, which is why
+  // this passes the panel's own error line.
+  document.getElementById("settingsBillingBtn").addEventListener("click", (e) => {
+    openBillingPortal(e.target, document.getElementById("settingsPlanError"));
+  });
+  document.getElementById("settingsDeleteGo").addEventListener("click", async (e) => {
+    const btn = e.target;
+    btn.disabled = true;
+    try {
+      await doDeleteAccount();
+      closeSettingsModal();
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -11401,13 +11605,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function showAvatarMsg(text, isError) {
-    const el = document.getElementById("deskAvatarMsg");
-    if (!el) return;
-    if (!text) { el.classList.add("hidden"); el.textContent = ""; return; }
-    el.textContent = text;
-    el.classList.toggle("text-red-700", Boolean(isError));
-    el.classList.toggle("text-[#5A6473]", !isError);
-    el.classList.remove("hidden");
+    // Two homes: the desk header's message line and the settings panel's.
+    // The photo pipeline has one entry (the hidden #deskAvatarFile input),
+    // so it cannot know which surface the click came from — writing both
+    // means a rejected file is visible wherever the broker is looking.
+    for (const id of ["deskAvatarMsg", "settingsAvatarMsg"]) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (!text) { el.classList.add("hidden"); el.textContent = ""; continue; }
+      el.textContent = text;
+      el.classList.toggle("text-red-700", Boolean(isError));
+      el.classList.toggle("text-[#5A6473]", !isError);
+      el.classList.remove("hidden");
+    }
   }
 
   async function saveAvatar(dataUri) {
@@ -11444,9 +11654,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       showAvatarMsg(ex.message, true);
     }
   });
-  // The theme toggle. Two states: it flips and remembers. The OS
-  // preference is only the INITIAL default (see the boot script in
-  // <head>); once someone clicks, their explicit choice wins forever.
+  // The theme toggle. Two states: it flips and remembers. Light is the
+  // default (see the boot script in <head> -- the OS preference is not
+  // consulted); once someone clicks, their explicit choice wins forever.
+  // It lives in the settings panel now, not the header bar -- same id,
+  // same handler, so the mirror test below still finds it.
   // ⚠ This is a hand-copy of server.js's ACCOUNT_NAV_JS toggle handler --
   // this file is static and server.js never templates it. Nothing keeps the
   // two in step but this comment and the "index.html's theme boot script and
@@ -11600,7 +11812,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
   });
 
-  document.getElementById("signOutBtn").addEventListener("click", async () => {
+  // One body, two doors (the dropdown row and the settings panel's row).
+  async function doSignOut() {
     try { await acctApi("POST", "/api/account/logout"); } catch (_) {}
     currentUser = null;
     // See the comment on brandingLoadToken: a fetch already in flight for
@@ -11621,9 +11834,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Entitlements are per-user: the signed-in answer must not survive the
     // sign-out, or a visitor keeps seeing "Pro" with nobody signed in.
     refreshProConfig();
-  });
-  document.getElementById("deleteAcctBtn").addEventListener("click", async () => {
-    if (!confirm("Delete your CompNinja account, portfolio, and watchlist? This can't be undone.")) return;
+  }
+  document.getElementById("signOutBtn").addEventListener("click", doSignOut);
+  // The confirmation lives in the settings panel (a two-step reveal replaced
+  // the old native confirm() when Delete account… moved there, 2026-08-23);
+  // by the time this runs the person has already clicked "Permanently delete".
+  async function doDeleteAccount() {
     try { await acctApi("DELETE", "/api/account"); } catch (_) {}
     currentUser = null;
     // Same reset as sign-out — see the comment there.
@@ -11636,7 +11852,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("acctMenu").classList.add("hidden");
     refreshAccountUI();
     refreshProConfig();
-  });
+  }
 
   // Bootstrap: who am I? Then honor a /#reset=<token> link.
   (async () => {
@@ -14465,6 +14681,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ["leadModal", "leadCancel"],
     ["compModal", "compCancel"],
     ["acctModal", "acctCancel"],
+    ["settingsModal", "settingsClose"],
   ];
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -14494,7 +14711,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // Every modal, not just the four this list began with: pricingModal and
     // shareModal were missing, so Escape on the pricing modal closed the
     // REPORT underneath it while the modal stayed up.
-    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal"]
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal"]
         .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
     // A focused form control keeps Escape for itself — just drop focus.
     const ae = document.activeElement;
@@ -14522,7 +14739,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.key !== "Escape" || !onDesk()) return;
     if (e.defaultPrevented) return;
     if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
-    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal"]
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal"]
         .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
@@ -15182,8 +15399,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
   }
 
-  async function openBillingPortal(btn) {
-    const err = document.getElementById("billingError");
+  async function openBillingPortal(btn, errEl) {
+    // errEl: where a failure lands. Defaults to the desk plan card's line;
+    // the settings panel passes its own, because an error written to an
+    // element on a hidden desk is an error nobody sees.
+    const err = errEl || document.getElementById("billingError");
     if (err) err.classList.add("hidden");
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
@@ -15402,6 +15622,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
       // Admin-only: it clears the cn_admin cookie, which a tester never has.
       document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
+    }
+
+    // The settings panel's plan row: the same copy generator as the desk
+    // card and the same button rules as pricingLink and menuBillingBtn, so
+    // this stays a third surface, never a second decider. Unlike the desk
+    // card it also paints signed out — billingStatusCopy() has an honest
+    // "Not signed in" branch — but it shares the card's dark-deployment
+    // rule: where nothing is for sale and nothing is comped, the Free
+    // branch would name caps the deployment does not impose, so the row
+    // goes away rather than describe a paywall that is not there.
+    const showPlanRow = live || isAdminPro() || isTesterPro();
+    document.getElementById("settingsPlanRow").classList.toggle("hidden", !showPlanRow);
+    if (showPlanRow) {
+      const planCopy = billingStatusCopy();
+      document.getElementById("settingsPlanTitle").textContent = planCopy.title;
+      document.getElementById("settingsPlanDetail").textContent = planCopy.detail;
+      document.getElementById("settingsUpgradeBtn").classList.toggle("hidden", !live || pro);
+      document.getElementById("settingsBillingBtn").classList.toggle("hidden", !live || !hasBillingHistory());
     }
   }
 

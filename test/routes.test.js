@@ -696,6 +696,64 @@ test("bare environment", async (t) => {
     assert.equal(gone.status, 404);
   });
 
+  await t.test("the digest preference refuses an anonymous caller, 401 not 404", async () => {
+    const r = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(r.status, 401, "must refuse an anonymous caller");
+  });
+
+  await t.test("a signed-in account can switch the watchlist digest off and back on", async () => {
+    const email = `digest-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery", name: "Di" }),
+    });
+    assert.equal(signup.status, 200);
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    const signed = { cookie };
+
+    // Emails default ON: a fresh file-store row has no digest_optout key and
+    // must coerce to false, never render the toggle off.
+    const me0 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me0.digestOptout, false, "a new account starts opted in");
+
+    const off = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(off.status, 200);
+    const offBody = await off.json();
+    assert.equal(offBody.digestOptout, true, "the response must reflect the new state");
+    assert.equal(JSON.stringify(offBody).includes("password"), false,
+      "the response must never carry credential fields");
+
+    const me1 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me1.digestOptout, true, "the opt-out must persist to /me");
+
+    const on = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(on.status, 200);
+    assert.equal((await on.json()).digestOptout, false);
+    const me2 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me2.digestOptout, false, "re-enabling must persist too");
+
+    // A non-boolean is a 400, never treated as truthy: the column is a
+    // standing decision about somebody's inbox, so a malformed write is
+    // refused rather than guessed at.
+    for (const bad of [{ enabled: "yes" }, {}]) {
+      const r = await fetch(srv.base + "/api/account/digest", {
+        method: "POST", headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(bad),
+      });
+      assert.equal(r.status, 400, `non-boolean body ${JSON.stringify(bad)} must 400`);
+    }
+  });
+
   await t.test("a share from an anonymous visitor cannot carry a brand it supplied", async () => {
     // The browser hands /api/share its own meta. Without the server-side strip
     // a visitor could publish a report under someone else's firm name.

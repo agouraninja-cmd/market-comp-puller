@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-23",
+    "type": "feature",
+    "title": "A settings panel, and light mode becomes the default",
+    "details": "The header gear (where the theme icon sat) opens one panel holding the theme control, the visitor's plan with the upgrade and billing-portal buttons, a watchlist digest email toggle, and the account controls — Change photo and Delete account moved here from the account dropdown, the delete behind a proper two-step confirm whose copy now names the vault. The digest toggle is the first in-app control that column has ever had (it was email-unsubscribe-only) and writes through a new session-authenticated POST /api/account/digest; the email link still works and the panel re-reads /me on every open so the two never disagree. Light is now the default on every surface: the boot scripts no longer consult prefers-color-scheme, so a first visit is light on a dark-OS machine and dark happens only by choosing it — a stored choice keeps working, and scripts/shot.js --dark now seeds that choice since the emulated media query stopped producing a dark render. The plan row hides on a deployment where nothing is for sale rather than describe caps a dark deployment does not impose. Pricing keeps its header link; the panel is a second door, not a relocation."
+  },
+  {
+    "date": "2026-08-23",
     "type": "fix",
     "title": "Dark mode stopped painting black bars across the search form",
     "details": "In dark mode a blanket rule recessed every field on the site one step below the card it sits on, which is right for a bordered input and wrong for the Research Desk, where the CELL is the field: .rd-cell draws the hairline box and owns the red focus ring, and .rd-in is deliberately borderless and transparent so the form reads as one unit. The two together put a near-black slab under Property address, Focus, Lookback and Property SF -- four bars floating on the form. Those four fields now stay the colour of the cell in dark exactly as they do in light. Every genuinely bordered input on the site, the Market Explorer's included, keeps its recess. The exemption is a :not(.rd-in) on the existing rule rather than an override under it, because that selector carries eight :not([type=...]) and outranks any plain .rd-in rule; autofill follows it and covers the desk's fields with the cell's own colour, since Chrome's sheet is UA-!important and only an inset shadow beats it."

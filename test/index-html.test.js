@@ -970,12 +970,14 @@ test("the type chip is followed by the table's own comp count, never a bare digi
   assert.match(html, /renderReportMeta\(currentMeta\)/);
 });
 
-test("My Desk and the account circle have a place to put a profile photo", () => {
+test("My Desk and the settings panel have a place to put a profile photo", () => {
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);
   assert.match(html, /id="deskAvatarFile"/);
   assert.match(html, /id="deskAvatarChange"/);
-  assert.match(html, /id="menuAvatarBtn"/);
+  // Change photo moved from the account dropdown into the settings panel
+  // (2026-08-23); it drives the same hidden #deskAvatarFile input.
+  assert.match(html, /id="settingsAvatarBtn"/);
   assert.match(html, /function applyAvatarUI\(/);
   assert.match(html, /function readAvatarFile\(/);
   assert.match(html, /\/api\/account\/avatar/);

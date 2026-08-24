@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-23",
+    "type": "fix",
+    "title": "Two labels on the report stop crediting the wrong thing",
+    "details": "Found by running the app and reading the screen. First: the \"Your property vs. market\" card printed its market average under the words \"from pulled comps\", and that figure is the search’s own market-level number, which deliberately does not recompute when you exclude a comp. So excluding one moved the value range, the trust line (which said in as many words that one comp had been excluded by you), the table footer and the spread bar — and left this card quoting the same average, credited to the very comps that had just changed, then computing your pricing position against it. On the sample that read \"median of 3 sale comps · $110/SF\" in the footer and \"$113 · from pulled comps\" a few inches above: two figures claiming one source, with nothing on screen saying which to believe. The label now places the figure at the market rather than at your comp set, which is both true and an answer to the question the old one provoked. Display only — no number moved. Second: the Analysis tab told you to \"enter an NOI in Property details above\", and the form has not had a section by that name since it was retitled \"Details for comps\", so the one instruction for unlocking those tools named nothing on the page. It names the real section now, and a test pins it to the form’s own label so a future retitle fails the build instead of stranding the sentence again."
+  },
+  {
     "date": "2026-08-24",
     "type": "fix",
     "title": "The installed desktop app stops offering to download itself",

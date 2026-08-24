@@ -1775,3 +1775,61 @@ test("the footprint estimate points at where the size actually is", () => {
     "the estimate note points at Details for comps, which has not held the size since 2026-08-16");
   assert.match(note[0], /change it below/);
 });
+
+// ---------------------------------------------------------------------------
+// Two labels that credited the wrong thing (2026-08-23). Both were found by
+// running the app and reading the screen, which is the only way this class
+// shows up: each sentence is fine in isolation and wrong beside its neighbour.
+// ---------------------------------------------------------------------------
+
+test("the market-average card does not credit the comps it ignores", () => {
+  // #compareMidSub sits under parsed.avg_price_per_sqft, which is deliberately
+  // NOT recomputed when the reader excludes a comp. Measured on the sample:
+  // excluding one moved the hero to $7,775,000-$8,500,000, the footer to
+  // "MEDIAN OF 3 SALE COMPS - $110/SF" and the trust line to "1 excluded by
+  // you", while this card held $113 under a label crediting those same comps.
+  //
+  // The markup default paints before renderComparison runs, so the two have to
+  // agree or the honest label is preceded by a flash of the misleading one.
+  const markup = html.match(/id="compareMidSub"[^>]*>([^<]*)</);
+  assert.ok(markup, "could not find the #compareMidSub default");
+  const call = html.match(/setCompareLabels\(\s*"Your Property vs\. Market",[\s\S]*?\n\s*\);/);
+  assert.ok(call, "could not find the CRE comparison's setCompareLabels call");
+  assert.ok(call[0].includes('"' + markup[1] + '"'),
+    "#compareMidSub's default has drifted from the label renderComparison paints: " + markup[1]);
+
+  // Scoped to the two sites that actually reach a screen rather than the whole
+  // file: the comment at the call site quotes the old wording on purpose, and
+  // a blanket search would forbid explaining the very bug being fixed.
+  for (const [where, text] of [["the markup default", markup[1]], ["renderComparison", call[0]]]) {
+    assert.ok(!/from pulled comps/.test(text),
+      where + " credits the pulled comps for a figure that ignores the reader's exclusions");
+  }
+
+  // Whatever the wording becomes, it has to place the figure at the market
+  // rather than at this reader's comp set — that is the whole correction.
+  assert.match(markup[1], /market/i);
+
+  // The Residential branch compares the ask against lastValuation, which DOES
+  // track curation, so it must never inherit this caveat.
+  const res = html.match(/function renderResidentialAskComparison\([\s\S]*?setCompareLabels\([\s\S]*?\);/);
+  assert.ok(res, "could not bound the Residential comparison");
+  assert.ok(!/not just these comps/.test(res[0]),
+    "the Residential card compares against the live estimate; it has no stale-average caveat to make");
+});
+
+test("the analysis gate names a section that is actually on the form", () => {
+  // It said "Property details", which the form has not been called since the
+  // owner retitled it "Details for comps" on 2026-08-08 — so the one
+  // instruction for unlocking the analysis tools named nothing on screen.
+  const gate = html.match(/id="analysisEmpty"[^>]*>([^<]*)</);
+  assert.ok(gate, "could not find the analysis gate copy");
+  assert.ok(!/Property details/.test(gate[1]),
+    "the analysis gate points at 'Property details', a section name the form does not use");
+  const named = gate[1].match(/Enter an NOI in (.+?) above/);
+  assert.ok(named, "the analysis gate no longer names where the NOI field is: " + gate[1]);
+  // Pinned against the summary the form actually renders, so a future retitle
+  // fails the build here rather than stranding this sentence again.
+  assert.ok(html.includes("+ " + named[1] + " <span"),
+    'the analysis gate sends the reader to "' + named[1] + '", which is not the form\'s own summary label');
+});

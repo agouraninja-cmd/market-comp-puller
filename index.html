@@ -3405,7 +3405,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="rd-tile">
               <div id="compareMidLab" class="rd-lab">Market Avg $/SF</div>
               <div id="marketPpsfVal" class="text-2xl font-semibold text-[#1A2433] mt-1">-</div>
-              <div id="compareMidSub" class="text-xs text-[#68707E] mt-1">from pulled comps</div>
+              <div id="compareMidSub" class="text-xs text-[#68707E] mt-1">for this market, not just these comps</div>
             </div>
             <div id="deltaTile" class="rd-tile">
               <div id="compareRightLab" class="text-xs font-semibold uppercase tracking-wider opacity-70">Difference vs. Market</div>
@@ -3861,7 +3861,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
 
         <!-- no-print: an instruction to interact with the app is noise on paper. -->
-        <p id="analysisEmpty" class="hidden no-print text-sm text-[#5A6473]">Enter an NOI in Property details above to unlock the analysis tools for this building.</p>
+        <p id="analysisEmpty" class="hidden no-print text-sm text-[#5A6473]">Enter an NOI in Details for comps above to unlock the analysis tools for this building.</p>
 
         </div><!-- /tabAnalysis -->
 
@@ -5568,11 +5568,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       return renderResidentialAskComparison(parsed, card);
     }
 
+    // The sub-label said "from pulled comps" until 2026-08-23, and the figure
+    // it sits under is parsed.avg_price_per_sqft — the search's own market-level
+    // number, which is deliberately NOT recomputed when the reader curates
+    // (the stat tile above carries the same rule, and labels itself "Market"
+    // precisely so it cannot be read as the average of the table).
+    //
+    // So excluding one comp moved the hero, the trust line ("1 excluded by
+    // you"), the table footer and the spread bar, and left this card quoting
+    // the same average under a label crediting the very comps that had just
+    // changed — then computing the reader's pricing position against it. On the
+    // sample that read "MEDIAN OF 3 SALE COMPS · $110/SF" in the footer and
+    // "$113 · from pulled comps" here: two figures claiming one source, with
+    // nothing on screen saying which to believe.
+    //
+    // Worded to be true however the search derived it (it may average the
+    // comps it returned or read the market), and to answer the question the
+    // old label provoked: why did this not move when I excluded a comp?
+    // Display only — the arithmetic below is untouched. Keep it in step with
+    // the markup default on #compareMidSub, which paints before this runs.
     setCompareLabels(
       "Your Property vs. Market",
       "Your Property $/SF",
       "Market Avg $/SF",
-      "from pulled comps",
+      "for this market, not just these comps",
       "Difference vs. Market"
     );
 

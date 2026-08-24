@@ -2,6 +2,18 @@
   {
     "date": "2026-08-24",
     "type": "improvement",
+    "title": "The market box's example rotates, and can no longer cost a billed search",
+    "details": "The Explorer's box carried one hardcoded example forever. It stopped being decoration last change, when Tab began typing it in — so it is a working query now, and it rotates through the 27 seeded markets on every page load, round-robin across the four types so three refreshes do not show three industrials. Rotating turned up a real hazard in the fixed example it replaces: industrial-boise-id is NOT in market-seed.json. It exists in production only because somebody explored that market once, and a market with no standing page turns the dropdown's top row into “Explore this market, build the … page →” — so Tab then Enter would have spent a billed search and 30-60 seconds on a build nobody asked for the moment that page aged out. The rotation reads MARKET_PAGES, the committed seed, which getMarketPage always resolves with no database read, so every example is guaranteed free navigation. Substituted at serve time like NAV_LINKS and AUTH_BOOT, and fails safe: it replaces a whole attribute, so if index.html's copy ever drifts the replace no-ops and the static example stands (which is why the fallback in the markup is now a seeded market too). It advances a counter rather than picking at random, so a fresh process always serves entry 0, and MARKET_EXAMPLE pins it outright — scripts/shot.js sets that on both sides of a comparison, because byte-identical PNGs are how “this changed nothing visually” gets proved here. The Tab handler needed no change at all: it reads the placeholder at keypress time, so it types whatever the server chose."
+  },
+  {
+    "date": "2026-08-24",
+    "type": "improvement",
+    "title": "Tab fills the market box with the example it is showing",
+    "details": "The Explorer's search box says “e.g. industrial Boise, ID” and there was no way to take it up on that. Pressing Tab in an empty box now types that query in and opens the dropdown, so Tab then Enter reads a market from a standing start. It only fires while the box is EMPTY and never on Shift+Tab — Tab is the focus key, and taking it from somebody who has typed half a market would trap them in the field. The example is read off the placeholder rather than kept as a second copy of the string, so the two can never disagree about what Tab is about to type. The placeholder itself began rotating in the same release, and Tab needed no change to follow it."
+  },
+  {
+    "date": "2026-08-24",
+    "type": "improvement",
     "title": "The header gear is gone; Settings lives in the account menu",
     "details": "The settings panel shipped with two doors — a gear in the header bar and a Settings row in the account menu — and the gear was the redundant one for everybody who could see both. The header is back to Explore / Pricing / My Desk / account circle, and the account menu is now the single door. The panel is therefore signed-in only, which costs a signed-out reader of a shared report the in-app theme switch; every server-rendered header still carries its own toggle, the choice persists across both, and light is the default either way."
   },

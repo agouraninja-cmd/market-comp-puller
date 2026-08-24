@@ -143,4 +143,45 @@ function siblingMarkets(marketKey) {
   return METRO_GROUPS[metro].filter((m) => m !== key);
 }
 
-module.exports = { marketOf, marketForLog, US_STATES, METRO_GROUPS, metroOf, siblingMarkets };
+// ---------------------------------------------------------------------------
+// The Market Explorer's example query, and the order it rotates through.
+//
+// The box on the desk says "e.g. industrial Ontario, CA", and since Tab types
+// that example in, the placeholder is a WORKING QUERY rather than decoration.
+// That is the whole constraint on this function: every string it returns must
+// name a market with a standing page, because a market without one turns the
+// dropdown's top row into "Explore this market, build the … page →" — so
+// Tab then Enter would spend a billed search and 30-60 seconds on a build
+// nobody asked for. Feed it MARKET_PAGES (the committed seed, resolvable with
+// no database read), never the merged store: a page the Explorer published
+// once can age out, and a database read can come back empty.
+//
+// Round-robin ACROSS types rather than straight down the file, so three
+// refreshes do not show three industrials. The seed is 8 industrial / 8
+// office / 5 retail / 6 multifamily, which grouped would mean eight loads
+// before an office appears.
+//
+// Deterministic given the same map: the caller's counter is what advances, so
+// a fresh process always serves entry 0 and two runs of scripts/shot.js
+// produce byte-identical PNGs. Do not reach for Math.random() here.
+function exampleMarketOrder(pages) {
+  const byType = new Map(); // insertion order = first appearance in the map
+  for (const key of Object.keys(pages || {})) {
+    const p = pages[key];
+    if (!p || !p.type || !p.city || !p.state) continue;
+    // Lower-cased type, matching the copy the box has always used. The
+    // Explorer's parser lower-cases anyway, and strips the comma.
+    const label = `${String(p.type).toLowerCase()} ${p.city}, ${p.state}`;
+    if (!byType.has(p.type)) byType.set(p.type, []);
+    byType.get(p.type).push(label);
+  }
+  const lanes = [...byType.values()];
+  const out = [];
+  for (let i = 0; lanes.some((l) => i < l.length); i++) {
+    for (const lane of lanes) if (i < lane.length) out.push(lane[i]);
+  }
+  return out;
+}
+
+module.exports = { marketOf, marketForLog, US_STATES, METRO_GROUPS, metroOf, siblingMarkets,
+  exampleMarketOrder };

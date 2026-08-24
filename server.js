@@ -109,7 +109,8 @@ const RENEWAL = require("./renewal-watch");
 // the parse. US_STATES is shared with the Explorer/market-page validators,
 // which stay US-only on purpose (the module recognizes Canadian provinces
 // internally, for the key only).
-const { marketOf, marketForLog, US_STATES, siblingMarkets } = require("./market");
+const { marketOf, marketForLog, US_STATES, siblingMarkets,
+  exampleMarketOrder } = require("./market");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -8170,6 +8171,43 @@ const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] ho
 const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
 const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls]) =>
   `<a href="${href}" class="${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}">${label}</a>`).join("");
+
+// --- The Market Explorer's example, rotated per page load (2026-08-24) ------
+//
+// The box carried one hardcoded example forever. It stopped being decoration
+// when Tab began typing it in, and rotating it shows that the Explorer covers
+// four types and 27 markets rather than reading as a Boise tool.
+//
+// TWO rules hold this up, and both are about what the example COSTS.
+//
+// It comes from MARKET_PAGES — the committed seed — and never from
+// allMarketPages(). A market with no standing page turns the dropdown's top
+// row into "Explore this market, build the … page →", so Tab then Enter
+// spends a billed search and 30-60 seconds. The seed is read from disk at
+// boot and getMarketPage() always resolves a seeded slug, so every example
+// here is guaranteed free navigation with no database read. (The example this
+// replaced, "industrial Boise, ID", was NOT seeded — it survived only because
+// somebody explored that market once.)
+//
+// And it advances a COUNTER rather than picking at random, so a fresh process
+// always serves entry 0. That is what keeps scripts/shot.js's byte-identical
+// PNG property true; MARKET_EXAMPLE pins it outright, which is what shot.js
+// actually sets. Never reach for Math.random() here.
+//
+// Unlike the three markers below it this one replaces a whole ATTRIBUTE, so
+// the constant spells it out and the substitution fails safe: if index.html's
+// copy ever drifts, replace() no-ops and the static example stays. A test
+// pins the two together.
+const MARKET_EXAMPLE_MARKER = 'placeholder="e.g. industrial Ontario, CA"';
+const MARKET_EXAMPLE_ORDER = exampleMarketOrder(MARKET_PAGES);
+let marketExampleAt = 0;
+function nextMarketExample() {
+  if (process.env.MARKET_EXAMPLE) return process.env.MARKET_EXAMPLE;
+  if (!MARKET_EXAMPLE_ORDER.length) return null; // no seed file — leave the markup alone
+  const pick = MARKET_EXAMPLE_ORDER[marketExampleAt % MARKET_EXAMPLE_ORDER.length];
+  marketExampleAt = (marketExampleAt + 1) % MARKET_EXAMPLE_ORDER.length;
+  return `e.g. ${pick}`;
+}
 
 // The shared header for every server-rendered page — since 2026-08-20 that
 // includes /how-it-works, which used to render its own hand-kept copy of this
@@ -21344,6 +21382,13 @@ const server = http.createServer((req, res) =>
         // only — see authBoot above for why that is safe and why index.html
         // being no-store is what makes it safe.
         .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])));
+      // Fourth rewrite: the Explorer's example query, rotated per load. An
+      // attribute rather than a marker comment, so a null (no seed file)
+      // leaves index.html's own example standing — see nextMarketExample.
+      const example = nextMarketExample();
+      if (example) {
+        html = html.replace(MARKET_EXAMPLE_MARKER, `placeholder="${escHtml(example)}"`);
+      }
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
     });

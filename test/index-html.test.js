@@ -783,8 +783,28 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   // search any market; the placeholder is only the example, with the
   // comma the rest of the product uses. appearance:none drops the
   // searchfield cancel gutter that ate the last letters on top of that.
-  assert.match(desk[0], /placeholder="e\.g\. industrial Boise, ID"/);
+  // This exact string is ALSO server.js's MARKET_EXAMPLE_MARKER, which the `/`
+  // handler swaps for a rotating example; test/routes.test.js pins the two
+  // together. What stands here is the fallback, and it names a SEEDED market
+  // on purpose — Tab types the example in, and a market with no standing page
+  // would make Tab-then-Enter a billed 30-60s build. "industrial Boise, ID"
+  // stood here until 2026-08-24 and was never seeded.
+  assert.match(desk[0], /placeholder="e\.g\. industrial Ontario, CA"/);
   assert.doesNotMatch(desk[0], /Try any market, e\.g\./);
+  // Tab on an empty box types that example in. It is READ off the
+  // placeholder rather than kept as a second copy, so the assertion above is
+  // also the assertion about what Tab types. The second check is the guard
+  // without which Tab would stop moving focus for anyone mid-query.
+  assert.match(
+    html,
+    /getAttribute\("placeholder"\)[\s\S]{0,200}?replace\(\/\^\\s\*e\\\.g\\\.\\s\*\//,
+    "the Explorer's Tab example is read off the placeholder, never a second copy"
+  );
+  assert.match(
+    html,
+    /e\.key === "Tab" && !e\.shiftKey[\s\S]{0,240}?!input\.value/,
+    "Tab only fills the Explorer box while it is empty and unmodified"
+  );
   assert.match(html, /\.rd-desk-market-in \{[^}]*appearance:\s*none/);
   assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
     "both chambers share a rd-chamber-head so the title hairline is one rule");

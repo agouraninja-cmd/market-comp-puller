@@ -2330,7 +2330,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="rd-desk-market-body">
           <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
           <div class="relative">
-            <input id="marketSearch" type="search" placeholder="e.g. industrial Boise, ID" autocomplete="off"
+            <!-- The placeholder is REPLACED at serve time, rotating through the
+                 seeded markets on every load (MARKET_EXAMPLE_MARKER in
+                 server.js matches this attribute byte for byte). What stands
+                 here is the fallback, so it must name a SEEDED market: Tab
+                 types this example in, and a market with no standing page
+                 makes Tab-then-Enter a billed 30-60s build. -->
+            <input id="marketSearch" type="search" placeholder="e.g. industrial Ontario, CA" autocomplete="off"
                    class="rd-desk-market-in" />
             <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
           </div>
@@ -15059,10 +15065,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       resultsEl.querySelectorAll("[data-explore-type]").forEach((btn) =>
         btn.addEventListener("click", () => explore({ type: cap(btn.dataset.exploreType), city: p.city, state: p.state })));
     };
+    // Tab on an EMPTY box types the example the placeholder is already
+    // showing, so the quickest way to see what a query looks like is to
+    // accept the one in front of you. Read FROM the placeholder rather than
+    // kept as a second copy of the string, so the two can never disagree
+    // about what Tab is about to type.
+    const exampleQuery = () => (input.getAttribute("placeholder") || "")
+      .replace(/^\s*e\.g\.\s*/i, "").trim();
     input.addEventListener("focus", loadMarkets);
     input.addEventListener("input", () => loadMarkets().then(render));
     input.addEventListener("keydown", (e) => {
       if (e.key === "Escape") return hide();
+      // Only while the box is empty, and never on Shift+Tab or a modified
+      // Tab: Tab is the focus key, so taking it from somebody who has typed
+      // half a market would trap them in the field with no way out but the
+      // mouse.
+      if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
+          && !input.value && exampleQuery()) {
+        e.preventDefault();
+        input.value = exampleQuery();
+        loadMarkets().then(render); // setting .value fires no input event
+        return;
+      }
       if (e.key !== "Enter") return;
       e.preventDefault();
       if (exploring) return;

@@ -1232,6 +1232,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-mkt:last-child { border-bottom: 0; }
     .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
+    /* The search-demand line. Vars, not literals, so it follows dark mode with
+       everything else on the card rather than needing its own override. */
+    .dk-dem { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+    .dk-dem strong { color: var(--ink); font-weight: 600; }
     .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
     /* The deal board (O3). One row shape for all three lists — leaderboard,
@@ -12629,6 +12633,49 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       right.appendChild(un);
       head.appendChild(title); head.appendChild(right);
       box.appendChild(head);
+      // --- Search demand ----------------------------------------------------
+      // How many people looked at this market lately. Pro only, and the server
+      // decides that: `demand` is the figure, `demand_locked` is what a free
+      // account gets instead, and neither is present unless the feed offered
+      // one. Never compute or infer this from anything else on the page.
+      //
+      // Two copy rules the server's rules force onto this line: it says
+      // "people" from `viewers` and "searches" from `searches` and never
+      // swaps them, and it says nothing about WHO — the payload carries counts
+      // and no identity, by design.
+      if (w.demand) {
+        const d = document.createElement("div");
+        d.className = "dk-dem";
+        d.title = "Searches of this market by other people over the last "
+          + w.demand.window_days + " days. Your own searches are not counted.";
+        const people = Number(w.demand.viewers) || 0;
+        const runs = Number(w.demand.searches) || 0;
+        const inType = Number(w.demand.in_type) || 0;
+        if (!runs) {
+          d.textContent = "No one searched this market in the last " + w.demand.window_days + " days.";
+        } else {
+          const noun = people === 1 ? "person" : "people";
+          d.innerHTML = runs === people
+            ? `<strong>${people}</strong> ${noun} searched this market in the last ${w.demand.window_days} days`
+            : `<strong>${people}</strong> ${noun} ran <strong>${runs}</strong> searches here in the last ${w.demand.window_days} days`;
+          // Only when it is a real subset. "6 of them Industrial" on a card
+          // that is already Industrial and where every search was Industrial
+          // is a sentence that tells the reader nothing.
+          if (inType > 0 && inType < runs) {
+            d.innerHTML += `, ${inType} of them ${w.property_type}`;
+          }
+          d.innerHTML += ".";
+        }
+        box.appendChild(d);
+      } else if (w.demand_locked) {
+        const d = document.createElement("div");
+        d.className = "dk-dem";
+        // .unlock-comps-btn is the one sanctioned door to the pricing modal.
+        // Do not add a second prompt here.
+        d.innerHTML = "Pro shows how many people searched this market. "
+          + '<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">See Pro plans</button>';
+        box.appendChild(d);
+      }
       if (w.comps.length) {
         const label = document.createElement("div");
         label.className = "dk-new";

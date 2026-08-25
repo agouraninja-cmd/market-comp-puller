@@ -111,6 +111,10 @@ const RENEWAL = require("./renewal-watch");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES, siblingMarkets,
   exampleMarketOrder } = require("./market");
+// What counts as somebody looking at a market, and how those rows add up into
+// the figure a Pro subscriber sees on My Desk. Pure and tested, because every
+// line of it is a way the number could flatter us — see its header.
+const DEMAND = require("./search-demand");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -1530,6 +1534,59 @@ async function markWatchlistSeen(userId) {
   await saveAccountStore();
 }
 
+// --- Search demand (analytics_events -> the desk) ----------------------------
+//
+// The rows behind the "N people looked at this market" line. The RULES for
+// what counts live in the pure search-demand.js; this function is only the
+// read, and it is written to three constraints that module cannot enforce:
+//
+//   FILTERED AT THE DATABASE, not in Node. readRows() (the /admin path) pulls
+//   the whole table and reduces it in memory, which is right for a dashboard
+//   one person opens and wrong for a route every subscriber hits on every
+//   desk load. The window, the kinds and the markets all go into the query.
+//
+//   MARKET KEYS CONTAIN A COMMA. "Boise, ID" is also PostgREST's in.()
+//   separator, so values are quoted and percent-encoded with the separators
+//   left literal — pgInList's exact trap, and the reason this borrows it
+//   rather than joining the list itself.
+//
+//   NEVER THROWS. A demand figure is a bonus line on a card; a desk that
+//   would not render because an analytics read failed is a worse product than
+//   one with no number on it. Every failure resolves to "no rows", which the
+//   caller renders as a quiet market rather than an error.
+//
+// The file store is read too, unfiltered, for the same reason readRows does:
+// local dev has no database at all, and rows fall back to analytics.jsonl
+// during an outage. aggregateDemand re-applies every rule to both sources, so
+// the loose file read cannot let through anything the query would have
+// excluded.
+async function demandRowsForMarkets(markets, cutoff) {
+  const wanted = (Array.isArray(markets) ? markets : [markets]).filter(Boolean);
+  if (!wanted.length) return [];
+  const cols = "ts,kind,prop_type,market,source,visitor_id,user_id";
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        `analytics_events?select=${cols}` +
+        `&kind=in.(${DEMAND.DEMAND_KINDS.map((k) => encodeURIComponent(k)).join(",")})` +
+        `&market=in.(${pgInList(wanted)})` +
+        `&ts=gte.${encodeURIComponent(cutoff)}` +
+        `&order=ts.desc&limit=5000`) || [];
+    } catch (err) {
+      console.error("search demand read failed (desk renders without it):", err.message);
+    }
+  }
+  let fileRows = [];
+  try {
+    const want = new Set(wanted);
+    fileRows = (await readRowsFromFile(ANALYTICS_FILE)).filter((r) => r && want.has(r.market));
+  } catch (err) {
+    console.error("search demand file read failed:", err.message);
+  }
+  return [...dbRows, ...fileRows];
+}
+
 // The feed itself, shared by GET /api/watchlist/feed and the digest so the
 // two can never quote different numbers for the same market. Extracted
 // 2026-08-13 when the digest arrived; the body is the route's, unchanged.
@@ -1545,10 +1602,32 @@ async function markWatchlistSeen(userId) {
 // from different places (a request, versus a loop over accounts) and
 // resolving entitlements is the one thing in this app that must have exactly
 // one owner.
-async function buildWatchlistFeed(user, ent, cutoffOf) {
+//
+// `opts.withDemand` is OPT-IN, and only the page asks for it. The digest does
+// not, for the reason the whole of watchlist-digest.js is written to: it is
+// the only thing this product sends uninvited, its bar is "when in doubt,
+// send nothing", and a search count is not news anybody asked to be mailed.
+// Opting in also keeps the digest's nightly loop over every account from
+// firing one analytics query per watcher for a figure it would then discard.
+async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
   const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
   const items = await listWatchlist(user.id);
   const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  // Pro only, and read ONCE for every watched market rather than per card: a
+  // desk with six markets is one query, not six. `excludeUserId` is what
+  // stops a broker's own searches being reported back to them as interest
+  // from other people — see rule 1 in search-demand.js.
+  const wantDemand = Boolean(opts && opts.withDemand) && Boolean(ent.canSeeSearchDemand);
+  let demandBuckets = null;
+  if (wantDemand && items.length) {
+    const cutoff = DEMAND.demandCutoff(Date.now(), DEMAND.DEMAND_WINDOW_DAYS);
+    const rows = await demandRowsForMarkets(items.map((w) => w.market), cutoff);
+    demandBuckets = DEMAND.aggregateDemand(rows, {
+      now: Date.now(),
+      windowDays: DEMAND.DEMAND_WINDOW_DAYS,
+      excludeUserId: user.id,
+    });
+  }
   let unseen = 0;
   const out = [];
   for (const w of items) {
@@ -1594,6 +1673,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
       median_psf, new_count: fresh.length,
       ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
+      // Always present for a subscriber, including at zero — "nobody searched
+      // this market in 30 days" is a true answer and a useful one, and an
+      // omitted field would blank the line on exactly the quiet markets worth
+      // knowing about. Free callers get the flag instead of the figure, which
+      // is what the card's upgrade prompt hangs off; the count itself is
+      // never computed for them.
+      ...(demandBuckets
+        ? { demand: DEMAND.demandPayload(demandBuckets[w.market], w.property_type, DEMAND.DEMAND_WINDOW_DAYS) }
+        : {}),
+      ...(opts && opts.withDemand && !ent.canSeeSearchDemand ? { demand_locked: true } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
       ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
@@ -15800,7 +15889,8 @@ const server = http.createServer((req, res) =>
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at,
+        { withDemand: true });
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });

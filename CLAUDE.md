@@ -2242,6 +2242,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     use of that key), so the link authenticates itself for somebody who is not
     signed in, months later, on a phone. `&on=1` is the same link in reverse —
     a one-way off switch with no way back is a support ticket.
+- **Search demand on the desk** (2026-08-25). Each watched market on My Desk
+  carries a line saying how many people searched it lately: "9 people ran 14
+  searches here in the last 30 days, 6 of them Industrial." It reads
+  `analytics_events`, which has logged every search since long before this
+  shipped; nothing new is recorded and no hot path changed.
+  **Pro-only**, via `canSeeSearchDemand` in `entitlements.js` — Pro, tester and
+  comped-admin get it; a **single-report purchase does not** (the Address
+  Explorer's argument: a $39 unlock buys one property's history, and a
+  market's demand is not scoped to a property), and it is **false on a dark
+  deployment** (the vault's argument, not the Explorer's: it never existed
+  before the tier, and it reports this site's own traffic). A free account
+  gets `demand_locked: true` on the feed item instead of a figure, which the
+  card renders as the standard `.unlock-comps-btn` prompt.
+  The RULES live in the pure, tested **`search-demand.js`**; server.js owns
+  only the read (`demandRowsForMarkets`, filtered at the database — the
+  `/admin` reducer's whole-table scan is right for a dashboard one person
+  opens and wrong for a route every subscriber hits). Four of them exist
+  because each is a way the number could flatter us, and the file's bar is
+  under-claim, never over-:
+  - **The broker's own searches are excluded** (`excludeUserId`). Without it
+    the first thing a broker sees on their home market is themselves,
+    reported as somebody else's interest.
+  - **Explorer sweeps are excluded** (`source: "explore"`). One Pro
+    subscriber walking a market address by address is not demand.
+  - **A `signup_gate` counts** — a blocked visitor wanted the same answer —
+    but is dropped when that visitor completed a search in the same market
+    the same UTC day, because that is one attempt writing two rows.
+  - **People and searches are separate numbers**, and where a row carries no
+    `visitor_id` (anything before migration 026) they all collapse into ONE
+    person rather than one each. Undercounting is the allowed error.
+  Aggregate only: the payload is `{ window_days, searches, viewers, in_type }`
+  and carries no address, email, visitor id or user id.
+  `buildWatchlistFeed(user, ent, cutoffOf, { withDemand: true })` is
+  **opt-in, and only the page opts in** — the digest does not, both because a
+  search count is not news anybody asked to be mailed and because its loop
+  over every account would fire one analytics query per watcher for a figure
+  it discards.
+  **It needs traffic to be worth reading.** At today's volume most markets
+  answer "no one searched this market in the last 30 days", which is honest
+  and is also the site telling a broker how quiet it is. The same
+  prerequisite blocks routing real leads to contributors.
 - `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
   `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
   one route and one input: 401 if not signed in, rate-limited per IP, and the

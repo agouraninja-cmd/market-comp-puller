@@ -92,7 +92,7 @@ test("every Pro-granting branch answers every Pro question", () => {
   for (const key of Object.keys(pro)) {
     assert.ok(key in admin, `admin entitlements are missing "${key}"`);
   }
-  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses", "portfolioMaxItems", "portfolioValues"]) {
+  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses", "canSeeSearchDemand", "portfolioMaxItems", "portfolioValues"]) {
     assert.deepEqual(admin[key], pro[key], `admin should match Pro on "${key}"`);
   }
 });
@@ -236,6 +236,35 @@ test("the Address Explorer is Pro-only once the tier is on", () => {
   assert.equal(
     ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canExploreAddresses,
     false, "expired");
+});
+
+test("search demand is Pro-only, and a single-report purchase does not buy it", () => {
+  // Same shape as the Explorer test above, plus the one rule that is its own:
+  // a $39 unlock buys one property's history, and a market's search demand is
+  // not scoped to a property.
+  assert.equal(ent({ user: null }).canSeeSearchDemand, false, "anonymous");
+  assert.equal(ent({ user: USER }).canSeeSearchDemand, false, "free account");
+  assert.equal(ent({ user: USER, subscription: activeSub() }).canSeeSearchDemand, true, "active");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", cancel_at_period_end: true }) }).canSeeSearchDemand,
+    true, "cancelling, still inside the paid period");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }) }).canSeeSearchDemand,
+    true, "inside the payment grace window");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canSeeSearchDemand,
+    false, "expired");
+  assert.equal(
+    ent({ user: USER, reportId: "r1", purchase: { report_id: "r1" } }).canSeeSearchDemand,
+    false, "single-report purchase");
+});
+
+test("search demand stays dark when the Pro tier is off", () => {
+  // Unlike the Explorer and the desk's value column, this was never free
+  // before the tier existed — and it reports this site's own traffic, which a
+  // dark deployment must not hand to every anonymous visitor.
+  assert.equal(computeEntitlements({ now: NOW, enabled: false, user: USER }).canSeeSearchDemand, false);
+  assert.equal(computeEntitlements({ now: NOW, enabled: false, user: null }).canSeeSearchDemand, false);
 });
 
 test("free account: FREE_MAX_COMPS comps and three exports a month", () => {

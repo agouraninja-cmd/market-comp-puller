@@ -3279,11 +3279,30 @@ html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
 cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
-It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
-cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
-call) and the row went back to one line, so `.rd-row-2up` and its
+Since 2026-08-23 that row sits **inside `<details id="searchSettings">`,
+behind a line stating its current values** ("Sales & leases · last 24 months ·
+size from public records", with a `Change` affordance), so the form asks for
+an address and nothing else. The app already held an answer to all three: two
+have defaults, the window's own caption says "Recommended for Industrial", and
+the size is looked up from public records or the footprint on most searches —
+asking is now stating. **The line is DERIVED, never written once**
+(`refreshSearchSettingsLine`), and that is the whole cost of the change: three
+visible controls explain themselves, while a stale summary describes a search
+that is not the one about to run, with the controls it describes hidden. Only
+the lookback has a funnel (`setLookbackControls`); focus and size are assigned
+directly by `rerunHistory`, the shared-report restore, the record-backed size
+autofill and `dropMachineSize`, none of which fire an event, so each calls the
+refresh itself. The footprint estimate is the one machine write that needs no
+call of its own, because it dispatches `input` on `#targetSize`. A test pins
+every one of those seams and another executes the function, because the
+failure is invisible on screen. Every field id is unchanged, so
+`targetRange()`, the footprint estimate and every report restore are
+untouched.
+The row was briefly a 2x2 grid (2026-08-16) carrying the asking price as a
+fourth cell; the price moved down into "Details for comps" on 2026-08-17
+(owner's call) and the row went back to one line, so `.rd-row-2up` and its
 wrapped-grid border rules are gone from the style block rather than left
-sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+sitting unused. Three is still the ceiling: the build chamber is ~552px, so a
 fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
 to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
 what the deleted rules existed to patch. **Asking price is a Refine field

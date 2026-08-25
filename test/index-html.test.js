@@ -1663,3 +1663,216 @@ test("index.html refuses the shop question in org-access.js's own words", () => 
   assert.ok(html.includes(`"${expected}"`),
     `the page's refusal has drifted from validateShopKind's: ${expected}`);
 });
+
+// ---------------------------------------------------------------------------
+// The collapsed search settings (2026-08-23). Focus, Lookback and Property SF
+// moved behind a line that states their current values, so the form's only
+// open question is the address. The trade is that the line IS the only thing
+// on screen saying what the search will do — three controls the reader can
+// see explain themselves, and a summary that has gone stale does not.
+// ---------------------------------------------------------------------------
+
+test("the collapsed settings line states what the search will actually do", () => {
+  const words = html.match(/const TX_FOCUS_WORDS = \{[^}]*\};/);
+  const fn = html.match(/function refreshSearchSettingsLine\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(words && fn, "could not bound refreshSearchSettingsLine — renamed or moved?");
+
+  const line = { textContent: "" };
+  const focus = { value: "both" };
+  const size = { value: "" };
+  let months = 24;
+  const ctx = vm.createContext({
+    searchSettingsLine: line,
+    txFocusSel: focus,
+    targetSizeInput: size,
+    selectedLookbackMonths: () => months,
+    // valuation.js's, copied rather than required: the browser reads it off
+    // the VALUATION global, which this extraction has no way to destructure.
+    numericValue: (str) => {
+      if (str == null) return NaN;
+      const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+      return m ? parseFloat(m[0]) : NaN;
+    },
+  });
+  new vm.Script(`${words[0]}\n${fn[0]}\n;this.refresh = refreshSearchSettingsLine;`,
+    { filename: "index.html" }).runInContext(ctx);
+
+  // The defaults, which is what nearly every visitor will read. Naming the
+  // size default is the point: somebody who leaves the box empty should learn
+  // it gets looked up, not wonder whether they have cost themselves the
+  // number the hero multiplies.
+  ctx.refresh();
+  assert.equal(line.textContent, "Sales & leases · last 24 months · size from public records");
+
+  focus.value = "leases";
+  months = 6;
+  ctx.refresh();
+  assert.equal(line.textContent, "Leases only · last 6 months · size from public records");
+
+  // A size that IS set replaces the promise to look one up.
+  focus.value = "sales";
+  months = 36;
+  size.value = "24800";
+  ctx.refresh();
+  assert.equal(line.textContent, `Sales only · last 36 months · ${(24800).toLocaleString()} SF`);
+  assert.match(line.textContent, / SF$/);
+
+  // A half-typed custom window. Submit refuses this state, and while the
+  // control is collapsed this line is the only thing that can say why — so it
+  // must not quietly name a window that is not set.
+  months = null;
+  ctx.refresh();
+  assert.match(line.textContent, /lookback not set/);
+});
+
+test("every seam that moves focus, window or size refreshes the settings line", () => {
+  // The failure this guards is invisible on screen: the line keeps describing
+  // the previous search while the controls it describes are collapsed. Only
+  // the lookback has a funnel (setLookbackControls); focus and size are
+  // assigned directly at the restore paths, so each of those needs the call.
+  const seams = [
+    // The user-facing controls.
+    [/txFocusSel\.addEventListener\("change", refreshSearchSettingsLine\)/, "the focus select"],
+    [/function setLookbackControls\(months\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "setLookbackControls"],
+    // Machine writes that fire no "input" event of their own.
+    [/function dropMachineSize\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "dropMachineSize"],
+    [/noteMachineSize\(meta\.address, Math\.round\(found\)\);\s*\n\s*\/\/[\s\S]{0,220}?refreshSearchSettingsLine\(\)/,
+      "the record-backed size autofill"],
+    // Restores, which assign every one of the three without an event.
+    [/function rerunHistory\(m\) \{[\s\S]*?refreshSearchSettingsLine\(\)[\s\S]*?requestSubmit\(\)/, "rerunHistory"],
+    [/function syncSubjectFieldsToType\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "syncSubjectFieldsToType"],
+  ];
+  for (const [re, what] of seams) {
+    assert.match(html, re, `${what} can move a settings value without refreshing the line`);
+  }
+  // The footprint estimate is the one machine write that needs no call of its
+  // own: it dispatches "input" on #targetSize, and that listener refreshes.
+  assert.match(html,
+    /getElementById\("targetSize"\)\.addEventListener\("input", \(e\) => \{[\s\S]*?refreshSearchSettingsLine\(\)/,
+    "the size input listener no longer refreshes the line, which also covers the footprint estimate");
+});
+
+test("the three controls are behind the settings summary, and keep their ids", () => {
+  const open = html.indexOf('<details id="searchSettings"');
+  const close = html.indexOf("</details>", open);
+  assert.ok(open > 0 && close > open, "the search-settings disclosure is gone");
+  const inside = html.slice(open, close);
+  for (const id of ["txFocus", "lookback", "lookbackCustom", "targetSize", "lookbackHint", "targetSizeHint"]) {
+    assert.ok(inside.includes(`id="${id}"`), `#${id} left the settings disclosure`);
+  }
+  // The summary has to carry the line and a word saying it can be opened: a
+  // row of values with only a chevron reads as a status line, not a control.
+  assert.match(inside, /<summary[\s\S]*?id="searchSettingsLine"[\s\S]*?rd-sum-act[\s\S]*?<\/summary>/);
+});
+
+test("the footprint estimate points at where the size actually is", () => {
+  // It said "edit it under Details for comps", which had been wrong since the
+  // size moved back onto the form (2026-08-16): it sent anyone correcting an
+  // estimate to a drawer that does not contain the field.
+  const note = html.match(/estNote\.textContent = `[^`]*`/);
+  assert.ok(note, "could not find the footprint estimate's note");
+  assert.ok(!/Details for comps/.test(note[0]),
+    "the estimate note points at Details for comps, which has not held the size since 2026-08-16");
+  assert.match(note[0], /change it below/);
+});
+
+// ---------------------------------------------------------------------------
+// Two labels that credited the wrong thing (2026-08-23). Both were found by
+// running the app and reading the screen, which is the only way this class
+// shows up: each sentence is fine in isolation and wrong beside its neighbour.
+// ---------------------------------------------------------------------------
+
+test("the market-average card does not credit the comps it ignores", () => {
+  // #compareMidSub sits under parsed.avg_price_per_sqft, which is deliberately
+  // NOT recomputed when the reader excludes a comp. Measured on the sample:
+  // excluding one moved the hero to $7,775,000-$8,500,000, the footer to
+  // "MEDIAN OF 3 SALE COMPS - $110/SF" and the trust line to "1 excluded by
+  // you", while this card held $113 under a label crediting those same comps.
+  //
+  // The markup default paints before renderComparison runs, so the two have to
+  // agree or the honest label is preceded by a flash of the misleading one.
+  const markup = html.match(/id="compareMidSub"[^>]*>([^<]*)</);
+  assert.ok(markup, "could not find the #compareMidSub default");
+  const call = html.match(/setCompareLabels\(\s*"Your Property vs\. Market",[\s\S]*?\n\s*\);/);
+  assert.ok(call, "could not find the CRE comparison's setCompareLabels call");
+  assert.ok(call[0].includes('"' + markup[1] + '"'),
+    "#compareMidSub's default has drifted from the label renderComparison paints: " + markup[1]);
+
+  // Scoped to the two sites that actually reach a screen rather than the whole
+  // file: the comment at the call site quotes the old wording on purpose, and
+  // a blanket search would forbid explaining the very bug being fixed.
+  for (const [where, text] of [["the markup default", markup[1]], ["renderComparison", call[0]]]) {
+    assert.ok(!/from pulled comps/.test(text),
+      where + " credits the pulled comps for a figure that ignores the reader's exclusions");
+  }
+
+  // Whatever the wording becomes, it has to place the figure at the market
+  // rather than at this reader's comp set — that is the whole correction.
+  assert.match(markup[1], /market/i);
+
+  // The Residential branch compares the ask against lastValuation, which DOES
+  // track curation, so it must never inherit this caveat.
+  const res = html.match(/function renderResidentialAskComparison\([\s\S]*?setCompareLabels\([\s\S]*?\);/);
+  assert.ok(res, "could not bound the Residential comparison");
+  assert.ok(!/not just these comps/.test(res[0]),
+    "the Residential card compares against the live estimate; it has no stale-average caveat to make");
+});
+
+test("the analysis gate names a section that is actually on the form", () => {
+  // It said "Property details", which the form has not been called since the
+  // owner retitled it "Details for comps" on 2026-08-08 — so the one
+  // instruction for unlocking the analysis tools named nothing on screen.
+  const gate = html.match(/id="analysisEmpty"[^>]*>([^<]*)</);
+  assert.ok(gate, "could not find the analysis gate copy");
+  assert.ok(!/Property details/.test(gate[1]),
+    "the analysis gate points at 'Property details', a section name the form does not use");
+  const named = gate[1].match(/Enter an NOI in (.+?) above/);
+  assert.ok(named, "the analysis gate no longer names where the NOI field is: " + gate[1]);
+  // Pinned against the summary the form actually renders, so a future retitle
+  // fails the build here rather than stranding this sentence again.
+  assert.ok(html.includes("+ " + named[1] + " <span"),
+    'the analysis gate sends the reader to "' + named[1] + '", which is not the form\'s own summary label');
+});
+
+// The sample report is the one CompNinja a prospect reads before signing up,
+// so its illustrative data has to survive the product's own honesty checks.
+test("the sample report's stated search radius covers its own comps", () => {
+  const V = require("../valuation.js");
+  const i = html.indexOf("const SAMPLE_REPORT");
+  assert.ok(i > 0, "could not find SAMPLE_REPORT");
+  const src = html.slice(i, html.indexOf("\n  };", i) + 5);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.S = SAMPLE_REPORT;", { filename: "index.html" }).runInContext(ctx);
+  const S = ctx.S;
+
+  const R = 3958.8, rad = (d) => (d * Math.PI) / 180;
+  const miles = (a, b, c, d) => {
+    const dLat = rad(c - a), dLon = rad(d - b);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  };
+  const sLat = Number(S.subject_lat), sLng = Number(S.subject_lng);
+  const dists = S.comps
+    .filter((c) => isFinite(Number(c.lat)) && isFinite(Number(c.lng)))
+    .map((c) => miles(sLat, sLng, Number(c.lat), Number(c.lng)));
+  assert.ok(dists.length >= 3, "the sample's comps lost their coordinates");
+  const farthest = Math.max(...dists);
+
+  const claimed = V.parseRadiusMiles(S.search_radius);
+  assert.ok(claimed != null, `the sample's search_radius states no distance: ${S.search_radius}`);
+
+  // The claim said "~5 miles" against comps 8-17 miles out until 2026-08-23.
+  // Nothing wrong reached the screen — reconcileRadiusClaim suppressed the
+  // line once the real distances arrived (that is what #166 shipped) — but
+  // the demo therefore showed no search radius at all, and the fixture was
+  // relying on the product papering over it on every render.
+  assert.ok(!V.radiusClaimContradicted(S.search_radius, farthest),
+    `the sample claims ${claimed} mi but its own comps reach ${farthest.toFixed(1)} mi, so the report suppresses the line`);
+
+  // Stricter than radiusClaimContradicted on purpose: that function allows a
+  // 25% slack because a real search's radius is approximate. This fixture is
+  // written by us, so it should cover its comps outright rather than survive
+  // on the tolerance — otherwise a later comp edit silently spends the slack.
+  assert.ok(claimed >= farthest,
+    `the sample's radius (${claimed} mi) only clears its farthest comp (${farthest.toFixed(1)} mi) on slack`);
+});

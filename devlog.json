@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-25",
+    "type": "fix",
+    "title": "A failed extraction run reports why it failed instead of crashing on top of it",
+    "details": "The extraction harness gates the whole Archive block, and it says whether a run may be read as a verdict through its exit code: 0 means every file scored, 2 means something was excluded and the figures cover only part of the set, 1 means it never ran. On Windows a failed sign-in produced none of those. It printed the real reason correctly and then aborted with a libuv assertion and exit code -1073740791, because it called process.exit() the instant the response came back, while the HTTP sockets were still closing. Reproduced against production, not reasoned about. The sign-in failures now throw and the top level sets an exit code rather than pulling the process down, so Node closes its handles and leaves with the code the harness meant. A test reads the script and fails the build if a process.exit() ever appears after a fetch again, while leaving the pre-flight exits alone, since a dry run that reports its plan and stops has opened nothing. Also recorded, from the same session: a comp sheet row reading \"Feb 2026\" is extracted as 2026-02-01, silently, and imports as a day-precise date. The prompt both requires YYYY-MM-DD and forbids inventing a date, and the model resolves that by inventing the day. It has to be settled before the truth file is keyed, because it lands on the fabrication rate, and fabrication is the one number the spec calls fatal on its own."
+  },
+  {
     "date": "2026-08-23",
     "type": "fix",
     "title": "The sample report states a search radius that covers its own comps",

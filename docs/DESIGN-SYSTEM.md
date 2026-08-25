@@ -14,6 +14,10 @@ defined centrally, so changing one changes every page at once. Sizes, spacing
 and fonts are not yet tokenised; those are written into each stylesheet, so
 changing one means finding each place it appears.
 
+**For the non-visual half of the brand** — name, legal entity, voice, and the
+language rules that are promises rather than style choices — see
+[BRAND.md](BRAND.md).
+
 Read §1 before changing a colour. It is the shortest section and the only one
 with a trap in it.
 

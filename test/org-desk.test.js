@@ -681,6 +681,100 @@ test("auto-share fires once per report, and never on an old one", () => {
 });
 
 // ---------------------------------------------------------------------------
+// What a revoke and a firm share must not leave behind
+//
+// All three of these were found by driving the firm surfaces by hand on
+// 2026-08-19 and are invisible to a reader of the source: each one is a piece
+// of state that outlives the thing it described.
+// ---------------------------------------------------------------------------
+
+test("undoing an auto-share forgets the link it just revoked", async () => {
+  const fetch = makeFetch([["/api/shares/revoke", { body: { ok: true } }]]);
+  const ctx = load(AUTONOTICE_RE,
+    "this.fn = renderAutoShareNotice; this.setMeta = (m) => { currentMeta = m; };" +
+    " this.memo = () => lastPublished;",
+    "let currentMeta = null;\n" +
+    "let lastPublished = { parsed: {}, key: '[\"org\",[],false,\"o1\"]', result: { url: '/r/sh1' } };",
+    { fetch });
+  ctx.setMeta({ autoShared: { firm: "Colliers Boise", id: "sh1", url: "/r/sh1", undone: false } });
+  ctx.fn();
+  await buttons(ctx.dom.el("autoShareNotice"))[0].fire("click");
+  // The publish memo keys on the audience and on object identity, and a
+  // revoke changes neither. Without this reset, Undo followed by Share to the
+  // same firm handed back the URL that had just been revoked, under "Link
+  // copied. It is on <firm>'s desk now." — nothing published, nothing for a
+  // colleague to open, and no error anywhere.
+  assert.equal(ctx.memo().result, null, "the publish memo still holds the revoked link");
+  assert.equal(ctx.memo().parsed, null);
+});
+
+test("a shared report never shows the sender's auto-share line", () => {
+  // Shares published before publishCurrentReport began stripping it carry
+  // `autoShared` inside their stored payload, so the colleague opening a LIVE
+  // firm link was told "Removed from <firm>" on a report nobody had revoked —
+  // and, un-undone, was handed an Undo button for somebody else's share.
+  const ctx = load(AUTONOTICE_RE,
+    "this.fn = renderAutoShareNotice; this.setMeta = (m) => { currentMeta = m; };",
+    "let currentMeta = null;");
+  ctx.setMeta({ shared: true, autoShared: { firm: "Colliers Boise", id: "sh1", undone: true } });
+  ctx.fn();
+  assert.equal(ctx.dom.hidden("autoShareNotice"), true);
+  assert.equal(ctx.dom.text("autoShareNotice"), "", "a reader of a shared report was told about a revoke");
+});
+
+const PUBLISH_RE = /  async function publishCurrentReport\(opts = \{\}\) \{[\s\S]*?\n  \}/;
+
+test("a share carries the report, not the sender's note about sharing it", async () => {
+  const fetch = makeFetch([["/api/share", { body: { id: "sh2", url: "/r/sh2", visibility: "org" } }]]);
+  const ctx = load(PUBLISH_RE,
+    "this.publish = publishCurrentReport; this.meta = () => currentMeta;",
+    "let currentParsed = { comps: [] };\n" +
+    "let currentMeta = { address: '1 Main St', autoShared: { firm: 'Colliers Boise', id: 'sh1', undone: true } };\n" +
+    "let lastPublished = { parsed: null, key: '', result: null };\n" +
+    "const location = { pathname: '/', href: 'https://compninja.co/' };",
+    { fetch });
+  await ctx.publish({ visibility: "org", orgId: "o1" });
+  const sent = JSON.parse(fetch.log[0].init.body);
+  assert.equal(sent.meta.address, "1 Main St");
+  assert.ok(!("autoShared" in sent.meta), "the sender's auto-share note was stored inside the share");
+  // Stripped from the COPY that goes over the wire, never off the live report:
+  // the sender is still looking at their own notice, and its Undo needs the
+  // share id it names.
+  assert.ok(ctx.meta().autoShared, "the sender's own notice lost its Undo");
+});
+
+// ---------------------------------------------------------------------------
+// Attribution — whose comp is this
+// ---------------------------------------------------------------------------
+const BADGE_RE = /  function firmOfComp\(comp\) \{[\s\S]*?\n  \}\n\n  function sourceBadge\(comp\) \{[\s\S]*?\n  \}/;
+
+function loadBadge() {
+  return load(BADGE_RE, "this.badge = sourceBadge;",
+    "const SOURCE_TIERS = { broker_vault: { label: 'From your vault', cls: 'bv', legend: 'a private comp' } };\n" +
+    "const VALUATION = { tierOf: () => 'broker_vault' };\n" +
+    "function compTier(c) { return VALUATION.tierOf(c); }");
+}
+
+test("a colleague's comp names them on screen, not only on hover", () => {
+  const el = loadBadge().badge({ private: true, firm: "Colliers Boise", shared_by: "Dana Reyes" });
+  assert.match(el.textContent, /From Colliers Boise/);
+  // `title` is a desktop hover with no touch equivalent, so the attribution
+  // did not exist at all on a phone and was found by accident on a laptop.
+  // Whose comp it is decides whether a broker trusts the row and who they can
+  // ask about it, which is the point of sharing into a firm at all.
+  assert.match(el.textContent, /Dana Reyes/, "the sharer is hover-only again");
+  const cred = el.children[el.children.length - 1];
+  assert.ok(!/06603A/.test(cred.className),
+    "the firm credit is wearing the green Verified colour, which is a public claim it has not earned");
+});
+
+test("an unattributed firm comp still says which firm, and invents no name", () => {
+  const el = loadBadge().badge({ private: true, firm: "Colliers Boise" });
+  assert.equal(el.textContent, "From Colliers Boise");
+  assert.match(el.title, /Shared with Colliers Boise/);
+});
+
+// ---------------------------------------------------------------------------
 // The markup these functions reach for
 // ---------------------------------------------------------------------------
 test("every id the firm code reaches for exists in index.html", async () => {

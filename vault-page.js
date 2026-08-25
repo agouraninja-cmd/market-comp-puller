@@ -228,8 +228,33 @@ tbody tr:hover td{background:var(--wash)}
 tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
   border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
+/* Scrolling shadows, the same CSS-only pair the market pages' comps table
+   uses (MARKET_CSS's .scroll). The comp table is ~1200px wide inside a
+   ~1070px scroller on an ordinary laptop, and macOS
+   draws no scrollbar until something is already scrolling, so the last two
+   columns — Firm (the Share control that is the shared vault's ONLY entry
+   point) and the trash — were off the right-hand edge with nothing on screen
+   saying the table went any further. The two attachment:local layers are
+   opaque card-coloured patches pinned to the content, so each edge shadow is
+   covered while that end is in view and uncovered as it scrolls away: the
+   hint appears only when there is really more to see, with no script and no
+   scroll listener.
+
+   The shade is --edge rather than the 13%-black literal this pair shipped
+   with, because 13% black over a #1A2433 card is invisible and both pages
+   have a dark theme. --edge is right in both directions by construction — it
+   is the colour a border of this card already is, darker than the card in
+   light and lighter in dark — and in light mode it lands within a hair of
+   the literal it replaces. The patches need no such treatment: they are
+   var(--card) already. Keep the two copies in step. */
 .tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
+  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift);
+  background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,var(--edge),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,var(--edge),rgba(0,0,0,0));
+  background-position:left center,right center,left center,right center;
+  background-repeat:no-repeat;
+  background-size:28px 100%,28px 100%,13px 100%,13px 100%;
+  background-attachment:local,local,scroll,scroll}
 .msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}

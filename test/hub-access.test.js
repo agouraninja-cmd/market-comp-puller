@@ -247,3 +247,67 @@ test("ITEM_STATUSES agrees with migration 024's CHECK constraint", () => {
   const inSql = m[1].split(",").map((s) => s.trim().replace(/'/g, ""));
   assert.deepEqual(inSql, ITEM_STATUSES);
 });
+
+// --- who gets told a note arrived (migration 040) -------------------------
+//
+// The rule server.js applies before it uses somebody's inbox. Pure like
+// everything above it, so the whole of it is provable with no database and no
+// mail provider — which matters more here than usual, because the failure
+// this guards against is invisible from inside the app: too many emails does
+// not throw, it just makes somebody stop reading them.
+
+const { shouldNotifyByEmail } = require("../hub-access.js");
+
+const T0 = "2026-08-25T12:00:00Z";
+const mins = (n) => new Date(Date.parse(T0) + n * 60000).toISOString();
+const WINDOW = 2 * 60 * 1000;
+const ask = (o) => shouldNotifyByEmail({ now: T0, presentMs: WINDOW, ...o });
+
+test("somebody nobody has ever mailed about this hub gets the first note", () => {
+  assert.equal(ask({ seenAt: null, notifiedAt: null }), true);
+});
+
+test("muted beats everything, including never having been mailed", () => {
+  assert.equal(ask({ muted: true, seenAt: null, notifiedAt: null }), false);
+  assert.equal(ask({ muted: true, seenAt: mins(-600), notifiedAt: null }), false);
+});
+
+test("a second note while they are still away does not send a second email", () => {
+  // Mailed ten minutes ago, has not opened the hub since. This is the whole
+  // point of the rule: a chatty thread is one email, not one per note.
+  assert.equal(ask({ seenAt: mins(-90), notifiedAt: mins(-10) }), false);
+});
+
+test("opening the hub re-arms them", () => {
+  assert.equal(ask({ seenAt: mins(-5), notifiedAt: mins(-10) }), true);
+});
+
+test("somebody watching the hub right now is not emailed about it", () => {
+  // A visible tab polls every 15 seconds, so a seen_at this fresh means they
+  // are looking at the page as the note lands.
+  assert.equal(ask({ seenAt: mins(-0.5), notifiedAt: null }), false);
+  assert.equal(ask({ seenAt: mins(-0.5), notifiedAt: mins(-30) }), false);
+});
+
+test("present beats re-armed, and only inside the window", () => {
+  // One second outside it is an absence again, so a person who closed the tab
+  // is reachable on the next note rather than silenced by their last visit.
+  assert.equal(ask({ seenAt: mins(-2.1), notifiedAt: mins(-30) }), true);
+});
+
+test("an unparseable timestamp reads as absent and lands on send", () => {
+  // The deliberate direction for this rule: a bad row costs a duplicate, not
+  // a swallowed notification. The access rules above lean the other way.
+  assert.equal(ask({ seenAt: "not a date", notifiedAt: null }), true);
+  assert.equal(ask({ seenAt: mins(-5), notifiedAt: "not a date" }), true);
+});
+
+test("no presentMs means no presence window, not a zero-length one", () => {
+  // server.js always passes it; a caller that forgets must not silently
+  // suppress every notification.
+  assert.equal(shouldNotifyByEmail({ now: T0, seenAt: mins(-0.1), notifiedAt: null }), true);
+});
+
+test("called with nothing at all, it sends rather than throwing", () => {
+  assert.equal(shouldNotifyByEmail(), true);
+});

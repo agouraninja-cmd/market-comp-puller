@@ -1808,7 +1808,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
   `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
   index.html authors no copy of the menu any more, so adding a nav link is a
-  one-line edit to NAV_LINKS. Two traps: `APP_NAV_LINK_CLASS` must stay
+  one-line edit to NAV_LINKS.
+  **A fourth marker, `<!--BULK_RUN-->`, carries bulk valuation's run view**
+  (2026-08-25). `bulk-page.js` renders that table once; `/bulk` uses it
+  directly and index.html receives the same bytes, which is what lets a list
+  pasted into the main search render its run inline. Two copies would
+  eventually quote two different portfolio values for one run. It brings its
+  own `<style>` (index.html gets no `MARKET_CSS`) with a fallback on every
+  colour; its DOM ids are prefixed `bk`, because index.html already owns
+  `#gate` and `rows`/`msg`/`run` were one refactor from colliding; and
+  `BULK_RUN_JS` reads no form at all — it reports state through an injected
+  callback, since the homepage has no `#bulkText` to dereference.
+  `test/bulk-inline.test.js` pins the marker on both sides, compiles what is
+  actually served, and fails the build if index.html grows a hand-copy.
+  Two traps: `APP_NAV_LINK_CLASS` must stay
   identical to `#pricingLink`'s class string, because tailwind.css is purged
   against index.html alone and a utility that existed only in the server-side
   string would silently stop styling on a regen; and the marker must survive

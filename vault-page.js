@@ -240,13 +240,13 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
    hint appears only when there is really more to see, with no script and no
    scroll listener.
 
-   One deliberate difference from MARKET_CSS's copy: the shade is --edge
-   rather than a 13%-black literal, because 13% black is invisible on a
-   #1A2433 card and this page has a dark theme. --edge is the right token in
-   both directions by construction — it is the colour a border of this card
-   already is, darker than the card in light mode and lighter in dark — and
-   in light mode it lands within a hair of the literal it replaces. The
-   patches need no such treatment: they are var(--card) already. */
+   The shade is --edge rather than the 13%-black literal this pair shipped
+   with, because 13% black over a #1A2433 card is invisible and both pages
+   have a dark theme. --edge is right in both directions by construction — it
+   is the colour a border of this card already is, darker than the card in
+   light and lighter in dark — and in light mode it lands within a hair of
+   the literal it replaces. The patches need no such treatment: they are
+   var(--card) already. Keep the two copies in step. */
 .tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   margin-top:var(--s4);box-shadow:var(--shadow),var(--lift);
   background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),

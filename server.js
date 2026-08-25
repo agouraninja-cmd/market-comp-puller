@@ -7986,10 +7986,18 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
    card-coloured patches pinned to the content, so each edge shadow is
    covered exactly while that end is in view and uncovered as it scrolls
    away: the hint appears only when there is really more to see, with no
-   script and no scroll listener. */
+   script and no scroll listener.
+
+   The shade is --edge rather than a 13%-black literal: 13% black over a
+   #1A2433 card is invisible, so in dark mode the table went back to reading
+   as one with its right-hand columns missing (2026-08-25). --edge is right in
+   both directions by construction — it is the colour a border of this card
+   already is, darker than the card in light and lighter in dark — and in
+   light mode it lands within a hair of the literal it replaces. Kept in step
+   with vault-page.js's .tw, which carries the same pair. */
 .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift);
   background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
-    radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.13),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.13),rgba(0,0,0,0));
+    radial-gradient(farthest-side at 0 50%,var(--edge),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,var(--edge),rgba(0,0,0,0));
   background-position:left center,right center,left center,right center;
   background-repeat:no-repeat;
   background-size:28px 100%,28px 100%,13px 100%,13px 100%;

@@ -16261,7 +16261,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       badge.title = who
         ? `${who} shared this with ${firm}. It is not in CompNinja's public records.`
         : `Shared with ${firm}. It is not in CompNinja's public records.`;
-      return badge;
+      if (!who) return badge;
+      // The name goes ON SCREEN, in the verified credit's own shape below: a
+      // `title` is a desktop hover with no touch equivalent at all, so on a
+      // phone the attribution simply did not exist, and on a desktop it was
+      // found by accident. Whose comp it is decides whether a broker trusts
+      // the row and who they walk down the hall to ask about it, which is the
+      // whole point of sharing into a firm rather than publishing.
+      // Neutral gray, not the contributor credit's green: same shape, and
+      // deliberately not the same claim.
+      const wrapFirm = document.createElement("span");
+      wrapFirm.className = "inline align-middle";
+      wrapFirm.appendChild(badge);
+      const cred = document.createElement("span");
+      cred.className = "ml-1.5 text-[10px] text-[#68707E] align-middle";
+      cred.textContent = "· " + who;
+      wrapFirm.appendChild(cred);
+      return wrapFirm;
     }
     // Credit the contributing broker on a verified comp (server sets verified_by
     // by matching the comp back to the submission that supplied it).
@@ -16457,8 +16473,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function renderAutoShareNotice() {
     const el = document.getElementById("autoShareNotice");
     if (!el) return;
-    const a = currentMeta && currentMeta.autoShared;
     el.textContent = "";
+    // A reader of a SHARED report never owns the auto-share, whatever the
+    // payload says. Shares published before the strip in publishCurrentReport
+    // already carry an `autoShared` note, so this is what keeps those existing
+    // links from announcing a revoke to the colleague they were shared with.
+    if (currentMeta && currentMeta.shared) { el.classList.add("hidden"); return; }
+    const a = currentMeta && currentMeta.autoShared;
     if (!a || !a.firm) { el.classList.add("hidden"); return; }
     if (a.undone) {
       el.textContent = `Removed from ${a.firm}. Your colleagues can no longer open this link.`;
@@ -16483,6 +16504,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         });
         if (!res.ok) throw new Error("failed");
         a.undone = true;
+        // That link is now revoked, and nothing else invalidates the publish
+        // memo below. Its key is [visibility, viewers, includePrivate, orgId]
+        // and its other half is object identity on currentParsed, neither of
+        // which a revoke changes — so a member who undoes the auto-share and
+        // then chooses Share and picks My firm was handed the SAME dead URL
+        // under "Link copied. It is on <firm>'s desk now.", with nothing
+        // published and nothing for a colleague to open. Same reasoning as
+        // curation's reset: what the memo is holding stopped being true.
+        lastPublished = { parsed: null, key: "", result: null };
         renderAutoShareNotice();
       } catch (_) {
         undo.disabled = false;
@@ -18317,10 +18347,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (lastPublished.parsed === currentParsed && lastPublished.key === key && lastPublished.result) {
       return lastPublished.result;
     }
+    // `autoShared` is this tab's note about the auto-share LINE and its Undo:
+    // which firm, which share id, and whether it has been undone. It is
+    // presentation state about a share, not part of the report, and posting
+    // currentMeta verbatim persisted it into the share's own payload. The
+    // reader who paid for that is the colleague opening a LIVE firm link:
+    // their page rebuilt the notice out of the stored copy and told them
+    // "Removed from <firm>. Your colleagues can no longer open this link."
+    // on a report that was never revoked, or handed them an Undo button for
+    // somebody else's share (the server is scoped, so it 404s rather than
+    // revoking, which makes it a lie with an error at the end of it).
+    const meta = { ...currentMeta };
+    delete meta.autoShared;
     const r = await fetch("/api/share", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: currentParsed, meta: currentMeta, ...opts }),
+      body: JSON.stringify({ data: currentParsed, meta, ...opts }),
     });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));

@@ -69,6 +69,8 @@ const TABLES = [
   ["org_subscriptions",   "033-org-billing.sql"],
   ["bulk_jobs",           "036-bulk-valuations.sql"],
   ["bulk_job_items",      "036-bulk-valuations.sql"],
+  ["hub_notify",          "040-hub-note-emails.sql"],
+  ["hub_email_prefs",     "040-hub-note-emails.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -195,6 +197,12 @@ const COLUMNS = [
   // instead of degrading one setting. Named here because that failure looks
   // like the firm feature being broken, not like a migration being unrun.
   ["orgs",              ["kind"],                               "036-org-shop-kind.sql"],
+  // Both columns of the one-nudge rule. Their absence would not break posting
+  // a note (every hub_notify read is wrapped and degrades to "mail them"), but
+  // it WOULD turn one email per absence into one per note, which is the
+  // failure most likely to make somebody switch the feature off for good.
+  ["hub_notify",        ["seen_at", "notified_at"],             "040-hub-note-emails.sql"],
+  ["hub_email_prefs",   ["notify"],                             "040-hub-note-emails.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

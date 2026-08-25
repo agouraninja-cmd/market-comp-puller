@@ -952,6 +952,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        largest text in the frame (Direction N). Still above the 16px iOS
        zoom floor documented at .rd-in. */
     .rd-in-lg { font-size: 17px; }
+    /* The pasted-list box. Monospace because a column of addresses is read by
+       scanning, and a proportional font makes the street numbers wander.
+       No font-size here on purpose — .rd-in's 16px is the iOS anti-zoom rule
+       above and this must not undercut it. */
+    .rd-in-list { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      line-height: 1.55; min-height: 132px; resize: vertical; }
     /* Must stay none. auto restored the native widget on top of the SVG, and
        color-scheme:dark added Chrome's own — that is the stacked-chevron
        dark-mode bug. Restated here so a later .rd-in tweak cannot revive auto. */
@@ -2108,6 +2114,52 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             </div>
           </div>
         </div>
+        <!-- LIST MODE. Revealed when a multi-address paste lands in #address
+             (see the paste listener), and the reason bulk valuation has no
+             link of its own any more: pasting a list IS how you reach it.
+             Ships hidden and is only ever opened for an account whose
+             entitlements carry canBulkValue — /api/bulk re-checks that
+             server-side, so this markup grants nothing.
+             Plain rd-* classes, which exist in index.html itself and so
+             survive the tailwind.css purge; the run view below the form
+             brings its own CSS instead, because it is injected. -->
+        <div id="bkListPanel" class="hidden">
+          <div class="rd-row">
+            <div class="rd-cell">
+              <label class="rd-lab" for="bkListText">Addresses</label>
+              <!-- .rd-in and deliberately NO font-size utility: that class pins
+                   16px because anything smaller makes iOS Safari auto-zoom on
+                   focus and never zoom back (see the note above .rd-in).
+                   .rd-in-list adds only the monospace, the height and the
+                   resize handle — plain CSS in the style block rather than
+                   Tailwind, because font-mono/resize-y are not in the vendored
+                   build and would have silently done nothing. -->
+              <textarea id="bkListText" rows="6" spellcheck="false" class="rd-in rd-in-list"></textarea>
+              <div class="text-xs text-[#68707E] mt-1.5">
+                <span id="bkListCount"></span>
+                <span id="bkCapLine"></span>
+                <button type="button" id="bkListBack" class="underline text-[#B91C1C]">Value one address instead</button>
+              </div>
+            </div>
+          </div>
+          <div class="rd-row">
+            <div class="rd-cell">
+              <label class="rd-lab" for="bkListType">Property type</label>
+            <!-- Its own required select rather than the form's hidden
+                 #propertyType. A run needs ONE type for every row, and
+                 typeResolution may still be null (nothing detected, nothing
+                 remembered) — there is no confirm dialog on this path to
+                 resolve it. Deliberately does NOT call setTypeProgrammatic:
+                 that resets the lookback and rebuilds the subject fields,
+                 which belong to the single-address form and must come back
+                 untouched when list mode is left. -->
+              <select id="bkListType" class="rd-in">
+                <option value="">Choose a property type…</option>
+              </select>
+              <div id="bkListMsg" class="text-xs mt-1.5 text-[#B91C1C]"></div>
+            </div>
+          </div>
+        </div>
         <!-- Still the single source of truth for the current type (and for the
              list of types every picker builds itself from), just no longer a
              control the visitor operates. Hidden rather than removed so every
@@ -2344,20 +2396,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
             No address? Find one
           </button>
-          <!-- Bulk valuation's door since it left the account menu (owner's
-               call, 2026-08-24): discoverable beside the search it
-               multiplies, not filed under the vault. Same quiet style as its
-               siblings so the row's look doesn't change; ships hidden and is
-               revealed off canBulkValue in refreshBillingUI — the same
-               entitlement (and the same Buy-button rule) the menu link
-               obeyed. A plain link, not a button: /bulk is its own
-               server-rendered page. The "hidden" class wins over inline-flex
-               in the vendored Tailwind (display utilities end with .hidden —
-               the menu links' own "hidden block" relies on the same order). -->
-          <a id="bulkLink" href="/bulk"
-            class="hidden btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
-            Have a list? Value them all
-          </a>
         </div>
       </form>
       <!-- Market Explorer: still self-contained (builds standing market pages,
@@ -2980,6 +3018,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
         </div>
       </div>
+      <!-- The bulk run view, injected by server.js at serve time from
+           bulk-page.js — the same bytes /bulk renders, never a hand-copy
+           (NAV_LINKS / INAPP_BOOT / AUTH_BOOT are the precedent). It carries
+           its own <style> and its own script because index.html receives no
+           MARKET_CSS and no bulk JS otherwise. Ships hidden; a run reveals it
+           and hides #results, and a single-address search hides it again.
+           If this marker is ever deleted the feature vanishes silently, so a
+           test pins it on both sides. -->
+      <!--BULK_RUN-->
       <!-- Purely visual (the live region above announces progress): gray placeholders
            in the same card shells the finished report renders into. -->
       <div id="loadingSkeletons" class="mt-6 space-y-6" aria-hidden="true">
@@ -15747,14 +15794,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // deployment with no Stripe keys, the same exception the billing card makes.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
-    // Bulk valuation's door — beside the search form since 2026-08-24, no
-    // longer in the account menu (the owner: out of the vault grouping,
-    // without ruining the homepage look). Its own entitlement rather than
-    // `pro`, because the two deliberately part company on the tester
-    // passkey — a shared code buys Pro's reports and not a fan-out that
-    // bills fifty searches per click.
-    document.getElementById("bulkLink")
-      .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
     // Same entitlement drives the My Desk card. Signed-in only: the desk's
     // account-backed areas are already hidden signed out, and a vault card
     // there would offer a page that answers 401.
@@ -18795,11 +18834,182 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ----------------------------------------------------------------------------
   // One billed search at a time — the portfolio Refresh button and the error
   // retry button both re-enter this handler via requestSubmit(), where the
+  // --- Bulk valuation, reached by pasting a list ---------------------------
+  //
+  // Bulk has no link of its own on this page (it lost one in the account menu
+  // and another beside this form): the way in is to give the search a list.
+  // A paste of two or more addresses opens list mode; one address behaves
+  // exactly as it always has.
+  //
+  // The run view itself is NOT authored here — server.js injects it at the
+  // BULK_RUN marker from bulk-page.js, the same bytes /bulk renders,
+  // so the two pages cannot drift into quoting different totals for one run.
+  // Everything below only decides WHEN to show it and what to send.
+  let bkListMode = false;
+
+  function bkEl(id) { return document.getElementById(id); }
+
+  // Reveal the injected run view and give the viewport to it. #ownerHero
+  // lives inside #results, so hiding that hides the hero with it.
+  function showBulkRun() {
+    const inline = bkEl("bkInline");
+    if (inline) inline.hidden = false;
+    document.getElementById("results").classList.add("hidden");
+    document.getElementById("loadingSkeletons").classList.add("hidden");
+  }
+
+  // A single-address report takes the page back. stop() matters as much as
+  // hiding: a hidden run view whose poll is still armed keeps requesting
+  // every four seconds for the life of the tab.
+  function hideBulkRun() {
+    const inline = bkEl("bkInline");
+    if (inline) inline.hidden = true;
+    if (window.BULKRUN) window.BULKRUN.stop();
+  }
+
+  function bkRefreshCount() {
+    if (!window.BULKRUN) return 0;
+    const n = window.BULKRUN.countLines(bkEl("bkListText").value);
+    bkEl("bkListCount").textContent = n ? n + " address" + (n === 1 ? "" : "es") + " ready. " : "";
+    const label = document.getElementById("btnLabel");
+    if (label) label.textContent = n ? "Value " + n + " address" + (n === 1 ? "" : "es") : "Value the list";
+    return n;
+  }
+
+  function enterListMode(text) {
+    bkListMode = true;
+    bkEl("bkListPanel").classList.remove("hidden");
+    document.getElementById("address").closest(".rd-row").classList.add("hidden");
+    bkEl("bkListText").value = text;
+    bkEl("bkListMsg").textContent = "";
+    // The type options come from the form's own hidden select, so one list of
+    // property types feeds every picker on the page. Preselected only from an
+    // EXPLICIT resolution — a detection or a recall was made about one address
+    // and says nothing about a list of fifty.
+    const src = document.getElementById("propertyType");
+    const sel = bkEl("bkListType");
+    sel.innerHTML = '<option value="">Choose a property type…</option>' +
+      Array.prototype.map.call(src.options, (o) =>
+        '<option value="' + o.value + '">' + o.text + "</option>").join("");
+    sel.value = typeResolution === "explicit" ? src.value : "";
+    bkRefreshCount();
+    bkEl("bkListText").focus();
+    // The daily allowance is said while the list is being decided, not only
+    // when a run is refused — /api/config does not carry it, this does.
+    if (window.BULKRUN) {
+      window.BULKRUN.api("GET", "/api/bulk").then((d) => {
+        if (typeof d.leftToday === "number") {
+          bkEl("bkCapLine").textContent =
+            "Up to " + d.maxAddresses + " per run, " + d.leftToday + " left today. ";
+        }
+        if (d.maxAddresses) window.BULKRUN.setMax(d.maxAddresses);
+        window.BULKRUN.setJobs(d.jobs || []);
+        // A run already going is attached to rather than hidden: somebody who
+        // reloaded mid-run should find it, not an empty form.
+        const live = (d.jobs || []).filter((j) => j.status === "running")[0];
+        if (live) { showBulkRun(); window.BULKRUN.poll(live.id); }
+      }).catch(() => {});
+    }
+  }
+
+  function exitListMode() {
+    bkListMode = false;
+    bkEl("bkListPanel").classList.add("hidden");
+    document.getElementById("address").closest(".rd-row").classList.remove("hidden");
+    const label = document.getElementById("btnLabel");
+    if (label) label.textContent = "Run a report";
+    document.getElementById("address").focus();
+  }
+
+  // The list run. Never reached except from the submit handler, i.e. only ever
+  // by a deliberate click: a paste is not consent to spend.
+  async function runBulkList() {
+    const text = bkEl("bkListText").value;
+    const type = bkEl("bkListType").value;
+    const n = window.BULKRUN ? window.BULKRUN.countLines(text) : 0;
+    if (!n) { bkEl("bkListMsg").textContent = "No addresses in that list."; return; }
+    if (!type) { bkEl("bkListMsg").textContent = "Pick a property type — every address in a run shares one."; return; }
+    bkEl("bkListMsg").textContent = "";
+    const btn = document.getElementById("submitBtn");
+    btn.disabled = true;
+    try {
+      const d = await window.BULKRUN.api("POST", "/api/bulk", {
+        text,
+        type,
+        months: selectedLookbackMonths(),
+        note: document.getElementById("marketNote").value.trim(),
+        label: "",
+      });
+      showBulkRun();
+      window.BULKRUN.showNotes(d);
+      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on My Desk.", false);
+      window.BULKRUN.showRun(d);
+      window.BULKRUN.poll(d.job.id);
+    } catch (err) {
+      const data = err && err.data;
+      // One run at a time: attach to the one already going rather than leave
+      // the member staring at a refusal for a job they can watch.
+      if (data && data.code === "job_running" && data.job) {
+        showBulkRun();
+        window.BULKRUN.msg(err.message, false);
+        window.BULKRUN.poll(data.job.id);
+      } else if (data && data.code === "daily_limit") {
+        bkEl("bkListMsg").textContent = err.message;
+        if (typeof data.left_today === "number") {
+          bkEl("bkCapLine").textContent =
+            "Up to " + (data.daily_limit || "") + " per day, " + data.left_today + " left today. ";
+        }
+      } else if (err && err.status === 401) {
+        openAcctModal("signin", "Sign in to value a list of addresses.");
+      } else {
+        bkEl("bkListMsg").textContent = (err && err.message) || "That run could not be started.";
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // The door. A paste is DATA, never an instruction to spend: this opens a
+  // form and nothing else — no requestSubmit, no fetch that bills.
+  //
+  // clipboardData still holds the newlines; #address is type="text", so the
+  // browser would flatten them the moment they landed in the field, which is
+  // why the list has to be read here rather than from the input afterwards.
+  //
+  // Under the account wall this is unreachable rather than broken:
+  // applySearchLock hides #searchSection entirely, so the input cannot
+  // receive a paste at all.
+  document.getElementById("address").addEventListener("paste", (e) => {
+    try {
+      const text = (e.clipboardData && e.clipboardData.getData("text")) || "";
+      if (!window.BULKRUN) return;
+      const n = window.BULKRUN.countLines(text);
+      if (n < 2) return;                       // an ordinary paste, untouched
+      e.preventDefault();
+      if (proConfig && proConfig.canBulkValue) { enterListMode(text); return; }
+      // Not entitled. The paste still yields a usable single search rather
+      // than being thrown away, and the pitch goes through the one sanctioned
+      // door (.unlock-comps-btn's own handler) — never a second prompt.
+      document.getElementById("address").value = window.BULKRUN.firstAddress(text);
+      openUpgradePrompt();
+    } catch (err) {
+      // Detection must never break an ordinary paste.
+    }
+  });
+
+  bkEl("bkListText").addEventListener("input", bkRefreshCount);
+  bkEl("bkListBack").addEventListener("click", exitListMode);
+  bkEl("bkListType").addEventListener("change", () => { bkEl("bkListMsg").textContent = ""; });
+
   // disabled submit button alone can't stop a double fire.
   let searchInFlight = false;
   document.getElementById("compForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     if (searchInFlight) return;
+    // A list takes a different road entirely — no geocode, no confirm dialog,
+    // no /api/comps. Checked first so none of that machinery runs on a
+    // fifty-address paste.
+    if (bkListMode) { runBulkList(); return; }
     const address = document.getElementById("address").value.trim();
     // Before anything READS the size: a machine-written size belongs to the
     // address it was looked up for, and this is the one junction every billed
@@ -18880,6 +19090,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     document.getElementById("results").classList.add("hidden");
     hideStatus();
+    hideBulkRun();
     setLoading(true);
     showLoadingCard(address, type);
 

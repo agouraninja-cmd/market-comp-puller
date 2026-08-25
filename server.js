@@ -168,7 +168,7 @@ const PFDELTA = require("./portfolio-delta");
 // finished report is worth as a portfolio row, and what the totals say. Pure;
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
-const { renderBulkPageBody } = require("./bulk-page");
+const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
@@ -7481,6 +7481,14 @@ const INAPP_BOOT =
   `document.documentElement.setAttribute("data-inapp","1");` +
   `}catch(e){}})();</script>\n`;
 const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
+
+// Bulk valuation's run view, injected into index.html so a list pasted into
+// the main search renders its run inline. Same one-source rule as the two
+// markers above and for a sharper reason: /bulk draws the same table from the
+// same bytes, and two copies would let one page quote a portfolio value the
+// other does not. Unconditional, like NAV_LINKS — the block ships hidden and
+// /api/bulk enforces the entitlement, so what lands here is presentation only.
+const BULK_RUN_MARKER = "<!--BULK_RUN-->";
 
 // --- "We already know who this is" (2026-08-23) ------------------------------
 // index.html ships one set of bytes and then corrects them from two fetches
@@ -21379,8 +21387,12 @@ const server = http.createServer((req, res) =>
         // signed-out app that corrects itself a beat later. Cookie presence
         // only — see authBoot above for why that is safe and why index.html
         // being no-store is what makes it safe.
-        .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])));
-      // Fourth rewrite: the Explorer's example query, rotated per load. An
+        .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
+        // Fourth: the bulk run view (markup + its own CSS + BULKRUN), so a
+        // pasted list can render its run where a report would go. It carries
+        // its own <style> because index.html never receives MARKET_CSS.
+        .replace(BULK_RUN_MARKER, renderBulkInlineBlock());
+      // Fifth rewrite: the Explorer's example query, rotated per load. An
       // attribute rather than a marker comment, so a null (no seed file)
       // leaves index.html's own example standing — see nextMarketExample.
       const example = nextMarketExample();

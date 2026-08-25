@@ -8086,6 +8086,21 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mfilter input::placeholder{color:var(--ink-3)}
 .mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+/* /markets momentum map. Pin fill is the market's stored direction through
+   freshDirection, on the same tokens as the .mdirv-* badge words. The hollow
+   pin is an ABSENCE of claim ("no recent read"): it must never share flat's
+   grey fill — only its outline says a market is there at all. */
+.mmap-card{margin-top:20px}
+.mmap{height:320px;border:1px solid var(--edge);border-radius:6px;background:var(--wash)}
+.mmap-pin{display:block;width:14px;height:14px;border-radius:50%;box-sizing:border-box;
+  border:2px solid var(--card);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.mmap-pin-expanding{background:var(--green)}
+.mmap-pin-flat{background:var(--ink-mute)}
+.mmap-pin-contracting{background:var(--red-fill)}
+.mmap-pin-none{background:transparent;border-color:var(--ink-3)}
+.mmap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-3)}
+.mml{display:inline-flex;align-items:center;gap:6px}
+.mml-s{width:10px;height:10px}
 /* Market page city hero. The photograph does not theme (same rule as Street
    View and aerial thumbs): it is a picture of a place. Overlay and caption
    stay literal dark/white so the title reads on any photo, in either theme. */
@@ -8758,6 +8773,106 @@ const MARKET_MAP_JS = `(function(){
       if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
     });
   });
+})();`;
+
+// Leaflet, injected only into the pages that actually draw a map (the market
+// page's comp map and the /markets momentum map) — the shared const so the
+// two can never load different versions.
+const LEAFLET_HEAD =
+  `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
+  `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`;
+
+// The /markets directory's momentum map: one pin per covered market, colored
+// by the same freshDirection read the Explorer dropdown and the market page's
+// map-card badge use — green expanding, grey flat, red contracting, and a
+// hollow outline for a market with no current read. Hollow is deliberately
+// not flat's grey: "we don't know" must never render as "the market is flat".
+// Unlike MARKET_MAP_JS there is NO geocoding here — every pin's point rides
+// in the page's own JSON blob (the committed CITY_COORDS chain, resolved
+// server-side), so the map costs nothing beyond the tiles and a market with
+// no stored point simply stays a card. Inlined like MARKET_MAP_JS so the page
+// stays self-contained. No dollar-brace interpolation and no backticks — this
+// string is itself a template literal emitted into a <script>.
+const MARKETS_DIR_MAP_JS = `(function(){
+  var card = document.getElementById("mktsMapCard");
+  // Progressive enhancement: with the CDN blocked the cards below are still
+  // the whole directory, and the empty rectangle just goes away.
+  if (!card) return;
+  if (!window.L) { card.style.display = "none"; return; }
+  var data = null;
+  try { data = JSON.parse(document.getElementById("mktsMapData").textContent); } catch (e) {}
+  var pins = (data && data.pins) || [];
+  if (pins.length < 2) { card.style.display = "none"; return; }
+  // Basemap + theme swap copied from MARKET_MAP_JS (the market page's comp
+  // map) — see the comments there for why setUrl rather than a rebuild.
+  function baseUrl() {
+    var el = document.documentElement;
+    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
+  }
+  var map = L.map("mktsMap", { scrollWheelZoom: false }).setView([39.8, -98.6], 4);
+  var tiles = L.tileLayer(baseUrl(), {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  });
+  tiles.addTo(map);
+  try {
+    new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
+      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  } catch (e) {}
+  function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // Two property types in one city share one stored point and would stack
+  // exactly on top of each other — and a geographic offset cannot fix that:
+  // any spread small enough to stay honest at city zoom is sub-pixel at the
+  // national zoom this map opens at, so a green pin would still hide a red
+  // one. The spread is in PIXELS, on the icon anchor: constant on screen at
+  // every zoom, and the marker's point never lies about where the city is.
+  // Members sorted by type then slug so the ring holds still between visits.
+  var groups = {};
+  pins.forEach(function (p) {
+    var k = p.lat.toFixed(4) + "|" + p.lng.toFixed(4);
+    (groups[k] = groups[k] || []).push(p);
+  });
+  Object.keys(groups).forEach(function (k) {
+    var g = groups[k];
+    if (g.length < 2) return;
+    g.sort(function (a, b) { return (a.type + a.slug) < (b.type + b.slug) ? -1 : 1; });
+    g.forEach(function (p, i) {
+      var ang = (2 * Math.PI * i) / g.length;
+      p.dx = Math.round(9 * Math.cos(ang));
+      p.dy = Math.round(9 * Math.sin(ang));
+    });
+  });
+  // The class comes from this lookup, never concatenated from the data: the
+  // server only writes the three freshDirection words, but markup built from
+  // a whitelist stays inert even if that ever stops being true.
+  var DIR_CLASS = { expanding: "mmap-pin-expanding", flat: "mmap-pin-flat", contracting: "mmap-pin-contracting" };
+  var DIR_WORD = { expanding: "Expanding", flat: "Flat", contracting: "Contracting" };
+  var bounds = [];
+  pins.forEach(function (p) {
+    var cls = DIR_CLASS[p.dir] || "mmap-pin-none";
+    var label = p.type + " \\u00b7 " + p.city + ", " + p.state;
+    // The label rides INSIDE the icon as visually-hidden text (MARKET_CSS's
+    // .vh class): Leaflet's alt option only ever lands on img markers, so a
+    // divIcon pin would otherwise be a focusable element with no name.
+    var m = L.marker([p.lat, p.lng], {
+      icon: L.divIcon({
+        className: "",
+        html: '<span class="mmap-pin ' + cls + '"><span class="vh">' + esc(label) + '</span></span>',
+        iconSize: [14, 14],
+        iconAnchor: [7 - (p.dx || 0), 7 - (p.dy || 0)],
+      }),
+      keyboard: true,
+    }).addTo(map);
+    m.bindTooltip(esc(label) + " \\u2014 Median $" + Number(p.median).toLocaleString() + "/SF" +
+      (DIR_WORD[p.dir] ? " \\u00b7 " + DIR_WORD[p.dir] : ""));
+    // Leaflet fires click on Enter for a keyboard-focused marker, so this one
+    // handler covers both mouse and keyboard.
+    m.on("click", function () { window.location.href = "/market/" + p.slug; });
+    bounds.push([p.lat, p.lng]);
+  });
+  // maxZoom caps the fit so two nearby pins don't zoom to street level.
+  map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
 })();`;
 
 // The market-page CTA's "value a property here" form(s): store the typed
@@ -9482,10 +9597,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
       `<script>${MARKET_MAP_JS}</script>`
     : "";
-  const mapHead = mapData.length
-    ? `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
-      `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`
-    : "";
+  const mapHead = mapData.length ? LEAFLET_HEAD : "";
 
   // Quiet contributor credit — the public half of the broker loop.
   const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);
@@ -9740,6 +9852,51 @@ function renderMarketDirectoryHTML(signedIn) {
       `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
       `</div></a>`;
   }).join("");
+  // The momentum map's pin rows. Coordinates come only from what is already
+  // stored or committed (MARKETHERO.coordsFor — the same chain the card
+  // thumbnails resolve), never a geocoder: a market with no point simply
+  // stays a card. Direction comes only through freshDirection, the ONE home
+  // for the three-word vocabulary and the 90-day expiry, so a pin can never
+  // disagree with the Explorer dropdown or the market page's own badge.
+  // `dir` is omitted rather than empty when there is no current read (the
+  // /api/markets convention); the map draws those as a hollow outline pin —
+  // the map's translation of "no badge". A pin cannot render NOTHING the way
+  // the badge does (the pin is also the navigation), so the hollow ring makes
+  // no color claim, and it is deliberately not flat's grey: "no recent read"
+  // must never look like "the market is flat".
+  const pins = [];
+  for (const s of slugs) {
+    const p = merged[s];
+    const ll = MARKETHERO.coordsFor(p.city, p.state, {
+      coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+    });
+    if (!ll) continue;
+    const dir = freshDirection(p, Date.now());
+    pins.push({
+      slug: s, type: p.type, city: p.city, state: p.state,
+      lat: ll.lat, lng: ll.lng, median: p.ppsf.median,
+      ...(dir ? { dir } : {}),
+    });
+  }
+  // Two pins is the floor for a map that reads as a map (mirrors the market
+  // page's "no pins, no card" rule); below it the grid is the whole page.
+  const mapUi = pins.length >= 2
+    ? `<div class="mmap-card" id="mktsMapCard">` +
+      `<div id="mktsMap" class="mmap" aria-label="Map of covered markets, colored by market momentum"></div>` +
+      `<div class="mmap-legend">` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-expanding mml-s"></span>Expanding</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-flat mml-s"></span>Flat</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-contracting mml-s"></span>Contracting</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-none mml-s"></span>No recent read</span>` +
+      `</div>` +
+      (pins.length < slugs.length
+        ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`
+        : "") +
+      `</div>` +
+      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${MARKETS_DIR_MAP_JS}</script>`
+    : "";
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
@@ -9792,11 +9949,15 @@ function renderMarketDirectoryHTML(signedIn) {
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
     filterUi +
+    mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn, current: "/markets" });
+  return marketShell({
+    title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn,
+    head: mapUi ? LEAFLET_HEAD : "", current: "/markets",
+  });
 }
 
 

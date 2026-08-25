@@ -237,6 +237,62 @@ test("bare environment", async (t) => {
     assert.ok(checked > 10, "expected most seeded markets to have a map card, got " + checked);
   });
 
+  // The /markets directory's momentum map (2026-08-25): one pin per covered
+  // market over the whole country, colored by the same freshDirection read.
+  // The JSON blob is what the browser script draws from, so the blob IS the
+  // contract — well-formed, inert, and path-safe slugs, since each one
+  // becomes a navigation target.
+  await t.test("/markets carries the momentum map and a well-formed pin blob", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.ok(html.includes('id="mktsMap"'), "the map container is missing");
+    assert.ok(html.includes("unpkg.com/leaflet@1.9.4/dist/leaflet.js"),
+      "Leaflet must ride the page head when the map renders");
+    const blob = (html.match(/<script id="mktsMapData" type="application\/json">([\s\S]*?)<\/script>/) || [])[1];
+    assert.ok(blob, "the pin blob is missing");
+    assert.ok(!blob.includes("<"), "a raw < in the blob can close the script tag early");
+    const pins = JSON.parse(blob).pins;
+    assert.ok(pins.length > 20,
+      "every seeded market has a committed coordinate, got only " + pins.length + " pins");
+    for (const p of pins) {
+      assert.ok(Number.isFinite(p.lat) && Number.isFinite(p.lng), p.slug + " has a non-finite point");
+      assert.match(p.slug, /^[a-z0-9-]+$/, JSON.stringify(p.slug) + " is not a path-safe slug");
+    }
+  });
+
+  // The badge-agreement rule above, one surface over: a pin's color and the
+  // Explorer dropdown's word must agree market by market, because both are
+  // freshDirection and nothing else. `dir` is omitted rather than empty on a
+  // no-read market (the /api/markets convention), and the map draws those as
+  // a hollow outline — an absence of claim, deliberately never flat's grey.
+  await t.test("the momentum map's pins say what /api/markets says, market by market", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const pins = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).pins;
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    const bySlug = new Map(pins.map((p) => [p.slug, p]));
+    let unread = 0;
+    for (const row of rows) {
+      const pin = bySlug.get(row.slug);
+      if (!pin) continue;
+      assert.equal(pin.dir || null, row.direction || null,
+        row.slug + ": the map pin and the Explorer dropdown disagree");
+      if (!row.direction) {
+        unread++;
+        assert.ok(!("dir" in pin),
+          row.slug + ": a no-read market must omit dir outright, never carry an empty one");
+      }
+    }
+    assert.ok(unread > 0,
+      "the seeds deliberately include unread markets — the hollow state must actually be exercised");
+    // The pin CSS: all four states have rules, and the hollow one never
+    // shares flat's grey fill — the distinction between "we don't know" and
+    // "the market is flat" is the whole point of the fourth class.
+    for (const cls of ["mmap-pin-expanding", "mmap-pin-flat", "mmap-pin-contracting", "mmap-pin-none"]) {
+      assert.ok(new RegExp("\\." + cls + "\\{[^}]*\\}").test(html), cls + " has no rule in MARKET_CSS");
+    }
+    const noneRule = (html.match(/\.mmap-pin-none\{([^}]*)\}/) || [])[1] || "";
+    assert.ok(!noneRule.includes("--ink-mute"), "the hollow pin must never share flat's grey fill");
+  });
+
   // The signed-in header chrome, on every page that is not index.html.
   //
   // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and

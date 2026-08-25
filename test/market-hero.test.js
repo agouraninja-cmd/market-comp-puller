@@ -183,6 +183,22 @@ test("a market page published since the last generator run falls back to its own
   assert.equal(heroFor("Nowhere", "XX", { auto: { cities: {} } }), null);
 });
 
+test("coordsFor resolves the heroes' own chain, as a bare point", () => {
+  const { coordsFor } = require("../market-hero");
+  // Curated downtown point outranks whatever the caller supplies…
+  assert.deepEqual(coordsFor("Boise", "ID", { coords: { lat: 0, lng: 0 } }),
+    { lat: Number(CITY_COORDS["boise, id"].lat), lng: Number(CITY_COORDS["boise, id"].lng) });
+  // …then the generated table…
+  assert.deepEqual(coordsFor("Nampa", "ID", { auto: AUTO_FIXTURE }), { lat: 43.6, lng: -116.61 });
+  // …then the payload's own point, and nothing invents one.
+  assert.deepEqual(coordsFor("Brand New", "TX", { auto: AUTO_FIXTURE, coords: { lat: 31.5, lng: -97.1 } }),
+    { lat: 31.5, lng: -97.1 });
+  assert.equal(coordsFor("Nowhere", "XX", { auto: { cities: {} } }), null);
+  // A garbage point is refused, never passed through: the momentum map holds
+  // the heroes' rule — a wrong point is worse than none.
+  assert.equal(coordsFor("Nowhere", "XX", { coords: { lat: "x", lng: 1 } }), null);
+});
+
 test("every generated hero on disk is a real, safe, attributed file", () => {
   const { autoCities, autoHeroFor } = require("../market-hero");
   for (const [key, row] of Object.entries(autoCities())) {

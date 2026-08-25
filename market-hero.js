@@ -348,6 +348,21 @@ function photoHero(row, kind) {
   };
 }
 
+// The coordinate chain on its own, for callers that need a POINT rather than
+// a picture (the /markets momentum map). In order of how much each source has
+// been checked: the curated downtown points, then the geocoded ones the
+// generator stored, then whatever the caller was handed (a market payload's
+// own lat/lng). Returns { lat, lng } as numbers, or null — the heroes' rule
+// holds for pins too: a wrong point is worse than none.
+function coordsFor(city, state, opts) {
+  const key = cityKey(city, state);
+  const ll = CITY_COORDS[key] || autoCoordsFor(key, opts && opts.auto) || (opts && opts.coords);
+  if (ll && Number.isFinite(Number(ll.lat)) && Number.isFinite(Number(ll.lng))) {
+    return { lat: Number(ll.lat), lng: Number(ll.lng) };
+  }
+  return null;
+}
+
 // opts:
 //   skipFiles — stored JPEGs that failed the quality grade
 //   coords    — {lat,lng} the caller already knows (a market page payload),
@@ -369,14 +384,8 @@ function heroFor(city, state, opts) {
   const generated = autoHeroFor(key, auto);
   if (generated && !skippedFile(skip, generated.file)) return photoHero(generated, "photo");
 
-  // Coordinates, in order of how much they have been checked: the curated
-  // downtown points, then the geocoded ones the generator stored, then
-  // whatever the caller was handed. A city with none still gets nothing —
-  // the whole point of this file is that a wrong skyline is worse than none.
-  const ll = CITY_COORDS[key] || autoCoordsFor(key, auto) || (opts && opts.coords);
-  if (ll && Number.isFinite(Number(ll.lat)) && Number.isFinite(Number(ll.lng))) {
-    return satelliteHero(city, state, { lat: Number(ll.lat), lng: Number(ll.lng) });
-  }
+  const ll = coordsFor(city, state, opts);
+  if (ll) return satelliteHero(city, state, ll);
   return null;
 }
 
@@ -392,12 +401,10 @@ function thumbFor(city, state, opts) {
     const file = String(hero.src).replace("/market-heroes/", "");
     return { src: "/market-heroes/" + thumbName(file), alt: hero.alt, kind: "photo" };
   }
-  const ll = CITY_COORDS[cityKey(city, state)]
-    || autoCoordsFor(cityKey(city, state), opts && opts.auto)
-    || (opts && opts.coords);
+  const ll = coordsFor(city, state, opts);
   if (!ll) return null;
   return {
-    src: esriAerialUrl(Number(ll.lat), Number(ll.lng), HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT),
+    src: esriAerialUrl(ll.lat, ll.lng, HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT),
     alt: hero.alt,
     kind: "satellite",
   };
@@ -421,6 +428,7 @@ module.exports = {
   HERO_THUMB_WIDTH,
   HERO_THUMB_HEIGHT,
   cityKey,
+  coordsFor,
   heroFor,
   thumbFor,
   srcsetName,

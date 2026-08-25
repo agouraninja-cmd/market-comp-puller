@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="242" viewBox="0 0 920 242"
+     role="img" aria-label="The CompNinja mark in its three shipped appearances: header light, header dark, and the footer slab.">
+  <title>CompNinja logo sheet</title>
+
+  <!-- Geometry is copied verbatim from CN_LOGO / CN_LOGO_LIGHT in server.js.
+       Fills are literal hex on purpose: this is a PICTURE of the marks, not a
+       themed surface, so it must not follow the reader's theme. Same exception
+       the design system makes for photographs. -->
+
+  <!-- 1. Header mark, light theme -->
+  <g transform="translate(20,20)">
+    <rect width="280" height="150" rx="6" fill="#FBFBF9" stroke="#D8D4C9"/>
+    <g transform="translate(28,53) scale(1.4667)">
+      <rect x="2" y="4" width="26" height="22" rx="2" fill="#1A2433"/>
+      <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+    </g>
+    <text x="86" y="82" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="20" font-weight="600" letter-spacing="2.8" fill="#1A2433">COMP<tspan fill="#B91C1C">NINJA</tspan></text>
+    <text x="0" y="172" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="12" font-weight="600" letter-spacing="1" fill="#68707E">HEADER — LIGHT</text>
+    <text x="0" y="190" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="11.5" fill="#9AA2AD">card --ink · sweep --red-fill</text>
+  </g>
+
+  <!-- 2. Header mark, dark theme -->
+  <g transform="translate(320,20)">
+    <rect width="280" height="150" rx="6" fill="#121826" stroke="#3D4B5F"/>
+    <g transform="translate(28,53) scale(1.4667)">
+      <rect x="2" y="4" width="26" height="22" rx="2" fill="#D5DDE8"/>
+      <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#DC2626"/>
+    </g>
+    <text x="86" y="82" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="20" font-weight="600" letter-spacing="2.8" fill="#D5DDE8">COMP<tspan fill="#F87171">NINJA</tspan></text>
+    <text x="0" y="172" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="12" font-weight="600" letter-spacing="1" fill="#68707E">HEADER — DARK</text>
+    <text x="0" y="190" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="11.5" fill="#9AA2AD">same tokens, inverted values</text>
+  </g>
+
+  <!-- 3. Footer mark, both themes -->
+  <g transform="translate(620,20)">
+    <rect width="280" height="150" rx="6" fill="#1A2433"/>
+    <g transform="translate(28,53) scale(1.4667)">
+      <rect x="2" y="4" width="26" height="22" rx="2" fill="#FFFFFF"/>
+      <polygon points="3.5,26 28,5.5 28,10 8,26" fill="#B91C1C"/>
+    </g>
+    <text x="86" y="82" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="20" font-weight="600" letter-spacing="2.8" fill="#FFFFFF">COMP<tspan fill="#B91C1C">NINJA</tspan></text>
+    <text x="0" y="172" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="12" font-weight="600" letter-spacing="1" fill="#68707E">FOOTER — BOTH THEMES</text>
+    <text x="0" y="190" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
+          font-size="11.5" fill="#9AA2AD">card literal white, never themed</text>
+  </g>
+</svg>

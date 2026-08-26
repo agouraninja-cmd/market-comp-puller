@@ -8140,9 +8140,13 @@ ${ACCOUNT_NAV_CSS}`;
 // "Markets" left this list 2026-08-21 (owner's call): the app page links
 // /markets from an "Our markets" line under the Market Explorer's own input
 // instead, and every server-rendered page keeps its footer /markets link.
+// "Brokers" and "How it works" left it 2026-08-25 (owner's call), the same
+// way: both pages keep their footer link on every surface (MARKET_FOOTER and
+// index.html's footer), and index.html's landing header still links both
+// directly, so nothing became unreachable -- the menu just stopped carrying
+// them. Removing a link from HERE is the whole edit: the app menu and every
+// server-rendered header are rendered from this list.
 const NAV_LINKS = [
-  ["/brokers", "Brokers"],
-  ["/how-it-works", "How it works"],
   ["/1031-exchange", "1031 Guide"],
   // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,

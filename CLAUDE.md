@@ -1737,8 +1737,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   kinds of row — CLAUDE.md's own separate-tables rule (the vault privacy
   wall) is the alternative that was not taken here, so a new corpus reader
   must be checked against this rule by hand.
-- `GET /how-it-works` — the account-wall front door, reached from the header
-  nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
+- `GET /how-it-works` — the account-wall front door, reached from the footer
+  and, on the landing page, the line under the hero. It LEFT the Explore menu
+  on 2026-08-25 (owner’s call), along with /brokers. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +
   address field + one sample exhibit), the three-step Method, the FAQ, and a
   one-block Brokers path to `/brokers`. There is no stat strip. The address
@@ -1834,8 +1835,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
-- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Hero split (claim + an illustrative report exhibit that
+- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), linked
+  from the footer of every surface and from the landing page’s "For brokers"
+  line; it left the Explore menu 2026-08-25 with /how-it-works. Hero split
+  (claim + an illustrative report exhibit that
   *shows* the Verified chip), then two stacked ledgers: Contribute (CREDIT /
   INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
   PRIVATE), with a three-beat submission path (`.bkpath` / `.bkbeat`, never

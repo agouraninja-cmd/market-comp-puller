@@ -281,7 +281,10 @@ test("bare environment", async (t) => {
     assert.ok(!app.includes("<!--NAV_LINKS-->"),
       "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
     const markets = await (await fetch(srv.base + "/markets")).text();
-    for (const href of ["/brokers", "/markets", "/how-it-works", "/1031-exchange"]) {
+    // The list itself, not a superset: /brokers and /how-it-works left the
+    // menu 2026-08-25 and both still appear in every footer, so a check for
+    // their mere presence in the HTML would pass either way and pin nothing.
+    for (const href of ["/1031-exchange", "/download"]) {
       assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
       assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }

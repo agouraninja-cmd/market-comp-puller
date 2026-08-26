@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-25",
+    "type": "improvement",
+    "title": "Brokers and How it works leave the Explore menu",
+    "details": "The Explore dropdown now carries the 1031 Guide, Download the app and — on the vault header — Markets and Run a report. Neither page moved or lost a door: /brokers and /how-it-works keep their footer link on every surface, and the landing page still links both from the line under its hero. One edit did it everywhere, because the app menu and every server-rendered header render from the same NAV_LINKS list."
+  },
+  {
     "date": "2026-08-24",
     "type": "improvement",
     "title": "The header gear is gone; Settings lives in the account menu",

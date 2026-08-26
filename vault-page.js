@@ -515,8 +515,7 @@ ${THEME_BOOT}
   <nav>
     <details>
       <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>
-      <a href="/markets">Markets</a><a href="/how-it-works">How it works</a>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/markets">Markets</a>
       <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
     </details>
     <a href="/desk">My Desk</a>

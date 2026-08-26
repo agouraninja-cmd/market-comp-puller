@@ -467,6 +467,25 @@ function allMarketPages() {
   return out;
 }
 
+// The carved municipal boundary for a city, or null. The file is committed
+// (scripts/fetch-city-bounds.js writes it deliberately; Render wipes its disk
+// on deploy) and therefore only changes when this process restarts, so it is
+// read once and held. A missing or unreadable file memoizes to {} — every
+// market page then renders exactly as it did before boundaries existed, which
+// is the same fail-open the /markets map takes.
+let CITY_BOUNDS = null;
+function cityBoundary(cityKey) {
+  if (!CITY_BOUNDS) {
+    try {
+      CITY_BOUNDS = JSON.parse(fs.readFileSync(path.join(__dirname, "city-bounds.json"), "utf8"));
+    } catch (e) {
+      CITY_BOUNDS = {};
+    }
+  }
+  const b = CITY_BOUNDS[cityKey];
+  return (b && b.geometry) ? b.geometry : null;
+}
+
 // The standing /market/<slug> page covering a market + property type, if one
 // exists (seeded or explorer-published) — { slug, market } or null. This is
 // the cross-link between the report surfaces and the market pages: /api/comps
@@ -8738,7 +8757,7 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { return f || nominatim(a); })
       .then(function (f) { save(k, f); return f; });
   }
-  var map = null, pts = [], tiles = null;
+  var map = null, pts = [], tiles = null, shape = null;
   // The basemap follows the theme, the way index.html's basemapUrl() does. It
   // was pinned to light_all, so a dark market page rendered a white rectangle
   // in the middle of it. setUrl on a theme change rather than a rebuild: the
@@ -8761,12 +8780,48 @@ const MARKET_MAP_JS = `(function(){
     });
     tiles.addTo(map);
     try {
-      new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
-        .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+      new MutationObserver(function () {
+        if (tiles) tiles.setUrl(baseUrl());
+        // The boundary holds computed colours rather than a CSS class (an SVG
+        // path cannot wear one), so nothing else would repaint it.
+        if (shape) shape.setStyle(boundaryStyle(data.dir));
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     } catch (e) {}
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // The city's carved boundary, washed in this market's momentum. Same tokens
+  // and the same numbers the /markets map's areaStyle uses, so a city looks
+  // the same on both surfaces. An unread market is OUTLINED, never shaded:
+  // the wash is a claim, and there is nothing to claim.
+  function tok(name, fallback) {
+    var v = "";
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
+    v = String(v || "").trim();
+    return v || fallback;
+  }
+  function boundaryStyle(dir) {
+    var fills = { expanding: tok("--green", "#15803D"), flat: tok("--ink-mute", "#5B6472"), contracting: tok("--red-fill", "#B91C1C") };
+    if (fills[dir]) {
+      return { color: fills[dir], weight: 1.5, opacity: 0.8, fillColor: fills[dir], fillOpacity: 0.3 };
+    }
+    var n = tok("--ink-3", "#64748B");
+    return { color: n, weight: 1.5, opacity: 0.8, dashArray: "4 4", fillColor: n, fillOpacity: 0.06 };
+  }
+  // The boundary is drawn FIRST and needs no geocoding: it is real geometry
+  // that came down with the page, so the map has something on it immediately
+  // rather than after a round trip per comp. Leaflet's pane order puts paths
+  // under markers, so the comp pins land on top of the wash as they arrive.
+  var fit = null;
+  if (data.boundary) {
+    shape = L.geoJSON(data.boundary, { style: boundaryStyle(data.dir) });
+    // ensureMap needs a centre; the shape's own bounds provide one, and the
+    // fitBounds directly after replaces the placeholder zoom.
+    var b = shape.getBounds();
+    shape.addTo(ensureMap(b.getCenter()));
+    fit = b;
+    map.fitBounds(b, { padding: [20, 20] });
+  }
   // ", USA" disambiguates the sanity point: bare "Ontario, CA" reads as the
   // Canadian province to Nominatim (CA = Canada), which put the city point
   // 1,900 miles out and gated every correct pin off the map.
@@ -8782,12 +8837,22 @@ const MARKET_MAP_JS = `(function(){
           var lines = [c.a.split(",")[0], [c.d, c.t].filter(Boolean).join(" \\u00b7 "), c.pr].filter(Boolean);
           m.bindPopup(lines.map(function (s) { return "<div>" + esc(s) + "</div>"; }).join(""));
           pts.push([pt.lat, pt.lng]);
-          if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30] });
+          // With a boundary the view must hold BOTH — a comp just outside the
+          // city limit is common, and fitting the pins alone would crop the
+          // shape the card is describing.
+          if (fit) {
+            fit = fit.extend([pt.lat, pt.lng]);
+            map.fitBounds(fit, { padding: [20, 20] });
+          } else if (pts.length > 1) {
+            map.fitBounds(pts, { padding: [30, 30] });
+          }
         });
       });
     });
     chain.then(function () {
-      if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+      // A boundary is enough to keep the card: it still answers where this
+      // market is, which is more than the hidden card ever did.
+      if (!pts.length && !shape) document.getElementById("mktMapCard").style.display = "none";
     });
   });
 })();`;
@@ -9699,15 +9764,45 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     ? `<span class="mdir">Momentum <span class="mdirv ${MAP_DIR_CLASS[mapDir]}">` +
       `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
     : "";
-  const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>Where these comps are</h2>${mapDirBadge}</div>` +
+  // The city's real carved boundary, washed in the momentum read the badge
+  // above already states — the same freshDirection value, so the shape and
+  // the word can never disagree. Unlike the /markets map there is no Mixed
+  // state to decide here: one market page is one (type, city) market, so it
+  // has exactly one direction or none.
+  //
+  // The geometry is INLINED in this page's blob rather than fetched from
+  // /city-bounds.json: a market page needs one city's shape (~6KB average,
+  // 314B for Ontario), where the file is 107KB of all of them, and this page
+  // already caches for an hour. The /markets map makes the opposite trade for
+  // the opposite reason — it may eventually need every city's shape.
+  const boundary = cityBoundary(MARKETHERO.cityKey(p.city, p.state));
+  // A boundary alone is reason enough for a map. Until now a market whose
+  // comps are all quoted at the submarket level got no map at all, which said
+  // nothing about where the market even is.
+  const showMap = mapData.length || boundary;
+  const mapCard = showMap
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>${mapData.length ? "Where these comps are" : "Where this market is"}</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
-      `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
-      `Comps quoted at the submarket level aren't pinned.</p></div>` +
-      `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
+      `<p class="disc" style="margin-top:8px">` +
+      (mapData.length
+        ? `Pins are geocoded from each comp's public address, so positions are approximate. ` +
+          `Comps quoted at the submarket level aren't pinned. `
+        : "") +
+      (boundary
+        ? (mapDir
+          ? `The shaded area is ${escHtml(p.city)}'s municipal boundary, coloured to match the momentum read above.`
+          : `The outlined area is ${escHtml(p.city)}'s municipal boundary. It carries no colour because this market has no current momentum read.`)
+        : "") +
+      `</p></div>` +
+      `<script id="mktMapData" type="application/json">${JSON.stringify({
+        city: `${p.city}, ${p.state}`,
+        comps: mapData,
+        ...(mapDir ? { dir: mapDir } : {}),
+        ...(boundary ? { boundary } : {}),
+      }).replace(/</g, "\\u003c")}</script>` +
       `<script>${MARKET_MAP_JS}</script>`
     : "";
-  const mapHead = mapData.length ? LEAFLET_HEAD : "";
+  const mapHead = showMap ? LEAFLET_HEAD : "";
 
   // Quiet contributor credit — the public half of the broker loop.
   const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);

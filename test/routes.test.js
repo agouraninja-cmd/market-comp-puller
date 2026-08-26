@@ -293,6 +293,49 @@ test("bare environment", async (t) => {
     assert.ok(!noneRule.includes("--ink-mute"), "the hollow pin must never share flat's grey fill");
   });
 
+  // The market page's own carved boundary (2026-08-25). This is the THIRD
+  // surface reading freshDirection for the same market — dropdown, directory
+  // pin, and now the shape under this page's comps — so the badge in the map
+  // card's heading and the wash beneath it must state the same thing, and a
+  // market whose read has expired must be outlined rather than coloured.
+  await t.test("a market page's map blob agrees with /api/markets, market by market", async () => {
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    let checked = 0, withBoundary = 0;
+    for (const row of rows) {
+      const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
+      const m = html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/);
+      if (!m) continue;
+      checked++;
+      assert.ok(!m[1].includes("<"), row.slug + ": a raw < in the blob can close the script tag early");
+      const blob = JSON.parse(m[1]);
+      assert.equal(blob.dir || null, row.direction || null,
+        row.slug + ": the map blob and the Explorer dropdown disagree about momentum");
+      if (blob.boundary) {
+        withBoundary++;
+        assert.ok(blob.boundary.type === "Polygon" || blob.boundary.type === "MultiPolygon",
+          row.slug + "'s inlined boundary is not a polygon — the map would throw drawing it");
+      }
+    }
+    assert.ok(checked > 10, "expected most seeded markets to carry a map blob, got " + checked);
+    assert.ok(withBoundary >= 15,
+      "expected nearly every seeded city to inline its boundary, got " + withBoundary);
+  });
+
+  // An unread market keeps its boundary and simply makes no colour claim —
+  // the same rule the badge follows by rendering nothing.
+  await t.test("an unread market page carries its boundary but no direction", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    const blob = JSON.parse((html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
+    assert.ok(blob.boundary, "Fontana's shape is stored and must still be drawn");
+    assert.ok(!("dir" in blob),
+      "a market with no current read must omit dir outright, never carry an empty one");
+    assert.ok(!html.includes('class="mdir"'), "and its badge must still render nothing");
+    assert.match(html, /outlined area[\s\S]{0,160}no current momentum read/,
+      "the disclosure must call the shape outlined, and say why it carries no colour");
+    assert.ok(!/shaded area is Fontana/.test(html),
+      "an unread market's area is not shaded — the copy must not call it that");
+  });
+
   // The carved layer (2026-08-25): past AREA_MIN_ZOOM, a city with a stored
   // municipal boundary is drawn as its real shape instead of pins. The blob's
   // `areas` rows carry the one color claim each city shape may make —

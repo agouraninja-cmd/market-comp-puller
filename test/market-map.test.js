@@ -40,14 +40,20 @@ function runMap(seed, opts) {
   const pins = [];
   const requests = [];
   const card = { style: {} };
+  const shapes = [];
+  const fits = [];
   const els = {
     mktMapData: { textContent: JSON.stringify({
       city: "Boise, ID",
-      comps: [{ a: "9 Example St, Boise, ID", d: "2026-01", t: "Sale", pr: "$1M" }],
+      comps: o.comps === undefined
+        ? [{ a: "9 Example St, Boise, ID", d: "2026-01", t: "Sale", pr: "$1M" }]
+        : o.comps,
+      ...(o.dir ? { dir: o.dir } : {}),
+      ...(o.boundary ? { boundary: o.boundary } : {}),
     }) },
     mktMapCard: card,
   };
-  const mapObj = { setView() { return this; }, fitBounds() {} };
+  const mapObj = { setView() { return this; }, fitBounds(b) { fits.push(b); } };
   const tileUrls = [];
   const observers = [];
   // Mutable, because the theme toggle fires AFTER the page has loaded and the
@@ -78,7 +84,31 @@ function runMap(seed, opts) {
         return layer;
       },
       marker: (ll) => ({ addTo: () => ({ bindPopup: () => { pins.push(ll); } }) }),
+      geoJSON: (geometry, o2) => {
+        const rec = { geometry, style: o2.style, added: false };
+        shapes.push(rec);
+        const bounds = {
+          _bounds: true,
+          getCenter: () => [43.6, -116.2],
+          extend(ll) { rec.extended = (rec.extended || 0) + 1; return bounds; },
+        };
+        const layer = {
+          addTo() { rec.added = true; return layer; },
+          getBounds: () => bounds,
+          setStyle(s) { rec.style = s; return layer; },
+        };
+        return layer;
+      },
     },
+    // tok() reads theme tokens off :root; the real values do not matter, only
+    // that a colour arrives and that a theme flip produces a different one.
+    getComputedStyle: () => ({
+      getPropertyValue: (n) => ({
+        "--green": theme === "dark" ? "#34D399" : "#15803D",
+        "--red-fill": theme === "dark" ? "#DC2626" : "#B91C1C",
+        "--ink-mute": "#5B6472", "--ink-3": "#64748B",
+      }[n] || ""),
+    }),
     fetch: (url, init) => {
       requests.push({ url: String(url), method: (init && init.method) || "GET", body: init && init.body });
       return Promise.resolve({ json: () => Promise.resolve(
@@ -95,7 +125,7 @@ function runMap(seed, opts) {
   // promises here, so a macrotask tick is enough for it to settle.
   return new Promise((resolve) => setTimeout(
     () => resolve({
-      store, pins, requests, card, tileUrls, observers,
+      store, pins, requests, card, tileUrls, observers, shapes, fits,
       setTheme: (t) => { theme = t; },
     }), 50
   ));
@@ -128,6 +158,71 @@ test("the market map's basemap follows the theme", async (t) => {
     assert.equal(tileUrls.length, 2, "expected a setUrl, not a second tileLayer");
     assert.match(tileUrls[1], /dark_all/);
     assert.equal(pins.length, pinsBefore, "pins must survive a theme change");
+  });
+});
+
+// The city's carved boundary, washed in the market's momentum — the same read
+// the badge above the map states. It rides in the page's own blob (this page
+// needs one city's shape, not the whole 107KB file), so it needs no geocoding
+// and no fetch, and a page without one must behave exactly as it did before
+// boundaries existed.
+const SQUARE = { type: "Polygon", coordinates: [[[-116.3, 43.5], [-116.1, 43.5], [-116.1, 43.7], [-116.3, 43.7], [-116.3, 43.5]]] };
+
+test("the market map draws its city's carved boundary", async (t) => {
+  await t.test("a page with no boundary touches no geometry at all", async () => {
+    const { shapes } = await runMap({});
+    assert.equal(shapes.length, 0,
+      "a market page with no stored boundary must render exactly as it did before this existed");
+  });
+
+  await t.test("a read market is shaded in its momentum colour", async () => {
+    const { shapes } = await runMap({}, { boundary: SQUARE, dir: "contracting" });
+    assert.equal(shapes.length, 1, "the boundary must be drawn");
+    assert.equal(shapes[0].added, true, "and actually added to the map");
+    assert.equal(shapes[0].style.fillColor, "#B91C1C", "a contracting market takes the red token");
+    assert.ok(shapes[0].style.fillOpacity > 0.1, "a read market is SHADED, not merely outlined");
+    assert.equal(shapes[0].style.dashArray, undefined, "and its edge is solid");
+  });
+
+  await t.test("an unread market is outlined, never shaded — the wash is a claim", async () => {
+    const { shapes } = await runMap({}, { boundary: SQUARE });
+    assert.equal(shapes.length, 1);
+    assert.equal(shapes[0].style.dashArray, "4 4", "no momentum read means a dashed outline");
+    assert.ok(shapes[0].style.fillOpacity < 0.1,
+      "an unread market must not be shaded — there is nothing to claim");
+  });
+
+  // The old rule was "no pins, no map card". A market whose comps are all
+  // quoted at the submarket level then got no map at all, which said nothing
+  // about where the market even is.
+  await t.test("a boundary alone keeps the map card", async () => {
+    const { card, shapes } = await runMap({}, { boundary: SQUARE, dir: "expanding", comps: [] });
+    assert.equal(shapes.length, 1);
+    assert.notEqual(card.style.display, "none",
+      "a card with a real boundary on it must not hide itself for want of pins");
+  });
+
+  await t.test("with neither pins nor boundary the card still hides", async () => {
+    const { card } = await runMap({}, { comps: [] });
+    assert.equal(card.style.display, "none");
+  });
+
+  // A comp just outside the city limit is ordinary, and fitting the pins
+  // alone would crop the shape the card is describing.
+  await t.test("the view holds the boundary and the pins together", async () => {
+    const { shapes, fits } = await runMap({}, { boundary: SQUARE, dir: "flat" });
+    assert.ok(fits.length >= 2, "expected a fit for the boundary and again once a pin arrived");
+    assert.ok(shapes[0].extended >= 1, "the pin must EXTEND the boundary's bounds, not replace them");
+  });
+
+  await t.test("a theme change restyles the boundary, not just the tiles", async () => {
+    const { shapes, observers, setTheme, tileUrls } = await runMap({}, { boundary: SQUARE, dir: "expanding" });
+    const before = shapes[0].style.fillColor;
+    setTheme("dark");
+    observers[0]();
+    assert.match(tileUrls[tileUrls.length - 1], /dark_all/, "the basemap must swap");
+    assert.notEqual(shapes[0].style.fillColor, before,
+      "the boundary holds a computed colour, so a theme flip must restyle it explicitly");
   });
 });
 

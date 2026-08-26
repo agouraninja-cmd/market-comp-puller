@@ -714,6 +714,12 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     // the declaration), so literal white text and brand red read correctly
     // regardless of site theme.
     "color:#ef4444", "fill:#ffffff", "fill:#b91c1c",
+    // The Google "G" in the account modal's Continue-with-Google button:
+    // a third party's trademark, drawn in Google's own four brand colours
+    // per their sign-in branding guidelines. A theme has no business
+    // repainting someone else's mark — it renders on the modal card in both
+    // themes, like the G on Google's own dark-theme button.
+    "fill:#ea4335", "fill:#4285f4", "fill:#fbbc05", "fill:#34a853",
     // Print letterhead's CompNinja icon: .print-only is display:none on
     // screen, so this markup is only ever seen by print, which is pinned
     // light on purpose and never reads data-theme at all.

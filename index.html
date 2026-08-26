@@ -1482,6 +1482,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="acctInfo" class="hidden text-sm text-[#4C5665]"></p>
         <button id="acctSubmit" type="submit"
           class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
+        <!-- "Continue with Google". Ships hidden; revealed only when
+             /api/config says this deployment has Google sign-in configured
+             AND the modal is on a tab where it applies (the Buy-button rule:
+             a control that can only fail never renders). A plain anchor, not
+             a JS submit — the whole flow is server redirects
+             (/auth/google -> Google -> the callback), so there is nothing
+             for script to do here. -->
+        <div id="acctGoogleRow" class="hidden">
+          <p class="text-center text-xs text-[#9AA2AD]">or</p>
+          <a id="acctGoogle" href="/auth/google"
+            class="mt-2 w-full flex items-center justify-center gap-2 border border-[#D8D4C9] rounded-lg px-4 py-2 font-semibold text-[#374253] hover:bg-[#F5F4EF]">
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </a>
+        </div>
         <div class="flex items-center justify-between text-sm">
           <button id="acctForgotLink" type="button" class="text-[#68707E] hover:text-[#374253]">Forgot password?</button>
           <button id="acctCancel" type="button" class="text-[#68707E] hover:text-[#374253]">Not now</button>
@@ -4925,6 +4945,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
+    // The startup half of the Google-button reveal — refreshProConfig covers
+    // every LATER re-read (sign-in, sign-out, checkout return), but the
+    // anonymous visitor staring at the ?auth= modal gets their answer here.
+    googleAuthLive = Boolean(cfg.googleAuth);
+    syncGoogleBtn();
     renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:
@@ -11437,6 +11462,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
   let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
   let acctMode = "signin";          // signin | signup | forgot | reset
+  // "Continue with Google" — revealed only once /api/config confirms the
+  // deployment has it configured, and only on the two tabs where signing in
+  // is what the modal is doing (a reset form offering a Google button would
+  // be a different action mid-flow).
+  let googleAuthLive = false;
+  function syncGoogleBtn() {
+    const row = document.getElementById("acctGoogleRow");
+    if (row) row.classList.toggle("hidden", !(googleAuthLive && (acctMode === "signin" || acctMode === "signup")));
+  }
   let resetToken = "";
   // Pricing deep link from a server-rendered header or /brokers. ?pricing=1
   // is the live door (a fragment never reaches the server, so the wall could
@@ -11614,6 +11648,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       (mode === "signup" ? "border-brand-600 font-medium text-[#1A2433]" : "border-transparent text-[#68707E] hover:text-[#1A2433]");
     document.getElementById("acctError").classList.add("hidden");
     document.getElementById("acctInfo").classList.add("hidden");
+    syncGoogleBtn();
   }
 
   function openAcctModal(mode, nudge) {
@@ -12108,6 +12143,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         : viaExplore
           ? "Create a free account to get started. Browsing whole markets is part of Pro; free reports work on any single address."
           : "Create a free account to run a report. It's free, no card needed.");
+      // The Google callback's failure exit (gerr=1). Written AFTER the modal
+      // opens because setAcctMode just cleared acctError. Deliberately one
+      // generic line — the server never forwards Google's own error text
+      // (upstreamError's rule), and the password door is right here.
+      if (new URLSearchParams(location.search).get("gerr")) {
+        const ge = document.getElementById("acctError");
+        ge.textContent = "Google sign-in didn't complete. Try again, or use your email and password.";
+        ge.classList.remove("hidden");
+      }
     }
     try {
       var pendingAddr = sessionStorage.getItem("pendingLandingAddress.v1");
@@ -15953,7 +15997,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       proConfigResolved = true;   // a real answer, not the boot-time default
       // Absent for signed-in visitors, so signing in clears the hint here.
       guestSearch = cfg.guestSearch || null;
+      // Static per deployment; read on every re-fetch so a modal already
+      // open when the first answer lands still gains the button.
+      googleAuthLive = Boolean(cfg.googleAuth);
     } catch (_) { /* keep the last known answer */ }
+    syncGoogleBtn();
     renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();

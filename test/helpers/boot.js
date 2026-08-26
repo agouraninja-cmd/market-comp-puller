@@ -98,6 +98,12 @@ async function bootOnce(env) {
       // with neither, so a developer's own VAULT_PASSKEY would turn that 404
       // into a 401 and fail a test about a deployment they are not running.
       VAULT_PASSKEY: "",
+      // Same argument again: "the Google routes 404 when unconfigured" boots
+      // with neither set, and a developer holding a real OAuth client in their
+      // environment would turn that 404 into a live redirect to Google.
+      GOOGLE_OAUTH_CLIENT_ID: "",
+      GOOGLE_OAUTH_CLIENT_SECRET: "",
+      GOOGLE_OAUTH_TOKEN_URL: "",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

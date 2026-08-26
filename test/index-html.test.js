@@ -1876,3 +1876,24 @@ test("the sample report's stated search radius covers its own comps", () => {
   assert.ok(claimed >= farthest,
     `the sample's radius (${claimed} mi) only clears its farthest comp (${farthest.toFixed(1)} mi) on slack`);
 });
+
+// ---------------------------------------------------------------------------
+// "Continue with Google" (2026-08-25). The button is a plain anchor into
+// GET /auth/google, shipped hidden and revealed only by /api/config's
+// googleAuth flag — the Buy-button rule, because most deployments (and every
+// local dev run) have no OAuth client and the anchor would 404. These pin the
+// three pieces that have to agree: the markup ships dark, the reveal reads
+// the config flag, and the callback's failure exit (?gerr=1) has a message
+// waiting for it.
+test("the Google button ships hidden and is revealed only by config", () => {
+  assert.match(html, /<div id="acctGoogleRow" class="hidden">/,
+    "the button must ship hidden — a control that can only fail never renders");
+  assert.match(html, /id="acctGoogle" href="\/auth\/google"/,
+    "the button is an anchor into the server's OAuth door, not a JS submit");
+  assert.match(html, /googleAuthLive = Boolean\(cfg\.googleAuth\)/,
+    "the reveal must read /api/config's flag, never assume");
+  assert.match(html, /acctMode === "signin" \|\| acctMode === "signup"/,
+    "the button belongs to the two sign-in tabs, not the reset/forgot forms");
+  assert.match(html, /get\("gerr"\)/,
+    "the callback's failure exit (?auth=signin&gerr=1) needs its message");
+});

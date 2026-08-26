@@ -8126,9 +8126,23 @@ table.stmt th[data-k]:hover{color:var(--ink)}
    pin is an ABSENCE of claim ("no recent read"): it must never share flat's
    grey fill — only its outline says a market is there at all. */
 .mmap-card{margin-top:20px}
-.mmap{height:320px;border:1px solid var(--edge);border-radius:6px;background:var(--wash)}
-.mmap-pin{display:block;width:14px;height:14px;border-radius:50%;box-sizing:border-box;
-  border:2px solid var(--card);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+/* Tall enough for the country to read as one. At 320px the continental US
+   was a squat band with its own coastline cramped against the frame, which
+   made a national picture look like a detail crop of one. */
+.mmap{height:460px;border:1px solid var(--edge);border-radius:6px;background:var(--wash)}
+@media (max-width:640px){.mmap{height:300px}}
+/* Esri's Light Gray Canvas is built to disappear under data, which at
+   national zoom leaves land and sea nearly the same tone and the country
+   with no shape at all. A little contrast gives the coastline back without
+   turning the basemap into something that competes with the pins. Scoped to
+   this map's tile pane, so the market pages' comp map (read at street zoom,
+   where the flat canvas is correct) is untouched. */
+.mmap .leaflet-tile-pane{filter:contrast(1.08) brightness(0.99)}
+/* The pin is the only saturated thing on a deliberately grey map, so it can
+   be small — but it needs a real shadow to sit ON the map rather than in it,
+   and a white collar to survive a dark tile behind it. */
+.mmap-pin{display:block;width:15px;height:15px;border-radius:50%;box-sizing:border-box;cursor:pointer;
+  border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .mmap-pin-expanding{background:var(--green)}
 .mmap-pin-flat{background:var(--ink-mute)}
 .mmap-pin-contracting{background:var(--red-fill)}
@@ -8756,15 +8770,30 @@ const BASEMAP_JS = `var CNBASE = (function () {
   }
   function baseUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Base" : "World_Light_Gray_Base") + "/MapServer/tile/{z}/{y}/{x}"; }
   function labelUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference") + "/MapServer/tile/{z}/{y}/{x}"; }
-  // Returns { setTheme } — the pair is swapped by setUrl rather than rebuilt,
-  // because the theme toggle lives in the shared header and can fire long
-  // after the pins are placed; re-adding a layer would drop them.
+  // Place labels are a separate layer, and below LABEL_MIN_ZOOM they are
+  // taken off. At national zoom Esri's Reference layer writes UNITED STATES
+  // in tracked capitals across the middle of the country and labels Toronto,
+  // Monterrey and Havana — none of which is what this map is about, all of
+  // it competing with the pins for the same few pixels. Zoomed into a city
+  // the labels become the whole point (which street, which suburb), and by
+  // then the tracked country name is long gone. Clicking a pin flies to
+  // zoom 11, so the labels arrive exactly when they start being useful.
+  var LABEL_MIN_ZOOM = 6;
+  // Returns { setTheme } — the layers are swapped by setUrl rather than
+  // rebuilt, because the theme toggle lives in the shared header and can fire
+  // long after the pins are placed; re-adding a layer would drop them.
   function add(map) {
     var dark = isDark();
     var base = L.tileLayer(baseUrl(dark), { maxZoom: 19, crossOrigin: "anonymous", attribution: ATTRIB });
     var labels = L.tileLayer(labelUrl(dark), { maxZoom: 19, crossOrigin: "anonymous" });
     base.addTo(map);
-    labels.addTo(map);
+    function syncLabels() {
+      var want = map.getZoom() >= LABEL_MIN_ZOOM;
+      if (want && !map.hasLayer(labels)) labels.addTo(map);
+      if (!want && map.hasLayer(labels)) map.removeLayer(labels);
+    }
+    map.on("zoomend", syncLabels);
+    syncLabels();
     return { setTheme: function () { var d = isDark(); base.setUrl(baseUrl(d)); labels.setUrl(labelUrl(d)); } };
   }
   return { add: add, isDark: isDark };
@@ -8972,6 +9001,12 @@ const MARKETS_DIR_MAP_JS = `(function(){
   try { data = JSON.parse(document.getElementById("mktsMapData").textContent); } catch (e) {}
   var pins = (data && data.pins) || [];
   if (pins.length < 2) { card.style.display = "none"; return; }
+  // Whole-number zoom, deliberately. Fractional zoom (zoomSnap 0) frames the
+  // pins beautifully tight and then scales every tile off the pixel grid,
+  // which leaves hairline seams across the map — plainly visible in a
+  // screenshot, and worst on the wide flat greys this basemap is made of.
+  // The framing is solved by the FRAME instead: .mmap is tall enough that
+  // the fit below lands a level up rather than falling back a whole level.
   var map = L.map("mktsMap", { scrollWheelZoom: false }).setView([39.8, -98.6], 4);
   var tiles = CNBASE.add(map);
   // The theme flip restyles the carved areas alongside the tile swap — their
@@ -9040,8 +9075,11 @@ const MARKETS_DIR_MAP_JS = `(function(){
     m.on("click", function () { openCity(p.key, [p.lat, p.lng]); });
     bounds.push([p.lat, p.lng]);
   });
-  // maxZoom caps the fit so two nearby pins don't zoom to street level.
-  map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
+  // Padding, because the pins ARE the content: at [30,30] the outermost
+  // markets sat against the frame and the map read as a crop of a bigger
+  // one. maxZoom caps the fit so a two-market deployment doesn't open at
+  // street level.
+  map.fitBounds(bounds, { padding: [36, 36], maxZoom: 6 });
 
   // CLICK A PIN, SEE THE CITY. A pin click flies to the city, reveals its
   // real municipal boundary colored by the one claim that shape may make

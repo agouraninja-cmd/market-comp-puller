@@ -62,7 +62,19 @@ function runMap(seed, opts) {
     mktMapHead: head,
     mktMapPinsDisc: pinsDisc,
   };
-  const mapObj = { setView() { return this; }, fitBounds(b) { fits.push(b); } };
+  // A market page opens at city zoom, which is where the label layer belongs
+  // (CNBASE takes labels off below zoom 6 so the national map is not shouted
+  // at); the stub reports one so the labels are exercised here.
+  const onMapLayers = new Set();
+  const mapObj = {
+    setView() { return this; },
+    fitBounds(b) { fits.push(b); },
+    getZoom: () => (o.zoom === undefined ? 12 : o.zoom),
+    on() {},
+    hasLayer: (l) => onMapLayers.has(l),
+    addLayer(l) { onMapLayers.add(l); return this; },
+    removeLayer(l) { onMapLayers.delete(l); return this; },
+  };
   const tileUrls = [];
   const observers = [];
   // Mutable, because the theme toggle fires AFTER the page has loaded and the
@@ -89,7 +101,9 @@ function runMap(seed, opts) {
       tileLayer: (url) => {
         tileUrls.push(url);
         const layer = { setUrl: (u) => { tileUrls.push(u); return layer; } };
-        layer.addTo = () => layer;
+        // addTo must register with the map, or hasLayer can never be true and
+        // the label layer would be added on every zoom.
+        layer.addTo = (m) => { if (m && m.addLayer) m.addLayer(layer); return layer; };
         return layer;
       },
       marker: (ll) => ({ addTo: () => ({ bindPopup: () => { pins.push(ll); } }) }),
@@ -148,6 +162,9 @@ function runMap(seed, opts) {
     () => resolve({
       store, pins, requests, card, tileUrls, observers, shapes, fits, head, pinsDisc,
       setTheme: (t) => { theme = t; },
+      // The label layer is the SECOND tileLayer built; it is on the map only
+      // when CNBASE decided this zoom deserves labels.
+      labelsOn: () => onMapLayers.size > 1,
     }), o.settle || 50
   ));
 }
@@ -191,6 +208,20 @@ test("the market map's basemap follows the theme", async (t) => {
   await t.test("tiles are requested {z}/{y}/{x}", async () => {
     const { tileUrls } = await runMap({});
     for (const u of tileUrls) assert.match(u, /\/tile\/\{z\}\/\{y\}\/\{x\}$/, u);
+  });
+
+  // Place labels come OFF below zoom 6. At national zoom Esri's Reference
+  // layer writes UNITED STATES across the middle of the country and labels
+  // Toronto and Monterrey, none of which this map is about, all of it
+  // competing with the pins. At city zoom the labels are the whole point.
+  await t.test("labels are on at city zoom and off at national zoom", async () => {
+    const near = await runMap({}, { zoom: 12 });
+    assert.equal(near.labelsOn(), true, "a city-zoom map must carry its street and place labels");
+    const far = await runMap({}, { zoom: 4 });
+    assert.equal(far.labelsOn(), false,
+      "at national zoom the label layer must come off — it shouts over the pins");
+    // The layer is still BUILT either way, so a zoom back in needs no rebuild.
+    assert.equal(far.tileUrls.length, 2, "both layers are constructed regardless of zoom");
   });
 });
 

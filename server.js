@@ -19972,6 +19972,27 @@ const server = http.createServer((req, res) =>
           firmSeats = asked;
           const existingOrgSub = await findOrgSubscription(String(orgId));
           firmCustomer = (existingOrgSub && existingOrgSub.stripe_customer_id) || null;
+          // A firm that already has a live plan changes its seats in the
+          // BILLING PORTAL, never through a second checkout. A second
+          // checkout would open a second Stripe subscription, and
+          // org_subscriptions is PRIMARY KEY (org_id): the second webhook
+          // overwrites the first, the firm is billed twice, and every screen
+          // shows one plan — invisible double-billing, the failure the
+          // idempotency key narrowed to a double-click and this closes for
+          // the deliberate case. The portal's change-quantity setting is ON
+          // (verified in the dashboard 2026-08-26), so nobody is stranded.
+          //
+          // "Live" is anything not terminally cancelled: a plan cancelled at
+          // period end keeps status "active" until Stripe's deletion event
+          // lands, and the portal is where it can be renewed too. Only a
+          // fully-ended subscription (status "cancelled") may buy afresh —
+          // that is how a lapsed firm comes back.
+          if (existingOrgSub && existingOrgSub.status && existingOrgSub.status !== "cancelled") {
+            return sendJson(res, 409, {
+              error: "This firm already has a plan. Change its seats in the billing portal instead.",
+              code: "already_subscribed",
+            });
+          }
         }
 
         // Seat check at checkout CREATION. There is a small race here — two
@@ -19991,6 +20012,24 @@ const server = http.createServer((req, res) =>
         }
 
         const existing = await findSubscription(user.id);
+        // The personal twin of the firm's `already_subscribed` refusal above,
+        // for the same reason: `subscriptions` is PRIMARY KEY (user_id), so a
+        // second personal subscription overwrites the row while Stripe keeps
+        // billing both. The UI already hides every buy control from a Pro
+        // member (refreshBillingUI), so this only aligns the API with the
+        // page — including the monthly-holder-buys-founding case, which had
+        // no safe path anyway (portal plan-switching is OFF for the founding
+        // cap's sake, and a checkout upgrade would double-bill). An upgrade
+        // flow, if ever wanted, is its own design with proration questions;
+        // refusing beats silently charging twice. Deliberately NOT applied to
+        // a firm purchase: the buyer's personal Pro has nothing to do with
+        // their firm buying seats, and the firm check above already ran.
+        if (!chosen.firm && existing && existing.status && existing.status !== "cancelled") {
+          return sendJson(res, 409, {
+            error: "You already have a plan. Manage or cancel it from the billing portal instead.",
+            code: "already_subscribed",
+          });
+        }
         // Every remaining plan is a subscription and returns to the desk.
         // (The retired one-off returned to "/?purchase" instead — the client
         // still handles that return, because an in-flight checkout may

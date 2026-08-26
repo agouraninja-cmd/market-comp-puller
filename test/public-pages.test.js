@@ -234,6 +234,36 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  // The third time this answer has needed pinning against reality, and the
+  // first about the PRICE. PRO-BILLING-SETUP.md has warned since 2026-07-31
+  // that the monthly figure is hard-coded in the pricing modal while the
+  // actual charge comes from a Stripe price ID, so "nothing catches a drift"
+  // — and on 2026-08-25 the price moved $129 -> $100, which meant editing the
+  // modal, the compare table and this answer in one go.
+  //
+  // Stripe cannot be reached from here, so this pins the two IN-REPO copies to
+  // each other: whatever the modal's Pro tile charges per month, the FAQ
+  // answer Google serves as a fact about this product must say the same. It
+  // cannot catch both being wrong together; it does catch the likelier
+  // failure, which is one being edited and the other forgotten.
+  await t.test("the FAQ's monthly price is the pricing modal's monthly price", async () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const page = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+
+    // The Pro tile: the figure immediately followed by "per month".
+    const tile = page.match(/<div class="pr-fig">\$([\d,]+)<\/div>\s*<div class="pr-per">per month/);
+    assert.ok(tile, "the pricing modal's Pro monthly tile is gone or restructured — this pin is blind");
+
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const said = html.match(/Pro, at \$([\d,]+) a month/);
+      assert.ok(said, p + " no longer states a monthly price in the cost answer");
+      assert.equal(said[1], tile[1],
+        p + " quotes $" + said[1] + " a month while the pricing modal charges $" + tile[1]);
+    }
+  });
+
   await t.test("brokers have a path off the landing page, not just an FAQ row", async () => {
     // Until 2026-08-12 a broker arriving here met one FAQ answer and a link
     // inside the Explore dropdown. The owner's own read is that broker

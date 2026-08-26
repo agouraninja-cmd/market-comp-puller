@@ -1540,7 +1540,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Pro monthly -->
         <div class="rd-lcell mid pr-cell">
           <span class="rd-lab">Pro</span>
-          <div class="pr-fig">$129</div>
+          <div class="pr-fig">$100</div>
           <div class="pr-per">per month &middot; cancel any time</div>
           <!-- Sell only what ships. Report branding was held off this list
                while it was a real entitlement in entitlements.js with no UI
@@ -1577,11 +1577,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Founding annual. Hidden unless seats remain. -->
         <div id="foundingTile" class="hidden rd-lcell pr-cell">
           <span class="rd-lab">Founding</span>
-          <div class="pr-fig">$990</div>
-          <!-- $129 x 12 = $1,548 against $990. Recompute this figure if EITHER
+          <div class="pr-fig">$840</div>
+          <!-- $100 x 12 = $1,200 against $840. Recompute this figure if EITHER
                price changes — both are hard-coded here while the actual charge
-               comes from the Stripe price IDs, so nothing catches a drift. -->
-          <div class="pr-per">per year &middot; saves $558</div>
+               comes from the Stripe price IDs, so nothing catches a drift.
+               (Was $990 against $129/mo, "saves $558", until 2026-08-25: the
+               monthly price came down to $100 and $990 would have left the
+               founding tile saving only $210, i.e. a worse deal wearing the
+               same word.) The monthly figure above is pinned to the /how-it-
+               works FAQ answer by test/public-pages.test.js; this one is not
+               pinned to anything, so check the arithmetic by hand. -->
+          <div class="pr-per">per year &middot; saves $360</div>
           <p class="pr-sum">Everything in Pro, locked at this rate for as long as you stay subscribed.</p>
           <span id="foundingLeft" class="text-[11px] font-semibold text-[#B91C1C] uppercase tracking-wide"></span>
           <button type="button" data-plan="pro_annual_founding"
@@ -1638,7 +1644,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
           </tbody>
           <tfoot>
-            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$129</span></td></tr>
+            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$100</span></td></tr>
           </tfoot>
         </table>
       </div>
@@ -13647,10 +13653,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // firm already has would drop named colleagues to free the moment the
     // webhook lands, which is a downgrade nobody in the room asked for. The
     // server refuses it too, by name and with the number.
-    const asked = prompt(`How many seats? Your firm has ${b.used} people, including invitations.`, String(Math.max(b.used, b.seats === 200 ? b.used : b.seats)));
+    // MIRRORS org-access.js's ORG.MIN_SEATS — this file cannot require it, so
+    // test/index-html.test.js pins the two together. A courtesy only: the
+    // route refuses below the minimum itself (`seats_below_minimum`), and a
+    // browser that edits this number gets a 400 rather than a cheap plan.
+    const MIN_SEATS = 2;
+    const asked = prompt(`How many seats? Your firm has ${b.used} people, including invitations. A firm plan starts at ${MIN_SEATS} seats.`, String(Math.max(MIN_SEATS, b.used, b.seats === 200 ? b.used : b.seats)));
     if (asked == null) return;
     const seats = Math.floor(Number(asked));
-    if (!seats || seats < 1) { msg.textContent = "Enter a number of seats."; return; }
+    if (!seats || seats < MIN_SEATS) { msg.textContent = `A firm plan starts at ${MIN_SEATS} seats.`; return; }
     msg.textContent = "Opening checkout…";
     try {
       const res = await fetch("/api/checkout", {

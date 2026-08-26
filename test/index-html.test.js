@@ -1597,6 +1597,23 @@ test("index.html's SHOP_COPY is the same map as org-access.js's", () => {
   assert.ok(ctx.copy.broker, "the fallback both halves use is missing from the page's map");
 });
 
+// --- The seat minimum is mirrored into the buy prompt -----------------------
+//
+// The same hazard as SHOP_COPY above, with money on it. The seats prompt
+// defaults and validates against its own copy of ORG.MIN_SEATS, because
+// index.html cannot require the module. Drift is bad in both directions and
+// loud in neither: a page minimum BELOW the module's offers a number the
+// route then refuses, which reads as a broken Buy button; a page minimum
+// ABOVE it quietly stops selling the smallest firm plan that exists.
+// ---------------------------------------------------------------------------
+test("index.html's seat minimum is org-access.js's MIN_SEATS", () => {
+  const ORG = require("../org-access.js");
+  const m = html.match(/const MIN_SEATS = (\d+);/);
+  assert.ok(m, "index.html's MIN_SEATS is gone or renamed — the mirror is unpinned");
+  assert.equal(Number(m[1]), ORG.MIN_SEATS,
+    "the seats prompt and the checkout route disagree about the smallest firm plan");
+});
+
 // --- Development returns card (C6) ------------------------------------------
 // renderDevCard is straight-line DOM code: every figure is written with
 // getElementById(...).textContent, so a mistyped or renamed id does not throw

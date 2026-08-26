@@ -85,12 +85,18 @@ Stripe and resumes the moment it is switched back on.
 
 Not secret — a price ID identifies a product, it does not authorize anything.
 
-**LIVE mode (what production uses today, created 2026-08-03):**
+**⚠ 2026-08-25: the prices below are the ORIGINAL ones and three of the four
+lines are superseded.** The repricing decision and the new values are in
+"The 2026-08-25 repricing" further down; the price IDs created for it get
+recorded there. This block is kept as the historical record, per the same
+rule as the retired single-report entries.
+
+**LIVE mode (created 2026-08-03):**
 
 ```
-STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo
-STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding
-STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, sold since 2026-08-03
+STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo — superseded 2026-08-25 by $100
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding — superseded 2026-08-25 by $840
+STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, RETIRED 2026-08-21
 ```
 
 Note the prefixes run `Kk`, `Kl`, `Km` but map to **Monthly, Single Report,
@@ -633,25 +639,64 @@ subscriptions stay valid in Stripe and resume when it returns.
   `$129`/`$990` (hard-coded in the pricing modal), the firm price can change
   in the dashboard without a repo edit.
 
-### Step 0 — price sanity check (Chuck, 15 minutes, before anything is created)
+### The 2026-08-25 repricing — what was decided and why
 
-The transition plan proposes **~$79/seat/month**. Confirm the number before
-it is archived-and-recreated next week. The 5-seat minimum half of that
-proposal is NOT enforced by code (see above) — a price is all Stripe needs.
+Chuck was unavailable for the price check, so it was done against the market
+instead. Per-seat pricing for broker-facing CRE tools clusters hard at
+**$129/user/mo** (Apto, Rethink CRM, ClientLook — ClientLook entry ~$89);
+above that sit Crexi Pro at $249, Buildout at $85–249/broker **plus** a
+$275/mo platform fee, and CoStar at $300–$1,200+/mo. Team plans in the 5–50
+seat range conventionally run **10–25% off** the individual price.
 
-### Step 1 — create the price (Stripe, LIVE mode)
+The owner's call, taken 2026-08-25:
 
-Product **"CompNinja Firm"**, one recurring **monthly** price, **per unit**
-(checkout passes `quantity = seats`). Record the live price ID here when
-created, next to the other three:
+| | Was | Now |
+|---|---|---|
+| Pro monthly | $129/mo | **$100/mo** |
+| Founding annual | $990/yr ("saves $558") | **$840/yr ("saves $360")** |
+| Firm seats | not sold | **$79/seat/mo, minimum 2 seats** |
+
+$79 against $100 is a 21% team discount, inside the conventional band. The
+founding annual moved because $990 against $100/mo would have saved only
+$210 — a visibly worse deal still wearing the word "founding".
+
+**The 2-seat minimum is not a pricing preference, it closes a hole.**
+`canUseOrg` gates *creating* a firm on already holding Pro, but
+`getEntitlements` grants Pro from a firm **seat** as a fallback once a
+personal subscription lapses (`server.js`, the `firmSeatSubscriptionFor`
+branch). Without a minimum, one person could create a firm, buy a single
+seat, cancel their own plan, and keep everything at the seat price — which
+is below the individual price by construction, because a team discount is
+the point. Two seats bill $158 against $100, so the cheap path back to Pro
+is closed. **Keep that relation true if either price moves**: it works
+because the seat price is above half the individual price. The rule lives in
+`ORG.MIN_SEATS` (org-access.js), is refused by name at checkout
+(`seats_below_minimum`), and is mirrored into index.html's seats prompt with
+a test pinning the two.
+
+New live price IDs — **record them here as they are created**:
 
 ```
-STRIPE_PRICE_FIRM_MONTHLY = price_...   # $79/seat/mo (pending Chuck's check)
+STRIPE_PRICE_PRO_MONTHLY          = price_...   # $100/mo        (created 2026-08-25)
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_...   # $840/yr        (created 2026-08-25)
+STRIPE_PRICE_FIRM_MONTHLY         = price_...   # $79/seat/mo    (created 2026-08-25)
+                                    price_...   # $1/seat/mo TEMP — archive after the test
 ```
 
 No portal or webhook work: the existing destination and portal configuration
 cover subscriptions generally, and the portal's plan-switching stays OFF (the
 founding-cap reason, unchanged).
+
+**Two ordering rules for the repricing**, both learned from what would go
+wrong otherwise:
+
+- **Env vars before the copy deploy.** Between the two the site advertises
+  $129 while charging $100 — under-advertising, which is the safe direction.
+  The reverse order advertises $100 and charges $129.
+- **Existing subscribers do not move on their own.** A Stripe price change
+  never touches live subscriptions, so anyone on $129 keeps paying it while
+  the site says $100. They are migrated down by hand in the dashboard;
+  founding annual members keep the $990 they bought.
 
 ### Step 2 — prove it with a $1 price first (the E6 pattern)
 

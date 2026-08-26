@@ -1,9 +1,15 @@
 [
   {
     "date": "2026-08-25",
+    "type": "feature",
+    "title": "New pricing: Pro is $100, and a firm can buy seats",
+    "details": "Pro monthly comes down from $129 to $100 and the founding annual from $990 to $840 (so \"founding\" still means roughly three and a half months free rather than two). Firms can put a whole office on one plan at $79 a seat. A firm plan starts at two seats, and that is a rule rather than a preference: a seat grants Pro, so a one-seat firm plan would just be a cheaper Pro for one person — two seats bill above the individual price, which closes it without refusing genuinely small shops. The price figures were only ever written in the pricing modal and the landing FAQ, with nothing keeping them in step; a test now pins those two to each other."
+  },
+  {
+    "date": "2026-08-25",
     "type": "improvement",
     "title": "The firm-seats launch has a written runbook",
-    "details": "PRO-BILLING-SETUP.md now covers the third sellable plan: what the code already enforces (owner-only, seats ≥ headcount, seats written from the subscription, the firm as its own Stripe customer), the exact Stripe and Render steps, and a $1-temp-price verification round trip in the E6 pattern before the real price goes in. No code changed — the plan shipped with migration 033 and stays dark until STRIPE_PRICE_FIRM_MONTHLY is set, which is the launch. The doc's status table also caught up with history it had missed: Pro's public launch, report branding, and the single-report retirement."
+    "details": "PRO-BILLING-SETUP.md now covers the third sellable plan: what the code already enforces (owner-only, seats ≥ headcount, the two-seat minimum, seats written from the subscription, the firm as its own Stripe customer), the Stripe and Render steps, and a $1-temp-price verification round trip in the E6 pattern before the real price goes in. It also records why env vars are set before the copy deploys — the other order advertises a price lower than the one being charged — and that existing subscribers never move to a new price on their own. The status table caught up with history it had missed: Pro's public launch, report branding, and the single-report retirement."
   },
   {
     "date": "2026-08-25",

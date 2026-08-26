@@ -2,6 +2,12 @@
   {
     "date": "2026-08-25",
     "type": "improvement",
+    "title": "The firm-seats launch has a written runbook",
+    "details": "PRO-BILLING-SETUP.md now covers the third sellable plan: what the code already enforces (owner-only, seats ≥ headcount, seats written from the subscription, the firm as its own Stripe customer), the exact Stripe and Render steps, and a $1-temp-price verification round trip in the E6 pattern before the real price goes in. No code changed — the plan shipped with migration 033 and stays dark until STRIPE_PRICE_FIRM_MONTHLY is set, which is the launch. The doc's status table also caught up with history it had missed: Pro's public launch, report branding, and the single-report retirement."
+  },
+  {
+    "date": "2026-08-25",
+    "type": "improvement",
     "title": "Brokers and How it works leave the Explore menu",
     "details": "The Explore dropdown now carries the 1031 Guide, Download the app and — on the vault header — Markets and Run a report. Neither page moved or lost a door: /brokers and /how-it-works keep their footer link on every surface, and the landing page still links both from the line under its hero. One edit did it everywhere, because the app menu and every server-rendered header render from the same NAV_LINKS list."
   },

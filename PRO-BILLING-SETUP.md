@@ -679,8 +679,39 @@ New live price IDs — **record them here as they are created**:
 ```
 STRIPE_PRICE_PRO_MONTHLY          = price_1U8iOORztxjkvpo5m6v1nAK0   # $100.00/mo
 STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U8iSERztxjkvpo5ReDQ2YCF   # $840.00/yr
-STRIPE_PRICE_FIRM_MONTHLY         = price_1U8iViRztxjkvpo5mrjCONar   # $79.00/seat/mo  <- the real one
-                                    price_1U8iViRztxjkvpo5DIPhXbGL   # $1.00/seat/mo TEMP, archive after the test
+STRIPE_PRICE_FIRM_MONTHLY         = price_1U8iViRztxjkvpo5mrjCONar   # $79.00/seat/mo  <- LIVE
+                                    price_1U8iViRztxjkvpo5DIPhXbGL   # $1.00/seat/mo, ARCHIVED after the test
+```
+
+**Done, and proved on production 2026-08-26.** All three are set on Render and
+the firm plan is selling at $79 a seat. What the live round trip established,
+in order:
+
+- A firm checkout for 1 seat is refused `seats_below_minimum` (minimum 2); 0
+  and a non-number are refused with no code, which is the intended asymmetry.
+- Two seats at the $1 test price billed $2.00 ("Qty 2, $1.00 each"), and the
+  webhook wrote `org_subscriptions` AND set `orgs.seats` to 2 from the
+  subscription quantity. The desk read "1 of 2 seats used - 1 free - active"
+  and grew a working "Manage firm billing" button.
+- Cancelling flowed back the same way: `status` went to `cancelled` on its own.
+- After the env swap, a fresh session quotes **$158.00/mo, Qty 2, $79.00
+  each**. The $1 price is archived.
+
+**It also found that checkout had been broken for five days** -- the retired
+$20 unlock left a dead `reportId` reference in the Stripe call, so every
+successful checkout threw ReferenceError while the suite stayed green. Fixed
+with the test that was missing (see STRIPE_API_URL in stripe.js and
+test/checkout-run.test.js). That is the case for doing this round trip on a
+real card rather than trusting a green build.
+
+Left behind on purpose: the scratch firm `Seat Billing Test (scratch)`
+(`5c1afe5f-e591-404c-b0a3-42ee5fbe381c`), which has a cancelled subscription
+row and `seats = 2`. There is no delete-org route, so removing it is SQL:
+
+```sql
+delete from org_subscriptions where org_id = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
+delete from org_members     where org_id = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
+delete from orgs            where id     = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
 ```
 
 All four were created live on 2026-08-26. `CompNinja Firm` is a new product,

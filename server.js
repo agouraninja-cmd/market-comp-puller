@@ -469,20 +469,27 @@ function allMarketPages() {
 
 // The carved municipal boundary for a city, or null. The file is committed
 // (scripts/fetch-city-bounds.js writes it deliberately; Render wipes its disk
-// on deploy) and therefore only changes when this process restarts, so it is
-// read once and held. A missing or unreadable file memoizes to {} — every
-// market page then renders exactly as it did before boundaries existed, which
-// is the same fail-open the /markets map takes.
+// on deploy) and therefore only changes when this process restarts, so a
+// successful read is held for the life of the process. Two hard-won guards:
+// the parsed value must be a real object — the JSON text "null" parses
+// cleanly, defeats a truthiness memo check, and then `CITY_BOUNDS[key]`
+// throws on every market-page request, which with no handler above this is a
+// restart loop — and a READ failure is never memoized (city-check's rule:
+// ok and unknown memoize, an outage does not), so a torn read during a local
+// re-fetch costs one request's boundary, not the process's.
 let CITY_BOUNDS = null;
 function cityBoundary(cityKey) {
-  if (!CITY_BOUNDS) {
+  let all = CITY_BOUNDS;
+  if (!all) {
     try {
-      CITY_BOUNDS = JSON.parse(fs.readFileSync(path.join(__dirname, "city-bounds.json"), "utf8"));
+      const parsed = JSON.parse(fs.readFileSync(path.join(__dirname, "city-bounds.json"), "utf8"));
+      all = (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+      CITY_BOUNDS = all;
     } catch (e) {
-      CITY_BOUNDS = {};
+      all = {};
     }
   }
-  const b = CITY_BOUNDS[cityKey];
+  const b = all[cityKey];
   return (b && b.geometry) ? b.geometry : null;
 }
 
@@ -7758,6 +7765,7 @@ const LEAFLET_DARK_CSS = `
 [data-theme="dark"] .leaflet-popup-content-wrapper,
 [data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
 [data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+[data-theme="dark"] .leaflet-popup-content a{color:var(--ink-2)}
 [data-theme="dark"] .leaflet-tooltip{background:var(--card);color:var(--ink);border-color:var(--edge)}
 [data-theme="dark"] .leaflet-tooltip-top:before{border-top-color:var(--card)}
 [data-theme="dark"] .leaflet-tooltip-bottom:before{border-bottom-color:var(--card)}
@@ -8127,9 +8135,12 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mmap-pin-none{background:transparent;border-color:var(--ink-3)}
 /* Mixed exists only for the carved city areas: one shape can hold markets
    moving opposite ways (Phoenix industrial expands while its multifamily
-   contracts), and no single color would be honest about that. The split
-   swatch says exactly what it is. */
-.mmap-pin-mixed{background:linear-gradient(135deg,var(--green) 50%,var(--red-fill) 50%)}
+   contracts), and no single color would be honest about that. The swatch
+   MATCHES what areaStyle actually draws — a grey wash inside an ink ring —
+   because a legend key that appears nowhere on the map is worse than none
+   (the first version was a green/red split gradient, which no drawn shape
+   ever wore). The ink ring is what separates it from Flat's plain grey. */
+.mmap-pin-mixed{background:var(--ink-mute);border-color:var(--ink)}
 .mmap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-3)}
 .mml{display:inline-flex;align-items:center;gap:6px}
 .mml-s{width:10px;height:10px}
@@ -8710,6 +8721,12 @@ const MARKET_FOOTER =
 // version number: version numbers invite being re-synced by anyone who reads
 // the two as having drifted apart, which is exactly how this comes back. ---
 const MARKET_MAP_JS = `(function(){
+  // Progressive enhancement, same guard as the /markets momentum map: with
+  // the Leaflet CDN blocked the page's numbers are the content, and an empty
+  // 340px rectangle helps nobody — this matters MORE now that a boundary-only
+  // page renders the card with zero comps to hide it later.
+  var mapCardEl = document.getElementById("mktMapCard");
+  if (!window.L) { if (mapCardEl) mapCardEl.style.display = "none"; return; }
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
   var CACHE_KEY = "mktGeoCache.v1";
   var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
@@ -8790,10 +8807,15 @@ const MARKET_MAP_JS = `(function(){
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
-  // The city's carved boundary, washed in this market's momentum. Same tokens
-  // and the same numbers the /markets map's areaStyle uses, so a city looks
-  // the same on both surfaces. An unread market is OUTLINED, never shaded:
-  // the wash is a claim, and there is nothing to claim.
+  // The city's carved boundary, washed in this market's momentum. An unread
+  // market is OUTLINED, never shaded: the wash is a claim, and there is
+  // nothing to claim.
+  // ⚠ MIRROR of areaStyle in MARKETS_DIR_MAP_JS (this same file): a city
+  // must look the same on /markets and on its own market page, and browser
+  // strings cannot share code, so every number and token here is a
+  // deliberate copy. test/markets-map-script.test.js pins the two together —
+  // change one, change both. The one branch missing here is "mixed", which
+  // a single-market page can never be.
   function tok(name, fallback) {
     var v = "";
     try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
@@ -8812,15 +8834,30 @@ const MARKET_MAP_JS = `(function(){
   // that came down with the page, so the map has something on it immediately
   // rather than after a round trip per comp. Leaflet's pane order puts paths
   // under markers, so the comp pins land on top of the wash as they arrive.
+  // The try/catch is load-bearing: a degenerate stored geometry (empty
+  // coordinates make getBounds().getCenter() throw) must cost the SHAPE,
+  // never the pins — pins always drew before boundaries existed, and this
+  // synchronous prelude sits upstream of the whole geocode chain.
   var fit = null;
   if (data.boundary) {
-    shape = L.geoJSON(data.boundary, { style: boundaryStyle(data.dir) });
-    // ensureMap needs a centre; the shape's own bounds provide one, and the
-    // fitBounds directly after replaces the placeholder zoom.
-    var b = shape.getBounds();
-    shape.addTo(ensureMap(b.getCenter()));
-    fit = b;
-    map.fitBounds(b, { padding: [20, 20] });
+    try {
+      shape = L.geoJSON(data.boundary, { style: boundaryStyle(data.dir) });
+      var b = shape.getBounds();
+      shape.addTo(ensureMap(b.getCenter()));
+      fit = b;
+      map.fitBounds(b, { padding: [20, 20] });
+    } catch (e) {
+      shape = null;
+      fit = null;
+    }
+  }
+  // A page with no mappable comps skips geocoding outright: the city sanity
+  // point exists only to gate comp pins, and a boundary-only page paying a
+  // Census round trip (and, on a miss, a browser-direct Nominatim call that
+  // carries the visitor's IP) to gate zero pins would be spend for nothing.
+  if (!data.comps.length) {
+    if (!shape && mapCardEl) mapCardEl.style.display = "none";
+    return;
   }
   // ", USA" disambiguates the sanity point: bare "Ontario, CA" reads as the
   // Canadian province to Nominatim (CA = Canada), which put the city point
@@ -8852,7 +8889,20 @@ const MARKET_MAP_JS = `(function(){
     chain.then(function () {
       // A boundary is enough to keep the card: it still answers where this
       // market is, which is more than the hidden card ever did.
-      if (!pts.length && !shape) document.getElementById("mktMapCard").style.display = "none";
+      if (!pts.length && !shape) {
+        if (mapCardEl) mapCardEl.style.display = "none";
+        return;
+      }
+      // The server wrote the heading and the pins sentence believing comps
+      // would pin. If none survived geocoding and the card is standing on
+      // its boundary, retract both — copy asserting pins over a map that
+      // has none is a false statement.
+      if (!pts.length && shape) {
+        var h = document.getElementById("mktMapHead");
+        if (h) h.textContent = "Where this market is";
+        var pd = document.getElementById("mktMapPinsDisc");
+        if (pd) pd.style.display = "none";
+      }
     });
   });
 })();`;
@@ -8909,17 +8959,20 @@ const MARKETS_DIR_MAP_JS = `(function(){
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   } catch (e) {}
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
-  // Two property types in one city share one stored point and would stack
-  // exactly on top of each other — and a geographic offset cannot fix that:
-  // any spread small enough to stay honest at city zoom is sub-pixel at the
-  // national zoom this map opens at, so a green pin would still hide a red
-  // one. The spread is in PIXELS, on the icon anchor: constant on screen at
-  // every zoom, and the marker's point never lies about where the city is.
-  // Members sorted by type then slug so the ring holds still between visits.
+  // Two markets in one city would stack on top of each other — and a
+  // geographic offset cannot fix that: any spread small enough to stay
+  // honest at city zoom is sub-pixel at the national zoom this map opens at,
+  // so a green pin would still hide a red one. The spread is in PIXELS, on
+  // the icon anchor: constant on screen at every zoom, and the marker's
+  // point never lies about where the city is. Grouped by the CITY KEY, never
+  // by coordinates: two markets of one Explorer-published city can store
+  // slightly different points (Wikipedia's vs Zippopotam's), and a
+  // coordinate key would silently skip the spread for exactly the stacked
+  // pair it exists to separate. Members sorted by type then slug so the
+  // ring holds still between visits.
   var groups = {};
   pins.forEach(function (p) {
-    var k = p.lat.toFixed(4) + "|" + p.lng.toFixed(4);
-    (groups[k] = groups[k] || []).push(p);
+    (groups[p.key] = groups[p.key] || []).push(p);
   });
   Object.keys(groups).forEach(function (k) {
     var g = groups[k];
@@ -8978,16 +9031,36 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // (most visitors never ask for a boundary), and every failure path — no
   // fetch, no entry for this city, bad JSON — degrades to the same card
   // without a shape. A click is never a dead end.
+  // areas carries only what the browser cannot derive: the per-city momentum
+  // (market-area.js is deliberately server-side). Everything a city card
+  // shows — slug, type, median, dir — already rides every pin, so shipping a
+  // second copy in areas would double the blob and open a drift surface
+  // between two serializations of the same market.
   var areas = (data && data.areas) || [];
   var areasByKey = {};
   areas.forEach(function (a) { areasByKey[a.key] = a; });
-  var revealed = {}, revealedList = [], boundsPromise = null;
+  var pinsByKey = {};
+  pins.forEach(function (p) { (pinsByKey[p.key] = pinsByKey[p.key] || []).push(p); });
+  // One collection for the revealed shapes: key -> { layer, momentum }. The
+  // reveal gate, the fit target and the theme restyle all read it.
+  var revealed = {}, boundsPromise = null;
+  restyle = function () {
+    Object.keys(revealed).forEach(function (k) {
+      revealed[k].layer.setStyle(areaStyle(revealed[k].momentum));
+    });
+  };
   function tok(name, fallback) {
     var v = "";
     try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
     v = String(v || "").trim();
     return v || fallback;
   }
+  // ⚠ MIRROR of boundaryStyle in MARKET_MAP_JS (this same file): a city must
+  // look the same on /markets and on its own market page, and browser
+  // strings cannot share code, so every number and token here is a
+  // deliberate copy. test/markets-map-script.test.js pins the two together —
+  // change one, change both. The extra branch here is "mixed", which a
+  // single-market page can never be.
   function areaStyle(momentum) {
     var fills = { expanding: tok("--green", "#15803D"), flat: tok("--ink-mute", "#5B6472"), contracting: tok("--red-fill", "#B91C1C") };
     if (fills[momentum]) {
@@ -9003,50 +9076,65 @@ const MARKETS_DIR_MAP_JS = `(function(){
     if (!boundsPromise) {
       boundsPromise = fetch("/city-bounds.json")
         .then(function (r) { return r.json(); })
-        .catch(function () { return null; });
+        .catch(function () {
+          // An outage never memoizes (city-check's rule, map-shaped):
+          // clearing the promise lets the NEXT click retry, so one blip on
+          // flaky wifi does not strip boundaries for the rest of the visit.
+          boundsPromise = null;
+          return null;
+        });
     }
     return boundsPromise;
   }
   // The card a click opens: the city, then one line per market — the TYPE is
   // the link (that is the market page's identity), the direction word and
   // median beside it. An unread market says so in words rather than being
-  // silently undecorated.
-  function cityCard(a) {
-    var lines = ["<b>" + esc(a.city + ", " + a.state) + "</b>"];
-    a.markets.forEach(function (m) {
+  // silently undecorated. Built from the pins themselves (pinsByKey), the
+  // single copy of each market's facts.
+  function cityCard(key) {
+    var ms = pinsByKey[key] || [];
+    var lines = [ms.length ? "<b>" + esc(ms[0].city + ", " + ms[0].state) + "</b>" : ""];
+    ms.forEach(function (m) {
       lines.push('<div><a href="/market/' + esc(m.slug) + '">' + esc(m.type) + "</a> \\u2014 " +
         (DIR_WORD[m.dir] || "no recent read") + " \\u00b7 $" + Number(m.median).toLocaleString() + "/SF</div>");
     });
     return lines.join("");
   }
   function openCity(key, latlng) {
-    var a = areasByKey[key];
-    if (!a) return;
+    if (!(pinsByKey[key] || []).length) return;
     loadBounds().then(function (cityBounds) {
-      var b = cityBounds && cityBounds[key];
-      if (b && b.geometry && !revealed[key]) {
-        var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) }).addTo(map);
-        layer.bindPopup(cityCard(a));
-        revealed[key] = layer;
-        revealedList.push({ layer: layer, momentum: a.momentum });
-        // Theme flips restyle every revealed shape — they hold computed
-        // colors, so nothing else would repaint them. (Re)assigned here so
-        // the observer's null guard holds until a first shape exists.
-        restyle = function () { revealedList.forEach(function (e) { e.layer.setStyle(areaStyle(e.momentum)); }); };
-      }
-      var shape = revealed[key];
-      if (shape) {
-        // maxZoom 11, not tighter: the point is the whole boundary, and a
-        // two-market city's shape should not fill past the screen.
-        map.fitBounds(shape.getBounds(), { padding: [40, 40], maxZoom: 11 });
-        shape.openPopup();
-      } else {
-        // No boundary for this city (or the fetch failed): the card still
-        // opens, anchored to the pin, and the view still comes in close.
-        map.setView(latlng, 10);
-        L.popup().setLatLng(latlng).setContent(cityCard(a)).openOn(map);
-      }
-    });
+      // "A click is never a dead end" includes a PRESENT but undrawable
+      // entry: a degenerate geometry must fall through to the anchored card
+      // exactly like a missing one. getBounds() is the canary — an empty
+      // coordinates array parses, even adds, and then throws "Bounds are not
+      // valid" the first time anything asks where the shape is — so it is
+      // asked BEFORE the layer touches the map or revealed{}, and a broken
+      // shape never becomes state a later click would trip over again.
+      try {
+        var a = areasByKey[key];
+        var b = cityBounds && cityBounds[key];
+        if (a && b && b.geometry && !revealed[key]) {
+          var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) });
+          layer.getBounds();
+          layer.addTo(map);
+          layer.bindPopup(cityCard(key));
+          revealed[key] = { layer: layer, momentum: a.momentum };
+        }
+        var got = revealed[key];
+        if (got) {
+          // maxZoom 11, not tighter: the point is the whole boundary, and a
+          // two-market city's shape should not fill past the screen.
+          map.fitBounds(got.layer.getBounds(), { padding: [40, 40], maxZoom: 11 });
+          got.layer.openPopup();
+          return;
+        }
+      } catch (e) {}
+      // No boundary for this city (missing entry, failed fetch, or a shape
+      // that would not draw): the card still opens, anchored to the pin,
+      // and the view still comes in close.
+      map.setView(latlng, 10);
+      L.popup().setLatLng(latlng).setContent(cityCard(key)).openOn(map);
+    }).catch(function () {});
   }
 })();`;
 
@@ -9478,6 +9566,14 @@ function cachedHeroInspect() {
   return HERO_INSPECT_MEM;
 }
 
+// The CSS class for each momentum word, shared by every server-rendered
+// surface that colours one: the market page's badge and the directory cards'
+// word. freshDirection is the whitelist feeding it — one of these three keys
+// or null — so no consumer needs a guard against an unrecognized word.
+const DIR_CSS_CLASS = {
+  expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
+};
+
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
   const canonical = marketUrl(slug);
@@ -9754,14 +9850,12 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // "Momentum" labels the word because this badge is not sitting in a list of
   // markets the way the dropdown's is -- a bare "Expanding" beside "Where these
   // comps are" would leave the reader to guess what is expanding.
-  const MAP_DIR_CLASS = {
-    expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
-  };
-  // freshDirection is the whitelist: it returns one of those three keys or null,
-  // so no guard against an unrecognized word is needed at this end.
+  //
+  // freshDirection is the whitelist: it returns one of the three DIR_CSS_CLASS
+  // keys or null, so no guard against an unrecognized word is needed here.
   const mapDir = freshDirection(p, Date.now());
   const mapDirBadge = mapDir
-    ? `<span class="mdir">Momentum <span class="mdirv ${MAP_DIR_CLASS[mapDir]}">` +
+    ? `<span class="mdir">Momentum <span class="mdirv ${DIR_CSS_CLASS[mapDir]}">` +
       `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
     : "";
   // The city's real carved boundary, washed in the momentum read the badge
@@ -9781,12 +9875,16 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   // nothing about where the market even is.
   const showMap = mapData.length || boundary;
   const mapCard = showMap
-    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2>${mapData.length ? "Where these comps are" : "Where this market is"}</h2>${mapDirBadge}</div>` +
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2 id="mktMapHead">${mapData.length ? "Where these comps are" : "Where this market is"}</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
       `<p class="disc" style="margin-top:8px">` +
       (mapData.length
-        ? `Pins are geocoded from each comp's public address, so positions are approximate. ` +
-          `Comps quoted at the submarket level aren't pinned. `
+        // The pins sentence rides in its own span so the browser script can
+        // retract it (with the heading) if every comp fails to geocode: the
+        // card survives on the boundary now, and copy asserting pins over a
+        // map that has none would be a false statement.
+        ? `<span id="mktMapPinsDisc">Pins are geocoded from each comp's public address, so positions are approximate. ` +
+          `Comps quoted at the submarket level aren't pinned. </span>`
         : "") +
       (boundary
         ? (mapDir
@@ -10027,14 +10125,23 @@ function renderMarketDirectoryHTML(signedIn) {
   // One grade read for the whole page: cachedHeroInspect memoizes, but the
   // list is walked per card and this keeps that explicit.
   const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
+  // One clock and one freshDirection read per market, shared by the card's
+  // momentum word, the map pin and the area momentum — so nothing rendered
+  // on this page can disagree with itself. One clock matters more than it
+  // looks: the whole seeded set expires at a single midnight, and two
+  // Date.now() reads could straddle it.
+  const nowMs = Date.now();
+  const dirBySlug = new Map(slugs.map((s) => [s, freshDirection(merged[s], nowMs)]));
   const cards = slugs.map((s) => {
     const p = merged[s];
+    const dir = dirBySlug.get(s);
     // Everything a visitor might reasonably type for this card, flattened into
-    // one lowercase haystack: the words on the card, the full state name, and
-    // that type's synonyms. Baking it here is what keeps the filter script
+    // one lowercase haystack: the words on the card, the full state name, that
+    // type's synonyms, and the momentum word — so typing "expanding" filters
+    // to expanding markets. Baking it here is what keeps the filter script
     // free of any vocabulary of its own.
     const haystack = [
-      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
+      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "", dir || "",
     ].join(" ").toLowerCase();
     // The same picture that heads the market's own page, drawn small. It is
     // decorative here — the card already names the city in text — so the alt
@@ -10054,7 +10161,13 @@ function renderMarketDirectoryHTML(signedIn) {
       pic +
       `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
-      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
+      // The momentum word rides the subtitle bare (no "Momentum" label): a
+      // card sits in a list of markets exactly the way the Explorer
+      // dropdown's rows do, which is the surface that sets this precedent.
+      // No read renders nothing, never an Unknown.
+      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps` +
+      (dir ? ` · <span class="mdirv ${DIR_CSS_CLASS[dir]}">${escHtml(dir.charAt(0).toUpperCase() + dir.slice(1))}</span>` : "") +
+      `</div>` +
       `</div></a>`;
   }).join("");
   // The momentum map's pin rows. Coordinates come only from what is already
@@ -10077,7 +10190,7 @@ function renderMarketDirectoryHTML(signedIn) {
         ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
     });
     if (!ll) continue;
-    const dir = freshDirection(p, Date.now());
+    const dir = dirBySlug.get(s);
     pins.push({
       slug: s, type: p.type, city: p.city, state: p.state,
       key: MARKETHERO.cityKey(p.city, p.state),
@@ -10085,19 +10198,22 @@ function renderMarketDirectoryHTML(signedIn) {
       ...(dir ? { dir } : {}),
     });
   }
-  // The carved layer's rows: one AREA per city, holding every market read in
-  // it, with the one color claim that city's shape may make (momentum,
-  // decided by market-area.js — the single home of the agreement rule; the
-  // browser only ever styles what it is handed). Geometry deliberately does
-  // NOT ride here: the boundaries are ~200KB of static polygon
-  // (/city-bounds.json, lazy-loaded by the map script), and a city the file
-  // does not carve simply stays a pin at every zoom.
+  // The carved layer's rows: one AREA per city, carrying ONLY the color claim
+  // that city's shape may make (momentum, decided by market-area.js — the
+  // single home of the agreement rule; the browser only ever styles what it
+  // is handed). Two things deliberately do NOT ride here: the geometry
+  // (~110KB of static polygon at /city-bounds.json, lazy-loaded by the map
+  // script — a city the file does not carve simply stays a pin), and the
+  // per-market rows, because slug/type/median/dir already ride every pin and
+  // a second serialization of the same market is a copy that can disagree.
   const areasByKey = new Map();
   for (const p of pins) {
     if (!areasByKey.has(p.key)) areasByKey.set(p.key, { key: p.key, city: p.city, state: p.state, markets: [] });
-    areasByKey.get(p.key).markets.push({ slug: p.slug, type: p.type, median: p.median, ...(p.dir ? { dir: p.dir } : {}) });
+    areasByKey.get(p.key).markets.push({ ...(p.dir ? { dir: p.dir } : {}) });
   }
-  const areas = [...areasByKey.values()].map((a) => ({ ...a, momentum: MARKETAREA.cityAreaState(a.markets) }));
+  const areas = [...areasByKey.values()].map((a) => ({
+    key: a.key, city: a.city, state: a.state, momentum: MARKETAREA.cityAreaState(a.markets),
+  }));
   // Two pins is the floor for a map that reads as a map (mirrors the market
   // page's "no pins, no card" rule); below it the grid is the whole page.
   const mapUi = pins.length >= 2

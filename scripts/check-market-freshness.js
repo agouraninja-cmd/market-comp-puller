@@ -35,7 +35,20 @@ const { freshDirection, DIRECTION_MAX_AGE_DAYS } = require(path.join(__dirname, 
 const seed = require(path.join(__dirname, "..", "market-seed.json"));
 
 const args = process.argv.slice(2);
-const warnAt = Number(args[args.indexOf("--warn-days") + 1]) || 30;
+// Refused, never guessed (desktop.js's flag rule): a typo'd or non-positive
+// --warn-days silently becoming 30 would alarm on a healthy runway — or
+// worse, a deliberate "--warn-days 45" that misparsed would quietly narrow
+// the warning window with nothing saying so.
+let warnAt = 30;
+const warnIdx = args.indexOf("--warn-days");
+if (warnIdx !== -1) {
+  const parsed = Number(args[warnIdx + 1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.error(`--warn-days wants a positive number of days, got "${args[warnIdx + 1]}"`);
+    process.exit(1);
+  }
+  warnAt = parsed;
+}
 const now = Date.now();
 
 let withDirection = 0, live = 0, expired = 0;
@@ -68,6 +81,18 @@ for (const [when, n] of [...byExpiry].sort()) console.log(`  ${n} read(s) expire
 if (!live) {
   console.error(`\nNo market page is publishing a momentum read. The /markets map is all-hollow ` +
     `and every Explorer badge is dark. Regenerate: npm start, then node gen-market-seed.js.`);
+  process.exit(1);
+}
+// Partial expiry is still an alarm — the exit contract in the header says
+// "1 something has already expired", and a partial regeneration (a subset of
+// TARGETS re-run, or one mangled stamp) can leave most of the map hollow
+// while the survivors have months of runway. Healthy means EVERY read that
+// exists is being published.
+if (expired > 0) {
+  console.error(`\n${expired} momentum read(s) have already expired — those markets are hollow on the ` +
+    `/markets map and dark in the Explorer dropdown today, whatever the survivors' runway. ` +
+    `Regenerate: npm start, then node gen-market-seed.js (one billed search per market), ` +
+    `and commit market-seed.json.`);
   process.exit(1);
 }
 if (soonest <= warnAt) {

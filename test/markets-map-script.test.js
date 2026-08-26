@@ -1,6 +1,6 @@
 // The /markets momentum map, as it actually runs in a visitor's browser.
 //
-// MARKETS_DIR_MAP_JS is ~180 lines of browser JavaScript living inside a
+// MARKETS_DIR_MAP_JS is ~200 lines of browser JavaScript living inside a
 // template literal in server.js, and the route tests can only see what the
 // page SAYS — the blob, the CSS, the legend. Everything this file is about
 // happens after that: what a pin click opens, when the ~110KB of geometry is
@@ -24,42 +24,50 @@ const SERVER = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
 // The raw slice is not what the browser runs: inside the template literal a
 // "\\u2014" is two characters that the literal collapses to the escape the
 // browser then reads as an em dash. Evaluating the slice AS a template
-// literal reproduces the served bytes exactly — safe because this string
-// deliberately carries no ${} interpolation, which is pinned here.
-function mapSource() {
-  const open = "const MARKETS_DIR_MAP_JS = `";
+// literal reproduces the served bytes exactly — safe because these strings
+// deliberately carry no ${} interpolation, which is pinned here.
+function scriptSource(constName) {
+  const open = "const " + constName + " = `";
   const i = SERVER.indexOf(open);
-  assert.notEqual(i, -1, "MARKETS_DIR_MAP_JS is gone or renamed — this file exercises it by name");
+  assert.notEqual(i, -1, constName + " is gone or renamed — this file exercises it by name");
   const start = i + open.length;
   const raw = SERVER.slice(start, SERVER.indexOf("`;", start));
   assert.ok(!/\$\{/.test(raw),
-    "MARKETS_DIR_MAP_JS grew a ${} interpolation — it is emitted into a <script> and must stay literal");
+    constName + " grew a ${} interpolation — it is emitted into a <script> and must stay literal");
   return new Function("return `" + raw + "`")();
 }
+const mapSource = () => scriptSource("MARKETS_DIR_MAP_JS");
 
 const PINS = [
   { slug: "industrial-ontario-ca", type: "Industrial", city: "Ontario", state: "CA", key: "ontario, ca", lat: 34.06, lng: -117.6, median: 259, dir: "contracting" },
   { slug: "industrial-phoenix-az", type: "Industrial", city: "Phoenix", state: "AZ", key: "phoenix, az", lat: 33.45, lng: -112.07, median: 117, dir: "expanding" },
-  { slug: "multifamily-phoenix-az", type: "Multifamily", city: "Phoenix", state: "AZ", key: "phoenix, az", lat: 33.45, lng: -112.07, median: 339, dir: "contracting" },
+  // Deliberately ~1km off industrial-phoenix's point: an Explorer-published
+  // city's two markets can store slightly different coordinates (Wikipedia's
+  // vs Zippopotam's), and the pin spread must still separate them — which is
+  // why the spread groups on the city KEY, never on the coordinates.
+  { slug: "multifamily-phoenix-az", type: "Multifamily", city: "Phoenix", state: "AZ", key: "phoenix, az", lat: 33.46, lng: -112.06, median: 339, dir: "contracting" },
   // A city with no boundary in the stub file: its click must still answer.
   { slug: "office-nowhere-xx", type: "Office", city: "Nowhere", state: "XX", key: "nowhere, xx", lat: 40, lng: -100, median: 90 },
 ];
+// The slim shape the server actually ships: momentum is the only fact the
+// browser cannot derive (market-area.js is server-side); everything a city
+// card shows rides the pins.
 const AREAS = [
-  { key: "ontario, ca", city: "Ontario", state: "CA", momentum: "contracting", markets: [{ slug: "industrial-ontario-ca", type: "Industrial", median: 259, dir: "contracting" }] },
-  { key: "phoenix, az", city: "Phoenix", state: "AZ", momentum: "mixed", markets: [
-    { slug: "industrial-phoenix-az", type: "Industrial", median: 117, dir: "expanding" },
-    { slug: "multifamily-phoenix-az", type: "Multifamily", median: 339, dir: "contracting" },
-  ] },
-  { key: "nowhere, xx", city: "Nowhere", state: "XX", momentum: "none", markets: [{ slug: "office-nowhere-xx", type: "Office", median: 90 }] },
+  { key: "ontario, ca", city: "Ontario", state: "CA", momentum: "contracting" },
+  { key: "phoenix, az", city: "Phoenix", state: "AZ", momentum: "mixed" },
+  { key: "nowhere, xx", city: "Nowhere", state: "XX", momentum: "none" },
 ];
 const SQUARE = { type: "Polygon", coordinates: [[[-117.7, 34.0], [-117.5, 34.0], [-117.5, 34.1], [-117.7, 34.1], [-117.7, 34.0]]] };
+// Parses as GeoJSON, draws as nothing: the fake Leaflet throws from
+// getBounds() for it, the way the real one throws "Bounds are not valid".
+const DEGENERATE = { type: "Polygon", coordinates: [] };
 const BOUNDS = {
   "ontario, ca": { city: "Ontario", state: "CA", geometry: SQUARE },
   "phoenix, az": { city: "Phoenix", state: "AZ", geometry: SQUARE },
   // "nowhere, xx" deliberately absent.
 };
 
-// opts: { bounds, fetchFails, theme }
+// opts: { bounds, failFetches (count of leading fetch calls to reject), theme }
 function runMap(opts) {
   const o = opts || {};
   const requests = [];
@@ -84,7 +92,12 @@ function runMap(opts) {
       openPopup() { rec.popupOpened = (rec.popupOpened || 0) + 1; return l; },
       setStyle(s) { rec.style = s; return l; },
       on(ev, fn) { (rec.handlers = rec.handlers || {})[ev] = fn; return l; },
-      getBounds() { return { _of: rec }; },
+      getBounds() {
+        if (rec.geometry && Array.isArray(rec.geometry.coordinates) && !rec.geometry.coordinates.length) {
+          throw new Error("Bounds are not valid.");
+        }
+        return { _of: rec };
+      },
     };
     rec.layer = l;
     return l;
@@ -100,6 +113,7 @@ function runMap(opts) {
     removeLayer(l) { onMap.delete(l); return map; },
   };
 
+  let failLeft = o.failFetches || 0;
   const ctx = {
     document: {
       getElementById: (id) => els[id] || null,
@@ -117,7 +131,7 @@ function runMap(opts) {
       },
       divIcon: (o2) => o2,
       marker: (ll, o2) => {
-        const rec = { ll, html: o2.icon.html, kind: "marker" };
+        const rec = { ll, html: o2.icon.html, anchor: o2.icon.iconAnchor, kind: "marker" };
         made.markers.push(rec);
         return layerBase(rec).addTo();
       },
@@ -139,7 +153,7 @@ function runMap(opts) {
     },
     fetch: (url) => {
       requests.push(String(url));
-      if (o.fetchFails) return Promise.reject(new Error("offline"));
+      if (failLeft > 0) { failLeft--; return Promise.reject(new Error("offline")); }
       return Promise.resolve({ json: () => Promise.resolve(o.bounds === undefined ? BOUNDS : o.bounds) });
     },
     console, setTimeout, clearTimeout, Promise, JSON, Math, Number,
@@ -182,6 +196,17 @@ test("the page load costs nothing extra", async (t) => {
     await s.clickPin("industrial-ontario-ca");
     assert.deepEqual(s.requests, ["/city-bounds.json"],
       "the boundary file was requested " + s.requests.length + " times");
+  });
+
+  await t.test("two markets of one city spread even when their stored points differ", async () => {
+    // The fixture's two Phoenix pins sit ~1km apart on purpose; a spread
+    // grouped on coordinates would see two singletons and leave them
+    // stacked at national zoom — the exact failure the spread prevents.
+    const s = await runMap();
+    const phoenix = s.made.markers.filter((r) => r.html.includes("Phoenix"));
+    assert.equal(phoenix.length, 2);
+    assert.notDeepEqual(phoenix[0].anchor, phoenix[1].anchor,
+      "the ring offsets must apply to a city whose markets stored different points");
   });
 });
 
@@ -245,13 +270,29 @@ test("a click is never a dead end", async (t) => {
     assert.equal(s.view.sets.length >= 2, true, "and the view still comes in close");
   });
 
-  await t.test("a failed boundary fetch degrades to the card, not to nothing", async () => {
-    const s = await runMap({ fetchFails: true });
+  await t.test("a failed boundary fetch degrades to the card AND retries on the next click", async () => {
+    const s = await runMap({ failFetches: 1 });
     await s.clickPin("industrial-ontario-ca");
     assert.equal(s.areasOnMap().length, 0);
     assert.equal(s.made.popups.length, 1, "the click must still answer");
     assert.match(s.made.popups[0].content, /industrial-ontario-ca/);
     assert.equal(s.markersOnMap(), 4, "and every pin stays");
+    // The outage must NOT be memoized (city-check's rule): the next click
+    // retries the file, and this time the boundary reveals.
+    await s.clickPin("industrial-ontario-ca");
+    assert.equal(s.requests.length, 2, "one blip on flaky wifi must not disable retries");
+    assert.equal(s.areasOnMap().length, 1, "the boundary must reveal once the file is reachable");
+  });
+
+  await t.test("a PRESENT but undrawable boundary entry still opens the card", async () => {
+    // The stored entry exists but its geometry throws out of getBounds —
+    // this must fall through to the anchored card exactly like a missing
+    // entry, never leave the click doing nothing.
+    const s = await runMap({ bounds: { "ontario, ca": { city: "Ontario", state: "CA", geometry: DEGENERATE } } });
+    await s.clickPin("industrial-ontario-ca");
+    assert.equal(s.areasOnMap().length, 0, "an undrawable shape must not be left on the map");
+    assert.equal(s.made.popups.length, 1, "the click must still answer with the anchored card");
+    assert.match(s.made.popups[0].content, /industrial-ontario-ca/);
   });
 });
 
@@ -266,4 +307,47 @@ test("a theme flip restyles the revealed shapes, not just the tiles", async () =
   assert.match(s.tileUrls[s.tileUrls.length - 1], /dark_all/, "the basemap must swap");
   assert.notEqual(s.areasOnMap()[0].style, before,
     "revealed shapes hold computed colors, so a theme flip must restyle them explicitly");
+});
+
+// ---------------------------------------------------------------------------
+// The style twins. areaStyle (this script) and boundaryStyle (MARKET_MAP_JS)
+// are deliberate copies — browser strings cannot share code — and the ⚠
+// MIRROR comments on both point here: a city must look the same on /markets
+// and on its own market page, so the numbers and tokens may not drift.
+// ---------------------------------------------------------------------------
+test("areaStyle and boundaryStyle stay byte-for-byte in step", () => {
+  const dir = scriptSource("MARKETS_DIR_MAP_JS");
+  const page = scriptSource("MARKET_MAP_JS");
+  const bodyOf = (src, name) => {
+    const m = src.match(new RegExp("function " + name + "\\(\\w+\\) \\{([\\s\\S]*?)\\n  \\}"));
+    assert.ok(m, name + " not found");
+    // Strip comments and whitespace so only the executable text is compared.
+    return m[1].replace(/\/\/[^\n]*/g, "").replace(/\s+/g, " ").trim();
+  };
+  const area = bodyOf(dir, "areaStyle");
+  const boundary = bodyOf(page, "boundaryStyle");
+  // Every line of boundaryStyle must appear inside areaStyle — the directory
+  // copy carries one extra branch ("mixed") a single-market page cannot be.
+  for (const piece of [
+    /var fills = \{[^}]*\}/,
+    /if \(fills\[\w+\]\) \{ return \{[^}]*\}; \}/,
+    /var n = [^;]+; return \{[^}]*dashArray[^}]*\};/,
+  ]) {
+    const inBoundary = boundary.match(piece);
+    assert.ok(inBoundary, "boundaryStyle lost its " + piece + " shape");
+    // Normalize the momentum/dir parameter name difference before comparing.
+    const wanted = inBoundary[0].replace(/\bdir\b/g, "momentum");
+    assert.ok(area.replace(/\bdir\b/g, "momentum").includes(wanted),
+      "areaStyle and boundaryStyle disagree around: " + wanted.slice(0, 80) +
+      " — the same city would render differently on /markets vs its own page");
+  }
+  // The three-word vocabulary must reach every browser-side consumer: a
+  // direction market-snapshot.js publishes that these maps cannot draw
+  // renders as a hollow pin beside a badge stating the word.
+  const MARKETSNAP = require("../market-snapshot");
+  for (const word of MARKETSNAP.DIRECTIONS) {
+    for (const [where, src] of [["MARKETS_DIR_MAP_JS", dir], ["MARKET_MAP_JS", page]]) {
+      assert.ok(src.includes(word + ":"), where + " has no style/word entry for '" + word + "'");
+    }
+  }
 });

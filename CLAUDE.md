@@ -68,7 +68,11 @@ upscale) and **`market-hero-pick.js`** (which Wikimedia candidate is worth
 downloading for a city nobody curated — every hard refusal in it ends in a
 satellite aerial, so it refuses freely) and **`market-hero-judge.js`** (the
 request that asks a model to LOOK at the finished crop, and the rule that any
-answer which is not a clear "good" is not a good picture) and **`bulk.js`**
+answer which is not a clear "good" is not a good picture) and
+**`market-area.js`** (the one claim a CITY's carved shape on the momentum map
+may make when it holds several markets: agreement colours it, disagreement is
+`mixed`, no reads is `none`, and an unread market never argues an agreeing
+city into `mixed`) and **`bulk.js`**
 (bulk valuation's rules: what counts as an address in a pasted list — a line
 is ONE address however many commas it holds — what one finished report is
 worth as a portfolio row, and the rule that a total sums only what was
@@ -1918,6 +1922,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   every other server-rendered page.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
+  The directory leads with the **momentum map** (see below) over its grid of
+  cards; each card carries its market's momentum word beside the median.
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
@@ -2011,6 +2017,64 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
+
+  **The momentum map** (2026-08-25). `/markets` opens with a Leaflet map of
+  the country, one pin per covered market coloured by that market's
+  expanding / flat / contracting read; **clicking a pin** flies to the city,
+  reveals its real municipal boundary washed in the city's momentum, and
+  opens a card linking every market there. Each market page draws the same
+  boundary under its comp pins, matching the "Momentum" badge already in that
+  card's heading. The rules, in the order a future editor will trip over
+  them:
+  - **`freshDirection` (market-snapshot.js) is the ONE gate** for the
+    three-word vocabulary and the 90-day expiry, on all FOUR surfaces: the
+    Explorer dropdown badge, the `/markets` pins and cards, the market page's
+    badge, and the wash under its comps. `test/routes.test.js` checks every
+    one of them against `/api/markets` market by market — a second copy of
+    the vocabulary or the age gate is what those tests exist to catch.
+  - **Hollow/outlined is NOT flat.** No current read renders an outline
+    making no colour claim, never grey's fill: "we don't know" and "the
+    market is flat" are different statements. `market-area.js` decides the
+    city-level claim when one shape holds several markets (see the
+    pure-modules list above); `mixed` is grey inside an ink ring, and the
+    legend swatch must keep matching what `areaStyle` actually DRAWS — it
+    shipped as a green/red gradient that appeared nowhere on the map.
+  - **`city-bounds.json` is COMMITTED**, like the market-hero JPEGs and for
+    the same reason (Render wipes its disk on deploy, and a page surface must
+    never wait on a network call at render time). `scripts/fetch-city-bounds.js`
+    writes it deliberately — it enumerates seed + dynamic + Supabase markets,
+    MERGES rather than clobbers, skips cities already stored, and takes
+    `--city "Name, ST"` for one. The monthly `Market heroes` workflow runs it
+    too, so an Explorer-published city gets its photograph and its boundary
+    in the same reviewed PR.
+  - **The two map surfaces make OPPOSITE trades on that file, deliberately.**
+    `/markets` may eventually want every city's shape, so it lazy-fetches the
+    whole ~110KB file on the FIRST PIN CLICK (never on page load). A market
+    page wants exactly one city's shape, so it INLINES that geometry in its
+    own blob (314 bytes for Ontario, ~6KB average) and fetches nothing.
+  - **`areaStyle` (directory) and `boundaryStyle` (market page) are ⚠ MIRROR
+    twins** — browser strings inside template literals cannot share code, so
+    every number and token is a deliberate copy, and
+    `test/markets-map-script.test.js` pins the two together plus the presence
+    of every `DIRECTIONS` word in both.
+  - **Every failure degrades to what existed before.** No boundary file, no
+    entry for a city, a degenerate geometry, a blocked Leaflet CDN: the pins
+    stand, the card still opens, and the comp pins still draw. A failed
+    boundary fetch is never memoized (city-check's rule: ok and unknown
+    memoize, an outage does not), so the next click retries.
+  - **The reads expire on a CLIFF.** Every seeded page carries one
+    `generatedAt`, so all of their momentum reads die on the same day
+    (2026-10-12 for the current seed) and the map goes hollow at once.
+    `scripts/check-market-freshness.js` reports the countdown and the weekly
+    **`Market freshness`** workflow fails inside a 30-day window so somebody
+    sees it coming; it needs no secrets. The only real fix is a regeneration
+    (`npm start`, then `node gen-market-seed.js` — one billed search per
+    market). **`scripts/derive-market-direction.js` cannot help**: it fills a
+    MISSING direction from the page's existing trend sentence and never
+    touches `generatedAt`, which is what the age is measured from. One
+    consequence to know rather than fix: `/markets` is cached an hour for
+    anonymous visitors, so on expiry day its pins can stay coloured for up to
+    an hour after the badges elsewhere have gone dark.
 - `POST /api/explore-market` — the **Market Explorer**: generates a
   `/market/<slug>` page on demand from the header search on the app page
   (one billed search per genuinely new market; results meeting the seed

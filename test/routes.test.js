@@ -194,7 +194,7 @@ test("bare environment", async (t) => {
   await t.test("the comp map card badges which way the market is moving", async () => {
     const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
     const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
-    assert.match(head, /<h2>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
+    assert.match(head, /<h2[^>]*>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
     assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
       "Ontario's stored read is contracting — the word and its colour class must both render");
     assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
@@ -212,7 +212,7 @@ test("bare environment", async (t) => {
     assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
     assert.ok(!html.includes('class="mdir"'),
       "an unread market must show no momentum, not an Unknown chip");
-    assert.match(html, /<h2>Where these comps are<\/h2>/,
+    assert.match(html, /<h2[^>]*>Where these comps are<\/h2>/,
       "and the heading must be untouched when there is no badge beside it");
   });
 
@@ -220,10 +220,15 @@ test("bare environment", async (t) => {
   // market on the same afternoon. Both read freshDirection(), which is what
   // makes the 90-day expiry one rule rather than two — this is what catches a
   // second copy of the vocabulary or the age gate growing on either side.
-  await t.test("the map badge says what /api/markets says, market by market", async () => {
+  //
+  // ONE sweep over the market pages, not two: this renders every seeded page
+  // already, and each render now serialises a boundary, so a second full
+  // pass for the map blob was pure CI time on a suite that is already a
+  // documented sore point. Badge and blob are checked in the same pass.
+  await t.test("the map badge and blob say what /api/markets says, market by market", async () => {
     const rows = await (await fetch(srv.base + "/api/markets")).json();
     assert.ok(rows.length > 10, "the seeded directory should be here");
-    let checked = 0;
+    let checked = 0, withBlob = 0, withBoundary = 0;
     for (const row of rows) {
       const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
       // No map card, no badge: this one rides on the map, so a market whose
@@ -233,8 +238,26 @@ test("bare environment", async (t) => {
       const word = (html.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
       assert.equal(word ? word.toLowerCase() : null, row.direction || null,
         row.slug + ": the map card and the Explorer dropdown disagree");
+      // The THIRD surface of the same read: the wash drawn under the comps.
+      // The badge states it in a word, the blob hands the same value to the
+      // browser that colours the shape, so they cannot drift apart.
+      const m = html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/);
+      if (!m) continue;
+      withBlob++;
+      assert.ok(!m[1].includes("<"), row.slug + ": a raw < in the blob can close the script tag early");
+      const blob = JSON.parse(m[1]);
+      assert.equal(blob.dir || null, row.direction || null,
+        row.slug + ": the map blob and the Explorer dropdown disagree about momentum");
+      if (blob.boundary) {
+        withBoundary++;
+        assert.ok(blob.boundary.type === "Polygon" || blob.boundary.type === "MultiPolygon",
+          row.slug + "'s inlined boundary is not a polygon — the map would throw drawing it");
+      }
     }
     assert.ok(checked > 10, "expected most seeded markets to have a map card, got " + checked);
+    assert.ok(withBlob > 10, "expected most seeded markets to carry a map blob, got " + withBlob);
+    assert.ok(withBoundary >= 15,
+      "expected nearly every seeded city to inline its boundary, got " + withBoundary);
   });
 
   // The /markets directory's momentum map (2026-08-25): one pin per covered
@@ -293,34 +316,6 @@ test("bare environment", async (t) => {
     assert.ok(!noneRule.includes("--ink-mute"), "the hollow pin must never share flat's grey fill");
   });
 
-  // The market page's own carved boundary (2026-08-25). This is the THIRD
-  // surface reading freshDirection for the same market — dropdown, directory
-  // pin, and now the shape under this page's comps — so the badge in the map
-  // card's heading and the wash beneath it must state the same thing, and a
-  // market whose read has expired must be outlined rather than coloured.
-  await t.test("a market page's map blob agrees with /api/markets, market by market", async () => {
-    const rows = await (await fetch(srv.base + "/api/markets")).json();
-    let checked = 0, withBoundary = 0;
-    for (const row of rows) {
-      const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
-      const m = html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/);
-      if (!m) continue;
-      checked++;
-      assert.ok(!m[1].includes("<"), row.slug + ": a raw < in the blob can close the script tag early");
-      const blob = JSON.parse(m[1]);
-      assert.equal(blob.dir || null, row.direction || null,
-        row.slug + ": the map blob and the Explorer dropdown disagree about momentum");
-      if (blob.boundary) {
-        withBoundary++;
-        assert.ok(blob.boundary.type === "Polygon" || blob.boundary.type === "MultiPolygon",
-          row.slug + "'s inlined boundary is not a polygon — the map would throw drawing it");
-      }
-    }
-    assert.ok(checked > 10, "expected most seeded markets to carry a map blob, got " + checked);
-    assert.ok(withBoundary >= 15,
-      "expected nearly every seeded city to inline its boundary, got " + withBoundary);
-  });
-
   // An unread market keeps its boundary and simply makes no colour claim —
   // the same rule the badge follows by rendering nothing.
   await t.test("an unread market page carries its boundary but no direction", async () => {
@@ -336,37 +331,79 @@ test("bare environment", async (t) => {
       "an unread market's area is not shaded — the copy must not call it that");
   });
 
-  // The carved layer (2026-08-25): past AREA_MIN_ZOOM, a city with a stored
-  // municipal boundary is drawn as its real shape instead of pins. The blob's
-  // `areas` rows carry the one color claim each city shape may make —
-  // computed server-side through market-area.js, the single home of the
-  // agreement rule, so the browser only ever styles what it is handed.
+  // The carved layer (2026-08-25): clicking a pin reveals that city's real
+  // municipal boundary and a card of its markets — pins persist at every
+  // zoom, so the shape is the click's answer, never a zoom threshold's side
+  // effect. The blob's `areas` rows carry the one thing the browser cannot
+  // derive: the color claim each city shape may make, computed server-side
+  // through market-area.js, the single home of the agreement rule.
   await t.test("the carved areas carry momentum only through market-area's rule", async () => {
     const MARKETAREA = require("../market-area");
     const html = await (await fetch(srv.base + "/markets")).text();
     const blob = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
     const areas = blob.areas;
     assert.ok(Array.isArray(areas) && areas.length > 10, "the areas rows are missing from the blob");
+    // Every area's momentum must equal what market-area.js says about that
+    // city's markets — rebuilt here from the PINS, which are now the single
+    // serialization of each market's facts.
+    const marketsByKey = new Map();
+    for (const p of blob.pins) {
+      if (!marketsByKey.has(p.key)) marketsByKey.set(p.key, []);
+      marketsByKey.get(p.key).push(p.dir ? { dir: p.dir } : {});
+    }
     const states = new Set();
     for (const a of areas) {
-      assert.ok(a.key && a.city && a.state && Array.isArray(a.markets) && a.markets.length,
-        JSON.stringify(a.city) + " is not a well-formed area row");
-      assert.equal(a.momentum, MARKETAREA.cityAreaState(a.markets),
-        a.city + ": the served momentum disagrees with market-area.js over the same markets");
+      assert.ok(a.key && a.city && a.state, JSON.stringify(a.city) + " is not a well-formed area row");
+      assert.equal(a.momentum, MARKETAREA.cityAreaState(marketsByKey.get(a.key) || []),
+        a.city + ": the served momentum disagrees with market-area.js over that city's pins");
       states.add(a.momentum);
-      // Geometry must never ride the page — it is ~200KB of static polygon
-      // living at /city-bounds.json, lazy-loaded by the map script.
+      // Neither the geometry (~110KB of static polygon at /city-bounds.json,
+      // fetched on the first pin click) nor a second copy of the per-market
+      // rows may ride the page: the pins already carry slug/type/median/dir,
+      // and a duplicate serialization is one that can disagree.
       assert.ok(!("geometry" in a), a.city + " embedded its geometry in the page blob");
+      assert.ok(!("markets" in a), a.city + " re-serialized its markets — the pins already carry them");
     }
     assert.ok(states.has("mixed"),
       "the seeds hold cities whose markets disagree (Phoenix) — the mixed state must be exercised");
     assert.ok(states.has("none"),
       "the seeds hold unread cities (Fontana) — the no-claim state must be exercised");
-    // The Mixed swatch: a real rule and a legend entry, split green/red so it
-    // never reads as flat's grey.
-    assert.ok(/\.mmap-pin-mixed\{[^}]*var\(--green\)[^}]*var\(--red-fill\)[^}]*\}/.test(html),
-      "the Mixed swatch must be built from the same green and red the solid states use");
+    // The Mixed swatch must look like what a mixed city actually DRAWS (the
+    // areaStyle grey wash inside an ink ring). It shipped as a green/red
+    // split gradient that no shape on the map ever wore, which left the
+    // reader unable to match the drawn grey to any legend key.
+    const mixedRule = (html.match(/\.mmap-pin-mixed\{([^}]*)\}/) || [])[1] || "";
+    assert.ok(mixedRule.includes("var(--ink-mute)") && mixedRule.includes("var(--ink)"),
+      "the Mixed swatch must match areaStyle's drawn style: a grey wash inside an ink ring");
+    assert.ok(!mixedRule.includes("gradient"),
+      "the split-gradient swatch matches nothing the map draws");
     assert.match(html, />Mixed</, "the legend lost its Mixed entry");
+  });
+
+  // The directory cards, the fourth surface of the same read (2026-08-25).
+  // The cards were the only market-listing surface without momentum on it,
+  // and a card sitting beside a coloured pin for the same market that said
+  // nothing about direction read as two different answers.
+  await t.test("the directory cards carry the same momentum word as everything else", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    const cards = [...html.matchAll(/<a class="mcard[^"]*" href="\/market\/([a-z0-9-]+)"[\s\S]*?<\/a>/g)];
+    assert.ok(cards.length > 20, "expected a card per seeded market, got " + cards.length);
+    const dirBySlug = new Map(rows.map((r) => [r.slug, r.direction || null]));
+    let worded = 0;
+    for (const [card, slug] of cards.map((m) => [m[0], m[1]])) {
+      const word = (card.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
+      assert.equal(word ? word.toLowerCase() : null, dirBySlug.get(slug) || null,
+        slug + ": the card and the Explorer dropdown disagree about momentum");
+      if (!word) continue;
+      worded++;
+      // The word also joins the filter haystack, so typing "expanding"
+      // narrows the grid to expanding markets.
+      const hay = (card.match(/data-q="([^"]*)"/) || [])[1] || "";
+      assert.ok(hay.includes(word.toLowerCase()),
+        slug + ": the momentum word must be filterable, not just visible");
+    }
+    assert.ok(worded > 10, "expected most seeded markets to show a word, got " + worded);
   });
 
   // The boundaries themselves: committed like the market-heroes JPEGs

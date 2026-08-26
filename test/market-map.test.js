@@ -42,6 +42,8 @@ function runMap(seed, opts) {
   const card = { style: {} };
   const shapes = [];
   const fits = [];
+  const head = { textContent: "Where these comps are", style: {} };
+  const pinsDisc = { textContent: "Pins are geocoded…", style: {} };
   const els = {
     mktMapData: { textContent: JSON.stringify({
       city: "Boise, ID",
@@ -52,6 +54,8 @@ function runMap(seed, opts) {
       ...(o.boundary ? { boundary: o.boundary } : {}),
     }) },
     mktMapCard: card,
+    mktMapHead: head,
+    mktMapPinsDisc: pinsDisc,
   };
   const mapObj = { setView() { return this; }, fitBounds(b) { fits.push(b); } };
   const tileUrls = [];
@@ -94,7 +98,14 @@ function runMap(seed, opts) {
         };
         const layer = {
           addTo() { rec.added = true; return layer; },
-          getBounds: () => bounds,
+          getBounds: () => {
+            // Real Leaflet throws "Bounds are not valid" here for a shape
+            // with no coordinates — the degenerate-geometry canary.
+            if (geometry && Array.isArray(geometry.coordinates) && !geometry.coordinates.length) {
+              throw new Error("Bounds are not valid.");
+            }
+            return bounds;
+          },
           setStyle(s) { rec.style = s; return layer; },
         };
         return layer;
@@ -118,16 +129,20 @@ function runMap(seed, opts) {
     console, setTimeout, clearTimeout, Promise, JSON, Math,
     String, Object, Array, isFinite, parseFloat, Error,
   };
+  if (o.noLeaflet) delete ctx.L;
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(marketMapSource(), ctx, { timeout: 5000 });
   // The script geocodes the city then chains the comps, all through resolved
   // promises here, so a macrotask tick is enough for it to settle.
+  // 50ms settles the ordinary path (resolved promises all the way down). A
+  // run whose geocodes all MISS falls through to the Nominatim fallback,
+  // which paces itself 1.1s apart on purpose, so those tests ask for longer.
   return new Promise((resolve) => setTimeout(
     () => resolve({
-      store, pins, requests, card, tileUrls, observers, shapes, fits,
+      store, pins, requests, card, tileUrls, observers, shapes, fits, head, pinsDisc,
       setTheme: (t) => { theme = t; },
-    }), 50
+    }), o.settle || 50
   ));
 }
 
@@ -167,6 +182,9 @@ test("the market map's basemap follows the theme", async (t) => {
 // and no fetch, and a page without one must behave exactly as it did before
 // boundaries existed.
 const SQUARE = { type: "Polygon", coordinates: [[[-116.3, 43.5], [-116.1, 43.5], [-116.1, 43.7], [-116.3, 43.7], [-116.3, 43.5]]] };
+// Parses as GeoJSON, draws as nothing: real Leaflet throws "Bounds are not
+// valid" the first time anything asks where it is.
+const DEGENERATE = { type: "Polygon", coordinates: [] };
 
 test("the market map draws its city's carved boundary", async (t) => {
   await t.test("a page with no boundary touches no geometry at all", async () => {
@@ -223,6 +241,43 @@ test("the market map draws its city's carved boundary", async (t) => {
     assert.match(tileUrls[tileUrls.length - 1], /dark_all/, "the basemap must swap");
     assert.notEqual(shapes[0].style.fillColor, before,
       "the boundary holds a computed colour, so a theme flip must restyle it explicitly");
+  });
+
+  // The pre-ship review's findings, pinned so they stay fixed.
+  await t.test("a boundary-only page makes no geocoder calls at all", async () => {
+    const { requests, card } = await runMap({}, { boundary: SQUARE, dir: "expanding", comps: [] });
+    assert.deepEqual(requests, [],
+      "a page with zero comps paid a geocode round trip to sanity-gate zero pins");
+    assert.notEqual(card.style.display, "none");
+  });
+
+  await t.test("with Leaflet blocked, the card hides instead of standing empty", async () => {
+    const { card, shapes } = await runMap({}, { boundary: SQUARE, dir: "expanding", comps: [], noLeaflet: true });
+    assert.equal(card.style.display, "none",
+      "an ad-blocked CDN must not leave a permanent empty rectangle on a boundary-only page");
+    assert.equal(shapes.length, 0);
+  });
+
+  await t.test("a degenerate stored geometry costs the shape, never the pins", async () => {
+    const { pins, shapes, card } = await runMap({}, { boundary: DEGENERATE, dir: "contracting" });
+    assert.equal(shapes.length && shapes[0].added, false, "the broken shape must not reach the map");
+    assert.equal(pins.length, 1,
+      "comp pins always drew before boundaries existed and must keep drawing whatever the file holds");
+    assert.notEqual(card.style.display, "none");
+  });
+
+  await t.test("when every comp fails to geocode, the card retracts its pins copy", async () => {
+    // The server wrote "Where these comps are" and the pins sentence
+    // believing the comps would pin; if none survive geocoding and the card
+    // stands on its boundary, both must be retracted — copy asserting pins
+    // over a map that has none is a false statement.
+    const { pins, head, pinsDisc, card } = await runMap({}, {
+      boundary: SQUARE, dir: "flat", answer: {}, settle: 1400,
+    });
+    assert.equal(pins.length, 0, "the fixture's geocoder answers junk, so no pin should place");
+    assert.notEqual(card.style.display, "none", "the boundary keeps the card standing");
+    assert.equal(head.textContent, "Where this market is", "the heading must stop claiming comps");
+    assert.equal(pinsDisc.style.display, "none", "the pins sentence must be retracted");
   });
 });
 

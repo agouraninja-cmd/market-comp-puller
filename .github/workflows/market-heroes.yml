@@ -20,8 +20,14 @@
 # with no photograph are precisely the ones visitors generated. It says so and
 # fails rather than quietly finding nothing to do.
 #
+# The job also fetches the momentum map's carved city boundaries
+# (scripts/fetch-city-bounds.js) for any market that lacks one, so an
+# Explorer-published city gets its photograph AND its boundary in one
+# reviewed PR instead of staying a bare pin until someone remembers.
+#
 # The same thing by hand, for anyone holding those keys locally, is:
 #   node scripts/auto-market-heroes.js
+#   node scripts/fetch-city-bounds.js
 name: Market heroes
 
 on:
@@ -87,19 +93,38 @@ jobs:
           eval node scripts/auto-market-heroes.js $args
           node scripts/auto-market-heroes.js --thumbs
 
+      # The momentum map's carved boundaries, same cadence and same shape as
+      # the photographs: an Explorer-published city otherwise stays a plain
+      # pin until somebody remembers to run fetch-city-bounds.js --city by
+      # hand. The script enumerates seed + dynamic + Supabase markets itself,
+      # merges rather than clobbers, and skips every city already stored, so
+      # the scheduled run only ever costs the new cities. Deliberately not a
+      # separate workflow: the boundary belongs in the same reviewed PR as
+      # the photograph of the same new city.
+      - name: Fetch city boundaries for new markets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -n "${{ inputs.city }}" ]; then
+            node scripts/fetch-city-bounds.js --city "${{ inputs.city }}"
+          else
+            node scripts/fetch-city-bounds.js
+          fi
+
       - name: Open a pull request if anything was found
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$(git status --porcelain market-heroes market-heroes-auto.json)" ]; then
-            echo "No new photographs. Nothing to open."
+          if [ -z "$(git status --porcelain market-heroes market-heroes-auto.json city-bounds.json)" ]; then
+            echo "No new photographs or boundaries. Nothing to open."
             exit 0
           fi
           branch="heroes/auto-$(date -u +%Y-%m-%d-%H%M)"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add market-heroes market-heroes-auto.json
+          git add market-heroes market-heroes-auto.json city-bounds.json
           # Which cities changed, for the PR body — read from the file the
           # generator just wrote rather than from the filenames, so the credit
           # and the reviewer's verdict travel with them.

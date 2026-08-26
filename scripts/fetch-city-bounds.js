@@ -5,7 +5,14 @@
 // same reason — Render erases its disk on every deploy, and a market page
 // surface must never wait on a network call at render time.
 //
-//   node scripts/fetch-city-bounds.js                 # every seeded market's city
+//   node scripts/fetch-city-bounds.js                 # every market's city — the
+//                                                     # committed seed, the local dynamic
+//                                                     # fallback file, AND the Supabase
+//                                                     # market_pages table when .env (or
+//                                                     # the workflow) supplies the pair,
+//                                                     # because Explorer-published cities
+//                                                     # are exactly the ones nobody added
+//                                                     # by hand (auto-market-heroes' rule)
 //   node scripts/fetch-city-bounds.js --city "Casper, WY"   # add one city
 //   node scripts/fetch-city-bounds.js --force         # refetch cities already stored
 //
@@ -46,7 +53,23 @@ function trimPrecision(geometry) {
     (typeof v === "number" ? Number(v.toFixed(COORD_DP)) : v)));
 }
 
-function targetCities() {
+function readJson(file, fallback) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return fallback; }
+}
+
+function loadEnv() {
+  // server.js's own tiny loader, minus the server (auto-market-heroes.js
+  // carries the identical one for the identical reason). Only SUPABASE_*
+  // matter here, and only for reading the published Explorer markets.
+  try {
+    for (const line of fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8").split("\n")) {
+      const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].trim();
+    }
+  } catch (e) { /* no .env is fine — the local files still list markets */ }
+}
+
+async function targetCities() {
   const cities = new Map();
   const cityArgs = [];
   for (let i = 0; i < args.length; i++) {
@@ -60,10 +83,40 @@ function targetCities() {
     }
     return cities;
   }
-  const seed = require(path.join(__dirname, "..", "market-seed.json"));
-  for (const p of Object.values(seed)) {
-    const key = MH.cityKey(p.city, p.state);
-    if (!cities.has(key)) cities.set(key, { city: p.city, state: p.state });
+  // Every market page that exists anywhere, auto-market-heroes.js's rule:
+  // the committed seed, the local dynamic fallback file, and the Supabase
+  // market_pages table — the last being where the Explorer-published cities
+  // that most need a boundary actually live. Missing credentials degrade to
+  // the local files with a loud line, never silently.
+  loadEnv();
+  const pages = {
+    ...readJson(path.join(__dirname, "..", "market-seed.json"), {}),
+    ...readJson(path.join(__dirname, "..", "market-pages-dynamic.json"), {}),
+  };
+  const url = (process.env.SUPABASE_URL || "").trim();
+  const key = (process.env.SUPABASE_SERVICE_KEY || "").trim();
+  if (url && key) {
+    try {
+      const r = await fetch(`${url}/rest/v1/market_pages?select=slug,payload&limit=1000`, {
+        headers: { apikey: key, authorization: "Bearer " + key },
+      });
+      if (r.ok) {
+        for (const row of await r.json()) {
+          if (row && row.slug && row.payload) pages[row.slug] = row.payload;
+        }
+      } else {
+        console.error(`  ! Supabase market_pages read failed (${r.status}) — local files only`);
+      }
+    } catch (err) {
+      console.error("  ! Supabase market_pages read failed — local files only:", err.message);
+    }
+  } else {
+    console.error("  ! No SUPABASE_URL/SUPABASE_SERVICE_KEY — published Explorer markets not seen");
+  }
+  for (const p of Object.values(pages)) {
+    if (!p || !p.city || !p.state) continue;
+    const k = MH.cityKey(p.city, p.state);
+    if (!cities.has(k)) cities.set(k, { city: String(p.city).trim(), state: String(p.state).trim().toUpperCase() });
   }
   return cities;
 }
@@ -74,7 +127,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let out = {};
   try { out = JSON.parse(fs.readFileSync(OUT, "utf8")); } catch (e) {}
   const had = Object.keys(out).length;
-  for (const [key, c] of targetCities()) {
+  for (const [key, c] of await targetCities()) {
     if (out[key] && !force) { console.log(key, "already stored — skipping (use --force to refetch)"); continue; }
     const q = new URLSearchParams({
       city: c.city, state: c.state, country: "USA",

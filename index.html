@@ -282,6 +282,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
       [data-theme="dark"] .leaflet-popup-content-wrapper,
       [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+      /* Popup links: Leaflet's default #0078A8 measures ~3.16:1 on dark
+         --card, and the /markets pin-click card made popup links primary
+         navigation rather than a footnote. */
+      [data-theme="dark"] .leaflet-popup-content a { color: var(--ink-2) }
       /* Tooltips, the piece both blocks missed until the /markets momentum map
          gave a Leaflet layer a tooltip instead of a popup: leaflet.css paints
          them #fff with a white arrow, so every hover on a dark page was a

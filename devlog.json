@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-26",
+    "type": "fix",
+    "title": "Checkout was broken for five days, and nothing noticed",
+    "details": "Buying anything — Pro monthly, the founding annual, firm seats — answered \"Could not start checkout. Please try again.\" It had done so since 2026-08-21, when the $20 single-report unlock was retired: that change deleted the reportId variable but left one reference to it behind, as the idempotency key handed to Stripe. An undeclared name is a ReferenceError rather than undefined, so every checkout that got as far as calling Stripe threw, and the product was quietly unbuyable. The whole test suite stayed green throughout, because every checkout test in it is a refusal that returns before Stripe is ever called — so the fix comes with the thing that was actually missing: a test that drives a SUCCESSFUL checkout against a stub Stripe and checks what Stripe was asked for, including that a four-seat firm is billed for four seats. It was found by trying to buy something."
+  },
+  {
     "date": "2026-08-25",
     "type": "feature",
     "title": "New pricing: Pro is $100, and a firm can buy seats",

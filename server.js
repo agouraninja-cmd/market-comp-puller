@@ -19472,7 +19472,21 @@ const server = http.createServer((req, res) =>
         // original session instead. Keys and Checkout sessions both lapse 24h
         // after creation, so the key can never outlive the session it returns.
         // Subscriptions pass undefined and keep their previous behaviour.
-        reportId ? `single:${user.id}:${reportId}` : undefined);
+        // No idempotency key. Every remaining plan is a SUBSCRIPTION, and
+        // subscriptions have always passed undefined here.
+        //
+        // This argument used to read `reportId ? `single:${user.id}:${reportId}`
+        // : undefined`, keyed for the $20 single-report unlock. That plan was
+        // retired on 2026-08-21 and its `reportId` variable went with it -- but
+        // this reference did not, and a bare undeclared identifier is a
+        // ReferenceError, not undefined. So from that day every checkout that
+        // got as far as calling Stripe threw, and /api/checkout answered 502
+        // "Could not start checkout" to every would-be subscriber. It was found
+        // on 2026-08-26 by trying to buy something, which is the only thing
+        // that could have found it: every checkout test in the suite is a
+        // refusal that returns before this line. See STRIPE_API_URL in
+        // stripe.js for the override that now lets a test reach it.
+        undefined);
         return sendJson(res, 200, { url: session.url, id: session.id });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

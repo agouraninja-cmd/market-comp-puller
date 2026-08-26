@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-25",
+    "type": "fix",
+    "title": "Remove import works in the broker vault",
+    "details": "Removing an import from /vault deleted the comps server-side and then left the screen exactly as it was — the import still listed with its comp count, its comps still in the table — whenever the broker had opened that import’s spreadsheet first, which is the ordinary way to get there since the other button on the row is Open. The handler treated closeSheet() as an alternative to reloading, and closeSheet only redraws from the rows the page is already holding. It now always refetches the book, and it checks the response: a refused removal (a lapsed subscription, a Supabase outage) used to take the success path and look identical to one that worked, and now says what happened."
+  },
+  {
+    "date": "2026-08-25",
     "type": "feature",
     "title": "The extraction verdict is declared: a provisional pass, with its conditions written down",
     "details": "The gate on the whole Archive block has an answer. On the pilot set the extractor found 33 of 36 hand-keyed deals with every field it reported correct, and the one file reviewed by hand row by row — twelve county sales pages, forty-eight values — needed no corrections at all. The verdict is a pass, and it is marked provisional in the same breath, because three documents is not the twenty the spec asks for and none of them is a scan, so it is an upper bound on the messy half of what brokers actually send. The judgment the pass turns on is written out rather than buried: fabrication came in at 1.8%, which the spec calls fatal regardless of everything else, and every instance is either an address the source truncates for display which the model completed, or a year taken from a range the page prints for a property with several buildings. Neither is the failure that rule exists to catch, which is a well-formed invented number nobody can detect; no invented price, size, date or whole deal appeared anywhere in thirty-six rows. Three conditions ride on the pass: re-run it on twenty real broker files including scans before anything is built on it, decide whether completing a truncated address should be stopped or simply recorded, and take a real correction-time measurement on a file that actually needs correcting. A reader who weighs the fabrication question differently should read the same numbers as a fail, and the document says so."

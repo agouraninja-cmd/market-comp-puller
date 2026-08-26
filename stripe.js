@@ -54,6 +54,36 @@ function formEncode(obj, prefix = "", out = []) {
   return out.join("&");
 }
 
+
+// The idempotency key for a create call, derived from the request ITSELF.
+//
+// Stripe's rule is that a key may only be reused with the SAME parameters --
+// reuse it with different ones and the call is refused. Hand-building a key
+// out of the fields you remember are variable is therefore a trap: miss one
+// (the return origin differs between compninja.co and the onrender.com host;
+// the customer field flips from customer_email to customer the moment a
+// customer row exists) and a legitimate second attempt is rejected outright.
+//
+// Hashing the encoded body sidesteps the whole question. Identical request ->
+// identical key -> Stripe returns the ORIGINAL object instead of making a
+// second one, which is what stops a double-click becoming two subscriptions.
+// Any difference at all -> a different key -> a new object, which is what
+// keeps a genuine change (more seats, a different plan) working. The two
+// failure modes are mutually exclusive by construction rather than by
+// somebody keeping a list up to date.
+//
+// It hashes formEncode's output rather than JSON, so the key is a hash of
+// literally the bytes that go on the wire.
+//
+// NOT a guard against buying twice on PURPOSE. Stripe keys expire after 24
+// hours, and once a first purchase writes a customer id the parameters change
+// anyway, so a firm that already has a subscription can still start a second
+// one. That is a product decision (send them to the billing portal instead),
+// not something a hash can decide.
+function idempotencyKeyFor(params) {
+  return crypto.createHash("sha256").update(formEncode(params)).digest("hex");
+}
+
 async function stripeRequest(secretKey, method, path, body, idempotencyKey) {
   const headers = {
     authorization: `Bearer ${secretKey}`,
@@ -253,6 +283,7 @@ function refundOf(charge) {
 module.exports = {
   STRIPE_API,
   formEncode,
+  idempotencyKeyFor,
   stripeRequest,
   verifyWebhookSignature,
   planForPrice,

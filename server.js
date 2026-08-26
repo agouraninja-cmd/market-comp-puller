@@ -20000,7 +20000,7 @@ const server = http.createServer((req, res) =>
         // one — pendingUnlock.v1 lives in that origin's localStorage and is
         // what re-renders the purchased report. See returnOriginFor().
         const returnOrigin = returnOriginFor(req);
-        const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
+        const sessionParams = {
           mode: chosen.mode,
           line_items: [{ price: priceId, quantity: chosen.firm ? firmSeats : 1 }],
           success_url: `${returnOrigin}${returnPath}=success`,
@@ -20030,14 +20030,11 @@ const server = http.createServer((req, res) =>
             : (existing && existing.stripe_customer_id
               ? { customer: existing.stripe_customer_id }
               : { customer_email: user.email })),
-        },
-        // Idempotent per user+report, so a double-click cannot become two
-        // sessions and two charges for the same report. Stripe returns the
-        // original session instead. Keys and Checkout sessions both lapse 24h
-        // after creation, so the key can never outlive the session it returns.
-        // Subscriptions pass undefined and keep their previous behaviour.
-        // No idempotency key. Every remaining plan is a SUBSCRIPTION, and
-        // subscriptions have always passed undefined here.
+        };
+        // Same request -> same key -> Stripe hands back the session it already
+        // made, so a double-click cannot become two subscriptions and two
+        // charges. Derived from the encoded body rather than hand-assembled,
+        // for the reasons in idempotencyKeyFor's own comment.
         //
         // This argument used to read `reportId ? `single:${user.id}:${reportId}`
         // : undefined`, keyed for the $20 single-report unlock. That plan was
@@ -20047,10 +20044,13 @@ const server = http.createServer((req, res) =>
         // got as far as calling Stripe threw, and /api/checkout answered 502
         // "Could not start checkout" to every would-be subscriber. It was found
         // on 2026-08-26 by trying to buy something, which is the only thing
-        // that could have found it: every checkout test in the suite is a
-        // refusal that returns before this line. See STRIPE_API_URL in
-        // stripe.js for the override that now lets a test reach it.
-        undefined);
+        // that could have found it: every checkout test in the suite was a
+        // refusal that returned before this line. See STRIPE_API_URL in
+        // stripe.js for the override that now lets a test reach it, and
+        // test/checkout-run.test.js for the test that would have caught it.
+        const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST",
+          "checkout/sessions", sessionParams, STRIPE.idempotencyKeyFor(sessionParams));
+
         return sendJson(res, 200, { url: session.url, id: session.id });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });

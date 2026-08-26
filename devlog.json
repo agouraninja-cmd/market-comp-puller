@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-26",
+    "type": "improvement",
+    "title": "The momentum word comes off the market cards",
+    "details": "Each card in the /markets grid ended its subtitle with a coloured Expanding / Flat / Contracting — and since only about half the markets carry a current read, the grid ran ragged: some cards ended in a red or green word, the rest just stopped. The subtitle is the figures again. Nothing was taken off the page: the momentum map directly above the grid is still coloured by the same read, its legend still names all three words, and typing one into the filter box still narrows the grid to those markets."
+  },
+  {
+    "date": "2026-08-26",
     "type": "fix",
     "title": "A double-clicked Buy can no longer become two subscriptions",
     "details": "Checkout now sends Stripe an idempotency key, so two requests carrying the same purchase get one subscription instead of two. The failure it prevents is the quiet kind: org_subscriptions is keyed on the firm, so a second subscription would overwrite the first and the firm would be billed twice while every screen still showed one plan. The key is a hash of the request itself rather than a hand-assembled string, which is what makes the other half safe — Stripe refuses a key reused with different parameters, and the fields that vary are easy to miss by hand (the return origin differs between two hostnames, and the customer field changes shape the moment a customer record exists). Buying more seats later is a different request, so it gets a different key and still works. It does not stop somebody buying a second subscription on purpose; a firm that already has one should be sent to its billing portal, which is a separate change."

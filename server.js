@@ -10632,7 +10632,7 @@ function renderMarketDirectoryHTML(signedIn) {
   // list is walked per card and this keeps that explicit.
   const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
   // One clock and one freshDirection read per market, shared by the card's
-  // momentum word, the map pin and the area momentum — so nothing rendered
+  // filter haystack, the map pin and the area momentum — so nothing rendered
   // on this page can disagree with itself. One clock matters more than it
   // looks: the whole seeded set expires at a single midnight, and two
   // Date.now() reads could straddle it.
@@ -10644,8 +10644,11 @@ function renderMarketDirectoryHTML(signedIn) {
     // Everything a visitor might reasonably type for this card, flattened into
     // one lowercase haystack: the words on the card, the full state name, that
     // type's synonyms, and the momentum word — so typing "expanding" filters
-    // to expanding markets. Baking it here is what keeps the filter script
-    // free of any vocabulary of its own.
+    // to expanding markets. The word is no longer PRINTED on the card, but the
+    // map's legend right above the grid still names all three, so it is a word
+    // the reader has just been shown rather than one they have to guess at.
+    // Baking it here is what keeps the filter script free of any vocabulary of
+    // its own.
     const haystack = [
       p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "", dir || "",
     ].join(" ").toLowerCase();
@@ -10667,13 +10670,14 @@ function renderMarketDirectoryHTML(signedIn) {
       pic +
       `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
-      // The momentum word rides the subtitle bare (no "Momentum" label): a
-      // card sits in a list of markets exactly the way the Explorer
-      // dropdown's rows do, which is the surface that sets this precedent.
-      // No read renders nothing, never an Unknown.
-      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps` +
-      (dir ? ` · <span class="mdirv ${DIR_CSS_CLASS[dir]}">${escHtml(dir.charAt(0).toUpperCase() + dir.slice(1))}</span>` : "") +
-      `</div>` +
+      // The subtitle carries the figures only. It briefly ended in a coloured
+      // momentum word (2026-08-25); the owner had it off the next day, because
+      // a grid where some cards end in a red or green word and others just stop
+      // reads as ragged rather than as informative. The READ is untouched and
+      // still on this page — it is what colours every pin on the map above, and
+      // the legend there names the same three words. It also stays in the
+      // haystack below, so typing "expanding" still narrows the grid.
+      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
       `</div></a>`;
   }).join("");
   // The momentum map's pin rows. Coordinates come only from what is already

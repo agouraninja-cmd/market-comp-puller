@@ -380,30 +380,43 @@ test("bare environment", async (t) => {
     assert.match(html, />Mixed</, "the legend lost its Mixed entry");
   });
 
-  // The directory cards, the fourth surface of the same read (2026-08-25).
-  // The cards were the only market-listing surface without momentum on it,
-  // and a card sitting beside a coloured pin for the same market that said
-  // nothing about direction read as two different answers.
-  await t.test("the directory cards carry the same momentum word as everything else", async () => {
+  // The directory cards print the figures and NOT the momentum word
+  // (2026-08-26, owner's call: a grid where some subtitles end in a coloured
+  // word and others just stop reads ragged). Two halves to pin, because the
+  // easy mistakes run in opposite directions: putting the word back on the
+  // card, and taking the READ off the page along with it — the map above the
+  // grid is coloured by it, and the filter still matches it.
+  await t.test("the directory cards show no momentum word, and still filter by it", async () => {
     const html = await (await fetch(srv.base + "/markets")).text();
     const rows = await (await fetch(srv.base + "/api/markets")).json();
     const cards = [...html.matchAll(/<a class="mcard[^"]*" href="\/market\/([a-z0-9-]+)"[\s\S]*?<\/a>/g)];
     assert.ok(cards.length > 20, "expected a card per seeded market, got " + cards.length);
     const dirBySlug = new Map(rows.map((r) => [r.slug, r.direction || null]));
-    let worded = 0;
+    let filterable = 0;
     for (const [card, slug] of cards.map((m) => [m[0], m[1]])) {
-      const word = (card.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
-      assert.equal(word ? word.toLowerCase() : null, dirBySlug.get(slug) || null,
-        slug + ": the card and the Explorer dropdown disagree about momentum");
-      if (!word) continue;
-      worded++;
-      // The word also joins the filter haystack, so typing "expanding"
-      // narrows the grid to expanding markets.
+      assert.ok(!/class="mdirv/.test(card),
+        slug + ": the momentum word is back on the card");
+      for (const word of ["Expanding", "Flat", "Contracting"]) {
+        assert.ok(!card.includes(">" + word + "<"),
+          slug + ": the card is printing " + word + " again");
+      }
+      // The read still reaches the card as a filter token, so typing
+      // "expanding" — a word the map's legend right above still shows —
+      // narrows the grid.
+      const dir = dirBySlug.get(slug) || null;
+      if (!dir) continue;
+      filterable++;
       const hay = (card.match(/data-q="([^"]*)"/) || [])[1] || "";
-      assert.ok(hay.includes(word.toLowerCase()),
-        slug + ": the momentum word must be filterable, not just visible");
+      assert.ok(hay.includes(dir),
+        slug + ": the momentum word must stay filterable even though it is unprinted");
     }
-    assert.ok(worded > 10, "expected most seeded markets to show a word, got " + worded);
+    assert.ok(filterable > 10, "expected most seeded markets to stay filterable, got " + filterable);
+    // The read is still ON the page, just not in the subtitles: the map's
+    // pins are classed by it and its legend still names all three words.
+    assert.match(html, /mmap-pin-expanding/, "the momentum map lost its colours with the card word");
+    for (const word of ["Expanding", "Flat", "Contracting"]) {
+      assert.ok(html.includes(">" + word + "<"), "the map legend lost its " + word + " key");
+    }
   });
 
   // The boundaries themselves: committed like the market-heroes JPEGs

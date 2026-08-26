@@ -160,6 +160,10 @@ const BRANDING = require("./branding.js");
 // avatar_rev field on GET /api/account/me.
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+// "Continue with Google" — the decision half (consent URL, id_token claims,
+// what a token must prove). Pure and tested; server.js owns the state
+// cookie, the code exchange, and the two /auth/google* routes.
+const GAUTH = require("./google-auth");
 const MARKETHERO = require("./market-hero");
 const HEROQUALITY = require("./market-hero-quality");
 const HEROREVIEW = require("./market-hero-review");
@@ -506,6 +510,35 @@ const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 // (streetview-aim.js) runs on the metadata response, so a far pano is a
 // cached miss, not a billed image of the neighbor. In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
+
+// Optional "Continue with Google" (dark until BOTH are set). Created in the
+// Google Cloud console — project "compninja", the one that already holds the
+// Street View key: APIs & Services -> Credentials -> OAuth client ID (Web
+// application), authorized redirect URIs
+//   https://compninja.co/auth/google/callback
+//   http://localhost:3000/auth/google/callback   (dev)
+// Unset = GET /auth/google and its callback 404 and the button in the
+// account modal never renders (the Buy-button rule: a control that can only
+// fail never renders). What a returned token must PROVE lives in
+// google-auth.js; this file owns every side effect. There is deliberately no
+// migration behind this feature — identity is the email (018's decision),
+// so a Google sign-in lands on the same users row a password sign-in does.
+const GOOGLE_OAUTH_CLIENT_ID = (process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
+const GOOGLE_OAUTH_CLIENT_SECRET = (process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
+const GOOGLE_OAUTH_CONFIGURED = Boolean(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET);
+// Half-configured is a mistake worth a loud line, not a fatal one: the safe
+// state (dark) is exactly what a half-set pair produces, but the button
+// stays hidden with nothing else saying why.
+if (Boolean(GOOGLE_OAUTH_CLIENT_ID) !== Boolean(GOOGLE_OAUTH_CLIENT_SECRET)) {
+  console.error("⛔ Google sign-in is HALF-configured — set BOTH GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (or neither). It stays dark until they agree.");
+}
+// Test-only, RESEND_API_URL's precedent for RESEND_API_URL's reason: the
+// whole point of the callback is a credential exchange leaving the building,
+// and without this the suite could reach the exchange and then had to stop
+// and assume. Not a secret and authorizes nothing (the client secret still
+// does), but it decides where that exchange is posted, so treat it as
+// trusted config. Never set in production.
+const GOOGLE_OAUTH_TOKEN_URL = (process.env.GOOGLE_OAUTH_TOKEN_URL || "").trim() || GAUTH.TOKEN_ENDPOINT;
 
 // Optional email ping on every new lead / broker comp submission, sent via
 // Resend's REST API (free tier, plain fetch — no dependency). Note: without a
@@ -1035,10 +1068,39 @@ function parseCookies(req) {
   });
   return out;
 }
-function setSessionCookie(res, req, token, maxAgeSec) {
+// The cookie STRING is its own function because the Google callback has to
+// set two cookies in one response (clear the state nonce, set the session) —
+// res.setHeader replaces, so the callback passes an array, and this is the
+// piece both callers share.
+function sessionCookie(req, token, maxAgeSec) {
   const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
-  res.setHeader("set-cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`);
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+function setSessionCookie(res, req, token, maxAgeSec) {
+  res.setHeader("set-cookie", sessionCookie(req, token, maxAgeSec));
+}
+
+// The Google sign-in state nonce — a one-shot CSRF check: the callback only
+// proceeds when Google echoes the nonce THIS browser was handed ten minutes
+// ago at most. httpOnly and SameSite=Lax like the session cookie (Lax rides
+// on the top-level GET navigation back from Google, which is the whole
+// point); cleared on every callback exit, success included.
+const GSTATE_COOKIE = "cn_gstate";
+function gstateCookie(req, value, maxAgeSec) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  return `${GSTATE_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+
+// The redirect URI Google sends the visitor back to. It must match a URI
+// registered on the OAuth client byte for byte, so it is never derived from
+// an arbitrary Host header: production is pinned to SITE_URL, and only a
+// localhost host (dev, where SITE_URL still holds the Render default) is
+// echoed — the same host test the session cookie's Secure flag uses. Both
+// spellings are registered in the console.
+function oauthRedirectUri(req) {
+  const host = String(req.headers.host || "");
+  if (/^(localhost(:\d+)?$|127\.)/.test(host)) return `http://${host}/auth/google/callback`;
+  return `${SITE_URL}/auth/google/callback`;
 }
 
 // --- storage: Supabase REST when configured, account-store.json otherwise ---
@@ -10961,11 +11023,13 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `<p>The Service sets a small number of essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
     `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
     `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
-    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
-    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another; and, only ` +
+    `for the duration of a sign-in with Google, <code>cn_gstate</code>, a short-lived httpOnly cookie that ` +
+    `protects that sign-in against forgery and expires within minutes. The ` +
+    `<code>cn_vid</code> identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
     `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
     `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
     `None of these cookies is used for advertising ` +
@@ -15430,6 +15494,123 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- "Continue with Google" — the OAuth door -----------------------------
+  // GET /auth/google hands the visitor to Google's consent screen with a
+  // one-shot state nonce; the callback exchanges the code for an id_token,
+  // validates its claims (google-auth.js owns what a token must prove), and
+  // signs the visitor in — finding the account by VERIFIED email, or creating
+  // one. Identity is the email (018's decision), so there is no migration
+  // behind this: a Google sign-in lands on the same users row a password
+  // sign-in does, and every later read (desk, vault, entitlements) is
+  // unchanged by how the session was minted.
+  //
+  // A Google-created account gets a RANDOM password hash, never an empty one:
+  // POST /api/account/login answers it "Incorrect email or password" like any
+  // wrong guess, and the existing forgot-password flow is how such an account
+  // gains a password later — the reset email goes to the address Google
+  // verified, so the inbox's owner is always senior. That is also the honest
+  // answer to the classic pre-hijack worry (signup does not verify email, so
+  // a stranger could park a password account on someone else's address before
+  // they first arrive via Google): the true owner can always take the account
+  // over through reset, and the stranger never reads anything sent to it.
+  //
+  // Every failure exits to /?auth=signin&gerr=1 — the account modal opens
+  // with a one-line explanation and the password door is right there. No
+  // Google error text ever reaches the visitor (upstreamError's rule: a
+  // vendor's errors are written for us, never for a customer).
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) {
+      return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+    }
+    const state = crypto.randomBytes(16).toString("hex");
+    res.setHeader("set-cookie", gstateCookie(req, state, 600));
+    res.writeHead(302, {
+      location: GAUTH.authUrl({ clientId: GOOGLE_OAUTH_CLIENT_ID, redirectUri: oauthRedirectUri(req), state }),
+      "cache-control": "no-store",
+    });
+    return res.end();
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google/callback") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    // The one-shot nonce is cleared on every exit, success included.
+    const clearState = gstateCookie(req, "", 0);
+    const fail = () => {
+      res.setHeader("set-cookie", clearState);
+      res.writeHead(302, { location: "/?auth=signin&gerr=1", "cache-control": "no-store" });
+      res.end();
+    };
+    (async () => {
+      if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) return fail();
+      const q = new URLSearchParams(req.url.split("?")[1] || "");
+      const code = q.get("code") || "";
+      const state = q.get("state") || "";
+      const cookieState = parseCookies(req)[GSTATE_COOKIE] || "";
+      // The CSRF check: proceed only when Google echoes the nonce THIS
+      // browser was handed. A missing cookie is a stale or forged link.
+      if (!code || !state || !cookieState || state !== cookieState) return fail();
+      // The code exchange — server-to-server, authenticated with the client
+      // secret, which is why the id_token's claims are trusted without a
+      // signature check (google-auth.js's header carries the full argument).
+      let idToken = "";
+      try {
+        const r = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+            redirect_uri: oauthRedirectUri(req),
+            grant_type: "authorization_code",
+          }).toString(),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (r.ok) idToken = String(((await r.json()) || {}).id_token || "");
+        else console.warn("Google token exchange refused (" + r.status + ")");
+      } catch (err) { console.warn("Google token exchange failed:", err && err.message); }
+      const checked = GAUTH.validateGoogleClaims(
+        GAUTH.parseIdTokenClaims(idToken), { clientId: GOOGLE_OAUTH_CLIENT_ID, now: Date.now() });
+      if (!checked.ok) {
+        if (idToken) console.warn("Google sign-in refused:", checked.reason);
+        return fail();
+      }
+      let user = await findUserByEmail(checked.email);
+      if (!user) {
+        user = await createUser({
+          email: checked.email,
+          // Random, never empty — see the header comment above.
+          password_hash: await hashPassword(crypto.randomBytes(32).toString("base64url")),
+          name: checked.name,
+        });
+        // The same PII-free event kinds the password doors log, so the
+        // /admin visitor funnel counts a Google signup as a signup; source
+        // is a real analytics column and records which door it was.
+        logEvent("signup", { source: "google" });
+        console.log("Account created via Google: " + checked.email);
+      } else {
+        logEvent("login", { source: "google" });
+      }
+      const token = await createSession(user.id);
+      // Two cookies in one response — setSessionCookie would REPLACE the
+      // state clear, so the two strings ride together as an array.
+      res.setHeader("set-cookie", [clearState, sessionCookie(req, token, Math.floor(SESSION_TTL_MS / 1000))]);
+      res.writeHead(302, { location: "/", "cache-control": "no-store" });
+      res.end();
+    })().catch((err) => {
+      console.error("Google callback failed:", err);
+      fail();
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/account/me") {
     getSessionUser(req).then((user) => {
       if (!user) return sendJson(res, 401, { error: "Not signed in." });
@@ -19464,6 +19645,10 @@ const server = http.createServer((req, res) =>
         guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
+        // Whether "Continue with Google" can work here, so the account
+        // modal offers the button only where clicking it can succeed (the
+        // Buy-button rule). Presentation only — the routes 404 on their own.
+        googleAuth: GOOGLE_OAUTH_CONFIGURED,
         pro: {
           enabled: on,
           // Checkout and the portal both 503 unless Stripe is configured too,

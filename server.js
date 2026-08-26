@@ -10598,7 +10598,7 @@ const HOW_FAQ = [
   // are the numbers being charged; a test in public-pages.test.js now pins
   // the two retired claims out.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $129 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $100 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. Firms can put a whole office on one plan at $79 a seat, minimum two seats."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -19379,8 +19379,20 @@ const server = http.createServer((req, res) =>
           }
           const roster = (await orgMemberRows(String(orgId))).filter((r) => !r.removed_at);
           const asked = Math.floor(Number(seats) || 0);
-          if (!Number.isFinite(asked) || asked < 1 || asked > ORG.MAX_MEMBERS) {
-            return sendJson(res, 400, { error: `Choose between 1 and ${ORG.MAX_MEMBERS} seats.` });
+          if (!Number.isFinite(asked) || asked < ORG.MIN_SEATS || asked > ORG.MAX_MEMBERS) {
+            return sendJson(res, 400, {
+              error: `Choose between ${ORG.MIN_SEATS} and ${ORG.MAX_MEMBERS} seats.`,
+              // Named separately from the range failure it shares a branch
+              // with, because only one of the two is a rule somebody can
+              // disagree with: a firm plan starts at ORG.MIN_SEATS seats, and
+              // the reason is in that constant's comment (a one-seat firm
+              // plan is a cheaper Pro, not a firm). A caller that asked for
+              // zero or nonsense gets the same sentence and does not need the
+              // distinction.
+              ...(asked >= 1 && asked < ORG.MIN_SEATS
+                ? { code: "seats_below_minimum", minimum: ORG.MIN_SEATS }
+                : {}),
+            });
           }
           // Refused rather than silently accepted, because the consequence of
           // buying too few is that named colleagues lose Pro the moment the

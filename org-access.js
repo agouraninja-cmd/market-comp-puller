@@ -49,6 +49,25 @@ const MANAGE_ROLES = ["owner", "admin"];
 // any real brokerage office; it exists so a bug cannot write ten thousand
 // rows, not to price the product.
 const MAX_MEMBERS = 200;
+
+// The smallest firm subscription that may be BOUGHT. Unlike MAX_MEMBERS this
+// one really is about price, and it closes a hole rather than expressing a
+// preference: `canUseOrg` gates CREATING a firm on already holding Pro, but
+// getEntitlements grants Pro from a firm SEAT as a fallback once a personal
+// subscription lapses. So without a minimum one person could create a firm,
+// buy a single seat, cancel their own plan, and keep everything for the seat
+// price — which is below the individual price by construction, because a team
+// discount is the whole point of the plan.
+//
+// Two is the least that means "a firm", and it is enough: two seats bill above
+// the individual price, so the cheap way back to Pro is closed without
+// refusing genuinely small shops. Keep that relation true if either price
+// moves — a seat price above half the individual price is what makes 2 work.
+//
+// It bounds the PURCHASE, never the membership: a two-seat firm with one
+// member is fine, and a hand-granted firm has no subscription at all.
+const MIN_SEATS = 2;
+
 // Per call, not per firm — a paste of a whole address book should be told to
 // slow down rather than half-succeed.
 const MAX_INVITES_PER_CALL = 25;
@@ -376,7 +395,7 @@ function normalizeInviteEmails(raw, { self = "", existing = [] } = {}) {
 }
 
 module.exports = {
-  ROLES, MANAGE_ROLES, MAX_MEMBERS, MAX_INVITES_PER_CALL, MAX_NAME_LEN,
+  ROLES, MANAGE_ROLES, MAX_MEMBERS, MIN_SEATS, MAX_INVITES_PER_CALL, MAX_NAME_LEN,
   SHARE_DEFAULTS, AUTO_SHARE_CHOICES, SHOP_KINDS, SHOP_COPY,
   normalizeEmail, roleOf, isActive, isPending,
   validateOrgName, membershipOf, pendingInviteOf, activeOrgIds,

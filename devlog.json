@@ -2,8 +2,14 @@
   {
     "date": "2026-08-25",
     "type": "feature",
-    "title": "Continue with Google (dark until the OAuth client exists)",
-    "details": "The account modal offers Google sign-in on its Sign in and Create account tabs — one click instead of a password, aimed at the signup wall where the visitor funnel loses people. Zero dependencies: the OAuth code exchange is plain fetch, and there is no migration, because identity here is the email — a verified Google email lands on the same account a password sign-in does, and an account born from Google gets a random password hash so the password door treats it like any wrong guess (the existing reset flow, which mails the address Google verified, is how it gains a password later). The whole feature ships dark: until GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are set, the routes 404 and the button never renders. Tokens must carry a verified email, our client id and Google's issuer or nobody is signed in; the flow is CSRF-guarded by a one-shot cookie nonce the privacy policy now names; and the suite runs the entire exchange against a stub endpoint, including the case where a refused token must leave no session behind."
+    "title": "New pricing: Pro is $100, and a firm can buy seats",
+    "details": "Pro monthly comes down from $129 to $100 and the founding annual from $990 to $840 (so \"founding\" still means roughly three and a half months free rather than two). Firms can put a whole office on one plan at $79 a seat. A firm plan starts at two seats, and that is a rule rather than a preference: a seat grants Pro, so a one-seat firm plan would just be a cheaper Pro for one person — two seats bill above the individual price, which closes it without refusing genuinely small shops. The price figures were only ever written in the pricing modal and the landing FAQ, with nothing keeping them in step; a test now pins those two to each other."
+  },
+  {
+    "date": "2026-08-25",
+    "type": "improvement",
+    "title": "The firm-seats launch has a written runbook",
+    "details": "PRO-BILLING-SETUP.md now covers the third sellable plan: what the code already enforces (owner-only, seats ≥ headcount, the two-seat minimum, seats written from the subscription, the firm as its own Stripe customer), the Stripe and Render steps, and a $1-temp-price verification round trip in the E6 pattern before the real price goes in. It also records why env vars are set before the copy deploys — the other order advertises a price lower than the one being charged — and that existing subscribers never move to a new price on their own. The status table caught up with history it had missed: Pro's public launch, report branding, and the single-report retirement."
   },
   {
     "date": "2026-08-25",
@@ -3268,5 +3274,11 @@
     "type": "feature",
     "title": "Pro shows how many people searched your markets",
     "details": "Every market on your watchlist now carries a line saying how many people looked at it in the last 30 days, and how many searches that was. Your own searches are never counted, so the number is other people rather than a reflection of your week. A market nobody searched says so plainly instead of going blank. Free accounts see that the figure exists; the count itself is Pro."
+  },
+  {
+    "date": "2026-08-25",
+    "type": "feature",
+    "title": "Continue with Google (dark until the OAuth client exists)",
+    "details": "The account modal offers Google sign-in on its Sign in and Create account tabs — one click instead of a password, aimed at the signup wall where the visitor funnel loses people. Zero dependencies: the OAuth code exchange is plain fetch, and there is no migration, because identity here is the email — a verified Google email lands on the same account a password sign-in does, and an account born from Google gets a random password hash so the password door treats it like any wrong guess (the existing reset flow, which mails the address Google verified, is how it gains a password later). The whole feature ships dark: until GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET are set, the routes 404 and the button never renders. Tokens must carry a verified email, our client id and Google's issuer or nobody is signed in; the flow is CSRF-guarded by a one-shot cookie nonce the privacy policy now names; and the suite runs the entire exchange against a stub endpoint, including the case where a refused token must leave no session behind."
   }
 ]

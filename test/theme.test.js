@@ -238,20 +238,51 @@ test("the market pages' Leaflet dark chrome matches index.html's copy", () => {
   }
 });
 
-// The market map used to hardcode CARTO's light_all basemap, so a dark market
-// page rendered a white rectangle in the middle of it. It follows the theme
-// now, and swaps by setUrl rather than rebuilding the layer, because the
-// theme toggle lives in the shared header and can fire long after the pins
-// have been placed.
+// The market map used to hardcode a light basemap, so a dark market page
+// rendered a white rectangle in the middle of it. It follows the theme now,
+// and swaps by setUrl rather than rebuilding the layer, because the theme
+// toggle lives in the shared header and can fire long after the pins have
+// been placed. (The provider moved from CARTO to Esri on 2026-08-26, when
+// CARTO began watermarking keyless raster tiles — including the printed
+// exports a broker hands a client.)
 test("the market map's basemap follows the theme", () => {
-  assert.match(SERVER_JS, /basemaps\.cartocdn\.com\/" \+ \(dark \? "dark_all" : "light_all"\)/,
+  assert.match(SERVER_JS, /dark \? "World_Dark_Gray_Base" : "World_Light_Gray_Base"/,
     "the market basemap must be chosen from the theme, not pinned");
-  assert.equal(/cartocdn\.com\/light_all/.test(SERVER_JS), false,
-    "no hardcoded light_all basemap should remain");
+  assert.match(SERVER_JS, /dark \? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference"/,
+    "the label layer must follow the theme too, or dark pages get light labels");
   assert.match(SERVER_JS, /attributeFilter: \["data-theme"\]/,
     "a theme change must reach the tile layer");
-  assert.match(SERVER_JS, /tiles\.setUrl\(baseUrl\(\)\)/,
-    "swap the URL rather than re-adding the layer, which would drop the pins");
+  assert.match(SERVER_JS, /tiles\.setTheme\(\)/,
+    "swap the URLs rather than re-adding the layers, which would drop the pins");
+  // The watermark that forced the move: no keyless CARTO raster may come back
+  // on any surface, and that includes the print/PNG export path in index.html.
+  for (const [where, src] of [["server.js", SERVER_JS], ["index.html", INDEX]]) {
+    assert.equal(/basemaps\.cartocdn\.com/.test(src), false,
+      where + " still requests CARTO raster tiles, which are watermarked without an API key");
+  }
+});
+
+// Esri numbers its tiles {z}/{y}/{x} — ROW before column — where every XYZ
+// service (and this repo's own aerials) uses {z}/{x}/{y}. Getting it backwards
+// mirrors the world, which looks like a plausible map of nowhere rather than
+// an error, so it is pinned rather than left to review.
+test("every Esri Canvas tile URL is row-before-column", () => {
+  for (const [where, src] of [["server.js", SERVER_JS], ["index.html", INDEX]]) {
+    // The service name and the tile path are separate string pieces in both
+    // files (concatenated in server.js, interpolated in index.html), so the
+    // tile path is what gets checked rather than a whole URL.
+    const paths = src.match(/\/MapServer\/tile\/[^"'`\s)]*/g) || [];
+    assert.ok(paths.length >= 2, where + " lost its Esri MapServer tile paths");
+    // The row/column variables are named y/x in the Leaflet templates and
+    // ty/tx in the hand-stitched aerials; what must hold is the ORDER —
+    // zoom, then row, then column.
+    for (const p of paths) {
+      assert.ok(/^\/MapServer\/tile\/\$?\{z\}\/\$?\{t?y\}\/\$?\{t?x\}/.test(p),
+        where + " has an Esri tile path that is not zoom/row/column: " + p);
+    }
+    assert.ok(/World_(Light|Dark)_Gray_Base/.test(src), where + " lost its Canvas basemap");
+    assert.ok(/World_(Light|Dark)_Gray_Reference/.test(src), where + " lost its Canvas label layer");
+  }
 });
 
 test("the dark-mode footer ink reaches all three server-rendered footers", () => {
@@ -964,19 +995,19 @@ test("no raw hex colour remains in vault-page.js's generated markup (the JS half
 });
 
 test("a dark basemap never ships without the pin recolour", () => {
-  // The comp roundel is drawn to read against a LIGHT basemap. On
-  // dark_all it disappears. These two must land together. pinColors()'s
+  // The comp roundel is drawn to read against a LIGHT basemap. On a dark
+  // one it disappears. These two must land together. pinColors()'s
   // returned keys are named pinInk/pinInkText/pinEdge/pinSubject (not the
   // brief's generic ink/edge/subject) specifically so this substring check
   // is a real, load-bearing fact about the code rather than an incidental
   // one -- "pinInk" only appears in the file because the pin-recolour
   // function actually declares a property by that name.
-  const dark = INDEX.includes("dark_all");
+  const dark = INDEX.includes("World_Dark_Gray_Base");
   const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
   assert.equal(dark, pins,
-    "dark_all tiles and the pin recolour must ship together, not one without the other");
+    "dark tiles and the pin recolour must ship together, not one without the other");
   assert.ok(INDEX.includes(".leaflet-tile-pane"),
-    "dark_all stays the provider; charcoal lift is a tile-pane filter, not a new basemap");
+    "the dark basemap stays a provider choice; the charcoal lift is a tile-pane filter");
 });
 
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {

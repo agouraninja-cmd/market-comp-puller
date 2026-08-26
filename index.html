@@ -9983,14 +9983,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.target.parentElement === document.getElementById("reportArea")) e.target.classList.add("entrance-done");
   });
 
-  // CartoDB serves light_all and dark_all at the same URL shape, keyless,
-  // under the same terms, so this is a one-word swap. dark_all is near-black;
-  // a CSS filter on .leaflet-tile-pane lifts it toward charcoal paper (the
-  // pins still invert — see pinColors()). Aerial popup photos are not
-  // in that pane.
+  // Esri's Light/Dark Gray Canvas, keyless. This was CARTO's raster tiles
+  // until CARTO began requiring an API key and stamping "API KEY REQUIRED"
+  // across every unauthenticated tile — including the printed and PNG
+  // exports a broker hands a client. Esri is already this file's satellite
+  // provider, so it is now one vendor rather than two.
+  //
+  // TWO layers, not one: the Canvas base carries no labels, so a Reference
+  // layer is drawn over it — the same pairing satelliteLayer below has
+  // always used. And Esri numbers tiles {z}/{y}/{x}, ROW before column,
+  // the opposite of the XYZ order most tile URLs use; swapping them mirrors
+  // the world silently.
+  //
+  // ⚠ MIRROR of BASEMAP_JS in server.js (the market pages' and /markets'
+  // maps): this file is static and never templated by the server, so the
+  // two are kept in step by hand and by a test in test/theme.test.js. The
+  // dark base is near-black; a CSS filter on .leaflet-tile-pane lifts it
+  // toward charcoal paper (the pins still invert — see pinColors()). Aerial
+  // popup photos are not in that pane.
   const isDark = () => document.documentElement.getAttribute("data-theme") === "dark";
+  const ESRI_CANVAS = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
   const basemapUrl = () =>
-    `https://{s}.basemaps.cartocdn.com/${isDark() ? "dark_all" : "light_all"}/{z}/{x}/{y}{r}.png`;
+    `${ESRI_CANVAS}${isDark() ? "World_Dark_Gray_Base" : "World_Light_Gray_Base"}/MapServer/tile/{z}/{y}/{x}`;
+  const basemapLabelUrl = () =>
+    `${ESRI_CANVAS}${isDark() ? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference"}/MapServer/tile/{z}/{y}/{x}`;
+  const BASEMAP_ATTRIB = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  // One layer object for callers that hand it to a layers control or add it
+  // directly, mirroring how satelliteLayer groups its imagery and labels.
+  const streetBasemap = () => L.layerGroup([
+    L.tileLayer(basemapUrl(), { maxZoom: 18, crossOrigin: "anonymous", attribution: BASEMAP_ATTRIB }),
+    L.tileLayer(basemapLabelUrl(), { maxZoom: 18, crossOrigin: "anonymous" }),
+  ]);
   // The comp roundel is dark-on-white for a light basemap. On a dark
   // basemap that is invisible, so it inverts. The subject pin keeps its
   // brand red either way -- it is the one mark that must never change
@@ -10052,14 +10075,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     mapInstance = L.map("compMap", { scrollWheelZoom: false });
     // Two base views, switchable from the control in the top-right corner:
-    // "Map" — Carto Positron, muted light-gray so the pins carry the color;
+    // "Map" — Esri Light/Dark Gray Canvas, muted so the pins carry the color;
     // "Satellite" — Esri photorealistic imagery with a street/place label
     // overlay. The choice persists and is reapplied on every report's map.
-    const streetLayer = L.tileLayer(basemapUrl(), {
-      maxZoom: 18,
-      crossOrigin: "anonymous",
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    });
+    const streetLayer = streetBasemap();
     const satelliteLayer = L.layerGroup([
       L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
         maxZoom: 18,
@@ -10560,8 +10579,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // shape readable on paper. Same rule the PNG export already applies to the
   // theme (see downloadImage's onclone) — an export is light whatever the
   // sender is looking at.
-  const SMAP_TILE = (z, x, y) => `https://a.basemaps.cartocdn.com/light_all/${z}/${x}/${y}@2x.png`;
-  const SMAP_ATTRIB = "© OpenStreetMap © CARTO";
+  // Esri's Light Gray Canvas, keyless, ALWAYS light (see above). Note the
+  // {z}/{y}/{x} order — row before column — and that labels are a second
+  // service drawn over the base, both of which SMAP_TILES below handles.
+  //
+  // The retina story changed with the provider and is worth understanding
+  // before touching drawStaticMap: CARTO served an @2x twin (512px natural
+  // in a 256 logical box) and that spare detail is what made this ~330dpi at
+  // the printed width. Esri has no @2x twin, so the sharpness now comes from
+  // ZOOM instead — one level deeper, where each 256px tile covers half the
+  // ground, drawn into a 128 logical box. Same pixels per printed inch, four
+  // times the tiles, on an export path that already budgets its time and
+  // tolerates a tile failing.
+  const SMAP_CANVAS = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+  const SMAP_TILES = (z, x, y) => [
+    `${SMAP_CANVAS}World_Light_Gray_Base/MapServer/tile/${z}/${y}/${x}`,
+    `${SMAP_CANVAS}World_Light_Gray_Reference/MapServer/tile/${z}/${y}/${x}`,
+  ];
+  const SMAP_ATTRIB = "© Esri, HERE, Garmin, © OpenStreetMap";
   const smapIdle = (fn) => (window.requestIdleCallback || ((f) => setTimeout(f, 400)))(fn, { timeout: 3000 });
 
   let staticMapKey = null;    // signature of the pin set the raster on screen was built from
@@ -10683,15 +10718,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const fit = smapFit(pts);
     if (!fit) return null;
     const deadline = Date.now() + SMAP_BUDGET_MS;
-    const ox = fit.cx - SMAP_W / 2, oy = fit.cy - SMAP_H / 2;
-    const span = Math.pow(2, fit.z);   // tiles per axis at this zoom
+    // One zoom deeper than the frame, for the retina reason in SMAP_TILES:
+    // every global pixel doubles, so the window is 2x too, and each 256px
+    // tile lands in a 128 logical box.
+    const tz = fit.z + 1;
+    const ox = (fit.cx - SMAP_W / 2) * 2, oy = (fit.cy - SMAP_H / 2) * 2;
+    const winW = SMAP_W * 2, winH = SMAP_H * 2;
+    const span = Math.pow(2, tz);      // tiles per axis at this zoom
     const jobs = [];
-    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + SMAP_H - 1) / 256); ty++) {
+    for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + winH - 1) / 256); ty++) {
       if (ty < 0 || ty >= span) continue;               // past a pole: no tile exists
-      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + SMAP_W - 1) / 256); tx++) {
+      for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + winW - 1) / 256); tx++) {
         const wx = ((tx % span) + span) % span;         // the world wraps east to west
-        jobs.push(smapTile(SMAP_TILE(fit.z, wx, ty), deadline)
-          .then((img) => ({ img, left: tx * 256 - ox, top: ty * 256 - oy })));
+        // Base and labels are two services; the label tile rides directly on
+        // its own base tile, so they share one box and draw in order.
+        const [baseUrl, labelUrl] = SMAP_TILES(tz, wx, ty);
+        const left = (tx * 256 - ox) / 2, top = (ty * 256 - oy) / 2;
+        jobs.push(Promise.all([
+          smapTile(baseUrl, deadline),
+          smapTile(labelUrl, deadline),
+        ]).then(([img, labels]) => ({ img, labels, left, top })));
       }
     }
     const tiles = await Promise.all(jobs);
@@ -10706,9 +10752,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     ctx.scale(SMAP_SCALE, SMAP_SCALE);
     ctx.fillStyle = "#F2F1EC";   // shows through wherever a single tile failed
     ctx.fillRect(0, 0, SMAP_W, SMAP_H);
-    // @2x tiles are 512px natural, drawn into a 256 logical box: the extra
-    // detail is what makes this ~330dpi at the printed width.
-    tiles.forEach((t) => { if (t.img) ctx.drawImage(t.img, t.left, t.top, 256, 256); });
+    // 256px tiles from one zoom deeper, drawn into a 128 logical box: the
+    // extra detail is what makes this ~330dpi at the printed width. Labels
+    // go over their own base tile, never under a neighbour's.
+    tiles.forEach((t) => { if (t.img) ctx.drawImage(t.img, t.left, t.top, 128, 128); });
+    tiles.forEach((t) => { if (t.labels) ctx.drawImage(t.labels, t.left, t.top, 128, 128); });
     // Comps first, subject last — the red pin is the one mark that must never
     // end up underneath another.
     pts.forEach((p) => {
@@ -18702,11 +18750,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } else {
       mapEl.classList.remove("hidden");
       confirmMapInstance = L.map("confirmMap", { scrollWheelZoom: false, zoomControl: false });
-      L.tileLayer(basemapUrl(), {
-        maxZoom: 18,
-        crossOrigin: "anonymous",
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      }).addTo(confirmMapInstance);
+      streetBasemap().addTo(confirmMapInstance);
       const p = pinColors();
       const pinIcon = L.divIcon({
         className: "",

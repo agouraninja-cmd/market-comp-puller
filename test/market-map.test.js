@@ -24,13 +24,18 @@ const vm = require("node:vm");
 
 const SERVER = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
 
-function marketMapSource() {
-  const open = "const MARKET_MAP_JS = `";
+function constSource(name) {
+  const open = "const " + name + " = `";
   const i = SERVER.indexOf(open);
-  assert.notEqual(i, -1, "MARKET_MAP_JS is gone or renamed — this file exercises it by name");
+  assert.notEqual(i, -1, name + " is gone or renamed — this file exercises it by name");
   const start = i + open.length;
   return SERVER.slice(start, SERVER.indexOf("`;", start));
 }
+const marketMapSource = () => constSource("MARKET_MAP_JS");
+// The map script calls CNBASE, which the page emits as its own <script>
+// immediately before it. Running one without the other would test a
+// composition the browser never sees.
+const basemapSource = () => constSource("BASEMAP_JS");
 
 // Runs the map script against one comp and returns what it touched. `seed` is
 // the localStorage the visitor arrives with.
@@ -132,6 +137,7 @@ function runMap(seed, opts) {
   if (o.noLeaflet) delete ctx.L;
   ctx.window = ctx;
   vm.createContext(ctx);
+  vm.runInContext(basemapSource(), ctx, { timeout: 5000 });
   vm.runInContext(marketMapSource(), ctx, { timeout: 5000 });
   // The script geocodes the city then chains the comps, all through resolved
   // promises here, so a macrotask tick is enough for it to settle.
@@ -146,33 +152,45 @@ function runMap(seed, opts) {
   ));
 }
 
-// The basemap was pinned to CARTO's light_all, so a dark market page rendered
-// a white rectangle in the middle of it. It follows the theme now.
+// The basemap was pinned light once, so a dark market page rendered a white
+// rectangle in the middle of it. It follows the theme now. Two layers per
+// map since the provider moved to Esri (2026-08-26): the Canvas base carries
+// no labels, so a Reference layer is drawn over it.
 test("the market map's basemap follows the theme", async (t) => {
-  await t.test("a light visitor gets the light basemap", async () => {
+  await t.test("a light visitor gets the light basemap and its labels", async () => {
     const { tileUrls } = await runMap({});
-    assert.equal(tileUrls.length, 1);
-    assert.match(tileUrls[0], /light_all/);
+    assert.equal(tileUrls.length, 2, "expected a base layer and a label layer");
+    assert.match(tileUrls[0], /World_Light_Gray_Base/);
+    assert.match(tileUrls[1], /World_Light_Gray_Reference/);
   });
 
-  await t.test("a dark visitor gets the dark basemap", async () => {
+  await t.test("a dark visitor gets the dark basemap and its labels", async () => {
     const { tileUrls } = await runMap({}, { theme: "dark" });
-    assert.equal(tileUrls.length, 1);
-    assert.match(tileUrls[0], /dark_all/);
+    assert.equal(tileUrls.length, 2);
+    assert.match(tileUrls[0], /World_Dark_Gray_Base/);
+    assert.match(tileUrls[1], /World_Dark_Gray_Reference/,
+      "light labels over a dark base is the half-swap this pins");
   });
 
   // The toggle lives in the shared header and can fire long after the pins
-  // are placed, so the layer's URL is swapped rather than the layer rebuilt —
-  // re-adding it would drop every pin already on the map.
-  await t.test("a theme change swaps the URL without rebuilding the layer", async () => {
+  // are placed, so each layer's URL is swapped rather than the layer rebuilt —
+  // re-adding one would drop every pin already on the map.
+  await t.test("a theme change swaps the URLs without rebuilding the layers", async () => {
     const { tileUrls, observers, pins, setTheme } = await runMap({});
     assert.equal(observers.length, 1, "the map must watch for a theme change");
     const pinsBefore = pins.length;
     setTheme("dark");
     observers[0]();
-    assert.equal(tileUrls.length, 2, "expected a setUrl, not a second tileLayer");
-    assert.match(tileUrls[1], /dark_all/);
+    assert.equal(tileUrls.length, 4, "expected two setUrl calls, not two more tileLayers");
+    assert.match(tileUrls[2], /World_Dark_Gray_Base/);
+    assert.match(tileUrls[3], /World_Dark_Gray_Reference/);
     assert.equal(pins.length, pinsBefore, "pins must survive a theme change");
+  });
+
+  // Esri numbers tiles row-before-column; the other order mirrors the world.
+  await t.test("tiles are requested {z}/{y}/{x}", async () => {
+    const { tileUrls } = await runMap({});
+    for (const u of tileUrls) assert.match(u, /\/tile\/\{z\}\/\{y\}\/\{x\}$/, u);
   });
 });
 
@@ -238,7 +256,7 @@ test("the market map draws its city's carved boundary", async (t) => {
     const before = shapes[0].style.fillColor;
     setTheme("dark");
     observers[0]();
-    assert.match(tileUrls[tileUrls.length - 1], /dark_all/, "the basemap must swap");
+    assert.match(tileUrls[tileUrls.length - 1], /World_Dark_Gray_/, "the basemap must swap");
     assert.notEqual(shapes[0].style.fillColor, before,
       "the boundary holds a computed colour, so a theme flip must restyle it explicitly");
   });

@@ -161,6 +161,9 @@ function runMap(opts) {
   };
   ctx.window = ctx;
   vm.createContext(ctx);
+  // The page emits CNBASE as its own <script> immediately before this one;
+  // running the map script alone would test a composition no browser sees.
+  vm.runInContext(scriptSource("BASEMAP_JS"), ctx, { timeout: 5000 });
   vm.runInContext(mapSource(), ctx, { timeout: 5000 });
 
   const state = {
@@ -304,7 +307,7 @@ test("a theme flip restyles the revealed shapes, not just the tiles", async () =
   const before = s.areasOnMap()[0].style;
   s.setTheme("dark");
   s.fireTheme();
-  assert.match(s.tileUrls[s.tileUrls.length - 1], /dark_all/, "the basemap must swap");
+  assert.match(s.tileUrls[s.tileUrls.length - 1], /World_Dark_Gray_/, "the basemap must swap");
   assert.notEqual(s.areasOnMap()[0].style, before,
     "revealed shapes hold computed colors, so a theme flip must restyle them explicitly");
 });

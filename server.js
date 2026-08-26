@@ -8720,6 +8720,56 @@ const MARKET_FOOTER =
 // because the miss is what got cached. A separate NAME rather than a lower
 // version number: version numbers invite being re-synced by anyone who reads
 // the two as having drifted apart, which is exactly how this comes back. ---
+// THE BASEMAP, shared by both server-rendered maps (2026-08-26).
+//
+// It was CARTO's keyless raster tiles until CARTO began requiring an API key
+// for them and stamping "API KEY REQUIRED" across every unauthenticated
+// tile — which put that watermark on the market pages' comp maps, the
+// /markets momentum map, the report map and, worst of all, the printed and
+// PNG exports a broker hands a client. CARTO also says its raster endpoints
+// are being retired, so buying a key would only have bought time.
+//
+// Esri instead: keyless, no account, no secret to rotate, and already what
+// this codebase serves for satellite aerials and imagery, so it is one
+// vendor rather than two. Light/Dark Gray Canvas is the same muted grey
+// Positron was, which is what lets the pins and washes carry the colour.
+//
+// Two traps live in these few lines. Esri numbers tiles {z}/{y}/{x} — ROW
+// before column, the opposite of the XYZ order every other tile URL in this
+// repo uses — and swapping them mirrors the world silently. And the Canvas
+// base carries NO labels: they are a second "Reference" layer drawn over it,
+// which is exactly how index.html has always paired satellite imagery with
+// its label overlay.
+//
+// Emitted as its OWN <script> before each map script rather than spliced
+// into them: those strings must stay free of ${} (they are template
+// literals emitted into <script>, and a test pins that), and one namespace
+// object is the whole surface either map needs. index.html holds the third
+// copy by hand — the LEAFLET_DARK_CSS arrangement — and test/theme.test.js
+// pins the two together.
+const BASEMAP_JS = `var CNBASE = (function () {
+  var ROOT = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+  var ATTRIB = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  function isDark() {
+    var el = document.documentElement;
+    return !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+  }
+  function baseUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Base" : "World_Light_Gray_Base") + "/MapServer/tile/{z}/{y}/{x}"; }
+  function labelUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference") + "/MapServer/tile/{z}/{y}/{x}"; }
+  // Returns { setTheme } — the pair is swapped by setUrl rather than rebuilt,
+  // because the theme toggle lives in the shared header and can fire long
+  // after the pins are placed; re-adding a layer would drop them.
+  function add(map) {
+    var dark = isDark();
+    var base = L.tileLayer(baseUrl(dark), { maxZoom: 19, crossOrigin: "anonymous", attribution: ATTRIB });
+    var labels = L.tileLayer(labelUrl(dark), { maxZoom: 19, crossOrigin: "anonymous" });
+    base.addTo(map);
+    labels.addTo(map);
+    return { setTheme: function () { var d = isDark(); base.setUrl(baseUrl(d)); labels.setUrl(labelUrl(d)); } };
+  }
+  return { add: add, isDark: isDark };
+})();`;
+
 const MARKET_MAP_JS = `(function(){
   // Progressive enhancement, same guard as the /markets momentum map: with
   // the Leaflet CDN blocked the page's numbers are the content, and an empty
@@ -8775,30 +8825,17 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { save(k, f); return f; });
   }
   var map = null, pts = [], tiles = null, shape = null;
-  // The basemap follows the theme, the way index.html's basemapUrl() does. It
-  // was pinned to light_all, so a dark market page rendered a white rectangle
-  // in the middle of it. setUrl on a theme change rather than a rebuild: the
-  // toggle lives in the shared header and can fire long after this ran, and
-  // re-adding the layer would drop every pin already placed.
-  function baseUrl() {
-    var el = document.documentElement;
-    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
-    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
-  }
+  // The basemap (CNBASE, the script before this one) follows the theme: it
+  // was pinned light once, so a dark market page rendered a white rectangle
+  // in the middle of it.
   function ensureMap(center) {
     if (map) return map;
     map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
-    // Assigned before addTo rather than from its return value: Leaflet does
-    // return the layer, but the theme swap below depends on holding it, and a
-    // chained assignment makes that dependency invisible.
-    tiles = L.tileLayer(baseUrl(), {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    });
-    tiles.addTo(map);
+    // Held rather than discarded: the theme swap below depends on it.
+    tiles = CNBASE.add(map);
     try {
       new MutationObserver(function () {
-        if (tiles) tiles.setUrl(baseUrl());
+        if (tiles) tiles.setTheme();
         // The boundary holds computed colours rather than a CSS class (an SVG
         // path cannot wear one), so nothing else would repaint it.
         if (shape) shape.setStyle(boundaryStyle(data.dir));
@@ -8935,26 +8972,15 @@ const MARKETS_DIR_MAP_JS = `(function(){
   try { data = JSON.parse(document.getElementById("mktsMapData").textContent); } catch (e) {}
   var pins = (data && data.pins) || [];
   if (pins.length < 2) { card.style.display = "none"; return; }
-  // Basemap + theme swap copied from MARKET_MAP_JS (the market page's comp
-  // map) — see the comments there for why setUrl rather than a rebuild.
-  function baseUrl() {
-    var el = document.documentElement;
-    var dark = !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
-    return "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png";
-  }
   var map = L.map("mktsMap", { scrollWheelZoom: false }).setView([39.8, -98.6], 4);
-  var tiles = L.tileLayer(baseUrl(), {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-  });
-  tiles.addTo(map);
+  var tiles = CNBASE.add(map);
   // The theme flip restyles the carved areas alongside the tile swap — their
   // colors are computed tokens, not CSS classes (an SVG path cannot wear
   // .mmap-pin-expanding). Pins need nothing here: they are CSS all the way.
   var restyle = null;
   try {
     new MutationObserver(function () {
-      if (tiles) tiles.setUrl(baseUrl());
+      if (tiles) tiles.setTheme();
       if (restyle) restyle();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   } catch (e) {}
@@ -9898,6 +9924,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         ...(mapDir ? { dir: mapDir } : {}),
         ...(boundary ? { boundary } : {}),
       }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${BASEMAP_JS}</script>` +
       `<script>${MARKET_MAP_JS}</script>`
     : "";
   const mapHead = showMap ? LEAFLET_HEAD : "";
@@ -10232,6 +10259,7 @@ function renderMarketDirectoryHTML(signedIn) {
         : "") +
       `</div>` +
       `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins, areas }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${BASEMAP_JS}</script>` +
       `<script>${MARKETS_DIR_MAP_JS}</script>`
     : "";
   const jsonLd = JSON.stringify({

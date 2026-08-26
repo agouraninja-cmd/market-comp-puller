@@ -293,6 +293,61 @@ test("bare environment", async (t) => {
     assert.ok(!noneRule.includes("--ink-mute"), "the hollow pin must never share flat's grey fill");
   });
 
+  // The carved layer (2026-08-25): past AREA_MIN_ZOOM, a city with a stored
+  // municipal boundary is drawn as its real shape instead of pins. The blob's
+  // `areas` rows carry the one color claim each city shape may make —
+  // computed server-side through market-area.js, the single home of the
+  // agreement rule, so the browser only ever styles what it is handed.
+  await t.test("the carved areas carry momentum only through market-area's rule", async () => {
+    const MARKETAREA = require("../market-area");
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const blob = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
+    const areas = blob.areas;
+    assert.ok(Array.isArray(areas) && areas.length > 10, "the areas rows are missing from the blob");
+    const states = new Set();
+    for (const a of areas) {
+      assert.ok(a.key && a.city && a.state && Array.isArray(a.markets) && a.markets.length,
+        JSON.stringify(a.city) + " is not a well-formed area row");
+      assert.equal(a.momentum, MARKETAREA.cityAreaState(a.markets),
+        a.city + ": the served momentum disagrees with market-area.js over the same markets");
+      states.add(a.momentum);
+      // Geometry must never ride the page — it is ~200KB of static polygon
+      // living at /city-bounds.json, lazy-loaded by the map script.
+      assert.ok(!("geometry" in a), a.city + " embedded its geometry in the page blob");
+    }
+    assert.ok(states.has("mixed"),
+      "the seeds hold cities whose markets disagree (Phoenix) — the mixed state must be exercised");
+    assert.ok(states.has("none"),
+      "the seeds hold unread cities (Fontana) — the no-claim state must be exercised");
+    // The Mixed swatch: a real rule and a legend entry, split green/red so it
+    // never reads as flat's grey.
+    assert.ok(/\.mmap-pin-mixed\{[^}]*var\(--green\)[^}]*var\(--red-fill\)[^}]*\}/.test(html),
+      "the Mixed swatch must be built from the same green and red the solid states use");
+    assert.match(html, />Mixed</, "the legend lost its Mixed entry");
+  });
+
+  // The boundaries themselves: committed like the market-heroes JPEGs
+  // (Render erases its disk on deploy), served as one lazy static file, and
+  // every city the blob names either has a real polygon there or falls back
+  // to its pins — so a malformed entry is the only failure worth pinning.
+  await t.test("/city-bounds.json serves real polygons for the seeded cities", async () => {
+    const res = await fetch(srv.base + "/city-bounds.json");
+    assert.equal(res.status, 200, "the boundary file is off the static allowlist");
+    const cityBounds = await res.json();
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const areas = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).areas;
+    let carved = 0;
+    for (const a of areas) {
+      const b = cityBounds[a.key];
+      if (!b) continue;
+      carved++;
+      assert.ok(b.geometry && (b.geometry.type === "Polygon" || b.geometry.type === "MultiPolygon"),
+        a.city + "'s stored boundary is not a polygon — the map would throw drawing it");
+    }
+    assert.ok(carved >= 15,
+      "expected nearly every seeded city to be carved, got " + carved + " — was city-bounds.json emptied?");
+  });
+
   // The signed-in header chrome, on every page that is not index.html.
   //
   // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and

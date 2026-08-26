@@ -157,6 +157,9 @@ const BRANDING = require("./branding.js");
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
 const MARKETHERO = require("./market-hero");
+// Which single momentum claim a city's carved map area may make when one
+// city shape holds several markets — see market-area.js's header.
+const MARKETAREA = require("./market-area");
 const HEROQUALITY = require("./market-hero-quality");
 const HEROREVIEW = require("./market-hero-review");
 const SVAIM = require("./streetview-aim");
@@ -8098,6 +8101,11 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mmap-pin-flat{background:var(--ink-mute)}
 .mmap-pin-contracting{background:var(--red-fill)}
 .mmap-pin-none{background:transparent;border-color:var(--ink-3)}
+/* Mixed exists only for the carved city areas: one shape can hold markets
+   moving opposite ways (Phoenix industrial expands while its multifamily
+   contracts), and no single color would be honest about that. The split
+   swatch says exactly what it is. */
+.mmap-pin-mixed{background:linear-gradient(135deg,var(--green) 50%,var(--red-fill) 50%)}
 .mmap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-3)}
 .mml{display:inline-flex;align-items:center;gap:6px}
 .mml-s{width:10px;height:10px}
@@ -8816,9 +8824,15 @@ const MARKETS_DIR_MAP_JS = `(function(){
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
   });
   tiles.addTo(map);
+  // The theme flip restyles the carved areas alongside the tile swap — their
+  // colors are computed tokens, not CSS classes (an SVG path cannot wear
+  // .mmap-pin-expanding). Pins need nothing here: they are CSS all the way.
+  var restyle = null;
   try {
-    new MutationObserver(function () { if (tiles) tiles.setUrl(baseUrl()); })
-      .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    new MutationObserver(function () {
+      if (tiles) tiles.setUrl(baseUrl());
+      if (restyle) restyle();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   } catch (e) {}
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
   // Two property types in one city share one stored point and would stack
@@ -8848,7 +8862,7 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // a whitelist stays inert even if that ever stops being true.
   var DIR_CLASS = { expanding: "mmap-pin-expanding", flat: "mmap-pin-flat", contracting: "mmap-pin-contracting" };
   var DIR_WORD = { expanding: "Expanding", flat: "Flat", contracting: "Contracting" };
-  var bounds = [];
+  var bounds = [], markersByKey = {};
   pins.forEach(function (p) {
     var cls = DIR_CLASS[p.dir] || "mmap-pin-none";
     var label = p.type + " \\u00b7 " + p.city + ", " + p.state;
@@ -8869,10 +8883,88 @@ const MARKETS_DIR_MAP_JS = `(function(){
     // Leaflet fires click on Enter for a keyboard-focused marker, so this one
     // handler covers both mouse and keyboard.
     m.on("click", function () { window.location.href = "/market/" + p.slug; });
+    (markersByKey[p.key] = markersByKey[p.key] || []).push(m);
     bounds.push([p.lat, p.lng]);
   });
   // maxZoom caps the fit so two nearby pins don't zoom to street level.
   map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
+
+  // THE CARVED LAYER. Past AREA_MIN_ZOOM the pins of any city with a stored
+  // municipal boundary give way to that city's real shape, colored by the one
+  // claim the server computed for it (momentum, market-area.js): solid for
+  // agreement, the Mixed style where its markets disagree, a dashed outline
+  // with almost no fill for a city with no current read. Each rendering is
+  // honest at the altitude where it is legible — a real city limit is a
+  // speck from national zoom, and a pin is a blunt claim over a whole city
+  // once the city fills the screen.
+  //
+  // The ~200KB of geometry is lazy-fetched, and every failure path leaves the
+  // pins standing at all zooms: no fetch, no entry for a city, bad JSON —
+  // the map simply stays what it was before this layer existed. Keyboard and
+  // screen-reader access ride the pins and the card grid; the carved shapes
+  // are presentation over the same links.
+  var AREA_MIN_ZOOM = 7;
+  var areas = (data && data.areas) || [];
+  var areaGroup = L.layerGroup(), areaLayers = [], coveredKeys = {}, built = false;
+  function tok(name, fallback) {
+    var v = "";
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
+    v = String(v || "").trim();
+    return v || fallback;
+  }
+  function areaStyle(momentum) {
+    var fills = { expanding: tok("--green", "#15803D"), flat: tok("--ink-mute", "#5B6472"), contracting: tok("--red-fill", "#B91C1C") };
+    if (fills[momentum]) {
+      return { color: fills[momentum], weight: 1.5, opacity: 0.8, fillColor: fills[momentum], fillOpacity: 0.3 };
+    }
+    if (momentum === "mixed") {
+      return { color: tok("--ink", "#1F2937"), weight: 1.5, opacity: 0.8, fillColor: tok("--ink-mute", "#5B6472"), fillOpacity: 0.18 };
+    }
+    var n = tok("--ink-3", "#64748B");
+    return { color: n, weight: 1.5, opacity: 0.8, dashArray: "4 4", fillColor: n, fillOpacity: 0.06 };
+  }
+  function applyZoom() {
+    var carved = built && map.getZoom() >= AREA_MIN_ZOOM;
+    if (carved && !map.hasLayer(areaGroup)) map.addLayer(areaGroup);
+    if (!carved && map.hasLayer(areaGroup)) map.removeLayer(areaGroup);
+    Object.keys(coveredKeys).forEach(function (k) {
+      (markersByKey[k] || []).forEach(function (m) {
+        if (carved && map.hasLayer(m)) map.removeLayer(m);
+        if (!carved && !map.hasLayer(m)) map.addLayer(m);
+      });
+    });
+  }
+  map.on("zoomend", applyZoom);
+  fetch("/city-bounds.json").then(function (r) { return r.json(); }).then(function (cityBounds) {
+    areas.forEach(function (a) {
+      var b = cityBounds && cityBounds[a.key];
+      if (!b || !b.geometry) return;
+      var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) });
+      var lines = ["<b>" + esc(a.city + ", " + a.state) + "</b>"];
+      a.markets.forEach(function (m) {
+        lines.push(esc(m.type) + " \\u2014 " + (DIR_WORD[m.dir] || "no recent read") +
+          " \\u00b7 Median $" + Number(m.median).toLocaleString() + "/SF");
+      });
+      layer.bindTooltip(lines.join("<br/>"), { sticky: true });
+      // One market navigates; several open a chooser — sending a click on
+      // Phoenix to whichever of its three markets sorted first would be an
+      // answer nobody asked for.
+      if (a.markets.length === 1) {
+        layer.on("click", function () { window.location.href = "/market/" + a.markets[0].slug; });
+      } else {
+        layer.bindPopup(a.markets.map(function (m) {
+          return '<div><a href="/market/' + esc(m.slug) + '">' + esc(m.type + " \\u00b7 " + a.city) + "</a></div>";
+        }).join(""));
+      }
+      areaGroup.addLayer(layer);
+      areaLayers.push({ layer: layer, momentum: a.momentum });
+      coveredKeys[a.key] = true;
+    });
+    if (!areaLayers.length) return;
+    built = true;
+    restyle = function () { areaLayers.forEach(function (e) { e.layer.setStyle(areaStyle(e.momentum)); }); };
+    applyZoom();
+  }).catch(function () {});
 })();`;
 
 // The market-page CTA's "value a property here" form(s): store the typed
@@ -9875,10 +9967,24 @@ function renderMarketDirectoryHTML(signedIn) {
     const dir = freshDirection(p, Date.now());
     pins.push({
       slug: s, type: p.type, city: p.city, state: p.state,
+      key: MARKETHERO.cityKey(p.city, p.state),
       lat: ll.lat, lng: ll.lng, median: p.ppsf.median,
       ...(dir ? { dir } : {}),
     });
   }
+  // The carved layer's rows: one AREA per city, holding every market read in
+  // it, with the one color claim that city's shape may make (momentum,
+  // decided by market-area.js — the single home of the agreement rule; the
+  // browser only ever styles what it is handed). Geometry deliberately does
+  // NOT ride here: the boundaries are ~200KB of static polygon
+  // (/city-bounds.json, lazy-loaded by the map script), and a city the file
+  // does not carve simply stays a pin at every zoom.
+  const areasByKey = new Map();
+  for (const p of pins) {
+    if (!areasByKey.has(p.key)) areasByKey.set(p.key, { key: p.key, city: p.city, state: p.state, markets: [] });
+    areasByKey.get(p.key).markets.push({ slug: p.slug, type: p.type, median: p.median, ...(p.dir ? { dir: p.dir } : {}) });
+  }
+  const areas = [...areasByKey.values()].map((a) => ({ ...a, momentum: MARKETAREA.cityAreaState(a.markets) }));
   // Two pins is the floor for a map that reads as a map (mirrors the market
   // page's "no pins, no card" rule); below it the grid is the whole page.
   const mapUi = pins.length >= 2
@@ -9888,13 +9994,14 @@ function renderMarketDirectoryHTML(signedIn) {
       `<span class="mml"><span class="mmap-pin mmap-pin-expanding mml-s"></span>Expanding</span>` +
       `<span class="mml"><span class="mmap-pin mmap-pin-flat mml-s"></span>Flat</span>` +
       `<span class="mml"><span class="mmap-pin mmap-pin-contracting mml-s"></span>Contracting</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-mixed mml-s"></span>Mixed</span>` +
       `<span class="mml"><span class="mmap-pin mmap-pin-none mml-s"></span>No recent read</span>` +
       `</div>` +
       (pins.length < slugs.length
         ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`
         : "") +
       `</div>` +
-      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins }).replace(/</g, "\\u003c")}</script>` +
+      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins, areas }).replace(/</g, "\\u003c")}</script>` +
       `<script>${MARKETS_DIR_MAP_JS}</script>`
     : "";
   const jsonLd = JSON.stringify({
@@ -21579,6 +21686,13 @@ const server = http.createServer((req, res) =>
   // images are stable and can cache for a day.
   const STATIC_FILES = {
     "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
+    // The /markets momentum map's carved city boundaries (committed, fetched
+    // deliberately by scripts/fetch-city-bounds.js — never at runtime). Loaded
+    // lazily by the map script rather than embedded in the page: ~200KB of
+    // geometry has no business riding every directory view's HTML. Short
+    // max-age like the CSS; a stale copy costs a slightly old shoreline, and
+    // the map treats a missing city as "stay a pin", so nothing breaks.
+    "/city-bounds.json": { file: "city-bounds.json", type: "application/json; charset=utf-8", maxAge: 300 },
     // maxAge: 0, unlike everything else here. index.html is served no-store,
     // and its one inline <script> destructures VALUATION as its very first
     // statement — if this file is ever stale relative to that HTML (a

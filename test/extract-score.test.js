@@ -120,3 +120,74 @@ test("address and notes are never scored as fields", () => {
   assert.equal(s.wrong.length, 0);
   assert.ok(!("address" in s.perField) && !("notes" in s.perField));
 });
+
+// ---------------------------------------------------------------------------
+// The scorer must not fail a row the importer would accept (this file's own
+// stated rule). canon() routed only deal_date/transaction/property_type and
+// the money/numeric/percent sets through a parser; four fields that
+// normalizeRow DOES canonicalize fell through to text comparison.
+//
+// Found live on 2026-08-24: a real extraction of "$1.29/SF/mo NNN" returned
+// rent_basis "/mo" against a truth of "monthly" and scored as a wrong value,
+// while parseRentBasis maps "/mo" -> "monthly" and the vault stores exactly
+// the keyed figure. Every lease row in the 20-file verdict would have carried
+// that false failure, against a pass condition fixed before the numbers.
+// ---------------------------------------------------------------------------
+
+test("rent basis shorthand is the value the vault would store, not a wrong one", () => {
+  const truth = [deal({ transaction: "lease", price: "", rent_psf: "1.29", rent_basis: "monthly" })];
+  const got = [row({ ...truth[0], rent_basis: "/mo" })];
+  const s = SCORE.scoreFile(got, truth);
+  assert.equal(s.wrong.length, 0, `"/mo" scored wrong against "monthly": ${JSON.stringify(s.wrong)}`);
+  assert.equal(s.fieldsFabricated, 0);
+});
+
+test("lease type shorthand agrees with its canonical form", () => {
+  const truth = [deal({ transaction: "lease", price: "", lease_type: "NNN" })];
+  const got = [row({ ...truth[0], lease_type: "Triple Net" })];
+  assert.equal(SCORE.scoreFile(got, truth).wrong.length, 0);
+});
+
+test("lease dates are compared as dates, like the deal date", () => {
+  for (const field of ["lease_expiry", "option_notice_date"]) {
+    const truth = [deal({ [field]: "2027-03-31" })];
+    const got = [row({ ...truth[0], [field]: "3/31/2027" })];
+    const s = SCORE.scoreFile(got, truth);
+    assert.equal(s.wrong.length, 0,
+      `${field} scored "3/31/2027" wrong against "2027-03-31": ${JSON.stringify(s.wrong)}`);
+  }
+});
+
+test("a genuinely different value in those fields is still wrong", () => {
+  // The leniency must come from the parser agreeing, never from giving up.
+  const truth = [deal({ transaction: "lease", price: "", rent_psf: "1.29", rent_basis: "monthly" })];
+  const got = [row({ ...truth[0], rent_basis: "annual" })];
+  assert.equal(SCORE.scoreFile(got, truth).wrong.length, 1, "monthly vs annual must still be a wrong value");
+
+  const t2 = [deal({ lease_expiry: "2027-03-31" })];
+  const g2 = [row({ ...t2[0], lease_expiry: "2028-03-31" })];
+  assert.equal(SCORE.scoreFile(g2, t2).wrong.length, 1, "a different year must still be a wrong value");
+});
+
+test("every field normalizeRow canonicalizes is canonicalized here too", () => {
+  // The rule this file broke, stated as a test: if the vault parses a field on
+  // the way in, the scorer must compare it through that same parser.
+  const fs = require("node:fs");
+  const src = fs.readFileSync(require("node:path").join(__dirname, "..", "broker-vault.js"), "utf8");
+  const body = src.slice(src.indexOf("function normalizeRow"));
+  const end = body.indexOf("\nfunction ");
+  const norm = end > 0 ? body.slice(0, end) : body;
+  // Each pair is (the field normalizeRow assigns, the parser it uses).
+  const pairs = [...norm.matchAll(/parse([A-Z][A-Za-z]*)\(src\.([a-z_]+)\)/g)]
+    .map((m) => ({ parser: "parse" + m[1], field: m[2] }));
+  assert.ok(pairs.length >= 8, `expected to find normalizeRow's parser calls, found ${pairs.length}`);
+  const scoreSrc = fs.readFileSync(require("node:path").join(__dirname, "..", "extract-score.js"), "utf8");
+  for (const { parser, field } of pairs) {
+    if (SCORE.UNSCORED.has(field)) continue;
+    if (field === "lat" || field === "lng") continue;   // never a comp field
+    const named = new RegExp(`"${field}"`).test(scoreSrc);
+    assert.ok(named,
+      `normalizeRow parses ${field} with ${parser}, but extract-score.js never names it — ` +
+      `it will be text-compared and can fail a row the importer would accept`);
+  }
+});

@@ -168,6 +168,13 @@ function shotServerEnv(baseEnv, port, overrides) {
     ...baseEnv,
     SUPABASE_URL: "",
     SUPABASE_SERVICE_KEY: "",
+    // The Market Explorer's example rotates on every page load, which would
+    // make two runs of IDENTICAL code differ — and byte-identical PNGs are how
+    // "this changed nothing visually" gets proved here. Pinning it keeps that
+    // property structural rather than a bet on the capture making exactly one
+    // request to `/`. Only visible on the app itself (--env ACCOUNT_WALL=off);
+    // harmless everywhere else.
+    MARKET_EXAMPLE: "e.g. industrial Ontario, CA",
     // Overrides come LAST so `--env SUPABASE_URL=...` can deliberately put a
     // database back. It is the only way to shoot a surface whose content comes
     // out of one (a market page's real figures, /vault, the desk), and main()

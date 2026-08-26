@@ -109,11 +109,10 @@ async function signIn() {
     body: JSON.stringify({ email, password }),
   });
   if (!r.ok) {
-    console.error(`Sign-in to ${URL_BASE} failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
-    process.exit(1);
+    throw new Error(`Sign-in to ${URL_BASE} failed (${r.status}): ${(await r.text()).slice(0, 200)}`);
   }
   const cookie = (r.headers.get("set-cookie") || "").match(/cn_session=[^;]+/);
-  if (!cookie) { console.error("Sign-in returned no cn_session cookie."); process.exit(1); }
+  if (!cookie) throw new Error("Sign-in returned no cn_session cookie.");
   return cookie[0];
 }
 
@@ -302,4 +301,9 @@ const pct = (x) => (x == null ? "n/a" : (100 * x).toFixed(1) + "%");
   if (t.fabricationRate != null && t.fabricationRate > 0) {
     console.log(`\n⚠ Fabrication above zero. Spec §9: fatal regardless of the other numbers — read the itemized list before any migration is written.`);
   }
-})().catch((err) => { console.error("extraction-eval failed:", err.message); process.exit(1); });
+})().catch((err) => {
+  console.error("extraction-eval failed:", err.message);
+  // exitCode, not exit(): see signIn's note. Node drains its handles and then
+  // leaves with this code, instead of aborting on top of it.
+  process.exitCode = 1;
+});

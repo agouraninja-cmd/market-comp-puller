@@ -228,8 +228,33 @@ tbody tr:hover td{background:var(--wash)}
 tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
   border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
+/* Scrolling shadows, the same CSS-only pair the market pages' comps table
+   uses (MARKET_CSS's .scroll). The comp table is ~1200px wide inside a
+   ~1070px scroller on an ordinary laptop, and macOS
+   draws no scrollbar until something is already scrolling, so the last two
+   columns — Firm (the Share control that is the shared vault's ONLY entry
+   point) and the trash — were off the right-hand edge with nothing on screen
+   saying the table went any further. The two attachment:local layers are
+   opaque card-coloured patches pinned to the content, so each edge shadow is
+   covered while that end is in view and uncovered as it scrolls away: the
+   hint appears only when there is really more to see, with no script and no
+   scroll listener.
+
+   The shade is --edge rather than the 13%-black literal this pair shipped
+   with, because 13% black over a #1A2433 card is invisible and both pages
+   have a dark theme. --edge is right in both directions by construction — it
+   is the colour a border of this card already is, darker than the card in
+   light and lighter in dark — and in light mode it lands within a hair of
+   the literal it replaces. The patches need no such treatment: they are
+   var(--card) already. Keep the two copies in step. */
 .tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
+  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift);
+  background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,var(--edge),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,var(--edge),rgba(0,0,0,0));
+  background-position:left center,right center,left center,right center;
+  background-repeat:no-repeat;
+  background-size:28px 100%,28px 100%,13px 100%,13px 100%;
+  background-attachment:local,local,scroll,scroll}
 .msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
@@ -3580,12 +3605,37 @@ if(dd)dd.open=false;});</script>
     if(open)return openSheet(open.getAttribute("data-open-sheet"));
     var b=e.target.closest("button[data-del]"); if(!b)return;
     if(!confirm("Remove this import and all the comps that came in with it?"))return;
-    fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
-      {method:"DELETE",credentials:"same-origin"}).then(function(){
-        if(sheetUploadId&&String(sheetUploadId)===String(b.getAttribute("data-del")))closeSheet();
-        else load();
-      }).catch(load);
+    removeUpload(b.getAttribute("data-del"));
   });
+
+  // Removing an import ALWAYS ends in load(). It used to end in closeSheet()
+  // INSTEAD of load() whenever the import being removed was the one open in
+  // spreadsheet mode -- which is the ordinary way to get here, since the other
+  // button on that row is "Open" and a broker opens an import to check it
+  // before removing it. closeSheet() only re-renders from the arrays the page
+  // is already holding, so the server deleted the comps and the screen went on
+  // showing them: the import still listed, its comp count unchanged, its rows
+  // still in the table. The button read as broken until the page was reloaded.
+  // It closes the sheet AND reloads now -- the close is the immediate repaint,
+  // load() is the truth.
+  //
+  // The status is checked for the same reason. Every refusal -- a lapsed
+  // subscription (403), a Supabase outage (502) -- took the success path, so a
+  // delete that removed nothing looked exactly like one that worked.
+  async function removeUpload(id){
+    var r;
+    try{
+      r=await fetch("/api/vault/upload?id="+encodeURIComponent(id),
+        {method:"DELETE",credentials:"same-origin"});
+    }catch(err){
+      return compMsg("That didn't reach the server. Nothing was removed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok)return compMsg(j.error||"Could not remove that import.",true);
+    if(sheetUploadId&&String(sheetUploadId)===String(id))closeSheet();
+    load();
+    compMsg("Import removed.");
+  }
 
   // ---- The hubs deck --------------------------------------------------------
   //

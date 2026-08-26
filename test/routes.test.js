@@ -290,6 +290,57 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The Market Explorer's example, rotated per page load (2026-08-24).
+  //
+  // The placeholder stopped being decoration when Tab began typing it in, so
+  // it is now a WORKING QUERY and every one of these is really about what it
+  // costs. A market with no standing page turns the dropdown's top row into
+  // "Explore this market, build the … page →" — Tab then Enter would spend a
+  // billed search and 30-60 seconds. The example this replaced,
+  // "industrial Boise, ID", was never in market-seed.json; it survived only
+  // because somebody had explored that market once.
+  await t.test("the Explorer's example rotates and only ever names a seeded market", async () => {
+    const seed = require("../market-seed.json");
+    const slugs = new Set(Object.keys(seed));
+    const placeholderOf = (html) => {
+      const m = html.match(/id="marketSearch"[^>]*placeholder="([^"]*)"/);
+      assert.ok(m, "the Explorer input lost its placeholder");
+      return m[1];
+    };
+    const seen = [];
+    for (let i = 0; i < 5; i++) seen.push(placeholderOf(await (await fetch(srv.base + "/")).text()));
+
+    // Rotation: consecutive loads differ. A fixed example passes every other
+    // assertion here, so this is the one that proves the feature is wired.
+    assert.ok(seen[0] !== seen[1] && seen[1] !== seen[2],
+      `consecutive loads must differ, got ${JSON.stringify(seen)}`);
+
+    // The expensive one. Each example must resolve to a slug the seed
+    // carries, which is what keeps Tab-then-Enter free navigation.
+    for (const ph of seen) {
+      const m = ph.match(/^e\.g\. (\w+) (.+), ([A-Z]{2})$/);
+      assert.ok(m, `"${ph}" is not a query the Explorer can parse`);
+      const slug = `${m[1]}-${m[2].toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${m[3].toLowerCase()}`;
+      assert.ok(slugs.has(slug),
+        `${ph} has no seeded page (${slug}) — Tab then Enter would buy a billed build`);
+    }
+  });
+
+  // index.html carries the attribute; server.js swaps it. Drift between the
+  // two is silent — replace() no-ops, the static example stays, and the
+  // rotation simply stops happening with nothing on screen to show it.
+  await t.test("server.js's example marker is byte-identical to index.html's attribute", async () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const root = path.join(__dirname, "..");
+    const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+    const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+    const m = server.match(/const MARKET_EXAMPLE_MARKER = '([^']+)'/);
+    assert.ok(m, "MARKET_EXAMPLE_MARKER is gone from server.js");
+    assert.ok(html.includes(m[1]),
+      `index.html no longer carries ${m[1]} — the rotation would silently stop`);
+  });
+
   // The "Manage billing" button 400s for a comped account (no Stripe
   // customer behind either "admin" or "tester" status) — this pins that the
   // emitted hydration script actually excludes BOTH, matching index.html's
@@ -951,6 +1002,24 @@ test("bare environment", async (t) => {
 // the pure function, because trimming at the constant is only half the fix —
 // what has to hold is that the ROUTE authenticates a caller sending the clean
 // key. A test against a trim() helper would have passed all along.
+// MARKET_EXAMPLE pins the Explorer's rotating example. scripts/shot.js sets
+// it on both sides of a comparison, because two runs of IDENTICAL code
+// producing byte-identical PNGs is how "this changed nothing visually" gets
+// proved in this repo — and a placeholder that moves on every load breaks
+// that. Pinned by env rather than by hoping a capture makes exactly one
+// request to `/`.
+test("MARKET_EXAMPLE pins the Explorer's example across loads", async (t) => {
+  const PINNED = "e.g. office Dallas, TX";
+  const srv = await boot({ MARKET_EXAMPLE: PINNED });
+  t.after(() => srv.stop());
+  for (let i = 0; i < 3; i++) {
+    const html = await (await fetch(srv.base + "/")).text();
+    const m = html.match(/id="marketSearch"[^>]*placeholder="([^"]*)"/);
+    assert.ok(m, "the Explorer input lost its placeholder");
+    assert.equal(m[1], PINNED, "load " + i + " ignored MARKET_EXAMPLE");
+  }
+});
+
 test("an ADMIN_KEY stored with stray whitespace still authenticates", async (t) => {
   const CLEAN = "test-admin-key-whitespace";
   for (const [label, stored] of [

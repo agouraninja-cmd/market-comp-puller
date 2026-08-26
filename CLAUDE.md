@@ -1330,10 +1330,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   - **A firm share can never carry whole vault comps** (400, not a silent
     strip). Private comps are anonymized into the valuation basis exactly as
     on an invited share, so a colleague's range matches to the dollar with no
-    address or price travelling. Sharing a broker's own book across their
-    firm is the spec's §7 and is deliberately NOT built: it needs the opt-in,
-    the attribution, and the vault's "Visible only to you" copy rewritten to
-    match.
+    address or price travelling. Opting an INDIVIDUAL comp into the firm is a
+    different act and it shipped on 2026-08-16 as the spec's §7 — see "The
+    shared vault" below; the three things it was waiting on (the opt-in, the
+    attribution, and the vault's "Visible only to you" copy rewritten to
+    match) all landed with it. This bullet is unaffected either way: a firm
+    SHARE still never carries a whole vault comp.
   - **`canUseOrg` gates creating and inviting, never accepting or reading.**
     It tracks `broker` (one subscription), so it is false on a dark
     deployment and for a tester without `vault_beta` — the invite route sends
@@ -1807,7 +1809,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
   `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
   index.html authors no copy of the menu any more, so adding a nav link is a
-  one-line edit to NAV_LINKS. Two traps: `APP_NAV_LINK_CLASS` must stay
+  one-line edit to NAV_LINKS.
+  **A fourth marker, `<!--BULK_RUN-->`, carries bulk valuation's run view**
+  (2026-08-25). `bulk-page.js` renders that table once; `/bulk` uses it
+  directly and index.html receives the same bytes, which is what lets a list
+  pasted into the main search render its run inline. Two copies would
+  eventually quote two different portfolio values for one run. It brings its
+  own `<style>` (index.html gets no `MARKET_CSS`) with a fallback on every
+  colour; its DOM ids are prefixed `bk`, because index.html already owns
+  `#gate` and `rows`/`msg`/`run` were one refactor from colliding; and
+  `BULK_RUN_JS` reads no form at all — it reports state through an injected
+  callback, since the homepage has no `#bulkText` to dereference.
+  `test/bulk-inline.test.js` pins the marker on both sides, compiles what is
+  actually served, and fails the build if index.html grows a hand-copy.
+  Two traps: `APP_NAV_LINK_CLASS` must stay
   identical to `#pricingLink`'s class string, because tailwind.css is purged
   against index.html alone and a utility that existed only in the server-side
   string would silently stop styling on a regen; and the marker must survive
@@ -2230,6 +2245,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     use of that key), so the link authenticates itself for somebody who is not
     signed in, months later, on a phone. `&on=1` is the same link in reverse —
     a one-way off switch with no way back is a support ticket.
+- **Search demand on the desk** (2026-08-25). Each watched market on My Desk
+  carries a line saying how many people searched it lately: "9 people ran 14
+  searches here in the last 30 days, 6 of them Industrial." It reads
+  `analytics_events`, which has logged every search since long before this
+  shipped; nothing new is recorded and no hot path changed.
+  **Pro-only**, via `canSeeSearchDemand` in `entitlements.js` — Pro, tester and
+  comped-admin get it; a **single-report purchase does not** (the Address
+  Explorer's argument: a $39 unlock buys one property's history, and a
+  market's demand is not scoped to a property), and it is **false on a dark
+  deployment** (the vault's argument, not the Explorer's: it never existed
+  before the tier, and it reports this site's own traffic). A free account
+  gets `demand_locked: true` on the feed item instead of a figure, which the
+  card renders as the standard `.unlock-comps-btn` prompt.
+  The RULES live in the pure, tested **`search-demand.js`**; server.js owns
+  only the read (`demandRowsForMarkets`, filtered at the database — the
+  `/admin` reducer's whole-table scan is right for a dashboard one person
+  opens and wrong for a route every subscriber hits). Four of them exist
+  because each is a way the number could flatter us, and the file's bar is
+  under-claim, never over-:
+  - **The broker's own searches are excluded** (`excludeUserId`). Without it
+    the first thing a broker sees on their home market is themselves,
+    reported as somebody else's interest.
+  - **Explorer sweeps are excluded** (`source: "explore"`). One Pro
+    subscriber walking a market address by address is not demand.
+  - **A `signup_gate` counts** — a blocked visitor wanted the same answer —
+    but is dropped when that visitor completed a search in the same market
+    the same UTC day, because that is one attempt writing two rows.
+  - **People and searches are separate numbers**, and where a row carries no
+    `visitor_id` (anything before migration 026) they all collapse into ONE
+    person rather than one each. Undercounting is the allowed error.
+  Aggregate only: the payload is `{ window_days, searches, viewers, in_type }`
+  and carries no address, email, visitor id or user id.
+  `buildWatchlistFeed(user, ent, cutoffOf, { withDemand: true })` is
+  **opt-in, and only the page opts in** — the digest does not, both because a
+  search count is not news anybody asked to be mailed and because its loop
+  over every account would fire one analytics query per watcher for a figure
+  it discards.
+  **It needs traffic to be worth reading.** At today's volume most markets
+  answer "no one searched this market in the last 30 days", which is honest
+  and is also the site telling a broker how quiet it is. The same
+  prerequisite blocks routing real leads to contributors.
 - `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
   `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
   one route and one input: 401 if not signed in, rate-limited per IP, and the
@@ -2569,7 +2625,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Deliberately not built (see the spec's §5): mixed types in one job,
   per-address lookback/details, an automatic resume (re-running IS the resume,
   free from cache), a shareable portfolio, and any scheduling.
-- **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
+- **Broker vault** (v1 server side 2026-08-05; the `/vault` page followed on
+  2026-08-06 — see "The `/vault` PAGE lives in `vault-page.js`" below). `GET|POST|DELETE
   /api/vault*` — the broker's private comp store. DDL in
   `migrations/013-broker-vault.sql` (**run before deploying**); plan in
   `docs/superpowers/plans/2026-08-05-broker-vault-v1.md`. Routes:
@@ -3279,11 +3336,30 @@ html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
 cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
-It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
-cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
-call) and the row went back to one line, so `.rd-row-2up` and its
+Since 2026-08-23 that row sits **inside `<details id="searchSettings">`,
+behind a line stating its current values** ("Sales & leases · last 24 months ·
+size from public records", with a `Change` affordance), so the form asks for
+an address and nothing else. The app already held an answer to all three: two
+have defaults, the window's own caption says "Recommended for Industrial", and
+the size is looked up from public records or the footprint on most searches —
+asking is now stating. **The line is DERIVED, never written once**
+(`refreshSearchSettingsLine`), and that is the whole cost of the change: three
+visible controls explain themselves, while a stale summary describes a search
+that is not the one about to run, with the controls it describes hidden. Only
+the lookback has a funnel (`setLookbackControls`); focus and size are assigned
+directly by `rerunHistory`, the shared-report restore, the record-backed size
+autofill and `dropMachineSize`, none of which fire an event, so each calls the
+refresh itself. The footprint estimate is the one machine write that needs no
+call of its own, because it dispatches `input` on `#targetSize`. A test pins
+every one of those seams and another executes the function, because the
+failure is invisible on screen. Every field id is unchanged, so
+`targetRange()`, the footprint estimate and every report restore are
+untouched.
+The row was briefly a 2x2 grid (2026-08-16) carrying the asking price as a
+fourth cell; the price moved down into "Details for comps" on 2026-08-17
+(owner's call) and the row went back to one line, so `.rd-row-2up` and its
 wrapped-grid border rules are gone from the style block rather than left
-sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+sitting unused. Three is still the ceiling: the build chamber is ~552px, so a
 fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
 to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
 what the deleted rules existed to patch. **Asking price is a Refine field

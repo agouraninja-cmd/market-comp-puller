@@ -622,6 +622,38 @@ dependency. `.env` is git-ignored — never commit it.
   "CompNinja Street View cap" $5/month budget alert on the billing account
   (emails the owner at 50/90/100%), the route's per-IP rate limit, and the
   10k-photos/month free tier (a fully-hovered report uses ~6).
+- `GOOGLE_OAUTH_CLIENT_ID` + `GOOGLE_OAUTH_CLIENT_SECRET` — optional pair
+  enabling **"Continue with Google"** on the account modal (2026-08-25).
+  Unset (or half-set, which the startup banner calls out): `GET /auth/google`
+  and `/auth/google/callback` 404 and the button never renders — /api/config
+  carries `googleAuth` for exactly that reveal (the Buy-button rule). Created
+  in the Google Cloud console, project "compninja" (the Street View key's
+  project): OAuth consent screen (External, non-sensitive scopes only —
+  `openid email profile` — so no review), then Credentials → OAuth client ID
+  (Web application) with redirect URIs
+  `https://compninja.co/auth/google/callback` and
+  `http://localhost:3000/auth/google/callback`. What a returned token must
+  prove lives in the pure, tested **`google-auth.js`**; server.js owns the
+  `cn_gstate` state nonce (named in the privacy policy's cookie list — keep
+  in step), the code exchange, and find-or-create. Four decisions worth
+  knowing before touching it: **identity is the email** (018's rule), so
+  there is deliberately NO migration and no `google_sub` column — a Google
+  sign-in lands on the same `users` row a password sign-in does, gated on
+  `email_verified === true` strictly; a Google-created account gets a
+  **random password hash, never an empty one**, so the password door answers
+  it like any wrong guess and the existing reset flow is how it gains a
+  password (the reset email goes to the address Google verified, which is
+  also why the pre-hijack worry resolves in the email owner's favor); the
+  id_token's **signature is not verified**, safe only because the token
+  arrives over the server's own secret-authenticated exchange —
+  google-auth.js's header says when that stops being true; and the callback
+  logs the same `signup`/`login` analytics kinds as the password doors
+  (`source: "google"`), so the /admin funnel keeps counting.
+  `GOOGLE_OAUTH_TOKEN_URL` is **test-only** (`RESEND_API_URL`'s precedent:
+  the whole point is a credential exchange leaving the building, and
+  `test/google-auth-routes.test.js` runs the entire flow against a stub) —
+  not a secret, but it decides where that exchange is posted, so treat it as
+  trusted config and never set it in production.
 - `STREAM_ANTHROPIC` — optional `on`/`off`, **default ON**. Streams the
   Anthropic call (`stream: true` + a hand-rolled SSE reader, `sseFrames` in
   server.js) instead of awaiting one JSON body. The parsed report is identical

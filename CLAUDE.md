@@ -626,6 +626,38 @@ dependency. `.env` is git-ignored — never commit it.
   "CompNinja Street View cap" $5/month budget alert on the billing account
   (emails the owner at 50/90/100%), the route's per-IP rate limit, and the
   10k-photos/month free tier (a fully-hovered report uses ~6).
+- `GOOGLE_OAUTH_CLIENT_ID` + `GOOGLE_OAUTH_CLIENT_SECRET` — optional pair
+  enabling **"Continue with Google"** on the account modal (2026-08-25).
+  Unset (or half-set, which the startup banner calls out): `GET /auth/google`
+  and `/auth/google/callback` 404 and the button never renders — /api/config
+  carries `googleAuth` for exactly that reveal (the Buy-button rule). Created
+  in the Google Cloud console, project "compninja" (the Street View key's
+  project): OAuth consent screen (External, non-sensitive scopes only —
+  `openid email profile` — so no review), then Credentials → OAuth client ID
+  (Web application) with redirect URIs
+  `https://compninja.co/auth/google/callback` and
+  `http://localhost:3000/auth/google/callback`. What a returned token must
+  prove lives in the pure, tested **`google-auth.js`**; server.js owns the
+  `cn_gstate` state nonce (named in the privacy policy's cookie list — keep
+  in step), the code exchange, and find-or-create. Four decisions worth
+  knowing before touching it: **identity is the email** (018's rule), so
+  there is deliberately NO migration and no `google_sub` column — a Google
+  sign-in lands on the same `users` row a password sign-in does, gated on
+  `email_verified === true` strictly; a Google-created account gets a
+  **random password hash, never an empty one**, so the password door answers
+  it like any wrong guess and the existing reset flow is how it gains a
+  password (the reset email goes to the address Google verified, which is
+  also why the pre-hijack worry resolves in the email owner's favor); the
+  id_token's **signature is not verified**, safe only because the token
+  arrives over the server's own secret-authenticated exchange —
+  google-auth.js's header says when that stops being true; and the callback
+  logs the same `signup`/`login` analytics kinds as the password doors
+  (`source: "google"`), so the /admin funnel keeps counting.
+  `GOOGLE_OAUTH_TOKEN_URL` is **test-only** (`RESEND_API_URL`'s precedent:
+  the whole point is a credential exchange leaving the building, and
+  `test/google-auth-routes.test.js` runs the entire flow against a stub) —
+  not a secret, but it decides where that exchange is posted, so treat it as
+  trusted config and never set it in production.
 - `STREAM_ANTHROPIC` — optional `on`/`off`, **default ON**. Streams the
   Anthropic call (`stream: true` + a hand-rolled SSE reader, `sseFrames` in
   server.js) instead of awaiting one JSON body. The parsed report is identical
@@ -1743,8 +1775,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   kinds of row — CLAUDE.md's own separate-tables rule (the vault privacy
   wall) is the alternative that was not taken here, so a new corpus reader
   must be checked against this rule by hand.
-- `GET /how-it-works` — the account-wall front door, reached from the header
-  nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
+- `GET /how-it-works` — the account-wall front door, reached from the footer
+  and, on the landing page, the line under the hero. It LEFT the Explore menu
+  on 2026-08-25 (owner’s call), along with /brokers. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +
   address field + one sample exhibit), the three-step Method, the FAQ, and a
   one-block Brokers path to `/brokers`. There is no stat strip. The address
@@ -1853,8 +1886,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
-- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Hero split (claim + an illustrative report exhibit that
+- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), linked
+  from the footer of every surface and from the landing page’s "For brokers"
+  line; it left the Explore menu 2026-08-25 with /how-it-works. Hero split
+  (claim + an illustrative report exhibit that
   *shows* the Verified chip), then two stacked ledgers: Contribute (CREDIT /
   INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
   PRIVATE), with a three-beat submission path (`.bkpath` / `.bkbeat`, never
@@ -2306,6 +2341,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     use of that key), so the link authenticates itself for somebody who is not
     signed in, months later, on a phone. `&on=1` is the same link in reverse —
     a one-way off switch with no way back is a support ticket.
+- **Search demand on the desk** (2026-08-25). Each watched market on My Desk
+  carries a line saying how many people searched it lately: "9 people ran 14
+  searches here in the last 30 days, 6 of them Industrial." It reads
+  `analytics_events`, which has logged every search since long before this
+  shipped; nothing new is recorded and no hot path changed.
+  **Pro-only**, via `canSeeSearchDemand` in `entitlements.js` — Pro, tester and
+  comped-admin get it; a **single-report purchase does not** (the Address
+  Explorer's argument: a $39 unlock buys one property's history, and a
+  market's demand is not scoped to a property), and it is **false on a dark
+  deployment** (the vault's argument, not the Explorer's: it never existed
+  before the tier, and it reports this site's own traffic). A free account
+  gets `demand_locked: true` on the feed item instead of a figure, which the
+  card renders as the standard `.unlock-comps-btn` prompt.
+  The RULES live in the pure, tested **`search-demand.js`**; server.js owns
+  only the read (`demandRowsForMarkets`, filtered at the database — the
+  `/admin` reducer's whole-table scan is right for a dashboard one person
+  opens and wrong for a route every subscriber hits). Four of them exist
+  because each is a way the number could flatter us, and the file's bar is
+  under-claim, never over-:
+  - **The broker's own searches are excluded** (`excludeUserId`). Without it
+    the first thing a broker sees on their home market is themselves,
+    reported as somebody else's interest.
+  - **Explorer sweeps are excluded** (`source: "explore"`). One Pro
+    subscriber walking a market address by address is not demand.
+  - **A `signup_gate` counts** — a blocked visitor wanted the same answer —
+    but is dropped when that visitor completed a search in the same market
+    the same UTC day, because that is one attempt writing two rows.
+  - **People and searches are separate numbers**, and where a row carries no
+    `visitor_id` (anything before migration 026) they all collapse into ONE
+    person rather than one each. Undercounting is the allowed error.
+  Aggregate only: the payload is `{ window_days, searches, viewers, in_type }`
+  and carries no address, email, visitor id or user id.
+  `buildWatchlistFeed(user, ent, cutoffOf, { withDemand: true })` is
+  **opt-in, and only the page opts in** — the digest does not, both because a
+  search count is not news anybody asked to be mailed and because its loop
+  over every account would fire one analytics query per watcher for a figure
+  it discards.
+  **It needs traffic to be worth reading.** At today's volume most markets
+  answer "no one searched this market in the last 30 days", which is honest
+  and is also the site telling a broker how quiet it is. The same
+  prerequisite blocks routing real leads to contributors.
 - `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
   `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
   one route and one input: 401 if not signed in, rate-limited per IP, and the

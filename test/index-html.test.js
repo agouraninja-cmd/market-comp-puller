@@ -1597,6 +1597,23 @@ test("index.html's SHOP_COPY is the same map as org-access.js's", () => {
   assert.ok(ctx.copy.broker, "the fallback both halves use is missing from the page's map");
 });
 
+// --- The seat minimum is mirrored into the buy prompt -----------------------
+//
+// The same hazard as SHOP_COPY above, with money on it. The seats prompt
+// defaults and validates against its own copy of ORG.MIN_SEATS, because
+// index.html cannot require the module. Drift is bad in both directions and
+// loud in neither: a page minimum BELOW the module's offers a number the
+// route then refuses, which reads as a broken Buy button; a page minimum
+// ABOVE it quietly stops selling the smallest firm plan that exists.
+// ---------------------------------------------------------------------------
+test("index.html's seat minimum is org-access.js's MIN_SEATS", () => {
+  const ORG = require("../org-access.js");
+  const m = html.match(/const MIN_SEATS = (\d+);/);
+  assert.ok(m, "index.html's MIN_SEATS is gone or renamed — the mirror is unpinned");
+  assert.equal(Number(m[1]), ORG.MIN_SEATS,
+    "the seats prompt and the checkout route disagree about the smallest firm plan");
+});
+
 // --- Development returns card (C6) ------------------------------------------
 // renderDevCard is straight-line DOM code: every figure is written with
 // getElementById(...).textContent, so a mistyped or renamed id does not throw
@@ -1875,4 +1892,25 @@ test("the sample report's stated search radius covers its own comps", () => {
   // on the tolerance — otherwise a later comp edit silently spends the slack.
   assert.ok(claimed >= farthest,
     `the sample's radius (${claimed} mi) only clears its farthest comp (${farthest.toFixed(1)} mi) on slack`);
+});
+
+// ---------------------------------------------------------------------------
+// "Continue with Google" (2026-08-25). The button is a plain anchor into
+// GET /auth/google, shipped hidden and revealed only by /api/config's
+// googleAuth flag — the Buy-button rule, because most deployments (and every
+// local dev run) have no OAuth client and the anchor would 404. These pin the
+// three pieces that have to agree: the markup ships dark, the reveal reads
+// the config flag, and the callback's failure exit (?gerr=1) has a message
+// waiting for it.
+test("the Google button ships hidden and is revealed only by config", () => {
+  assert.match(html, /<div id="acctGoogleRow" class="hidden">/,
+    "the button must ship hidden — a control that can only fail never renders");
+  assert.match(html, /id="acctGoogle" href="\/auth\/google"/,
+    "the button is an anchor into the server's OAuth door, not a JS submit");
+  assert.match(html, /googleAuthLive = Boolean\(cfg\.googleAuth\)/,
+    "the reveal must read /api/config's flag, never assume");
+  assert.match(html, /acctMode === "signin" \|\| acctMode === "signup"/,
+    "the button belongs to the two sign-in tabs, not the reset/forgot forms");
+  assert.match(html, /get\("gerr"\)/,
+    "the callback's failure exit (?auth=signin&gerr=1) needs its message");
 });

@@ -17,6 +17,7 @@ const assert = require("node:assert");
 const crypto = require("node:crypto");
 const shared = require("./helpers/boot");
 const fake = require("./helpers/fake-supabase");
+const ORG = require("../org-access");
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
@@ -609,13 +610,51 @@ test("per-seat firm billing", async (t) => {
     assert.match((await notOwner.json()).error, /owner/);
     const stranger = await buy(OUTSIDER, { seats: 5 });
     assert.equal(stranger.status, 403);
-    // Two people are in the firm, so one seat would drop a named colleague to
-    // free the moment the webhook landed.
-    const tooFew = await buy(BRAD, { seats: 1 });
+    // Three in the firm now, so two seats would drop a named colleague to free
+    // the moment the webhook landed. Asked for THREE people rather than the
+    // original two because one seat is refused by the minimum before the
+    // headcount is ever consulted — the two rules need separate arithmetic to
+    // stay separately tested.
+    orgRow.seats = 200;
+    assert.equal((await invite([OUTSIDER.email])).status, 200);
+    const tooFew = await buy(BRAD, { seats: 2 });
     assert.equal(tooFew.status, 400);
     const body = await tooFew.json();
     assert.equal(body.code, "seats_below_headcount");
-    assert.equal(body.headcount, 2);
+    assert.equal(body.headcount, 3, "a pending invitation still counts as a person");
+    // Put the firm back to the two people the rest of this sequence expects.
+    // The third was only ever arithmetic for the assertion above, and leaving
+    // them in place fails a later test that counts survivors after a lapse.
+    tables.org_members = tables.org_members.filter((m) => m.email !== OUTSIDER.email);
+    orgRow.seats = 2;
+  });
+
+  // The solo-arbitrage close. `canUseOrg` gates CREATING a firm on already
+  // holding Pro, but getEntitlements grants Pro from a firm SEAT once a
+  // personal subscription lapses — so a one-seat firm plan is a cheaper Pro
+  // wearing a firm's clothes, and the seat price is below the individual
+  // price by construction. Refused by name and number so the buyer is told
+  // the rule rather than left clicking a button that fails.
+  await t.test("a one-seat firm plan cannot be bought", async () => {
+    const one = await buy(BRAD, { seats: 1 });
+    assert.equal(one.status, 400);
+    const body = await one.json();
+    assert.equal(body.code, "seats_below_minimum");
+    assert.equal(body.minimum, ORG.MIN_SEATS);
+    assert.match(body.error, new RegExp(String(ORG.MIN_SEATS)),
+      "the refusal should name the smallest plan that exists");
+  });
+
+  await t.test("nonsense seat counts are refused without claiming a minimum", async () => {
+    // Same branch, deliberately without the `seats_below_minimum` code: zero,
+    // a negative and a non-number are not somebody asking for a small firm,
+    // and labelling them as such would send a caller looking for a pricing
+    // rule when they have a bug.
+    for (const seats of [0, -3, "lots", null]) {
+      const r = await buy(BRAD, { seats });
+      assert.equal(r.status, 400, `seats: ${JSON.stringify(seats)}`);
+      assert.equal((await r.json()).code, undefined, `seats: ${JSON.stringify(seats)}`);
+    }
   });
 
   await t.test("checkout refuses a firm the caller is not in", async () => {

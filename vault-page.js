@@ -540,8 +540,7 @@ ${THEME_BOOT}
   <nav>
     <details>
       <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>
-      <a href="/markets">Markets</a><a href="/how-it-works">How it works</a>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/markets">Markets</a>
       <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
     </details>
     <a href="/desk">My Desk</a>
@@ -3606,12 +3605,37 @@ if(dd)dd.open=false;});</script>
     if(open)return openSheet(open.getAttribute("data-open-sheet"));
     var b=e.target.closest("button[data-del]"); if(!b)return;
     if(!confirm("Remove this import and all the comps that came in with it?"))return;
-    fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
-      {method:"DELETE",credentials:"same-origin"}).then(function(){
-        if(sheetUploadId&&String(sheetUploadId)===String(b.getAttribute("data-del")))closeSheet();
-        else load();
-      }).catch(load);
+    removeUpload(b.getAttribute("data-del"));
   });
+
+  // Removing an import ALWAYS ends in load(). It used to end in closeSheet()
+  // INSTEAD of load() whenever the import being removed was the one open in
+  // spreadsheet mode -- which is the ordinary way to get here, since the other
+  // button on that row is "Open" and a broker opens an import to check it
+  // before removing it. closeSheet() only re-renders from the arrays the page
+  // is already holding, so the server deleted the comps and the screen went on
+  // showing them: the import still listed, its comp count unchanged, its rows
+  // still in the table. The button read as broken until the page was reloaded.
+  // It closes the sheet AND reloads now -- the close is the immediate repaint,
+  // load() is the truth.
+  //
+  // The status is checked for the same reason. Every refusal -- a lapsed
+  // subscription (403), a Supabase outage (502) -- took the success path, so a
+  // delete that removed nothing looked exactly like one that worked.
+  async function removeUpload(id){
+    var r;
+    try{
+      r=await fetch("/api/vault/upload?id="+encodeURIComponent(id),
+        {method:"DELETE",credentials:"same-origin"});
+    }catch(err){
+      return compMsg("That didn't reach the server. Nothing was removed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok)return compMsg(j.error||"Could not remove that import.",true);
+    if(sheetUploadId&&String(sheetUploadId)===String(id))closeSheet();
+    load();
+    compMsg("Import removed.");
+  }
 
   // ---- The hubs deck --------------------------------------------------------
   //

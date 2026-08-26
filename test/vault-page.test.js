@@ -132,7 +132,9 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
 test("the vault header uses the site Explore menu, not a short Search bar", () => {
   const html = renderVaultHTML(boot([]), CHROME);
   assert.match(html, /<summary>Explore/);
-  assert.match(html, /href="\/how-it-works"/);
+  // /brokers and /how-it-works left the Explore menu 2026-08-25; the 1031
+  // guide is what proves this is the site menu rather than a Search bar.
+  assert.match(html, /href="\/1031-exchange"/);
   assert.match(html, /aria-current="page">Vault/);
   assert.doesNotMatch(html, />Search</);
 });
@@ -421,7 +423,7 @@ async function runPage(comps, benchResult, opts, identity) {
         : Promise.resolve(jsonResponse(200, { filename: "book.pdf", rows: [] }));
     }
     if (u.indexOf("/api/vault/upload") === 0) {
-      return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
+      return opts.upload ? opts.upload(init, u) : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
     }
     // Checked BEFORE the single-publish prefix, which would otherwise swallow
     // it: "/api/vault/publish-many".indexOf("/api/vault/publish") is 0 too.
@@ -1526,6 +1528,103 @@ test("Open on an import shows only that file's comps", async () => {
   assert.ok(!html.includes("200 Oak Ave"),
     "opening one import must not mix in another file's comps");
   assert.match(doc.getElementById("sheetBar").textContent, /book\.csv/);
+});
+
+// ---- Removing an import ---------------------------------------------------
+//
+// The click handler was wired correctly and the route deleted the rows, and
+// the button still read as broken: the handler treated closeSheet() as an
+// ALTERNATIVE to load() when the import being removed was the one open in
+// spreadsheet mode. closeSheet re-renders from the arrays the page is already
+// holding, so the import stayed in the list with its comp count unchanged and
+// its comps stayed in the table until the broker reloaded the page. That is
+// the ordinary path into this button, not an exotic one — the other control on
+// the row is "Open", and a broker opens an import to check it before removing
+// it. These drive the real emitted script through both paths.
+
+test("removing an import sends the DELETE and reloads the book", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(200, { ok: true })),
+      reloadComps: [],
+      reloadUploads: [],
+    });
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.ok(calls.some((c) => c.url === "/api/vault/upload?id=u1"),
+      "the removal must reach the server");
+    assert.ok(calls.some((c) => c.url.indexOf("/api/vault?") === 0),
+      "and the book must be refetched, or the screen keeps showing what was deleted");
+    assert.match(doc.getElementById("ups").innerHTML, /No imports yet/);
+    assert.equal(doc.getElementById("compMsg").textContent, "Import removed.");
+  } finally {
+    global.confirm = realConfirm;
+  }
+});
+
+test("removing the import whose spreadsheet is open still reloads the book", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1", address: "100 Main St" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(200, { ok: true })),
+      reloadComps: [],
+      reloadUploads: [],
+    });
+    // Open that import's spreadsheet first — the way a broker gets here.
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-open-sheet]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+    assert.equal(doc.getElementById("sheetToggle").textContent, "Done", "the sheet should be open");
+
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.ok(calls.some((c) => c.url.indexOf("/api/vault?") === 0),
+      "closeSheet is not a substitute for load(): without the refetch the removed import stays on screen");
+    assert.match(doc.getElementById("ups").innerHTML, /No imports yet/);
+    assert.ok(!doc.getElementById("tbody").innerHTML.includes("100 Main St"),
+      "the removed import's comps must leave the table");
+    assert.equal(doc.getElementById("sheetToggle").textContent, "Open spreadsheet",
+      "the spreadsheet of a removed import must close");
+  } finally {
+    global.confirm = realConfirm;
+  }
+});
+
+test("a refused removal says so rather than looking like it worked", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(502, { error: "Could not remove that import. Please try again." })),
+    });
+    const before = calls.length;
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.match(doc.getElementById("compMsg").textContent, /Could not remove that import/);
+    assert.equal(doc.getElementById("compMsg").className, "msg bad");
+    assert.equal(calls.slice(before).filter((c) => c.url.indexOf("/api/vault?") === 0).length, 0,
+      "a refusal must not reload into an unchanged list with nothing said");
+    assert.match(doc.getElementById("ups").innerHTML, /book.csv/,
+      "the import is still there, and the page must go on showing it");
+  } finally {
+    global.confirm = realConfirm;
+  }
 });
 
 test("leaving a spreadsheet cell PATCHes only that field", async () => {

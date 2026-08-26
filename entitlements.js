@@ -283,6 +283,10 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canExploreAddresses: true,
       canBulkValue: true,
       bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
+      // Search demand rides with it: the team has to be able to see the number
+      // a subscriber sees, or the one figure nobody can sanity-check is the
+      // one being sold.
+      canSeeSearchDemand: true,
       // The broker vault included, for the same reason: the team is permanently
       // on the far side of every paywall, so this is the only way anyone
       // internal ever renders the broker workspace at all. `admin: true` below
@@ -323,6 +327,12 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // an unmetered invoice to whoever finds the endpoint.
       canBulkValue: false,
       bulkMaxAddresses: 0,
+      // FALSE, for the vault's reason rather than the Explorer's: "pre-Pro
+      // behavior" means giving back what a visitor USED TO HAVE, and search
+      // demand was never free because it did not exist. It also reports this
+      // site's own traffic, so granting it on a dark deployment would publish
+      // that to every anonymous visitor.
+      canSeeSearchDemand: false,
       // FALSE here, unlike every other capability on this branch — and the
       // asymmetry is deliberate, not an oversight.
       //
@@ -402,6 +412,10 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // should have a subscription.
       canBulkValue: false,
       bulkMaxAddresses: 0,
+      // A tester gets this one: it is a read of aggregate counts, not a
+      // private data store with an upload endpoint, so the argument that
+      // holds the vault back does not reach it.
+      canSeeSearchDemand: true,
       // The ONE place a tester is deliberately not equal to Pro. The vault is
       // a private-data workspace with an upload endpoint; a passkey shared
       // with a wider group is a bigger surface than "try Pro's reports", so
@@ -501,6 +515,12 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // them. Selling it per-report would just be selling Pro once.
     canBulkValue: pro,
     bulkMaxAddresses: pro ? PRO_BULK_MAX_ADDRESSES : 0,
+    // Pro, and deliberately NOT `reportUnlocked`. The same rule that keeps the
+    // Address Explorer out of a single-report purchase decides this: a $39
+    // unlock buys one property's history, and a market's search demand is not
+    // scoped to a property. Selling it per-report would be selling Pro at a
+    // one-off price.
+    canSeeSearchDemand: pro,
     broker,
     // Now simply Pro. Under one subscription the vault is a Pro capability,
     // not a second tier's, so this tracks `pro` exactly.

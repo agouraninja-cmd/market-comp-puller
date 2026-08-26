@@ -14,6 +14,10 @@ defined centrally, so changing one changes every page at once. Sizes, spacing
 and fonts are not yet tokenised; those are written into each stylesheet, so
 changing one means finding each place it appears.
 
+**For the non-visual half of the brand** — name, legal entity, voice, and the
+language rules that are promises rather than style choices — see
+[BRAND.md](BRAND.md).
+
 Read §1 before changing a colour. It is the shortest section and the only one
 with a trap in it.
 
@@ -69,13 +73,20 @@ The mark is a **navy rounded rectangle crossed by a red diagonal band**. It is
 drawn in code (SVG), not stored as an image file, so it stays sharp at any size
 and can change colour with the theme.
 
-| Where | Name | Lives in | Notes |
-|---|---|---|---|
-| Site header | `CN_LOGO` | `server.js` (~line 5410) | Themed — card is `--ink`, sweep is `--red-fill` |
-| Dark footer | `CN_LOGO_LIGHT` | `server.js` (~line 5423) | Card is **always** white, never themed |
-| Browser tab | `favicon.ico`, `favicon.svg`, `favicon.png` | repo root | |
-| iOS home screen | `apple-touch-icon.png` | repo root | 180×180 |
-| Link previews | `og-image.png` | repo root | 1200×630, shown when the site is shared |
+<img src="brand-logos.svg" alt="The CompNinja mark in its three shipped appearances: header light, header dark, and the footer slab." width="920">
+
+All three appearances above are the same two shapes; only the fills differ.
+
+| | Where | Name | Lives in | Notes |
+|---|---|---|---|---|
+| | Site header | `CN_LOGO` | `server.js` (~line 5410) | Themed — card is `--ink`, sweep is `--red-fill` |
+| | Dark footer | `CN_LOGO_LIGHT` | `server.js` (~line 5423) | Card is **always** white, never themed |
+| <img src="../favicon.svg" width="28"> | Browser tab | `favicon.ico`, `favicon.svg`, `favicon.png` | repo root | |
+| <img src="../apple-touch-icon.png" width="28"> | iOS home screen | `apple-touch-icon.png` | repo root | 180×180 |
+| <img src="../og-image.png" width="64"> | Link previews | `og-image.png` | repo root | 1200×630, shown when the site is shared |
+| <img src="../icon-192.png" width="28"> | Installed app | `icon-192.png` | repo root | 192×192, PWA install |
+| <img src="../icon-512.png" width="28"> | Installed app | `icon-512.png` | repo root | 512×512, PWA install |
+| <img src="../icon-maskable-512.png" width="28"> | Android adaptive | `icon-maskable-512.png` | repo root | 512×512, safe-zone padded |
 
 **The wordmark** is set beside the mark, not part of it: `Comp` in ink and
 `Ninja` in red, uppercase, 15px, weight 600, letter-spacing `.14em`.
@@ -90,7 +101,10 @@ one you merged into would break in the other context.
 - Sweep: `polygon` 3.5,26 → 28,5.5 → 28,10 → 8,26
 
 Changing the artwork means editing those two shapes in both places, plus
-regenerating the five image files above from the new shape.
+regenerating the eight image files above from the new shape. The three PWA
+icons are easy to forget — they are pinned against `manifest.webmanifest` by
+`test/manifest.test.js`, so a stale one survives every check the suite makes
+and only shows up on somebody's installed copy.
 
 ---
 

@@ -77,6 +77,19 @@ function matches(row, key, expr) {
   if (expr.startsWith("lte.")) return String(val) <= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
+  // `is.true` / `is.false` are taught deliberately, like `neq.` and `gte.`
+  // above: server.js sends `notify=is.false` reading the hub note-email
+  // opt-out (040), and `is.` rather than `eq.` is the correct PostgREST
+  // operator for a boolean.
+  //
+  // The subtlety is that this must NOT match a null. PostgREST's `is.false`
+  // is SQL `IS FALSE`, which a null column fails — and an absent
+  // hub_email_prefs row is precisely how "has not opted out" is stored, so a
+  // fake that let null match `is.false` would report everybody as muted and
+  // prove the notifier mails nobody. Hence the strict === rather than a
+  // truthiness test.
+  if (expr === "is.true") return val === true;
+  if (expr === "is.false") return val === false;
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);
   err.unparsed = true;
   throw err;
@@ -105,7 +118,16 @@ function applyOrder(rows, order) {
 
 // `tables` is a plain object of arrays and is MUTATED in place, so a test can
 // read it back after a run and see what the server actually wrote.
-function start({ tables = {}, resendStatus = 200 } = {}) {
+// `missingTables` makes named tables answer the way PostgREST answers for a
+// table that does not exist. It is not a fault-injection toy: an UNRUN
+// MIGRATION is a real production state — the deploy order this repo documents
+// over and over is migrate-then-deploy precisely because the reverse happens —
+// and a feature that claims to degrade rather than break has no other way to
+// prove it. 040's hub_notify is the first user: it is wrapped so that a
+// missing table costs the notification email and never the note itself, which
+// is a promise in a comment until something executes it.
+function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
+  const missing = new Set(missingTables);
   const sent = [];        // every email posted to the Resend stand-in
   const requests = [];    // every PostgREST call, for asserting what was asked
   const unparsed = [];    // filters this fake refused, so a test can fail loudly
@@ -130,6 +152,15 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
       const m = url.pathname.match(/^\/rest\/v1\/([a-z_]+)$/);
       if (!m) return json(404, { message: "no such route: " + url.pathname });
       const table = m[1];
+      // PGRST205 is what a real PostgREST answers here, and the shape matters:
+      // server.js's schemaMismatch detection reads the message, and a plain
+      // 404 would look like a routing bug instead of an unrun migration.
+      if (missing.has(table)) {
+        return json(404, {
+          code: "PGRST205",
+          message: `Could not find the table 'public.${table}' in the schema cache`,
+        });
+      }
       tables[table] = tables[table] || [];
       const params = [...url.searchParams.entries()];
       requests.push({ method: req.method, table, query: url.search, body: body || null });

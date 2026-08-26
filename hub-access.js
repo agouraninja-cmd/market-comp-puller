@@ -214,8 +214,54 @@ function canAddItems({ hub, participant, user, tokenValid } = {}) {
   return { ok: true, reason: "owner", role: "broker" };
 }
 
+/**
+ * Should this person get an email about a new note? (migration 040)
+ *
+ * The rule is ONE NUDGE PER ABSENCE, and it lives here rather than in the
+ * route for the same reason every other answer in this file does: it decides
+ * whether a real person's inbox gets used, server.js owns the reads that feed
+ * it, and `npm test` can prove it with no database.
+ *
+ * Four answers, in the order they are asked, because each `false` means
+ * something different:
+ *
+ *   muted     they asked us not to. Beats everything, including never having
+ *             been mailed before.
+ *   present   they are looking at the hub right now (a visible tab polls every
+ *             15 seconds), so they will watch the note arrive. Telling
+ *             somebody what they are in the middle of reading is the fastest
+ *             way to get the whole feature switched off.
+ *   fresh     nobody has ever mailed them about this hub. Send.
+ *   re-armed  they have opened it since the last time we wrote to them.
+ *
+ * A person who was mailed and has not come back is NOT mailed again, however
+ * chatty the thread gets. Ten notes posted while a tenant is away is one
+ * email, not ten.
+ *
+ * Every timestamp is optional and an unparseable one reads as absent, which
+ * lands on "send". That is the deliberate direction: this guards a courtesy
+ * email, so a missing row costs somebody a duplicate rather than costing them
+ * the notification the feature exists to deliver. Contrast the access rules
+ * above, which fail closed for the opposite reason.
+ */
+function shouldNotifyByEmail({ muted, seenAt, notifiedAt, now, presentMs } = {}) {
+  if (muted) return false;
+  const at = (v) => {
+    const t = Date.parse(String(v || ""));
+    return Number.isFinite(t) ? t : 0;
+  };
+  const seen = at(seenAt);
+  const notified = at(notifiedAt);
+  const clock = at(now) || Date.now();
+  const window = Number.isFinite(presentMs) ? presentMs : 0;
+  if (seen && window > 0 && clock - seen < window) return false;
+  if (!notified) return true;
+  return Boolean(seen) && seen > notified;
+}
+
 module.exports = {
   canReadHub,
+  shouldNotifyByEmail,
   canWriteHub,
   canAddItems,
   canSetStatus,

@@ -409,3 +409,25 @@ test("every kind has copy, and only the kinds do", () => {
   const labels = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].label);
   assert.equal(new Set(labels).size, labels.length, "two shops share a label");
 });
+
+// --- MIN_SEATS --------------------------------------------------------------
+//
+// The one constant in this file that is about PRICE rather than shape, and it
+// closes a hole rather than expressing a preference: without it one person
+// could create a firm, buy a single seat, cancel their personal plan and keep
+// Pro at the seat price — which sits below the individual price by
+// construction, because a team discount is the point of the plan.
+//
+// Two is the smallest number that both means "a firm" and bills above the
+// individual price. These assertions are the properties that make it work, so
+// that moving the number forces the reasoning to be redone rather than
+// quietly reopening the hole.
+// ---------------------------------------------------------------------------
+test("MIN_SEATS is at least two and never exceeds the structural cap", () => {
+  assert.equal(typeof ORG.MIN_SEATS, "number");
+  assert.ok(Number.isInteger(ORG.MIN_SEATS), "a fractional seat is not a thing to sell");
+  assert.ok(ORG.MIN_SEATS >= 2,
+    "one seat is a cheaper Pro wearing a firm's clothes — see the constant's comment");
+  assert.ok(ORG.MIN_SEATS <= ORG.MAX_MEMBERS,
+    "a minimum above the cap would make every firm plan unbuyable");
+});

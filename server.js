@@ -111,6 +111,10 @@ const RENEWAL = require("./renewal-watch");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES, siblingMarkets,
   exampleMarketOrder } = require("./market");
+// What counts as somebody looking at a market, and how those rows add up into
+// the figure a Pro subscriber sees on My Desk. Pure and tested, because every
+// line of it is a way the number could flatter us — see its header.
+const DEMAND = require("./search-demand");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -156,6 +160,10 @@ const BRANDING = require("./branding.js");
 // avatar_rev field on GET /api/account/me.
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+// "Continue with Google" — the decision half (consent URL, id_token claims,
+// what a token must prove). Pure and tested; server.js owns the state
+// cookie, the code exchange, and the two /auth/google* routes.
+const GAUTH = require("./google-auth");
 const MARKETHERO = require("./market-hero");
 // Which single momentum claim a city's carved map area may make when one
 // city shape holds several markets — see market-area.js's header.
@@ -531,6 +539,35 @@ const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 // (streetview-aim.js) runs on the metadata response, so a far pano is a
 // cached miss, not a billed image of the neighbor. In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
+
+// Optional "Continue with Google" (dark until BOTH are set). Created in the
+// Google Cloud console — project "compninja", the one that already holds the
+// Street View key: APIs & Services -> Credentials -> OAuth client ID (Web
+// application), authorized redirect URIs
+//   https://compninja.co/auth/google/callback
+//   http://localhost:3000/auth/google/callback   (dev)
+// Unset = GET /auth/google and its callback 404 and the button in the
+// account modal never renders (the Buy-button rule: a control that can only
+// fail never renders). What a returned token must PROVE lives in
+// google-auth.js; this file owns every side effect. There is deliberately no
+// migration behind this feature — identity is the email (018's decision),
+// so a Google sign-in lands on the same users row a password sign-in does.
+const GOOGLE_OAUTH_CLIENT_ID = (process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
+const GOOGLE_OAUTH_CLIENT_SECRET = (process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
+const GOOGLE_OAUTH_CONFIGURED = Boolean(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET);
+// Half-configured is a mistake worth a loud line, not a fatal one: the safe
+// state (dark) is exactly what a half-set pair produces, but the button
+// stays hidden with nothing else saying why.
+if (Boolean(GOOGLE_OAUTH_CLIENT_ID) !== Boolean(GOOGLE_OAUTH_CLIENT_SECRET)) {
+  console.error("⛔ Google sign-in is HALF-configured — set BOTH GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (or neither). It stays dark until they agree.");
+}
+// Test-only, RESEND_API_URL's precedent for RESEND_API_URL's reason: the
+// whole point of the callback is a credential exchange leaving the building,
+// and without this the suite could reach the exchange and then had to stop
+// and assume. Not a secret and authorizes nothing (the client secret still
+// does), but it decides where that exchange is posted, so treat it as
+// trusted config. Never set in production.
+const GOOGLE_OAUTH_TOKEN_URL = (process.env.GOOGLE_OAUTH_TOKEN_URL || "").trim() || GAUTH.TOKEN_ENDPOINT;
 
 // Optional email ping on every new lead / broker comp submission, sent via
 // Resend's REST API (free tier, plain fetch — no dependency). Note: without a
@@ -1060,10 +1097,39 @@ function parseCookies(req) {
   });
   return out;
 }
-function setSessionCookie(res, req, token, maxAgeSec) {
+// The cookie STRING is its own function because the Google callback has to
+// set two cookies in one response (clear the state nonce, set the session) —
+// res.setHeader replaces, so the callback passes an array, and this is the
+// piece both callers share.
+function sessionCookie(req, token, maxAgeSec) {
   const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
-  res.setHeader("set-cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`);
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+function setSessionCookie(res, req, token, maxAgeSec) {
+  res.setHeader("set-cookie", sessionCookie(req, token, maxAgeSec));
+}
+
+// The Google sign-in state nonce — a one-shot CSRF check: the callback only
+// proceeds when Google echoes the nonce THIS browser was handed ten minutes
+// ago at most. httpOnly and SameSite=Lax like the session cookie (Lax rides
+// on the top-level GET navigation back from Google, which is the whole
+// point); cleared on every callback exit, success included.
+const GSTATE_COOKIE = "cn_gstate";
+function gstateCookie(req, value, maxAgeSec) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  return `${GSTATE_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+
+// The redirect URI Google sends the visitor back to. It must match a URI
+// registered on the OAuth client byte for byte, so it is never derived from
+// an arbitrary Host header: production is pinned to SITE_URL, and only a
+// localhost host (dev, where SITE_URL still holds the Render default) is
+// echoed — the same host test the session cookie's Secure flag uses. Both
+// spellings are registered in the console.
+function oauthRedirectUri(req) {
+  const host = String(req.headers.host || "");
+  if (/^(localhost(:\d+)?$|127\.)/.test(host)) return `http://${host}/auth/google/callback`;
+  return `${SITE_URL}/auth/google/callback`;
 }
 
 // --- storage: Supabase REST when configured, account-store.json otherwise ---
@@ -1559,6 +1625,59 @@ async function markWatchlistSeen(userId) {
   await saveAccountStore();
 }
 
+// --- Search demand (analytics_events -> the desk) ----------------------------
+//
+// The rows behind the "N people looked at this market" line. The RULES for
+// what counts live in the pure search-demand.js; this function is only the
+// read, and it is written to three constraints that module cannot enforce:
+//
+//   FILTERED AT THE DATABASE, not in Node. readRows() (the /admin path) pulls
+//   the whole table and reduces it in memory, which is right for a dashboard
+//   one person opens and wrong for a route every subscriber hits on every
+//   desk load. The window, the kinds and the markets all go into the query.
+//
+//   MARKET KEYS CONTAIN A COMMA. "Boise, ID" is also PostgREST's in.()
+//   separator, so values are quoted and percent-encoded with the separators
+//   left literal — pgInList's exact trap, and the reason this borrows it
+//   rather than joining the list itself.
+//
+//   NEVER THROWS. A demand figure is a bonus line on a card; a desk that
+//   would not render because an analytics read failed is a worse product than
+//   one with no number on it. Every failure resolves to "no rows", which the
+//   caller renders as a quiet market rather than an error.
+//
+// The file store is read too, unfiltered, for the same reason readRows does:
+// local dev has no database at all, and rows fall back to analytics.jsonl
+// during an outage. aggregateDemand re-applies every rule to both sources, so
+// the loose file read cannot let through anything the query would have
+// excluded.
+async function demandRowsForMarkets(markets, cutoff) {
+  const wanted = (Array.isArray(markets) ? markets : [markets]).filter(Boolean);
+  if (!wanted.length) return [];
+  const cols = "ts,kind,prop_type,market,source,visitor_id,user_id";
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        `analytics_events?select=${cols}` +
+        `&kind=in.(${DEMAND.DEMAND_KINDS.map((k) => encodeURIComponent(k)).join(",")})` +
+        `&market=in.(${pgInList(wanted)})` +
+        `&ts=gte.${encodeURIComponent(cutoff)}` +
+        `&order=ts.desc&limit=5000`) || [];
+    } catch (err) {
+      console.error("search demand read failed (desk renders without it):", err.message);
+    }
+  }
+  let fileRows = [];
+  try {
+    const want = new Set(wanted);
+    fileRows = (await readRowsFromFile(ANALYTICS_FILE)).filter((r) => r && want.has(r.market));
+  } catch (err) {
+    console.error("search demand file read failed:", err.message);
+  }
+  return [...dbRows, ...fileRows];
+}
+
 // The feed itself, shared by GET /api/watchlist/feed and the digest so the
 // two can never quote different numbers for the same market. Extracted
 // 2026-08-13 when the digest arrived; the body is the route's, unchanged.
@@ -1574,10 +1693,32 @@ async function markWatchlistSeen(userId) {
 // from different places (a request, versus a loop over accounts) and
 // resolving entitlements is the one thing in this app that must have exactly
 // one owner.
-async function buildWatchlistFeed(user, ent, cutoffOf) {
+//
+// `opts.withDemand` is OPT-IN, and only the page asks for it. The digest does
+// not, for the reason the whole of watchlist-digest.js is written to: it is
+// the only thing this product sends uninvited, its bar is "when in doubt,
+// send nothing", and a search count is not news anybody asked to be mailed.
+// Opting in also keeps the digest's nightly loop over every account from
+// firing one analytics query per watcher for a figure it would then discard.
+async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
   const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
   const items = await listWatchlist(user.id);
   const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  // Pro only, and read ONCE for every watched market rather than per card: a
+  // desk with six markets is one query, not six. `excludeUserId` is what
+  // stops a broker's own searches being reported back to them as interest
+  // from other people — see rule 1 in search-demand.js.
+  const wantDemand = Boolean(opts && opts.withDemand) && Boolean(ent.canSeeSearchDemand);
+  let demandBuckets = null;
+  if (wantDemand && items.length) {
+    const cutoff = DEMAND.demandCutoff(Date.now(), DEMAND.DEMAND_WINDOW_DAYS);
+    const rows = await demandRowsForMarkets(items.map((w) => w.market), cutoff);
+    demandBuckets = DEMAND.aggregateDemand(rows, {
+      now: Date.now(),
+      windowDays: DEMAND.DEMAND_WINDOW_DAYS,
+      excludeUserId: user.id,
+    });
+  }
   let unseen = 0;
   const out = [];
   for (const w of items) {
@@ -1623,6 +1764,16 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
       median_psf, new_count: fresh.length,
       ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
+      // Always present for a subscriber, including at zero — "nobody searched
+      // this market in 30 days" is a true answer and a useful one, and an
+      // omitted field would blank the line on exactly the quiet markets worth
+      // knowing about. Free callers get the flag instead of the figure, which
+      // is what the card's upgrade prompt hangs off; the count itself is
+      // never computed for them.
+      ...(demandBuckets
+        ? { demand: DEMAND.demandPayload(demandBuckets[w.market], w.property_type, DEMAND.DEMAND_WINDOW_DAYS) }
+        : {}),
+      ...(opts && opts.withDemand && !ent.canSeeSearchDemand ? { demand_locked: true } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
       ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
@@ -3995,6 +4146,281 @@ function touchHub(hubId) {
     .catch((err) => console.error("Hub touch failed:", err.message));
 }
 
+// ---------------------------------------------------------------------------
+// Telling somebody a note arrived (migration 040)
+// ---------------------------------------------------------------------------
+// Until this existed, POST /api/hub/message wrote its row and told nobody.
+// The poll skips hidden tabs by design, so the only way to see a reply was to
+// be looking at the hub when it landed.
+//
+// THE RULE IS ONE NUDGE PER ABSENCE: mail somebody when they have never been
+// mailed about this hub, or when they have opened it since the last time they
+// were. Ten notes posted while a tenant is away is one email; opening the hub
+// re-arms them for the next one. A per-note email would be the thing that
+// makes people reach for the off switch, and the off switch here is one
+// click, so restraint is load-bearing rather than polite.
+//
+// EVERY READ AND WRITE BELOW IS WRAPPED, and the wrap is the point: a missing
+// table, an unrun 040, or a Supabase blip must cost the EMAIL and never the
+// note. That is deliberately the opposite of 024's stance — 024 guards access
+// and fails closed, this guards a courtesy and fails open, because the two
+// wrong answers are not the same size.
+//
+// Degrading "fails open" one step further: an unreadable hub_notify means we
+// cannot tell who is due, so everybody due-by-default is mailed once for this
+// note. The alternative (mail nobody) turns a database hiccup into the silent
+// failure this whole feature exists to end.
+// Somebody with the hub open and visible polls every 15 seconds, so a seen_at
+// this fresh means they are looking at the page right now and will watch the
+// note arrive. Mailing them would be telling somebody something they are in
+// the middle of reading. Generous against the poll interval so one dropped
+// tick does not read as an absence.
+const HUB_PRESENT_MS = 2 * 60 * 1000;
+
+async function hubNotifyState(hubId, emails) {
+  const out = new Map();
+  if (!DB_CONFIGURED || !hubId || !emails.length) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `hub_notify?hub_id=eq.${encodeURIComponent(hubId)}` +
+      `&email=in.(${pgInList(emails)})` +
+      `&select=email,seen_at,notified_at&limit=100`);
+    for (const r of rows || []) out.set(HUB.normalizeEmail(r.email), r);
+  } catch (err) {
+    console.error("Hub notify state read failed:", err.message);
+  }
+  return out;
+}
+
+// Stamped on every successful hub READ, which is what re-arms the nudge.
+//
+// It cannot reuse hub_participants.last_seen_at for two reasons, and either
+// one alone would be enough: that column is stamped by the 15s poll as well
+// as by a real visit, and the hub OWNER has no participant row at all.
+//
+// Fire and forget, exactly like stampHubView: a failed stamp must never cost
+// anybody their read of the hub.
+//
+// One write per read, poll included, which sounds worse than it is: the read
+// it rides along with already fires stampHubView's TWO patches on the same
+// path, so this is a third alongside two that have been there since 024. The
+// alternative (stamp only the first load) would leave a tab somebody has had
+// open for an hour looking like an absence, and then mail them about a note
+// they are watching arrive.
+function stampHubSeen(hubId, email) {
+  const who = HUB.normalizeEmail(email);
+  if (!DB_CONFIGURED || !hubId || !who) return;
+  // on_conflict names the FULL primary key. 024's hub_items index was PARTIAL
+  // and PostgREST cannot infer one of those, which failed every vault send
+  // 100% of the time; migration 040 says in its own comment not to add a
+  // WHERE to this key for exactly that reason.
+  sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+    [{ hub_id: hubId, email: who, seen_at: new Date().toISOString() }],
+    { prefer: "resolution=merge-duplicates,return=minimal" })
+    .catch((err) => console.error("Hub seen stamp failed:", err.message));
+}
+
+// The off switch. An ABSENT row means on, so a row is only ever written by
+// somebody deliberately changing the setting — 025's shape, and it keeps the
+// default in one place instead of in a row per participant per hub.
+//
+// Unreadable prefs mean we do not know who opted out, and the safe answer
+// there is the opposite of everywhere else in this file: treat NOBODY as
+// muted only for people we have no row for, which is what an empty set does,
+// but log it, because silently mailing somebody who asked us not to is the
+// one failure in this feature that is genuinely rude rather than merely
+// unhelpful.
+async function hubMutedEmails(emails) {
+  const muted = new Set();
+  if (!DB_CONFIGURED || !emails.length) return muted;
+  try {
+    const rows = await sbRequest("GET",
+      `hub_email_prefs?email=in.(${pgInList(emails)})` +
+      `&notify=is.false&select=email&limit=100`);
+    for (const r of rows || []) muted.add(HUB.normalizeEmail(r.email));
+  } catch (err) {
+    console.error("Hub email prefs read failed (mailing anyway):", err.message);
+  }
+  return muted;
+}
+
+async function setHubNotifyPref(email, on) {
+  const who = HUB.normalizeEmail(email);
+  if (!DB_CONFIGURED || !who) return false;
+  await sbRequest("POST", "hub_email_prefs?on_conflict=email",
+    [{ email: who, notify: Boolean(on), updated_at: new Date().toISOString() }],
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return true;
+}
+
+// The unsubscribe link has to work for somebody who is not signed in and may
+// never have had an account — a tenant reads a hub on an invite token alone,
+// and that is precisely the person most likely to want out. So it
+// authenticates itself: an HMAC of the ADDRESS, unguessable and unforgeable,
+// storing nothing new.
+//
+// Keyed and domain-separated exactly like digestMac() in 025, and for the
+// same reasons stated there. The string differs, so a watchlist token can
+// never unsubscribe a hub or the reverse.
+function hubNotifyMac(email) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`hub-note-emails-unsubscribe:${HUB.normalizeEmail(email)}`).digest("hex").slice(0, 32);
+}
+function hubNotifyTokenValid(email, token) {
+  if (!SUPABASE_SERVICE_KEY || !HUB.normalizeEmail(email)) return false;
+  return secretMatches(String(token || ""), hubNotifyMac(email));
+}
+function hubNotifyUnsubscribeUrl(email) {
+  // Three segments, not two: see the route's own comment. /hub/unsubscribe
+  // would collide with the /hub/<id> page pattern.
+  return `${SITE_URL}/hub/notes/unsubscribe?e=${encodeURIComponent(HUB.normalizeEmail(email))}&t=${hubNotifyMac(email)}`;
+}
+
+// Who should hear about a note: every live participant plus the hub's owner,
+// minus whoever wrote it.
+//
+// The OWNER is added by hand because nothing has ever written them a
+// hub_participants row (024's schema comment says so, and the dedupe in
+// GET /api/hubs relies on it staying true). Leaving them out would mean the
+// broker — the paying half of this relationship — was the one person the
+// feature never reached.
+//
+// Removed participants are excluded on removed_at, the same stamp that ends
+// their access. Somebody cut out of a hub must not keep getting its mail.
+// normalizeEmail is deliberately loose (one @, no whitespace), so it admits
+// characters that would tear a PostgREST `in.("a","b")` list in half: a comma
+// splits the list, a quote ends an element. Such an address is not a real one,
+// but the failure it would cause here is silent and wrong in the dangerous
+// direction — a torn list reads as "no row", which reads as "not muted".
+//
+// pgInList already quotes and percent-encodes every element, so this is the
+// second layer rather than the only one. It is worth having anyway: a quote
+// survives that encoding as a quote, and the cost of the guard is nothing.
+//
+// So an address we cannot safely ASK about is one we do not mail. That is the
+// one place in this feature that fails closed, and it is right that it does:
+// the question we cannot answer is "did this person opt out".
+function hubQueryableEmail(email) {
+  const e = HUB.normalizeEmail(email);
+  return /^[^\s@",()]+@[^\s@",()]+$/.test(e) ? e : "";
+}
+
+async function hubNoteAudience(hub, participants, authorEmail) {
+  const author = HUB.normalizeEmail(authorEmail);
+  const to = new Set();
+  for (const p of participants || []) {
+    if (p.removed_at) continue;
+    const e = hubQueryableEmail(p.email);
+    if (e && e !== author) to.add(e);
+  }
+  if (hub && hub.owner_user_id) {
+    try {
+      const owner = await findUserById(hub.owner_user_id);
+      const e = hubQueryableEmail(owner && owner.email);
+      if (e && e !== author) to.add(e);
+    } catch (err) {
+      console.error("Hub owner lookup failed:", err.message);
+    }
+  }
+  return [...to];
+}
+
+// One line naming what was posted on. A hub-level note says the hub; a
+// per-comp note says the building, because "Sarah left a note" with no
+// building attached is the version of this email that gets ignored.
+function hubNoteSubject(hub, itemAddress, fromName) {
+  const who = fromName || "Someone";
+  const what = itemAddress
+    ? itemAddress
+    : (hub.title || hub.subject_address || "your comps");
+  return `${who} left a note on ${what}`;
+}
+
+// Fire and forget from the route's point of view: the message row is already
+// written and answered before this runs, so a mail provider having a bad
+// afternoon can never turn a posted note into an error the author sees.
+//
+// It does NOT report whether Resend accepted, and nothing in the UI claims it
+// did. That is #174's lesson applied before the bug rather than after it: the
+// hub invite panel once told brokers "each person has been emailed their
+// link" on the strength of two env vars being set, and hid the only copy of
+// the token on that basis. Nothing here withholds anything, so there is no
+// flag to be wrong about.
+async function sendHubNoteEmails({ hub, participants, authorEmail, authorName, body, itemAddress }) {
+  if (!hub || !OUTBOUND_EMAIL_LIVE()) return;
+  const audience = await hubNoteAudience(hub, participants, authorEmail);
+  if (!audience.length) return;
+
+  const [state, muted] = await Promise.all([
+    hubNotifyState(hub.id, audience),
+    hubMutedEmails(audience),
+  ]);
+
+  const now = new Date().toISOString();
+  // The rule itself is hub-access.js's, not this route's. See
+  // HUB.shouldNotifyByEmail for what each answer means and why it leans the
+  // way it does.
+  const due = audience.filter((email) => {
+    const row = state.get(email) || {};
+    return HUB.shouldNotifyByEmail({
+      muted: muted.has(email),
+      seenAt: row.seen_at,
+      notifiedAt: row.notified_at,
+      now,
+      presentMs: HUB_PRESENT_MS,
+    });
+  });
+  if (!due.length) return;
+
+  const subject = hubNoteSubject(hub, itemAddress, authorName || authorEmail);
+  const where = itemAddress ? `on ${itemAddress}` : "in this hub";
+  const url = `${SITE_URL}/hub/${hub.id}`;
+
+  for (const to of due) {
+    // The note itself travels, because people reply to what they can read. It
+    // is already capped at 4,000 characters by the route that stored it.
+    const text =
+      `${authorName || authorEmail} left a note ${where}.\n\n` +
+      `${body}\n\n` +
+      `Read it and reply here: ${url}\n\n` +
+      `You are getting this because you are in this set of comps on CompNinja. ` +
+      `Turn these emails off: ${hubNotifyUnsubscribeUrl(to)}`;
+    // replyTo is the AUTHOR, not the site owner. Hitting Reply on a note about
+    // somebody's deal and having it land in a third party's personal inbox is
+    // both a lost message and a disclosure; sendOutboundEmail's default is
+    // right for leads and wrong here.
+    sendOutboundEmail(to, subject, text, { replyTo: authorEmail });
+  }
+
+  // Stamped for everybody the loop DISPATCHED to, in one write.
+  //
+  // Not for everybody Resend accepted, and the difference is deliberate:
+  // sendOutboundEmail is not awaited above, so at this point nothing knows
+  // which sends succeeded. Stamping anyway means a permanently bad address is
+  // attempted once per absence rather than re-attempted on every note, which
+  // is the behaviour worth having when the alternative is hammering a
+  // bouncing mailbox forever.
+  //
+  // It is written after the loop rather than before it so a crash in between
+  // re-mails somebody instead of silencing them. A duplicate is a nuisance; a
+  // swallowed notification is the bug this whole migration exists to end.
+  //
+  // What this does NOT do is claim anywhere that the mail arrived. No UI reads
+  // this table and nothing is withheld on the strength of it — #174's lesson
+  // taken before the bug rather than after it.
+  try {
+    await sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+      due.map((email) => ({ hub_id: hub.id, email, notified_at: now })),
+      { prefer: "resolution=merge-duplicates,return=minimal" });
+  } catch (err) {
+    console.error("Hub notify stamp failed:", err.message);
+  }
+  // `source` records WHICH KIND of note went out rather than how many people
+  // it reached: the useful question later is whether per-comp threads or the
+  // hub-level one is what people actually answer.
+  logEvent("hub_note_email", { market: hub.market || "", source: itemAddress ? "comp" : "hub" });
+}
+
 async function listHubsForOwner(userId) {
   return (await sbRequest("GET",
     `hubs?owner_user_id=eq.${encodeURIComponent(userId)}` +
@@ -4611,12 +5037,23 @@ function notifyByEmail(subject, fields) {
 // deployment resolves FALSE rather than throwing: "we did not send it" and
 // "we tried and it bounced" are the same fact to a caller deciding whether to
 // show somebody a link they must now copy by hand.
-async function sendOutboundEmail(to, subject, text) {
+// replyTo DEFAULTS to the site owner and is overridable, which it was not
+// until hub note emails needed it. The default is right for a lead or a
+// broker introduction — those genuinely are conversations with CompNinja.
+// It is wrong for mail that relays one person's words to another: a tenant
+// who reads "Sarah left a note" and hits Reply expects Sarah, and sending
+// that reply to a third party's personal inbox loses the message and
+// discloses the deal in the same click. Pass the human when there is one.
+async function sendOutboundEmail(to, subject, text, { replyTo } = {}) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
     return false;
   }
-  return sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
+  return sendEmail(to, subject, text, {
+    from: EMAIL_FROM,
+    replyTo: replyTo || LEAD_NOTIFY_EMAIL,
+    html: EMAILSHELL.renderEmailHtml(subject, text),
+  });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -8231,9 +8668,13 @@ ${ACCOUNT_NAV_CSS}`;
 // "Markets" left this list 2026-08-21 (owner's call): the app page links
 // /markets from an "Our markets" line under the Market Explorer's own input
 // instead, and every server-rendered page keeps its footer /markets link.
+// "Brokers" and "How it works" left it 2026-08-25 (owner's call), the same
+// way: both pages keep their footer link on every surface (MARKET_FOOTER and
+// index.html's footer), and index.html's landing header still links both
+// directly, so nothing became unreachable -- the menu just stopped carrying
+// them. Removing a link from HERE is the whole edit: the app menu and every
+// server-rendered header are rendered from this list.
 const NAV_LINKS = [
-  ["/brokers", "Brokers"],
-  ["/how-it-works", "How it works"],
   ["/1031-exchange", "1031 Guide"],
   // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
@@ -10721,7 +11162,7 @@ const HOW_FAQ = [
   // are the numbers being charged; a test in public-pages.test.js now pins
   // the two retired claims out.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $129 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $100 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. Firms can put a whole office on one plan at $79 a seat, minimum two seats."],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -11146,11 +11587,13 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `<p>The Service sets a small number of essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
     `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
     `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
-    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
-    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another; and, only ` +
+    `for the duration of a sign-in with Google, <code>cn_gstate</code>, a short-lived httpOnly cookie that ` +
+    `protects that sign-in against forgery and expires within minutes. The ` +
+    `<code>cn_vid</code> identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
     `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
     `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
     `None of these cookies is used for advertising ` +
@@ -15615,6 +16058,123 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- "Continue with Google" — the OAuth door -----------------------------
+  // GET /auth/google hands the visitor to Google's consent screen with a
+  // one-shot state nonce; the callback exchanges the code for an id_token,
+  // validates its claims (google-auth.js owns what a token must prove), and
+  // signs the visitor in — finding the account by VERIFIED email, or creating
+  // one. Identity is the email (018's decision), so there is no migration
+  // behind this: a Google sign-in lands on the same users row a password
+  // sign-in does, and every later read (desk, vault, entitlements) is
+  // unchanged by how the session was minted.
+  //
+  // A Google-created account gets a RANDOM password hash, never an empty one:
+  // POST /api/account/login answers it "Incorrect email or password" like any
+  // wrong guess, and the existing forgot-password flow is how such an account
+  // gains a password later — the reset email goes to the address Google
+  // verified, so the inbox's owner is always senior. That is also the honest
+  // answer to the classic pre-hijack worry (signup does not verify email, so
+  // a stranger could park a password account on someone else's address before
+  // they first arrive via Google): the true owner can always take the account
+  // over through reset, and the stranger never reads anything sent to it.
+  //
+  // Every failure exits to /?auth=signin&gerr=1 — the account modal opens
+  // with a one-line explanation and the password door is right there. No
+  // Google error text ever reaches the visitor (upstreamError's rule: a
+  // vendor's errors are written for us, never for a customer).
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) {
+      return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+    }
+    const state = crypto.randomBytes(16).toString("hex");
+    res.setHeader("set-cookie", gstateCookie(req, state, 600));
+    res.writeHead(302, {
+      location: GAUTH.authUrl({ clientId: GOOGLE_OAUTH_CLIENT_ID, redirectUri: oauthRedirectUri(req), state }),
+      "cache-control": "no-store",
+    });
+    return res.end();
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google/callback") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    // The one-shot nonce is cleared on every exit, success included.
+    const clearState = gstateCookie(req, "", 0);
+    const fail = () => {
+      res.setHeader("set-cookie", clearState);
+      res.writeHead(302, { location: "/?auth=signin&gerr=1", "cache-control": "no-store" });
+      res.end();
+    };
+    (async () => {
+      if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) return fail();
+      const q = new URLSearchParams(req.url.split("?")[1] || "");
+      const code = q.get("code") || "";
+      const state = q.get("state") || "";
+      const cookieState = parseCookies(req)[GSTATE_COOKIE] || "";
+      // The CSRF check: proceed only when Google echoes the nonce THIS
+      // browser was handed. A missing cookie is a stale or forged link.
+      if (!code || !state || !cookieState || state !== cookieState) return fail();
+      // The code exchange — server-to-server, authenticated with the client
+      // secret, which is why the id_token's claims are trusted without a
+      // signature check (google-auth.js's header carries the full argument).
+      let idToken = "";
+      try {
+        const r = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+            redirect_uri: oauthRedirectUri(req),
+            grant_type: "authorization_code",
+          }).toString(),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (r.ok) idToken = String(((await r.json()) || {}).id_token || "");
+        else console.warn("Google token exchange refused (" + r.status + ")");
+      } catch (err) { console.warn("Google token exchange failed:", err && err.message); }
+      const checked = GAUTH.validateGoogleClaims(
+        GAUTH.parseIdTokenClaims(idToken), { clientId: GOOGLE_OAUTH_CLIENT_ID, now: Date.now() });
+      if (!checked.ok) {
+        if (idToken) console.warn("Google sign-in refused:", checked.reason);
+        return fail();
+      }
+      let user = await findUserByEmail(checked.email);
+      if (!user) {
+        user = await createUser({
+          email: checked.email,
+          // Random, never empty — see the header comment above.
+          password_hash: await hashPassword(crypto.randomBytes(32).toString("base64url")),
+          name: checked.name,
+        });
+        // The same PII-free event kinds the password doors log, so the
+        // /admin visitor funnel counts a Google signup as a signup; source
+        // is a real analytics column and records which door it was.
+        logEvent("signup", { source: "google" });
+        console.log("Account created via Google: " + checked.email);
+      } else {
+        logEvent("login", { source: "google" });
+      }
+      const token = await createSession(user.id);
+      // Two cookies in one response — setSessionCookie would REPLACE the
+      // state clear, so the two strings ride together as an array.
+      res.setHeader("set-cookie", [clearState, sessionCookie(req, token, Math.floor(SESSION_TTL_MS / 1000))]);
+      res.writeHead(302, { location: "/", "cache-control": "no-store" });
+      res.end();
+    })().catch((err) => {
+      console.error("Google callback failed:", err);
+      fail();
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/account/me") {
     getSessionUser(req).then((user) => {
       if (!user) return sendJson(res, 401, { error: "Not signed in." });
@@ -16078,7 +16638,8 @@ const server = http.createServer((req, res) =>
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at,
+        { withDemand: true });
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
@@ -16342,6 +16903,100 @@ const server = http.createServer((req, res) =>
       }));
     })().catch((err) => {
       console.error("unsubscribe error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
+    return;
+  }
+
+  // --- Turn hub note emails off (migration 040) -----------------------------
+  //
+  // The same shape as /watchlist/unsubscribe above, and the same two-click
+  // rule for the same reason: corporate mail scanners and link-preview bots
+  // fetch every URL in an email, so a GET that unsubscribed would opt people
+  // out of mail they never opened. The token makes the link unguessable;
+  // nothing makes it un-prefetchable.
+  //
+  // Keyed on the ADDRESS rather than a user id, which is the one real
+  // difference from the watchlist version. A tenant reads a hub on an invite
+  // token and may have no account at all, and that is exactly the person most
+  // likely to want out. An unsubscribe that required signing in would be
+  // offering the off switch to everybody except the people who need it.
+  // The path has THREE segments on purpose. The hub page route matches
+  // /hub/<id> where an id is 6 to 32 characters of [A-Za-z0-9_-], and
+  // "unsubscribe" is eleven of them — so /hub/unsubscribe would be shadowed by
+  // whichever route the handler reached first, and a hub that happened to be
+  // given that id would become unreachable. A slash the id pattern cannot
+  // contain settles it without depending on the order of two ifs.
+  if (req.url.split("?")[0] === "/hub/notes/unsubscribe" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const email = HUB.normalizeEmail(q.get("e") || "");
+      const resubscribe = q.get("on") === "1";
+      const link = (on) => `/hub/notes/unsubscribe?e=${encodeURIComponent(email)}&amp;t=${hubNotifyMac(email)}${on ? "&amp;on=1" : ""}`;
+      if (!hubNotifyTokenValid(email, q.get("t"))) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: "Link not recognized | CompNinja",
+          description: "This unsubscribe link could not be verified.",
+          noindex: true,
+          body: `<div class="wrap"><h1>This link is not recognized</h1>` +
+            `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
+            `Reply to any CompNinja email and we will turn these off for you.</p></div>`,
+        }));
+      }
+      if (req.method === "POST") {
+        // No database, no preference to write, and it says so. A cheerful
+        // "that's done" over a write that never happened is the exact shape
+        // of the lie #174 was about, and it is worse here: somebody who
+        // believes they unsubscribed and keeps getting mail has no reason to
+        // try the link a second time.
+        //
+        // Checked on the POST and not on the GET, so the confirmation page
+        // still renders (and stays testable) on a server with no database.
+        if (!DB_CONFIGURED) {
+          res.writeHead(503, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+          return res.end(marketShell({
+            title: "Could not save that | CompNinja",
+            description: "Hub email preference could not be saved.",
+            noindex: true,
+            body: `<div class="wrap"><h1>We could not save that just now</h1>` +
+              `<p>Please try the link again in a minute. If it still will not save, reply to any CompNinja email ` +
+              `and we will turn these off for you.</p></div>`,
+          }));
+        }
+        await setHubNotifyPref(email, resubscribe);
+        logEvent("hub_note_email_optout", { source: resubscribe ? "on" : "off" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: (resubscribe ? "Note emails turned back on" : "Note emails turned off") + " | CompNinja",
+          description: "Hub email preference updated.",
+          noindex: true,
+          body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
+            `<p>${resubscribe
+              ? "You will get an email when somebody leaves a note on comps that were shared with you."
+              : "You will not get another email about notes. Nothing else changes: every hub you were invited to is still open to you, " +
+                "the notes are all still there, and you can read and reply any time."}</p>` +
+            `<p><a href="${link(!resubscribe)}">${resubscribe ? "Turn them off again" : "Turn them back on"}</a>` +
+            ` &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+        }));
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+      return res.end(marketShell({
+        title: (resubscribe ? "Turn note emails back on?" : "Turn off note emails?") + " | CompNinja",
+        description: "Confirm your hub email preference.",
+        noindex: true,
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off note emails?"}</h1>` +
+          `<p>${resubscribe
+            ? "You will get an email when somebody leaves a note on comps that were shared with you."
+            : "You will stop getting an email when somebody leaves a note on comps that were shared with you. " +
+              "Nothing else changes: every hub you were invited to stays open to you, and the notes stay where they are."}</p>` +
+          `<form method="POST" action="${link(resubscribe)}">` +
+          `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
+          `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
+      }));
+    })().catch((err) => {
+      console.error("hub unsubscribe error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
       res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
     });
@@ -19288,8 +19943,20 @@ const server = http.createServer((req, res) =>
           }
           const roster = (await orgMemberRows(String(orgId))).filter((r) => !r.removed_at);
           const asked = Math.floor(Number(seats) || 0);
-          if (!Number.isFinite(asked) || asked < 1 || asked > ORG.MAX_MEMBERS) {
-            return sendJson(res, 400, { error: `Choose between 1 and ${ORG.MAX_MEMBERS} seats.` });
+          if (!Number.isFinite(asked) || asked < ORG.MIN_SEATS || asked > ORG.MAX_MEMBERS) {
+            return sendJson(res, 400, {
+              error: `Choose between ${ORG.MIN_SEATS} and ${ORG.MAX_MEMBERS} seats.`,
+              // Named separately from the range failure it shares a branch
+              // with, because only one of the two is a rule somebody can
+              // disagree with: a firm plan starts at ORG.MIN_SEATS seats, and
+              // the reason is in that constant's comment (a one-seat firm
+              // plan is a cheaper Pro, not a firm). A caller that asked for
+              // zero or nonsense gets the same sentence and does not need the
+              // distinction.
+              ...(asked >= 1 && asked < ORG.MIN_SEATS
+                ? { code: "seats_below_minimum", minimum: ORG.MIN_SEATS }
+                : {}),
+            });
           }
           // Refused rather than silently accepted, because the consequence of
           // buying too few is that named colleagues lose Pro the moment the
@@ -19369,7 +20036,21 @@ const server = http.createServer((req, res) =>
         // original session instead. Keys and Checkout sessions both lapse 24h
         // after creation, so the key can never outlive the session it returns.
         // Subscriptions pass undefined and keep their previous behaviour.
-        reportId ? `single:${user.id}:${reportId}` : undefined);
+        // No idempotency key. Every remaining plan is a SUBSCRIPTION, and
+        // subscriptions have always passed undefined here.
+        //
+        // This argument used to read `reportId ? `single:${user.id}:${reportId}`
+        // : undefined`, keyed for the $20 single-report unlock. That plan was
+        // retired on 2026-08-21 and its `reportId` variable went with it -- but
+        // this reference did not, and a bare undeclared identifier is a
+        // ReferenceError, not undefined. So from that day every checkout that
+        // got as far as calling Stripe threw, and /api/checkout answered 502
+        // "Could not start checkout" to every would-be subscriber. It was found
+        // on 2026-08-26 by trying to buy something, which is the only thing
+        // that could have found it: every checkout test in the suite is a
+        // refusal that returns before this line. See STRIPE_API_URL in
+        // stripe.js for the override that now lets a test reach it.
+        undefined);
         return sendJson(res, 200, { url: session.url, id: session.id });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -19542,6 +20223,10 @@ const server = http.createServer((req, res) =>
         guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
+        // Whether "Continue with Google" can work here, so the account
+        // modal offers the button only where clicking it can succeed (the
+        // Buy-button rule). Presentation only — the routes 404 on their own.
+        googleAuth: GOOGLE_OAUTH_CONFIGURED,
         pro: {
           enabled: on,
           // Checkout and the portal both 503 unless Stripe is configured too,
@@ -21382,6 +22067,14 @@ const server = http.createServer((req, res) =>
             getHubMessages(id, since),
           ]);
           if (g.participant) stampHubView(g.participant.id);
+          // The notifier's own presence stamp (040). Separate from
+          // stampHubView above because that one is keyed on a participant row,
+          // and the hub OWNER does not have one — the broker would otherwise
+          // be the only person whose reading never re-armed their nudge.
+          //
+          // A poll counts, deliberately: a poll only fires from a tab that is
+          // open and visible, which is the definition of being here.
+          stampHubSeen(id, (g.user && g.user.email) || (g.participant && g.participant.email));
 
           return sendJson(res, 200, {
             hub: {
@@ -21693,11 +22386,17 @@ const server = http.createServer((req, res) =>
           // rather than trusted, or a message could be filed against an item
           // in a hub the author cannot read.
           let itemId = null;
+          // The snapshot rides along only so the notification can name the
+          // building. "Someone left a note" with no address attached is the
+          // version of this email that gets ignored, and the address is
+          // already in the row being read to authorize the write.
+          let itemAddress = "";
           if (b.itemId) {
             const owned = await sbRequest("GET",
-              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
+              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id,snapshot&limit=1`);
             if (!owned || !owned[0]) return sendJson(res, 400, { error: "That comp is not in this hub." });
             itemId = owned[0].id;
+            itemAddress = String((owned[0].snapshot && owned[0].snapshot.address) || "").trim();
           }
 
           const saved = await sbRequest("POST", "hub_messages?select=id,created_at", [{
@@ -21711,7 +22410,26 @@ const server = http.createServer((req, res) =>
           }], { prefer: "return=representation" });
           touchHub(id);
           if (g.participant) stampHubView(g.participant.id);
+          // Posting is being here, so the author re-arms too. Without this a
+          // broker who only ever writes would stay permanently "away" and
+          // collect a mail for every reply, which is the one pattern
+          // guaranteed to make somebody switch this off.
+          stampHubSeen(id, g.user.email);
           logEvent("hub_message", { market: g.hub.market || "", source: g.decision.role });
+
+          // Tell the others. NOT awaited and deliberately so: the note is
+          // already saved, the author is about to be told it saved, and a mail
+          // provider having a bad afternoon must never turn a posted note into
+          // an error. It swallows its own failures for the same reason.
+          sendHubNoteEmails({
+            hub: g.hub,
+            participants: g.participants,
+            authorEmail: HUB.normalizeEmail(g.user.email),
+            authorName: g.user.name || "",
+            body,
+            itemAddress,
+          }).catch((err) => console.error("Hub note email failed:", err.message));
+
           return sendJson(res, 201, {
             ok: true,
             message: {

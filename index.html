@@ -1246,6 +1246,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-mkt:last-child { border-bottom: 0; }
     .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
+    /* The search-demand line. Vars, not literals, so it follows dark mode with
+       everything else on the card rather than needing its own override. */
+    .dk-dem { font-size: 11px; color: var(--ink-3); margin-top: 6px; }
+    .dk-dem strong { color: var(--ink); font-weight: 600; }
     .dk-crow { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--ink-body); padding: 4px 0; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
     .dk-crow:last-child { border-bottom: 0; }
     /* The deal board (O3). One row shape for all three lists — leaderboard,
@@ -1492,6 +1496,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="acctInfo" class="hidden text-sm text-[#4C5665]"></p>
         <button id="acctSubmit" type="submit"
           class="btn-live w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg disabled:opacity-60">Sign in</button>
+        <!-- "Continue with Google". Ships hidden; revealed only when
+             /api/config says this deployment has Google sign-in configured
+             AND the modal is on a tab where it applies (the Buy-button rule:
+             a control that can only fail never renders). A plain anchor, not
+             a JS submit — the whole flow is server redirects
+             (/auth/google -> Google -> the callback), so there is nothing
+             for script to do here. -->
+        <div id="acctGoogleRow" class="hidden">
+          <p class="text-center text-xs text-[#9AA2AD]">or</p>
+          <a id="acctGoogle" href="/auth/google"
+            class="mt-2 w-full flex items-center justify-center gap-2 border border-[#D8D4C9] rounded-lg px-4 py-2 font-semibold text-[#374253] hover:bg-[#F5F4EF]">
+            <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            Continue with Google
+          </a>
+        </div>
         <div class="flex items-center justify-between text-sm">
           <button id="acctForgotLink" type="button" class="text-[#68707E] hover:text-[#374253]">Forgot password?</button>
           <button id="acctCancel" type="button" class="text-[#68707E] hover:text-[#374253]">Not now</button>
@@ -1550,7 +1574,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Pro monthly -->
         <div class="rd-lcell mid pr-cell">
           <span class="rd-lab">Pro</span>
-          <div class="pr-fig">$129</div>
+          <div class="pr-fig">$100</div>
           <div class="pr-per">per month &middot; cancel any time</div>
           <!-- Sell only what ships. Report branding was held off this list
                while it was a real entitlement in entitlements.js with no UI
@@ -1587,11 +1611,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <!-- Founding annual. Hidden unless seats remain. -->
         <div id="foundingTile" class="hidden rd-lcell pr-cell">
           <span class="rd-lab">Founding</span>
-          <div class="pr-fig">$990</div>
-          <!-- $129 x 12 = $1,548 against $990. Recompute this figure if EITHER
+          <div class="pr-fig">$840</div>
+          <!-- $100 x 12 = $1,200 against $840. Recompute this figure if EITHER
                price changes — both are hard-coded here while the actual charge
-               comes from the Stripe price IDs, so nothing catches a drift. -->
-          <div class="pr-per">per year &middot; saves $558</div>
+               comes from the Stripe price IDs, so nothing catches a drift.
+               (Was $990 against $129/mo, "saves $558", until 2026-08-25: the
+               monthly price came down to $100 and $990 would have left the
+               founding tile saving only $210, i.e. a worse deal wearing the
+               same word.) The monthly figure above is pinned to the /how-it-
+               works FAQ answer by test/public-pages.test.js; this one is not
+               pinned to anything, so check the arithmetic by hand. -->
+          <div class="pr-per">per year &middot; saves $360</div>
           <p class="pr-sum">Everything in Pro, locked at this rate for as long as you stay subscribed.</p>
           <span id="foundingLeft" class="text-[11px] font-semibold text-[#B91C1C] uppercase tracking-wide"></span>
           <button type="button" data-plan="pro_annual_founding"
@@ -1648,7 +1678,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
           </tbody>
           <tfoot>
-            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$129</span></td></tr>
+            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$100</span></td></tr>
           </tfoot>
         </table>
       </div>
@@ -4935,6 +4965,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
+    // The startup half of the Google-button reveal — refreshProConfig covers
+    // every LATER re-read (sign-in, sign-out, checkout return), but the
+    // anonymous visitor staring at the ?auth= modal gets their answer here.
+    googleAuthLive = Boolean(cfg.googleAuth);
+    syncGoogleBtn();
     renderGuestSearchHint();
     applyLookbackGating();
     // Safe here despite initGate() being called near the top of the script:
@@ -11495,6 +11530,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let pendingMarketExplore = null;  // {type, city, state} the guest gate refused; resumes after sign-in
   let runPendingMarketExplore = null; // assigned by the Market Explorer IIFE (explore() is private to it)
   let acctMode = "signin";          // signin | signup | forgot | reset
+  // "Continue with Google" — revealed only once /api/config confirms the
+  // deployment has it configured, and only on the two tabs where signing in
+  // is what the modal is doing (a reset form offering a Google button would
+  // be a different action mid-flow).
+  let googleAuthLive = false;
+  function syncGoogleBtn() {
+    const row = document.getElementById("acctGoogleRow");
+    if (row) row.classList.toggle("hidden", !(googleAuthLive && (acctMode === "signin" || acctMode === "signup")));
+  }
   let resetToken = "";
   // Pricing deep link from a server-rendered header or /brokers. ?pricing=1
   // is the live door (a fragment never reaches the server, so the wall could
@@ -11672,6 +11716,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       (mode === "signup" ? "border-brand-600 font-medium text-[#1A2433]" : "border-transparent text-[#68707E] hover:text-[#1A2433]");
     document.getElementById("acctError").classList.add("hidden");
     document.getElementById("acctInfo").classList.add("hidden");
+    syncGoogleBtn();
   }
 
   function openAcctModal(mode, nudge) {
@@ -12166,6 +12211,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         : viaExplore
           ? "Create a free account to get started. Browsing whole markets is part of Pro; free reports work on any single address."
           : "Create a free account to run a report. It's free, no card needed.");
+      // The Google callback's failure exit (gerr=1). Written AFTER the modal
+      // opens because setAcctMode just cleared acctError. Deliberately one
+      // generic line — the server never forwards Google's own error text
+      // (upstreamError's rule), and the password door is right here.
+      if (new URLSearchParams(location.search).get("gerr")) {
+        const ge = document.getElementById("acctError");
+        ge.textContent = "Google sign-in didn't complete. Try again, or use your email and password.";
+        ge.classList.remove("hidden");
+      }
     }
     try {
       var pendingAddr = sessionStorage.getItem("pendingLandingAddress.v1");
@@ -12691,6 +12745,49 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       right.appendChild(un);
       head.appendChild(title); head.appendChild(right);
       box.appendChild(head);
+      // --- Search demand ----------------------------------------------------
+      // How many people looked at this market lately. Pro only, and the server
+      // decides that: `demand` is the figure, `demand_locked` is what a free
+      // account gets instead, and neither is present unless the feed offered
+      // one. Never compute or infer this from anything else on the page.
+      //
+      // Two copy rules the server's rules force onto this line: it says
+      // "people" from `viewers` and "searches" from `searches` and never
+      // swaps them, and it says nothing about WHO — the payload carries counts
+      // and no identity, by design.
+      if (w.demand) {
+        const d = document.createElement("div");
+        d.className = "dk-dem";
+        d.title = "Searches of this market by other people over the last "
+          + w.demand.window_days + " days. Your own searches are not counted.";
+        const people = Number(w.demand.viewers) || 0;
+        const runs = Number(w.demand.searches) || 0;
+        const inType = Number(w.demand.in_type) || 0;
+        if (!runs) {
+          d.textContent = "No one searched this market in the last " + w.demand.window_days + " days.";
+        } else {
+          const noun = people === 1 ? "person" : "people";
+          d.innerHTML = runs === people
+            ? `<strong>${people}</strong> ${noun} searched this market in the last ${w.demand.window_days} days`
+            : `<strong>${people}</strong> ${noun} ran <strong>${runs}</strong> searches here in the last ${w.demand.window_days} days`;
+          // Only when it is a real subset. "6 of them Industrial" on a card
+          // that is already Industrial and where every search was Industrial
+          // is a sentence that tells the reader nothing.
+          if (inType > 0 && inType < runs) {
+            d.innerHTML += `, ${inType} of them ${w.property_type}`;
+          }
+          d.innerHTML += ".";
+        }
+        box.appendChild(d);
+      } else if (w.demand_locked) {
+        const d = document.createElement("div");
+        d.className = "dk-dem";
+        // .unlock-comps-btn is the one sanctioned door to the pricing modal.
+        // Do not add a second prompt here.
+        d.innerHTML = "Pro shows how many people searched this market. "
+          + '<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">See Pro plans</button>';
+        box.appendChild(d);
+      }
       if (w.comps.length) {
         const label = document.createElement("div");
         label.className = "dk-new";
@@ -13662,10 +13759,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // firm already has would drop named colleagues to free the moment the
     // webhook lands, which is a downgrade nobody in the room asked for. The
     // server refuses it too, by name and with the number.
-    const asked = prompt(`How many seats? Your firm has ${b.used} people, including invitations.`, String(Math.max(b.used, b.seats === 200 ? b.used : b.seats)));
+    // MIRRORS org-access.js's ORG.MIN_SEATS — this file cannot require it, so
+    // test/index-html.test.js pins the two together. A courtesy only: the
+    // route refuses below the minimum itself (`seats_below_minimum`), and a
+    // browser that edits this number gets a 400 rather than a cheap plan.
+    const MIN_SEATS = 2;
+    const asked = prompt(`How many seats? Your firm has ${b.used} people, including invitations. A firm plan starts at ${MIN_SEATS} seats.`, String(Math.max(MIN_SEATS, b.used, b.seats === 200 ? b.used : b.seats)));
     if (asked == null) return;
     const seats = Math.floor(Number(asked));
-    if (!seats || seats < 1) { msg.textContent = "Enter a number of seats."; return; }
+    if (!seats || seats < MIN_SEATS) { msg.textContent = `A firm plan starts at ${MIN_SEATS} seats.`; return; }
     msg.textContent = "Opening checkout…";
     try {
       const res = await fetch("/api/checkout", {
@@ -15968,7 +16070,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       proConfigResolved = true;   // a real answer, not the boot-time default
       // Absent for signed-in visitors, so signing in clears the hint here.
       guestSearch = cfg.guestSearch || null;
+      // Static per deployment; read on every re-fetch so a modal already
+      // open when the first answer lands still gains the button.
+      googleAuthLive = Boolean(cfg.googleAuth);
     } catch (_) { /* keep the last known answer */ }
+    syncGoogleBtn();
     renderGuestSearchHint();
     refreshBillingUI();
     applyLookbackGating();

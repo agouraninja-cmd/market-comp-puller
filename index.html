@@ -282,6 +282,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       [data-theme="dark"] .leaflet-bar a:hover { background: var(--wash) }
       [data-theme="dark"] .leaflet-popup-content-wrapper,
       [data-theme="dark"] .leaflet-popup-tip { background: var(--card); color: var(--ink) }
+      /* Tooltips, the piece both blocks missed until the /markets momentum map
+         gave a Leaflet layer a tooltip instead of a popup: leaflet.css paints
+         them #fff with a white arrow, so every hover on a dark page was a
+         white card. The four arrow rules are separate selectors because each
+         direction colours a different border edge. */
+      [data-theme="dark"] .leaflet-tooltip { background: var(--card); color: var(--ink); border-color: var(--edge) }
+      [data-theme="dark"] .leaflet-tooltip-top:before { border-top-color: var(--card) }
+      [data-theme="dark"] .leaflet-tooltip-bottom:before { border-bottom-color: var(--card) }
+      [data-theme="dark"] .leaflet-tooltip-left:before { border-left-color: var(--card) }
+      [data-theme="dark"] .leaflet-tooltip-right:before { border-right-color: var(--card) }
       /* Three pieces of Leaflet chrome the block above missed. The container
          is the loud one: leaflet.css paints it #ddd, so a light grey slab
          the size of the whole map shows through every tile gap and for the

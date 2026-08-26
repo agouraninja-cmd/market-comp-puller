@@ -7739,6 +7739,11 @@ const LEAFLET_DARK_CSS = `
 [data-theme="dark"] .leaflet-popup-content-wrapper,
 [data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
 [data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+[data-theme="dark"] .leaflet-tooltip{background:var(--card);color:var(--ink);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-tooltip-top:before{border-top-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-bottom:before{border-bottom-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-left:before{border-left-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-right:before{border-right-color:var(--card)}
 `;
 
 const FOOTER_DARK_CSS = `
@@ -8109,6 +8114,10 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mmap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-3)}
 .mml{display:inline-flex;align-items:center;gap:6px}
 .mml-s{width:10px;height:10px}
+/* The click hint can be a plain server-rendered line because a pin click is
+   never a dead end: with the boundary file unreachable the same card still
+   opens, just without the shape, so the hint's promise holds either way. */
+.mmap-hint{font-style:italic}
 /* Market page city hero. The photograph does not theme (same rule as Street
    View and aerial thumbs): it is a picture of a place. Overlay and caption
    stay literal dark/white so the title reads on any photo, in either theme. */
@@ -8862,7 +8871,7 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // a whitelist stays inert even if that ever stops being true.
   var DIR_CLASS = { expanding: "mmap-pin-expanding", flat: "mmap-pin-flat", contracting: "mmap-pin-contracting" };
   var DIR_WORD = { expanding: "Expanding", flat: "Flat", contracting: "Contracting" };
-  var bounds = [], markersByKey = {};
+  var bounds = [];
   pins.forEach(function (p) {
     var cls = DIR_CLASS[p.dir] || "mmap-pin-none";
     var label = p.type + " \\u00b7 " + p.city + ", " + p.state;
@@ -8881,31 +8890,33 @@ const MARKETS_DIR_MAP_JS = `(function(){
     m.bindTooltip(esc(label) + " \\u2014 Median $" + Number(p.median).toLocaleString() + "/SF" +
       (DIR_WORD[p.dir] ? " \\u00b7 " + DIR_WORD[p.dir] : ""));
     // Leaflet fires click on Enter for a keyboard-focused marker, so this one
-    // handler covers both mouse and keyboard.
-    m.on("click", function () { window.location.href = "/market/" + p.slug; });
-    (markersByKey[p.key] = markersByKey[p.key] || []).push(m);
+    // handler covers both mouse and keyboard. The click OPENS the city —
+    // carved boundary plus a card of market links — rather than navigating:
+    // the market page is one more click away, inside that card.
+    m.on("click", function () { openCity(p.key, [p.lat, p.lng]); });
     bounds.push([p.lat, p.lng]);
   });
   // maxZoom caps the fit so two nearby pins don't zoom to street level.
   map.fitBounds(bounds, { padding: [30, 30], maxZoom: 6 });
 
-  // THE CARVED LAYER. Past AREA_MIN_ZOOM the pins of any city with a stored
-  // municipal boundary give way to that city's real shape, colored by the one
-  // claim the server computed for it (momentum, market-area.js): solid for
-  // agreement, the Mixed style where its markets disagree, a dashed outline
-  // with almost no fill for a city with no current read. Each rendering is
-  // honest at the altitude where it is legible — a real city limit is a
-  // speck from national zoom, and a pin is a blunt claim over a whole city
-  // once the city fills the screen.
+  // CLICK A PIN, SEE THE CITY. A pin click flies to the city, reveals its
+  // real municipal boundary colored by the one claim that shape may make
+  // (momentum, market-area.js — solid for agreement, the Mixed style where
+  // its markets disagree, a dashed outline for a city with no current read),
+  // and opens a card listing every market there, each a link to its market
+  // page. The pins stay at every zoom: they are the navigation and the
+  // keyboard/screen-reader surface, and the boundary is the click's ANSWER,
+  // never a zoom threshold's side effect. Revealed cities stay revealed —
+  // clicking around the map builds up the momentum picture.
   //
-  // The ~200KB of geometry is lazy-fetched, and every failure path leaves the
-  // pins standing at all zooms: no fetch, no entry for a city, bad JSON —
-  // the map simply stays what it was before this layer existed. Keyboard and
-  // screen-reader access ride the pins and the card grid; the carved shapes
-  // are presentation over the same links.
-  var AREA_MIN_ZOOM = 7;
+  // The ~110KB of geometry is bought on the FIRST CLICK, not on page load
+  // (most visitors never ask for a boundary), and every failure path — no
+  // fetch, no entry for this city, bad JSON — degrades to the same card
+  // without a shape. A click is never a dead end.
   var areas = (data && data.areas) || [];
-  var areaGroup = L.layerGroup(), areaLayers = [], coveredKeys = {}, built = false;
+  var areasByKey = {};
+  areas.forEach(function (a) { areasByKey[a.key] = a; });
+  var revealed = {}, revealedList = [], boundsPromise = null;
   function tok(name, fallback) {
     var v = "";
     try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
@@ -8923,48 +8934,55 @@ const MARKETS_DIR_MAP_JS = `(function(){
     var n = tok("--ink-3", "#64748B");
     return { color: n, weight: 1.5, opacity: 0.8, dashArray: "4 4", fillColor: n, fillOpacity: 0.06 };
   }
-  function applyZoom() {
-    var carved = built && map.getZoom() >= AREA_MIN_ZOOM;
-    if (carved && !map.hasLayer(areaGroup)) map.addLayer(areaGroup);
-    if (!carved && map.hasLayer(areaGroup)) map.removeLayer(areaGroup);
-    Object.keys(coveredKeys).forEach(function (k) {
-      (markersByKey[k] || []).forEach(function (m) {
-        if (carved && map.hasLayer(m)) map.removeLayer(m);
-        if (!carved && !map.hasLayer(m)) map.addLayer(m);
-      });
+  function loadBounds() {
+    if (!boundsPromise) {
+      boundsPromise = fetch("/city-bounds.json")
+        .then(function (r) { return r.json(); })
+        .catch(function () { return null; });
+    }
+    return boundsPromise;
+  }
+  // The card a click opens: the city, then one line per market — the TYPE is
+  // the link (that is the market page's identity), the direction word and
+  // median beside it. An unread market says so in words rather than being
+  // silently undecorated.
+  function cityCard(a) {
+    var lines = ["<b>" + esc(a.city + ", " + a.state) + "</b>"];
+    a.markets.forEach(function (m) {
+      lines.push('<div><a href="/market/' + esc(m.slug) + '">' + esc(m.type) + "</a> \\u2014 " +
+        (DIR_WORD[m.dir] || "no recent read") + " \\u00b7 $" + Number(m.median).toLocaleString() + "/SF</div>");
+    });
+    return lines.join("");
+  }
+  function openCity(key, latlng) {
+    var a = areasByKey[key];
+    if (!a) return;
+    loadBounds().then(function (cityBounds) {
+      var b = cityBounds && cityBounds[key];
+      if (b && b.geometry && !revealed[key]) {
+        var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) }).addTo(map);
+        layer.bindPopup(cityCard(a));
+        revealed[key] = layer;
+        revealedList.push({ layer: layer, momentum: a.momentum });
+        // Theme flips restyle every revealed shape — they hold computed
+        // colors, so nothing else would repaint them. (Re)assigned here so
+        // the observer's null guard holds until a first shape exists.
+        restyle = function () { revealedList.forEach(function (e) { e.layer.setStyle(areaStyle(e.momentum)); }); };
+      }
+      var shape = revealed[key];
+      if (shape) {
+        // maxZoom 11, not tighter: the point is the whole boundary, and a
+        // two-market city's shape should not fill past the screen.
+        map.fitBounds(shape.getBounds(), { padding: [40, 40], maxZoom: 11 });
+        shape.openPopup();
+      } else {
+        // No boundary for this city (or the fetch failed): the card still
+        // opens, anchored to the pin, and the view still comes in close.
+        map.setView(latlng, 10);
+        L.popup().setLatLng(latlng).setContent(cityCard(a)).openOn(map);
+      }
     });
   }
-  map.on("zoomend", applyZoom);
-  fetch("/city-bounds.json").then(function (r) { return r.json(); }).then(function (cityBounds) {
-    areas.forEach(function (a) {
-      var b = cityBounds && cityBounds[a.key];
-      if (!b || !b.geometry) return;
-      var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) });
-      var lines = ["<b>" + esc(a.city + ", " + a.state) + "</b>"];
-      a.markets.forEach(function (m) {
-        lines.push(esc(m.type) + " \\u2014 " + (DIR_WORD[m.dir] || "no recent read") +
-          " \\u00b7 Median $" + Number(m.median).toLocaleString() + "/SF");
-      });
-      layer.bindTooltip(lines.join("<br/>"), { sticky: true });
-      // One market navigates; several open a chooser — sending a click on
-      // Phoenix to whichever of its three markets sorted first would be an
-      // answer nobody asked for.
-      if (a.markets.length === 1) {
-        layer.on("click", function () { window.location.href = "/market/" + a.markets[0].slug; });
-      } else {
-        layer.bindPopup(a.markets.map(function (m) {
-          return '<div><a href="/market/' + esc(m.slug) + '">' + esc(m.type + " \\u00b7 " + a.city) + "</a></div>";
-        }).join(""));
-      }
-      areaGroup.addLayer(layer);
-      areaLayers.push({ layer: layer, momentum: a.momentum });
-      coveredKeys[a.key] = true;
-    });
-    if (!areaLayers.length) return;
-    built = true;
-    restyle = function () { areaLayers.forEach(function (e) { e.layer.setStyle(areaStyle(e.momentum)); }); };
-    applyZoom();
-  }).catch(function () {});
 })();`;
 
 // The market-page CTA's "value a property here" form(s): store the typed
@@ -9996,6 +10014,7 @@ function renderMarketDirectoryHTML(signedIn) {
       `<span class="mml"><span class="mmap-pin mmap-pin-contracting mml-s"></span>Contracting</span>` +
       `<span class="mml"><span class="mmap-pin mmap-pin-mixed mml-s"></span>Mixed</span>` +
       `<span class="mml"><span class="mmap-pin mmap-pin-none mml-s"></span>No recent read</span>` +
+      `<span class="mml mmap-hint">Click a pin to see that city's area and markets</span>` +
       `</div>` +
       (pins.length < slugs.length
         ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`

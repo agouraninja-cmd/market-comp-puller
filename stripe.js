@@ -15,7 +15,24 @@
 
 const crypto = require("crypto");
 
-const STRIPE_API = "https://api.stripe.com/v1";
+// STRIPE_API_URL is TEST-ONLY and unset in production, where Stripe's own
+// endpoint is the live value. It exists for RESEND_API_URL's and
+// SEARCH_API_URL's reason, and this one was earned the hard way: on
+// 2026-08-21 the retired $20 unlock took its `reportId` variable with it and
+// left one reference behind in /api/checkout, so EVERY successful checkout
+// threw ReferenceError for five days while the whole suite stayed green --
+// because every checkout test was a refusal that returned before Stripe was
+// ever called. A suite that cannot reach the call can only assume what
+// happens on the other side of it.
+//
+// Not a secret and authorizes nothing (the secret key still does), but it
+// decides where a billing request is posted, so treat it as trusted config.
+const STRIPE_API = stripBase(process.env.STRIPE_API_URL) || "https://api.stripe.com/v1";
+
+function stripBase(v) {
+  const s = String(v == null ? "" : v).trim();
+  return s ? s.replace(/\/+$/, "") : "";
+}
 
 // Stripe wants form-encoded bodies with bracketed paths for nesting:
 //   { line_items: [{ price: "price_1" }] } -> line_items[0][price]=price_1

@@ -677,11 +677,22 @@ a test pinning the two.
 New live price IDs — **record them here as they are created**:
 
 ```
-STRIPE_PRICE_PRO_MONTHLY          = price_...   # $100/mo        (created 2026-08-25)
-STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_...   # $840/yr        (created 2026-08-25)
-STRIPE_PRICE_FIRM_MONTHLY         = price_...   # $79/seat/mo    (created 2026-08-25)
-                                    price_...   # $1/seat/mo TEMP — archive after the test
+STRIPE_PRICE_PRO_MONTHLY          = price_1U8iOORztxjkvpo5m6v1nAK0   # $100.00/mo
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U8iSERztxjkvpo5ReDQ2YCF   # $840.00/yr
+STRIPE_PRICE_FIRM_MONTHLY         = price_1U8iViRztxjkvpo5mrjCONar   # $79.00/seat/mo  <- the real one
+                                    price_1U8iViRztxjkvpo5DIPhXbGL   # $1.00/seat/mo TEMP, archive after the test
 ```
+
+All four were created live on 2026-08-26. `CompNinja Firm` is a new product,
+`prod_V90WpmtIrSm0Yg`; the two Pro prices were added to the existing products
+(`prod_UzJpxsAE3jlkFD`, `prod_UzJqRs6PpYfqAI`), and the old $129/$990 prices are
+left unarchived until the new ones are proved.
+
+**The migration step turned out to be moot.** Account MRR was $0.00 and both old
+prices showed **0 active subscriptions**, so nobody was on $129 or $990 to move.
+The one live subscription is the E6 test from 2026-08-03 (okb336@gmail.com,
+$1/mo against the archived Pro Monthly $1 price), already set to cancel
+2026-09-03. Re-check before assuming that is still true.
 
 No portal or webhook work: the existing destination and portal configuration
 cover subscriptions generally, and the portal's plan-switching stays OFF (the

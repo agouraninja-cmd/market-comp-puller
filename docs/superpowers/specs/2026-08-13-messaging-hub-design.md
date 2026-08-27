@@ -8,15 +8,40 @@ entries written per ship. The three routes that shipped with no caller
 (`POST /api/hub/items`, `PUT /api/hub/participants`, `POST /api/hub/close`)
 were wired 2026-08-16, so nothing in §6 is now reachable only from a
 console.
-**What is NOT done, as of 2026-08-26:** nobody has driven a hub as two
-people end to end ON PRODUCTION. The tenant WRITE half (status, note, added
-comp) and every control added on 2026-08-16 have never been used by a
-person, and production holds one hub, one comp still at `new`, and zero
-messages.
+**DRIVEN ON PRODUCTION, 2026-08-26.** A broker
+(jacobadler@compninja.co) and a client (agouraninja@gmail.com), in two
+browsers, worked one requirement start to finish: hub created from /vault
+with an emailed invitation, the token link opened it, a vault comp sent
+("1 comp sent" — the ON CONFLICT scar in §6 is genuinely fixed in
+production), the client shortlisted it, added a building of their own,
+notes both ways, and the hub closed. The tenant WRITE half and the
+2026-08-16 controls have now been used by a person. Nothing in the product
+misbehaved. Two things looked like faults and were not, both recorded here
+so the next person does not re-open them: a broker's page left in a
+BACKGROUND window stays stale, which is the deliberate hidden-tab dormancy
+at hub-page.js's `if (document.hidden) return` — bringing the window
+forward woke it and pulled in every change with no reload; and a "Post
+note" click that appeared to do nothing was the automation missing the
+button, since the same click from the page's own context posted fine.
 
-Email invitations are written and dormant — they need `EMAIL_FROM` +
-`RESEND_API_KEY` on Render and a verified Resend domain, which is Jacob's
-to set, not a code change. See §11.
+**What is still NOT driven by a person:** removing a participant and
+re-inviting them (the re-invite mints a NEW token, and the old one must
+stay dead), and watching the BROKER's own window wake — the live refresh
+was observed on the client's side only. Both are covered by
+`test/hub-run.test.js`; neither has been seen on production. The closed
+QA hub cannot be used for them, because participant management is a write
+and a closed hub refuses every write.
+
+**Email invitations are no longer dormant** (observed 2026-08-26). The
+create-hub response took the `emailed: true` branch on production, and that
+branch is `OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0` — it is the
+send's own answer, so both `EMAIL_FROM` and `RESEND_API_KEY` are set on
+Render and Resend accepted the message. §11's "written and waiting" is out
+of date. **What that does NOT prove is delivery to a stranger**: without a
+verified domain Resend only delivers to the address that owns the Resend
+account, and the client in this run was that address. An invitation to a
+real tenant is still unproven, and remains so until somebody sends one to
+an outside address and it lands.
 
 **Every one of those routes IS now driven end to end in software**
 (`test/hub-run.test.js`, 2026-08-26): a broker and a client work one

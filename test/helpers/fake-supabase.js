@@ -64,6 +64,13 @@ function matches(row, key, expr) {
   // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
   // needs this taught properly rather than reused.
   if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
+  // `gt.` is taught deliberately, like `gte.` above and with the same caveat.
+  // The hub's message poll is the caller: GET /api/hub?since=<cursor> asks for
+  // messages STRICTLY after the last one the browser already holds, and
+  // strictly is the point — `gte.` there would replay the previous message on
+  // every poll, so the hub would appear to repeat what people say. STRING
+  // comparison again, correct only for the ISO timestamps this app sends.
+  if (expr.startsWith("gt.")) return String(val) > decodeValue(expr.slice(3));
   // `lte.` is `gte.`'s mirror and is taught for the same reason and with the
   // same caveat: server.js sends it (the renewal watch windows a lease
   // deadline BETWEEN two dates, so it sends both on one column), and the
@@ -93,6 +100,34 @@ function matches(row, key, expr) {
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);
   err.unparsed = true;
   throw err;
+}
+
+// Columns these tables declare as `not null default now()`, filled here when
+// an insert omits them — which every insert in server.js does, because that is
+// what a default is for.
+//
+// Taught deliberately rather than guessed at, like the filters above: without
+// it a posted hub message is stored with NO created_at, and the two things
+// built on that column become unprovable. GET /api/hub returns the last
+// message's created_at as the browser's next cursor, and every hub read orders
+// by it — so a fake that stores nothing reports an unordered thread and a
+// cursor of undefined as working, while production has neither.
+//
+// The clock never repeats a value. Postgres's now() is free to hand two
+// same-transaction inserts one timestamp, but a tie here would make an
+// ordered read and a strictly-after poll ambiguous in the fake and only in the
+// fake — the app never writes two messages in one statement.
+const DEFAULT_NOW = { hub_messages: "created_at", hub_items: "added_at" };
+let lastStamp = 0;
+function nowIso() {
+  const t = Math.max(Date.now(), lastStamp + 1);
+  lastStamp = t;
+  return new Date(t).toISOString();
+}
+function stamp(table, row) {
+  const col = DEFAULT_NOW[table];
+  if (!col || row[col] !== undefined) return row;
+  return { ...row, [col]: nowIso() };
 }
 
 const NON_FILTERS = new Set(["select", "order", "limit", "offset", "on_conflict"]);
@@ -229,7 +264,7 @@ function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
             // and is then 404'd by the caller's own guard on the very next
             // read, which looks like a broken feature and is only a broken
             // fake. Seeded rows keep whatever id the test gave them.
-            const row = { id: crypto.randomUUID(), ...r };
+            const row = { id: crypto.randomUUID(), ...stamp(table, r) };
             tables[table].push(row);
             stored.push(row);
           }

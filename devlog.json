@@ -2,6 +2,12 @@
   {
     "date": "2026-08-26",
     "type": "improvement",
+    "title": "The messaging hub is driven end to end, as two people, in software",
+    "details": "test/hub-run.test.js walks a broker and their client through one requirement against a real server, a stand-in PostgREST and a stand-in Resend: the hub is created, the invitation opens it with no account, a comp is sent out of the vault, the client signs in and shortlists it, adds a building of their own, they trade messages and poll for what is new, a colleague is added and then taken out, and the hub is closed. Everything but POST /api/hub/message was previously proven only as a pure rule with no server near it, or as a refusal on a bare server where these routes 503 by design long before they reach SQL — and that gap has already cost this feature once, when every vault send failed for a week because the route asked PostgREST to resolve ON CONFLICT against a partial index. Each claim was watched go red against a deliberately broken server first: the poll's cursor loosened to gte replays the last message, the vault read losing its user_id scope pulls another broker's comp into the hub, and removal no longer beating everything leaves a removed guest reading and writing. The fake PostgREST learned two shapes to make it possible, both taught deliberately rather than guessed at: the gt. filter the poll sends, and the created_at / added_at defaults these tables declare, without which an ordered thread and a cursor are unprovable."
+  },
+  {
+    "date": "2026-08-26",
+    "type": "improvement",
     "title": "The momentum word comes off the market cards",
     "details": "Each card in the /markets grid ended its subtitle with a coloured Expanding / Flat / Contracting — and since only about half the markets carry a current read, the grid ran ragged: some cards ended in a red or green word, the rest just stopped. The subtitle is the figures again. Nothing was taken off the page: the momentum map directly above the grid is still coloured by the same read, its legend still names all three words, and typing one into the filter box still narrows the grid to those markets."
   },

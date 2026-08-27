@@ -8,13 +8,29 @@ entries written per ship. The three routes that shipped with no caller
 (`POST /api/hub/items`, `PUT /api/hub/participants`, `POST /api/hub/close`)
 were wired 2026-08-16, so nothing in §6 is now reachable only from a
 console.
-**What is NOT done, as of 2026-08-17:** nobody has driven a hub as two
-people end to end. The tenant WRITE half (status, note, added comp) and
-every control added on 2026-08-16 have never been used by a person, and
-production holds one hub, one comp still at `new`, and zero messages.
+**What is NOT done, as of 2026-08-26:** nobody has driven a hub as two
+people end to end ON PRODUCTION. The tenant WRITE half (status, note, added
+comp) and every control added on 2026-08-16 have never been used by a
+person, and production holds one hub, one comp still at `new`, and zero
+messages.
+
 Email invitations are written and dormant — they need `EMAIL_FROM` +
 `RESEND_API_KEY` on Render and a verified Resend domain, which is Jacob's
 to set, not a code change. See §11.
+
+**Every one of those routes IS now driven end to end in software**
+(`test/hub-run.test.js`, 2026-08-26): a broker and a client work one
+requirement against a real server, the fake PostgREST and the fake Resend —
+create, invite, open by token with no account, send a vault comp, sign in,
+shortlist, add a comp of their own, trade messages, poll for what is new,
+add and remove a colleague, close. That closes the gap that let every vault
+send fail for a week (§6's ON CONFLICT scar), and it is why the live pass is
+now a confirmation rather than the only evidence. What it deliberately does
+NOT prove is anything only a real Postgres can answer — that same ON
+CONFLICT bug would have passed against the fake, which does its own
+filtering. So the live two-person run still has to happen; it is just no
+longer where the ordinary bugs get found.
+
 **Builds on:** `migrations/018-report-sharing.sql` + `report-access.js` (v3
 client sharing, shipped), `migrations/013-broker-vault.sql` + `016` (the
 vault star schema, shipped), `migrations/015-broker-lead-inbox.sql` (broker

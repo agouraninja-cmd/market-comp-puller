@@ -102,7 +102,13 @@ const readHub = (srv, user) => fetch(
 // Waits for `want` messages, then a beat longer, so "nobody else was mailed"
 // is a real assertion rather than a race the test happens to win.
 async function settle(db, want) {
-  for (let i = 0; i < 80 && db.sent.length < want; i++) {
+  // 400 x 25ms, not 80: the loop exits the moment the mail lands, so patience
+  // is free on a healthy run and the only thing a short budget buys is a flake.
+  // Observed once in a full-suite run on 2026-08-26 — the node runner runs the
+  // files in parallel, and enough concurrent server boots pushed a
+  // fire-and-forget send past two seconds, which reported "nobody was mailed"
+  // for a notifier that was working perfectly.
+  for (let i = 0; i < 400 && db.sent.length < want; i++) {
     await new Promise((r) => setTimeout(r, 25));
   }
   await new Promise((r) => setTimeout(r, 120));

@@ -24,13 +24,27 @@ forward woke it and pulled in every change with no reload; and a "Post
 note" click that appeared to do nothing was the automation missing the
 button, since the same click from the page's own context posted fine.
 
-**What is still NOT driven by a person:** removing a participant and
-re-inviting them (the re-invite mints a NEW token, and the old one must
-stay dead), and watching the BROKER's own window wake — the live refresh
-was observed on the client's side only. Both are covered by
-`test/hub-run.test.js`; neither has been seen on production. The closed
-QA hub cannot be used for them, because participant management is a write
-and a closed hub refuses every write.
+**Removal and re-invitation were driven on a second hub the same day**, and
+the rule holds on production in all three doors. Removing the client killed
+their signed-in READ (403 `removed`), their WRITE, and a replay of the
+original invite link — the copy naming a deliberate removal rather than a
+bad link, which is the distinction hub-access.js draws on purpose.
+Re-inviting them restored access, and **the old link stayed dead**: it now
+answers `not_invited`, because the re-invite rotates `token_hash` and the
+old token matches no participant at all. Access came back through their
+SESSION (identity is the email, 018's rule), and writing worked again. Two
+observations worth keeping: the re-invited row keeps its `first_viewed_at`,
+so the guest reads as "opened" rather than resetting to never-opened; and
+the panel showed NO link to copy, because the send succeeded and a token
+cannot be shown twice — with mail live, the emailed link is the only copy.
+
+**One step has still never been taken by a person:** watching the BROKER's
+own window wake from a background tab. The live refresh was observed on the
+client's side, on the same page code and the same poller — what is unwatched
+is the broker-only furniture (the People panel's opened flag) repainting.
+`window.focus()` cannot raise a window from script, so this one needs a
+human click and nothing else; `test/hub-run.test.js` covers the refresh
+itself.
 
 **Email invitations are no longer dormant** (observed 2026-08-26). The
 create-hub response took the `emailed: true` branch on production, and that

@@ -8,6 +8,12 @@
   {
     "date": "2026-08-26",
     "type": "improvement",
+    "title": "Show password when signing in",
+    "details": "The sign-in modal's password field now carries an eye button that reveals what was typed — the same field covers creating an account and choosing a new password after a reset, so all four modes get it. It resets to hidden every time the modal opens or the mode changes, because revealing is a decision about one attempt rather than a setting, and a password left legible on screen is not what anyone asked for. Switching to Forgot password hides the whole row, button included."
+  },
+  {
+    "date": "2026-08-26",
+    "type": "improvement",
     "title": "The momentum word comes off the market cards",
     "details": "Each card in the /markets grid ended its subtitle with a coloured Expanding / Flat / Contracting — and since only about half the markets carry a current read, the grid ran ragged: some cards ended in a red or green word, the rest just stopped. The subtitle is the figures again. Nothing was taken off the page: the momentum map directly above the grid is still coloured by the same read, its legend still names all three words, and typing one into the filter box still narrows the grid to those markets."
   },

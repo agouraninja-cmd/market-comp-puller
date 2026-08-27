@@ -1420,6 +1420,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        the fade. Opacity 1 replaces the fill; must outrank #reportArea > *. */
     #reportArea > .entrance-done { opacity: 1; animation: none; }
     body.map-locked { overflow: hidden; }
+    /* Show/hide password. Plain CSS rather than Tailwind utilities: none of
+       the positioning classes this needs are used anywhere else in the file,
+       so they exist only here and would ride on a tailwind.css regen to keep
+       working. The input's right padding is the button's width — without it a
+       long password runs underneath the eye. */
+    .pwrap { position: relative; }
+    .pwrap > input { padding-right: 2.75rem; }
+    .pwtog {
+      position: absolute; top: 0; bottom: 0; right: 0; width: 2.75rem;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--ink-3); background: none; border: 0; border-radius: 0 0.5rem 0.5rem 0;
+      cursor: pointer;
+    }
+    .pwtog:hover { color: var(--ink); }
+    .pwtog:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+    .pwtog svg { width: 18px; height: 18px; }
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -1490,8 +1506,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           class="hidden w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
         <input id="acctEmail" type="email" autocomplete="email" placeholder="Email" aria-label="Email"
           class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-        <input id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password"
-          class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+        <!-- Password + its show/hide toggle. The wrapper is what setAcctMode()
+             hides in "forgot" mode — hiding the input alone would leave the
+             eye button floating over an empty row. -->
+        <div id="acctPasswordRow" class="pwrap">
+          <input id="acctPassword" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password"
+            class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="acctPasswordToggle" type="button" class="pwtog" aria-controls="acctPassword" aria-pressed="false" aria-label="Show password" title="Show password">
+            <svg class="pw-eye" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="pw-eye-off hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 6.2A9.9 9.9 0 0 1 12 6c6.5 0 10 7 10 7a17 17 0 0 1-3 3.8M6.2 6.4A17 17 0 0 0 2 13s3.5 7 10 7a9.7 9.7 0 0 0 4.6-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>
+          </button>
+        </div>
         <p id="acctError" class="hidden text-sm text-red-600"></p>
         <p id="acctInfo" class="hidden text-sm text-[#4C5665]"></p>
         <button id="acctSubmit" type="submit"
@@ -11696,6 +11721,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
   }
 
+  // Show/hide the password field. The one writer of that state, so the input
+  // type, the two icons and what a screen reader is told can never disagree.
+  // Reset to hidden on every mode change and every modal open: revealing is a
+  // per-attempt choice, and a password left legible on a shared screen after
+  // the modal reopens is exactly what nobody asked for.
+  function setPasswordShown(on) {
+    const input = document.getElementById("acctPassword");
+    const btn = document.getElementById("acctPasswordToggle");
+    if (!input || !btn) return;
+    input.type = on ? "text" : "password";
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.setAttribute("aria-label", on ? "Hide password" : "Show password");
+    btn.title = on ? "Hide password" : "Show password";
+    btn.querySelector(".pw-eye").classList.toggle("hidden", on);
+    btn.querySelector(".pw-eye-off").classList.toggle("hidden", !on);
+  }
+
   function setAcctMode(mode) {
     acctMode = mode;
     const t = { signin: "Sign in", signup: "Create your account", forgot: "Reset your password", reset: "Choose a new password" }[mode];
@@ -11705,7 +11747,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("acctName").classList.toggle("hidden", mode !== "signup");
     document.getElementById("acctTos").classList.toggle("hidden", mode !== "signup");
     document.getElementById("acctEmail").classList.toggle("hidden", mode === "reset");
-    document.getElementById("acctPassword").classList.toggle("hidden", mode === "forgot");
+    document.getElementById("acctPasswordRow").classList.toggle("hidden", mode === "forgot");
+    setPasswordShown(false);
     document.getElementById("acctPassword").placeholder = mode === "reset" ? "New password (8+ characters)" : "Password";
     document.getElementById("acctPassword").autocomplete = mode === "signin" ? "current-password" : "new-password";
     document.getElementById("acctTabs").classList.toggle("hidden", mode === "reset");
@@ -11761,6 +11804,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("acctTabUp").addEventListener("click", () => setAcctMode("signup"));
   document.getElementById("acctForgotLink").addEventListener("click", () => setAcctMode("forgot"));
   document.getElementById("acctCancel").addEventListener("click", closeAcctModal);
+  document.getElementById("acctPasswordToggle").addEventListener("click", () => {
+    const input = document.getElementById("acctPassword");
+    setPasswordShown(input.type === "password");
+    // Focus follows the reveal, or the caret is lost mid-typing.
+    input.focus();
+    const end = input.value.length;
+    try { input.setSelectionRange(end, end); } catch (err) {}
+  });
   document.getElementById("acctMenuBtn").addEventListener("click", () =>
     document.getElementById("acctMenu").classList.toggle("hidden"));
   // ----------------------------------------------------------------------------

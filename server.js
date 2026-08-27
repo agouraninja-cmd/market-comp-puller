@@ -5315,10 +5315,12 @@ Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
 transaction must be "sale" or "lease".
 deal_date must be YYYY-MM-DD.
+cap_rate, and every other percentage, must be the percent number the page shows: a page reading 7.3% is "7.3" or "7.3%". NEVER a decimal fraction - "0.073" is read as a cap rate of 0.073%, which is a legal number, so nothing downstream can catch it.
 
 Rules:
 - Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
 - Omit a field rather than invent it. Never invent a price, date, or size.
+- A row with no sale price and no sale date is a LISTING, not a completed deal, however much it looks like the sold rows around it. Omit transaction and deal_date for it. Never source deal_date from a list date, an assessment date, a photo date or a report date: if the row does not say when the deal closed, omit deal_date.
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 

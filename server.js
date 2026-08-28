@@ -180,6 +180,10 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
+// /firms — the public pitch for firm accounts. A marketShell BODY, like
+// bulk-page.js. The shop-kind sentences are PASSED IN from ORG rather than
+// required there, so this page can never become a second copy of them.
+const { renderFirmsPageBody } = require("./firms-page");
 const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
@@ -9211,6 +9215,10 @@ const MARKET_FOOTER =
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
   `<li><a href="/brokers">Brokers</a></li>` +
+  // /firms sits beside /brokers: the two are the same kind of page (a pitch to
+  // a professional audience) and the footer is the only surface every public
+  // page shares, so a page missing from it is a page nothing links to.
+  `<li><a href="/firms">For firms</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li>` +
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
@@ -11547,6 +11555,60 @@ const TEAM = [
     line: "Owns pricing, planning and the numbers behind the business.",
   },
 ];
+
+// ---------------------------------------------------------------------------
+// /firms — the public front door for firm accounts.
+//
+// Rendered through marketShell like /brokers and /leadership, so it carries no
+// CSS of its own and does NOT depend on the purged tailwind.css. The body
+// lives in firms-page.js; this function owns only the SEO metadata and the
+// shell, which is where every other page's metadata lives too.
+//
+// ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
+// page module, which keeps that module pure and — more to the point — keeps
+// the three shop sentences single-sourced. They are read here by the invite
+// email, the create box in index.html and now this page; a fourth hand-typed
+// copy is the one that goes stale, so test/firms-page.test.js fails the build
+// if any of them appears as a literal in firms-page.js.
+// ---------------------------------------------------------------------------
+function renderFirmsPageHTML(signedIn) {
+  const title = "Firm Accounts for Brokerages, Developers & Tenant Reps | CompNinja";
+  const canonical = `${SITE_URL}/firms`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "One shared shelf for your whole shop. Every valuation anyone runs lands on " +
+    "every colleague's workspace, attributed and searchable.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Firm accounts",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Firms", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderFirmsPageBody({
+    signedIn,
+    shopKinds: ORG.SHOP_KINDS,
+    shopCopy: ORG.SHOP_COPY,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/firms" });
+}
 
 function renderLeadershipPageHTML(signedIn) {
   const title = "Leadership | CompNinja";
@@ -23153,6 +23215,10 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
   }
 
+  if (req.method === "GET" && pagePath === "/firms") {
+    return sendShellPage(req, res, (signedIn) => renderFirmsPageHTML(signedIn));
+  }
+
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
@@ -23671,6 +23737,7 @@ const server = http.createServer((req, res) =>
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/firms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +

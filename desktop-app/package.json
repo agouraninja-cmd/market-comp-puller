@@ -28,7 +28,10 @@
     "mac": {
       "target": [{ "target": "dmg", "arch": ["universal"] }],
       "artifactName": "CompNinja.${ext}",
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": true
     },
     "dmg": { "artifactName": "CompNinja.${ext}" },
     "linux": {

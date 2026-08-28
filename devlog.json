@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-28",
+    "type": "improvement",
+    "title": "Mac signing and notarization are wired, waiting only on Apple",
+    "details": "The $99 Apple Developer enrollment for COMPNINJA LLC is paid and awaiting Apple's company verification. The desktop release workflow and electron-builder config now carry the whole signing path, dormant: five repo secrets that don't exist yet, resolving to empty, so today's builds are byte-for-byte the unsigned ones. Once Apple approves, the remaining work is administrative — invite the dev account as Admin in App Store Connect, mint a Developer ID certificate and an app-specific password, add the secrets, cut a desktop-v tag — and docs/APPLE-SIGNING.md is that checklist, including the verification step (spctl on the released DMG) and the rule that /download's honest first-launch warning is only softened after a signed release actually passes Gatekeeper. Windows code signing is a separate purchase and stays unsigned."
+  },
+  {
     "date": "2026-08-27",
     "type": "fix",
     "title": "Continue with Google no longer appears in the desktop app",

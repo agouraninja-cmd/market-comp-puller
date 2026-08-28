@@ -9,12 +9,18 @@
 # deploy path is untouched. Cut a release with:
 #   git tag desktop-v1.0.1 && git push origin desktop-v1.0.1
 #
-# The installers are UNSIGNED: Windows SmartScreen and macOS Gatekeeper will
-# warn on first run until a code-signing certificate (Windows) and Apple
-# notarization (macOS) are set up — a paid, owner-identity step this workflow
-# can't do. The only secret used is the workflow's own GITHUB_TOKEN; the
-# ci.yml rule (no repo secrets a fork could exfiltrate) still holds — tag
-# pushes only come from accounts with write access.
+# SIGNING. macOS signing + notarization is wired but DORMANT: the Build step
+# reads five repo secrets (MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD, APPLE_ID,
+# APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID — see docs/APPLE-SIGNING.md for
+# what each is and how to mint them once Apple approves the LLC's Developer
+# Program enrollment). While they are unset the env vars resolve to empty
+# strings, electron-builder sees no identity, and the build is byte-for-byte
+# the unsigned one this workflow has always produced — Windows SmartScreen
+# and macOS Gatekeeper warn on first run, and /download says so honestly.
+# Windows code signing is a SEPARATE purchase (not covered by the Apple
+# enrollment) and stays unsigned either way. The ci.yml rule (no repo
+# secrets a fork could exfiltrate) still holds — this workflow fires only on
+# tag pushes and workflow_dispatch, both of which need write access.
 name: Desktop release
 
 on:
@@ -79,6 +85,19 @@ jobs:
         run: npm ci
       - name: Build installer
         working-directory: desktop-app
+        env:
+          # macOS signing/notarization — see the SIGNING note in the header.
+          # Empty until the secrets exist, and empty is unset to
+          # electron-builder, so unsigned builds are unchanged. Scoped to the
+          # mac job because electron-builder also reads CSC_LINK for WINDOWS
+          # signing — a mac .p12 leaking into that job would fail the
+          # Windows build. (runner context isn't available in job-level env,
+          # hence matrix.os here.)
+          CSC_LINK: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.os == 'macos-latest' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.os == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
         run: npx electron-builder --publish never
       - name: Attach to release
         uses: softprops/action-gh-release@v2

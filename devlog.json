@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-27",
+    "type": "fix",
+    "title": "Continue with Google no longer appears in the desktop app",
+    "details": "Google refuses OAuth inside an embedded user agent — an anti-phishing control of theirs — so in the Electron app the button led to Google's own 500 page rather than a sign-in. It is hidden there now, leaving the password form, which works. It keys on the desktop app's user-agent token ALONE and not on display-mode, because an installed PWA is ordinary Chrome where Google sign-in works perfectly and hiding it there would take away a working door. A site change rather than an app change, so every installed copy got it without a new release. The real fix is a system-browser flow handing the session back through a deep link; that needs a new installer before it helps anybody, which is why this shipped first."
+  },
+  {
+    "date": "2026-08-27",
     "type": "feature",
     "title": "A leadership page, under Explore",
     "details": "/leadership — the three people who build CompNinja, with headshots and a group photo, rendered through marketShell so it inherits the site chrome and needs no CSS of its own. Added to the Explore menu (one NAV_LINKS edit, so both the app and the server-rendered headers pick it up), the footer under Company, and sitemap.xml. Each person is one TEAM entry feeding both the markup and a schema.org Person node tied to the canonical Organization, so the page and what crawlers are told cannot drift. Photos are four literal keys on the STATIC_FILES allowlist rather than a directory read."

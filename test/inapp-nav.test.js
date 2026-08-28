@@ -75,5 +75,44 @@ test("it runs before paint and hides nothing else", () => {
     "the boot script must run inline, not deferred");
   assert.ok(boot.includes("try{") && boot.includes("catch(e)"),
     "matchMedia/navigator access must not be able to abort the page");
-  assert.equal(boot.split("display:none").length - 1, 1, "the rule hides more than the one link");
+  // Two rules now, and an exact allowlist rather than a count: anything else
+  // this boot learns to hide gets hidden inside the shipped app, which is the
+  // one place nobody looks.
+  const hidden = [...boot.matchAll(/(\[data-inapp[^{]*)\{display:none!important\}/g)].map((m) => m[1].trim());
+  assert.deepEqual(hidden, ['[data-inapp="1"] .nav-dl', '[data-inapp-shell="1"] #acctGoogleRow'],
+    "the boot hides something other than the download link and the Google button");
+});
+
+// "Continue with Google" inside the Electron shell ends on Google's own error
+// page: Google refuses OAuth in an embedded user agent. So the button is
+// hidden there — and NOT in an installed PWA, which is ordinary Chrome where
+// the flow works fine. Getting that distinction wrong is invisible in both
+// directions: too broad and working sign-in disappears for PWA users, too
+// narrow and the dead end comes back.
+test("the Google button is hidden in the Electron shell only, never in a PWA", () => {
+  const boot = serverSrc.slice(serverSrc.indexOf("const INAPP_BOOT ="), serverSrc.indexOf("const INAPP_BOOT_MARKER"));
+
+  // The shell flag is the UA token and nothing else.
+  const shellLine = boot.split("\n").find((l) => l.includes("var shell="));
+  assert.ok(shellLine, "the boot no longer computes a shell flag");
+  assert.ok(shellLine.includes("navigator.userAgent") && shellLine.includes("INAPP_UA_TOKEN"),
+    "the shell flag is no longer derived from the UA token");
+  assert.ok(!shellLine.includes("display-mode") && !shellLine.includes("navigator.standalone"),
+    "a PWA signal has leaked into the shell flag; a PWA would lose a button that works there");
+  assert.ok(!/if\(shell\)[^;]{0,120}display-mode/.test(boot),
+    "display-mode has leaked into the shell flag; a PWA would lose a button that works there");
+  assert.ok(boot.includes('if(shell)document.documentElement.setAttribute("data-inapp-shell","1")'),
+    "the shell attribute is no longer set from the shell flag");
+
+  // data-inapp (the download link) must still fire for a PWA as well, so the
+  // two attributes can never be collapsed into one.
+  assert.ok(/m\("\(display-mode: standalone\)"\)[\s\S]{0,220}?setAttribute\("data-inapp","1"\)/.test(boot),
+    "data-inapp no longer fires for an installed PWA");
+
+  // The id it hides has to be the one index.html actually renders, and
+  // !important is load-bearing: JS toggles .hidden on that row.
+  assert.ok(indexSrc.includes('id="acctGoogleRow"'),
+    "index.html no longer has #acctGoogleRow — the boot rule now hides nothing");
+  assert.ok(boot.includes('[data-inapp-shell="1"] #acctGoogleRow{display:none!important}'),
+    "the Google row rule is gone or no longer !important");
 });

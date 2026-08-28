@@ -141,6 +141,42 @@ test("the rail never prints", () => {
     "print resets the body's rail padding");
 });
 
+test("the app gets the same shell, from the same class", async (t) => {
+  const srv = await boot({ NAV_SHELL: "rail", ACCOUNT_WALL: "off" });
+  t.after(() => srv.stop());
+
+  // index.html is served as one set of bytes to everybody and corrected after
+  // paint, so the rail rides authBoot's before-paint class exactly as cn-in
+  // does — otherwise a member would see the bar for a frame and then the rail.
+  const member = await (await fetch(srv.base + "/", { headers: SESSION })).text();
+  assert.match(member, /classList\.className\+=|className\+=/, "authBoot stamps classes");
+  const boot1 = member.match(/document\.documentElement\.className\+=("[^"]*")/);
+  assert.ok(boot1, "could not find the boot class assignment");
+  assert.match(boot1[1], /nav-rail/, "a member's app is stamped for the rail");
+
+  const anon = await (await fetch(srv.base + "/")).text();
+  const boot2 = anon.match(/document\.documentElement\.className\+=("[^"]*")/);
+  assert.ok(!boot2 || !/nav-rail/.test(boot2[1]), "an anonymous app is not");
+});
+
+test("the app's rail survives the hint being retired", () => {
+  // refreshAccountUI drops cn-in / cn-locked once the real answer lands: those
+  // are stand-ins for something the page was waiting on. nav-rail is not — it
+  // is a layout choice — so it must NOT be in that list, or the sidebar would
+  // vanish a beat after the account resolves.
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const m = html.match(/classList\.remove\(([^)]*)\)/g) || [];
+  for (const call of m) {
+    assert.ok(!call.includes("nav-rail"),
+      `nav-rail must not be retired by ${call}`);
+  }
+  // And the rules it drives have to actually exist in the app's stylesheet.
+  assert.match(html, /html\.nav-rail body\s*\{[^}]*padding-left:\s*224px/,
+    "the app pads the body for the rail");
+  assert.match(html, /@media print\s*\{\s*html\.nav-rail body\s*\{\s*padding-left:\s*0/,
+    "and takes that padding off on paper");
+});
+
 test("one theme toggle, still, and no second account cluster", () => {
   // theme.test.js counts these too; restated here because the rail is exactly
   // the change that tempts somebody to add a second copy at the rail's foot.

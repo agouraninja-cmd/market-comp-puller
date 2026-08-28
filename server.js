@@ -8089,7 +8089,15 @@ const AUTH_BOOT_MARKER = "<!--AUTH_BOOT-->";
 // card it owns would flip once on its own first call.
 function authBoot(signedIn) {
   const locked = ACCOUNT_WALL && !signedIn;
-  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "");
+  // The rail, on the app's own front door. Same rule as every server-rendered
+  // page: signed-in only, and it rides a class rather than a markup branch.
+  // This is the right vehicle because it already runs inline in <head> before
+  // first paint, so the sidebar is never drawn and then taken away — and
+  // unlike cn-in / cn-locked it is NOT retired by refreshAccountUI(), because
+  // it is a layout choice about the shell rather than a stand-in for an answer
+  // the page is still waiting on.
+  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "") +
+    (signedIn && NAV_SHELL_CLASS ? ` ${NAV_SHELL_CLASS}` : "");
   return `<style>${AUTH_BOOT_CSS}</style>\n` +
     `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL })};` +
     (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +

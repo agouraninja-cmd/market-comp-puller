@@ -894,6 +894,58 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
     .rd-appbar > nav { flex-wrap: wrap; }
     .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
+    /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
+       The app's half of the shell server.js gives every other page. Same
+       geometry, same one class on <html> -- stamped by authBoot before first
+       paint, so the sidebar is never drawn and then taken away -- and the same
+       rule that only a SIGNED-IN visitor gets it.
+       Hand-written rather than Tailwind, deliberately: tailwind.css is a
+       vendored purged build and every utility this needs (inset-y-0, top-0,
+       h-screen, ml-*, pl-*, border-r, z-30, every md: variant) is absent from
+       it, so a class here would silently not style. That is the precedent
+       .rd-appbar, .rd-desk and .rd-heroband already set, and it also keeps
+       these colours out of theme.test.js's per-utility dark-bridge rule --
+       var() tokens are already theme-aware.
+       NOTHING inside the page moves. The four max-w-5xl bands (this bar, the
+       hero, the content container and the footer) each keep mx-auto, so they
+       re-centre themselves inside the body's new left padding. */
+    @media (min-width: 900px) {
+      html.nav-rail body { padding-left: 224px; }
+      html.nav-rail body > header {
+        position: fixed; top: 0; left: 0; bottom: 0; width: 224px;
+        border-bottom: 0; border-right: 1px solid var(--line);
+        background: var(--paper); overflow-y: auto;
+        /* Above the page, below the dropdowns (1100) and the modals (1200),
+           so an opened account menu and every overlay still cover the rail. */
+        z-index: 30;
+      }
+      html.nav-rail .rd-appbar {
+        flex-direction: column; align-items: stretch; justify-content: flex-start;
+        flex-wrap: nowrap; max-width: none; height: 100%; row-gap: 0;
+        padding: 22px 0 18px;
+      }
+      html.nav-rail .rd-appbar > a { padding: 0 20px 16px; }
+      html.nav-rail .rd-appbar > nav {
+        flex: 1; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0;
+      }
+      html.nav-rail .rd-appbar > nav > button,
+      html.nav-rail .rd-appbar > nav > a {
+        padding: 7px 20px; text-align: left; border-left: 3px solid transparent;
+      }
+      html.nav-rail .rd-appbar > nav > button:hover { background: var(--wash); }
+      /* Explore has nowhere to open in a 224px column; its links live in the
+         footer, exactly as on the server-rendered pages. */
+      html.nav-rail #exploreMenuWrap { display: none; }
+      /* The account cluster sits at the foot, and its menu opens UPWARD: the
+         default top-9 would put it off the bottom of the viewport from there. */
+      html.nav-rail #acctMenuWrap {
+        margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
+      }
+      html.nav-rail #acctMenu { right: auto; left: 16px; top: auto; bottom: calc(100% + 8px); }
+    }
+    /* Paper has no sidebar. The header is already no-print; this is the body
+       padding it would otherwise leave behind as an empty left column. */
+    @media print { html.nav-rail body { padding-left: 0; } }
     /* The home hero used to stack kicker / claim / lead down the left, each
        capped at 22ch and 58ch inside a max-w-5xl band, so the right ~450px of
        it was empty and the band ran 326px tall before the search form -- the

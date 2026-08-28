@@ -1,5 +1,18 @@
 [
   {
+    "date": "2026-08-28",
+    "type": "feature",
+    "title": "Public pages carry a Home link in the header",
+    "details": "A logged-out visitor who opened Explore and landed on one of these pages had nothing that read as a way back: the wordmark links / but is branding rather than a button, and the Escape binding is invisible. Home is now the first item in the nav, left of Explore, on every server-rendered page. Signed out only, since the signed-in bar's Run a report already points at /, and never on the home page itself -- under the account wall that means both / and /how-it-works, which are one render served at two URLs.",
+    "commit": "a7399fb"
+  },
+  {
+    "date": "2026-08-28",
+    "type": "fix",
+    "title": "A tagged link no longer 404s the market pages",
+    "details": "/markets, every /market/<slug> page and /how-it-works matched on the raw request URL, so a tag on the end of the link made the address stop matching its own route and fall through to Not Found. Facebook appends ?fbclid=... to outbound links on its own, so every market page shared there was a dead link for whoever clicked it, and any UTM-tagged campaign or email link did the same. All three now match on the path, as /brokers and /privacy already did, and the canonical still points at the clean URL so the tagged variants do not become duplicate entries in Search Console. /broker/<slug>, /market-preview/<slug>, robots.txt and sitemap.xml carried the same shape and were fixed alongside."
+  },
+  {
     "date": "2026-08-27",
     "type": "fix",
     "title": "Continue with Google no longer appears in the desktop app",

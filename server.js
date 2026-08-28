@@ -22763,6 +22763,15 @@ const server = http.createServer((req, res) =>
   // page someone lands on straight after paying. Same fix covers a campaign
   // link to /?utm_source=…, which used to 404 for the same reason.
   const staticPath = req.url.split("?")[0];
+  // The same rule, for the PAGE routes further down. They used to match on the
+  // raw `req.url`, which meant a tag on the end of the link made the address
+  // stop matching its own route and fall through to Not Found: /markets served,
+  // /markets?utm_source=newsletter 404'd. That is not a rare shape. Facebook
+  // appends ?fbclid=... to outbound links on its own, so every market page
+  // shared there was a dead link, and any campaign or email tag did the same.
+  // A fragment can never reach a server, but /brokers has always stripped one
+  // defensively and this keeps that behavior when those routes moved here.
+  const pagePath = staticPath.split("#")[0];
   if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
     // Account wall: an anonymous visitor meets the landing page, not the app.
     //
@@ -23054,7 +23063,7 @@ const server = http.createServer((req, res) =>
   // visitors, so this URL canonicalizes to `/` (home: true) rather than
   // splitting one page's signals across two indexed URLs; wall off, `/` is
   // the app again and this page canonicalizes itself. ---
-  if (req.method === "GET" && req.url.split("#")[0] === "/how-it-works") {
+  if (req.method === "GET" && pagePath === "/how-it-works") {
     // Cookie PRESENCE only, same rule as the wall at `/`: this runs on every
     // view and getSessionUser() reads the database. A signed-in visitor gets
     // app chrome (My Desk / Run a report) instead of the signup buttons —
@@ -23080,7 +23089,7 @@ const server = http.createServer((req, res) =>
   // explainer below; education, never advice. signedIn chooses the Value
   // handoff (`/` vs `/?auth=signup`) so a member is not sent through the
   // signup door. Compliance strings are pinned by test/guide-1031.test.js. ---
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+  if (req.method === "GET" && pagePath === "/1031-exchange") {
     // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
     // funnel's exit, and until this event nothing counted anyone ENTERING —
     // "does the guide produce leads" had a numerator with no denominator.
@@ -23116,11 +23125,11 @@ const server = http.createServer((req, res) =>
   // 404s — found 2026-08-10 when a cache-busting query string hit a 404.
   // --- Download the desktop app. Path-only match like /brokers below, so a
   // campaign link's query string can't 404 it. ---
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/download") {
+  if (req.method === "GET" && pagePath === "/download") {
     return sendShellPage(req, res, (signedIn) => renderDownloadPageHTML(signedIn));
   }
 
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/brokers") {
+  if (req.method === "GET" && pagePath === "/brokers") {
     // The proof line reads MARKET_CREDIT; same stale-while-revalidate kick
     // as the market pages, so the render never waits on the DB and the line
     // simply doesn't appear until the cache has filled once.
@@ -23128,25 +23137,25 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
   }
 
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/leadership") {
+  if (req.method === "GET" && pagePath === "/leadership") {
     return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
   }
 
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
+  if (req.method === "GET" && pagePath === "/terms") {
     return sendShellPage(req, res, (signedIn) => renderTermsPageHTML(signedIn));
   }
-  if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
+  if (req.method === "GET" && pagePath === "/privacy") {
     return sendShellPage(req, res, (signedIn) => renderPrivacyPageHTML(signedIn));
   }
 
   // --- Market landing pages (programmatic SEO) ---
-  if (req.method === "GET" && req.url === "/markets") {
+  if (req.method === "GET" && pagePath === "/markets") {
     return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
   }
-  const marketMatch = req.method === "GET" && req.url.match(/^\/market\/([a-z0-9-]{3,80})$/);
+  const marketMatch = req.method === "GET" && pagePath.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {
     const page = getMarketPage(marketMatch[1]);
     if (!page) return sendNotFound(req, res, "That market page isn't here anymore.");
@@ -23163,7 +23172,7 @@ const server = http.createServer((req, res) =>
   }
 
   // --- Public broker profiles — opt-in pages for verified contributors ---
-  const brokerMatch = req.method === "GET" && req.url.match(/^\/broker\/([a-z0-9-]{3,80})$/);
+  const brokerMatch = req.method === "GET" && pagePath.match(/^\/broker\/([a-z0-9-]{3,80})$/);
   if (brokerMatch) {
     (async () => {
       if (rateLimited("bpage:" + clientIp(req), 60)) {
@@ -23192,7 +23201,7 @@ const server = http.createServer((req, res) =>
   // --- Explorer previews: thin-data market snapshots, visible only to whoever
   // generated them. In-memory with a short TTL, noindexed at every layer
   // (meta tag, X-Robots-Tag, robots.txt) and never linked from indexed pages.
-  const previewMatch = req.method === "GET" && req.url.match(/^\/market-preview\/([a-z0-9-]{3,80})$/);
+  const previewMatch = req.method === "GET" && pagePath.match(/^\/market-preview\/([a-z0-9-]{3,80})$/);
   if (previewMatch) {
     const entry = previewPagesMem.get(previewMatch[1]);
     if (!entry || Date.now() - entry.ts > PREVIEW_TTL_MS) {
@@ -23624,11 +23633,11 @@ const server = http.createServer((req, res) =>
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return res.end(`google-site-verification: google${GOOGLE_VERIFY_TOKEN}.html\n`);
   }
-  if (req.method === "GET" && req.url === "/robots.txt") {
+  if (req.method === "GET" && pagePath === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
-  if (req.method === "GET" && req.url === "/sitemap.xml") {
+  if (req.method === "GET" && pagePath === "/sitemap.xml") {
     const merged = allMarketPages();
     const marketUrls = Object.keys(merged).map((slug) => {
       const lastmod = merged[slug].generatedAt;

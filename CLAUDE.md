@@ -3390,8 +3390,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
   `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
   and an exact `req.url` match 404'd it — along with every campaign link to
-  `/?utm_source=…`. Every other route in server.js still tests `req.url`
-  directly, so keep the query string in mind when adding one.
+  `/?utm_source=…`. **Every page route now does the same** (2026-08-28):
+  `pagePath` is declared beside `staticPath` and is what `/markets`,
+  `/market/<slug>`, `/broker/<slug>`, `/market-preview/<slug>`,
+  `/how-it-works`, `robots.txt` and `sitemap.xml` match on — the first three
+  of those were still testing `req.url`, so Facebook's own `?fbclid=…` made
+  every shared market page a 404 for whoever clicked it. A new PAGE route
+  belongs on `pagePath`; the API routes deliberately keep their exact
+  `req.url` matches, since a client calls those by an address it constructs
+  rather than one a person shares. `test/routes.test.js` walks every public
+  page with a tag on the end and checks the canonical still points at the
+  clean URL, so the fix cannot trade a dead link for duplicate entries in
+  Search Console.
   **It is templated three times at serve time**, and the third one varies by
   visitor: `NAV_LINKS`, `INAPP_BOOT`, and — since 2026-08-23 —
   **`authBoot()`** at an `<!--AUTH_BOOT-->` marker in `<head>`. That last one

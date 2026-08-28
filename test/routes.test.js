@@ -626,6 +626,65 @@ test("bare environment", async (t) => {
     assert.equal(r.status, 200, "a campaign link to /brokers must not 404");
   });
 
+  // Every public page, not just the two that happened to get a test
+  // (2026-08-28). /brokers and /leadership were pinned individually; the pages
+  // beside them were not, and three of them matched on the raw `req.url`, so a
+  // tag on the end of the link made the address stop matching its own route:
+  // /markets served and /markets?utm_source=x 404'd. Facebook appends
+  // ?fbclid=... to outbound links on its own, so every /market/<slug> page --
+  // the whole programmatic-SEO surface -- was a dead link for anyone arriving
+  // from there, and nothing on our side had to be misconfigured for it.
+  //
+  // Written as ONE list rather than a test per page, because the bug is a
+  // property of the route table and the next page added to it inherits the
+  // question. A 200 is not enough: a route that fell through to the SPA would
+  // also answer 200, with the wrong page, so each one is checked against a
+  // string only its own render carries.
+  await t.test("a tagged link reaches every public page, not a 404", async () => {
+    const pages = [
+      ["/markets", /Market Snapshots/],
+      ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
+      ["/how-it-works", /<title>/],
+      ["/brokers", /For Commercial Real Estate Brokers/],
+      ["/1031-exchange", /1031/],
+      ["/download", /<title>/],
+      ["/leadership", /<title>/],
+      ["/terms", /<title>/],
+      ["/privacy", /<title>/],
+    ];
+    for (const [p, marker] of pages) {
+      const bare = await fetch(srv.base + p);
+      assert.equal(bare.status, 200, p + " does not serve at all");
+      const tagged = await fetch(srv.base + p + "?utm_source=newsletter&fbclid=abc123");
+      assert.equal(tagged.status, 200, "a tagged link to " + p + " must not 404");
+      assert.match(await tagged.text(), marker,
+        "a tagged link to " + p + " answered 200 with somebody else's page");
+    }
+  });
+
+  // The two text endpoints matched on the raw url too. Nothing appends a tag
+  // to these in the wild -- a crawler asks for them bare -- so this is the
+  // cheap half of the same rule rather than a bug anybody hit.
+  await t.test("robots.txt and sitemap.xml tolerate a query string", async () => {
+    for (const [p, marker] of [["/robots.txt", /User-agent/], ["/sitemap.xml", /<urlset/]]) {
+      const r = await fetch(srv.base + p + "?x=1");
+      assert.equal(r.status, 200, p + " 404s with a query string");
+      assert.match(await r.text(), marker, p + " served the wrong body");
+    }
+  });
+
+  // The SEO half of the same change. Now that a tagged URL renders instead of
+  // 404ing, every tagged variant is a new indexable address for one page, so
+  // the canonical has to keep pointing at the clean one -- otherwise this fix
+  // trades a dead link for a pile of duplicate URLs in Search Console.
+  await t.test("a tagged page canonicalizes to its clean URL", async () => {
+    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers"]) {
+      const html = await (await fetch(srv.base + p + "?utm_source=newsletter")).text();
+      assert.match(html, new RegExp(`<link rel="canonical" href="[^"]*${p}"`),
+        p + " canonicalizes a tagged link to something other than its clean URL");
+    }
+  });
+
   // --- /leadership (2026-08-27) ---------------------------------------------
   // The page names real people and serves four photographs, so the failures
   // worth pinning are the silent ones: a portrait that 404s leaves a broken

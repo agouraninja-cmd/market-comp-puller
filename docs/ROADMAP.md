@@ -27,27 +27,26 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
-- **The extraction test — 20 real comp PDFs, one day, no code** (step 1 of the
-  Business Model Transition Plan's sequence; method and pass condition in
-  `docs/superpowers/specs/2026-08-21-archive-email-ingestion-design.md` §9).
-  This gates the whole Archive block, so it sits here rather than in Next: if
-  a broker can key 12 comps faster than they can correct 12 extracted ones,
-  the archive is data entry with extra steps and none of the ingestion work
-  below is worth doing. **It needs no product code, and the harness exists** —
-  `node scripts/extraction-eval.js` runs the whole thing: drop the files in
-  the git-ignored `extract-eval/`, `--init`, hand-key `truth.json` from the
-  source documents, `--yes`. It signs in itself, paces the route's rate
-  limit, scores through `extract-score.js` (pure, tested — broker-vault.js's
-  own parsers do the comparing so formatting never scores as error), and
-  writes the scorecard to `docs/evals/` with the stopwatch blank left for a
-  human. Measure
-  recall, per-field precision, **fabrication rate**, correction time, and
-  refusal quality. Fabrication at anything above ~zero is fatal on its own,
-  whatever the other numbers say: `normalizeRow` catches a malformed value and
-  cannot catch a well-formed invention, and a wrong number in a broker's own
-  records is the one error nobody ever notices. Deliverable is the numbers and
-  a written pass or fail. It doubles as the opening of the free-audit motion,
-  which is the same twenty PDFs.
+- **Two prompt fixes before ingestion — the extraction test found them**
+  (the test itself is DONE: verdict in
+  `docs/evals/extract-2026-08-27-verdict.md`, 14 documents, 132 hand-keyed
+  deals, 98.7% field precision, 1.3% fabrication, nothing omitted). The
+  capability cleared the bar; the current `EXTRACT_PROMPT` did not, in two
+  named ways, and both put a silently wrong number in a broker's own records:
+  **cap rates come back as decimal fractions** (`0.051` where the page says
+  `5.10%` — 8 of 8, across two brokerages), which `parsePercent` accepts
+  happily because 0.051 is a legal percentage, so the vault stores a cap rate
+  of 0.051%; and **active listings are reported as closed sales**, with a
+  `deal_date` lifted from the Original List Date row (3 of 3 on a lender
+  BOV). Neither is a model capability failure — the prompt simply never states
+  the cap-rate unit, and never tells the extractor that a listing is a thing
+  that exists. Fix both, then re-run: the harness, the files and the corrected
+  truth all exist now, so the whole verdict re-runs with one command for about
+  a dollar. Until then the Archive block below stays gated, which is what §9's
+  pass condition is for. Still owed on the test itself: a stopwatch reading on
+  correction time (§9's first condition, still unmeasured) and the true-scan
+  class — no photograph of a printed sheet was available, so the numbers are
+  an upper bound on the messy half of the distribution.
 
 ## Next
 
@@ -181,6 +180,19 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-27: the extraction verdict exists.** Step 1 of the Business Model
+  Transition Plan's sequence, and the gate on the whole Archive block, is
+  answered in writing: `docs/evals/extract-2026-08-27-verdict.md`. 14 public
+  documents from 11 organizations (6 broker-produced), 132 hand-keyed deals,
+  one run against production. Recall 85.6%, field precision 98.7%, fabrication
+  1.3%, zero omitted fields. Two blocking prompt defects found and named, both
+  one-line fixes, now the 'Now' item above. Two scope limits stated rather than
+  hidden: no proprietary broker files were available, and no true scans, so a
+  pass is an upper bound. The run's own first scoring said 4.2% fabrication and
+  was wrong — 21 of 27 'fabrications' were correct reads the truth file had
+  omitted, the pilot's lesson repeating on a bigger set. Truth is keyed from
+  rendered pages now, never a text extraction.
 
 - **2026-08-21: the pricing model simplified to one decision per customer.**
   Two owner calls on one day, in order. First, `FREE_MAX_COMPS` went from 10

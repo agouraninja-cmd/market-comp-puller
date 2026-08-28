@@ -7940,13 +7940,35 @@ const THEME_BOOT =
 // and then snatched away. It is presentation only: the /download page itself
 // stays reachable and unchanged for anyone who types the URL.
 const INAPP_UA_TOKEN = "CompNinjaDesktop/";
+// The SECOND attribute below is deliberately NOT the same signal.
+// "Continue with Google" cannot work inside the Electron shell: Google
+// refuses OAuth in an embedded user agent — an anti-phishing control of
+// theirs, not a bug of ours — so in the app that button is a dead end that
+// finishes on Google's own 500 page. Hiding it leaves the password form,
+// which works there.
+//
+// It keys on the UA token ALONE, where data-inapp keys on that OR
+// display-mode. An installed PWA is ordinary Chrome and Google sign-in works
+// in it perfectly, so hiding on display-mode would take the button away from
+// people who can use it. That asymmetry is the entire reason this is its own
+// attribute rather than one more rule hung off data-inapp.
+//
+// Presentation only, like the rule above it: /auth/google stays reachable and
+// unchanged, and a browser lying about its UA buys nothing but the sight of
+// one fewer button. The real fix is a system-browser flow handing the session
+// back through a compninja:// deep link — that needs a new desktop release
+// before it helps anybody and this needs none, which is why this ships first.
+// Delete this rule when that lands.
 const INAPP_BOOT =
-  `<style>[data-inapp="1"] .nav-dl{display:none!important}</style>\n` +
+  `<style>[data-inapp="1"] .nav-dl{display:none!important}` +
+  `[data-inapp-shell="1"] #acctGoogleRow{display:none!important}</style>\n` +
   `<script>(function(){try{` +
   `var m=function(q){return matchMedia(q).matches};` +
+  `var shell=(navigator.userAgent||"").indexOf(${JSON.stringify(INAPP_UA_TOKEN)})>-1;` +
   `if(m("(display-mode: standalone)")||m("(display-mode: window-controls-overlay)")||` +
-  `navigator.standalone===true||(navigator.userAgent||"").indexOf(${JSON.stringify(INAPP_UA_TOKEN)})>-1)` +
+  `navigator.standalone===true||shell)` +
   `document.documentElement.setAttribute("data-inapp","1");` +
+  `if(shell)document.documentElement.setAttribute("data-inapp-shell","1");` +
   `}catch(e){}})();</script>\n`;
 const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 

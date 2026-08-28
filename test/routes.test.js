@@ -478,12 +478,13 @@ test("bare environment", async (t) => {
   // that READ as a way back: the wordmark links `/` but does not look like a
   // button, and the Escape binding is invisible. Three things are pinned,
   // because each one is a different way to get this wrong:
-  //   - it is on every server-rendered page a signed-out visitor can reach;
-  //   - it is NOT on the home page itself — under the wall that is `/` AND
-  //     /how-it-works, which are one render and would self-link
-  //     (pinned in account-wall.test.js, where the wall is actually up);
-  //   - it is NOT in the signed-in bar, whose "Run a report" already goes to
-  //     `/` — two adjacent links to one place is the thing to avoid.
+  //   - it is on every server-rendered page, for every visitor;
+  //   - it is NOT on the visitor's OWN home page — under the wall an
+  //     anonymous `/` and /how-it-works are one render and would self-link,
+  //     while a signed-in member's `/` is the app, so that same page IS owed
+  //     the link (both pinned in account-wall.test.js, where the wall is up);
+  //   - it is in the signed-in bar TOO, beside "Run a report" — navigation
+  //     and a CTA are different affordances even sharing a destination.
   await t.test("signed-out pages open the nav with a Home link", async () => {
     // /how-it-works is in this list because THIS file boots with the wall off,
     // which makes it a page of its own rather than the render `/` is serving.
@@ -498,13 +499,18 @@ test("bare environment", async (t) => {
     }
   });
 
-  await t.test("the signed-in bar keeps Run a report instead of Home", async () => {
+  // The nav does not change shape with auth state (owner's call, 2026-08-28,
+  // correcting the same day's signed-out-only ship). "Run a report" points at
+  // `/` and is NOT a substitute: it reads as starting a task, not as going
+  // home, which is the reported bug restated one layer down. Both render.
+  await t.test("a signed-in member gets the same Home link", async () => {
     const html = await (await fetch(srv.base + "/markets", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    assert.ok(!html.includes(`<a href="/">Home</a>`),
-      "a signed-in member already has Run a report pointing at /");
-    assert.match(html, /Run a report/, "the signed-in door to / went missing");
+    assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),
+      "a signed-in member is owed the same way home as everybody else");
+    assert.match(html, /Run a report/,
+      "Home is an addition to the signed-in bar, never a replacement for its CTA");
   });
 
   // One nav, no copies (2026-08-20). index.html authors only a marker comment

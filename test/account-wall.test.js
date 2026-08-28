@@ -138,6 +138,21 @@ test("the wall serves the landing page at the root", async (t) => {
       "/markets is where a walled visitor most needs the way back");
   });
 
+  // Whose home page `/` is depends on the visitor, which is the whole reason
+  // the suppression reads `home && !signedIn` rather than `home`. Under the
+  // wall an anonymous visitor at /how-it-works is looking AT what `/` serves
+  // them, so a Home link there would point at the page they are on; a member
+  // is looking at a marketing page while their `/` is the app, so the same
+  // URL owes them the link. Same page, same wall, opposite answers.
+  await t.test("/how-it-works gives a signed-in member the Home link it withholds from a visitor", async () => {
+    const anon = await (await get("/how-it-works")).text();
+    assert.ok(!anon.includes(`<a href="/">Home</a>`),
+      "anonymously this page IS `/`, so Home would link to itself");
+    const member = await (await get("/how-it-works", FAKE_SESSION)).text();
+    assert.ok(member.includes(`<nav><a href="/">Home</a><details>`),
+      "a member's `/` is the app, so this page is not their home and owes the link");
+  });
+
   await t.test("/desk still redirects, to the sign-in door", async () => {
     // The wall's rule is that a personal workspace never renders anonymously,
     // and that has not changed. Where it sends them did (2026-08-13): asking

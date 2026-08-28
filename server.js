@@ -8713,10 +8713,6 @@ const NAV_LINKS = [
   // The third element is a class, and only this entry has one: `nav-dl` is
   // what INAPP_BOOT's rule hides when the page is already being viewed
   // inside the app. Keep it in step with that rule.
-  // Added 2026-08-27. Sits above /download deliberately: the download entry
-  // carries the nav-dl class INAPP_BOOT hides inside the app, and a hidden
-  // last item leaves a clean menu where a hidden middle one leaves a gap.
-  ["/leadership", "Leadership"],
   ["/download", "Download the app", "nav-dl"],
 ];
 // `current` is the path of the page being rendered: its own link gets the

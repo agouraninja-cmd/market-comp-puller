@@ -2,8 +2,8 @@
   {
     "date": "2026-08-27",
     "type": "feature",
-    "title": "A leadership page, under Explore",
-    "details": "/leadership — the three people who build CompNinja, with headshots and a group photo, rendered through marketShell so it inherits the site chrome and needs no CSS of its own. Added to the Explore menu (one NAV_LINKS edit, so both the app and the server-rendered headers pick it up), the footer under Company, and sitemap.xml. Each person is one TEAM entry feeding both the markup and a schema.org Person node tied to the canonical Organization, so the page and what crawlers are told cannot drift. Photos are four literal keys on the STATIC_FILES allowlist rather than a directory read."
+    "title": "A leadership page",
+    "details": "/leadership — the three people who build CompNinja, with headshots and a group photo, rendered through marketShell so it inherits the site chrome and needs no CSS of its own. Discovered from the footer, under Company, alongside /brokers and /how-it-works; it is deliberately NOT in the Explore menu, which is for the tools a reader might go and use. Listed in sitemap.xml. Each person is one TEAM entry feeding both the markup and a schema.org Person node tied to the canonical Organization, so the page and what crawlers are told cannot drift. Photos are four literal keys on the STATIC_FILES allowlist rather than a directory read."
   },
   {
     "date": "2026-08-26",

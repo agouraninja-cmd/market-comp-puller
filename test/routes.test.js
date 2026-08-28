@@ -488,7 +488,7 @@ test("bare environment", async (t) => {
     // The list itself, not a superset: /brokers and /how-it-works left the
     // menu 2026-08-25 and both still appear in every footer, so a check for
     // their mere presence in the HTML would pass either way and pin nothing.
-    for (const href of ["/1031-exchange", "/leadership", "/download"]) {
+    for (const href of ["/1031-exchange", "/download"]) {
       assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
       assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
@@ -651,6 +651,37 @@ test("bare environment", async (t) => {
     assert.match(html, /automated estimate/,
       "the automated-estimate line is missing");
   });
+
+  // The footer is the ONLY way a reader finds this page (2026-08-27: it left
+  // the Explore menu, which is for tools a reader might go and use). So a
+  // silently dropped footer link orphans the page entirely — reachable by
+  // typing the URL and by nothing else — and no other test would notice,
+  // because the page itself would keep answering 200.
+  //
+  // Matched on the Company list rather than on an exact <li>: there are two
+  // footers, MARKET_FOOTER's bare markup and index.html's Tailwind-classed
+  // copy, and pinning either one's spelling would pass on half the site and
+  // fail on the other half for no real reason.
+  await t.test("/leadership is reachable from the footer of every page", async () => {
+    const companyList = (html) => {
+      const i = html.indexOf('aria-label="Company"');
+      return i < 0 ? "" : html.slice(i, html.indexOf("</ul>", i));
+    };
+    for (const p of ["/", "/brokers", "/markets", "/1031-exchange", "/leadership"]) {
+      const html = await (await fetch(srv.base + p)).text();
+      const col = companyList(html);
+      assert.ok(col, p + " has no Company column in its footer at all");
+      assert.match(col, /href="\/leadership"/, p + " lost the footer link to /leadership");
+    }
+    // And it must NOT be back in the Explore menu without that being a
+    // deliberate edit: the two placements are a decision, not an accident.
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    const menu = markets.slice(markets.indexOf('<div class="dd">'), markets.indexOf("</details>"));
+    assert.ok(!menu.includes('href="/leadership"'),
+      "/leadership is in the Explore menu again — it belongs in the footer");
+  });
+
+
 
 
   // /how-it-works renders My Desk server-side (2026-08-08) AND takes the

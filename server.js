@@ -184,6 +184,9 @@ const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 // bulk-page.js. The shop-kind sentences are PASSED IN from ORG rather than
 // required there, so this page can never become a second copy of them.
 const { renderFirmsPageBody } = require("./firms-page");
+// /pricing — the linkable rate card. Same body-only shape; the figures are
+// handed in from PRICING so the page and the FAQ cannot quote different ones.
+const { renderPricingPageBody } = require("./pricing-page");
 const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
@@ -411,6 +414,30 @@ const STRIPE_PRICES = {
   // env var that silently becomes sellable the day someone fills it in.
 };
 const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
+
+// --- The figures a VISITOR reads --------------------------------------------
+//
+// Not the charge — that comes from the Stripe price IDs above, and these
+// numbers can never move it. They are the prose, and until 2026-08-28 the
+// prose was scattered: the monthly price was typed into index.html's pricing
+// modal, into the /how-it-works FAQ answer and into /terms, while the SEAT
+// price existed in exactly one sentence of that FAQ and nowhere a buyer could
+// click. The modal's own comment conceded the hazard — "nothing catches a
+// drift" — which is true of any figure typed in more than one place.
+//
+// So: one constant, read by /pricing and by the FAQ, with a test pinning
+// index.html's modal to it. A price change is now one edit plus whatever the
+// test then fails on, instead of a hunt through three files.
+//
+// `firmSeat` is per seat per month and `minSeats` MUST equal ORG.MIN_SEATS —
+// /api/checkout refuses a firm plan below that by name and number, so a page
+// advertising a smaller minimum would be sending somebody to a refusal.
+const PRICING = {
+  monthly: 100,
+  foundingAnnual: 840,
+  firmSeat: 79,
+  minSeats: ORG.MIN_SEATS,
+};
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
 // count is of subscriptions ever created rather than currently active.
 const FOUNDING_MEMBER_LIMIT = Number(process.env.FOUNDING_MEMBER_LIMIT || 50);
@@ -9219,6 +9246,9 @@ const MARKET_FOOTER =
   // a professional audience) and the footer is the only surface every public
   // page shares, so a page missing from it is a page nothing links to.
   `<li><a href="/firms">For firms</a></li>` +
+  // Pricing had no URL at all until 2026-08-28 — only a modal inside
+  // index.html, which cannot be linked, indexed, or sent in an email.
+  `<li><a href="/pricing">Pricing</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li>` +
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
@@ -11250,8 +11280,12 @@ const HOW_FAQ = [
   // ("all" comps, 36 months free) and the pricing modal in index.html, which
   // are the numbers being charged; a test in public-pages.test.js now pins
   // the two retired claims out.
+  // The figures come from PRICING, not from prose typed here — this answer and
+  // /pricing are the two public statements of the price and they must agree.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $100 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. Firms can put a whole office on one plan at $79 a seat, minimum two seats."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. " +
+   `Pro, at $${PRICING.monthly} a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. ` +
+   `Firms can put a whole office on one plan at $${PRICING.firmSeat} a seat, minimum ${PRICING.minSeats === 2 ? "two" : PRICING.minSeats} seats. See the full rate card at /pricing.`],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -11608,6 +11642,58 @@ function renderFirmsPageHTML(signedIn) {
   });
 
   return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/firms" });
+}
+
+// ---------------------------------------------------------------------------
+// /pricing — the rate card, at a URL for the first time.
+//
+// marketShell like the other public pages. The body is in pricing-page.js; the
+// FIGURES come from PRICING, which the /how-it-works FAQ answer also reads, so
+// the two public statements of the price cannot drift apart. index.html's
+// modal keeps its own hardcoded copies and is pinned to PRICING by
+// test/pricing-page.test.js.
+//
+// `billingLive` is STRIPE_CONFIGURED, not PRO_ENABLED: this page describes the
+// product's prices to the whole internet, which stays true on a deployment
+// that has not switched the tier on. It only decides whether the Pro tile
+// renders a control at all — the Buy-button rule, one page further out.
+// ---------------------------------------------------------------------------
+function renderPricingPageHTML(signedIn) {
+  const title = "Pricing | CompNinja";
+  const canonical = `${SITE_URL}/pricing`;
+  const description =
+    `Free comp reports with every comparable cited. Pro at $${PRICING.monthly} a month, ` +
+    `firm accounts at $${PRICING.firmSeat} a seat.`;
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Pricing",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Pricing", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderPricingPageBody({
+    signedIn,
+    pricing: PRICING,
+    billingLive: STRIPE_CONFIGURED,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/pricing" });
 }
 
 function renderLeadershipPageHTML(signedIn) {
@@ -23219,6 +23305,10 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => renderFirmsPageHTML(signedIn));
   }
 
+  if (req.method === "GET" && pagePath === "/pricing") {
+    return sendShellPage(req, res, (signedIn) => renderPricingPageHTML(signedIn));
+  }
+
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
@@ -23738,6 +23828,7 @@ const server = http.createServer((req, res) =>
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/firms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +

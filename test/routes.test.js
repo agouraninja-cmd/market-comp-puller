@@ -456,7 +456,7 @@ test("bare environment", async (t) => {
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
-      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
+      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -488,7 +488,7 @@ test("bare environment", async (t) => {
     // The list itself, not a superset: /brokers and /how-it-works left the
     // menu 2026-08-25 and both still appear in every footer, so a check for
     // their mere presence in the HTML would pass either way and pin nothing.
-    for (const href of ["/1031-exchange", "/download"]) {
+    for (const href of ["/1031-exchange", "/leadership", "/download"]) {
       assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
       assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
@@ -591,6 +591,67 @@ test("bare environment", async (t) => {
     const r = await fetch(srv.base + "/brokers?utm_source=newsletter");
     assert.equal(r.status, 200, "a campaign link to /brokers must not 404");
   });
+
+  // --- /leadership (2026-08-27) ---------------------------------------------
+  // The page names real people and serves four photographs, so the failures
+  // worth pinning are the silent ones: a portrait that 404s leaves a broken
+  // image beside somebody's name, and the photo allowlist is the one place in
+  // this feature where a mistake is a security bug rather than a layout one.
+  await t.test("/leadership survives a query string", async () => {
+    const r = await fetch(srv.base + "/leadership?utm_source=newsletter");
+    assert.equal(r.status, 200, "a campaign link to /leadership must not 404");
+  });
+
+  await t.test("every leadership photo is on the static allowlist and really serves", async () => {
+    for (const f of ["team.jpg", "jacob.jpg", "owen.jpg", "chuck.jpg"]) {
+      const r = await fetch(`${srv.base}/team-photos/${f}`);
+      assert.equal(r.status, 200, `/team-photos/${f} is not being served`);
+      assert.equal(r.headers.get("content-type"), "image/jpeg", `/team-photos/${f} wrong type`);
+      const buf = Buffer.from(await r.arrayBuffer());
+      // The bytes, not just the status: a 200 carrying an HTML error page
+      // would still render as a broken image next to somebody's name.
+      assert.ok(buf[0] === 0xff && buf[1] === 0xd8, `/team-photos/${f} is not JPEG data`);
+    }
+  });
+
+  // STATIC_FILES is an allowlist of literal paths, which is exactly why the
+  // photos went in it rather than behind a "/team-photos/" prefix handler.
+  // If anyone ever converts it to a prefix read, this is what fails.
+  await t.test("the photo directory cannot be walked out of", async () => {
+    for (const p of ["/team-photos/../server.js", "/team-photos/nope.jpg", "/team-photos/"]) {
+      const r = await fetch(srv.base + p);
+      assert.equal(r.status, 404, p + " must not resolve");
+    }
+  });
+
+  // Each person is one TEAM entry feeding both the markup and the JSON-LD, so
+  // this pins that the two cannot disagree — a Person node for somebody the
+  // page does not show, or a face with no structured identity.
+  await t.test("the page and its structured data name the same people", async () => {
+    const html = await (await fetch(srv.base + "/leadership")).text();
+    const ld = JSON.parse(html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+    const people = ld["@graph"].filter((n) => n["@type"] === "Person");
+    assert.ok(people.length >= 1, "no Person nodes at all");
+    for (const p of people) {
+      assert.ok(html.includes(`<h3>${p.name}</h3>`), `${p.name} is in the schema but not on the page`);
+      assert.ok(p.jobTitle, `${p.name} has no job title`);
+      assert.ok(p.worksFor && p.worksFor["@id"], `${p.name} is not tied to the Organization node`);
+      // No brokerage title, ever: the owner is not a licensed broker and this
+      // is the page where a title would most plausibly imply one.
+      assert.doesNotMatch(p.jobTitle, /broker/i, `${p.name}'s title implies a brokerage`);
+    }
+  });
+
+  // The compliance line every public surface carries. A leadership page is
+  // where "we are a brokerage" is easiest to imply by accident.
+  await t.test("/leadership discloses that we are not a brokerage", async () => {
+    const html = await (await fetch(srv.base + "/leadership")).text();
+    assert.match(html, /not a licensed\s+brokerage/,
+      "the not-a-brokerage disclosure is missing");
+    assert.match(html, /automated estimate/,
+      "the automated-estimate line is missing");
+  });
+
 
   // /how-it-works renders My Desk server-side (2026-08-08) AND takes the
   // shared circle, so it is one of two pages that can end up with two of

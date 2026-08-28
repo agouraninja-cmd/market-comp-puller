@@ -8435,11 +8435,42 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 /* Last FAQ row used to sit 12px+26px above the Submit card and read as
    part of it. This junction is the only #faq in MARKET_CSS. */
 #faq + .cta{margin-top:56px}
+/* --- /leadership -----------------------------------------------------------
+   Deliberately built from the /brokers vocabulary above rather than a new one:
+   the hero is .bkhero's two-column split (claim left, exhibit right) and the
+   exhibit frame is .bkex with the caption moved BELOW the image, because here
+   the picture is the content and the caption labels it rather than introducing
+   it. The three portraits are the only genuinely new shape on the site, and
+   they are cards rather than ledger rows for one reason: a ledger row's left
+   column is a label, and a face is not a label.
+   Photos are fixed 4:5 and object-fit:cover, so a replacement headshot at any
+   aspect ratio cannot change the row's geometry -- the one failure that would
+   otherwise need a re-crop rather than a file swap. */
+.ldhero{display:grid;grid-template-columns:1fr;gap:28px;margin:4px 0 12px}
+.ldhero .sub{margin-bottom:0;max-width:48ch}
+.ldex{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
+.ldex img{display:block;width:100%;height:auto}
+.ldexcap{padding:12px 16px;border-top:1px solid var(--hair);font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.08em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.people{display:grid;grid-template-columns:1fr;gap:18px;margin-top:12px}
+.person{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);box-shadow:var(--lift)}
+.person img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;background:var(--wash)}
+.pbody{padding:18px 20px 20px;border-top:1px solid var(--hair)}
+/* Same micro-label as .bklag, and the same red: on both pages it names the
+   ROLE a row is playing, so it should read identically. */
+.prole{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red)}
+.person h3{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
+  margin:6px 0 8px;line-height:1.2}
+.person p{font-size:13.5px;color:var(--ink-mute);margin:0}
 @media(min-width:900px){
   .bkhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
   .bkpath{grid-template-columns:1fr 1fr 1fr}
   .bkbeat{border-bottom:0;border-right:1px solid var(--hair)}
   .bkbeat:last-child{border-right:0}
+  .ldhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:center}
+  /* Three fixed columns, never auto-fit: the team is three people and a
+     wrapped fourth-column layout would leave one portrait alone on a row. */
+  .people{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 /* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
    trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
@@ -8682,6 +8713,10 @@ const NAV_LINKS = [
   // The third element is a class, and only this entry has one: `nav-dl` is
   // what INAPP_BOOT's rule hides when the page is already being viewed
   // inside the app. Keep it in step with that rule.
+  // Added 2026-08-27. Sits above /download deliberately: the download entry
+  // carries the nav-dl class INAPP_BOOT hides inside the app, and a hidden
+  // last item leaves a clean menu where a hidden middle one leaves a gap.
+  ["/leadership", "Leadership"],
   ["/download", "Download the app", "nav-dl"],
 ];
 // `current` is the path of the page being rendered: its own link gets the
@@ -9139,7 +9174,7 @@ const MARKET_FOOTER =
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
-  `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
+  `<ul aria-label="Company"><li><a href="/leadership">Leadership</a></li><li><a href="/terms">Terms</a></li>` +
   `<li><a href="/privacy">Privacy</a></li></ul></div>` +
   // Follow was in index.html's footer and NOWHERE ELSE, which put the only
   // links to the company's own accounts BEHIND the login. Every indexable
@@ -11429,6 +11464,129 @@ function renderBrokersPageHTML(signedIn) {
     `broker contact details are never passed on without asking first.</p>`;
 
   return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
+}
+
+// ---------------------------------------------------------------------------
+// /leadership — who is behind the product. Rendered through marketShell like
+// /brokers, so it carries no CSS of its own and does NOT depend on the purged
+// tailwind.css; its classes live in MARKET_CSS beside the .bk* rules it was
+// built from.
+//
+// Two standing rules, both inherited from the compliance line the rest of the
+// site is written to:
+//   - A leadership page is the easiest place on a site to accidentally imply a
+//     brokerage. No title here may name one, and the page closes with the same
+//     not-a-brokerage disclosure every other public surface carries.
+//   - Nothing biographical is asserted that we cannot stand behind. Each line
+//     describes what the ROLE covers at CompNinja, which is a fact about the
+//     company; claims about a person's history belong to that person to write.
+//
+// TEAM is the only thing to edit when someone joins, leaves, or takes a new
+// title — the markup below reads it and the JSON-LD is generated from it, so
+// the page and what search engines are told can never disagree.
+// ---------------------------------------------------------------------------
+const TEAM = [
+  {
+    photo: "/team-photos/jacob.jpg",
+    name: "Jacob Adler",
+    role: "Founder & CEO",
+    line: "Sets the product direction and works directly with the owners and brokers who use CompNinja.",
+  },
+  {
+    photo: "/team-photos/owen.jpg",
+    name: "Owen Barnes",
+    role: "Head of Development & Marketing",
+    line: "Builds the product and runs how it reaches the people who need it.",
+  },
+  {
+    photo: "/team-photos/chuck.jpg",
+    name: "Chuck Dickinson",
+    role: "Head of Strategy & Finance",
+    line: "Owns pricing, planning and the numbers behind the business.",
+  },
+];
+
+function renderLeadershipPageHTML(signedIn) {
+  const title = "Leadership | CompNinja";
+  const canonical = `${SITE_URL}/leadership`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "The three people who build CompNinja, based in Boise, Idaho. Who sets the " +
+    "product direction, who writes it, and who owns the numbers.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "AboutPage",
+        name: "Leadership",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Leadership", item: canonical },
+          ],
+        },
+      },
+      // One Person node each, pointed at the canonical Organization rather than
+      // restating it — the same rule brandGraph() carries for every other
+      // server-rendered page. No email, no phone, no sameAs: a sameAs means a
+      // profile the person actually controls, and inventing one is how a
+      // knowledge panel ends up pointing at a stranger.
+      ...TEAM.map((p) => ({
+        "@type": "Person",
+        name: p.name,
+        jobTitle: p.role,
+        image: `${SITE_URL}${p.photo}`,
+        worksFor: { "@id": ORG_ID },
+      })),
+    ],
+  });
+
+  const people = TEAM.map((p) =>
+    `<div class="person">` +
+      `<img src="${escHtml(p.photo)}" alt="${escHtml(p.name)}" width="800" height="1000" ` +
+      `loading="lazy" decoding="async"/>` +
+      `<div class="pbody">` +
+        `<div class="prole">${escHtml(p.role)}</div>` +
+        `<h3>${escHtml(p.name)}</h3>` +
+        `<p>${escHtml(p.line)}</p>` +
+      `</div>` +
+    `</div>`).join("");
+
+  const body =
+    `<div class="ldhero">` +
+      `<div>` +
+        `<div class="kicker">Leadership</div>` +
+        `<h1>The people behind the numbers.</h1>` +
+        `<p class="sub">CompNinja is built in Boise by a team of three. We publish who we are ` +
+        `because a valuation is only worth as much as the people willing to put their name on it.</p>` +
+      `</div>` +
+      // fetchpriority=high and no lazy: this is the page's largest paint.
+      `<div class="ldex">` +
+        `<img src="/team-photos/team.jpg" width="1400" height="933" decoding="async" fetchpriority="high" ` +
+        `alt="Owen Barnes, Jacob Adler and Chuck Dickinson on the Capitol steps in Boise, Idaho"/>` +
+        `<div class="ldexcap"><span>Owen, Jacob and Chuck</span><span>Boise, Idaho</span></div>` +
+      `</div>` +
+    `</div>` +
+
+    `<div class="people">${people}</div>` +
+
+    `<div class="cta"><h2>Want a number on a building?</h2>` +
+    `<p>Enter an address and we'll pull the recent comparable sales behind it, free.</p>` +
+    `<a class="btn" href="/">Run a free valuation &rarr;</a></div>` +
+
+    `<p class="disc">CompNinja LLC is an Idaho company based in Boise. We are not a licensed ` +
+    `brokerage &mdash; every valuation the product produces is an automated estimate, not an ` +
+    `appraisal, and broker opinions of value come from independent local brokers we introduce ` +
+    `you to. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>`;
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/leadership" });
 }
 
 // ---------------------------------------------------------------------------
@@ -22749,6 +22907,14 @@ const server = http.createServer((req, res) =>
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
     "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml", maxAge: 86400 },
     "/favicon.png": { file: "favicon.png", type: "image/png", maxAge: 86400 },
+    // /leadership portraits. Exact keys rather than a "/team-photos/" prefix
+    // handler: there are four fixed files and an allowlist of literal paths
+    // cannot be walked out of, where a prefix match needs its own filename
+    // regex to be safe (the rule /market-heroes/ carries).
+    "/team-photos/team.jpg": { file: "team-photos/team.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/jacob.jpg": { file: "team-photos/jacob.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/owen.jpg": { file: "team-photos/owen.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/chuck.jpg": { file: "team-photos/chuck.jpg", type: "image/jpeg", maxAge: 86400 },
   };
   // Query-string tolerant (reuses `staticPath`, already split above) so the
   // obvious cache-bust "/valuation.js?v=…" resolves instead of 404ing — an
@@ -22930,6 +23096,10 @@ const server = http.createServer((req, res) =>
     // simply doesn't appear until the cache has filled once.
     if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
     return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/leadership") {
+    return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
   }
 
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
@@ -23452,6 +23622,7 @@ const server = http.createServer((req, res) =>
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +

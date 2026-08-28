@@ -9205,7 +9205,7 @@ const MARKET_FOOTER =
   `<div><div class="ch">Follow</div>` +
   `<ul aria-label="Follow">` +
   `<li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer">Instagram</a></li>` +
-  `<li><a href="https://www.tiktok.com/@comp.ninja" target="_blank" rel="noopener noreferrer">TikTok</a></li>` +
+  `<li><a href="https://www.linkedin.com/company/compninja/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>` +
   `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
   `</ul></div>` +
   `</div></div></div></footer>`;

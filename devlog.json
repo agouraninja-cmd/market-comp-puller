@@ -3431,5 +3431,11 @@
     "type": "improvement",
     "title": "Your firm leads My Desk",
     "details": "It was the third of five decks, below a member own properties and their shared reports, so the shop work sat past two decks of personal work - the opposite of a product whose pitch is that the firm is the centre. It now leads. Nothing about the deck changed in the move: the block is byte-identical, verified by a script that refused to write unless the moved text matched exactly and every div, closing div and section count in the file was unchanged, so every id, gate and renderer inside it is untouched. A solo member sees no change at all, because refreshDeckVisibility still hides the whole heading for somebody who is in no firm and holds no invitation."
+  },
+  {
+    "date": "2026-08-28",
+    "type": "improvement",
+    "title": "The workspace can start a report without leaving it",
+    "details": "My Desk hid the search desk, so the page a member is meant to live on had no way to start the one thing the product does - you had to leave it first, which is a strange thing to ask of a home. The form now stays. What matters is that it is the REAL form and not a compact copy: #compForm is one form with one set of ids, read by targetRange, the footprint estimate, every report restore and the address confirm dialog, so a second launcher would have been a second address input to keep in step and the first to drift. Verified in a browser: one #address input on the page, the desk sitting above the decks, and the wall signup card still winning where it should because applySearchLock still governs it. Two seams had to learn that a report now yields the workspace rather than rendering under it - renderResults and, earlier, beginAssembly, which puts comp cards on screen up to a minute before the wholesale repaint. Without both, a search started from the workspace would have streamed its comps in below the firm shelf and the deal board. Checked the round trip by hand: workspace to report to workspace, with the search desk present throughout."
   }
 ]

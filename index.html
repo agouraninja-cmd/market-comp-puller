@@ -5365,6 +5365,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     results.classList.add("assembling");
     results.setAttribute("aria-busy", "true");
     results.classList.remove("hidden");
+    // Same reason as renderResults': the workspace yields to a report the
+    // moment one starts assembling, or the comps stream in below the firm
+    // shelf. This is the earlier of the two seams — assembly puts cards on
+    // screen up to a minute before renderResults repaints wholesale.
+    document.getElementById("deskView").classList.add("hidden");
     // The loading card slims down: its decorative gray skeletons are
     // redundant once real cards are filling in below it.
     document.getElementById("loadingSkeletons").classList.add("hidden");
@@ -11230,6 +11235,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The pitch has already landed once there's a report to read — hide it
     // so the report starts near the top instead of below a sales headline.
     document.getElementById("hero").classList.add("hidden");
+    // And the workspace yields to the report for the same reason. Since the
+    // search desk stays visible on the workspace (2026-08-28), a search can
+    // now be started from there — without this the finished report would
+    // render BELOW the firm shelf and the deal board, which is both a long
+    // scroll and the wrong thing on top. "My Desk" brings the workspace back.
+    document.getElementById("deskView").classList.add("hidden");
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -12715,7 +12726,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ----------------------------------------------------------------------------
   function showDeskView() {
     document.getElementById("hero").classList.add("hidden");
-    document.getElementById("searchSection").classList.add("hidden");
+    // The search desk STAYS (2026-08-28). It used to be hidden here, which
+    // meant the workspace — the page a member is meant to live on — had no way
+    // to start the one thing the product does; you had to leave it first.
+    //
+    // Showing the REAL form rather than a compact copy is the whole point:
+    // #compForm is one form with one set of ids, read by targetRange(), the
+    // footprint estimate, every report restore and the confirm dialog. A
+    // second "launcher" would be a second address input to keep in step, and
+    // the first to drift. applySearchLock() below still governs it, so the
+    // wall's signup card still wins where it should.
+    document.getElementById("searchSection").classList.remove("hidden");
     document.getElementById("results").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();

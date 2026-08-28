@@ -4,9 +4,11 @@
 enrollment for COMPNINJA LLC is live (enrolled as Organization, renewal
 2027-08-28). **Team ID: `ZRFN5C3645`** (Membership page; not a secret).
 Owner steps 1–2 below are DONE: the App Store Connect invite went to
-okb336@gmail.com the same day (role Admin, plus Access to Cloud Managed
-Developer ID Certificate) — it shows as pending until Owen accepts it from
-his inbox. What remains is the dev side (steps 3–7). Until a signed
+**owenkbarnes@icloud.com** the same day (role Admin, plus Access to Cloud
+Managed Developer ID Certificate) — it shows as pending until Owen accepts
+it from his inbox. (An invite first went to okb336@gmail.com by mistake
+and was cancelled minutes later; if that address ever shows up again in
+Users and Access, it is stale.) What remains is the dev side (steps 3–7). Until a signed
 release actually ships, installers stay unsigned and `/download`'s
 first-launch warning copy stays true — do not soften that copy early.
 
@@ -18,11 +20,11 @@ unsigned ones — nothing changes until the secrets are added.
 
 ## Owner steps, the day the approval email arrives
 
-1. **App Store Connect → Users and Access → invite `okb336@gmail.com` as
-   Admin.** Admin rather than App Manager, so certificates can be managed
-   without a round trip each year (they expire annually). This is the same
-   account that owns Search Console (docs/SEO.md) and the `PRO_AUDIENCE`
-   test seat — a known project account, not a stranger.
+1. **App Store Connect → Users and Access → invite `owenkbarnes@icloud.com`
+   as Admin.** Admin rather than App Manager, so certificates can be managed
+   without a round trip each year (they expire annually). This is Owen
+   Barnes's Apple ID; his Google account (okb336@gmail.com) is the one on
+   Search Console and `PRO_AUDIENCE`, but Apple invites go to an Apple ID.
 2. **Send the Team ID.** It's on the Membership page of the developer
    account. Not a secret — it goes in a repo secret only for tidiness.
 
@@ -42,7 +44,7 @@ unsigned ones — nothing changes until the secrets are added.
    |---|---|
    | `MAC_CSC_LINK` | base64 of the `.p12` |
    | `MAC_CSC_KEY_PASSWORD` | the `.p12` export password |
-   | `APPLE_ID` | the Apple ID email that was invited (okb336@gmail.com) |
+   | `APPLE_ID` | the Apple ID email that was invited (owenkbarnes@icloud.com) |
    | `APPLE_APP_SPECIFIC_PASSWORD` | from step 4 |
    | `APPLE_TEAM_ID` | from step 2 |
 

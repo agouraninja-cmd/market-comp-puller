@@ -1,0 +1,1497 @@
+{
+  "_how": "One entry per file. Keyed FROM THE SOURCE DOCUMENT. Month-only sale dates are recorded as the first of the month (see NOTE.txt). Omit a field the document does not state.",
+  "_verify_first": [
+    "CORRECTED again: the Brookdale page DOES state \"Total Square Footage 3600 square feet\" — verified from the source page. Removing it in the previous pass was my error; restored.",
+    "CORRECTED after the first run: c17 year_built and lot_acres were omitted from truth by mistake - both ARE printed on every page (Adjusted Year Built, Land Area) and were verified from the source, not from the run output. Brookdale's address now matches the source's exact punctuation, and its derived size_sqft was removed because the page states none.",
+    "c02 rows 3, 5, 7 - the source TRUNCATES the address with an ellipsis (4647 International..., 1845-1853 Interna..., 2840-2846 Chapman...). I completed them to the likeliest street name. Check against the PDF or drop the street word.",
+    "c02 - source Type column says Warehouse / Manufacturing / Light Distribution. Keyed as Industrial, because the vault accepts only its six types. Retail row kept as Retail.",
+    "c17 row 4 (Brookdale) - the page states $113.89/SF but no square footage; 3600 is derived from 410000/113.89. Verify or omit size_sqft.",
+    "c17 - Building Type is a code list (Retail Store (353), Lodging (225)...). Mapped to the nearest vault type. Row 1 is Lodging+Retail, keyed Retail; row 12 is Restaurant+Residence, keyed Retail.",
+    "c01 - the sixth row (Sulgrave Package, 'subject') is the subject property, NOT a comp. Deliberately absent.",
+    "c19 and c20 are image renders of c02 page 2 and c01. Same deals, so the same truth - that pairing measures PDF vs image on identical content.",
+    "CORRECTED 2026-08-27: c04 units/lot_acres(Site Size)/price_per_unit added for all 6 comps - the page-5 grid states them and truth had omitted them, scoring 18 correct reads as fabrication.",
+    "CORRECTED 2026-08-27: d07 building_class B+ and lot_acres 5.61/13.54 added - stated in the narrative prose column.",
+    "DELIBERATELY OMITTED: c04 Listing 1-3 (240 W Whittier, 731 W Whittier, 13514 Telegraph) have Sale Price and Sale Date BLANK in the source. They are active listings. transaction and deal_date must stay omitted - the model supplying them is a real fabrication.",
+    "e01/e02 are LOW-RESOLUTION GRAYSCALE RENDERS (60dpi, JPEG q28) of c01/c02 page 1 - a synthetic degradation probe, NOT photographs. Their truth is copied from the source files because the content is identical. They test resolution robustness only: no perspective skew, no lighting, no focus falloff. A failure here is decisive; a pass is weak evidence and must NOT be reported as covering the scan class."
+  ],
+  "_fields": "address, property_type, transaction, deal_date, price, size_sqft, cap_rate, rent_psf, rent_basis, lease_type, lease_expiry, option_notice_date, tenancy, year_built, notes, clear_height, dock_doors, building_class, floor_plate, center_type, anchor_tenant, units, price_per_unit, lot_acres, price_per_acre, zoning, beds_baths",
+  "_types": "Industrial, Office, Retail, Multifamily, Land, Residential",
+  "files": [
+    {
+      "file": "c01-multifamily-sale-comps.pdf",
+      "deals": [
+        {
+          "address": "4-6 E 30th",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-07-01",
+          "price": "3100000",
+          "size_sqft": "13300",
+          "units": "24",
+          "price_per_unit": "129167"
+        },
+        {
+          "address": "3522 Beech",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "10000000",
+          "size_sqft": "64122",
+          "units": "76",
+          "price_per_unit": "131579"
+        },
+        {
+          "address": "5924 Bellona Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-10-01",
+          "price": "419000",
+          "size_sqft": "2968",
+          "units": "3",
+          "price_per_unit": "139667"
+        },
+        {
+          "address": "435 Nicoll Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-11-01",
+          "price": "2000000",
+          "size_sqft": "14400",
+          "units": "12",
+          "price_per_unit": "166667"
+        },
+        {
+          "address": "5021 Roland Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "566000",
+          "size_sqft": "2737",
+          "units": "3",
+          "price_per_unit": "188667"
+        }
+      ]
+    },
+    {
+      "file": "c02-costar-sale-comps-report.pdf",
+      "deals": [
+        {
+          "address": "1622 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-09-13",
+          "price": "2350000",
+          "size_sqft": "10500",
+          "year_built": "1925"
+        },
+        {
+          "address": "2036-2040 Livingston St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-04-01",
+          "price": "4250000",
+          "size_sqft": "21000",
+          "year_built": "1920"
+        },
+        {
+          "address": "4647 International, Oakland, CA 94601",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-11-29",
+          "price": "1500000",
+          "size_sqft": "13327",
+          "year_built": "1966"
+        },
+        {
+          "address": "2121 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-09-21",
+          "price": "4500000",
+          "size_sqft": "23824",
+          "year_built": "1959"
+        },
+        {
+          "address": "1845-1853 International, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-06-22",
+          "price": "1150000",
+          "size_sqft": "10175",
+          "year_built": "1940"
+        },
+        {
+          "address": "1900-1906 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-05-06",
+          "price": "2300000",
+          "size_sqft": "21000",
+          "year_built": "1912"
+        },
+        {
+          "address": "2840-2846 Chapman, Oakland, CA 94601",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-03-19",
+          "price": "1842500",
+          "size_sqft": "10500",
+          "year_built": "1949"
+        }
+      ]
+    },
+    {
+      "file": "c17-chaffee-sales-p3-14.pdf",
+      "deals": [
+        {
+          "address": "33975 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-02-04",
+          "price": "1900000",
+          "size_sqft": "4829",
+          "lot_acres": "21.11"
+        },
+        {
+          "address": "16450 County Road 306, Buena Vista, CO 81211",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-06-29",
+          "price": "400000",
+          "size_sqft": "2146",
+          "year_built": "1975",
+          "lot_acres": "1.46"
+        },
+        {
+          "address": "527 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-12-29",
+          "price": "1267500",
+          "size_sqft": "6099",
+          "year_built": "1993",
+          "lot_acres": "1.19"
+        },
+        {
+          "address": "102 – 104 Brookdale Ave. Buena Vista, CO. 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2020-12-29",
+          "price": "410000",
+          "year_built": "1997",
+          "lot_acres": "0.82",
+          "size_sqft": "3600"
+        },
+        {
+          "address": "545 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-04-23",
+          "price": "600000",
+          "size_sqft": "2505",
+          "year_built": "2000",
+          "lot_acres": "0.30"
+        },
+        {
+          "address": "507 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-09-30",
+          "price": "700000",
+          "size_sqft": "864",
+          "year_built": "1979",
+          "lot_acres": "0.92"
+        },
+        {
+          "address": "308 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-04-20",
+          "price": "1026000",
+          "size_sqft": "3679",
+          "year_built": "1990",
+          "lot_acres": "0.13"
+        },
+        {
+          "address": "330 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2020-11-20",
+          "price": "620000",
+          "size_sqft": "1700",
+          "year_built": "1965",
+          "lot_acres": "0.07"
+        },
+        {
+          "address": "413 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-01-22",
+          "price": "1450000",
+          "size_sqft": "9900",
+          "year_built": "1987",
+          "lot_acres": "0.29"
+        },
+        {
+          "address": "415 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-09-30",
+          "price": "3275000",
+          "size_sqft": "23164",
+          "year_built": "2000",
+          "lot_acres": "1.19"
+        },
+        {
+          "address": "401 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-06-09",
+          "price": "2000000",
+          "size_sqft": "13800",
+          "year_built": "1995",
+          "lot_acres": "0.85"
+        },
+        {
+          "address": "206 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-04-27",
+          "price": "2400000",
+          "size_sqft": "7125",
+          "year_built": "2003",
+          "lot_acres": "0.16"
+        }
+      ]
+    },
+    {
+      "file": "c19-costar-comps-2.png",
+      "deals": [
+        {
+          "address": "1622 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-09-13",
+          "price": "2350000",
+          "size_sqft": "10500",
+          "year_built": "1925"
+        },
+        {
+          "address": "2036-2040 Livingston St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-04-01",
+          "price": "4250000",
+          "size_sqft": "21000",
+          "year_built": "1920"
+        },
+        {
+          "address": "4647 International, Oakland, CA 94601",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-11-29",
+          "price": "1500000",
+          "size_sqft": "13327",
+          "year_built": "1966"
+        },
+        {
+          "address": "2121 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-09-21",
+          "price": "4500000",
+          "size_sqft": "23824",
+          "year_built": "1959"
+        },
+        {
+          "address": "1845-1853 International, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-06-22",
+          "price": "1150000",
+          "size_sqft": "10175",
+          "year_built": "1940"
+        },
+        {
+          "address": "1900-1906 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-05-06",
+          "price": "2300000",
+          "size_sqft": "21000",
+          "year_built": "1912"
+        },
+        {
+          "address": "2840-2846 Chapman, Oakland, CA 94601",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-03-19",
+          "price": "1842500",
+          "size_sqft": "10500",
+          "year_built": "1949"
+        }
+      ]
+    },
+    {
+      "file": "c20-benfrederick-img-1.png",
+      "deals": [
+        {
+          "address": "4-6 E 30th",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-07-01",
+          "price": "3100000",
+          "size_sqft": "13300",
+          "units": "24",
+          "price_per_unit": "129167"
+        },
+        {
+          "address": "3522 Beech",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "10000000",
+          "size_sqft": "64122",
+          "units": "76",
+          "price_per_unit": "131579"
+        },
+        {
+          "address": "5924 Bellona Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-10-01",
+          "price": "419000",
+          "size_sqft": "2968",
+          "units": "3",
+          "price_per_unit": "139667"
+        },
+        {
+          "address": "435 Nicoll Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-11-01",
+          "price": "2000000",
+          "size_sqft": "14400",
+          "units": "12",
+          "price_per_unit": "166667"
+        },
+        {
+          "address": "5021 Roland Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "566000",
+          "size_sqft": "2737",
+          "units": "3",
+          "price_per_unit": "188667"
+        }
+      ]
+    },
+    {
+      "file": "c04-bov-sample.pdf",
+      "_note": "Whittier CA retail BOV, transposed grid (comps are COLUMNS). Subject excluded. Sales 1-3 carry a sale price and date; Listings 1-3 carry a list price and no transaction/date, as the document states.",
+      "deals": [
+        {
+          "address": "321 S Highland Ave, Fullerton, CA 92832",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2014-10-03",
+          "price": "680000",
+          "size_sqft": "3500",
+          "year_built": "1955",
+          "units": "1",
+          "lot_acres": "0.33",
+          "price_per_unit": "680000"
+        },
+        {
+          "address": "11006 Santa Gertrudes Ave, Whittier, CA 90604",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2014-09-03",
+          "price": "675000",
+          "size_sqft": "2852",
+          "year_built": "1987",
+          "units": "1",
+          "lot_acres": "0.38",
+          "price_per_unit": "675000"
+        },
+        {
+          "address": "339 N Harbor Blvd, La Habra, CA 90631",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2014-02-12",
+          "price": "472500",
+          "size_sqft": "3525",
+          "year_built": "1963",
+          "units": "1",
+          "lot_acres": "1.7",
+          "price_per_unit": "472500"
+        },
+        {
+          "address": "240 W Whittier Blvd, La Habra, CA 90631",
+          "property_type": "Retail",
+          "price": "689000",
+          "size_sqft": "3425",
+          "year_built": "1962",
+          "units": "1",
+          "lot_acres": "0.24",
+          "price_per_unit": "689000"
+        },
+        {
+          "address": "731 W Whittier Blvd, La Habra, CA 90631",
+          "property_type": "Retail",
+          "price": "3350000",
+          "size_sqft": "16400",
+          "year_built": "1972",
+          "units": "1",
+          "lot_acres": "1.13",
+          "price_per_unit": "3350000"
+        },
+        {
+          "address": "13514 Telegraph Rd, Whittier, CA 90605",
+          "property_type": "Retail",
+          "price": "475000",
+          "size_sqft": "2472",
+          "year_built": "1987",
+          "units": "1",
+          "lot_acres": "0.15",
+          "price_per_unit": "475000"
+        }
+      ]
+    },
+    {
+      "file": "c03-salem-va-land-p1.pdf",
+      "_note": "City of Salem VA vacant commercial-industrial lots, PAGE 1 ONLY of a 2-page document. Addresses keyed with no city/state, exactly as the address column reads. Land size is stated in both sq ft and acres, so both are recorded — omitting a figure the document prints is how a correct read scores as an invention.",
+      "deals": [
+        {
+          "address": "830 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2025-02-14",
+          "price": "1359375",
+          "size_sqft": "24775",
+          "lot_acres": "0.569",
+          "price_per_acre": "2389060",
+          "zoning": "HBD"
+        },
+        {
+          "address": "1251 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-10-29",
+          "price": "1214000",
+          "size_sqft": "28649",
+          "lot_acres": "0.658",
+          "price_per_acre": "1844985",
+          "zoning": "HBD"
+        },
+        {
+          "address": "816 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-10-25",
+          "price": "1500000",
+          "size_sqft": "52001",
+          "lot_acres": "1.194",
+          "price_per_acre": "1256281",
+          "zoning": "HBD"
+        },
+        {
+          "address": "2050 Salem Industrial Dr",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-05-01",
+          "price": "30000",
+          "size_sqft": "26702",
+          "lot_acres": "0.613",
+          "price_per_acre": "48940",
+          "zoning": "HM"
+        },
+        {
+          "address": "1631 Lynchburg TNPK",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-04-29",
+          "price": "137000",
+          "size_sqft": "226207",
+          "lot_acres": "5.193",
+          "price_per_acre": "26382",
+          "zoning": "HBD"
+        },
+        {
+          "address": "2145 Roanoke BLVD BLK",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-03-14",
+          "price": "99950",
+          "size_sqft": "46652",
+          "lot_acres": "1.071",
+          "price_per_acre": "93324",
+          "zoning": "CBD"
+        },
+        {
+          "address": "830 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2024-02-02",
+          "price": "825000",
+          "size_sqft": "24775",
+          "lot_acres": "0.569",
+          "price_per_acre": "1449912",
+          "zoning": "HBD"
+        },
+        {
+          "address": "416 Electric Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-11-16",
+          "price": "285000",
+          "size_sqft": "174275",
+          "lot_acres": "4",
+          "price_per_acre": "71250",
+          "zoning": "HBD"
+        },
+        {
+          "address": "312 E Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-18",
+          "price": "625000",
+          "size_sqft": "17642",
+          "lot_acres": "0.405",
+          "price_per_acre": "1543210",
+          "zoning": "DBD"
+        },
+        {
+          "address": "2100 Salem Industrial Dr",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-12",
+          "price": "200000",
+          "size_sqft": "39640",
+          "lot_acres": "0.91",
+          "price_per_acre": "219780",
+          "zoning": "HM"
+        },
+        {
+          "address": "2730 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-11",
+          "price": "245000",
+          "size_sqft": "74052",
+          "lot_acres": "1.7",
+          "price_per_acre": "144118",
+          "zoning": "HBD"
+        },
+        {
+          "address": "744 Electric Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-04",
+          "price": "227500",
+          "size_sqft": "88670",
+          "lot_acres": "2.036",
+          "price_per_acre": "111739",
+          "zoning": "HBD"
+        },
+        {
+          "address": "68 St John Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-04",
+          "price": "95000",
+          "size_sqft": "40580",
+          "lot_acres": "0.932",
+          "price_per_acre": "101931",
+          "zoning": "HBD"
+        },
+        {
+          "address": "84 St John Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-10-04",
+          "price": "107500",
+          "size_sqft": "30747",
+          "lot_acres": "0.706",
+          "price_per_acre": "152266",
+          "zoning": "HM"
+        },
+        {
+          "address": "800 Roanoke Blvd BLK",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-08-10",
+          "price": "150000",
+          "size_sqft": "40160",
+          "lot_acres": "0.964",
+          "price_per_acre": "155602",
+          "zoning": "RB"
+        },
+        {
+          "address": "816 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-07-14",
+          "price": "2750000",
+          "size_sqft": "76939",
+          "lot_acres": "1.766",
+          "price_per_acre": "1557191",
+          "zoning": "HBD"
+        },
+        {
+          "address": "105 St John Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-06-13",
+          "price": "133343",
+          "size_sqft": "35545",
+          "lot_acres": "0.816",
+          "price_per_acre": "163411",
+          "zoning": "HBD"
+        },
+        {
+          "address": "2005 E Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-06-01",
+          "price": "40000",
+          "size_sqft": "24261",
+          "lot_acres": "0.557",
+          "price_per_acre": "71813",
+          "zoning": "RSF"
+        },
+        {
+          "address": "71 St John Road",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-02-17",
+          "price": "152000",
+          "size_sqft": "35838",
+          "lot_acres": "0.823",
+          "price_per_acre": "184690",
+          "zoning": "HM"
+        },
+        {
+          "address": "10 S Broad St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2023-01-04",
+          "price": "30000",
+          "size_sqft": "3192",
+          "lot_acres": "0.073",
+          "price_per_acre": "410959",
+          "zoning": "DBD"
+        },
+        {
+          "address": "710 8TH St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-12-30",
+          "price": "2445580",
+          "size_sqft": "438242",
+          "lot_acres": "10.06",
+          "price_per_acre": "243099",
+          "zoning": "HM"
+        },
+        {
+          "address": "900 Russell Dr BLK",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-12-20",
+          "price": "20000",
+          "size_sqft": "64033",
+          "lot_acres": "1.47",
+          "price_per_acre": "13605",
+          "zoning": "BCD"
+        },
+        {
+          "address": "1900 BLK Mill Ln",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-10-25",
+          "price": "859649",
+          "size_sqft": "534946",
+          "lot_acres": "12.281",
+          "price_per_acre": "69998",
+          "zoning": "AGRSF"
+        },
+        {
+          "address": "1637 E Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-10-07",
+          "price": "1300000",
+          "size_sqft": "75878",
+          "lot_acres": "1.742",
+          "price_per_acre": "746269",
+          "zoning": "HBD"
+        },
+        {
+          "address": "1900 W Main St BLK",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-08-19",
+          "price": "1572000",
+          "size_sqft": "163176",
+          "lot_acres": "3.746",
+          "price_per_acre": "419648",
+          "zoning": "HBD"
+        },
+        {
+          "address": "101 Turner Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-08-19",
+          "price": "663000",
+          "size_sqft": "63598",
+          "lot_acres": "1.46",
+          "price_per_acre": "454110",
+          "zoning": "HBD"
+        },
+        {
+          "address": "200 Wildwood Rd",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2022-07-27",
+          "price": "280000",
+          "size_sqft": "8886",
+          "lot_acres": "0.204",
+          "price_per_acre": "1372549",
+          "zoning": "HBD"
+        },
+        {
+          "address": "912 S Market St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2021-12-22",
+          "price": "26000",
+          "size_sqft": "7812",
+          "lot_acres": "0.18",
+          "price_per_acre": "144444",
+          "zoning": "HM"
+        },
+        {
+          "address": "1224 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2021-10-21",
+          "price": "750000",
+          "size_sqft": "31550",
+          "lot_acres": "0.724",
+          "price_per_acre": "1035912",
+          "zoning": "HBD"
+        },
+        {
+          "address": "500 BLK Thompson Memorial Dr",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2021-10-21",
+          "price": "425000",
+          "size_sqft": "129024",
+          "lot_acres": "2.962",
+          "price_per_acre": "143484",
+          "zoning": "RMF"
+        },
+        {
+          "address": "124 W Main St",
+          "property_type": "Land",
+          "transaction": "sale",
+          "deal_date": "2021-10-15",
+          "price": "775000",
+          "size_sqft": "39683",
+          "lot_acres": "0.911",
+          "price_per_acre": "850714",
+          "zoning": "TBD"
+        }
+      ]
+    },
+    {
+      "file": "c15-sibley-residential-p1.pdf",
+      "_note": "Sibley County MN residential sales Oct 2024 - Sep 2025, PAGE 1 ONLY of a 6-page document. No building square footage is printed anywhere in this document; lot size in acres is all it states. Three NONE ASSIGNED rows are excluded as unaddressed — a refusal on those is correct behaviour.",
+      "deals": [
+        {
+          "address": "31475 STATE HWY 15",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-07-01",
+          "price": "490000",
+          "lot_acres": "4.75",
+          "year_built": "2018"
+        },
+        {
+          "address": "22646 383 AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-11-08",
+          "price": "385000",
+          "lot_acres": "3.33",
+          "year_built": "1880"
+        },
+        {
+          "address": "42213 266 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-01-10",
+          "price": "300000",
+          "lot_acres": "4.99",
+          "year_built": "1926"
+        },
+        {
+          "address": "27454 425 LN",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-06-23",
+          "price": "325000",
+          "lot_acres": "9.34",
+          "year_built": "1925"
+        },
+        {
+          "address": "25472 381 AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-06-30",
+          "price": "425000",
+          "lot_acres": "5.93",
+          "year_built": "1930"
+        },
+        {
+          "address": "22800 401 AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-09-10",
+          "price": "287000",
+          "lot_acres": "0.70",
+          "year_built": "1978"
+        },
+        {
+          "address": "55788 256 St",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-05-23",
+          "price": "308200",
+          "lot_acres": "3.10",
+          "year_built": "1976"
+        },
+        {
+          "address": "59195 266 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-04-18",
+          "price": "194000",
+          "lot_acres": "3.97",
+          "year_built": "1996"
+        },
+        {
+          "address": "47493 259 LN",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-08-15",
+          "price": "665000",
+          "lot_acres": "2.99",
+          "year_built": "2002"
+        },
+        {
+          "address": "25648 200 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-10-31",
+          "price": "650000",
+          "lot_acres": "3.66",
+          "year_built": "1996"
+        },
+        {
+          "address": "19450 WHITETAIL LN",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-12-18",
+          "price": "565000",
+          "lot_acres": "2.68",
+          "year_built": "1993"
+        },
+        {
+          "address": "20750 HILLCREST LN",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-02-13",
+          "price": "655000",
+          "lot_acres": "3.60",
+          "year_built": "1999"
+        },
+        {
+          "address": "28306 STATE HWY 25",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-06-20",
+          "price": "576225",
+          "lot_acres": "2.74",
+          "year_built": "1996"
+        },
+        {
+          "address": "25702 200 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-07-09",
+          "price": "550000",
+          "lot_acres": "2.78",
+          "year_built": "1992"
+        },
+        {
+          "address": "26813 SCENIC BYWAY",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-08-27",
+          "price": "520000",
+          "lot_acres": "2.50",
+          "year_built": "1972"
+        },
+        {
+          "address": "25650 SCENIC BYWAY",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-09-30",
+          "price": "385000",
+          "lot_acres": "2.50",
+          "year_built": "1962"
+        },
+        {
+          "address": "2269 ZANE AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-08-15",
+          "price": "257500",
+          "lot_acres": "5.21",
+          "year_built": "1912"
+        },
+        {
+          "address": "65836 210 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-09-19",
+          "price": "205000",
+          "lot_acres": "3.49",
+          "year_built": "1998"
+        },
+        {
+          "address": "17429 411 AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-12-18",
+          "price": "160000",
+          "lot_acres": "9.00",
+          "year_built": "1930"
+        },
+        {
+          "address": "5501 70 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-07-28",
+          "price": "571725",
+          "lot_acres": "27.96",
+          "year_built": "1940"
+        },
+        {
+          "address": "33785 336 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-12-13",
+          "price": "323800",
+          "lot_acres": "1.50",
+          "year_built": "1875"
+        },
+        {
+          "address": "36679 228 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2024-12-23",
+          "price": "430000",
+          "lot_acres": "5.54",
+          "year_built": "1890"
+        },
+        {
+          "address": "35881 276 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-01-17",
+          "price": "315000",
+          "lot_acres": "8.92",
+          "year_built": "1925"
+        },
+        {
+          "address": "25239 361 AVE",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-05-02",
+          "price": "345000",
+          "lot_acres": "22.24",
+          "year_built": "2004"
+        },
+        {
+          "address": "32420 224 ST",
+          "property_type": "Residential",
+          "transaction": "sale",
+          "deal_date": "2025-06-20",
+          "price": "474555",
+          "lot_acres": "5.07",
+          "year_built": "1900"
+        }
+      ]
+    },
+    {
+      "file": "d01-neilwalter-mf-comps.pdf",
+      "_note": "Neil Walter Co (Tacoma WA) multifamily sale comps. AVERAGE row excluded. No building SF column.",
+      "deals": [
+        {
+          "address": "30823 18th Ave S, Federal Way, WA 98003",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2015-08-05",
+          "price": "9495000",
+          "units": "72",
+          "price_per_unit": "131875",
+          "cap_rate": "5.10%",
+          "year_built": "1989"
+        },
+        {
+          "address": "5211 66th Street Ct W, University Place, WA 98467",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2015-01-28",
+          "price": "1060000",
+          "units": "8",
+          "price_per_unit": "132500",
+          "cap_rate": "6.29%",
+          "year_built": "2006"
+        },
+        {
+          "address": "10710 256th St, Kent, WA 98030",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2015-07-16",
+          "price": "11500000",
+          "units": "76",
+          "price_per_unit": "151316",
+          "cap_rate": "5.5%",
+          "year_built": "1965"
+        },
+        {
+          "address": "3320 Auburn Way S, Auburn, WA 98092",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2015-11-30",
+          "price": "5370000",
+          "units": "41",
+          "price_per_unit": "130976",
+          "cap_rate": "5.24%",
+          "year_built": "1997"
+        },
+        {
+          "address": "8508-8518 Main St E, Bonney Lake, WA 98391",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2015-07-30",
+          "price": "3525000",
+          "units": "21",
+          "price_per_unit": "167857",
+          "cap_rate": "5.5%",
+          "year_built": "2010"
+        }
+      ]
+    },
+    {
+      "file": "d02-kidder-office-comps.pdf",
+      "_note": "Kidder Mathews/Cresa Pasadena office sale comps, page 27 of the OM (page 28 excluded - its address index would manufacture fabrications). Prices printed as $9.65M shorthand, which parseMoney refuses; truth holds the real figure.",
+      "deals": [
+        {
+          "address": "615 S Raymond Ave, Pasadena, CA 91105",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2023-10-17",
+          "price": "9650000",
+          "size_sqft": "14020"
+        },
+        {
+          "address": "477 S Raymond Ave, Pasadena, CA 91105",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-08-04",
+          "price": "13900000",
+          "size_sqft": "20382"
+        },
+        {
+          "address": "123 S Marengo Ave, Pasadena, CA 91101",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2022-02-23",
+          "price": "59000000",
+          "size_sqft": "91770"
+        },
+        {
+          "address": "968 S Fair Oaks Ave, Pasadena, CA 91105",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2023-12-12",
+          "price": "8820000",
+          "size_sqft": "9927"
+        },
+        {
+          "address": "110 E Holly St, Pasadena, CA 91103",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2022-12-19",
+          "price": "6000000",
+          "size_sqft": "7120"
+        },
+        {
+          "address": "1020 El Centro St, South Pasadena, CA 91030",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-06-15",
+          "price": "12500000",
+          "size_sqft": "16098"
+        }
+      ]
+    },
+    {
+      "file": "d03-bullrealty-office-comps.pdf",
+      "_note": "Bull Realty Atlanta office sold comps. Subject Property row excluded. ALL dates month-only, keyed as first-of-month per the standing rule - this file is the main test of that decision.",
+      "deals": [
+        {
+          "address": "4800 Ashford Dunwoody Rd., Dunwoody",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2016-08-01",
+          "price": "8050000",
+          "size_sqft": "45000"
+        },
+        {
+          "address": "1441 Dresden Dr., Atlanta",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2015-01-01",
+          "price": "5400000",
+          "size_sqft": "20635"
+        },
+        {
+          "address": "5755 Dupree Dr., Atlanta",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2016-11-01",
+          "price": "4742268",
+          "size_sqft": "24119"
+        },
+        {
+          "address": "121 Perimeter Ctr., Atlanta",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2015-09-01",
+          "price": "12100000",
+          "size_sqft": "47040"
+        },
+        {
+          "address": "3405 Piedmont Rd., Atlanta",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2016-12-01",
+          "price": "20661750",
+          "size_sqft": "81664"
+        }
+      ]
+    },
+    {
+      "file": "d04-nai-top-transactions.pdf",
+      "_note": "NAI DiLeo-Bram northern/central NJ top transactions, 9 rows over 3 property types. NO DATE COLUMN EXISTS - every supplied deal_date is an invention. Row 1's price is printed '$84,000.000' (a source typo); truth holds 84000000, corroborated by the page's own $354 PSF and its narrative.",
+      "deals": [
+        {
+          "address": "200 Cottontail Lane A&B, Somerset",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "price": "84000000",
+          "size_sqft": "237360"
+        },
+        {
+          "address": "1501 Cottontail Lane, Somerset",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "price": "145090333",
+          "size_sqft": "507000"
+        },
+        {
+          "address": "201 Middlesex Center Blvd., Monroe",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "price": "166825000",
+          "size_sqft": "600000"
+        },
+        {
+          "address": "750 College Road East, Princeton",
+          "property_type": "Office",
+          "transaction": "sale",
+          "price": "20234752",
+          "size_sqft": "99742"
+        },
+        {
+          "address": "1 Semour Street, Montclair",
+          "property_type": "Office",
+          "transaction": "sale",
+          "price": "17900000",
+          "size_sqft": "40785"
+        },
+        {
+          "address": "340 Mt Kemble Avenue, Morristown",
+          "property_type": "Office",
+          "transaction": "sale",
+          "price": "116500000",
+          "size_sqft": "413261"
+        },
+        {
+          "address": "1071-1125 Inman Ave, Edison",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "price": "24000000",
+          "size_sqft": "118804"
+        },
+        {
+          "address": "192-234 Springfield Avenue, Newark",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "price": "37375000",
+          "size_sqft": "112000"
+        },
+        {
+          "address": "191 E. Hanover Avenue, Morristown",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "price": "52500000",
+          "size_sqft": "140000"
+        }
+      ]
+    },
+    {
+      "file": "d07-cbre-sale-comps.pdf",
+      "_note": "CBRE Detroit medical office sale comps. Subject row (starred, green) and Comparable Averages footer excluded. N/A cap rates omitted rather than keyed as a value.",
+      "deals": [
+        {
+          "address": "39475 Lewis Drive, Novi, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2013-09-01",
+          "price": "10300000",
+          "size_sqft": "45287",
+          "cap_rate": "7.3%",
+          "year_built": "2004",
+          "building_class": "B+",
+          "lot_acres": "5.61"
+        },
+        {
+          "address": "46325 W 12 Mile Road, Novi, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2013-03-28",
+          "price": "16132253",
+          "size_sqft": "57636",
+          "cap_rate": "8.0%",
+          "year_built": "2006"
+        },
+        {
+          "address": "5315 Elliott Drive, Ypsilanti, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2012-12-01",
+          "price": "14840000",
+          "size_sqft": "86125",
+          "cap_rate": "8.3%",
+          "year_built": "1995"
+        },
+        {
+          "address": "451 Health Parkway, Paw Paw, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2012-09-01",
+          "price": "30430000",
+          "size_sqft": "100321",
+          "cap_rate": "7.7%",
+          "year_built": "2006"
+        },
+        {
+          "address": "26850 Providence Parkway, Novi, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2012-02-01",
+          "price": "51320000",
+          "size_sqft": "202515",
+          "year_built": "2007",
+          "lot_acres": "13.54"
+        },
+        {
+          "address": "1200 W 6th Street, Traverse City, MI",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2010-10-01",
+          "price": "5300000",
+          "size_sqft": "38544",
+          "year_built": "2003"
+        }
+      ]
+    },
+    {
+      "file": "d08-cbre-rent-comps.pdf",
+      "_note": "CBRE Detroit medical office LEASE comps (the set's only lease file), page 19. Page 18 excluded - two leases at one address share a start date and could match swapped. Comp 6 excluded - no street number, a correct refusal. rent_basis deliberately unkeyed: the document never states annual vs monthly, so a refusal here is a finding about broker lease sheets, not an extraction failure.",
+      "deals": [
+        {
+          "address": "18100 Oakwood Boulevard, Dearborn, MI",
+          "property_type": "Office",
+          "transaction": "lease",
+          "deal_date": "2010-01-01",
+          "rent_psf": "20.50",
+          "lease_type": "NNN",
+          "size_sqft": "102968",
+          "year_built": "2005"
+        },
+        {
+          "address": "15979 Hall Road, Macomb Township, MI",
+          "property_type": "Office",
+          "transaction": "lease",
+          "deal_date": "2012-01-01",
+          "rent_psf": "26.00",
+          "lease_type": "NNN",
+          "size_sqft": "64515",
+          "year_built": "2005"
+        },
+        {
+          "address": "5701 Bow Pointe Drive, Independence Township, MI",
+          "property_type": "Office",
+          "transaction": "lease",
+          "deal_date": "2011-02-01",
+          "rent_psf": "23.28",
+          "lease_type": "NNN",
+          "size_sqft": "133794",
+          "year_built": "2009"
+        }
+      ]
+    },
+    {
+      "file": "e01-lowres-benfrederick.jpg",
+      "deals": [
+        {
+          "address": "4-6 E 30th",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-07-01",
+          "price": "3100000",
+          "size_sqft": "13300",
+          "units": "24",
+          "price_per_unit": "129167"
+        },
+        {
+          "address": "3522 Beech",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "10000000",
+          "size_sqft": "64122",
+          "units": "76",
+          "price_per_unit": "131579"
+        },
+        {
+          "address": "5924 Bellona Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-10-01",
+          "price": "419000",
+          "size_sqft": "2968",
+          "units": "3",
+          "price_per_unit": "139667"
+        },
+        {
+          "address": "435 Nicoll Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-11-01",
+          "price": "2000000",
+          "size_sqft": "14400",
+          "units": "12",
+          "price_per_unit": "166667"
+        },
+        {
+          "address": "5021 Roland Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "566000",
+          "size_sqft": "2737",
+          "units": "3",
+          "price_per_unit": "188667"
+        }
+      ]
+    },
+    {
+      "file": "e02-lowres-costar.jpg",
+      "deals": [
+        {
+          "address": "1622 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-09-13",
+          "price": "2350000",
+          "size_sqft": "10500",
+          "year_built": "1925"
+        },
+        {
+          "address": "2036-2040 Livingston St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-04-01",
+          "price": "4250000",
+          "size_sqft": "21000",
+          "year_built": "1920"
+        },
+        {
+          "address": "4647 International, Oakland, CA 94601",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-11-29",
+          "price": "1500000",
+          "size_sqft": "13327",
+          "year_built": "1966"
+        },
+        {
+          "address": "2121 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-09-21",
+          "price": "4500000",
+          "size_sqft": "23824",
+          "year_built": "1959"
+        },
+        {
+          "address": "1845-1853 International, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-06-22",
+          "price": "1150000",
+          "size_sqft": "10175",
+          "year_built": "1940"
+        },
+        {
+          "address": "1900-1906 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-05-06",
+          "price": "2300000",
+          "size_sqft": "21000",
+          "year_built": "1912"
+        },
+        {
+          "address": "2840-2846 Chapman, Oakland, CA 94601",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-03-19",
+          "price": "1842500",
+          "size_sqft": "10500",
+          "year_built": "1949"
+        }
+      ]
+    }
+  ]
+}

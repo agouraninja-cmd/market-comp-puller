@@ -27,26 +27,31 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
-- **Two prompt fixes before ingestion — the extraction test found them**
-  (the test itself is DONE: verdict in
-  `docs/evals/extract-2026-08-27-verdict.md`, 14 documents, 132 hand-keyed
-  deals, 98.7% field precision, 1.3% fabrication, nothing omitted). The
-  capability cleared the bar; the current `EXTRACT_PROMPT` did not, in two
-  named ways, and both put a silently wrong number in a broker's own records:
-  **cap rates come back as decimal fractions** (`0.051` where the page says
-  `5.10%` — 8 of 8, across two brokerages), which `parsePercent` accepts
-  happily because 0.051 is a legal percentage, so the vault stores a cap rate
-  of 0.051%; and **active listings are reported as closed sales**, with a
-  `deal_date` lifted from the Original List Date row (3 of 3 on a lender
-  BOV). Neither is a model capability failure — the prompt simply never states
-  the cap-rate unit, and never tells the extractor that a listing is a thing
-  that exists. Fix both, then re-run: the harness, the files and the corrected
-  truth all exist now, so the whole verdict re-runs with one command for about
-  a dollar. Until then the Archive block below stays gated, which is what §9's
-  pass condition is for. Still owed on the test itself: a stopwatch reading on
-  correction time (§9's first condition, still unmeasured) and the true-scan
-  class — no photograph of a printed sheet was available, so the numbers are
-  an upper bound on the messy half of the distribution.
+- **Two decisions before ingestion ships, neither an extraction problem**
+  (the extraction test is DONE and the two prompt defects it found are fixed
+  and verified — final verdict in
+  `docs/evals/extract-2026-08-28-verdict-final.md`: cap rates went 0 of 8
+  correct to 8 of 8, invented sale dates 3 to 0, field precision 99.6%).
+  What the measurement surfaced that a prompt cannot fix:
+  1. **The `deal_date` and `rent_basis` refusals cost 13 real deals** in a
+     16-document set. A brokerage capital-markets report whose transactions
+     table has no date column loses all 9 rows; lease sheets that state a
+     rate but never the word "annual" lose 4 more. Both refusals are correct
+     — `rent_basis` exists because guessing is 12x wrong — but the honest
+     options are a dateless-deal sentinel (the `Active` precedent) and a
+     per-import rent basis, not a relaxed parser.
+  2. **Address completion versus the dedupe key.** The model now completes
+     addresses the page abbreviates ("Atlanta" to "Atlanta, GA", measured on
+     5 of 5 rows of one sheet). The completion is correct, but `addressKey`
+     is the vault's dedupe key, so the same sheet imported either side of
+     that behaviour yields duplicate properties.
+  And one thing no prompt fixes: **image quality produces silent wrong
+  numbers.** On a synthetic 60dpi grayscale render — not even a photograph —
+  one page returned nothing at all and another silently misread $566,000 as
+  $560,000. A confirm step the broker actually reads is not optional for
+  photographed input. Still owed on the test itself: a stopwatch on
+  correction time (§9's first condition; two exercises are staged by
+  `scripts/make-correction-exercise.js`) and a real photographed scan.
 
 ## Next
 
@@ -180,6 +185,20 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-28: the extraction verdict is answered, and its two defects are
+  fixed.** The 2026-08-27 verdict found the capability sound but the prompt
+  broken in two ways, both of the silent-wrong-number kind `normalizeRow`
+  cannot catch: every cap rate returned as a decimal fraction (a page reading
+  5.10% became 0.051, storable as a cap rate of 0.051%), and three active
+  listings on a lender BOV reported as closed sales dated from the list date.
+  Both were unstated conventions rather than model failures. Fixed in
+  `EXTRACT_PROMPT`, pinned by tests, and re-measured against production on
+  16 documents and 144 hand-keyed deals: **cap rates 0 of 8 to 8 of 8,
+  invented dates 3 to 0, field precision 98.7% to 99.6%**, one wrong value in
+  the whole run. Raw recall reads lower (76.4%) because the fix makes the
+  extractor refuse three listings it used to invent; counting only deals the
+  vault would accept it is 94.5%.
 
 - **2026-08-27: the extraction verdict exists.** Step 1 of the Business Model
   Transition Plan's sequence, and the gate on the whole Archive block, is

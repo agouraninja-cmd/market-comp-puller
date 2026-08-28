@@ -123,6 +123,21 @@ test("the wall serves the landing page at the root", async (t) => {
       "under the wall this page is a duplicate of / and must say so");
   });
 
+  // The header's Home link (2026-08-28) must not point at the page drawing it.
+  // Under the wall `/` and /how-it-works are the SAME render, so a link that
+  // is right on /markets is a self-link on both of these.
+  await t.test("neither home URL offers a Home link back to itself", async () => {
+    for (const p of ["/", "/how-it-works"]) {
+      const html = await (await get(p)).text();
+      assert.ok(!html.includes(`<a href="/">Home</a>`),
+        p + " is the home page under the wall and must not link back to it");
+    }
+    // The link is not simply missing everywhere: a page that is not home has it.
+    const markets = await (await get("/markets")).text();
+    assert.ok(markets.includes(`<nav><a href="/">Home</a><details>`),
+      "/markets is where a walled visitor most needs the way back");
+  });
+
   await t.test("/desk still redirects, to the sign-in door", async () => {
     // The wall's rule is that a personal workspace never renders anonymously,
     // and that has not changed. Where it sends them did (2026-08-13): asking

@@ -8813,7 +8813,17 @@ const marketBar = (signedIn = false, current = "") =>
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
+  // Home leads the nav (owner's placement, 2026-08-28): a logged out visitor
+  // who opened Explore and landed on one of these pages had no visible way
+  // back. The wordmark has always linked `/`, but a wordmark does not read as
+  // a button, and Escape (bound below) is invisible.
+  // Signed OUT only: the signed-in bar's "Run a report" already points at `/`,
+  // so rendering both would put two links to the same place side by side.
+  // Suppressed on the home page itself, which is why renderHowItWorksHTML
+  // passes `current` as "/" for its home flavor rather than "/how-it-works".
+  `<nav>` +
+  (!signedIn && current !== "/" ? `<a href="/">Home</a>` : "") +
+  `<details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current)}</div></details>` +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
@@ -11981,7 +11991,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // caching split (no-store + vary: cookie) that keeps the signed-in
   // variant honest.
   const body = `
-${marketBar(signedIn, "/how-it-works")}
+${marketBar(signedIn, home ? "/" : "/how-it-works")}
 
 <main>
   <div class="wrap">

@@ -473,6 +473,40 @@ test("bare environment", async (t) => {
     }
   });
 
+  // The Home link, first in the nav (owner-reported 2026-08-28). A logged-out
+  // visitor who opened Explore and landed on one of these pages had nothing
+  // that READ as a way back: the wordmark links `/` but does not look like a
+  // button, and the Escape binding is invisible. Three things are pinned,
+  // because each one is a different way to get this wrong:
+  //   - it is on every server-rendered page a signed-out visitor can reach;
+  //   - it is NOT on the home page itself — under the wall that is `/` AND
+  //     /how-it-works, which are one render and would self-link
+  //     (pinned in account-wall.test.js, where the wall is actually up);
+  //   - it is NOT in the signed-in bar, whose "Run a report" already goes to
+  //     `/` — two adjacent links to one place is the thing to avoid.
+  await t.test("signed-out pages open the nav with a Home link", async () => {
+    // /how-it-works is in this list because THIS file boots with the wall off,
+    // which makes it a page of its own rather than the render `/` is serving.
+    // Its walled behavior — no self-link — is pinned in account-wall.test.js.
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
+      "/1031-exchange", "/download", "/terms", "/privacy", "/leadership",
+      "/how-it-works"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),
+        p + " has no Home link at the head of the nav, before Explore");
+    }
+  });
+
+  await t.test("the signed-in bar keeps Run a report instead of Home", async () => {
+    const html = await (await fetch(srv.base + "/markets", {
+      headers: { cookie: "cn_session=irrelevant-presence-only" },
+    })).text();
+    assert.ok(!html.includes(`<a href="/">Home</a>`),
+      "a signed-in member already has Run a report pointing at /");
+    assert.match(html, /Run a report/, "the signed-in door to / went missing");
+  });
+
   // One nav, no copies (2026-08-20). index.html authors only a marker comment
   // in its Explore menu; the `/` handler replaces it at serve time with the
   // same NAV_LINKS list marketBar renders on every server-rendered header.

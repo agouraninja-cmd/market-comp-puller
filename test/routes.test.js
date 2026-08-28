@@ -2172,6 +2172,43 @@ test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
   assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
 });
 
+// Both rules below were bought with a real measurement, not a hunch: the
+// 2026-08-27 extraction verdict (docs/evals/extract-2026-08-27-verdict.md) ran
+// 14 broker documents through the live route and found exactly two defects,
+// both of them the shape spec 9 calls fatal - a well-formed wrong number that
+// normalizeRow cannot object to, so nobody ever notices it.
+test("EXTRACT_PROMPT states the cap-rate unit", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 8 of 8 wrong across two brokerages: the page said 5.10% and the
+  // model returned 0.051. parsePercent accepts 0.051 (it is between 0 and 100),
+  // so the vault stored a cap rate of 0.051% and no guard could fire.
+  assert.match(body, /cap_rate/,
+    "the prompt must name cap_rate, or the model picks its own percentage convention");
+  assert.match(body, /decimal fraction/i,
+    "the prompt must forbid a decimal fraction by name - the whole defect was an unstated unit");
+});
+
+test("EXTRACT_PROMPT tells the model a listing is not a sale", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 3 of 3 on a lender BOV whose Listing columns leave Sale Price and
+  // Sale Date blank: all three came back transaction "sale", dated from the
+  // Original List Date row. Three transactions that never happened.
+  assert.match(body, /LISTING/,
+    "the prompt must name the listing case - the model reported all three as sales without it");
+  assert.match(body, /list date/i,
+    "the prompt must forbid sourcing deal_date from a list date specifically");
+});
+
 // --- Analytics visitor attribution ------------------------------------------
 //
 // migration 026's two columns exist so the event log can answer "did the same

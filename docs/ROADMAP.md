@@ -27,6 +27,29 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
+- **The import confirm table is where the remaining cost is, and it has not
+  been designed yet** (measured 2026-08-28, full record in
+  `docs/evals/extract-2026-08-28-verdict-final.md`). Spec §9's correction-time
+  condition was finally timed: **4m 51s to verify 12 extracted rows, with zero
+  corrections needed** — 4x over the 60-second bar, on rows that were all
+  correct. The extraction took 9.9 seconds; the person took 291. Every cause
+  the reviewer named is presentation:
+  1. **Rows are not in source order**, so verifying row 4 means hunting for it
+     page by page. Biggest single lever, and nothing requires reordering.
+  2. **Figures render raw** (`410000` against a page printing `$410,000.00`).
+     `/vault`'s comps table already solved this — formatted to read, raw on
+     focus to edit (`cellDisplay`/`data-raw`) — and the confirm table should
+     reuse that rather than invent a second convention.
+  3. **No business name beside the type.** The row says Retail; the page says
+     Altitude Tire and Alignment. That name is how a person knows which
+     property they are looking at.
+  4. **A fixed column set regardless of the document**, so reviewers scan past
+     columns the source never had.
+  **The measurement that actually decides the archive is still missing**, and
+  it is now the cheapest one left: nobody has timed a broker keying 12 comps
+  BY HAND. The whole gate is whether correcting beats typing, and only one
+  side of that comparison has ever been measured.
+
 - **Two decisions before ingestion ships, neither an extraction problem**
   (the extraction test is DONE and the two prompt defects it found are fixed
   and verified — final verdict in
@@ -185,6 +208,15 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 "analyst-grade" before the comp audit scores 90%+.
 
 ## Shipped log (roadmap-level items only)
+
+- **2026-08-28: §9's last unmeasured condition is measured.** Correction time
+  finally has a number: 4m 51s for 12 rows, zero corrections required. It
+  fails the 60-second bar 4x and the failure is entirely in the review UI —
+  rows out of source order, unformatted figures, no business name, a fixed
+  column set. The extraction itself produced 12 correct rows in 9.9 seconds.
+  Recorded rather than smoothed over, along with the fact that the other half
+  of the comparison — a person typing 12 comps by hand — has still never been
+  timed, so "correcting beats typing" remains inference.
 
 - **2026-08-28: the extraction verdict is answered, and its two defects are
   fixed.** The 2026-08-27 verdict found the capability sound but the prompt

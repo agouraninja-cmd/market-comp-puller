@@ -268,6 +268,33 @@ const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
 // level this provider cannot act on is refused rather than accepted and
 // ignored - a knob that appears to work and changes nothing is the worst of the
 // three outcomes. Read through capabilities, never through PROVIDER.name.
+// --- NAV_SHELL: which shape the signed-in chrome takes ----------------------
+//
+// `rail` (the default) lays the header out as a persistent left sidebar at
+// 900px and up; `bar` is the horizontal header exactly as it shipped before
+// 2026-08-28, and is the instant rollback lever.
+//
+// It gates ONE CSS class on <html> and nothing else. The markup is
+// byte-identical in both modes — the rail IS the existing header element,
+// re-laid-out — which is what keeps the eight-page header assertions in
+// routes.test.js green and what makes rollback a variable rather than a
+// deploy. Never grow a second markup branch off this flag.
+//
+// Anonymous visitors never get the rail whatever this says: it marks "you are
+// inside the product", and a marketing page read by a stranger is not that.
+//
+// Unrecognized values EXIT, per the SEARCH_PROVIDER / THINKING_LEVEL rule
+// below: a knob that appears to work and changes nothing is the worst of the
+// three outcomes.
+const NAV_SHELL = (process.env.NAV_SHELL || "rail").trim().toLowerCase();
+if (!["rail", "bar"].includes(NAV_SHELL)) {
+  console.error(`⛔ NAV_SHELL="${NAV_SHELL}" is not one of: rail, bar`);
+  process.exit(1);
+}
+// The class every signed-in server-rendered page stamps on <html>. Empty in
+// bar mode, so the attribute simply is not written.
+const NAV_SHELL_CLASS = NAV_SHELL === "rail" ? "nav-rail" : "";
+
 const THINKING_LEVEL = (process.env.THINKING_LEVEL || "").trim().toLowerCase();
 if (THINKING_LEVEL) {
   const levels = PROVIDER.capabilities.thinkingLevels;
@@ -8338,6 +8365,58 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
 /* Phones: anchor the menu to the HEADER rather than to its own trigger. The
    nav wraps to its own row below ~450px, which puts the Explore <details> at
    the left edge — where right:0 sent 105px of a 176px menu off-screen, every
@@ -9255,7 +9334,14 @@ const MARKET_FOOTER =
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/leadership">Leadership</a></li><li><a href="/terms">Terms</a></li>` +
-  `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  `<li><a href="/privacy">Privacy</a></li>` +
+  // Download was reachable ONLY through the Explore dropdown, which the rail
+  // hides (it has nowhere to open in a 224px column). It belonged here anyway:
+  // it was in the Explore menu and in NEITHER footer, so the page answering
+  // "where do I download it" was the hardest one on the site to find. The
+  // nav-dl class travels with the link so INAPP_BOOT still hides it when the
+  // page is already being read inside the app.
+  `<li><a class="nav-dl" href="/download">Download the app</a></li></ul></div>` +
   // Follow was in index.html's footer and NOWHERE ELSE, which put the only
   // links to the company's own accounts BEHIND the login. Every indexable
   // page -- the landing a stranger actually arrives on, every market page,
@@ -9959,9 +10045,20 @@ function brandGraph() {
   ];
 }
 
+// The rail rides on ONE class and nothing else - see NAV_SHELL. It is written
+// on <html> rather than <body> so the stylesheet can reach the body's own
+// padding, and it is gated on signedIn (cookie presence, the same cheap rule
+// the rest of this render uses) because a marketing page read by a stranger
+// must not wear the product's sidebar. These routes already send
+// "vary: cookie", so the two variants cannot reach the wrong visitor.
+//
+// Keep this note OUT of the function body: theme.test.js reads only
+// marketShell's first 2000 characters looking for THEME_BOOT, and six lines of
+// comment in there is enough to push the boot script out of that window.
 function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
+  return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
@@ -10983,6 +11080,58 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
 @media (max-width:639.98px){
   .hdr .wrap{position:relative}
   .hdr nav details{position:static}
@@ -12342,7 +12491,10 @@ ${MARKET_FOOTER}
 })();
 </script>`;
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  // Same rail stamp as marketShell. This page builds its own document rather
+  // than going through that helper, so it is the one most easily forgotten
+  // when the shell changes — test/nav-shell.test.js checks it by name.
+  return `<!DOCTYPE html>\n<html lang="en"${signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : ""}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)} | CompNinja</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +

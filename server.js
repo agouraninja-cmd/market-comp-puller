@@ -8813,16 +8813,28 @@ const marketBar = (signedIn = false, current = "") =>
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  // Home leads the nav (owner's placement, 2026-08-28): a logged out visitor
-  // who opened Explore and landed on one of these pages had no visible way
-  // back. The wordmark has always linked `/`, but a wordmark does not read as
-  // a button, and Escape (bound below) is invisible.
-  // Signed OUT only: the signed-in bar's "Run a report" already points at `/`,
-  // so rendering both would put two links to the same place side by side.
-  // Suppressed on the home page itself, which is why renderHowItWorksHTML
-  // passes `current` as "/" for its home flavor rather than "/how-it-works".
+  // Home leads the nav (owner's placement, 2026-08-28): a visitor who opened
+  // Explore and landed on one of these pages had no visible way back. The
+  // wordmark has always linked `/`, but a wordmark is branding rather than a
+  // button, and Escape (bound below) is invisible.
+  //
+  // It renders for EVERY visitor, and it shipped signed-out-only for half a
+  // day on the theory that the signed-in bar's "Run a report" already points
+  // at `/`. That was the reported bug restated one layer down: "Run a report"
+  // reads as starting a task, not as going home, so a signed-in member
+  // browsing market pages was left with the wordmark and a call to action —
+  // exactly the two things that failed the logged-out visitor. Navigation and
+  // a CTA are different affordances even when they share a destination, and
+  // one nav that does not change shape with auth state beats saving a link.
+  //
+  // The suppression is only ever "this page IS your home page", and whose
+  // home page `/` is depends on the visitor: under ACCOUNT_WALL an anonymous
+  // visitor's `/` is this very render, while a signed-in member's `/` is the
+  // app. So renderHowItWorksHTML passes `current` as "/" for the home flavor
+  // ONLY when signed out — a member reading /how-it-works is not at home and
+  // is owed the link.
   `<nav>` +
-  (!signedIn && current !== "/" ? `<a href="/">Home</a>` : "") +
+  (current !== "/" ? `<a href="/">Home</a>` : "") +
   `<details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current)}</div></details>` +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
@@ -11991,7 +12003,7 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // caching split (no-store + vary: cookie) that keeps the signed-in
   // variant honest.
   const body = `
-${marketBar(signedIn, home ? "/" : "/how-it-works")}
+${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
 
 <main>
   <div class="wrap">

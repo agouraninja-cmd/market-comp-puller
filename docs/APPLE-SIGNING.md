@@ -1,8 +1,12 @@
 # Apple signing & notarization — the once-Apple-approves checklist
 
-**Status (2026-08-28):** the $99 Apple Developer Program enrollment for
-COMPNINJA LLC is **paid** and waiting on Apple's company verification
-(usually a few days; they may call the number on file). Until a signed
+**Status (2026-08-28, evening):** APPROVED. The Apple Developer Program
+enrollment for COMPNINJA LLC is live (enrolled as Organization, renewal
+2027-08-28). **Team ID: `ZRFN5C3645`** (Membership page; not a secret).
+Owner steps 1–2 below are DONE: the App Store Connect invite went to
+okb336@gmail.com the same day (role Admin, plus Access to Cloud Managed
+Developer ID Certificate) — it shows as pending until Owen accepts it from
+his inbox. What remains is the dev side (steps 3–7). Until a signed
 release actually ships, installers stay unsigned and `/download`'s
 first-launch warning copy stays true — do not soften that copy early.
 

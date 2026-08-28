@@ -8161,7 +8161,16 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<summary aria-label="Account menu"><span class="ini" id="navAcctInitial"></span></summary>` +
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
-    `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
+    // No #navVault here any more (2026-08-28). It moved up into marketBar's
+    // nav, beside the new Bulk link, so both Pro tools are destinations rather
+    // than items buried one click inside an account menu — which is what the
+    // rail draws as rows. Ids are unique, so it can only live in one place:
+    // ACCOUNT_NAV_JS still finds it by the same id wherever it renders.
+    //
+    // Consequence worth knowing: hub-page.js builds its header from this
+    // helper and NOT from marketBar, so a hub no longer shows a vault link.
+    // That is correct for a client-facing page whose spec asks for minimal
+    // chrome, and the broker viewing their own hub navigates away for it.
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
@@ -8200,6 +8209,11 @@ const ACCOUNT_NAV_JS =
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
+  // Same shape as the vault's rule, against the entitlement /api/config
+  // already carries. Both links ship hidden and appear together once the
+  // account resolves, which is why the rail is a fixed width — an item
+  // arriving after paint must not reflow the page around it.
+  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this
@@ -8954,8 +8968,25 @@ const marketBar = (signedIn = false, current = "") =>
   // (`live && !isPro`), so it still hides for a Pro member and on a deployment
   // with no billing configured; only the position moved.
   ACCOUNT_NAV_PRICING +
+  // Markets is a public page with 27-odd standing snapshots and, until now, no
+  // header link on any surface — it was reachable from the footers and from
+  // one line inside the app. It renders for every visitor because it is the
+  // cheapest thing a stranger can be shown that is actually the product.
+  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Markets</a>` +
   (signedIn
-    ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
+    ? `<a href="/desk">My Desk</a>` +
+      // The two Pro tools, hydrated after paint by ACCOUNT_NAV_JS exactly as
+      // the account slots are — their entitlements are database reads this
+      // synchronous render must never make, so both ship hidden.
+      //
+      // /bulk had NO link anywhere on the site before this: not in a menu, not
+      // in a footer, not in a header. Its only inbound link was from inside
+      // itself, so a Pro member could only reach it by typing the URL or by
+      // pasting a multi-line list into the main search and discovering the
+      // mode by accident. A billed feature nobody can find is one nobody buys.
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
+      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk</a>` +
+      `<a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must

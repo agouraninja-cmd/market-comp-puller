@@ -2635,108 +2635,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
 
       <!-- My Desk — the signed-in areas, grouped into five decks (2026-08-21;
-           the vault's Direction-U pattern): Your properties, Sharing, Your
-           firm, Broker, Account. Every section keeps its id and its own
+           the vault's Direction-U pattern): Your firm, Your properties,
+           Sharing, Broker, Account. Every section keeps its id and its own
            hidden toggling — the deck wrappers are presentation only, and
            refreshDeckVisibility() hides any deck whose sections are all
-           hidden so a heading never floats over nothing. -->
+           hidden so a heading never floats over nothing.
+
+           YOUR FIRM LEADS (2026-08-28). It was third of five, below a
+           member's own properties and their shared reports, so the shop's
+           work sat past two decks of personal work — the opposite of a
+           product whose pitch is that the firm is the centre. Nothing about
+           the deck changed in the move: the block is byte-identical, so every
+           id, gate and renderer inside it is untouched, and
+           refreshDeckVisibility() still hides the whole heading for a member
+           who is in no firm and holds no invitation. A solo member therefore
+           sees no change at all. -->
       <section id="myDesk" class="hidden mt-4">
-      <div class="dk-deck" data-deck id="deckProperties">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
-      <div class="mt-4">
-        <div class="dk-rule">
-          <span class="rd-lab">Portfolio</span>
-          <span id="deskCount" class="dk-note"></span>
-        </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
-        <!-- The other empty state, and the reason they are two elements: a
-             failed read used to render as the invitation above, which tells
-             somebody with a book of sixteen properties that it is gone. Same
-             rule the vault's comps table, the lead inbox and the hub list
-             each had to learn: an outage must never be reported as an
-             absence. Shown by renderMyDesk(); the rows and the count are left
-             exactly as they were rather than wiped.
-             ⚠ This wording is the MODEL for every other failed read on the
-             desk, and the reassurance is the load-bearing half: a bare
-             "couldn't load" on a section that holds saved work reads as data
-             loss to the person most likely to be looking at it. Keep the two
-             sentences (what failed, then that nothing is gone) on any new
-             one. -->
-        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
-        <!-- Statement table container (was a 3-col card grid). The id keeps
-             every existing reference; renderMyDesk builds the table inside.
-             The book line (#deskLedger) that used to sit above it is now the
-             desk-level reading strip under the page header. -->
-        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-      <div id="deskWatch" class="mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Watchlist</span>
-          <span id="deskWatchNote" class="dk-note"></span>
-        </div>
-        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
-          <input id="watchCity" type="text" placeholder="City" aria-label="City"
-            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
-            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <select id="watchType" aria-label="Property type"
-            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
-          <button type="submit"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
-          <span id="watchError" class="hidden text-sm text-red-600"></span>
-        </form>
-        <div id="feedWrap" class="mt-3 space-y-4"></div>
-      </div>
-      </div><!-- /deckProperties -->
-
-      <div class="dk-deck" data-deck id="deckSharing">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
-      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
-           stacked lists merged). One GET (/api/shares) still covers both. A
-           401 (signed out) hides it silently, since the sign-in card above
-           already covers that case; a 503 shows the one error line instead
-           and leaves the rest of the desk working. See renderShares() /
-           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
-           it is a firm-level record with its own rules (whole-shelf count,
-           1000-row truncation notice, its own search) and lives in the firm
-           deck below. -->
-      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-           only "Couldn't load your shared reports", which is the failure
-           without the reassurance — and this line covers the sections that
-           name COLLEAGUES and their work, so it is the one where a bare
-           "couldn't load" is likeliest to read as somebody's shared reports
-           having been lost. It already hides the sections rather than
-           fabricating a "0 shares" empty state; this only finishes the
-           sentence. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-      <div id="deskShares" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Shared reports</span>
-          <span id="deskSharesStats" class="dk-note"></span>
-        </div>
-        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
-        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-
-      <!-- Hubs someone has invited this member into. The TENANT side only —
-           a broker's own hubs live on /vault beside the pipeline deck (the
-           owner's answer, 2026-08-13), because creating one is a broker
-           surface gated on canUseVault and this page is seen by every free
-           account. Spec:
-           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-           NOT the connection hub at /brokers.
-
-           Rendered ONLY when there is something in it: a member who has
-           never been invited into a hub should not be shown an empty
-           section for a feature they have no way to start. That is the
-           opposite of the shared-reports table above, which teaches a
-           feature this member can use themselves. -->
-      <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
-        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
-      </div>
-      </div><!-- /deckSharing -->
-
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
@@ -2972,6 +2886,102 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </div>
       </div><!-- /deckFirm -->
+
+      <div class="dk-deck" data-deck id="deckProperties">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
+      <div class="mt-4">
+        <div class="dk-rule">
+          <span class="rd-lab">Portfolio</span>
+          <span id="deskCount" class="dk-note"></span>
+        </div>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
+        <!-- The other empty state, and the reason they are two elements: a
+             failed read used to render as the invitation above, which tells
+             somebody with a book of sixteen properties that it is gone. Same
+             rule the vault's comps table, the lead inbox and the hub list
+             each had to learn: an outage must never be reported as an
+             absence. Shown by renderMyDesk(); the rows and the count are left
+             exactly as they were rather than wiped.
+             ⚠ This wording is the MODEL for every other failed read on the
+             desk, and the reassurance is the load-bearing half: a bare
+             "couldn't load" on a section that holds saved work reads as data
+             loss to the person most likely to be looking at it. Keep the two
+             sentences (what failed, then that nothing is gone) on any new
+             one. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
+        <!-- Statement table container (was a 3-col card grid). The id keeps
+             every existing reference; renderMyDesk builds the table inside.
+             The book line (#deskLedger) that used to sit above it is now the
+             desk-level reading strip under the page header. -->
+        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
+      </div>
+      <div id="deskWatch" class="mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Watchlist</span>
+          <span id="deskWatchNote" class="dk-note"></span>
+        </div>
+        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
+          <input id="watchCity" type="text" placeholder="City" aria-label="City"
+            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
+            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <select id="watchType" aria-label="Property type"
+            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
+          <button type="submit"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
+          <span id="watchError" class="hidden text-sm text-red-600"></span>
+        </form>
+        <div id="feedWrap" class="mt-3 space-y-4"></div>
+      </div>
+      </div><!-- /deckProperties -->
+
+      <div class="dk-deck" data-deck id="deckSharing">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
+      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
+           stacked lists merged). One GET (/api/shares) still covers both. A
+           401 (signed out) hides it silently, since the sign-in card above
+           already covers that case; a 503 shows the one error line instead
+           and leaves the rest of the desk working. See renderShares() /
+           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
+           it is a firm-level record with its own rules (whole-shelf count,
+           1000-row truncation notice, its own search) and lives in the firm
+           deck below. -->
+      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+           only "Couldn't load your shared reports", which is the failure
+           without the reassurance — and this line covers the sections that
+           name COLLEAGUES and their work, so it is the one where a bare
+           "couldn't load" is likeliest to read as somebody's shared reports
+           having been lost. It already hides the sections rather than
+           fabricating a "0 shares" empty state; this only finishes the
+           sentence. -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
+      <div id="deskShares" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Shared reports</span>
+          <span id="deskSharesStats" class="dk-note"></span>
+        </div>
+        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
+      </div>
+
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the shared-reports table above, which teaches a
+           feature this member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      </div>
+      </div><!-- /deckSharing -->
 
       <!-- Broker deck: the public contributor side (submissions, profile) and
            the private vault door. Each section keeps its own gate — the deck

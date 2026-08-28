@@ -199,6 +199,64 @@ public final class APIClient: @unchecked Sendable {
         throw APIError(status: 200, message: "The search did not finish. Please try again.")
     }
 
+    // MARK: - Broker pipeline
+
+    /// This visitor's entitlements. The app asks one question of it: whether
+    /// to show the pipeline at all.
+    ///
+    /// Presentation only, exactly as on the web. Every one of these limits is
+    /// enforced server-side, so a client that lied to itself about `broker`
+    /// would reach `requireBroker` and be refused with a 403 anyway.
+    public func config() async throws -> AppConfig {
+        try await getJSON(AppConfig.self, path: "/api/config")
+    }
+
+    /// BOV enquiries matching the broker's coverage, plus the coverage itself.
+    ///
+    /// Refuses in three ways and they mean different things: 401 not signed
+    /// in, 403 signed in but not a broker, 503 the database is unreachable.
+    /// The 503 matters — the server deliberately refuses rather than answering
+    /// with an empty list, because an empty inbox reads as "no demand in my
+    /// markets", which is a far more damaging wrong answer than an error.
+    /// Never turn that 503 into an empty state here.
+    public func brokerLeads() async throws -> LeadInbox {
+        try await getJSON(LeadInbox.self, path: "/api/broker/leads")
+    }
+
+    /// Raise a hand for one lead.
+    ///
+    /// Owner-mediated by design: this emails the owner naming the broker. It
+    /// never sends the broker anything about the person who enquired, and it
+    /// never contacts that person. Returns true when this was a NEW request,
+    /// false when the server had already recorded one, so the UI can say
+    /// "already asked" rather than implying a second email went out.
+    @discardableResult
+    public func requestIntro(leadID: String) async throws -> Bool {
+        struct Answer: Decodable { var ok: Bool?; var already: Bool? }
+        let a = try await postJSON(Answer.self, path: "/api/broker/leads/intro",
+                                   body: ["lead_id": leadID])
+        return !(a.already ?? false)
+    }
+
+    /// The broker's own BOV log, with the counts under it.
+    public func brokerBOVs() async throws -> BOVLog {
+        try await getJSON(BOVLog.self, path: "/api/broker/bovs")
+    }
+
+    /// Change a BOV's status, its notes, or both.
+    ///
+    /// Both arguments are optional because the server treats an absent key as
+    /// "leave it alone" and refuses a call that would change nothing. Passing
+    /// notes as an empty string is a real edit that clears them; passing nil
+    /// leaves whatever is stored.
+    public func updateBOV(id: String, status: BOVStatus? = nil, notes: String? = nil) async throws {
+        var body: [String: Any] = ["id": id]
+        if let status { body["status"] = status.rawValue }
+        if let notes { body["notes"] = notes }
+        guard body.count > 1 else { return }
+        _ = try await postRaw(path: "/api/broker/bovs/update", body: body)
+    }
+
     // MARK: - Plumbing
 
     private func getJSON<T: Decodable>(_ type: T.Type, path: String) async throws -> T {

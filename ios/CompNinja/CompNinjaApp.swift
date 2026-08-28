@@ -35,6 +35,21 @@ final class AppModel: ObservableObject {
     @Published var savedReports: [SavedReport] = []
     @Published var signInPrompt: String?
 
+    /// This visitor's entitlements, from /api/config. Presentation only: it
+    /// decides whether the Pipeline tab is in the bar, and nothing else. Every
+    /// broker route enforces the same thing server-side, so a client that
+    /// lied to itself here would just be refused with a 403.
+    @Published var entitlements: Entitlements = Entitlements()
+
+    /// Whether to offer the broker pipeline at all.
+    ///
+    /// The tab is ABSENT rather than locked for everyone else. A locked tab
+    /// would need to explain itself, and any explanation of what is behind it
+    /// is advertising a purchase the app is forbidden to advertise under
+    /// guideline 3.1.3(b) — the same rule that lets this app serve web-bought
+    /// Pro in the first place.
+    var showsPipeline: Bool { entitlements.broker }
+
     /// Free accounts top out at a 12-month lookback; Pro gets 120. The app
     /// reads this off the account rather than guessing, and the server clamps
     /// regardless — an over-long ask still returns a report.
@@ -48,6 +63,10 @@ final class AppModel: ObservableObject {
 
     func refreshAccount() async {
         account = try? await api.me()
+        // Entitlements are per-user, so this rides with the account read and
+        // has to re-run on sign-in, sign-out and account deletion. A failure
+        // leaves the default, which grants nothing.
+        entitlements = (try? await api.config())?.pro ?? Entitlements()
     }
 
     /// Returns the report as STORED, which is not always the one passed in:
@@ -67,6 +86,7 @@ final class AppModel: ObservableObject {
     func signOut() async {
         try? await api.logOut()
         account = nil
+        entitlements = Entitlements()
     }
 
     /// Delete the account, then leave nothing behind on this device.
@@ -79,6 +99,7 @@ final class AppModel: ObservableObject {
         try await api.deleteAccount()
         savedReports = store.deleteAll()
         account = nil
+        entitlements = Entitlements()
         signInPrompt = nil
     }
 }
@@ -92,6 +113,10 @@ struct RootView: View {
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
             SavedReportsView()
                 .tabItem { Label("Saved", systemImage: "tray.full") }
+            if model.showsPipeline {
+                PipelineView()
+                    .tabItem { Label("Pipeline", systemImage: "list.bullet.rectangle") }
+            }
             NavigationStack { AccountView() }
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
         }

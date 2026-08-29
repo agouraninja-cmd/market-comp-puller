@@ -185,6 +185,11 @@ struct ConfidenceBadge: View {
         case .listing: return .indigo
         case .news: return .orange
         case .estimate: return .secondary
+        // Purple, deliberately not green. Green is the Verified badge and
+        // means a named broker vouched for a deal in the public records; this
+        // is an ownership statement about a private row that has earned no
+        // such claim.
+        case .brokerVault: return .purple
         }
     }
 }

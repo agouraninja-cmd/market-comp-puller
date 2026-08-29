@@ -8,7 +8,15 @@ import Foundation
 /// and its link. Two rules are load-bearing and both are tested:
 ///
 ///  * the estimate is labeled an automated estimate, never an appraisal;
-///  * "Verified" appears only where the server awarded it.
+///  * "Verified" appears only where the server awarded it;
+///  * a comp out of the reader's own VAULT never leaves the phone.
+///
+/// That last one is why this reads `report.exportableComps` and never
+/// `report.comps`. A broker's blended report holds their private book, and
+/// this text goes out through Messages, Mail and Files — so the filter here
+/// is the difference between that book staying theirs and being handed to a
+/// client. The figures above the list still count those comps, so the export
+/// discloses the gap rather than silently coming up short.
 public enum ReportExport {
 
     public static func plainText(_ saved: SavedReport) -> String {
@@ -49,11 +57,24 @@ public enum ReportExport {
             out.append(contentsOf: report.valueDrivers.map { "  - \($0)" })
         }
 
+        let shared = report.exportableComps
         out.append("")
-        out.append("COMPARABLES (\(report.comps.count))")
-        for comp in report.comps {
+        out.append("COMPARABLES (\(shared.count))")
+        for comp in shared {
             out.append("")
             out.append(contentsOf: lines(for: comp))
+        }
+
+        // Counted from what was actually withheld here, not from the server's
+        // `private_count`: those two agree today, and if they ever stop, the
+        // honest number is the one describing THIS file.
+        let withheld = report.comps.count - shared.count
+        if withheld > 0 {
+            out.append("")
+            let one = withheld == 1
+            out.append("\(withheld) comparable\(one ? "" : "s") from your own records "
+                       + "\(one ? "was" : "were") left out of this file. "
+                       + "The figures above still count \(one ? "it" : "them").")
         }
 
         if report.lockedCount > 0 {

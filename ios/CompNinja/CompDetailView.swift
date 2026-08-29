@@ -14,6 +14,14 @@ struct CompDetailView: View {
                         Text("A named broker vouched for this deal — via \(by)")
                             .font(.caption).foregroundStyle(.secondary)
                     }
+                    if comp.isPrivate {
+                        // Said plainly on the one screen a broker opens to
+                        // check a single deal, because the consequence is not
+                        // obvious from a badge: this row is in the valuation
+                        // but will not travel with anything they send.
+                        Text("From your own records. Counted in the figures, and left out of anything you share.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 .padding(.vertical, 4)
             }

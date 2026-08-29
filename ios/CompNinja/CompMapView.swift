@@ -21,7 +21,7 @@ struct CompMapView: View {
                 if let coordinate = coordinate(comp) {
                     Marker(comp.pricePerSqft.value ?? comp.priceOrRate.value ?? "Comp",
                            coordinate: coordinate)
-                        .tint(SourceConfidence(comp: comp) == .verified ? .green : .blue)
+                        .tint(pinColor(comp))
                         .tag(comp.id)
                 }
             }
@@ -55,5 +55,16 @@ struct CompMapView: View {
             latitudeDelta: max(0.02, (lats.max()! - lats.min()!) * 1.4),
             longitudeDelta: max(0.02, (lngs.max()! - lngs.min()!) * 1.4))
         return MKCoordinateRegion(center: center, span: span)
+    }
+
+    /// Pin colour mirrors the confidence badge, so the map and the list agree
+    /// about what a comp is. A vault comp is purple like its badge, never the
+    /// green that means a broker vouched for it in the public records.
+    private func pinColor(_ comp: Comp) -> Color {
+        switch SourceConfidence(comp: comp) {
+        case .verified: return .green
+        case .brokerVault: return .purple
+        default: return .blue
+        }
     }
 }

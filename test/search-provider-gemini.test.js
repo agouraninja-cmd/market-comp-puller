@@ -15,7 +15,7 @@ test("declares that it cannot cap the search budget", () => {
   assert.equal(P.name, "gemini");
   assert.equal(P.capabilities.searchBudget, false,
     "google_search takes no max_uses; server.js must branch on this");
-  assert.equal(P.capabilities.streaming, false, "phase 2 is non-streaming");
+  assert.equal(P.capabilities.streaming, true, "wire format verified live 2026-08-29");
   assert.equal(P.capabilities.promptCaching, "implicit");
 });
 
@@ -215,18 +215,89 @@ test("both providers normalize to the same keys, so a scorecard can average them
                    "a key present on one provider and undefined on the other poisons an average");
 });
 
-// --- streaming reader (UNVERIFIED wire format) -------------------------------
-// The request FORM is confirmed against the live API: `?alt=sse` + stream:true
-// answers content-type text/event-stream. What is not confirmed is the frame
-// contents, so these tests pin the shapes the reader claims to handle and the
-// invariants that keep a wrong guess survivable. scripts/verify-gemini-stream.js
-// settles the rest with one real call.
+// --- streaming reader (wire format VERIFIED live 2026-08-29) -----------------
+// scripts/verify-gemini-stream.js passed plain and --grounded, and the frames
+// those calls actually sent are committed as fixtures below — the new ground
+// truth. The earlier guessed-shape tests stay: untagged frames still fall
+// through to that handling, and the invariants they pin (snapshot replaces,
+// only new characters emitted) hold on the verified delta path too.
+const STREAM_FRAMES = require("./fixtures/gemini-stream-frames.json");
+const STREAM_FRAMES_GROUNDED = require("./fixtures/gemini-stream-frames-grounded.json");
 
-test("streaming is still OFF, and the opt-in is a separate flag", () => {
-  assert.equal(P.capabilities.streaming, false,
-    "production must not ask for a stream whose frame shape is unconfirmed");
-  assert.equal(P.capabilities.streamingUnverified, true,
-    "but the reader exists and is reachable via STREAM_UNVERIFIED");
+test("streaming is ON, and the unverified opt-in flag is gone", () => {
+  assert.equal(P.capabilities.streaming, true,
+    "verified live 2026-08-29; server.js streams this provider by default");
+  assert.equal(P.capabilities.streamingUnverified, undefined,
+    "the flag must be GONE, not false — a lingering flag invites the STREAM_UNVERIFIED branch back");
+});
+
+test("the live plain-call frames replay into the expected text and events", () => {
+  const r = P.createStreamReader();
+  const kinds = {};
+  for (const f of STREAM_FRAMES) {
+    for (const ev of r.push(f)) kinds[ev.kind] = (kinds[ev.kind] || 0) + 1;
+  }
+  assert.equal(r.text(), '{"ok":true,"n":[1,2,3],"note":"streaming works"}');
+  assert.deepEqual(r.unknown(), [], "every live frame type must be recognized");
+  assert.equal(kinds.start, 1);
+  assert.equal(kinds.done, 1,
+    "in_progress status updates must NOT emit done; only the completed frame does");
+  assert.equal(kinds.usage, 1, "usage rides the interaction.completed frame");
+});
+
+test("the live grounded frames yield search queries, a result count, and the text", () => {
+  const r = P.createStreamReader();
+  const out = [];
+  for (const f of STREAM_FRAMES_GROUNDED) out.push(...r.push(f));
+  const searches = out.filter((e) => e.kind === "search");
+  assert.equal(searches.length, 2, "google_search_call deltas carry the real query list");
+  for (const s of searches) assert.match(s.query, /Boise/);
+  const results = out.filter((e) => e.kind === "results");
+  assert.equal(results.length, 1);
+  assert.ok(Number.isFinite(results[0].count));
+  assert.equal(r.text(), '{"ok":true,"population":238429}');
+  assert.deepEqual(r.unknown(), [],
+    "tool and thought frames are expected, not unrecognized");
+  const done = out.filter((e) => e.kind === "done");
+  assert.deepEqual(done.map((e) => e.stopReason), ["completed"]);
+});
+
+test("the completed frame's usage folds thought tokens the same way parseResponse does", () => {
+  const r = P.createStreamReader();
+  let usage = null;
+  for (const f of STREAM_FRAMES) {
+    for (const ev of r.push(f)) if (ev.kind === "usage") usage = ev.usage;
+  }
+  assert.equal(usage.input_tokens, 28);
+  assert.equal(usage.thought_tokens, 147);
+  assert.equal(usage.output_tokens, 18 + 147,
+    "thought folds into output — same rule as normalizeUsage everywhere else");
+});
+
+test("a thought delta carrying text never enters the report", () => {
+  // Not observed live — thought deltas carry only opaque signatures today —
+  // but reasoning text leaking into parseCompJson's input would be a report
+  // built partly from the model talking to itself, so the step type gates
+  // before the text check does.
+  const r = P.createStreamReader();
+  r.push({ index: 0, step: { type: "thought" }, event_type: "step.start" });
+  const out = r.push({ index: 0, delta: { text: "let me think about comps" }, event_type: "step.delta" });
+  assert.deepEqual(out, []);
+  assert.equal(r.text(), "");
+  assert.deepEqual(r.unknown(), [], "a thought delta is expected, not unrecognized");
+});
+
+test("an unrecognized event_type or delta type is RECORDED, not silently dropped", () => {
+  const r = P.createStreamReader();
+  r.push({ event_type: "interaction.some_future_event", payload: 1 });
+  r.push({ index: 0, step: { type: "url_context_call" }, event_type: "step.start" });
+  r.push({ index: 1, step: { type: "model_output" }, event_type: "step.start" });
+  r.push({ index: 1, delta: { type: "some_future_delta" }, event_type: "step.delta" });
+  assert.deepEqual(r.unknown().sort(), [
+    "delta:some_future_delta",
+    "interaction.some_future_event",
+    "step:url_context_call",
+  ]);
 });
 
 test("streaming is requested in BOTH places the API needs it", () => {

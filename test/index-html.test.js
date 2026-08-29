@@ -903,7 +903,42 @@ test("Run a report jumps to the chamber and seats the caret, deterministically",
   assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
   assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
     "the caret lands in the address field without fighting the jump");
+  // Red, on the owner's call (2026-08-29): with the profile cluster gone from
+  // that row it is the only control on it, and it starts the same act as the
+  // red button at the foot of the chamber. The classes have to be ones the
+  // file already uses somewhere else -- tailwind.css is a purged vendored
+  // build, so a colour that appears only here would silently not paint.
+  const runBtn = html.slice(at, html.indexOf(">", html.indexOf("Run a report", at)));
+  assert.match(runBtn, /bg-brand-600/, "the workspace shortcut is red");
+  assert.match(runBtn, /hover:bg-brand-700/, "and it has the matching hover");
+  for (const cls of ["bg-brand-600", "hover:bg-brand-700"]) {
+    const uses = html.split(cls).length - 1;
+    assert.ok(uses > 1, cls + " must be used elsewhere too, or the purge drops it");
+  }
 });
+
+test("the vault is a nav item, not a row inside the account menu", () => {
+  // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
+  // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
+  // broker's daily workspace was two clicks down a menu -- while "Workspace"
+  // itself sat one click away in the rail. The gate is unchanged; only the
+  // position moved.
+  const nav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
+  assert.match(nav, /id="menuVaultLink"/, "the vault link is a sibling of Workspace in the rail nav");
+  assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
+  const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
+  assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
+  // One link, one toggle: refreshBillingUI still owns it off canUseVault, so
+  // moving it cannot have widened who sees it.
+  assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
+  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !canVault)`),
+    "still shown from canUseVault and nothing else");
+});
+
+// The workspace header's profile cluster is pinned by "the workspace header
+// does not say who you are at all" further down -- it started life as that
+// pass's own test and absorbed this one, rather than two tests asserting the
+// same removals under different names.
 
 test("the between-checks cell names its sample and cannot read as a return", () => {
   // "Since last checks" read as a portfolio return, and the figure is not
@@ -968,26 +1003,39 @@ test("the fourth ledger cell counts new comps, not watched markets", () => {
   assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
 });
 
-test("the workspace header says who you are exactly once", () => {
+test("the workspace header does not say who you are at all", () => {
   // The row carried the circle, "Signed in as {name}" and "Add a photo",
-  // beside a nav that already shows the same photo and account menu.
+  // beside a nav that already shows the same photo and account menu. It came
+  // down in two passes on 2026-08-29. The first took the greeting and the
+  // labelled button and KEPT the circle, because the circle is itself the
+  // upload trigger and because the settings panel had no Remove -- so dropping
+  // the cluster would have deleted the only way to take a photo off an
+  // account. Both were true, and the second pass removed that blocker instead
+  // of arguing with it: #settingsAvatarRemove carries Remove now, so the whole
+  // cluster could go. Under NAV_SHELL=rail that is the point -- the account
+  // circle is pinned bottom-left in the sidebar, so a second one top-right is
+  // the same face twice on one screen.
   const at = html.indexOf('id="deskView"');
   const head = html.slice(at, html.indexOf('id="checkoutNotice"'));
-  assert.ok(!head.includes('id="deskHello"'), "identity is the account menu's job");
-  assert.ok(!head.includes('id="deskAvatarChange"'), "the circle is the upload control");
-  // The circle STAYS: it is the upload trigger, #avatar deep-links to it, and
-  // it must say so for anyone who cannot see it.
-  assert.ok(head.includes('id="deskAvatarBtn"'), "the circle stays");
-  assert.match(head, /id="deskAvatarBtn"[^>]*aria-label="Change profile photo"/);
-  assert.match(head, /id="deskAvatarBtn"[^>]*title="Change profile photo"/);
-  // Remove STAYS: the settings panel has no remove, so dropping it here would
-  // delete the only way to take a photo off an account.
-  assert.ok(head.includes('id="deskAvatarRemove"'), "remove is the only one of its kind");
-  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings keeps the labelled control");
-  // Nothing may still reach the deleted elements: both were UNGUARDED reads.
-  const js = html.slice(html.indexOf("function applyAvatarUI"));
-  assert.ok(!/getElementById\("deskHello"\)/.test(js), "no live reference to the removed hello line");
-  assert.ok(!/getElementById\("deskAvatarChange"\)/.test(js), "no live reference to the removed button");
+  const gone = ["deskAvatarBtn", "deskAvatarPhoto", "deskAvatarInitial",
+                "deskHello", "deskAvatarChange", "deskAvatarRemove", "deskAvatarMsg"];
+  for (const id of gone) {
+    assert.ok(!head.includes('id="' + id + '"'), id + " is gone from the workspace header");
+    // Nothing may still REACH one either: several were unguarded reads, and an
+    // unguarded getElementById on a deleted node throws and takes the desk
+    // down with it. This is the half a comment cannot enforce.
+    assert.ok(!html.includes('getElementById("' + id + '")'), "no live reference to " + id);
+  }
+  // The capability has to survive the move in BOTH directions. A panel that can
+  // add a photo and never take one off is the loss the first pass refused to
+  // take, and it would be just as real now.
+  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings adds and changes");
+  assert.ok(html.includes('id="settingsAvatarRemove"'), "settings removes");
+  assert.ok(html.includes(`getElementById("settingsAvatarRemove").addEventListener`),
+    "and Remove is wired, not merely drawn");
+  // The picker stays where it is: #settingsAvatarBtn clicks it, so the photo
+  // pipeline still has exactly one entry.
+  assert.ok(html.includes('id="deskAvatarFile"'), "the one hidden input stays");
 });
 
 // ----------------------------------------------------------------------------
@@ -1202,20 +1250,16 @@ test("the type chip is followed by the table's own comp count, never a bare digi
   assert.match(html, /renderReportMeta\(currentMeta\)/);
 });
 
-test("My Desk and the settings panel have a place to put a profile photo", () => {
+test("the settings panel has a place to put a profile photo", () => {
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);
   assert.match(html, /id="deskAvatarFile"/);
-  // The workspace's way in is the avatar circle itself (2026-08-29). It was
-  // a labelled "Add a photo" button beside the circle until the header stopped
-  // saying who you are three times over; the capability this test guards is
-  // unchanged, the control is the circle now, and it carries the label in
-  // aria-label and title rather than in text.
-  assert.match(html, /id="deskAvatarBtn"/);
-  assert.match(html, /id="deskAvatarRemove"/);
   // Change photo moved from the account dropdown into the settings panel
-  // (2026-08-23); it drives the same hidden #deskAvatarFile input.
+  // (2026-08-23) and Remove followed it there when the workspace header's
+  // profile cluster went (2026-08-29); both drive the same hidden
+  // #deskAvatarFile input and the same pipeline.
   assert.match(html, /id="settingsAvatarBtn"/);
+  assert.match(html, /id="settingsAvatarRemove"/);
   assert.match(html, /function applyAvatarUI\(/);
   assert.match(html, /function readAvatarFile\(/);
   assert.match(html, /\/api\/account\/avatar/);

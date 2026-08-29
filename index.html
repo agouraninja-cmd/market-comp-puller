@@ -2081,16 +2081,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </label>
         <p id="settingsDigestErr" class="hidden text-sm text-red-600 mt-2"></p>
       </div>
-      <!-- Account. Change photo drives the same hidden #deskAvatarFile input
-           and pipeline the desk header uses; delete is a two-step confirm in
-           place of the old native confirm(), and its copy keeps the plan
-           card's promise that only account deletion removes a vault. -->
+      <!-- Account, and since 2026-08-29 the ONLY home for the profile photo:
+           the workspace header's cluster is gone. Change photo drives the same
+           hidden #deskAvatarFile input and pipeline it drove before; Remove
+           came across with it, because a panel that can add a photo and never
+           take one off is a capability quietly lost. Delete is a two-step
+           confirm in place of the old native confirm(), and its copy keeps the
+           plan card's promise that only account deletion removes a vault. -->
       <div id="settingsAcctSection" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
         <div class="text-sm font-medium text-[#1A2433]">Account</div>
         <div id="settingsAcctEmail" class="text-xs text-[#9AA2AD] mt-0.5 truncate"></div>
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <button id="settingsAvatarBtn" type="button"
             class="text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Change photo</button>
+          <button id="settingsAvatarRemove" type="button"
+            class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Remove photo</button>
           <button id="settingsSignOutBtn" type="button"
             class="text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Sign out</button>
           <button id="settingsDeleteBtn" type="button"
@@ -2161,6 +2166,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              tailwind purge still emits them for the server-injected NAV_LINKS. -->
         <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">Workspace</button>
+        <!-- The vault's only entrance. It lived inside the account dropdown
+             until 2026-08-29; in rail mode that buried a daily workspace two
+             clicks down a menu pinned to the foot of the sidebar, so it is a
+             rail item now, beside Workspace. Shown from /api/config's
+             canUseVault, so it appears for any Pro member (and for comped
+             admins) and for nobody else. There is no separate broker
+             subscription to gate it on: one subscription since 2026-08-05,
+             and entitlements.js reads `const broker = pro`. A plain link,
+             not a button: /vault is its own server-rendered page, and the
+             rail already styles `.rd-appbar > nav > a` alongside its
+             buttons, so one markup serves rail and bar alike. -->
+        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Your vault</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -2175,13 +2192,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!-- Change photo and Delete account… moved into the settings
                  panel (2026-08-23); this row is the door to them. -->
             <button id="menuSettingsBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Settings</button>
-            <!-- The vault's only entrance. Shown from /api/config's
-                 canUseVault, so it appears for any Pro member (and for comped
-                 admins) and for nobody else. There is no separate broker
-                 subscription to gate it on: one subscription since 2026-08-05,
-                 and entitlements.js reads `const broker = pro`. A plain link,
-                 not a button: /vault is its own server-rendered page. -->
-            <a id="menuVaultLink" href="/vault" class="hidden block w-full text-left px-3 py-1.5 font-medium hover:bg-[#F5F4EF]">Your vault</a>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -2270,36 +2280,36 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="flex items-center gap-3">
           <!-- The chamber moved below the workspace (2026-08-29); this is the
                daily user's shortcut back to it, so demotion never costs a hunt.
-               Utility classes are ones #deskAvatarRemove beside it already
-               uses — the vendored tailwind.css is purged against this file, so
-               a class it was not built with styles nothing at all. -->
+               Red as of 2026-08-29, on the owner's call: with the profile
+               cluster gone from this row it is the only control left here, and
+               it starts the same act as the red button at the foot of the
+               chamber it jumps to. Utility classes are the ones #watchAddBtn
+               already uses — the vendored tailwind.css is purged and a class
+               that appears nowhere else in this file styles nothing. -->
           <button type="button" id="deskRunReport"
-            class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9] whitespace-nowrap">Run a report ↓</button>
-          <!-- Identity was said three times in this row (2026-08-29): the
-               circle, "Signed in as {name}", and "Add a photo" — beside a nav
-               that already carries the same photo and the same account menu.
-               The circle stays, because it IS the upload control (aria-label
-               and title say so, and #avatar deep-links to it) and because
-               clicking your own initial to change a photo is the pattern
-               people already know. "Signed in as" is gone: the account menu
-               answers who you are, and a workspace only ever has one owner.
-               "Add a photo" is gone with it — settings carries an explicit
-               "Change photo" button for anyone who wants a labelled control.
-               Remove STAYS: settings has no remove, so dropping it here would
-               delete the only way to take a photo off. applyAvatarUI already
-               keeps it hidden until there is one. -->
-          <button type="button" id="deskAvatarBtn" aria-label="Change profile photo" title="Change profile photo"
-            class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
-            style="position:relative">
-            <img id="deskAvatarPhoto" alt="" class="hidden"
-              style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">
-            <span id="deskAvatarInitial"></span>
-          </button>
-          <div class="text-right">
-            <button type="button" id="deskAvatarRemove"
-              class="hidden text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Remove photo</button>
-            <p id="deskAvatarMsg" class="hidden text-xs text-red-700"></p>
-          </div>
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Run a report ↓</button>
+          <!-- The photo pipeline's one entry, and all that is left of the
+               profile cluster that used to sit here — circle, greeting, Add a
+               photo / Remove.
+
+               It came down in two passes on the same day, and the second one
+               is why the first one's comment is gone. The first took the
+               greeting and "Add a photo" and deliberately KEPT the circle, on
+               two grounds: the circle is itself the upload control, and
+               settings had no Remove, so dropping the cluster would have
+               deleted the only way to take a photo off an account. Both were
+               true. The owner still wanted the circle gone, and under
+               NAV_SHELL=rail the reason is plain — the account circle is
+               pinned bottom-left in the sidebar, so a second one top-right
+               shows the same face twice on one screen. So the circle went too,
+               and the blocker was REMOVED rather than argued with:
+               #settingsAvatarRemove now carries Remove, which is the whole
+               reason that button exists.
+
+               This input stays because #settingsAvatarBtn clicks it, and it
+               works from a hidden container (the panel already opened it from
+               the home view). -->
+
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
       </div>
@@ -11859,20 +11869,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function applyAvatarUI(user) {
+    // One circle: the rail's account button. The workspace header carried a
+    // second one until 2026-08-29, which in rail mode showed the same face
+    // twice on one screen. The photo controls moved with it into the settings
+    // panel, so the label and the Remove button are read from there now.
     paintAvatarCircle(
       document.getElementById("acctMenuPhoto"),
       document.getElementById("acctMenuInitial"),
       user);
-    paintAvatarCircle(
-      document.getElementById("deskAvatarPhoto"),
-      document.getElementById("deskAvatarInitial"),
-      user);
     const has = Boolean(user && user.avatarRev);
-    // Remove is the only control left in the desk header (the "Add a photo"
-    // twin went with the identity cluster on 2026-08-29; the circle itself is
-    // the upload control now, and settings carries the labelled one). Still
-    // guarded: this also runs before the desk markup matters.
-    const remove = document.getElementById("deskAvatarRemove");
+    // Both controls are the settings panel's now: the workspace header's
+    // cluster went entirely on 2026-08-29, Remove included, so the panel is
+    // the only place a photo is added or taken off. Still guarded, because
+    // this also runs before the panel's markup matters.
+    const change = document.getElementById("settingsAvatarBtn");
+    const remove = document.getElementById("settingsAvatarRemove");
+    if (change) change.textContent = has ? "Change photo" : "Add a photo";
     if (remove) remove.classList.toggle("hidden", !has);
   }
 
@@ -12172,19 +12184,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   function showAvatarMsg(text, isError) {
-    // Two homes: the desk header's message line and the settings panel's.
-    // The photo pipeline has one entry (the hidden #deskAvatarFile input),
-    // so it cannot know which surface the click came from — writing both
-    // means a rejected file is visible wherever the broker is looking.
-    for (const id of ["deskAvatarMsg", "settingsAvatarMsg"]) {
-      const el = document.getElementById(id);
-      if (!el) continue;
-      if (!text) { el.classList.add("hidden"); el.textContent = ""; continue; }
-      el.textContent = text;
-      el.classList.toggle("text-red-700", Boolean(isError));
-      el.classList.toggle("text-[#5A6473]", !isError);
-      el.classList.remove("hidden");
-    }
+    // One home since 2026-08-29: the settings panel's message line. It used to
+    // write two, because the photo pipeline has a single entry (the hidden
+    // #deskAvatarFile input) and could not tell which surface the click came
+    // from. The desk header's copy went with the profile cluster it belonged
+    // to, and the panel is now the only place a photo can be chosen at all.
+    const el = document.getElementById("settingsAvatarMsg");
+    if (!el) return;
+    if (!text) { el.classList.add("hidden"); el.textContent = ""; return; }
+    el.textContent = text;
+    el.classList.toggle("text-red-700", Boolean(isError));
+    el.classList.toggle("text-[#5A6473]", !isError);
+    el.classList.remove("hidden");
   }
 
   async function saveAvatar(dataUri) {
@@ -12194,12 +12205,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     applyAvatarUI(currentUser);
   }
 
-  // Two triggers reach the one hidden input: the workspace circle and the
-  // settings panel's labelled button. #deskAvatarChange was a third, beside
-  // the circle, and went with the identity cluster.
-  document.getElementById("deskAvatarBtn").addEventListener("click", () => {
-    document.getElementById("deskAvatarFile").click();
-  });
+  // One trigger reaches the one hidden input: the settings panel's labelled
+  // button (#settingsAvatarBtn, above). #deskAvatarChange and the workspace
+  // circle were the other two, and both went with the identity cluster.
   document.getElementById("deskAvatarFile").addEventListener("change", async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
@@ -12211,7 +12219,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       showAvatarMsg(ex.message, true);
     }
   });
-  document.getElementById("deskAvatarRemove").addEventListener("click", async () => {
+  document.getElementById("settingsAvatarRemove").addEventListener("click", async () => {
     try {
       const next = await acctApi("DELETE", "/api/account/avatar");
       currentUser = Object.assign(currentUser || {}, next);
@@ -12605,12 +12613,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // No "Signed in as {name}" line any more: the account menu in the nav
     // carries the identity and the same photo, and a workspace only ever has
     // one owner, so saying it a second time above their own book was telling
-    // them something they could not not know.
+    // them something they could not not know. The #avatar jump went with it —
+    // it scrolled to the header circle, which no longer exists, and nothing
+    // has linked to that hash since the dropdown item that did was removed.
     applyAvatarUI(currentUser);
-    if (location.hash === "#avatar") {
-      const el = document.getElementById("deskAvatarBtn");
-      if (el) el.scrollIntoView({ block: "center" });
-    }
     let items = [];
     let loadFailed = false;
     try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) { loadFailed = true; }

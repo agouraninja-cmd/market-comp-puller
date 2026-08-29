@@ -938,10 +938,56 @@ test("both writers of the markets cell emit the same anatomy", () => {
     const seg = html.slice(at, at + 30000);
     const cellAt = seg.indexOf("deskLedgerMarkets");
     assert.ok(cellAt > -1, fnName + " must write the markets cell");
-    const cell = seg.slice(cellAt, cellAt + 300);
+    // Wide enough to clear the explanatory comment above the feed's writer.
+    const cell = seg.slice(cellAt, cellAt + 1600);
     assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
     assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
+    // Both must also agree on the LABEL, or the cell renames itself when the
+    // feed lands a moment after first paint.
+    assert.ok(cell.includes(">New comps<"), fnName + " must label the cell New comps");
   }
+});
+
+test("the fourth ledger cell counts new comps, not watched markets", () => {
+  // The other three cells are facts about the book. This one was a count of a
+  // preference, with the only live thing on the strip ("N new comps waiting")
+  // demoted to the 11px note under it. The signal is the figure now.
+  const at = html.indexOf("async function renderWatchFeed");
+  const seg = html.slice(at, at + 30000);
+  const cellAt = seg.indexOf("const mk = document.getElementById");
+  assert.ok(cellAt > -1, "the feed still writes the cell");
+  const blk = seg.slice(cellAt, cellAt + 1400);
+  assert.ok(blk.includes('<span class="rd-lab">New comps</span>'), "the label names what the figure counts");
+  assert.ok(blk.includes("mkts ? totalNew"), "the figure is the new-comp count");
+  // Three honest notes, and an em dash rather than a 0 when there is nothing
+  // to count yet: "0 new comps" over an empty watchlist states a fact about
+  // markets the member never asked about.
+  assert.ok(blk.includes("watch a market to see new comps here"), "no markets: an invitation");
+  assert.ok(blk.includes("you watch"), "with news: the markets are the context");
+  assert.ok(blk.includes("watched · quiet"), "no news: says so plainly");
+  assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
+});
+
+test("the workspace header says who you are exactly once", () => {
+  // The row carried the circle, "Signed in as {name}" and "Add a photo",
+  // beside a nav that already shows the same photo and account menu.
+  const at = html.indexOf('id="deskView"');
+  const head = html.slice(at, html.indexOf('id="checkoutNotice"'));
+  assert.ok(!head.includes('id="deskHello"'), "identity is the account menu's job");
+  assert.ok(!head.includes('id="deskAvatarChange"'), "the circle is the upload control");
+  // The circle STAYS: it is the upload trigger, #avatar deep-links to it, and
+  // it must say so for anyone who cannot see it.
+  assert.ok(head.includes('id="deskAvatarBtn"'), "the circle stays");
+  assert.match(head, /id="deskAvatarBtn"[^>]*aria-label="Change profile photo"/);
+  assert.match(head, /id="deskAvatarBtn"[^>]*title="Change profile photo"/);
+  // Remove STAYS: the settings panel has no remove, so dropping it here would
+  // delete the only way to take a photo off an account.
+  assert.ok(head.includes('id="deskAvatarRemove"'), "remove is the only one of its kind");
+  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings keeps the labelled control");
+  // Nothing may still reach the deleted elements: both were UNGUARDED reads.
+  const js = html.slice(html.indexOf("function applyAvatarUI"));
+  assert.ok(!/getElementById\("deskHello"\)/.test(js), "no live reference to the removed hello line");
+  assert.ok(!/getElementById\("deskAvatarChange"\)/.test(js), "no live reference to the removed button");
 });
 
 // ----------------------------------------------------------------------------
@@ -1160,7 +1206,13 @@ test("My Desk and the settings panel have a place to put a profile photo", () =>
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);
   assert.match(html, /id="deskAvatarFile"/);
-  assert.match(html, /id="deskAvatarChange"/);
+  // The workspace's way in is the avatar circle itself (2026-08-29). It was
+  // a labelled "Add a photo" button beside the circle until the header stopped
+  // saying who you are three times over; the capability this test guards is
+  // unchanged, the control is the circle now, and it carries the label in
+  // aria-label and title rather than in text.
+  assert.match(html, /id="deskAvatarBtn"/);
+  assert.match(html, /id="deskAvatarRemove"/);
   // Change photo moved from the account dropdown into the settings panel
   // (2026-08-23); it drives the same hidden #deskAvatarFile input.
   assert.match(html, /id="settingsAvatarBtn"/);

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Used by `xcodebuild -exportArchive` to turn the .xcarchive into the
+	     .ipa that goes to App Store Connect. teamID is read from
+	     Team.xcconfig at archive time; fill it in there, and here. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>teamID</key>
+	<string>ZRFN5C3645</string>
+	<key>signingStyle</key>
+	<string>manual</string>
+	<!-- Bundle id -> provisioning profile NAME. Must match the profile in the
+	     developer portal and PROVISIONING_PROFILE_SPECIFIER in project.yml. -->
+	<key>provisioningProfiles</key>
+	<dict>
+		<key>co.compninja.ios</key>
+		<string>CompNinja App Store</string>
+	</dict>
+	<key>uploadSymbols</key>
+	<true/>
+	<!-- Apple's build-number bumping is off: CURRENT_PROJECT_VERSION in
+	     project.yml is the one place a build number is set. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+</dict>
+</plist>

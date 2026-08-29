@@ -1,0 +1,12 @@
+// The Apple Developer team the app is signed with.
+//
+// Empty until Jacob's organization enrollment is approved and he sends the
+// Team ID from developer.apple.com -> Membership. Put the ten-character ID
+// here (e.g. A1B2C3D4E5) and nothing else changes: `xcodegen generate` picks
+// it up, Xcode's Signing & Capabilities stops complaining, and
+// `xcodebuild archive` stops failing with "requires a development team".
+//
+// A Team ID is not a secret -- it ships inside every signed app -- so this
+// file is committed rather than gitignored.
+
+DEVELOPMENT_TEAM = ZRFN5C3645

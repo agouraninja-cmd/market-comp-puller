@@ -58,6 +58,8 @@ const TABLES = [
   ["lead_intro_requests", "015-broker-lead-inbox.sql"],
   ["broker_properties",   "016-broker-comps-star.sql"],
   ["report_viewers",      "018-report-sharing.sql"],
+  ["broker_bovs",         "019-broker-bovs.sql"],
+  ["broker_csv_mappings", "021-broker-csv-mappings.sql"],
   ["hubs",                "024-messaging-hub.sql"],
   ["hub_participants",    "024-messaging-hub.sql"],
   ["hub_items",           "024-messaging-hub.sql"],
@@ -69,6 +71,7 @@ const TABLES = [
   ["org_subscriptions",   "033-org-billing.sql"],
   ["bulk_jobs",           "036-bulk-valuations.sql"],
   ["bulk_job_items",      "036-bulk-valuations.sql"],
+  ["org_contacts",        "039-org-contacts.sql"],
   ["hub_notify",          "040-hub-note-emails.sql"],
   ["hub_email_prefs",     "040-hub-note-emails.sql"],
   ["org_branding",        "041-org-branding.sql"],
@@ -120,6 +123,22 @@ const COLUMNS = [
   // returns nothing and EVERY broker is told to add a credit name they can
   // see on their own screen.
   ["broker_profiles",   ["license_number"],                     "034-broker-license.sql"],
+  // 035's absence is LOUD but total: listPortfolio names verified_key in its
+  // SELECT and sbRequest throws on PostgREST's 400, so the whole desk read —
+  // and every portfolio save — fails until it runs. Named here so the tool
+  // says which file to run instead of the desk saying "Couldn't load".
+  ["portfolio_items",   ["verified_key"],                       "035-portfolio-verified-key.sql"],
+  // 038 is the 004 write-path shape on the vault: normalizeRow emits every
+  // field it knows, null included, so an upload, a cell edit and a hand-added
+  // comp all POST payloads naming lease_expiry — and PostgREST 400s an insert
+  // naming an unknown column, refusing the broker's ENTIRE spreadsheet.
+  ["broker_comps",      ["lease_expiry", "option_notice_date", "renewal_notified_at"],
+                                                                "038-lease-renewal-watch.sql"],
+  ["shared_reports",    ["shared_by_name"],                     "038-lease-renewal-watch.sql"],
+  // 039's table check above proves org_contacts exists; email is also worth
+  // naming because the import's upsert conflicts on (org_id, email) and a
+  // partially-applied file would 400 every import while reads look fine.
+  ["org_contacts",      ["email", "notes"],                     "039-org-contacts.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which
@@ -205,6 +224,14 @@ const COLUMNS = [
   ["hub_notify",        ["seen_at", "notified_at"],             "040-hub-note-emails.sql"],
   ["hub_email_prefs",   ["notify"],                             "040-hub-note-emails.sql"],
 ];
+
+// What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql
+// only widens the orgs_kind_check CHECK constraint, and PostgREST exposes no
+// read-only way to inspect a constraint — proving it would mean inserting a
+// 'tenant_rep' row, and this script's whole contract is that it writes
+// nothing. Its APPLIED.md row stands on the in-session verification recorded
+// there (pg_get_constraintdef, zero rows, 2026-08-21). A future
+// constraint-only migration inherits the same limit; say so in its row.
 
 // Same tiny .env reader server.js uses, so this works the same way locally.
 function loadEnv() {
@@ -306,7 +333,14 @@ async function main() {
   process.exit(1);
 }
 
-main().catch((err) => {
-  console.error("verify failed:", err.message);
-  process.exit(2);
-});
+// Exported so test/migrations.test.js can hold TABLES against the migration
+// files themselves (every `create table` must have a row here). Requiring
+// this module runs nothing — desktop.js's require.main guard.
+module.exports = { TABLES, COLUMNS };
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error("verify failed:", err.message);
+    process.exit(2);
+  });
+}

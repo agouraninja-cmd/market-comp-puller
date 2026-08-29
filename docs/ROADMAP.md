@@ -155,8 +155,14 @@ subscription benefit.
   money parsers); and `reportIdFor` → report-id.js with the
   `exportReportKey` mirror pinned by test. New candidates earn a module the
   same way: when touched, with tests first.
-- Branch protection on main once PR flow feels routine (CI is live but
-  advisory today).
+- Branch protection on main once PR flow feels routine. **Shipped
+  2026-08-29**: 24 of the 40 commits before it were PR merges, which is
+  routine. The `test` check is required to merge, force pushes and branch
+  deletion are blocked; `enforce_admins` is deliberately OFF, so the owner
+  account can still push past it during an Actions outage (the 2026-08-06
+  incident's shape — `workflow_dispatch` is the first resort, the bypass the
+  second). No required reviews, because a solo account cannot approve its own
+  PR.
 - Market pages restyle onto the `rd-*` Research Desk tokens. Still
   outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
   own header — /how-it-works took the `rd-*` system "rather than the older

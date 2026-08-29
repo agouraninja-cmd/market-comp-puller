@@ -71,6 +71,7 @@ const TABLES = [
   ["bulk_job_items",      "036-bulk-valuations.sql"],
   ["hub_notify",          "040-hub-note-emails.sql"],
   ["hub_email_prefs",     "040-hub-note-emails.sql"],
+  ["org_branding",        "041-org-branding.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

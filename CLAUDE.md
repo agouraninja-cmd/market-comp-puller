@@ -2650,7 +2650,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `exports_remaining` — an existing $20 single-report buyer's `canBrand` is
   scoped to the property they bought (the sale is retired; the grants are
   not), not a live Pro subscription, so this cannot be folded into
-  `/api/config`. Two rules a future editor will otherwise break:
+  `/api/config`.
+  **The firm fallback (2026-08-29; migration 041, `org_branding`).** A firm's
+  owner/admin saves one profile for the org (`GET|PUT|DELETE
+  /api/org/branding`, write gated on `ORG.canManageMembers`, validation
+  shared with the personal editor), and a member's render falls back to it
+  ONLY when their own profile normalizes to nothing — `brandForRender`'s
+  `firmProfile` argument owns that ordering, own-always-wins, and
+  `canBrand` still gates applying, so a free colleague stays unbranded.
+  Oldest active membership wins if anyone is ever in two firms. The read is
+  `findOrgBrandingFor` in server.js, deliberately fail-open (a failed org
+  read must never cost a member their own letterhead or fail a share) and a
+  SEPARATE table read by a separate function, never columns on `orgs` —
+  `orgsByIds`/`findOrg` name their SELECT columns, the 030/036 hazard. It
+  rides `GET /api/branding` as `firm` and the share snapshot inherits it
+  (auto-share included). Two rules a future editor will otherwise break:
   - **A shared report renders the sender's snapshot and never the viewer's
     own profile.** `POST /api/share` looks up the sender's saved profile at
     share time (only when `user && ent.canBrand`) and writes it into

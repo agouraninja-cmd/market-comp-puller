@@ -8,6 +8,12 @@
   {
     "date": "2026-08-29",
     "type": "fix",
+    "title": "Pricing and Sign in no longer strand a signed-out visitor on the app",
+    "details": "Clicking Pricing or Sign in from the landing page, then backing out of what opened, left you on the report page with a Create a free account card and no way back to the page you were reading. Both links are doors through the account wall onto index.html, because the pricing modal and the account modal live only in that file. The door strips its own marker from the URL on arrival, and closing a modal only hid it, so nothing recorded where you came from. Two changes. The header's Pricing link now points at /pricing, the standalone rate card, for a signed-out reader; a signed-in member still gets the modal, which is where checkout actually starts, and for whom the app is already home. And cancelling the sign-in modal after arriving through /?auth=signin now returns a signed-out visitor to the landing page. Signup deliberately does not do this: a signup arrival is usually carrying an address typed into the landing page's own form, and bouncing back would throw it away."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
     "title": "The live comp lines actually appear — a swallowed ReferenceError, one year of silence",
     "details": "The first real streamed Gemini report showed searches, results and the summary arriving live — and not one comp line, while the finished report held four. The streamed-comp callback in server.js calls expandComp, which moved into report-parse.js in the 2026-08-08 extraction and was never exported; the resulting ReferenceError was swallowed PER COMP by makeCompExtractor’s catch, so every live comp event died with no log, no error, and a perfectly fine report. Nothing noticed because the whole streaming path was dark on the default provider until today. The call now goes through the module, the export exists, and two tests pin it: report-parse must export expandComp, and a source scan fails the build on any bare expandComp( call in server.js — the exact shape a future refactor would reintroduce."
   },
@@ -16,6 +22,13 @@
     "type": "feature",
     "title": "Vault comps get map pins without the CSV carrying coordinates",
     "details": "A broker's private comp only ever earned a map pin if their spreadsheet supplied lat/lng columns, because geocoding it any other way meant the address leaving their browser for a third party — the exact thing the vault promises not to do. The server now locates the buildings an import left blank itself, at import time, through the same in-process Census call our own /api/geocode proxy fronts: never Nominatim, never the browser, never a URL. Up to 25 buildings per import, and books uploaded before today backfill 8 at a time whenever the vault's comps are read for a report. A coordinate the broker typed always wins — the census write only ever fills a building that has none, and a miss or a Census outage leaves the building unlocated rather than guessed, because a wrong pin puts the building on the wrong continent and nobody would recognize it as wrong. The whole path is proven end to end against a stand-in database and a stand-in geocoder, including that a located building's address is never sent anywhere at all."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "feature",
+    "title": "A firm gets one letterhead: firm-level report branding",
+    "details": "Branding was one profile per member, so a five-broker firm was five people each uploading the logo and one stale copy made the firm look inconsistent to clients. A firm’s owner or admin now saves one branding profile for the whole firm (migration 041, org_branding — its own table read by its own fail-open function, so the 030/036 deploy-order hazard never applies), and a member’s report falls back to it whenever they have no personal profile of their own. The member’s own profile always wins — a fallback, never an override, the auto-share member veto’s philosophy applied to letterheads — and canBrand still gates applying, so a free colleague merely invited to a firm stays unbranded. The share snapshot inherits the same rule (auto-share included), the branding card on the workspace gains a My branding / Firm branding scope row for owners and admins plus a disclosure line for members whose reports are riding the firm’s mark, and everything stays co-branded: the CompNinja attribution and the automated-estimate line survive every configuration. Proved end to end against the stand-in PostgREST: member PUT refused, validation shared with the personal editor byte for byte, the snapshot fallback, and the own-profile win.",
+    "commit": ""
   },
   {
     "date": "2026-08-29",

@@ -2794,6 +2794,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span class="dk-sum-a">Edit</span>
           </summary>
         <p class="text-sm text-[#5A6473] mt-3">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
+        <!-- Firm scope (041). Revealed by updateBrandScopeUI() only for an
+             owner/admin of a firm; everyone else edits their own profile and
+             never sees the row. The one form below edits whichever profile is
+             selected — same fields, same rules, a different save target. -->
+        <div id="brandScopeRow" class="hidden mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Which branding to edit">
+          <button type="button" id="brandScopeMine" aria-pressed="true"
+            class="btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5">My branding</button>
+          <button type="button" id="brandScopeFirm" aria-pressed="false"
+            class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Firm branding</button>
+        </div>
+        <!-- Told only to a member whose reports are actually falling back to
+             the firm's mark — updateBrandScopeUI() owns the condition. -->
+        <p id="brandFirmNote" class="hidden text-sm text-[#5A6473] mt-2"></p>
         <div class="mt-2 dk-card">
           <div class="flex flex-wrap items-center gap-3">
             <!-- Persistent element (fillBrandForm() and the choose/remove
@@ -11788,6 +11801,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let pendingPricingHash = location.hash === "#pricing"
     || new URLSearchParams(location.search).get("pricing") === "1";
 
+  // Set when THIS page load arrived through the /?auth=signin door. That door
+  // is a full navigation off whatever page the visitor was reading, because
+  // the account modal lives only in this file — so cancelling it used to leave
+  // them HERE, on the app, behind the wall's lock card, with nothing pointing
+  // back to the page they started on. Consumed once by closeAcctModal, which
+  // returns them to the landing page instead.
+  //
+  // signin ONLY, never signup, and the asymmetry is the point. A signup
+  // arrival usually typed an address into the landing page's own form, which
+  // rides here in pendingLandingAddress.v1 and is waiting in the search field
+  // by the time they cancel; bouncing them back would throw that address away
+  // and undo the funnel the landing page exists to run. Someone asking to SIGN
+  // IN already has an account, and is the one visitor that funnel has nothing
+  // to offer.
+  let exitToLandingOnCancel = false;
+
   async function acctApi(method, url, bodyObj) {
     const r = await fetch(url, {
       method,
@@ -11991,12 +12020,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById(acctMode === "reset" ? "acctPassword" : "acctEmail").focus();
   }
   function closeAcctModal() {
+    // Captured and cleared FIRST, for the same reason every flag below is
+    // cleared here: it is one-shot. Signing out and back in on this same page
+    // load, or reopening the modal from the lock card, must not inherit a door
+    // arrival that was already answered.
+    const exitToLanding = exitToLandingOnCancel;
+    exitToLandingOnCancel = false;
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
     pendingSharedAddress = "";    // ...and must not prefill an address they walked away from
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
     pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     pendingMarketExplore = null;  // ...and a cancelled gate must not fire a surprise market search later
     document.getElementById("acctModal").classList.add("hidden");
+    // Back to the landing page, which is what `/` renders for exactly this
+    // visitor (signed out, wall up, no door param).
+    //
+    // currentUser, because the successful-auth paths close this modal too --
+    // one of them twice, via the import prompt -- and a member must land on
+    // the app; that is what they just signed in FOR. accountWall, because with
+    // the wall off `/` serves this very file, so the navigation would be a
+    // pointless reload of the page they are already standing on.
+    if (exitToLanding && !currentUser && accountWall) location.href = "/";
   }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
@@ -12322,6 +12366,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       brandingLoaded = false;
       brandingLoadPromise = null;
       currentBranding = null;
+      currentFirmBranding = null;
+      brandScope = "mine";
       pendingLogo = "";
       brandingLoadToken++;
       renderReportBrand();
@@ -12414,6 +12460,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     brandingLoaded = false;
     brandingLoadPromise = null;
     currentBranding = null;
+    currentFirmBranding = null;
+    brandScope = "mine";
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
@@ -12434,6 +12482,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     brandingLoaded = false;
     brandingLoadPromise = null;
     currentBranding = null;
+    currentFirmBranding = null;
+    brandScope = "mine";
     pendingLogo = "";
     brandingLoadToken++;
     renderReportBrand();
@@ -12467,6 +12517,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // followed a static link from a page that is cached for everyone.
     const authParam = new URLSearchParams(location.search).get("auth");
     if (!currentUser && (authParam === "signup" || authParam === "signin")) {
+      // See the declaration for why this is signin-only. Inside the
+      // !currentUser guard, so a member following a stale link never arms it.
+      exitToLandingOnCancel = authParam === "signin";
       // An arrival via a market page's Explore link gets told up front that
       // the Explorer is Pro — the generic "run a report" nudge didn't match
       // what they clicked, and the gap only surfaced after they'd signed up
@@ -13905,6 +13958,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const box = document.getElementById("deskFirm");
     if (!currentUser) { box.classList.add("hidden"); return; }
     const state = await loadMyFirms(true);
+    // The branding card's scope row follows the firm state, which just
+    // changed (or just failed to load) — either way it should re-read it.
+    updateBrandScopeUI();
     if (!state) { box.classList.add("hidden"); return; }
 
     const invitesBox = document.getElementById("firmInvites");
@@ -14820,6 +14876,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
 
   let currentBranding = null;   // the member's own saved profile, or null
+  // The FIRM's profile (041), already normalized server-side — the fallback
+  // activeBrand() uses when the member has no profile of their own. Arrives
+  // in the same GET /api/branding response, so every reset/token rule that
+  // protects currentBranding covers it by riding alongside.
+  let currentFirmBranding = null;
+  // Which profile the one branding form is editing: "mine" (always, for most
+  // people) or "firm" (an owner/admin who clicked the scope row).
+  let brandScope = "mine";
   let pendingLogo = "";         // data URI chosen but not yet saved
   // Guards loadBranding() against re-entry: renderMyDesk() (and so
   // loadBranding()) re-runs from unrelated My Desk actions — portfolio
@@ -14879,14 +14943,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     return out;
   }
 
-  // Mirrors branding.js's brandForRender. The rule that matters: a SHARED
+  // ⚠ MIRROR: branding.js's brandForRender. The rules that matter: a SHARED
   // report renders the sender's snapshot and NEVER the viewer's own profile —
   // otherwise a Pro member opening a report their broker sent them sees their
-  // own logo on it.
+  // own logo on it — and the firm's profile (041) is a FALLBACK behind the
+  // member's own, never an override of it.
   function activeBrand() {
     if (currentMeta && currentMeta.shared) return normalizeBrandBlock(currentMeta.branding);
     if (!currentParsed || currentParsed.branding_allowed !== true) return null;
-    return normalizeBrandBlock(currentBranding);
+    return normalizeBrandBlock(currentBranding) || normalizeBrandBlock(currentFirmBranding);
   }
 
   // Shared logo+firm-name renderer for the letterhead and the screen lockup.
@@ -15101,6 +15166,66 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     box.appendChild(attribution);
   }
 
+  // --- Firm branding scope (041) -------------------------------------------
+  // One form, two save targets. The row is revealed only to an owner/admin of
+  // a firm; switching refills the form from the selected profile's last-saved
+  // state (unsaved edits are dropped — the same thing a page reload does).
+  const BRAND_SCOPE_ON = "btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5";
+  const BRAND_SCOPE_OFF = "btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5";
+
+  function setBrandScope(scope) {
+    if (brandScope === scope) return;
+    brandScope = scope;
+    const src = scope === "firm" ? currentFirmBranding : currentBranding;
+    pendingLogo = (src && src.logo) || "";
+    fillBrandForm(src);
+    renderBrandPreview();
+    const msg = document.getElementById("brandMsg");
+    if (msg) msg.textContent = "";
+    updateBrandScopeUI();
+  }
+
+  // The scope row and the fallback note follow two async loads (branding and
+  // the firm state), so this runs after either lands and just reads whatever
+  // both currently say. Safe to call any time.
+  function updateBrandScopeUI() {
+    const row = document.getElementById("brandScopeRow");
+    const note = document.getElementById("brandFirmNote");
+    if (!row || !note) return;
+    const firm = (typeof myFirm === "function") ? myFirm() : null;
+    const manage = Boolean(firm && firm.canManage);
+    // Lost the firm (or the manage role) mid-session while editing its
+    // profile: fall back to the member's own form rather than leaving a save
+    // button pointed at a route that will 403.
+    if (!manage && brandScope === "firm") {
+      brandScope = "mine";
+      pendingLogo = (currentBranding && currentBranding.logo) || "";
+      fillBrandForm(currentBranding);
+      renderBrandPreview();
+    }
+    row.classList.toggle("hidden", !manage);
+    const mineBtn = document.getElementById("brandScopeMine");
+    const firmBtn = document.getElementById("brandScopeFirm");
+    if (mineBtn && firmBtn) {
+      mineBtn.className = brandScope === "mine" ? BRAND_SCOPE_ON : BRAND_SCOPE_OFF;
+      firmBtn.className = brandScope === "firm" ? BRAND_SCOPE_ON : BRAND_SCOPE_OFF;
+      mineBtn.setAttribute("aria-pressed", String(brandScope === "mine"));
+      firmBtn.setAttribute("aria-pressed", String(brandScope === "firm"));
+    }
+    // The fallback disclosure, for EVERY member of a firm (not just admins):
+    // shown exactly when their reports would actually carry the firm's mark —
+    // no profile of their own, and a firm profile that exists.
+    const fallbackOn = Boolean(firm && !currentBranding && currentFirmBranding);
+    note.classList.toggle("hidden", !fallbackOn);
+    // textContent throughout — the firm name is user text.
+    note.textContent = fallbackOn
+      ? `Your reports use ${(firm && firm.name) || "your firm"}'s branding until you save your own.`
+      : "";
+  }
+
+  document.getElementById("brandScopeMine").addEventListener("click", () => setBrandScope("mine"));
+  document.getElementById("brandScopeFirm").addEventListener("click", () => setBrandScope("firm"));
+
   function loadBranding() {
     // See the comment on brandingLoaded: renderMyDesk() re-runs for reasons
     // that have nothing to do with branding, and refetching on every one of
@@ -15140,9 +15265,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }
         wrap.classList.remove("hidden");
         currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
-        pendingLogo = (currentBranding && currentBranding.logo) || "";
-        fillBrandForm(currentBranding);
-        renderBrandPreview();
+        // The firm fallback (041), riding the same response. null when there
+        // is none — the server sends null, never {}.
+        currentFirmBranding = (body.firm && Object.keys(body.firm).length) ? body.firm : null;
+        // Fill only the scope the form is showing. In practice this load runs
+        // once per identity while brandScope is still "mine" (scope resets at
+        // every auth transition, and the brandingLoaded guard stops refetches),
+        // so the guard is belt-and-braces against a failure retry landing
+        // after someone has switched to the firm profile mid-edit.
+        if (brandScope === "mine") {
+          pendingLogo = (currentBranding && currentBranding.logo) || "";
+          fillBrandForm(currentBranding);
+          renderBrandPreview();
+        }
+        updateBrandScopeUI();
         brandingLoaded = true;
         // A report can already be on screen — rendered before this fetch
         // resolved (page load), or rendered while signed out and still up
@@ -15218,18 +15354,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     btn.disabled = true; msg.textContent = "Saving…";
     try {
-      const r = await fetch("/api/branding", {
+      // One form, two targets (041): the firm scope saves the firm's profile
+      // through the owner/admin-gated org route; everything else about the
+      // request — fields, validation, the response shape — is identical.
+      const firm = brandScope === "firm" ? myFirm() : null;
+      const r = await fetch(firm ? "/api/org/branding" : "/api/branding", {
         method: "PUT", credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(fields),
+        body: JSON.stringify(firm ? { ...fields, orgId: firm.id } : fields),
       });
       const body = await r.json().catch(() => ({}));
       // The server's own 400 names the offending field and its limit. Show it
       // rather than inventing a vaguer one.
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
-      currentBranding = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      const saved = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
+      if (firm) currentFirmBranding = saved; else currentBranding = saved;
       msg.textContent = "Saved.";
       renderBrandPreview();
+      updateBrandScopeUI();
       // Applies immediately to whatever report is already on screen, not
       // just the next one — a no-op (via activeBrand()) when nothing is.
       renderReportBrand();
@@ -15241,14 +15383,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   });
 
   document.getElementById("brandDelete").addEventListener("click", async () => {
-    if (!confirm("Remove your branding?\n\nReports you have already shared keep the mark they were sent with.")) return;
+    const firm = brandScope === "firm" ? myFirm() : null;
+    const ask = firm
+      ? "Remove the firm's branding?\n\nColleagues whose reports fall back to it lose the mark; anyone with their own saved branding is unaffected. Reports already shared keep the mark they were sent with."
+      : "Remove your branding?\n\nReports you have already shared keep the mark they were sent with.";
+    if (!confirm(ask)) return;
     const msg = document.getElementById("brandMsg");
     try {
-      const r = await fetch("/api/branding", { method: "DELETE", credentials: "same-origin" });
+      const r = await fetch(
+        firm ? `/api/org/branding?id=${encodeURIComponent(firm.id)}` : "/api/branding",
+        { method: "DELETE", credentials: "same-origin" });
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { msg.textContent = body.error || "That didn't go through."; return; }
-      currentBranding = null; pendingLogo = "";
+      if (firm) currentFirmBranding = null; else currentBranding = null;
+      pendingLogo = "";
       fillBrandForm(null); renderBrandPreview();
+      updateBrandScopeUI();
       renderReportBrand();
       msg.textContent = "Removed.";
     } catch (_) {

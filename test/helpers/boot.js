@@ -4,6 +4,8 @@
 const { spawn } = require("node:child_process");
 const net = require("node:net");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 
 const SERVER = path.join(__dirname, "..", "..", "server.js");
 
@@ -16,15 +18,41 @@ const SERVER = path.join(__dirname, "..", "..", "server.js");
 // on 39140: the suite adopted it and failed on the decoy's env. Asking the
 // OS for a free port removes the determinism; the child-alive check after a
 // healthy /healthz closes the remaining adoption window.
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.on("error", reject);
-    srv.listen(0, () => {
-      const port = srv.address().port;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
+// Ports this worker has already handed out. A port is never reused, even after
+// its child is dead and the OS is happy to hand it back (2026-08-29).
+//
+// The failure this fixes is `TypeError: fetch failed` / `ECONNRESET` in the
+// middle of a passing suite. Node's global fetch keeps a keep-alive connection
+// pool keyed by ORIGIN, and every server here is on localhost — so the origin
+// is just the port. When a suite stops its child, that child's sockets die,
+// but a pooled entry for `localhost:<port>` can outlive it inside this
+// worker. If the OS then hands the same port to the next boot, the next fetch
+// reuses the dead socket and the request is reset before it is even sent.
+//
+// Not the same hazard as the decoy-server one above: nothing foreign answers,
+// and /healthz passes, because the pool only bites a LATER request. Which is
+// why it read as random, hit a different suite each run, and never reproduced
+// in isolation — one worker has to reuse a port for it to happen at all.
+//
+// Cheaper and more honest than reaching into undici to evict a pool: a port is
+// a number, and this worker simply never asks for one twice.
+const usedPorts = new Set();
+async function freePort() {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const port = await new Promise((resolve, reject) => {
+      const srv = net.createServer();
+      srv.on("error", reject);
+      srv.listen(0, () => {
+        const p = srv.address().port;
+        srv.close((err) => (err ? reject(err) : resolve(p)));
+      });
     });
-  });
+    if (!usedPorts.has(port)) {
+      usedPorts.add(port);
+      return port;
+    }
+  }
+  throw new Error("could not find an unused port after 50 attempts");
 }
 
 // `env` REPLACES rather than extends the parent environment for the keys that
@@ -69,11 +97,30 @@ async function bootOnce(env) {
   // died on EADDRINUSE, and adopting the foreigner runs every assertion
   // against the wrong environment.
   const bootId = `${process.pid}-${++bootSeq}`;
+  // A private scratch directory per child (2026-08-29).
+  //
+  // Every server booted here has SUPABASE_URL blanked, so all of them fall back
+  // to local JSON files — and until this, those files were the REPO ROOT,
+  // shared by the ~23 suites `node --test` runs at once. account-store.json is
+  // the one that bit: the server loads the whole store into memory once and
+  // saveAccountStore() writes the whole thing back, so two children that each
+  // load 10 users and each add one produce two 11-user writes, and the second
+  // silently destroys the first's user. The fixed `.tmp` path raced too.
+  //
+  // That is why failures wandered — account-wall, routes, renewal-watch,
+  // bulk-routes, archive-first, vault citations — and never reproduced in
+  // isolation: whichever suite's account got clobbered failed that run. Eight
+  // red runs in one afternoon, every one green when re-run alone.
+  //
+  // Under the OS temp dir rather than the repo, so an interrupted run leaves
+  // nothing behind for somebody to commit by accident.
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-test-"));
   const child = spawn(process.execPath, [SERVER], {
     env: {
       ...process.env,
       PORT: String(port),
       TEST_BOOT_ID: bootId,
+      DATA_DIR: dataDir,
       ANTHROPIC_API_KEY: "",
       // Blanked for the same reason as the Anthropic key, and it became
       // load-bearing the day SEARCH_PROVIDER started defaulting to gemini: with
@@ -131,7 +178,18 @@ async function bootOnce(env) {
       const r = await fetch(base + "/healthz");
       if (r.ok) {
         const body = await r.json();
-        if (body.boot_id === bootId) return { base, stop: () => child.kill() };
+        // stop() also removes the child's scratch directory. Best-effort: on
+        // Windows the kill and the unlink race, and a leftover temp dir is
+        // harmless where a thrown error in t.after() would fail a passing test.
+        if (body.boot_id === bootId) {
+          return {
+            base,
+            stop: () => {
+              child.kill();
+              try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) {}
+            },
+          };
+        }
         // Healthy answer, wrong (or no) nonce: a foreign process holds the
         // port. The child is dead or doomed; the top-of-loop check or the
         // timeout will fail this boot loudly instead of adopting a stranger.

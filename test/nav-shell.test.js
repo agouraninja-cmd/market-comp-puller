@@ -177,6 +177,51 @@ test("the app's rail survives the hint being retired", () => {
     "and takes that padding off on paper");
 });
 
+test("home is the workspace for a member, and the search desk comes with it", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+
+  // The reorganization in one line: "/" opens the workspace for a signed-in
+  // visitor. It is only safe because showDeskView keeps the search desk —
+  // landing on a home page with no address field would be worse than the page
+  // it replaced, so these two facts are asserted together, deliberately.
+  assert.match(
+    html,
+    /location\.pathname === "\/" && looksSignedIn\(\)/,
+    'boot opens the workspace at "/" for a member',
+  );
+  assert.match(
+    html,
+    /showDeskView[\s\S]{0,900}?getElementById\("searchSection"\)\.classList\.remove\("hidden"\)/,
+    "showDeskView leaves the search desk visible",
+  );
+
+  // Read from the boot hint, not currentUser: this runs before the account
+  // bootstrap resolves, so currentUser is still null and every member would
+  // get the marketing stack for a beat.
+  assert.doesNotMatch(
+    html,
+    /location\.pathname === "\/" && currentUser\b/,
+    "the boot decision must not read currentUser",
+  );
+
+  // A shared report is somebody else's link and must never open the reader's
+  // own desk.
+  assert.match(html, /_sharedPath[\s\S]{0,200}showDeskView/,
+    "/r/<id> is excluded from the workspace-at-root rule");
+});
+
+test("/desk is kept alive rather than redirected", () => {
+  // It is linked from Stripe checkout returns WITH a query string, the
+  // watchlist digest, org invite emails and /bulk. A 302 to "/" would drop the
+  // query and dead-end those, which is why home became the workspace by
+  // opening the same view rather than by moving the URL.
+  assert.match(SERVER_JS, /staticPath === "\/desk"/, "/desk still serves the app");
+  const stillLinked = ['href="/desk"'];
+  for (const s of stillLinked) {
+    assert.ok(SERVER_JS.includes(s), `${s} is still a working link`);
+  }
+});
+
 test("one theme toggle, still, and no second account cluster", () => {
   // theme.test.js counts these too; restated here because the rail is exactly
   // the change that tempts somebody to add a second copy at the rail's foot.

@@ -12797,7 +12797,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     showHomeView();
   }
   window.addEventListener("popstate", () => {
-    if (location.pathname === "/desk") showDeskView();
+    // Mirrors the boot rule exactly (see "Which view a fresh load lands on"):
+    // for a member, "/" is the workspace, so going Back to it must not drop
+    // them on the marketing stack they never asked for. Kept as one condition
+    // in two places rather than a helper only because the boot copy runs
+    // before this listener is even registered.
+    if (location.pathname === "/desk"
+        || (location.pathname === "/" && looksSignedIn())) showDeskView();
     else showHomeView();
   });
 
@@ -14973,9 +14979,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
   });
 
-  // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
-  // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.
-  if (location.pathname === "/desk") showDeskView();
+  // Which view a fresh load lands on.
+  //
+  // /desk has always opened the workspace. Since 2026-08-28 so does "/" FOR A
+  // MEMBER: home is the firm's workspace, not the search page. That is the
+  // whole reorganization in one line — and it is only safe because the
+  // workspace now carries the real search desk at its top (see showDeskView),
+  // so landing here still puts the address field in front of the visitor.
+  //
+  // Read from AUTH_BOOT, not currentUser: this runs before the account
+  // bootstrap resolves, and AUTH_BOOT already carries cookie presence decided
+  // server-side for exactly this kind of first-paint question. A forged cookie
+  // buys the sight of an empty workspace and nothing else — every section
+  // inside it fetches its own data and each of those is authenticated.
+  //
+  // /r/<id> is excluded by name: a shared report is somebody else's link and
+  // must render the report, never the reader's own desk. /desk is kept working
+  // rather than redirected to "/" because it is linked from Stripe checkout
+  // returns (with a query string), the watchlist digest, org invite emails and
+  // /bulk — a redirect would drop the query and dead-end those.
+  //
+  // Runs after `let currentUser` executes; renderMyDesk early-returns until
+  // the auth bootstrap fills the portfolio in.
+  const _sharedPath = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname);
+  if (location.pathname === "/desk"
+      || (!_sharedPath && location.pathname === "/" && looksSignedIn())) {
+    showDeskView();
+  }
 
   // Restore the last-searched property type (saved on each submit) so repeat
   // visitors don't reselect their asset class every session.

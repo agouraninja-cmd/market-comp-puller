@@ -132,8 +132,10 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
 test("the vault header uses the site Explore menu, not a short Search bar", () => {
   const html = renderVaultHTML(boot([]), CHROME);
   assert.match(html, /<summary>Explore/);
-  // /brokers and /how-it-works left the Explore menu 2026-08-25; the 1031
-  // guide is what proves this is the site menu rather than a Search bar.
+  // /how-it-works left the Explore menu 2026-08-25 (and /brokers came back
+  // 2026-08-29); the 1031 guide is the entry that has been in this menu
+  // throughout, so it is what proves this is the site menu rather than a
+  // Search bar.
   assert.match(html, /href="\/1031-exchange"/);
   assert.match(html, /aria-current="page">Vault/);
   assert.doesNotMatch(html, />Search</);

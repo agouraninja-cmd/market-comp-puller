@@ -1226,3 +1226,68 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
     `raw colour literal(s) in in-scope server.js generated markup: ${named.join(", ")}`);
 });
 
+
+// ---------------------------------------------------------------------------
+// Motion that hides content must be undone in BOTH escape hatches.
+//
+// HOW_CSS hides things before revealing them on scroll (`.anim … {opacity:0}`),
+// with an IntersectionObserver adding `.on`. Two contexts never fire that
+// observer and must therefore get the finished page: a reader who asked for
+// reduced motion, and paper.
+//
+// This is not a style nicety, it is why the standing before/after screenshot
+// rule can be trusted. scripts/shot.js forces prefers-reduced-motion (it has
+// to: an observer never fires in a beyond-viewport capture), so a hiding rule
+// with no reduced-motion reset does not fail any test and does not look wrong
+// in a browser -- it silently photographs as a BLANK BAND where a whole
+// section should be. That has happened once already, to Method and the FAQ,
+// and shot.js carries a comment about it.
+//
+// So: every selector that HOW_CSS hides under `.anim` must appear again inside
+// both the reduced-motion block and the print block.
+test("every .anim hiding rule in HOW_CSS is undone for reduced motion and print", () => {
+  const start = SERVER_JS.indexOf("const HOW_CSS = ");
+  assert.ok(start > -1, "HOW_CSS not found");
+  const how = SERVER_JS.slice(start, SERVER_JS.indexOf("\nconst ", start + 20));
+
+  // ALL blocks carrying this at-rule, joined. HOW_CSS has TWO @media print
+  // blocks — one for general print styling, one that undoes the scroll
+  // choreography — so reading only the first finds the wrong one and reports
+  // every animated selector as unreset. (Caught by this test on its first run.)
+  const blocksFor = (needle) => {
+    let out = "";
+    let at = how.indexOf(needle);
+    assert.ok(at > -1, needle + " block missing from HOW_CSS");
+    while (at > -1) {
+      const open = how.indexOf("{", at);
+      let depth = 0;
+      for (let i = open; i < how.length; i++) {
+        if (how[i] === "{") depth++;
+        else if (how[i] === "}" && --depth === 0) { out += how.slice(open, i); break; }
+      }
+      at = how.indexOf(needle, at + needle.length);
+    }
+    return out;
+  };
+  const reduced = blocksFor("@media (prefers-reduced-motion:reduce)");
+  const print = blocksFor("@media print");
+
+  // Every rule that sets opacity:0 on an .anim selector, outside those blocks.
+  const hidden = [];
+  for (const m of how.matchAll(/(^|\})\s*([^{}]*\.anim [^{}]*)\{([^{}]*)\}/g)) {
+    if (!/opacity\s*:\s*0\b/.test(m[3])) continue;
+    for (const sel of m[2].split(",")) {
+      const s = sel.trim();
+      // :nth-child delay rules carry no opacity; only real hiders reach here.
+      if (s.startsWith(".anim ")) hidden.push(s);
+    }
+  }
+  assert.ok(hidden.length > 0, "found no .anim hiding rules — did the selector shape change?");
+
+  // A selector counts as covered if it, or the bare element it hangs off,
+  // is reset. `.anim .three .pane` is covered by `.anim .three .pane`.
+  const missing = hidden.filter((s) => !reduced.includes(s) || !print.includes(s));
+  assert.deepEqual(missing, [],
+    "these .anim rules hide content with no reduced-motion/print reset, so they "
+    + "will photograph as blank bands in scripts/shot.js: " + missing.join(" | "));
+});

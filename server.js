@@ -11243,6 +11243,38 @@ section{padding:48px 0}
 .exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
 .cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
+/* The vault sheet: the hero's exhibit since 2026-08-29. Same shell recipe as
+   .exhibit deliberately — a broker should read them as two views of one
+   product — but a DIFFERENT class, because the landing page is allowed
+   exactly one .exhibit (a test counts them; the mini-plus-full pair was a
+   real bug) and because this one is a book, not a report.
+   It is NOT animated and carries no data-rv: it is above the fold, where a
+   reveal costs LCP and buys nothing, and where a missing reduced-motion
+   reset would photograph as a blank band. */
+.vault{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
+.vrow{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:11px 0;border-top:1px solid var(--hair);align-items:baseline}
+.vrow:first-child{border-top:0}
+.vaddr{font-size:13.5px;color:var(--ink)}
+.vsub{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;grid-column:1}
+.vpsf{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;grid-column:2;grid-row:1/3}
+/* Below 480px the rate drops under the address rather than squeezing it. */
+@media(max-width:479.98px){
+  .vrow{grid-template-columns:1fr}
+  .vpsf{grid-column:1;grid-row:auto;text-align:left}
+}
+/* "What leaves it" — the one thing about a private vault a broker actually
+   wants answered, drawn as a foot strip rather than said in prose. */
+.vout{margin-top:14px;padding:12px 14px;background:var(--wash-2);border-radius:5px;border-top:1.5px solid var(--ink)}
+.vout p{font-size:12.5px;color:var(--ink-body);margin:6px 0 0;font-variant-numeric:tabular-nums;line-height:1.55}
+/* Three panes: one comp, redacted by who is looking. */
+.three{display:grid;grid-template-columns:1fr;gap:14px;margin-top:20px}
+@media(min-width:760px){.three{grid-template-columns:repeat(3,1fr)}}
+.pane{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:16px 18px;box-shadow:var(--lift)}
+/* The redacted pane sits on --wash-2, the one token that darkens in light and
+   lightens in dark, so "less is shown here" reads at a glance in both themes. */
+.pane.r{background:var(--wash-2)}
+.pnl{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:6px}
+.pnn{font-size:12.5px;color:var(--ink-3);margin:8px 0 0;line-height:1.55}
 .exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
 .exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:var(--ink-mute);margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
 .exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid var(--hair)}
@@ -11299,33 +11331,42 @@ table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid var(--hair);white-s
 table.comps th.n,table.comps td.n{text-align:right}
 table.comps tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600}
 table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute)}
-/* Hero (Direction E): the claim on the left, the product itself on the right —
-   the exhibit used to sit below the fold while half this row was empty.
+/* The two-column band: a claim on the left, an exhibit on the right.
+   Used TWICE since 2026-08-29 — the hero, and the proof section the address
+   search moved down into — which is why it is no longer called .hero2. One
+   grid, one name: two names for one grid is how .bk came to be declared in
+   both MARKET_CSS and here.
    Stacks claim-first below 900px, so a phone loses nothing but the order. */
-.hero2{display:grid;grid-template-columns:1fr;gap:28px}
-.hero2 h1.h{max-width:none}
-.hero2 .lead{max-width:48ch}
+.split{display:grid;grid-template-columns:1fr;gap:28px}
+.split h1.h{max-width:none}
+.split .lead{max-width:48ch}
 /* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
    is four short lines and a search row; the exhibit is a five-comp table that
    was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
    mid-word, next to a left column sitting on 300px of dead air. Handing the
    26px across costs the headline nothing and buys the table its last column. */
-@media(min-width:900px){.hero2{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
+@media(min-width:900px){.split{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
+/* The hero's action row. The address field used to BE the hero CTA; the hero
+   now sells the vault, so the primary action is an account and this is a
+   button beside a text link rather than a form. */
+.hcta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-top:24px}
+.hcta .lnk{font-size:13.5px;color:var(--red);text-decoration:none;border-bottom:1px solid transparent}
+.hcta .lnk:hover{border-bottom-color:var(--red)}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
+/* "From your vault" — an OWNERSHIP statement, never provenance. It must never
+   be .badge.v: green Verified is a public claim the server awards when a named
+   broker vouches, and a private row has not earned it. Same tokens the app's
+   own vault chip uses (index.html), so the landing page and the product agree. */
+.badge.bv{color:var(--bv-text);background:var(--bv-bg)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
-/* The badge key moved OUT of a full-width strip under the hero and INTO the
-   claim column (2026-08-21). It was a row of four items spanning both columns
-   while the column beside the exhibit sat on ~300px of dead air, which read
-   as an unfinished page rather than a restrained one. In the column it also
-   sits where it belongs: a key, next to the exhibit whose badges it decodes.
-   Stacked only once there are two columns to be beside -- below 900px the
-   hero is one column and a wrapping row is the more compact shape. */
-@media(min-width:900px){
-  .hero2 .legend{flex-direction:column;align-items:flex-start;gap:10px;margin-top:28px}
-}
+/* The badge key sits under the exhibit it decodes, in the proof section. It
+   spent 2026-08-21 to 08-29 stacked vertically inside the hero's claim column,
+   filling dead air beside the exhibit; the hero no longer has that column and
+   the key no longer has that job, so the vertical variant is gone and a
+   wrapping row is the shape at every width. */
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
 .steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
@@ -11475,23 +11516,23 @@ ${FOOTER_DARK_CSS}
 .anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
 .anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
 /* Method steps arrive one after another. */
-.anim .steps .step,.anim .bk .bkrow{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .steps.on .step,.anim .bk.on .bkrow{opacity:1;transform:none}
-.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2){transition-delay:.07s}
-.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3){transition-delay:.14s}
+.anim .steps .step,.anim .bk .bkrow,.anim .three .pane{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .steps.on .step,.anim .bk.on .bkrow,.anim .three.on .pane{opacity:1;transform:none}
+.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2),.anim .three .pane:nth-child(2){transition-delay:.07s}
+.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3),.anim .three .pane:nth-child(3){transition-delay:.14s}
 /* A counting figure reserves its finished width before the first tick (the
    script measures it and sets min-width), so a number growing from 0 to
    $4,580,000 never reflows the cell it sits in. */
 .cu{display:inline-block}
 /* Motion is decoration. These two contexts get the finished page instead. */
 @media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule{clip-path:none;transition:none}
   .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
   .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule{clip-path:none!important}
   .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
   .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
@@ -11504,6 +11545,22 @@ ${ACCOUNT_NAV_CSS}`;
 const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
+  // The three broker entries sit at 2-4 as of 2026-08-29, when the landing
+  // page began leading with the vault. mainEntity order is read order, and
+  // the vault should not be the eighth thing a broker-led page answers.
+  // Answers are escHtml'd like every entry here, so no links — name the
+  // pages instead.
+  ["I'm a broker. What do I get for submitting comps?",
+   "Credit, visibly: an approved comp carries a green Verified badge and your firm's name on every report that uses it. Contributing brokers are also first in line when an owner in their market requests a Broker Opinion of Value — we make the introduction. Details on the Brokers page."],
+  // Rewritten 2026-08-29. The old answer said the vault was "benchmarked
+  // against the market" (vague) and that nothing left it "unless you
+  // explicitly share yours" (under-specified: publishing and firm sharing are
+  // two different doors and both exist). BROKERS_FAQ's own privacy answer is
+  // already test-pinned to name firm sharing; this one now matches it.
+  ["What is the Broker Vault?",
+   "A private comp database for Pro members. Upload your comp book and your own deals appear inside your own reports, badged From your vault, visible to you and to nobody else. There are exactly two ways a comp leaves it: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are deliberate, and you can withdraw either."],
+  ["What do my clients see when I share a report?",
+   "On a public link your vault comps are removed entirely. On a share with a named client, or with your firm, they appear as anonymized rows — price per square foot, size and date, with no address, no total price and no notes — unless you deliberately choose to send a named client the full comp. Either way the value range your client sees matches yours to the dollar."],
   // This answer reaches Google twice: as the visible accordion and inside the
   // FAQPage JSON-LD below. It has now been caught stale TWICE — it claimed
   // "there is no subscription" for months after Pro went on sale, and then
@@ -11527,12 +11584,6 @@ const HOW_FAQ = [
    "Industrial, office, retail, multifamily, land, and residential. Each type reports the specifics its buyers price on: clear height and dock doors for industrial, building class for office, center type and anchor tenant for retail, unit count and price per unit for multifamily, acreage and zoning for land, and bedroom and bathroom counts for residential."],
   ["How accurate are the reports?",
    "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
-  // The two broker entries (owner's notes, 2026-08-08). Answers are escHtml'd
-  // like every entry here, so no links — name the pages instead.
-  ["I'm a broker. What do I get for submitting comps?",
-   "Credit, visibly: an approved comp carries a green Verified badge and your firm's name on every report that uses it. Contributing brokers are also first in line when an owner in their market requests a Broker Opinion of Value — we make the introduction. Details on the Brokers page."],
-  ["What is the Broker Vault?",
-   "A private comp database for Pro members. Upload your own comp book and it folds into your reports, benchmarked against the market, visible to you and no one else. It never appears in anyone else's report unless you explicitly share yours."],
 ];
 
 // One Q/A array feeds both the /brokers FAQ block and its FAQPage JSON-LD, so
@@ -12235,9 +12286,17 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // No brand suffix here — this page's own shell appends " | CompNinja".
   const title = home ? "Commercial Real Estate Comps & Valuations" : "How Commercial Property Valuation Works";
   const canonical = home ? `${SITE_URL}/` : `${SITE_URL}/how-it-works`;
-  const description =
-    "How a CompNinja report is built: live searches of public records and listings, " +
-    "a source badge on every comp, and a value range for your building.";
+  // Split by `home` for the same reason the title is (2026-08-29). The two
+  // URLs answer different questions now that `/` leads with the vault: the
+  // root is the product description Google renders as the snippet, and
+  // /how-it-works is still the methodology page. The home variant keeps the
+  // head terms — a crawler that stops reading after the description must
+  // still learn this is about commercial real estate comps.
+  const description = home
+    ? "Commercial real estate comps with a private vault behind them. Your own closed " +
+      "deals sit inside your reports, with a cited source on every comp."
+    : "How a CompNinja report is built: live searches of public records and listings, " +
+      "a source badge on every comp, and a value range for your building.";
 
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
@@ -12367,8 +12426,23 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
         url: `${SITE_URL}/`,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
+        // Every head term this node already carried is kept verbatim; the
+        // vault clause is added, not substituted. This is the structured
+        // description of the PRODUCT, and it is what a crawler reads when the
+        // page's own prose leads with the archive.
         description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
-          "with maps, price per square foot, and PDF export.",
+          "with maps, price per square foot, and PDF export. Members can keep a private vault of their own " +
+          "closed deals, which appears only in their own reports.",
+        featureList: [
+          "Comparable sales and lease comps",
+          "Estimated value range",
+          "Source badge on every comp",
+          "Private comp vault",
+          "CSV and XLSX export",
+          "PDF report export",
+        ],
+        // Stays a free Offer: a free tier genuinely exists, and turning this
+        // into an AggregateOffer invites rich-result revalidation for no gain.
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
         provider: { "@id": ORG_ID },
         publisher: { "@id": ORG_ID },
@@ -12383,30 +12457,155 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // presence, desk:false slots so My Desk renders exactly once, and the
   // caching split (no-store + vary: cookie) that keeps the signed-in
   // variant honest.
+  // The hero exhibit is the broker's OWN book, not a report. Four rows is
+  // enough to read as a list and short enough to sit beside the claim; the
+  // count in the caption is what makes it a book rather than four comps.
+  const VAULT_ROWS = [
+    ["4130 E Airport Dr", "Closed Mar 26 &middot; 19,400 SF", "$218/SF"],
+    ["2255 S Vineyard Ave", "Closed Jan 26 &middot; 31,200 SF", "$204/SF"],
+    ["1044 W Foothill Blvd", "Closed Nov 25 &middot; 12,800 SF", "$241/SF"],
+    ["8710 Rochester Ave", "Closed Sep 25 &middot; 44,600 SF", "$186/SF"],
+    // The chip rides the FIRST row only. It is here to teach the badge a
+    // broker will meet inside their own report; on all four rows it just
+    // restates the caption above it four times.
+  ].map(([addr, sub, psf], i) =>
+    `<div class="vrow"><div class="vaddr">${escHtml(addr)}` +
+    (i === 0 ? ` <span class="badge bv">From your vault</span>` : "") + `</div>` +
+    `<div class="vpsf">${escHtml(psf)}</div><div class="vsub">${sub}</div></div>`).join("");
+
+  // The firm layer, drawn as the same hairline ledger the broker trades use.
+  // BOARD names what the deal board does NOT do, on purpose: it counts what a
+  // member contributed to the firm, and deal-board.js is explicit that this is
+  // not a record of who is closing what. Saying so here pre-empts the first
+  // objection a broker has to a leaderboard.
+  const firmLedger = [
+    ["Shelf", "Reports your colleagues can open",
+     "Put a report on the firm's shelf and every member can open it. Your vault is not on the shelf."],
+    ["Opt in", "Comps you choose, with your name on them",
+     "Share a comp to the firm one at a time and it carries your name. Auto-share is off by default, and a member can decline it."],
+    ["Board", "Who is filling the shelf",
+     "A deal board counts what each member has contributed to the firm. It does not report who is closing what."],
+  ].map(([lab, h, para]) =>
+    `<div class="bkrow"><div class="bklag">${escHtml(lab)}</div><div>` +
+    `<h3>${escHtml(h)}</h3><p>${escHtml(para)}</p></div></div>`).join("");
+
   const body = `
 ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
 
 <main>
   <div class="wrap">
     <section style="padding-bottom:32px">
-      <div class="hero2">
+      <div class="split">
         <div>
-          <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-          <p class="lead">Every report answers the question and then shows its work: a value
-            range, the comps behind it, and where each one came from.</p>
+          <div class="kicker">For brokers</div>
+          <h1 class="h">Your closed deals, in every comp report you run.</h1>
+          <p class="lead">Upload your comp book once. Your own deals then sit inside your
+            commercial real estate reports, badged as yours, beside public records and
+            verified broker submissions. Nobody else sees them.</p>
+          <p class="sub">Upload a CSV, map the columns from your own export, or drop in a
+            comp sheet as a PDF or a screenshot.</p>
+          <!-- .heroCta is load-bearing beyond layout: three suites use its
+               presence to decide WHICH page answered a URL (it is how the
+               account-wall tests tell the landing page from the app). It used
+               to wrap the address form; it now wraps the account CTA. Keep the
+               class name even when the contents change again. -->
           <div class="heroCta">
-            <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
-              <label class="lab" for="landingAddress">Address</label>
-              <div class="landRow">
-                <input id="landingAddress" type="text" required autocomplete="street-address"
-                  placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
-                <button class="btn" type="submit">Run a report</button>
-              </div>
-            </form>
-            <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
-            <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
+            <div class="hcta">
+              <a class="btn" href="${signedIn ? "/vault" : "/?auth=signup"}">${signedIn ? "Open your vault" : "Create a free account"} &rarr;</a>
+              <a class="lnk" href="/brokers">See the broker side &rarr;</a>
+            </div>
+            <p class="landFine">Free account to run reports. The vault is part of Pro, $${PRICING.monthly} a month.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
           </div>
+        </div>
+        <!-- No data-rv: this sits above the fold, where a reveal costs LCP and
+             a missing reduced-motion reset photographs as a blank band. -->
+        <div class="vault">
+          <div class="cap"><span>Your vault &middot; 214 deals &middot; visible only to you</span><span>Illustrative</span></div>
+          <div class="exbody">
+            ${VAULT_ROWS}
+            <div class="vout">
+              <span class="seclab">What leaves it</span>
+              <p>On a report you share: $218/SF &middot; 19,400 SF &middot; Mar 26. No address,
+                no total price, no notes &mdash; and your client&#39;s value range still matches
+                yours to the dollar.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="band"><div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Your firm</div>
+      <h2 class="h">A shelf your colleagues can read, and nothing more.</h2>
+      <p class="sub">Sharing to the firm is per report and per comp, and it is off until
+        someone turns it on. What you do not share stays in your own vault.</p>
+      <div class="bk" data-rv>${firmLedger}</div>
+    </section>
+  </div></div>
+
+  <div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Sharing</div>
+      <h2 class="h">One comp, three audiences.</h2>
+      <p class="sub">The same deal, redacted by who is looking. It is how the vault is
+        built, not a setting you have to remember.</p>
+      <div class="three" data-rv>
+        <div class="pane">
+          <span class="lab">You</span>
+          <div class="pnl">4130 E Airport Dr</div>
+          <div class="pnl">$4,229,200 &middot; 19,400 SF</div>
+          <p class="pnn">Address, price and your own notes. Your file, unchanged.</p>
+        </div>
+        <div class="pane">
+          <span class="lab">Your firm, if you opt in</span>
+          <div class="pnl">4130 E Airport Dr</div>
+          <div class="pnl">$4,229,200 &middot; 19,400 SF</div>
+          <p class="pnn">Only the comps you shared, one at a time, each carrying your name.</p>
+        </div>
+        <div class="pane r">
+          <span class="lab">Your client</span>
+          <div class="pnl">Industrial comparable</div>
+          <div class="pnl">$218/SF &middot; 19,400 SF</div>
+          <p class="pnn">No address, no total price, no notes &mdash; and the value range still
+            matches yours to the dollar.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="band"><div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Method</div>
+      <h2 class="h">How a report comes together.</h2>
+      <div class="steps" data-rv>${steps}</div>
+    </section>
+  </div></div>
+
+  <div class="wrap">
+    <section class="rv" data-rv>
+      <div class="split">
+        <div>
+          <div class="kicker">Proof</div>
+          <h2 class="h">See it on a building you know.</h2>
+          <p class="sub">Type any commercial address and we run the comps: an estimated value
+            range, the comparable sales behind it, and a source badge on every line. Your
+            price and NOI never leave your browser.</p>
+          <!-- Moved down out of the hero on 2026-08-29, markup intact. The input
+               still carries NO name attribute on purpose: a named field would put
+               a street address on GET /?auth=signup. The handoff is sessionStorage. -->
+          <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
+            <label class="lab" for="landingAddress">Address</label>
+            <div class="landRow">
+              <input id="landingAddress" type="text" required autocomplete="street-address"
+                placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
+              <button class="btn" type="submit">Run a report</button>
+            </div>
+          </form>
+          <p class="landFine">Free account. An automated estimate, not an appraisal.</p>
+          <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
           <div class="legend">
             <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
             <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
@@ -12428,7 +12627,7 @@ ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
               <div class="ledger">${ledgerCells(true)}</div>
             </div>
             <div class="exsec">
-              <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
+              <div class="secrule"><span class="seclab">What&#39;s Driving Prices Here</span></div>
               <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
               <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
               <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
@@ -12447,17 +12646,7 @@ ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
         </div>
       </div>
     </section>
-  </div>
 
-  <div class="band"><div class="wrap">
-    <section class="rv" data-rv>
-      <div class="kicker">Method</div>
-      <h2 class="h">How a report comes together.</h2>
-      <div class="steps" data-rv>${steps}</div>
-    </section>
-  </div></div>
-
-  <div class="wrap">
     <section id="faq" class="rv" data-rv>
       <div class="kicker">Questions</div>
       <h2 class="h" style="margin-bottom:20px">FAQ</h2>
@@ -12466,18 +12655,19 @@ ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
 
     <section class="rv" data-rv>
       <div class="kicker">Brokers</div>
-      <h2 class="h">What brokers get.</h2>
+      <h2 class="h">Where a comp can go.</h2>
       <div class="bk" data-rv>${brokerLedger}</div>
       <p class="bkmore"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
     <div class="cta rv" data-rv>
-      <h2 class="h" style="font-size:22px">See it on your own building.</h2>
-      ${signedIn
-        ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
-      <a class="btn" href="/">Run a report &rarr;</a>`
-        : `<p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
-      <a class="btn" href="/?auth=signup">Run a report &rarr;</a>`}
+      <h2 class="h" style="font-size:22px">Start with a free account.</h2>
+      <!-- The price comes from PRICING, never typed here. This page and
+           /pricing are two public statements of the same number, and the FAQ
+           answer above has already been caught stale twice. -->
+      <p>Reports are free and take about a minute. Pro, at $${PRICING.monthly} a month, adds the
+        vault, a ten-year lookback, unlimited exports and your branding on the report.</p>
+      <a class="btn" href="${signedIn ? "/vault" : "/?auth=signup"}">${signedIn ? "Open your vault" : "Create a free account"} &rarr;</a>
     </div>
   </div>
 </main>

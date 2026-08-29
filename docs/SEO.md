@@ -49,6 +49,26 @@ Also fixed: `/how-it-works` (the front door under `ACCOUNT_WALL`) was titled for
 people who already knew the brand, with a 199-character description;
 `/brokers` and `/markets` descriptions were over the ~160 Google renders.
 
+### 2026-08-29 — the landing page went broker-first. Watch the snippet.
+
+`/` now leads with the broker's private vault; the comp report moved down into
+a proof section. **The head terms were deliberately left alone.** The home
+`title` is still `Commercial Real Estate Comps & Valuations` — the fix recorded
+above, which worked, so do not "modernise" it. The `FAQPage` keeps its
+head-term questions (they are the queries, and stripping them is the real
+mistake available here), and the `WebApplication` description keeps every
+clause it had, *adding* a vault sentence and a `featureList` rather than
+replacing anything.
+
+What did change: the meta `description` is now split by `home`, the way the
+title already was. The root describes the product — comps **and** the vault —
+while `/how-it-works` keeps the methodology sentence. That is the field Google
+renders as the snippet, so **the thing to watch is CTR on `/`, not position.**
+A ranking drop would be surprising; a snippet that reads differently is
+expected and intended.
+
+Canonical, robots and `sitemap.xml` were not touched.
+
 ### Search Console verification
 
 `GOOGLE_SITE_VERIFICATION` (see CLAUDE.md for the full contract). **HTML file

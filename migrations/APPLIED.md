@@ -10,11 +10,27 @@ that day with credentials from `~/dev/compninja-owen/.env` and answered
 "Everything present" for everything it names. **030-033** were already
 verified 2026-08-19 by the schema query below; the same run re-confirms them.
 
-**What that run does NOT cover: 035, 037, 038 and 039.** `verify.js` names no
-table or column from any of them, so a passing run says nothing either way
-about those four. Their rows below stand on their own evidence. Adding them to
-`verify.js` is the obvious next tidy, and it is the only reason this line has
-to exist.
+**The coverage gap closed 2026-08-29.** `verify.js` now names 035
+(`portfolio_items.verified_key`), 038 (the three renewal-watch columns plus
+`shared_reports.shared_by_name`), 039 (`org_contacts` + its load-bearing
+columns) — and three tables it had never listed at all: `broker_bovs` (019),
+`broker_csv_mappings` (021) and `org_contacts` (039), which a passing run used
+to say nothing about. `test/migrations.test.js` now holds the TABLES list
+against the migration files themselves, so a future `create table` missing
+from `verify.js` fails the suite instead of waiting for a reader of this
+paragraph. **The extended checks have not yet RUN against production** — this
+machine's `.env` carries no Supabase credentials (they live only on Render) —
+so the rows below still stand on their own evidence until a service-key
+machine re-runs `node migrations/verify.js` and updates the "Full schema
+verified" line.
+
+**The one migration the tool can never see is 037**: it only widens the
+`orgs_kind_check` CHECK constraint, and PostgREST exposes no read-only way to
+inspect a constraint — proving it would mean inserting a `tenant_rep` row,
+and `verify.js`'s contract is that it writes nothing. Its row stands on the
+in-session verification recorded there (`pg_get_constraintdef`, zero rows,
+2026-08-21). A future constraint-only migration inherits the same limit; its
+row should say so.
 
 **Full schema verified 2026-08-25 (through 034 plus both 036s and 040, via `node migrations/verify.js`: 42 tables, 63 columns, all present).** The earlier pass read: **Full schema verified 2026-08-12 (through 023, via `node migrations/verify.js`: 29 tables, 36 columns, all present):** the 2026-08-05 pass below covered through 015; everything through 014 was
 confirmed by `node migrations/verify.js`; 015 was run and verified directly in

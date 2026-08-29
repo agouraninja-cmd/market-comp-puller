@@ -543,7 +543,7 @@ ${THEME_BOOT}
       <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/markets">Markets</a>
       <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
     </details>
-    <a href="/desk">My Desk</a>
+    <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
     ${ACCOUNT_NAV_SLOTS}
   </nav>

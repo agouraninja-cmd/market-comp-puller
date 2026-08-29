@@ -8162,7 +8162,7 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
     `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
     (desk
-    ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
+    ? `<a id="navDesk" href="/desk" hidden>Workspace</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
     `<details id="navAcct" class="acct" hidden>` +
@@ -8966,6 +8966,25 @@ const marketBar = (signedIn = false, current = "") =>
   // ONLY when signed out — a member reading /how-it-works is not at home and
   // is owed the link.
   `<nav>` +
+  // OPEN QUESTION for the owner (2026-08-28), deliberately NOT decided here.
+  //
+  // For a signed-in member, Home and the new "Workspace" link below are now
+  // the same destination: "/" opens the workspace. Two nav rows to one place
+  // is the drift this reorganization exists to remove, and it is sharper in
+  // the rail, where they stack one above the other.
+  //
+  // Suppressing Home for members was tried and REVERTED, because two tests
+  // named "…gives a signed-in member the Home link it withholds from a
+  // visitor" and "a signed-in member gets the same Home link" defend that
+  // behaviour on purpose — the same-day decision above records that
+  // signed-out-only was already tried once and judged wrong.
+  //
+  // The objection it was judged wrong for ("a member is left with the
+  // wordmark and a call to action") is arguably answered now by Workspace,
+  // which is a destination rather than a CTA. But that is a product call
+  // about a decision made hours earlier, not a refactor, so it stays as-is
+  // until somebody chooses. Whoever does: change this line and those two
+  // tests together, or leave both.
   (current !== "/" ? `<a href="/">Home</a>` : "") +
   `<details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current)}</div></details>` +
@@ -8982,7 +9001,7 @@ const marketBar = (signedIn = false, current = "") =>
   // cheapest thing a stranger can be shown that is actually the product.
   `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Markets</a>` +
   (signedIn
-    ? `<a href="/desk">My Desk</a>` +
+    ? `<a href="/desk">Workspace</a>` +
       // The two Pro tools, hydrated after paint by ACCOUNT_NAV_JS exactly as
       // the account slots are — their entitlements are database reads this
       // synchronous render must never make, so both ship hidden.
@@ -9988,7 +10007,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "Watching — see My Desk";
+      watch.textContent = "Watching — see your workspace";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -10806,7 +10825,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
-      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<p>Watch it on your workspace, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
@@ -12147,7 +12166,7 @@ function renderPrivacyPageHTML(signedIn) {
 
     `<h2>7. Data Retention and Deletion</h2>` +
     `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
-    `account at any time from within the application (My Desk, Delete account); doing so removes the ` +
+    `account at any time from within the application (Workspace, Delete account); doing so removes the ` +
     `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
@@ -17412,7 +17431,7 @@ const server = http.createServer((req, res) =>
           noindex: true,
           body: `<div class="wrap"><h1>This link is not recognized</h1>` +
             `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
-            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+            `You can turn the emails off from your workspace, or reply to any CompNinja email and we will do it for you.</p></div>`,
         }));
       }
       if (req.method === "POST") {
@@ -17428,7 +17447,7 @@ const server = http.createServer((req, res) =>
               ? "You will get a digest again when a market you watch has new comps."
               : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to your workspace</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -17439,7 +17458,7 @@ const server = http.createServer((req, res) =>
         body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
           `<p>${resubscribe
             ? "You will get an email when a market you watch has new comps."
-            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your workspace."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
@@ -17521,7 +17540,7 @@ const server = http.createServer((req, res) =>
               : "You will not get another email about notes. Nothing else changes: every hub you were invited to is still open to you, " +
                 "the notes are all still there, and you can read and reply any time."}</p>` +
             `<p><a href="${link(!resubscribe)}">${resubscribe ? "Turn them off again" : "Turn them back on"}</a>` +
-            ` &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+            ` &middot; <a href="/desk">Go to your workspace</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });

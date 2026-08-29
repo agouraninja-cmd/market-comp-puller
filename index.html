@@ -2095,7 +2095,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              to carry are used on 40-plus other lines in this file, so the
              tailwind purge still emits them for the server-injected NAV_LINKS. -->
         <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
-        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
+        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">Workspace</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -2569,7 +2569,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          the account-backed #myDesk section shows only when signed in. -->
     <section id="deskView" class="hidden mt-8 no-print">
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
-        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">My Desk</h2>
+        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
           <button type="button" id="deskAvatarBtn" aria-label="Change profile photo"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
@@ -15266,7 +15266,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("hero").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
-      showStatus("Report closed. Reopen it any time from <strong>My Desk</strong>, at no cost.", "info");
+      showStatus("Report closed. Reopen it any time from <strong>your workspace</strong>, at no cost.", "info");
     } else {
       hideStatus();
     }
@@ -19313,7 +19313,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
       showBulkRun();
       window.BULKRUN.showNotes(d);
-      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on My Desk.", false);
+      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on your workspace.", false);
       window.BULKRUN.showRun(d);
       window.BULKRUN.poll(d.job.id);
     } catch (err) {

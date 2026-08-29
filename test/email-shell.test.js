@@ -55,3 +55,35 @@ test("a crafted URL cannot smuggle an attribute", () => {
     "no live attribute escapes the href");
   assert.ok(!/<a [^>]*onmouseover/.test(out), "the anchor carries only href and style");
 });
+
+// The bug this pins: linkify's character class stopped at `&`, so an escaped
+// query string (`?u=abc&amp;t=xyz`) lost every parameter after the first. Both
+// unsubscribe builders in server.js authenticate with a `&t=<mac>` token, so
+// the "turn these emails off" link in every digest, renewal notice and hub
+// note pointed at a URL the route could only refuse — and its refusal page
+// blamed the reader's email client for the truncation.
+test("a query-string URL keeps every parameter in its href", () => {
+  const url = "https://compninja.co/watchlist/unsubscribe?u=abc123&t=deadbeef";
+  const out = linkify(escapeHtml("Turn these emails off: " + url));
+  const href = out.match(/href="([^"]*)"/)[1];
+  assert.equal(href.replace(/&amp;/g, "&"), url,
+    "the href decodes back to the URL it was given, token and all");
+  assert.ok(!/href="[^"]*"[^>]*>[^<]*<\/a>&amp;t=/.test(out),
+    "the token is inside the link, not stranded as text after it");
+});
+
+test("a URL ending in an entity is not sheared into a malformed one", () => {
+  // `&amp;` ends in a semicolon, which the trailing-punctuation trim would
+  // otherwise cut down to `&amp`.
+  const out = linkify(escapeHtml("https://x.co/a?b=1&"));
+  assert.ok(!/href="[^"]*&amp$/.test(out.match(/href="([^"]*)"/)[1] + ""),
+    "no half-written entity in the href");
+  assert.match(out.match(/href="([^"]*)"/)[1], /&amp;$/);
+});
+
+test("a bare ampersand still ends the URL, so an apostrophe cannot ride along", () => {
+  // escapeHtml turns ' into &#39;, which must NOT be swallowed as part of the
+  // link — only the literal `&amp;` entity is URL material.
+  const out = linkify(escapeHtml("Open https://x.co/a's page"));
+  assert.equal(out.match(/href="([^"]*)"/)[1], "https://x.co/a");
+});

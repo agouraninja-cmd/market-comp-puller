@@ -41,11 +41,30 @@ function escapeHtml(s) {
 // crafted "URL" cannot smuggle markup; the conservative charset stops before
 // quotes, brackets and escaped entities. Trailing punctuation stays outside
 // the link so "View it here: https://x.co/r/abc." links without the period.
+//
+// `&amp;` IS PART OF THE URL, and that alternation is the whole reason this
+// is not a plain character class. escapeHtml has already run, so a query
+// string arrives as `?u=abc&amp;t=xyz`; a class that stopped at `&` cut the
+// href there and dropped every parameter after the first. Both unsubscribe
+// links in this product authenticate with a `&t=<mac>` token, so every
+// "turn these emails off" link in every digest, renewal notice and hub note
+// pointed at a URL the route could only refuse - and the refusal page blamed
+// the reader's email client for a truncation we were doing here.
+//
+// Matching the ENTITY rather than adding `&` to the class is deliberate: a
+// bare `&` still ends the URL, so `https://x.co/a&#39;s` (an apostrophe after
+// a link) stops at the apostrophe rather than swallowing it, and `&quot;`
+// still terminates the match - which is what keeps a crafted URL from
+// escaping the href attribute.
 function linkify(escaped) {
-  return escaped.replace(/https?:\/\/[A-Za-z0-9\-._~:/?#@!$*+,;=%]+/g, (url) => {
+  return escaped.replace(/https?:\/\/(?:&amp;|[A-Za-z0-9\-._~:/?#@!$*+,;=%])+/g, (url) => {
     const m = url.match(/[.,;:!)]+$/);
-    const trail = m ? m[0] : "";
-    const clean = trail ? url.slice(0, -trail.length) : url;
+    let trail = m ? m[0] : "";
+    let clean = trail ? url.slice(0, -trail.length) : url;
+    // `&amp;` ends in a semicolon, which the trim above would otherwise
+    // shear into a malformed `&amp`. A URL genuinely ending in an entity
+    // keeps it and gives up the trailing-punctuation nicety.
+    if (/&[a-z]+$/i.test(clean)) { clean = url; trail = ""; }
     return `<a href="${clean}" style="color:${RED};text-decoration:underline;">${clean}</a>${trail}`;
   });
 }

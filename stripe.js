@@ -224,7 +224,8 @@ function priceIdOf(sub) {
  * A Stripe subscription object -> the row we store.
  * Returns null when the subscription is for a price we don't sell.
  */
-function subscriptionRowFrom(sub, priceMap, { userId, nowMs = Date.now(), graceDays = 7 } = {}) {
+function subscriptionRowFrom(sub, priceMap,
+  { userId, nowMs = Date.now(), graceDays = 7, existingGraceUntil = null } = {}) {
   if (!sub || !sub.id) return null;
   const plan = planForPrice(priceIdOf(sub), priceMap);
   if (!plan) return null;
@@ -245,10 +246,30 @@ function subscriptionRowFrom(sub, priceMap, { userId, nowMs = Date.now(), graceD
     cancel_at_period_end: Boolean(sub.cancel_at_period_end || sub.cancel_at),
     updated_at: new Date(nowMs).toISOString(),
   };
-  // The 7-day window starts when the payment actually failed. Set only on the
-  // way INTO grace so a second past_due webhook can't keep extending it.
+  // The 7-day window starts when the payment actually failed, and it is minted
+  // ONCE — `existingGraceUntil` is the window already running, and it wins.
+  //
+  // That argument is the fix for a real leak. This function used to derive the
+  // window from `nowMs` alone while its comment promised a second past_due
+  // webhook could not extend it, which it had no way to keep: it never saw the
+  // stored row. `invoice.payment_failed` and the firm path each patched the
+  // value back afterwards, but `customer.subscription.updated` did not — and
+  // Stripe fires that on every Smart Retries state change while a subscription
+  // is past_due, with upsertSubscription merging the column over the top. A
+  // failed card therefore held Pro for the whole ~3-week retry schedule
+  // instead of seven days.
+  //
+  // The rule lives here rather than at the call sites for the reason
+  // entitlements.js gives for its own: three handlers each remembering to
+  // re-apply it is three chances to forget, and the one that forgot is the one
+  // Stripe calls most.
+  //
+  // Preserved unconditionally, not only while it is still in the future: a
+  // window that has already run out must stay run out. A genuinely new dunning
+  // cycle still gets a fresh one, because recovering to `active` sets this
+  // column back to null on the way through.
   row.grace_until = status === "grace"
-    ? new Date(nowMs + graceDays * 24 * 60 * 60 * 1000).toISOString()
+    ? (existingGraceUntil || new Date(nowMs + graceDays * 24 * 60 * 60 * 1000).toISOString())
     : null;
   return row;
 }

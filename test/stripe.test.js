@@ -208,6 +208,41 @@ test("recovering from grace clears the deadline", () => {
   assert.equal(row.grace_until, null, "a stale deadline would re-expire a recovered subscriber");
 });
 
+// The window is minted ONCE. Until 2026-08-29 this function derived it from
+// `nowMs` alone while its comment promised a second past_due webhook could not
+// extend it — it never saw the stored row, so it had no way to keep that. Two
+// call sites patched the value back afterwards; the one Stripe calls most
+// (`customer.subscription.updated`, fired on every Smart Retries state change)
+// did not, so a dead card held Pro for the whole ~3-week retry schedule.
+test("a second dunning webhook cannot extend the grace window", () => {
+  const opened = subscriptionRowFrom(stripeSub({ status: "past_due" }), PRICES, { nowMs: NOW });
+  const sixDaysLater = NOW + 6 * 24 * 3600 * 1000;
+  const retry = subscriptionRowFrom(stripeSub({ status: "past_due" }), PRICES,
+    { nowMs: sixDaysLater, existingGraceUntil: opened.grace_until });
+  assert.equal(retry.grace_until, opened.grace_until,
+    "the deadline is the one the first failure set, not six days past this webhook");
+});
+
+test("a grace window that has already run out stays run out", () => {
+  // Preserved unconditionally rather than only while still in the future: a
+  // webhook arriving after the window closed must not reopen it.
+  const opened = subscriptionRowFrom(stripeSub({ status: "past_due" }), PRICES, { nowMs: NOW });
+  const longAfter = NOW + 30 * 24 * 3600 * 1000;
+  const late = subscriptionRowFrom(stripeSub({ status: "past_due" }), PRICES,
+    { nowMs: longAfter, existingGraceUntil: opened.grace_until });
+  assert.equal(late.grace_until, opened.grace_until);
+  assert.ok(Date.parse(late.grace_until) < longAfter, "still expired, not revived");
+});
+
+test("a genuinely new dunning cycle gets its own window", () => {
+  // Recovery nulls the column, which is what makes preserving it safe above.
+  const recovered = subscriptionRowFrom(stripeSub({ status: "active" }), PRICES, { nowMs: NOW });
+  const later = NOW + 60 * 24 * 3600 * 1000;
+  const fresh = subscriptionRowFrom(stripeSub({ status: "past_due" }), PRICES,
+    { nowMs: later, existingGraceUntil: recovered.grace_until });
+  assert.equal(fresh.grace_until, new Date(later + 7 * 24 * 3600 * 1000).toISOString());
+});
+
 test("cancel_at_period_end is carried through", () => {
   const row = subscriptionRowFrom(stripeSub({ cancel_at_period_end: true }), PRICES, { nowMs: NOW });
   assert.equal(row.cancel_at_period_end, true);

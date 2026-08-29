@@ -540,11 +540,23 @@ ${THEME_BOOT}
   <nav>
     <details>
       <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/markets">Markets</a>
-      <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/">Run a report</a></div>
     </details>
+    <!-- The same rows in the same order as marketBar and the app's bar --
+         Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
+         (owner's, 2026-08-29). This header is composed by hand rather than by
+         marketBar, so it is the surface that drifts: it had Markets and the
+         1031 guide buried in the dropdown above and no way at all to reach
+         bulk valuation, and the moment this page wears the rail that dropdown
+         stops rendering and the drift becomes two dead ends. -->
     <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
+    <a href="/markets">Market explorer</a>
+    <a href="/1031-exchange">1031 guide</a>
+    <!-- Hydrated by ACCOUNT_NAV_JS, which this page already emits: the id is
+         all that is needed, and the entitlement read stays in the one place
+         that owns it. -->
+    <a id="navBulk" href="/bulk" hidden>Bulk valuation</a>
     ${ACCOUNT_NAV_SLOTS}
   </nav>
 </div></header>${ACCOUNT_NAV_JS}

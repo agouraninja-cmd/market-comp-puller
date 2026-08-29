@@ -2134,9 +2134,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <span class="rd-wordmark uppercase">Comp<b>Ninja</b></span>
       </a>
       <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
-        <!-- The browse links live behind one dropdown so the bar stays three
-             items on every screen; My Desk and Sign in are actions and stay
-             visible. The dropdown's links are injected at serve time from
+        <!-- The browse links live behind one dropdown; the product surfaces
+             (Market explorer, the 1031 guide, Workspace, the vault and bulk)
+             sit in the bar itself, because the rail hides this dropdown and a
+             destination a member visits weekly is not a browse link. What is
+             left in here is what a STRANGER browses, which is also who still
+             sees it: on a phone, or under NAV_SHELL=bar.
+             The dropdown's links are injected at serve time from
              server.js's NAV_LINKS — the same list marketBar renders (as a
              no-JS <details>) on every server-rendered page — so there is no
              second copy of the menu here to keep in step. -->
@@ -2169,6 +2173,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              to carry are used on 40-plus other lines in this file, so the
              tailwind purge still emits them for the server-injected NAV_LINKS. -->
         <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
+        <!-- THE ORDER, owner's (2026-08-29): Workspace, Vault, Market
+             explorer, 1031 guide, Bulk valuation. Identical here, in
+             marketBar and in vault-page.js's hand-written header, so the
+             sidebar does not reshuffle itself when a member navigates
+             between them; test/routes.test.js asserts the sequence on all
+             three rather than mere presence.
+             The middle two were added on the same report ("in some places it
+             only has workspace and your vault"). That was this bar, in rail
+             mode, read by a Pro member: the rail hides #exploreMenuWrap,
+             Pricing hides for Pro and Sign in hides for a member, so the
+             sidebar was literally two rows deep. marketBar has carried both
+             for every visitor since 2026-08-20/29; the app -- the one
+             surface a member actually lives in -- carried neither, and the
+             1031 worksheet was reachable from in here only through the
+             dropdown the rail takes away.
+             Plain links, not buttons: both are server-rendered pages, and
+             .rd-appbar styles `> nav > a` alongside its buttons already
+             (#menuVaultLink relies on that too), so one markup serves the
+             rail and the bar. -->
         <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">Workspace</button>
         <!-- The vault's only entrance. It lived inside the account dropdown
              until 2026-08-29; in rail mode that buried a daily workspace two
@@ -2182,6 +2205,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              rail already styles `.rd-appbar > nav > a` alongside its
              buttons, so one markup serves rail and bar alike. -->
         <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Your vault</a>
+        <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
+        <a href="/1031-exchange" class="hover:text-[#1A2433]">1031 guide</a>
+        <!-- Bulk valuation, the second Pro tool, on the same 2026-08-29 report.
+             /bulk had no link on this page at all -- not in the menu, not in
+             the footer -- so from inside the app the only way in was typing
+             the URL or pasting a multi-line list into the search box and
+             discovering the mode by accident. Gated on canBulkValue, its own
+             entitlement and the one /api/bulk re-checks, NOT on canUseVault:
+             they move together today (both read `pro`) but they are separate
+             answers and a shared flag here would be a second copy of a rule
+             entitlements.js owns. Ships hidden, like the vault link. -->
+        <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Bulk valuation</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -16565,6 +16600,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // deployment with no Stripe keys, the same exception the billing card makes.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
+    // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
+    // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
+    // so unhiding this by hand reveals a link and a 403 behind it -- and
+    // likewise not gated on `live`, so a comped admin on a deployment with no
+    // Stripe keys gets both tools rather than one.
+    document.getElementById("menuBulkLink")
+      .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
     // Same entitlement drives the My Desk card. Signed-in only: the desk's
     // account-backed areas are already hidden signed out, and a vault card
     // there would offer a page that answers 401.

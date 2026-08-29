@@ -8951,10 +8951,17 @@ ${ACCOUNT_NAV_CSS}`;
 // by "For firms": the two audience pages are what a stranger is browsing for,
 // and a footer link is not where they look. They lead the list; the 1031 guide
 // and the download keep their order behind them.
+// "1031 guide" left this list 2026-08-29 (owner's call) and became a
+// top-level row in every nav, for the reason Pricing and Markets left before
+// it: the rail HIDES this dropdown outright (`nav>details{display:none}` --
+// a menu has nowhere to open in a 224px column), so from the day the rail
+// became the default every link left in here was unreachable to a signed-in
+// member on desktop. The guide is a product surface a member goes back to,
+// not a browse link, so it is promoted rather than left to the footer. The
+// three that remain are for strangers, which is who still opens Explore.
 const NAV_LINKS = [
   ["/brokers", "Brokers"],
   ["/firms", "For firms"],
-  ["/1031-exchange", "1031 Guide"],
   // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
@@ -9091,20 +9098,47 @@ const marketBar = (signedIn = false, current = "") =>
   // header link on any surface — it was reachable from the footers and from
   // one line inside the app. It renders for every visitor because it is the
   // cheapest thing a stranger can be shown that is actually the product.
-  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Markets</a>` +
+  // --- THE ORDER (owner's, 2026-08-29) -------------------------------------
+  //
+  //   Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
+  //
+  // Identical on all three headers -- this one, index.html's and the one
+  // vault-page.js hand-writes -- so the sidebar does not reshuffle itself
+  // when a member navigates between them. That is the whole point of pinning
+  // it, and test/routes.test.js asserts the sequence rather than mere
+  // presence for exactly that reason.
+  //
+  // It costs a SPLIT ternary here, and the split is the honest way to pay it:
+  // Workspace and the vault are for members only, the middle two are public,
+  // and bulk is for members again. Interleaving a member-only pair, a public
+  // pair and a member-only tool cannot be expressed as one branch without
+  // either duplicating the public links into both arms or moving them out of
+  // the owner's order. A signed-out visitor simply reads the two public rows
+  // with nothing around them.
   (signedIn
     ? `<a href="/desk">Workspace</a>` +
-      // The two Pro tools, hydrated after paint by ACCOUNT_NAV_JS exactly as
-      // the account slots are — their entitlements are database reads this
-      // synchronous render must never make, so both ship hidden.
-      //
-      // /bulk had NO link anywhere on the site before this: not in a menu, not
-      // in a footer, not in a header. Its only inbound link was from inside
-      // itself, so a Pro member could only reach it by typing the URL or by
-      // pasting a multi-line list into the main search and discovering the
-      // mode by accident. A billed feature nobody can find is one nobody buys.
-      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
-      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk</a>` +
+      // The vault, hydrated after paint by ACCOUNT_NAV_JS exactly as the
+      // account slots are — its entitlement is a database read this
+      // synchronous render must never make, so it ships hidden. Same for
+      // bulk, below the public pair.
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>`
+    : "") +
+  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
+  // The 1031 guide, out of the Explore dropdown and into the bar (2026-08-29).
+  // See NAV_LINKS for why: the rail hides that dropdown, so this was the only
+  // link in it a signed-in member actually wanted and the only one they could
+  // not reach. Public like the explorer above it, and for the same reason --
+  // the worksheet is one of the few things a stranger can be shown that is
+  // the product rather than a description of it.
+  `<a href="/1031-exchange"${current === "/1031-exchange" ? ' aria-current="page"' : ""}>1031 guide</a>` +
+  (signedIn
+    ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
+      // menu, not in a footer, not in a header. Its only inbound link was
+      // from inside itself, so a Pro member could only reach it by typing the
+      // URL or by pasting a multi-line list into the main search and
+      // discovering the mode by accident. A billed feature nobody can find is
+      // one nobody buys.
+      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk valuation</a>` +
       `<a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu

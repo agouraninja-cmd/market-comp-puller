@@ -50,6 +50,12 @@ final class AppModel: ObservableObject {
     /// Pro in the first place.
     var showsPipeline: Bool { entitlements.broker }
 
+    /// The book is gated on the CAPABILITY, not the identity. The server keeps
+    /// `broker` and `canUseVault` separate because the vault is a private-data
+    /// workspace, and mirroring that split is what stops one flag quietly
+    /// standing in for the other.
+    var showsVault: Bool { entitlements.canUseVault }
+
     /// Free accounts top out at a 12-month lookback; Pro gets 120. The app
     /// reads this off the account rather than guessing, and the server clamps
     /// regardless — an over-long ask still returns a report.
@@ -113,6 +119,10 @@ struct RootView: View {
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
             SavedReportsView()
                 .tabItem { Label("Saved", systemImage: "tray.full") }
+            if model.showsVault {
+                VaultView()
+                    .tabItem { Label("Book", systemImage: "building.2") }
+            }
             if model.showsPipeline {
                 PipelineView()
                     .tabItem { Label("Pipeline", systemImage: "list.bullet.rectangle") }

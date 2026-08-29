@@ -257,10 +257,72 @@ public final class APIClient: @unchecked Sendable {
         _ = try await postRaw(path: "/api/broker/bovs/update", body: body)
     }
 
+    // MARK: - The vault
+
+    /// The broker's whole book, plus their credit identity and firm.
+    ///
+    /// Fetched WHOLE and filtered on the device, which is the web's rule and
+    /// holds for its reasons: the counts describe the entire book, so a
+    /// server-side filter would leave the screen unable to say how much it is
+    /// not showing, and a search box that re-queries per keystroke is a
+    /// request per keystroke.
+    ///
+    /// The route defaults to 200 and caps at 1000. Asking for the cap is
+    /// deliberate — at the default a broker with 400 comps is shown half their
+    /// vault with nothing saying so.
+    public func vault(limit: Int = 1000) async throws -> VaultPayload {
+        try await getJSON(VaultPayload.self, path: "/api/vault",
+                          query: ["limit": String(limit)])
+    }
+
+    /// Add one comp by hand. A broker who closed a deal on Tuesday should not
+    /// have to author a spreadsheet.
+    ///
+    /// The server reruns the row through the same `normalizeRow` every
+    /// imported comp goes through, so "1.2M" or an Excel serial date is
+    /// refused here exactly as it would be on an import. The refusal text is
+    /// the server's own and is shown verbatim.
+    public func addVaultComp(_ fields: [String: Any]) async throws {
+        _ = try await write(method: "POST", path: "/api/vault/comp", body: fields)
+    }
+
+    /// Correct one stored comp.
+    ///
+    /// `EDITABLE_FIELDS` on the server is an allowlist, and the patch is
+    /// merged over the stored row and revalidated whole — so a partial edit
+    /// cannot sidestep a rule that a full write would fail.
+    public func updateVaultComp(id: String, fields: [String: Any]) async throws {
+        _ = try await write(method: "PATCH", path: "/api/vault/comp",
+                            query: ["id": id], body: fields)
+    }
+
+    public func deleteVaultComp(id: String) async throws {
+        _ = try await write(method: "DELETE", path: "/api/vault/comp", query: ["id": id])
+    }
+
     // MARK: - Plumbing
 
-    private func getJSON<T: Decodable>(_ type: T.Type, path: String) async throws -> T {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+    /// Build a URL for a path plus optional query items.
+    ///
+    /// NOT `appendingPathComponent`, which percent-encodes a `?` into `%3F`
+    /// and turns `/api/vault/comp?id=x` into a path no route matches. Every
+    /// vault write is addressed by a query parameter, so this is the only
+    /// correct way to reach them.
+    private func url(_ path: String, query: [String: String] = [:]) -> URL {
+        var components = URLComponents(url: baseURL.appendingPathComponent(path),
+                                       resolvingAgainstBaseURL: false)!
+        if !query.isEmpty {
+            // Sorted so a URL is stable across runs, which makes a failing
+            // request reproducible from a log line.
+            components.queryItems = query.sorted { $0.key < $1.key }
+                .map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        return components.url!
+    }
+
+    private func getJSON<T: Decodable>(_ type: T.Type, path: String,
+                                       query: [String: String] = [:]) async throws -> T {
+        var req = URLRequest(url: url(path, query: query))
         req.httpMethod = "GET"
         req.setValue("application/json", forHTTPHeaderField: "accept")
         return try Self.decode(type, from: try await send(req))
@@ -271,11 +333,22 @@ public final class APIClient: @unchecked Sendable {
     }
 
     private func postRaw(path: String, body: [String: Any]) async throws -> Data {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        try await write(method: "POST", path: path, body: body)
+    }
+
+    /// POST, PATCH and DELETE share one shape: a JSON body, optional query,
+    /// and the session cookie the URLSession store carries.
+    @discardableResult
+    private func write(method: String, path: String,
+                       query: [String: String] = [:],
+                       body: [String: Any]? = nil) async throws -> Data {
+        var req = URLRequest(url: url(path, query: query))
+        req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "accept")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if let body {
+            req.setValue("application/json", forHTTPHeaderField: "content-type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
         return try await send(req)
     }
 

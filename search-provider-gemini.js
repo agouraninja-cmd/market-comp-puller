@@ -19,22 +19,14 @@ const capabilities = {
   // applied, so a strong corpus still improves quality here but no longer
   // reduces spend. server.js must read this rather than assume a budget.
   searchBudget: false,
-  // Still false, and this is the flag that MATTERS: it is what server.js reads
-  // to decide whether to ask for a stream at all, so production is unchanged.
-  streaming: false,
-  // ...but the API does support it (`?alt=sse` + `"stream": true`), and since
-  // 2026-08-21 there is a reader below for it. What is missing is a single run
-  // against the live wire format: the frame shape is documented only as "each
-  // event includes a type and JSON data", and shipping a guessed parser on the
-  // default path would fail CLOSED — no text at all, not a degraded report.
-  // So the reader exists, is unit-tested against the shapes it claims to
-  // handle, and is reachable ONLY via STREAM_UNVERIFIED=on. Verify with
-  // `node scripts/verify-gemini-stream.js` (one real call, ~$0.001): it prints
-  // whether the reader recovered the text and dumps any frame type the reader
-  // did not recognize, which is exactly what a fix needs. When it passes, set
-  // `streaming: true` above and delete this flag and the STREAM_UNVERIFIED
-  // branch in server.js.
-  streamingUnverified: true,
+  // Verified against the live wire format 2026-08-29 with
+  // `node scripts/verify-gemini-stream.js` (plain and --grounded). The first
+  // guessed reader FAILED that run — the real stream is event_type-tagged
+  // frames, not `{steps:[...]}` snapshots — which is exactly why this shipped
+  // false behind a verifier instead of guessing on the default path. The
+  // captured frames are committed as test/fixtures/gemini-stream-frames*.json
+  // and the reader below is pinned against them.
+  streaming: true,
   // Gemini caches implicitly and reports total_cached_tokens, but exposes no
   // breakpoint to place, so there is nothing for us to control.
   promptCaching: "implicit",
@@ -179,28 +171,51 @@ function parseResponse(data) {
 }
 
 // ---------------------------------------------------------------------------
-// Streaming reader — UNVERIFIED against the live wire format. See the
-// streamingUnverified note in `capabilities` above before trusting it.
+// Streaming reader — VERIFIED against the live wire format 2026-08-29
+// (`node scripts/verify-gemini-stream.js`, plain and --grounded; the captured
+// frames are committed as test/fixtures/gemini-stream-frames*.json). The
+// stream is a sequence of event_type-tagged frames:
 //
-// What it is built on: the non-streaming body is
-//   { steps: [ {type:"thought"}, {type:"model_output", content:[{type:"text",text}]} ],
-//     usage: {...}, status: "completed" }
-// and the streaming docs say each SSE event carries a type and JSON data. So
-// this accepts frames that carry EITHER a `steps` array (a whole-or-partial
-// interaction object) or a single step-shaped object, and harvests text from
-// model_output content blocks.
+//   interaction.created        {interaction:{id, status:"in_progress", model}}
+//   interaction.status_update  {interaction_id, status:"in_progress"}
+//   step.start                 {index, step:{type}} — types observed: thought,
+//                              model_output, google_search_call,
+//                              google_search_result
+//   step.delta                 {index, delta:{type, ...}} — thought_signature
+//                              (opaque), text ({text}), google_search_call
+//                              ({arguments:{queries:[...]}}),
+//                              google_search_result ({result:[...]})
+//   step.stop                  {index}
+//   interaction.completed      {interaction:{status:"completed", usage:{...}}}
 //
-// Two rules make a guessed shape survivable rather than silently wrong:
-//   - text is accumulated PER STEP INDEX, and a step re-sent in full replaces
-//     rather than appends. Google's streaming APIs have historically sent both
-//     incremental deltas and cumulative snapshots depending on the surface, and
-//     appending a snapshot would duplicate the whole report — which parses, and
-//     is wrong, which is the worst failure available here.
-//   - every frame type it does not understand is recorded on `unknown()`, so
-//     the verifier can say WHICH frames were missed instead of only that the
-//     text came out empty.
+// The grounded call is where streaming BEATS the non-streaming body: the
+// google_search_call delta carries the model's real query strings, so the
+// browser's progress card can show them — parseResponse has nothing to read
+// them from and honestly reports `searches: 0`.
+//
+// Three rules keep a shape drift survivable rather than silently wrong:
+//   - report text is harvested ONLY from a model_output step's text deltas,
+//     accumulated per step index. A thought delta that one day carries text
+//     must never enter the report.
+//   - text is accumulated per index and a re-sent superset REPLACES rather
+//     than appends. No cumulative snapshot was observed live, but Google's
+//     streaming APIs have historically sent both depending on the surface,
+//     and appending a snapshot would duplicate the whole report — which
+//     parses, and is wrong, which is the worst failure available here.
+//   - every event_type, step type or delta type it does not understand is
+//     recorded on `unknown()`, so the verifier can say WHICH frames were
+//     missed instead of only that the text came out empty.
+//
+// Frames with no event_type fall through to the pre-verification handling
+// (whole-or-partial interaction objects carrying a `steps` array), kept as a
+// defensive fallback and still pinned by its own tests.
+const STREAM_STEP_TYPES = new Set([
+  "thought", "model_output", "google_search_call", "google_search_result",
+]);
+
 function createStreamReader() {
-  const steps = new Map();        // index -> accumulated text
+  const steps = new Map();        // index -> accumulated model_output text
+  const stepTypes = new Map();    // index -> step type, from step.start
   const unknown = new Set();
   let stopReason = "";
   let started = false;
@@ -214,13 +229,28 @@ function createStreamReader() {
       .map((c) => c.text).join("");
   };
 
+  // Shared by the delta path and the legacy fallback. Snapshot vs delta: a
+  // frame that already contains everything we hold is a resend, so replace and
+  // emit only what it added. Otherwise it is new text, so append.
+  const accumulate = (idx, t, out) => {
+    const prev = steps.get(idx) || "";
+    if (t.startsWith(prev) && t.length >= prev.length) {
+      const added = t.slice(prev.length);
+      steps.set(idx, t);
+      if (added) out.push({ kind: "text", text: added });
+    } else {
+      steps.set(idx, prev + t);
+      out.push({ kind: "text", text: t });
+    }
+  };
+
   return {
     push(ev) {
       const out = [];
       if (!ev || typeof ev !== "object") return out;
 
       // Vendor error, whatever it is wrapped in.
-      const err = ev.error || (ev.type === "error" ? ev : null);
+      const err = ev.error || (ev.type === "error" || ev.event_type === "error" ? ev : null);
       if (err && (err.message || err.code || err.status)) {
         const code = Number(err.code);
         out.push({ kind: "error", status: code === 429 || code === 503 ? 529 : "stream",
@@ -229,6 +259,62 @@ function createStreamReader() {
       }
 
       if (!started) { started = true; out.push({ kind: "start", usage: normalizeUsage(ev.usage) }); }
+
+      const et = typeof ev.event_type === "string" ? ev.event_type : "";
+      if (et) {
+        if (et === "interaction.created" || et === "interaction.status_update"
+          || et === "interaction.completed") {
+          // Usage rides on the interaction object (the completed frame in
+          // practice); a terminal status — anything but in_progress — is this
+          // provider's stop_reason ("completed", or "incomplete" on
+          // truncation, which downstream reads as Anthropic's "max_tokens").
+          const it = ev.interaction || {};
+          if (it.usage) out.push({ kind: "usage", usage: normalizeUsage(it.usage) });
+          const status = String(it.status || ev.status || "");
+          if (status && status !== "in_progress") {
+            stopReason = status;
+            out.push({ kind: "done", stopReason });
+          }
+          return out;
+        }
+        if (et === "step.start") {
+          const type = String((ev.step && ev.step.type) || "");
+          if (Number.isFinite(ev.index)) stepTypes.set(ev.index, type);
+          if (!STREAM_STEP_TYPES.has(type)) unknown.add("step:" + (type || "?"));
+          return out;
+        }
+        if (et === "step.stop") return out;
+        if (et === "step.delta") {
+          const d = (ev.delta && typeof ev.delta === "object") ? ev.delta : {};
+          const stepType = stepTypes.get(ev.index) || "";
+          if (d.type === "google_search_call" || stepType === "google_search_call") {
+            const queries = (d.arguments && Array.isArray(d.arguments.queries))
+              ? d.arguments.queries : [];
+            for (const q of queries) {
+              out.push({ kind: "search", query: typeof q === "string" ? q : "" });
+            }
+            return out;
+          }
+          if (d.type === "google_search_result" || stepType === "google_search_result") {
+            out.push({ kind: "results", count: Array.isArray(d.result) ? d.result.length : null });
+            return out;
+          }
+          // Reasoning is expected and carries no report text — and even if a
+          // thought delta one day DOES carry text, it must not enter the
+          // report, which is why the step type gates before the text check.
+          if (d.type === "thought_signature" || stepType === "thought") return out;
+          if (typeof d.text === "string" && (stepType === "model_output" || d.type === "text")) {
+            accumulate(ev.index, d.text, out);
+            return out;
+          }
+          unknown.add("delta:" + String(d.type || "?"));
+          return out;
+        }
+        unknown.add(et);
+        return out;
+      }
+
+      // ---- Legacy fallback: untagged frames, the pre-verification shapes ----
       if (ev.usage) out.push({ kind: "usage", usage: normalizeUsage(ev.usage) });
       if (typeof ev.status === "string" && ev.status) {
         stopReason = ev.status;
@@ -253,18 +339,7 @@ function createStreamReader() {
         }
         const t = textOf(step);
         if (t == null) return;
-        const idx = Number.isFinite(step.index) ? step.index : i;
-        const prev = steps.get(idx) || "";
-        // Snapshot vs delta: a frame that already contains everything we hold
-        // is a resend, so replace. Otherwise it is new text, so append.
-        if (t.startsWith(prev) && t.length >= prev.length) {
-          const added = t.slice(prev.length);
-          steps.set(idx, t);
-          if (added) out.push({ kind: "text", text: added });
-        } else {
-          steps.set(idx, prev + t);
-          out.push({ kind: "text", text: t });
-        }
+        accumulate(Number.isFinite(step.index) ? step.index : i, t, out);
       });
       return out;
     },
@@ -319,12 +394,12 @@ function costOf(usage) {
 // is the real figure; 12,000 leaves headroom without inventing a 9 minute
 // ceiling.
 //
-// This figure is load-bearing beyond just sizing the deadline: this provider
-// has no streaming capability, so STREAM_IDLE_MS (server.js's per-chunk idle
-// watchdog) never applies to it, that watchdog only exists inside the
-// streaming branch. On Gemini's non-streaming path, the deadline derived from
-// this number is the ONLY thing standing between a wedged call and a request
-// that hangs forever.
+// This figure is load-bearing beyond just sizing the deadline: on the
+// non-streaming path (STREAM_ANTHROPIC=off — the default streams since
+// 2026-08-29) STREAM_IDLE_MS, server.js's per-chunk idle watchdog, never
+// applies, because that watchdog only exists inside the streaming branch. On
+// that path the deadline derived from this number is the ONLY thing standing
+// between a wedged call and a request that hangs forever.
 function deadlineTokens() {
   return 12000;
 }

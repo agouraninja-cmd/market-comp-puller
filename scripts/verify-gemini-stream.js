@@ -4,13 +4,15 @@
 // Confirm — or disprove — the Gemini streaming reader against the LIVE wire
 // format, with one real call costing a fraction of a cent.
 //
-// It exists because the frame shape is documented only as "each event includes
-// a type and JSON data", so search-provider-gemini.js's createStreamReader is
-// written from the non-streaming body shape and is explicitly UNVERIFIED. A
-// guessed parser fails closed (no text recovered, report errors out), which is
-// safe but useless, and "paste me a curl transcript" puts a human in the loop
-// of reading SSE frames. This runs the actual reader over the actual bytes and
-// answers the only question that matters: did it recover the text?
+// It settled the question on 2026-08-29: the guessed reader FAILED its first
+// run — the real stream is event_type-tagged frames, not the {steps:[...]}
+// snapshots it was written from — the reader was rewritten from the frames
+// this script printed, and both the plain and --grounded runs then passed.
+// The captured frames are committed as test/fixtures/gemini-stream-frames*.json
+// and capabilities.streaming is true. Keep this script: it is how a
+// vendor-side frame change gets diagnosed (run it before touching the
+// reader), and how a future provider's reader earns `streaming: true` the
+// same way — verified against live bytes, never guessed on the default path.
 //
 // On failure it prints every frame type the reader did not recognize, plus the
 // first raw frames, which is exactly what fixing the reader needs.
@@ -19,11 +21,6 @@
 //   GEMINI_API_KEY=... node scripts/verify-gemini-stream.js
 //   ... --grounded     also enable google_search, so tool frames appear too
 //   ... --dump         print every raw frame, not just the unrecognized ones
-//
-// When it passes: set capabilities.streaming = true in
-// search-provider-gemini.js, delete streamingUnverified there and the
-// STREAM_UNVERIFIED branch in server.js, and commit the frame sample it prints
-// as a test fixture.
 
 const P = require("../search-provider-gemini");
 
@@ -118,9 +115,8 @@ async function* frames(body) {
 
   if (ok && !missed.length) {
     console.log("✅ PASS — the reader reassembled the model's JSON from the live stream.");
-    console.log("   Next: set capabilities.streaming = true in search-provider-gemini.js,");
-    console.log("   drop streamingUnverified and the STREAM_UNVERIFIED branch in server.js,");
-    console.log("   and commit a frame sample as a fixture.");
+    console.log("   (capabilities.streaming is already true — this run re-confirms the wire");
+    console.log("   format still matches the reader and the committed fixtures.)");
     process.exit(0);
   }
 

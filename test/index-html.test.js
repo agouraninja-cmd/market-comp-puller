@@ -945,6 +945,67 @@ test("both writers of the markets cell emit the same anatomy", () => {
 });
 
 // ----------------------------------------------------------------------------
+// Workspace polish, 2026-08-29. Report branding was a permanently-expanded
+// form on the daily workspace: measured at 629px against 568px for the whole
+// portfolio deck, i.e. a set-once setting taking more of the page than
+// everything the member owns. Collapsing it took the page from 2371px to
+// 1859px. None of this surface was pinned before.
+// ----------------------------------------------------------------------------
+test("report branding is collapsed behind a summary that states what is saved", () => {
+  const at = html.indexOf('id="deskBranding"');
+  assert.ok(at > -1, "the branding section is still there");
+  const sec = html.slice(at, html.indexOf('id="billingCard"'));
+  assert.ok(sec.includes('<details id="brandBox"'), "the form collapses");
+  assert.ok(sec.includes('id="brandSummary"'), "the collapsed row carries a state line");
+  // The rule and the explanation stay OUTSIDE the details, so the deck still
+  // reads as furnished rather than as a lone twisty.
+  assert.ok(sec.indexOf("Report branding") < sec.indexOf("<details"),
+    "the section rule stays above the collapse");
+  // Every control the save/delete/preview handlers reach by id must still be
+  // inside it — collapsing must not have dropped one.
+  for (const id of ["brandLogoPreview", "brandLogo", "brandLogoRemove", "brandLogoFile",
+                    "brandFirm", "brandPreparer", "brandPhone", "brandEmail", "brandLicense",
+                    "brandDisclaimer", "brandMsg", "brandSave", "brandDelete", "brandPreview"]) {
+    assert.ok(sec.includes('id="' + id + '"'), id + " must survive the collapse");
+  }
+  // The summary is written from the live form by renderBrandPreview, which
+  // already runs on load, save, delete, logo change and every keystroke — so
+  // the line cannot drift from the form the way a separate updater would.
+  const prev = html.slice(html.indexOf("function renderBrandPreview"), html.indexOf("function renderBrandPreview") + 400);
+  assert.ok(prev.includes("renderBrandSummary("), "the summary rides the function that already tracks state");
+  // #brandMsg lives inside the collapsed box, so a FAILED LOAD would report
+  // into something nobody can see. Both load-failure paths open it.
+  const loadAt = html.indexOf("function loadBranding");
+  const load = html.slice(loadAt, html.indexOf("brandingLoadPromise = null", loadAt));
+  assert.equal((load.match(/openBrandBox\(\)/g) || []).length, 2,
+    "both load-failure paths must open the box so the message is visible");
+});
+
+test("the workspace subtitle describes the page it introduces", () => {
+  assert.ok(html.includes("Your properties, your firm's shelf, and everything you have shared."),
+    "the subtitle names what the workspace actually holds");
+  assert.ok(!html.includes("Your recent searches and tracked properties."),
+    "the old line described about a fifth of the page and must not come back");
+});
+
+test("the workspace ledger goes 2x2 on a phone instead of four deep", () => {
+  // At 375px the single column filled the entire first screen, so a member
+  // scrolled past a phone-full of statistics before reaching a property.
+  // Scoped to .dk-ledger: every other .rd-ledger is a 2-3 cell strip that
+  // stacks fine.
+  // Anchored on the ledger's own stacking rule: index.html has several
+  // 639.98px blocks and the first one is about form cells, not the ledger.
+  const at = html.indexOf(".rd-ledger { flex-direction: column; }");
+  assert.ok(at > -1, "the generic ledger stack rule moved");
+  const block = html.slice(at, at + 1400);
+  assert.ok(block.includes(".dk-ledger { flex-direction: row; flex-wrap: wrap; }"),
+    "the workspace ledger wraps rather than stacking");
+  assert.ok(block.includes("flex: 1 1 50%"), "two cells per row");
+  assert.ok(block.includes(":nth-last-child(-n+2) { border-bottom: 0; }"),
+    "the bottom ROW owns the last rule; :last-child alone leaves a stray hairline");
+});
+
+// ----------------------------------------------------------------------------
 // Tab fills the rotating "e.g." address. The placeholder is a real building
 // someone can try, but it used to be display-only: Tab jumped to the next
 // field and left the box empty. The strip and the "should Tab accept?"

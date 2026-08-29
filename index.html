@@ -1382,6 +1382,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-person .what { font-size: 11px; color: var(--ink-3); }
     .dk-person .act { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
     .dk-card { border: 1px solid var(--edge); border-radius: 6px; background: var(--card); padding: 16px; }
+    /* A collapsed settings row: the current state on the left, the way in on
+       the right. list-style:none plus the ::-webkit-details-marker reset kills
+       the default triangle in both engines. */
+    .dk-sum { display: flex; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; padding: 10px 14px; border: 1px solid var(--edge); border-radius: 6px; background: var(--card); }
+    .dk-sum::-webkit-details-marker { display: none; }
+    .dk-sum:hover { background: var(--wash); }
+    .dk-sum-t { font-size: 13px; color: var(--ink-body); min-width: 0; }
+    .dk-sum-a { margin-left: auto; flex: 0 0 auto; font-size: 11.5px; color: var(--red); }
+    details[open] > .dk-sum { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
+    details[open] > .dk-sum .dk-sum-a::after { content: " \2715"; }
     /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
        but cells top-align because a row can carry a viewer list or the
        inline people editor, and the detail row needs its own quiet berth. */
@@ -1428,6 +1438,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
       .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
+      /* The WORKSPACE ledger goes 2x2 rather than stacking four deep: at
+         375px the single column filled the entire first screen, so a member
+         scrolled past a full phone of statistics before reaching a property
+         they own. Scoped to .dk-ledger, because every other .rd-ledger on the
+         site is a two- or three-cell strip that stacks fine. */
+      .dk-ledger { flex-direction: row; flex-wrap: wrap; }
+      .dk-ledger .rd-lcell { flex: 1 1 50%; min-width: 0; border-bottom: 1px solid var(--hair); }
+      .dk-ledger .rd-lcell:nth-child(odd) { border-right: 1px solid var(--hair); }
+      /* The bottom row owns the last rule; :last-child alone left a hairline
+         under cell 3 when the row it sits in is the final one. */
+      .dk-ledger .rd-lcell:nth-last-child(-n+2) { border-bottom: 0; }
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
     .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
@@ -2240,7 +2261,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          stack). Works signed out: the chip rows below are localStorage-driven;
          the account-backed #myDesk section shows only when signed in. -->
     <section id="deskView" class="hidden mt-8 no-print">
-      <div class="flex items-center justify-between border-b rd-hairline pb-2">
+      <!-- flex-wrap + gap, not just justify-between: at 375px the heading and
+           the first control on the right had nothing holding them apart and
+           ran together as "WORKSPACERun a report". Caught in a phone capture,
+           not by reading. -->
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
           <!-- The chamber moved below the workspace (2026-08-29); this is the
@@ -2269,7 +2294,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
       </div>
-      <p class="text-sm text-[#5A6473] mt-3">Your recent searches and tracked properties.</p>
+      <!-- Says what the page actually holds. It read "Your recent searches and
+           tracked properties" from when that was the whole of it; the workspace
+           has since grown the firm shelf, the deal board, shares, the vault and
+           the report runner, so the old line described about a fifth of the
+           page it introduces. -->
+      <p class="text-sm text-[#5A6473] mt-3">Your properties, your firm's shelf, and everything you have shared.</p>
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -2715,7 +2745,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            can remove here. -->
       <div id="deskBranding" class="hidden mt-8">
         <div class="dk-rule"><span class="rd-lab">Report branding</span></div>
-        <p class="text-sm text-[#5A6473] mt-2">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
+        <!-- Collapsed since 2026-08-29. Measured on a three-property
+             workspace, this card was 572px tall against 565px for the entire
+             portfolio deck: a set-once-a-year setting taking as much of the
+             page as everything the member owns. The summary carries the
+             current state so it still answers "what is on my reports?"
+             without being opened, which is the only question this section is
+             asked most days. Same reasoning that moved Settings into the
+             account menu on 2026-08-24.
+             Not a <details> around the WHOLE section: the rule and the
+             explanation stay visible, so the deck still reads as furnished
+             rather than as a lone twisty. -->
+        <details id="brandBox" class="mt-2">
+          <summary class="dk-sum">
+            <span id="brandSummary" class="dk-sum-t">No branding saved yet</span>
+            <span class="dk-sum-a">Edit</span>
+          </summary>
+        <p class="text-sm text-[#5A6473] mt-3">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
         <div class="mt-2 dk-card">
           <div class="flex flex-wrap items-center gap-3">
             <!-- Persistent element (fillBrandForm() and the choose/remove
@@ -2761,6 +2807,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div id="brandPreview" class="mt-1 border border-[#D8D4C9] rounded-lg bg-white p-3"></div>
           </div>
         </div>
+        </details>
       </div>
 
       <!-- Plan + billing. Shown only when the deployment actually sells
@@ -14895,10 +14942,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // state (not just the last-saved profile), so it updates as they type.
   // Co-branded, never white label: the CompNinja line at the bottom is not
   // built from member data and this function does not take a flag to hide it.
+  // Opens the collapsed branding box. Used only where something INSIDE it has
+  // to be read — a failed load writes into #brandMsg, which is in there.
+  function openBrandBox() {
+    const box = document.getElementById("brandBox");
+    if (box) box.open = true;
+  }
+
+  // The collapsed row's state line. Hangs off renderBrandPreview because that
+  // already runs everywhere the state can change — load, save, delete, logo
+  // choose/remove and every keystroke — so the summary cannot drift from the
+  // form the way a separately-called updater would. textContent throughout:
+  // the firm name is the member's own text.
+  function renderBrandSummary(b) {
+    const el = document.getElementById("brandSummary");
+    if (!el) return;
+    const bits = [];
+    if (b.firmName) bits.push(b.firmName);
+    if (b.logo) bits.push("logo set");
+    if (b.licenseNumber) bits.push("license shown");
+    // Named rather than counted: "3 details saved" tells a member nothing
+    // about what is going on their reports.
+    el.textContent = bits.length ? bits.join(" · ") : "No branding saved yet";
+  }
+
   function renderBrandPreview() {
     const box = document.getElementById("brandPreview");
     box.innerHTML = "";
     const b = brandFields();
+    renderBrandSummary(b);
     const hasContent = b.logo || b.firmName || b.preparerName || b.phone || b.email || b.licenseNumber || b.disclaimer;
     if (!hasContent) {
       const empty = document.createElement("p");
@@ -14970,6 +15042,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           // rather than sticking forever.
           wrap.classList.remove("hidden");
           document.getElementById("brandMsg").textContent = body.error || "Couldn't load your branding.";
+          // #brandMsg lives inside the collapsed box, so a load failure would
+          // otherwise be reported into something nobody can see. Open it: a
+          // message worth writing is worth showing.
+          openBrandBox();
           return;
         }
         wrap.classList.remove("hidden");
@@ -14987,6 +15063,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         if (token !== brandingLoadToken) return;
         wrap.classList.remove("hidden");
         document.getElementById("brandMsg").textContent = "Couldn't reach the server.";
+        openBrandBox(); // same reason as the !r.ok branch above
       } finally {
         // Only clear the slot this fetch itself occupied. If an auth
         // transition already superseded it, brandingLoadPromise has moved on

@@ -271,9 +271,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
     // that every visitor lands on should say what a broker gets and where to
     // go. Asserted on both surfaces because `/` and /how-it-works serve the
     // same bytes while the wall is up.
+    //
+    // The heading became "Where a comp can go." on 2026-08-29, when the page
+    // went broker-first throughout. "What brokers get" was right for a
+    // sidebar on an owner-facing page; on a page whose hero is already the
+    // broker's own vault it reads as a leftover. What the section has to DO is
+    // unchanged, and the three promises below are what actually matter.
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
-      assert.match(html, /What brokers get/, p + " should address brokers directly");
+      assert.match(html, /Where a comp can go/, p + " should address brokers directly");
       assert.match(html, /href="\/brokers"/, p + " should link to the broker page");
       // The three concrete trades, not a pitch. Matched around the
       // apostrophes, which escHtml turns into &#39; on the way out.
@@ -293,7 +299,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
       const html = await (await fetch(srv.base + p)).text();
       const chunk = html.split('kicker">Brokers')[1];
       assert.ok(chunk, p + " must still have a Brokers kicker");
-      const brokers = chunk.split("See it on your own building")[0];
+      // Bounded by the CTA's CLASS, not by its heading text. This split used
+      // to look for "See it on your own building", which the 2026-08-29
+      // rewrite deleted — and a split on a string that is not there returns
+      // the whole remainder, so the slice would have quietly grown to the end
+      // of the document and every assertion below would have stopped meaning
+      // what it says. The class is the structural boundary and cannot drift
+      // with copy.
+      const brokers = chunk.split('class="cta')[0];
+      assert.ok(brokers.length < chunk.length, p + " must still close with the CTA");
       assert.equal((brokers.match(/class="bkrow"/g) || []).length, 3,
         p + " should show three trades as rows");
       assert.match(brokers, /class="bklag">Private</, p + " should label the privacy trade");
@@ -484,7 +498,7 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
     const html = await (await fetch(srv.base + "/")).text();
     const exhibits = html.match(/class="exhibit\b/g) || [];
     assert.equal(exhibits.length, 1, "one sample report; the mini + full pair is the bug");
-    assert.match(html, /id="landingAddress"/, "the hero asks for a building");
+    assert.match(html, /id="landingAddress"/, "the page still asks for a building");
     assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise the landing");
     assert.ok(!/id="compForm"/.test(html), "the real search form lives only in index.html");
     assert.ok(
@@ -503,6 +517,96 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
     const brokersBlock = afterBrokers.split(/class="cta/)[0];
     assert.ok(!/class="steps"/.test(brokersBlock), "do not reuse Method's 3-up for brokers");
     assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
+  });
+});
+
+// The 2026-08-29 rebuild. The owner's instruction was that the single-address
+// comp puller stop being the centre of attention and leave the top of the
+// page; before this, the hero's CTA WAS the address field and the exhibit
+// beside it was a one-property report. Nothing pinned that, so nothing stopped
+// it drifting back — these do. Asserted on both surfaces, because `/` and
+// /how-it-works serve the same bytes while the wall is up.
+test("the landing leads with the archive, not the address field", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const pages = ["/", "/how-it-works"];
+
+  await t.test("the vault is the first beat and the search sits below Method", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const vault = html.indexOf('class="vault"');
+      const addr = html.indexOf('id="landingAddress"');
+      const method = html.indexOf('kicker">Method');
+      assert.ok(vault > -1, p + " must show the vault sheet");
+      assert.ok(vault < addr, p + " must lead with the vault, not the address field");
+      assert.ok(method < addr, p + " must put the search below Method, in the proof section");
+      assert.equal((html.match(/class="vault"/g) || []).length, 1,
+        p + " needs one vault sheet; a second is the mini+full bug in a new costume");
+    }
+  });
+
+  await t.test("the vault chip is ownership, never provenance", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /class="badge bv">From your vault</,
+        p + " should show the chip a broker meets inside their own report");
+      // "Verified" is a word the SERVER awards when a named broker vouches.
+      // A private row has not earned it, and the two must never be conflated
+      // in the one place a broker is being told what the vault is.
+      assert.ok(!/[Vv]erified[^<]{0,24}vault/.test(html),
+        p + " must never describe a vault comp as verified");
+    }
+  });
+
+  await t.test("it states what leaves the vault, in full", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /no address, no total price, no notes/i,
+        p + " should say exactly what a shared comp keeps");
+      // "no price" would be false: $/SF x size implies it, which is the
+      // trade-off comp-gate.js names when it builds a locked_basis row.
+      assert.ok(!/no address, no price\b/i.test(html),
+        p + " must not claim the price is withheld; the basis implies it");
+    }
+  });
+
+  // BRAND.md §4 protects this sentence, and it had never been asserted on the
+  // page it most needs to be on. It is the line most likely to be lost to a
+  // future layout tidy-up.
+  await t.test("the appraisal disclaimer survives the layout", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /An automated estimate, not an appraisal/,
+        p + " must carry the disclaimer verbatim");
+    }
+  });
+
+  // Archive-first retrieval floors the web-search budget when a broker's own
+  // vault is strong -- but it is gated on PROVIDER.capabilities.searchBudget,
+  // and the default provider (Gemini) takes no max_uses, so it is INERT in
+  // production. Selling it would be selling something that does not happen.
+  await t.test("it does not sell the search saving, which is inert in production", async () => {
+    const forbidden = [/cheaper search/i, /fewer searches/i, /without spending a search/i,
+                       /costs? (you )?less to search/i, /skips? the search/i];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      for (const bad of forbidden) {
+        assert.ok(!bad.test(html), p + " must not claim the archive cheapens a search: " + bad);
+      }
+    }
+  });
+
+  // deal-board.js is explicit that it counts CONTRIBUTION to the firm, not
+  // closings. A landing page that promised otherwise would be selling
+  // surveillance the product deliberately does not do.
+  await t.test("the firm section does not promise a closings leaderboard", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/who (is|are) closing what[^<]*\./i.test(html.replace(/It does not report who is closing what\./g, "")),
+        p + " must not offer a record of who is closing what");
+      assert.match(html, /does not report who is closing what/i,
+        p + " should say plainly what the deal board is not");
+    }
   });
 });
 

@@ -31,22 +31,34 @@ one colour.
 
 ## 2. Positioning
 
-**The promise, in the site's own words:**
+**The promise:**
 
 > A report you can hand to someone who will argue with it.
 
-> Every report answers the question and then shows its work: a value range, the
-> comps behind it, and where each one came from.
+This stopped being the landing page's H1 on 2026-08-29, when the page went
+broker-first. It is still the sentence the product is built to keep, and still
+the test a new surface has to pass — it says what a report *is*, and that did
+not change because the page that opened with it did.
 
-**Proof points, in the order the landing page uses them:** cited comps · about
+**On the landing page, said broker-first:**
+
+> Your closed deals, in every comp report you run.
+
+> Upload your comp book once. Your own deals then sit inside your commercial
+> real estate reports, badged as yours, beside public records and verified
+> broker submissions. Nobody else sees them.
+
+**Proof points, in the order the proof section uses them:** cited comps · about
 a minute · every source disclosed.
 
 The product's whole shape follows from that: it answers *and* proves. A number
 with no evidence under it is off-brand even when it is correct.
 
-**Audiences.** Property owners asking what a building is worth, and brokers who
-contribute verified comps and keep a private book. Both are served by the same
-report; the difference is which side of it they read.
+**Audiences.** Brokers and small shops — broker, development and tenant-rep —
+keeping a private book, and property owners asking what a building is worth.
+The landing page leads with brokers; an owner's ways in are the BOV button
+inside a report, the `/market/<slug>` pages and `/1031-exchange`. Both read the
+same report; the difference is which side of it they are on.
 
 ---
 
@@ -97,6 +109,23 @@ report; the CompNinja attribution and the automated-estimate line ride along
 with it always. A report carrying only a brokerage's mark would read as that
 brokerage's own appraisal. The attribution string is
 "Prepared with CompNinja · an automated estimate, not an appraisal."
+
+**A broker's archive does not make their searches cheaper.** Archive-first
+retrieval floors the web-search budget when a broker's own vault is strong —
+but it is gated on `PROVIDER.capabilities.searchBudget`, and the default
+provider (Gemini) takes no `max_uses`, so **it is inert in production.** Copy
+may say a broker's own comps appear inside their own reports, which is true and
+provider-independent. It may not say they reduce, replace, skip or cheapen a
+search. If the provider ever changes, this rule is retired deliberately, not
+quietly. A test on the landing page rejects the phrasings.
+
+**What leaves the vault, said in full.** Never "nothing leaves your vault."
+Two doors exist and both are the member's own: publishing a comp into
+CompNinja's public records, and sharing one with their firm. Separately, an
+anonymized basis row travels on an invited or firm share. The standing phrasing
+for what that row withholds is **"no address, no total price, no notes"** — not
+"no price", because price per square foot times size implies the price, and
+`comp-gate.js` names that trade-off where it builds the row.
 
 **The public contact address is info@compninja.co** on every public surface —
 never the owner's personal inbox, which is used for internal notifications

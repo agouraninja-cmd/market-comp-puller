@@ -316,7 +316,24 @@ bottom edges.
 
 **Badge** — `.badge`. 10.5px, weight 600, 3px radius, 1.5px 7px padding.
 Neutral by default; `.v` is green Verified, `.li` is amber Listing. Estimate
-and vault badges use their own tokens (§4).
+and vault badges use their own tokens (§4). `.bv` is the vault chip —
+`--bv-text` on `--bv-bg`, reading "From your vault". It is an *ownership*
+statement, never provenance: it must never be `.v`, because green Verified is a
+public claim the server awards when a named broker vouches, and a private row
+has not earned it.
+
+**Vault sheet** — `.vault` / `.vrow` / `.vout`. HOW_CSS only; the landing
+page's hero exhibit. Same shell recipe as `.exhibit` (1px `--edge`, `--card`,
+6px, `--lift`) because a broker should read them as two views of one product,
+but a separate class: the landing page is allowed exactly one `.exhibit` and a
+test counts them. Hairline `--hair` rows, address left with the rate right in
+Georgia, and a `--wash-2` foot strip carrying the redaction line. Deliberately
+**not** animated — it is above the fold.
+
+**Audience panes** — `.three` / `.pane` / `.pane.r`. A 3-up of the same record
+shown to different readers. `.pane.r` is the redacted one and fills with
+`--wash-2`, the one token that darkens in light and lightens in dark, so "less
+is shown here" reads at a glance in both themes.
 
 **Table** — 13.5px, tabular figures, 640px minimum width inside a horizontally
 scrolling `.scroll` wrapper. Headers are the 10.5px uppercase micro-label on
@@ -347,10 +364,20 @@ The three-part unit that most numbers on the site are presented in.
 | Tailwind red ramp | `tailwind.config.js` |
 | Generated Tailwind CSS | `tailwind.css` — **generated, never hand-edit** |
 
-**Three headers.** The site has three separate header implementations —
-`index.html`, `MARKET_BAR` in `server.js`, and the `/how-it-works` header. A
-change to one must be made to all three or the header shifts as you move
-between pages. Same for the footer.
+**Two headers, not three.** `/how-it-works` kept a hand-copied third header
+until 2026-08-20, when it was folded into `marketBar` (the two had drifted to
+within one `aria-current`). What remains is `index.html`'s own header and
+`marketBar` in `server.js`, which every server-rendered page shares. A change
+to one must be made to both, or the header shifts as you move between pages.
+Same for the footer, which is `MARKET_FOOTER` on every server-rendered page
+including the landing one.
+
+**`.bk` / `.bkrow` / `.bklag` are declared TWICE**, and they are not shared:
+`MARKET_CSS` (for `/brokers`) and `HOW_CSS` (for the landing page). Editing one
+copy does not change the other — which is convenient right up until someone
+assumes it does. The landing page uses the ledger twice on its own (the firm
+layer and the broker trades), so a change there moves two sections and leaves
+`/brokers` untouched. Shoot `/brokers` as well when you touch it.
 
 **Two deliberate exceptions to the no-hex rule.** Both are places where a
 colour must *not* follow the theme:

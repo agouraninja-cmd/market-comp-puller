@@ -54,6 +54,11 @@ function bootClasses(html) {
   return allBootClasses(html).filter((c) => c.startsWith("cn-"));
 }
 
+// `rail` is a DEPLOYMENT fact (NAV_SHELL), not a per-visitor one, so it is
+// true in every case below even where signedIn is false. index.html needs it
+// because the app never reloads on sign-in: refreshAccountUI re-decides the
+// nav-rail class from identity, and it must not re-add a class a NAV_SHELL=bar
+// rollback deliberately withheld. The class itself is still signed-in only.
 function bootData(html) {
   const m = html.match(/window\.CN_AUTH_BOOT=(\{[^}]*\})/);
   return m ? JSON.parse(m[1]) : null;
@@ -115,7 +120,7 @@ test("the wall up: the page is stamped for the visitor it is sent to", async (t)
   await t.test("a session cookie gets the signed-in chrome at first paint", async () => {
     const html = await (await fetch(srv.base + "/", { headers: { cookie: FAKE_COOKIE } })).text();
     assert.deepEqual(bootClasses(html), ["cn-in"]);
-    assert.deepEqual(bootData(html), { signedIn: true, wall: true });
+    assert.deepEqual(bootData(html), { signedIn: true, wall: true, rail: true });
   });
 
   await t.test("an anonymous shared report gets the lock card, not a search form that vanishes", async () => {
@@ -124,7 +129,7 @@ test("the wall up: the page is stamped for the visitor it is sent to", async (t)
     // this file at all.
     const html = await (await fetch(srv.base + "/r/abcdef12")).text();
     assert.deepEqual(bootClasses(html), ["cn-locked"]);
-    assert.deepEqual(bootData(html), { signedIn: false, wall: true });
+    assert.deepEqual(bootData(html), { signedIn: false, wall: true, rail: true });
   });
 
   await t.test("the signup door is stamped the same way", async () => {
@@ -161,7 +166,7 @@ test("the wall down: nothing is locked and the header still knows the visitor", 
     const html = await (await fetch(srv.base + "/")).text();
     assert.deepEqual(bootClasses(html), [],
       "with the wall off the shipped markup is already right for a signed-out visitor");
-    assert.deepEqual(bootData(html), { signedIn: false, wall: false });
+    assert.deepEqual(bootData(html), { signedIn: false, wall: false, rail: true });
   });
 
   await t.test("cn-locked is never stamped without the wall", async () => {

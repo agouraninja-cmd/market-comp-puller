@@ -230,3 +230,53 @@ test("one theme toggle, still, and no second account cluster", () => {
   assert.equal(SERVER_JS.split('id="navAcct"').length - 1, 1,
     "exactly one account cluster");
 });
+
+test("the rail hides Explore without taking the account cluster with it", () => {
+  // #navAcct is a <details> TOO, so a bare `nav>details{display:none}` matched
+  // both. That took the email, Upgrade to Pro, Manage billing and Sign out off
+  // EVERY server-rendered page in rail mode: there was no way to sign out of
+  // /markets, /brokers, /pricing, /bulk or a market page without navigating
+  // back to the app first. No existing test saw it, because the MARKUP stayed
+  // correct — only the computed style was wrong, which is the failure mode a
+  // byte-identical-markup design is most exposed to.
+  const hides = SERVER_JS.match(/html\.nav-rail \.hdr nav>details[^{]*\{display:none\}/g) || [];
+  assert.equal(hides.length, 2,
+    "MARKET_CSS and HOW_CSS are twins by design; both carry this rule or the two front doors drift");
+  for (const rule of hides) {
+    assert.ok(rule.includes(":not(#navAcct)"),
+      `the Explore hide must spare the account cluster, got: ${rule}`);
+  }
+  // The rules that lay #navAcct out FOR the rail are what prove it was always
+  // meant to show. If they ever go, this test would start passing for the
+  // wrong reason, so it fails instead.
+  assert.match(SERVER_JS, /html\.nav-rail \.hdr nav>#navAcct\{margin-top:auto/,
+    "the account cluster is still pinned to the foot of the rail");
+  assert.match(SERVER_JS, /html\.nav-rail \.hdr nav>#navAcct \.dd\{/,
+    "its menu still opens upward, which it only needs to do if it renders");
+});
+
+test("the app re-decides the rail when identity changes in place", () => {
+  // The account modal signs somebody in WITHOUT reloading the page, so a class
+  // stamped only at serve time cannot follow them. Owner-reported: the app
+  // kept the top bar after signing in and only switched to the rail on the
+  // next click, because that click was the first server-rendered navigation.
+  const INDEX = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const fn = INDEX.slice(INDEX.indexOf("function refreshAccountUI()"));
+  const body = fn.slice(0, fn.indexOf("\n  }\n"));
+  assert.match(body, /classList\.toggle\("nav-rail", on\)/,
+    "refreshAccountUI is the one function that runs after /api/account/me on every path, "
+    + "which is why the shell is re-decided there rather than at each call site");
+
+  // Toggled, never merely added. The sign-OUT direction is the half the rail's
+  // own rule makes mandatory: anonymous visitors never get the rail, and
+  // doSignOut does not reload either.
+  assert.ok(!/classList\.add\("nav-rail"\)/.test(INDEX),
+    "a one-way add would leave the product's sidebar standing for a signed-out visitor");
+
+  // ...and the client must not undo the rollback lever. NAV_SHELL=bar means
+  // bar everywhere, including on the one page that decides this after paint.
+  assert.match(body, /if \(navRailMode\)/,
+    "NAV_SHELL=bar must survive a client-side re-decide");
+  assert.match(SERVER_JS, /rail: Boolean\(NAV_SHELL_CLASS\)/,
+    "the deployment's shell choice has to reach the page for that guard to mean anything");
+});

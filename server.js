@@ -8159,13 +8159,21 @@ function authBoot(signedIn) {
   // page: signed-in only, and it rides a class rather than a markup branch.
   // This is the right vehicle because it already runs inline in <head> before
   // first paint, so the sidebar is never drawn and then taken away — and
-  // unlike cn-in / cn-locked it is NOT retired by refreshAccountUI(), because
-  // it is a layout choice about the shell rather than a stand-in for an answer
-  // the page is still waiting on.
+  // unlike cn-in / cn-locked it is not RETIRED by refreshAccountUI() — it is
+  // a layout choice about the shell rather than a stand-in for an answer the
+  // page is still waiting on, so it is re-decided from identity rather than
+  // dropped. That matters because this page never reloads on sign-in: the
+  // modal signs you in in place, so without a client-side re-decide the app
+  // kept the top bar until the next server-rendered navigation while every
+  // other surface had already switched to the rail.
+  //
+  // `rail` rides along so index.html can honour the NAV_SHELL=bar rollback
+  // lever too. Without it the client would re-add a class the server had
+  // deliberately withheld, and the lever would stop working on this one page.
   const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "") +
     (signedIn && NAV_SHELL_CLASS ? ` ${NAV_SHELL_CLASS}` : "");
   return `<style>${AUTH_BOOT_CSS}</style>\n` +
-    `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL })};` +
+    `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL, rail: Boolean(NAV_SHELL_CLASS) })};` +
     (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
     `</script>\n`;
 }
@@ -8510,8 +8518,12 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
   html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
   /* Explore has nowhere to open in a 224px column, and its two links belong
      in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
-     rather than removed so the markup stays identical in both modes. */
-  html.nav-rail .hdr nav>details{display:none}
+     rather than removed so the markup stays identical in both modes.
+     :not(#navAcct) because the account cluster is a <details> TOO, and a bare
+     details rule took it -- email, Upgrade, Manage billing, Sign out -- off
+     every server-rendered page in rail mode. The two rules just below style
+     #navAcct FOR the rail, which is what proves it was meant to show. */
+  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
   /* The account cluster sits at the foot, and its menu opens UPWARD -- the
      dropdown's default top:calc(100% + 10px) would run off the bottom of
      the viewport from there. */
@@ -11301,8 +11313,12 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
   html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
   /* Explore has nowhere to open in a 224px column, and its two links belong
      in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
-     rather than removed so the markup stays identical in both modes. */
-  html.nav-rail .hdr nav>details{display:none}
+     rather than removed so the markup stays identical in both modes.
+     :not(#navAcct) because the account cluster is a <details> TOO, and a bare
+     details rule took it -- email, Upgrade, Manage billing, Sign out -- off
+     every server-rendered page in rail mode. The two rules just below style
+     #navAcct FOR the rail, which is what proves it was meant to show. */
+  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
   /* The account cluster sits at the foot, and its menu opens UPWARD -- the
      dropdown's default top:calc(100% + 10px) would run off the bottom of
      the viewport from there. */
@@ -24425,6 +24441,13 @@ const server = http.createServer((req, res) =>
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
+        // This body varies on the session cookie like every other marketShell
+        // page — it is the cookie that decides the rail. no-store already
+        // means nothing may keep a copy, so this is the belt to that braces:
+        // it was the ONE rail page whose headers did not say so, and a
+        // no-store that is ever relaxed here would go straight to serving a
+        // member their sidebar to a stranger.
+        vary: "cookie",
         "x-robots-tag": "noindex, nofollow",
       });
       res.end(marketShell({

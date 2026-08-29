@@ -3243,3 +3243,24 @@ test("the comp floor can never ask for more comps than the report will show", ()
   assert.match(src, /Math\.max\(3, Number\(process\.env\.COMP_FLOOR_TARGET\)/,
     "and never fall below the prompt's own stated minimum of 3");
 });
+
+test("the live comp extractor's callback resolves every identifier it calls", () => {
+  // expandComp lives in report-parse.js and went unexported in the 2026-08-08
+  // extraction while server.js's streamed-comp callback kept calling it bare.
+  // The ReferenceError was swallowed PER COMP by makeCompExtractor's catch, so
+  // every live `comp` event silently died — no log, no error, the report
+  // itself fine — and nothing noticed until Gemini streaming lit the path up
+  // on 2026-08-29. Pin the wiring: the callback goes through the module, and
+  // no bare expandComp( call survives anywhere in server.js.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /RPARSE\.expandComp\(/,
+    "the streamed-comp callback must expand short keys via the report-parse module");
+  const bare = src.match(/(^|[^.\w])expandComp\(/m);
+  assert.equal(bare, null,
+    "a bare expandComp( call in server.js is a ReferenceError that " +
+    "makeCompExtractor's per-comp catch swallows silently");
+  assert.equal(typeof require("../report-parse").expandComp, "function",
+    "report-parse must keep exporting it, or the module call above throws the same way");
+});

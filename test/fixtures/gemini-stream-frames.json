@@ -1,0 +1,81 @@
+[
+  {
+    "interaction": {
+      "id": "v1_Chd4bG1UYXFYY0dQRy1xdHNQbjRDcS1RTRIXeGxtVGFxWGNHUEctcXRzUG40Q3EtUU0",
+      "status": "in_progress",
+      "object": "interaction",
+      "model": "gemini-3.7-flash"
+    },
+    "event_type": "interaction.created"
+  },
+  {
+    "interaction_id": "v1_Chd4bG1UYXFYY0dQRy1xdHNQbjRDcS1RTRIXeGxtVGFxWGNHUEctcXRzUG40Q3EtUU0",
+    "status": "in_progress",
+    "event_type": "interaction.status_update"
+  },
+  {
+    "index": 0,
+    "step": {
+      "type": "thought"
+    },
+    "event_type": "step.start"
+  },
+  {
+    "index": 0,
+    "delta": {
+      "signature": "EooFCocFARFNMg84r8BvjqgF9KKYX469sXDHTT1GRYNWKCiqsp/aWSQxRJP2Q30kwFK8o7x/5oepC/Nnnee5gC1JrxtdmlxtALznKdiHspN0fiYL5+X1kDW+NB+HVG4wnvVaAWzY31vraFdJnSaW1/Jvd2aNIN2to5SBCKO9LEM16Yi8+e9ytveh/1ro1rRtkLjCsBk8hwZMRnPGeL/E5tU9mx4z1LzS2QZl5ZbFccIRhRMJb+WGV3HAsTVWWv6qaRxwXEUGta+mXNMjSKpHjld7exnIy4EudhJGrk9rHyhlOGsnSUoFNW2EZ6IH3XYyKKJCop7HSQrpOluTgtJNY7hKNQxepL+NM3S8b2obNG/5mb0zLKcWceeXZHiF6fL4fbkLUAd+PPfnEdhRfvMp8Z6/7a+z7iphPCOjgD6X++mirzFJ4K+a6HRZPkvJDq2fkkg1pLvO6lsDG9jIm1I5KfDu2/ea+TkNblsyLHYuvc2SPSXCbO9wo6OsdQAhI487meEVZlHiCNpccw/h3O0taFxGLMyeH3ByRGfm9NtU49W6/puKLRoysEYgyUpJI4PHndkVvS3Ef2BaweIrop5mn3JQ6ubeakjqDqDaEuskHhquXzr2F9o4qyU5r9dW9FtoC8GctWnK8yaWIv6MzAXc+sp7eXW29WsGsl+cqiWxgmeHcncOQ2tovvtRnBXEF2sKLUObNXmW+WPI7DkgV+JDPTCkrlnahKIUyUpuOLw9N1Gv+KK+LrEgl9fdKIXw9L4sHwMlCjX56zX3+TGnu7pPrF0OT1bLJcQwH54RJmO4hB7OCWBKofp8cpewzfV2OFqUpiEEs3ihHs98AQ1thdMKfHeuTSDhexYndllQRro=",
+      "type": "thought_signature"
+    },
+    "event_type": "step.delta"
+  },
+  {
+    "index": 0,
+    "event_type": "step.stop"
+  },
+  {
+    "index": 1,
+    "step": {
+      "type": "model_output"
+    },
+    "event_type": "step.start"
+  },
+  {
+    "index": 1,
+    "delta": {
+      "text": "{\"ok\":true,\"n\":[1,2,3],\"note\":\"streaming works\"}",
+      "type": "text"
+    },
+    "event_type": "step.delta"
+  },
+  {
+    "index": 1,
+    "event_type": "step.stop"
+  },
+  {
+    "interaction": {
+      "id": "v1_Chd4bG1UYXFYY0dQRy1xdHNQbjRDcS1RTRIXeGxtVGFxWGNHUEctcXRzUG40Q3EtUU0",
+      "status": "completed",
+      "usage": {
+        "total_tokens": 193,
+        "total_input_tokens": 28,
+        "input_tokens_by_modality": [
+          {
+            "modality": "text",
+            "tokens": 28
+          }
+        ],
+        "total_cached_tokens": 0,
+        "total_output_tokens": 18,
+        "total_tool_use_tokens": 0,
+        "total_thought_tokens": 147,
+        "raw_prompt_token": 59
+      },
+      "created": "2026-08-29T22:14:32Z",
+      "updated": "2026-08-29T22:14:32Z",
+      "service_tier": "standard",
+      "object": "interaction",
+      "model": "gemini-3.7-flash"
+    },
+    "event_type": "interaction.completed"
+  }
+]

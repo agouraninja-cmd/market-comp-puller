@@ -6453,7 +6453,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // of the call — the report itself never depends on the extractor.
   let compExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeCompExtractor((c0, n) => {
-        const c = expandComp(c0);   // comps stream short-keyed; events keep long names
+        const c = RPARSE.expandComp(c0);   // comps stream short-keyed; events keep long names
         say({
           phase: "comp", n,
           address: String((c && c.address) || ""),

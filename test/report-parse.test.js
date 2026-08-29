@@ -691,3 +691,28 @@ test("normalizeSourceTypes threads the property type through to the rule", () =>
   RP.normalizeSourceTypes(parsed3, AUDIT.enforcedSourceType);
   assert.equal(parsed3.comps[0].source_type, "estimate");
 });
+
+// --- expandComp (the single-comp expander the live comp extractor uses) -----
+// It went unexported when the pipeline moved into this module (2026-08-08)
+// while server.js's streamed-comp callback kept calling it bare, and the
+// ReferenceError was swallowed per comp by makeCompExtractor's catch — every
+// live `comp` event silently died. Found 2026-08-29, the day Gemini streaming
+// lit the path up. These pin the export and its tolerance rules.
+
+test("expandComp is exported and expands one short-keyed streamed comp", () => {
+  const c = RP.expandComp({ a: "1 Main St, Boise, ID", d: "Jun 2026", t: "Sale", p: "$1,200,000", sf: "4000" });
+  assert.equal(c.address, "1 Main St, Boise, ID");
+  assert.equal(c.date, "Jun 2026");
+  assert.equal(c.transaction, "Sale");
+  assert.equal(c.price_or_rate, "$1,200,000");
+  assert.equal(c.size_sqft, "4000");
+});
+
+test("expandComp lets long keys win and passes junk through unchanged", () => {
+  const both = RP.expandComp({ a: "short", address: "long" });
+  assert.equal(both.address, "long", "a long key wins over its short twin");
+  assert.equal(RP.expandComp(null), null);
+  assert.equal(RP.expandComp("junk"), "junk");
+  const arr = [1];
+  assert.equal(RP.expandComp(arr), arr, "never throws on junk — returns it unchanged");
+});

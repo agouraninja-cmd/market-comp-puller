@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-08-29",
+    "type": "fix",
+    "title": "Pricing opens the pricing modal on the first click, not the second",
+    "details": "Clicking Pricing in the header of any server-rendered page sent you to a bare home page with no pricing on it; you had to click Pricing a second time to see the plans. Those headers link to /?pricing=1, which is a deliberate door through the account wall so a signed-out visitor can read the prices. The door is a one-shot, and it was being spent too early: the billing UI repaints once during startup, before /api/config has answered, and at that moment the page cannot yet tell a deployment with billing switched on from one without it. That early pass assumed off, skipped the modal, and cleared the ?pricing=1 marker from the URL anyway, so the later pass that knew the real answer found nothing left to act on. It now waits for a real answer before spending the link. Same guard the Address Explorer's deep link already uses, for the same reason."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "improvement",
+    "title": "Brokers and For firms are back in the Explore menu",
+    "details": "The Explore menu now reads Brokers, For firms, 1031 Guide, Download the app. The two audience pages left the menu on 2026-08-25 and kept only a footer link, which is not where a stranger browsing the site looks for them. For firms was never in the menu at all. Both are in one list in server.js (NAV_LINKS), so the change lands at once on the app's own header and on every server-rendered page, and each page's own link still gets the current-page style."
+  },
+  {
+    "date": "2026-08-29",
     "type": "improvement",
     "title": "The vault moves into the rail, and the workspace stops showing your face twice",
     "details": "Four changes to the signed-in shell, all the owner's call, and the second half of them finishes a job the entry below started an hour earlier. The broker vault was a row inside the account dropdown, which under the rail is pinned to the foot of a 224px sidebar and opens upward — so a broker's daily workspace sat two clicks down a menu while \"Workspace\" itself was one click away in the rail. It is a rail item now, directly beneath Workspace, and it left the dropdown rather than being listed twice. Nothing about who sees it changed: refreshBillingUI still shows it from /api/config's canUseVault and /api/vault still re-checks server-side, so the link and the page agree exactly as before. The workspace header then lost the rest of its profile cluster. The entry below took the greeting and \"Add a photo\" and kept the avatar circle, on the grounds that the circle is itself the upload control and that the settings panel had no Remove, so dropping the cluster would have deleted the only way to take a photo off an account. Both grounds were right; the owner still wanted the circle gone, and under the rail the reason is plain, since the account circle is already pinned bottom-left in the sidebar and a second one top-right shows the same face twice on one screen. So the circle went too and the blocker was removed rather than argued with: the settings panel now carries Remove photo alongside Change photo, which is the whole reason that button exists, and the hidden file input stays where it is because settings clicks it. And with that row down to one control, the \"Run a report\" shortcut is red — it starts the same act as the red button at the foot of the chamber it jumps to.",

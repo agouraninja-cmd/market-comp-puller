@@ -45,11 +45,36 @@ function renderVaultHTML(boot, chrome) {
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
   const THEME_CSS = chrome.THEME_CSS || "";
   const THEME_BOOT = chrome.THEME_BOOT || "";
+  // The rail (NAV_SHELL=rail), taken through chrome for the same reason
+  // FOOTER_DARK_CSS is: server.js defines RAIL_CSS once and the two market
+  // stylesheets interpolate it, so a copy here would be the third one to
+  // drift. /vault is the only signed-in surface that draws its own document,
+  // which is exactly why it was the one page the rail never reached -- a
+  // member clicking Vault from a railed page landed on the old top bar.
+  //
+  // NAV_SHELL_CLASS is the class to STAMP, not the deployment's setting. The
+  // caller has already ruled on both NAV_SHELL and whether this render is for
+  // a signed-in member, and hands "" when either answer is no -- the same
+  // shape marketShell computes for itself. That decision reads the session,
+  // which this file may not (see the pure-render note at the top), so it
+  // cannot be made here.
+  const RAIL_CSS = chrome.RAIL_CSS || "";
+  const NAV_SHELL_CLASS = chrome.NAV_SHELL_CLASS || "";
+  // Both default to "", so a caller that passes neither renders precisely
+  // today's page. The rail is one class plus one stylesheet: half of either
+  // is a no-op rather than a broken header.
+  //
+  // Concatenated rather than written as a template literal: hub-page.test.js
+  // pins this file at exactly two backticks, because the whole page IS one
+  // template literal and a third backtick anywhere -- a comment included --
+  // closes it early and ships a dead page. (Confirmed the hard way while
+  // writing this: a backtick in a CSS comment below took the file out.)
+  const RAIL_ATTR = NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : "";
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"${RAIL_ATTR}><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
@@ -84,6 +109,11 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
   position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
   backdrop-filter:saturate(1.2) blur(10px)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
+/* Mirrors MARKET_CSS, where the brand is wrapped the same way. The wrapper
+   is what RAIL_CSS indents in rail mode -- it pads .hleft, not .brand -- and
+   without it the logo alone sits flush against the sidebar's top-left corner
+   while every other page's is inset. */
+.hleft{display:flex;align-items:center;gap:18px}
 /* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
    relationship shared with index.html's header and MARKET_CSS, not this
    page's spacing scale, so it stays literal and identical everywhere. */
@@ -532,11 +562,18 @@ footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
 ${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
+/* Last, and after ACCOUNT_NAV_CSS on purpose: the rail re-lays-out #navAcct
+   and reopens its dropdown upward, so its rules have to come after the ones
+   they override. Everything inside it is behind a min-width:900px guard, so
+   below that this page is byte-for-byte the bar it has always been. */
+${RAIL_CSS}
 </style>
 ${THEME_BOOT}
 </head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+  <div class="hleft">
+    <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+  </div>
   <nav>
     <details>
       <summary>Explore<span class="car">▾</span></summary>

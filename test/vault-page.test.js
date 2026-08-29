@@ -155,6 +155,71 @@ test("passed-in account-nav chrome lands in the vault header", () => {
   assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/);
 });
 
+// ---------------------------------------------------------------------------
+// The rail
+//
+// /vault is the only signed-in surface that builds its own document, so it is
+// the one page a change to the shared chrome cannot reach by itself. It was
+// missed when the rail shipped: a member clicking Vault from a railed page
+// landed on the old top bar. These pin both halves and, just as importantly,
+// that neither half fires on its own.
+// ---------------------------------------------------------------------------
+
+// The class is read off the <html> TAG, never the document. The rail's
+// stylesheet names `html.nav-rail` in its own rules whether or not the mode
+// is on, so a whole-document match reports the rail as present in both modes
+// -- the exact way the first version of nav-shell.test.js failed against
+// correct code.
+const htmlTag = (doc) => (doc.match(/<html[^>]*>/) || [""])[0];
+const hasRail = (doc) => /\bnav-rail\b/.test(htmlTag(doc));
+
+test("the rail's class and stylesheet both reach the page", () => {
+  const html = renderVaultHTML(boot([]), Object.assign({}, CHROME, {
+    NAV_SHELL_CLASS: "nav-rail",
+    RAIL_CSS: "@media (min-width:900px){html.nav-rail body{padding-left:224px}}",
+  }));
+  assert.ok(hasRail(html), "the <html> tag carries the class the rail rides on");
+  assert.match(html, /html\.nav-rail body\{padding-left:224px\}/,
+    "and the stylesheet it needs is in the <style> block");
+});
+
+test("a caller that passes neither renders exactly today's page", () => {
+  // The two halves land in separate commits: this file's is inert until
+  // server.js hands them over. "Inert" has to mean IDENTICAL, not merely
+  // unbroken, or the vault ships a half-applied header in between.
+  const bare = renderVaultHTML(boot([]), CHROME);
+  assert.ok(!hasRail(bare), "no class without one passed in");
+  // Scoped to the stylesheet: the page's inline JS carries several legitimate
+  // `typeof X !== "undefined"` guards, so a whole-document match would fail
+  // on correct code.
+  const style = bare.slice(bare.indexOf("<style>"), bare.indexOf("</style>"));
+  assert.equal(style.includes("undefined"), false,
+    "an absent chrome key must default to the empty string, never print as undefined");
+  assert.match(bare, /<html lang="en"><head>/,
+    "the tag is byte-identical to the one this page has always emitted");
+});
+
+test("an empty class is not stamped as an empty attribute", () => {
+  // NAV_SHELL_CLASS is "" under NAV_SHELL=bar and for an anonymous render.
+  // ` class=""` would still be a markup difference between the two modes,
+  // which is the property nav-shell.test.js's identical-markup test rests on.
+  const bar = renderVaultHTML(boot([]), Object.assign({}, CHROME, {
+    NAV_SHELL_CLASS: "", RAIL_CSS: "",
+  }));
+  assert.doesNotMatch(htmlTag(bar), /class=/, "no empty class attribute");
+});
+
+test("the brand sits in the .hleft wrapper the rail indents", () => {
+  // RAIL_CSS pads .hleft, not .brand. The vault hand-rolls its header rather
+  // than calling marketBar, so the wrapper marketBar emits has to be here too
+  // or the logo alone sits flush against the sidebar's left edge.
+  const html = renderVaultHTML(boot([]), CHROME);
+  assert.match(html, /<div class="hleft">\s*<a class="brand"/,
+    "the brand is wrapped, as it is in marketBar");
+  assert.match(html, /^\.hleft\{display:flex/m,
+    "and the wrapper has its own bar-mode rule, as it does in MARKET_CSS");
+});
+
 test("add-comp and BOV use a form grid rather than a wrapping row", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /<div class="form" style="margin-top:var\(--s4\)">[\s\S]*id="addComp_address"/);

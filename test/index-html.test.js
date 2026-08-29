@@ -2157,3 +2157,53 @@ test("the Google button ships hidden and is revealed only by config", () => {
   assert.match(html, /get\("gerr"\)/,
     "the callback's failure exit (?auth=signin&gerr=1) needs its message");
 });
+
+// ---------------------------------------------------------------------------
+// The pricing deep link is a one-shot, so it may never act on a GUESS
+// ---------------------------------------------------------------------------
+//
+// Reported 2026-08-29: clicking Pricing in any server-rendered header landed
+// on a bare home page with no modal, and only a SECOND click opened it.
+//
+// refreshBillingUI() runs during bootstrap as well (refreshAccountUI calls
+// it), before /api/config has answered. At that point proConfig is still the
+// boot-time `{ enabled: false }` default, so billingLive() reads FALSE on a
+// deployment whose billing is perfectly live. The consumption block flipped
+// the one-shot on that early call, skipped the modal, and cleared ?pricing=1
+// from the URL anyway -- leaving nothing for the later call that had the real
+// answer.
+//
+// This is the identical mistake applyExplorerGating() already guards against,
+// and `proConfigResolved` is the flag written for it. There is no DOM here to
+// drive the race, so these assert the guard is present in the source: cheap,
+// and they fail the moment someone removes it.
+
+test("the pricing deep link waits for a real config answer before consuming", () => {
+  assert.match(html, /if \(pendingPricingHash && proConfigResolved\) \{/,
+    "the ?pricing=1 one-shot must be gated on proConfigResolved, not consumed " +
+    "on the boot-time proConfig default");
+});
+
+test("the pricing one-shot is not cleared on the same pass that skips the modal", () => {
+  // The guard has to sit on the OUTER `if`. Folding it into the `live && !pro`
+  // test would still flip pendingPricingHash and still rewrite the URL, which
+  // is the whole bug -- the modal is not the only thing being lost.
+  const block = html.match(
+    /if \(pendingPricingHash && proConfigResolved\) \{[\s\S]{0,700}?\n    \}/);
+  assert.ok(block, "the pricing consumption block moved or changed shape");
+  assert.ok(/pendingPricingHash = false;/.test(block[0]),
+    "the one-shot is still cleared inside the guarded block");
+  assert.ok(/history\.replaceState/.test(block[0]),
+    "the URL cleanup is still inside the guarded block, not outside it");
+});
+
+test("proConfigResolved is only ever set from a real /api/config answer", () => {
+  // Two call sites (initGate and refreshProConfig), both immediately after the
+  // assignment from cfg. If a third appears that guesses, both deep links --
+  // pricing and ?explore= -- silently regain the bug above.
+  const sets = html.match(/proConfigResolved = true/g) || [];
+  assert.equal(sets.length, 2,
+    "expected exactly the two config-answer call sites to set proConfigResolved");
+  assert.match(html, /let proConfigResolved = false;/,
+    "the flag must default to false, so nothing acts before config lands");
+});

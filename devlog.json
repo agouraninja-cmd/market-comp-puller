@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-29",
+    "type": "fix",
+    "title": "Pricing opens the pricing modal on the first click, not the second",
+    "details": "Clicking Pricing in the header of any server-rendered page sent you to a bare home page with no pricing on it; you had to click Pricing a second time to see the plans. Those headers link to /?pricing=1, which is a deliberate door through the account wall so a signed-out visitor can read the prices. The door is a one-shot, and it was being spent too early: the billing UI repaints once during startup, before /api/config has answered, and at that moment the page cannot yet tell a deployment with billing switched on from one without it. That early pass assumed off, skipped the modal, and cleared the ?pricing=1 marker from the URL anyway, so the later pass that knew the real answer found nothing left to act on. It now waits for a real answer before spending the link. Same guard the Address Explorer's deep link already uses, for the same reason."
+  },
+  {
+    "date": "2026-08-29",
     "type": "improvement",
     "title": "Brokers and For firms are back in the Explore menu",
     "details": "The Explore menu now reads Brokers, For firms, 1031 Guide, Download the app. The two audience pages left the menu on 2026-08-25 and kept only a footer link, which is not where a stranger browsing the site looks for them. For firms was never in the menu at all. Both are in one list in server.js (NAV_LINKS), so the change lands at once on the app's own header and on every server-rendered page, and each page's own link still gets the current-page style."

@@ -2937,3 +2937,104 @@ test("a broker in no firm gets no firm toggle at all", () => {
   const html = renderVaultHTML(firmBoot([comp({})], null), CHROME);
   assert.match(html, /"firm":null|firm":null/, "the boot payload should carry an explicit null firm");
 });
+
+// ---------------------------------------------------------------------------
+// The confirm table reads against the source document
+// ---------------------------------------------------------------------------
+// Measured 2026-08-28: verifying twelve extracted rows took 4m51s with zero
+// corrections needed, against spec §9's 60-second bar
+// (docs/evals/extract-2026-08-28-verdict-final.md). Raw figures were one of
+// the four named causes — a page printing $410,000.00 beside a cell reading
+// 410000 makes a person translate every number before they can agree with it.
+
+test("a numeric figure is shown formatted and held raw", async () => {
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "4250000", size_sqft: "9237" },
+        error: null,
+      }],
+    })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const cells = doc.getElementById("pdfBody").querySelectorAll("input");
+  const price = cells.find((el) => el.getAttribute("data-k") === "price");
+  const size = cells.find((el) => el.getAttribute("data-k") === "size_sqft");
+  assert.equal(price.value, "$4,250,000", "the cell should read like the page it came from");
+  assert.equal(price.getAttribute("data-raw"), "4250000", "and still HOLD the raw figure");
+  assert.equal(size.value, "9,237");
+  assert.equal(size.getAttribute("data-raw"), "9237");
+});
+
+test("a figure normalizeRow would refuse is shown verbatim, never as $NaN", async () => {
+  // The rows a broker most needs to READ are the ones holding something the
+  // parser refused. Number("1.2M") is NaN, so an unguarded money() would
+  // render "$NaN" and erase the only string that says what to fix.
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "1.2M" },
+        error: "price: could not read a number",
+      }],
+    })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const price = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "price");
+  assert.equal(price.value, "1.2M");
+  assert.equal(price.value.indexOf("NaN"), -1, "a refused value must survive the display layer intact");
+});
+
+test("focus shows the raw figure, blur shows the formatted one, and the import posts raw", async () => {
+  let posted = null;
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "4250000" },
+        error: null,
+      }],
+    })),
+    upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })); },
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const price = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "price");
+
+  price.fire("focus");
+  assert.equal(price.value, "4250000", "editing offers the stored figure, not the one with a $ in front");
+
+  price.value = "4300000";
+  price.fire("input");
+  assert.equal(price.getAttribute("data-raw"), "4300000", "data-raw is what the row holds");
+
+  price.fire("blur");
+  assert.equal(price.value, "$4,300,000", "and the reading comes back on the way out");
+
+  doc.getElementById("pdfGo").click();
+  await tick();
+  assert.ok(posted, "the import should have posted");
+  assert.equal(posted.rows[0].price, "4300000",
+    "formatting is a DISPLAY layer — a dollar sign must never reach the vault");
+});
+
+test("every column the confirm table can show has a human label", () => {
+  // tLabel falls back to the key, so a missing entry does not fail — it prints
+  // our own column name at a broker. Migration 029's lease fields reached
+  // PDF_KEYS and never reached TARGET_LABELS, and a lease sheet was headed
+  // "rent_psf" and "rent_basis" until somebody photographed one.
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const keys = JSON.parse(/var PDF_KEYS=(\[[^\]]*\])/.exec(script)[1].replace(/'/g, '"'));
+  const blob = /var TARGET_LABELS=\{([\s\S]*?)\n  \};/.exec(script)[1];
+  const labelled = new Set([...blob.matchAll(/([a-z_]+)\s*:\s*"/g)].map((m) => m[1]));
+  for (const k of keys) {
+    assert.ok(labelled.has(k),
+      `PDF_KEYS carries ${k} with no TARGET_LABELS entry — ` +
+      `the confirm table would head that column "${k}"`);
+  }
+});

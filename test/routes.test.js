@@ -473,6 +473,34 @@ test("bare environment", async (t) => {
     }
   });
 
+  // Where the header's Pricing link points, which is not the same place for
+  // both visitors (owner-reported 2026-08-29). The modal door /?pricing=1 is a
+  // full navigation onto index.html, which strips the param and whose close
+  // handler only hides the modal — so a signed-out reader who clicked Pricing
+  // from any of these pages and then backed out was left standing on the app,
+  // behind the wall's lock card, with nothing pointing back.
+  //
+  // Two halves, and both matter. The markup must ship the SIGNED-OUT href,
+  // because that is the common case, the one a crawler follows, and the one
+  // that survives the hydration script never running. The rewrite to the modal
+  // door must sit under ACCOUNT_NAV_JS's `if(!me)return;`, because that single
+  // line is the whole guarantee that a signed-out visitor is never handed it.
+  await t.test("the header's Pricing link is the rate card for a signed-out reader", async () => {
+    const pages = ["/markets", "/brokers", "/how-it-works", "/leadership", "/pricing"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /<a id="navPricing" href="\/pricing"/,
+        p + " ships the modal door to a signed-out reader instead of the rate card");
+      // The member rewrite exists...
+      assert.match(html, /navPricing"\);if\(np\)np\.setAttribute\("href","\/\?pricing=1"\)/,
+        p + " never upgrades a member's Pricing link to the checkout door");
+      // ...and is downstream of the signed-out bail-out. Anything that moved it
+      // above that line would hand the stranding door back to everybody.
+      assert.ok(html.indexOf('if(!me)return;') < html.indexOf('np.setAttribute("href","/?pricing=1")'),
+        p + " rewrites Pricing before it knows whether anyone is signed in");
+    }
+  });
+
   // The Home link, first in the nav (owner-reported 2026-08-28). A logged-out
   // visitor who opened Explore and landed on one of these pages had nothing
   // that READ as a way back: the wordmark links `/` but does not look like a
@@ -3242,4 +3270,44 @@ test("the comp floor can never ask for more comps than the report will show", ()
     "the floor must be clamped to maxComps");
   assert.match(src, /Math\.max\(3, Number\(process\.env\.COMP_FLOOR_TARGET\)/,
     "and never fall below the prompt's own stated minimum of 3");
+});
+
+test("the live comp extractor's callback resolves every identifier it calls", () => {
+  // expandComp lives in report-parse.js and went unexported in the 2026-08-08
+  // extraction while server.js's streamed-comp callback kept calling it bare.
+  // The ReferenceError was swallowed PER COMP by makeCompExtractor's catch, so
+  // every live `comp` event silently died — no log, no error, the report
+  // itself fine — and nothing noticed until Gemini streaming lit the path up
+  // on 2026-08-29. Pin the wiring: the callback goes through the module, and
+  // no bare expandComp( call survives anywhere in server.js.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /RPARSE\.expandComp\(/,
+    "the streamed-comp callback must expand short keys via the report-parse module");
+  const bare = src.match(/(^|[^.\w])expandComp\(/m);
+  assert.equal(bare, null,
+    "a bare expandComp( call in server.js is a ReferenceError that " +
+    "makeCompExtractor's per-comp catch swallows silently");
+  assert.equal(typeof require("../report-parse").expandComp, "function",
+    "report-parse must keep exporting it, or the module call above throws the same way");
+});
+
+test("EXTRACT_PROMPT asks for the rows in the order the document prints them", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 2026-08-28: verifying 12 correct rows took 4m51s against spec
+  // §9's 60-second bar, and out-of-order rows were the biggest single cause —
+  // checking row 4 meant hunting the document for it, page by page. Nothing
+  // downstream needs a particular order (classifyExtractRows maps in place and
+  // the confirm table renders in place), so the order the model chooses IS the
+  // order the reviewer reads.
+  assert.match(body, /order they appear/i,
+    "the prompt must ask for document order, or the model is free to group and sort");
+  assert.match(body, /Never sort or group/i,
+    "and must forbid sorting by name - an unstated order is one the model picks");
 });

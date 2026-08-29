@@ -2759,7 +2759,15 @@ if(dd)dd.open=false;});</script>
     center_type:"Center type", anchor_tenant:"Anchor tenant",
     units:"Units", price_per_unit:"Price per unit",
     lot_acres:"Lot (acres)", price_per_acre:"Price per acre", zoning:"Zoning",
-    beds_baths:"Beds / baths"
+    beds_baths:"Beds / baths",
+    // Migration 029's lease fields reached PDF_KEYS and never reached here, so
+    // a lease sheet headed its columns "rent_psf" and "rent_basis" — our own
+    // column names, printed at a broker as though they were words. tLabel
+    // falls back to the key, which is why nothing failed and nobody saw it
+    // until a lease row was actually photographed. A test now pins every
+    // PDF_KEYS entry to a label.
+    rent_psf:"Rent ($/SF)", rent_basis:"Rent basis", lease_type:"Lease type",
+    lease_expiry:"Lease expiry", option_notice_date:"Option notice date"
   };
   function tLabel(t){ return TARGET_LABELS[t]||t }
   // A required field can be unclaimable rather than merely unclaimed: a CoStar
@@ -2923,6 +2931,30 @@ if(dd)dd.open=false;});</script>
     $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
   });
 
+  // The confirm table's own display rule, and it is cellDisplay's CONVENTION
+  // rather than a second one: show the formatted figure, hold the raw one,
+  // swap to raw on focus. It exists because this table is read against the
+  // source document — a page printing $410,000.00 beside a cell reading
+  // 410000 makes a person translate every figure before they can agree with
+  // it, which is most of what made verifying twelve correct rows take four
+  // minutes fifty-one (docs/evals/extract-2026-08-28-verdict-final.md).
+  //
+  // The GUARD is why this is not a bare cellDisplay call. The comps table's
+  // values come from the server already through normalizeRow, so they are
+  // numeric and money() can have them unconditionally. These have not been
+  // normalized yet — and the rows a broker most needs to read are exactly the
+  // ones holding something normalizeRow REFUSED, like "1.2M" or "call for
+  // price" — where Number() yields NaN and money() would render "$NaN",
+  // erasing the very string they need in order to fix it. So format only what
+  // is genuinely a number, and show everything else exactly as it was read.
+  function pdfDisplay(k,v){
+    if(v==null||v==="")return "";
+    var s=String(v);
+    var bare=s.replace(/,/g,"");
+    if(!/^-?\\d+(\\.\\d+)?$/.test(bare))return s;
+    return cellDisplay(k,bare);
+  }
+
   function pdfColumns(rows){
     var cols=PDF_REQUIRED.slice();
     PDF_KEYS.forEach(function(k){
@@ -2972,7 +3004,9 @@ if(dd)dd.open=false;});</script>
       var tint=r.error!=null?' class="need-fix"':"";
       var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
       var cells=cols.map(function(k){
-        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+'" value="'+escA(r.values[k]||"")+'"/></td>';
+        var raw=r.values[k]==null?"":String(r.values[k]);
+        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
+          '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
       }).join("");
       return "<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
     }).join("");
@@ -2997,8 +3031,20 @@ if(dd)dd.open=false;});</script>
           refreshPdfGo();
         });
       }else{
+        // data-raw is what the row actually holds and what gets imported; the
+        // value attribute is only ever what is being SHOWN. Focus swaps to raw
+        // so a broker edits 410000 rather than deciding whether the $ and the
+        // commas in front of them are part of what they are about to retype;
+        // blur puts the formatted reading back.
+        inp.addEventListener("focus",function(){
+          inp.value=inp.getAttribute("data-raw")||"";
+        });
         inp.addEventListener("input",function(){
+          inp.setAttribute("data-raw",inp.value);
           if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+        });
+        inp.addEventListener("blur",function(){
+          inp.value=pdfDisplay(inp.getAttribute("data-k"),inp.getAttribute("data-raw")||"");
         });
       }
     });

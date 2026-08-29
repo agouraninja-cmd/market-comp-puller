@@ -2165,6 +2165,41 @@ async function findBrandingProfile(userId) {
   }
 }
 
+// The FIRM fallback for report branding (migration 041): the org_branding row
+// of the caller's firm, consulted only when their own branding_profiles row
+// normalizes to nothing — brandForRender owns that ordering, this only finds
+// the row. Oldest active membership wins when someone is ever in more than one
+// firm (`joined_at` asc — the seats-held-oldest-first precedent), taking the
+// first org whose row actually normalizes to a brand.
+//
+// FAILS OPEN like findBrandingProfile's share-path behavior, and unlike the
+// member's own read in GET /api/branding: a failed org read must never cost a
+// member their own letterhead, fail a share, or 503 the branding editor. The
+// asymmetry is safe here because nothing ever upserts over this value — the
+// blank-on-next-save hazard that forces the strict 503 on the own-profile
+// read has no analogue on a fallback nobody writes back.
+async function findOrgBrandingFor(user) {
+  if (!user || !user.email || !DB_CONFIGURED) return null;
+  try {
+    const memberships = (await orgMembershipsFor(user.email))
+      .filter((r) => ORG.isActive(r))
+      .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+    if (!memberships.length) return null;
+    const ids = [...new Set(memberships.map((r) => String(r.org_id)).filter(Boolean))];
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&limit=${ids.length}`);
+    const byOrg = new Map((rows || []).map((r) => [String(r.org_id), r]));
+    for (const m of memberships) {
+      const row = byOrg.get(String(m.org_id));
+      if (row && BRANDING.normalizeBrand(row)) return row;
+    }
+    return null;
+  } catch (e) {
+    console.error("Firm branding lookup failed:", e.message);
+    return null;
+  }
+}
+
 /**
  * What may this user do? The single entitlement entry point.
  *
@@ -4828,6 +4863,15 @@ function corpusKeyOf(c) {
 const GEO_MEM = new Map();
 const GEO_MEM_MAX = 500;
 
+// Test-only, unset in production — RESEND_API_URL's precedent for
+// RESEND_API_URL's reason: import-time vault geocoding's whole point is a
+// private address leaving the process, and without this the suite could reach
+// the Census call and then had to stop and assume. Not a secret and
+// authorizes nothing, but it decides where a broker's address is posted, so
+// treat it as trusted config.
+const CENSUS_API_URL = (process.env.CENSUS_API_URL ||
+  "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress").trim();
+
 function parseCensusMatch(j) {
   const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
   if (m && m.coordinates && Number.isFinite(m.coordinates.y) && Number.isFinite(m.coordinates.x)) {
@@ -4844,7 +4888,7 @@ async function geocodeCensus(address) {
   let cacheable = false;
   try {
     const r = await fetch(
-      "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
+      CENSUS_API_URL + "?benchmark=Public_AR_Current&format=json&address=" +
         encodeURIComponent(String(address).trim().slice(0, 200)),
       { signal: AbortSignal.timeout(6000) }
     );
@@ -5403,6 +5447,7 @@ cap_rate, and every other percentage, must be the percent number the page shows:
 
 Rules:
 - Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
+- Return the rows in the order they appear in the document: top to bottom, page by page. Never sort or group them - not by type, price, date, or anything else. A person checks these rows against the page they came from, and a reordered list makes them hunt the page for every single row.
 - Omit a field rather than invent it. Never invent a price, date, or size.
 - A row with no sale price and no sale date is a LISTING, not a completed deal, however much it looks like the sold rows around it. Omit transaction and deal_date for it. Never source deal_date from a list date, an assessment date, a photo date or a report date: if the row does not say when the deal closed, omit deal_date.
 - address must be a specific property with a street number, not a district or "general submarket estimate".
@@ -6453,7 +6498,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // of the call — the report itself never depends on the extractor.
   let compExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeCompExtractor((c0, n) => {
-        const c = expandComp(c0);   // comps stream short-keyed; events keep long names
+        const c = RPARSE.expandComp(c0);   // comps stream short-keyed; events keep long names
         say({
           phase: "comp", n,
           address: String((c && c.address) || ""),
@@ -8203,11 +8248,26 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `</div></details>`;
 }
 
-// Pricing lives in a modal that exists only in index.html, so from here it is
-// the /?pricing=1 door — the same shape as /?submit=comp, needed for
-// /#submit-comp, not a new pattern. index.html opens the modal and clears the
-// hash. Rendered inside the Explore dropdown, last, matching index.html.
-const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>`;
+// Pricing has two homes, and this link picks by visitor.
+//
+// A SIGNED-OUT reader gets /pricing, the standalone rate card, because the
+// modal door stranded them: the pricing modal exists only in index.html, so
+// /?pricing=1 is a full navigation OFF whatever page they were reading, onto
+// the app; index.html then strips the param, and closing the modal only hides
+// it. "Not now" therefore left somebody who had never asked to see the app
+// standing on it, behind the account wall's lock card, with nothing pointing
+// back. /pricing is a real page with a real URL and the same figures (both
+// read PRICING), so nothing is lost by sending them there.
+//
+// A SIGNED-IN member keeps the /?pricing=1 door, rewritten onto this element
+// by ACCOUNT_NAV_JS below. For them the modal is the checkout control, not a
+// rate card, and index.html is already their home page — closing it strands
+// nobody.
+//
+// The signed-out href is the one written into the markup on purpose: it is the
+// common case, it is what a crawler follows, and it is what survives if the
+// hydration script never runs. The rewrite is the exception, not the rule.
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>Pricing</a>`;
 
 const ACCOUNT_NAV_JS =
   `<script>(function(){` +
@@ -8228,6 +8288,11 @@ const ACCOUNT_NAV_JS =
   `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
+  // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
+  // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
+  // it impossible to hand a signed-out visitor the door that strands them, so
+  // do not move this call above it for tidiness.
+  `var np=$("navPricing");if(np)np.setAttribute("href","/?pricing=1");` +
   `var lab=String(me.name||me.email||"").trim();` +
   `var ini=$("navAcctInitial");if(ini){` +
   `if(me.avatarRev){ini.className="ini photo";ini.style.backgroundImage="url(/api/account/avatar?v="+encodeURIComponent(me.avatarRev)+")";ini.textContent="";}` +
@@ -15309,10 +15374,73 @@ async function linkVaultProperties(userId, comps) {
         { lat: coord.lat, lng: coord.lng, geo_source: coord.geo_source },
         { prefer: "return=minimal" });
     }
+
+    // The buildings this import left unlocated get the import-time geocode
+    // (spec §3 step 2). Scheduled AFTER the broker-coordinate PATCHes above,
+    // so the lat=is.null read already excludes every building the broker
+    // located themselves.
+    scheduleVaultGeocode(userId, [...index.keys()]);
   } catch (err) {
     // Loud in the log, invisible to the broker.
     console.error("vault property link failed (comps are stored; link deferred):", err.message);
   }
+}
+
+// Import-time geocoding for a broker's unlocated buildings (spec
+// docs/superpowers/specs/2026-08-06-private-comp-geocoding.md §3 step 2 —
+// deferred by the owner's §7 decision on 2026-08-06, built 2026-08-29).
+//
+// THE PRIVACY WALL HOLDS: the address goes to geocodeCensus — our own
+// in-process Census call, the same one POST /api/geocode fronts — and nowhere
+// else. Never Nominatim, never the browser, never a third party the spec did
+// not name. A miss is a skip, never a guess: an unlocated building costs a
+// map pin, while a wrong coordinate puts the building on the wrong continent
+// and nobody would recognize it as wrong.
+//
+// FIRE-AND-FORGET, scheduleCorpusLocate's contract: never awaited on the
+// request path, never throws, no-op without a database. The upload response
+// is already decided by the time this runs; a Census outage leaves lat null
+// and the next upload or vault read retries (outages are not cached in
+// GEO_MEM; real misses are, so a bad address is not re-hammered).
+//
+// `lat=is.null` rides BOTH the read and the PATCH, and that pair is what
+// keeps broker-supplied coordinates authoritative: linkVaultProperties writes
+// the broker's own coordinates first, so this never even reads those
+// buildings — and if a broker write lands between our read and our PATCH,
+// the PATCH matches zero rows. geo_source is 'census' here and only here;
+// the spreadsheet path (broker-properties.js) writes 'broker' and wins.
+const VAULT_GEOCODE_CAP = 25;          // per import — a first real upload should locate in one pass
+const VAULT_GEOCODE_BACKFILL_CAP = 8;  // per vault read, mirroring scheduleCorpusLocate's 8
+
+async function geocodeVaultPropertyRows(userId, rows) {
+  for (const row of rows) {
+    const ll = await geocodeCensus(row.address);
+    if (!ll) continue; // miss or outage: skip, never guess
+    try {
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&id=eq.${encodeURIComponent(row.id)}&lat=is.null`,
+        { lat: ll.lat, lng: ll.lng, geo_source: "census",
+          geocoded_at: new Date().toISOString() },
+        { prefer: "return=minimal" });
+    } catch (_) { /* best-effort, the corpus backfill's stance */ }
+  }
+}
+
+function scheduleVaultGeocode(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = [...new Set((Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean))];
+  if (!keys.length) return;
+  Promise.resolve().then(async () => {
+    const quoted = keys
+      .map((k) => `"${String(k).replace(/"/g, '""')}"`).join(",");
+    const props = await sbRequest("GET",
+      `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+      `&address_key=in.(${encodeURIComponent(quoted)})&lat=is.null` +
+      `&select=id,address_key,address`);
+    await geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_CAP));
+  }).catch(() => {});
 }
 
 // How often each published comp has been cited in a report, read from the
@@ -15702,7 +15830,16 @@ async function attachPropertyCoords(userId, comps) {
       // vault read in this file is user-scoped and an unscoped one is the
       // shape of the next mistake.
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
+      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source,address`);
+
+    // Books uploaded before import-time geocoding shipped (2026-08-29) would
+    // otherwise stay unlocated forever unless re-uploaded. This read already
+    // holds the rows, so the backfill rides it — scheduleCorpusLocate's
+    // pattern with scheduleCorpusLocate's cap, fire-and-forget so the blend
+    // never waits a millisecond on a geocoder.
+    Promise.resolve().then(() => geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_BACKFILL_CAP)
+    )).catch(() => {});
 
     // Both or neither, and null is not a coordinate — the rule lives in the
     // pure, tested BLEND.propertyCoordsById. The bare Number() guard that
@@ -17820,10 +17957,20 @@ const server = http.createServer((req, res) =>
         const rows = await sbRequest("GET",
           `branding_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
         const row = (rows && rows[0]) || null;
+        // The firm fallback rides along (041) so the browser needs no second
+        // round trip to know what a report will carry. Fail-open on purpose,
+        // unlike the own-profile read above: this value is never upserted
+        // back, so a swallowed error costs one render's fallback, not data.
+        const firmRow = await findOrgBrandingFor(user);
         // Answer the API shape, not the table shape, so the column names stay
         // ours to change. An absent profile is {}, not 404: "you have no
-        // branding yet" is a normal state, not an error.
-        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(row) || {} });
+        // branding yet" is a normal state, not an error. `firm` is null when
+        // there is nothing — the browser branches on it, and {} would read as
+        // a brand that normalizes to nothing.
+        return sendJson(res, 200, {
+          branding: BRANDING.normalizeBrand(row) || {},
+          firm: BRANDING.normalizeBrand(firmRow),
+        });
       })().catch((err) => {
         console.error("Branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load your branding. Please try again in a minute." });
@@ -21341,7 +21488,14 @@ const server = http.createServer((req, res) =>
         delete safeMeta.branding;
         if (user && ent.canBrand) {
           const brandRow = await findBrandingProfile(user.id);
-          const brand = BRANDING.normalizeBrand(brandRow);
+          // The firm profile is the fallback, never the override (041) —
+          // brandForRender's own ordering, restated here because this path
+          // snapshots a row rather than rendering one. Only consulted when
+          // the member's own profile normalizes to nothing, so a member with
+          // their own mark costs no org read. Covers auto-share too, which
+          // reaches this route like any other share.
+          const brand = BRANDING.normalizeBrand(brandRow)
+            || BRANDING.normalizeBrand(await findOrgBrandingFor(user));
           if (brand) safeMeta.branding = brand;
         }
 
@@ -22459,6 +22613,92 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm settings update failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't save that setting. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET|PUT|DELETE /api/org/branding — the firm's letterhead (041) -----
+    //
+    // One profile per firm, the fallback a member's report carries when they
+    // have no personal one (brandForRender owns that ordering). Reading is
+    // any active member's — it is about to appear on their own documents, so
+    // they are owed the disclosure. Writing is owner/admin, the same
+    // authority as shareDefault/kind on /api/org/settings and for the same
+    // reason: it changes what every colleague's reports carry, not one
+    // person's own work. Validation is BRANDING.validateForSave, byte for
+    // byte the personal editor's rules — one decision table, two tables.
+    if (orgPath === "/api/org/branding" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+        // API shape, not table shape, and {} for "none yet" — GET
+        // /api/branding's contract, kept identical so the browser's one form
+        // can edit either profile.
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand((rows && rows[0]) || null) || {} });
+      })().catch((err) => {
+        console.error("Firm branding read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "PUT") {
+      (async () => {
+        if (rateLimited("orgbrand:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await openOrg();
+        if (!user) return;
+        // 300KB, /api/branding's own cap: a 150KB logo is ~200KB as base64
+        // inside JSON, plus the fields. readOrgBody's 10KB default was sized
+        // for names and emails, not letterheads.
+        const body = await readOrgBody(3e5);
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        const checked = BRANDING.validateForSave(body);
+        if (checked.error) return sendJson(res, 400, { error: checked.error });
+        await sbRequest("POST", "org_branding?on_conflict=org_id",
+          [{ ...checked.row, org_id: orgId, updated_at: new Date().toISOString() }],
+          { prefer: "resolution=merge-duplicates,return=minimal" });
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(checked.row) || {} });
+      })().catch((err) => {
+        if (err instanceof SyntaxError || (err && err.message === "too_big")) {
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        console.error("Firm branding save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "DELETE") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        // Scoped by org_id in the QUERY, membership proven above — the
+        // personal DELETE's rule, one level up.
+        await sbRequest("DELETE",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}`, undefined,
+          { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("Firm branding delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove the firm's branding. Please try again in a minute." });
       });
       return;
     }

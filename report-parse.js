@@ -529,6 +529,13 @@ module.exports = {
   parseCompJson,
   stripEmDashes,
   SHORT_COMP_KEYS,
+  // Exported for the live comp extractor's callback in server.js, which
+  // expands ONE streamed comp at a time; expandCompKeys below is the whole-
+  // report pass. It went unexported when the pipeline moved here (2026-08-08)
+  // while server.js kept calling it bare, and the resulting ReferenceError was
+  // swallowed per comp by makeCompExtractor's catch — every live `comp` event
+  // silently died, discovered only when Gemini streaming lit the path up.
+  expandComp,
   expandCompKeys,
   normalizeSourceTypes,
   normalizeCurrency,

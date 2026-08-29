@@ -2270,11 +2270,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="flex items-center gap-3">
           <!-- The chamber moved below the workspace (2026-08-29); this is the
                daily user's shortcut back to it, so demotion never costs a hunt.
-               Utility classes are ones deskAvatarChange already uses — the
-               vendored tailwind.css is purged and a new class styles nothing. -->
+               Utility classes are ones #deskAvatarRemove beside it already
+               uses — the vendored tailwind.css is purged against this file, so
+               a class it was not built with styles nothing at all. -->
           <button type="button" id="deskRunReport"
             class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9] whitespace-nowrap">Run a report ↓</button>
-          <button type="button" id="deskAvatarBtn" aria-label="Change profile photo"
+          <!-- Identity was said three times in this row (2026-08-29): the
+               circle, "Signed in as {name}", and "Add a photo" — beside a nav
+               that already carries the same photo and the same account menu.
+               The circle stays, because it IS the upload control (aria-label
+               and title say so, and #avatar deep-links to it) and because
+               clicking your own initial to change a photo is the pattern
+               people already know. "Signed in as" is gone: the account menu
+               answers who you are, and a workspace only ever has one owner.
+               "Add a photo" is gone with it — settings carries an explicit
+               "Change photo" button for anyone who wants a labelled control.
+               Remove STAYS: settings has no remove, so dropping it here would
+               delete the only way to take a photo off. applyAvatarUI already
+               keeps it hidden until there is one. -->
+          <button type="button" id="deskAvatarBtn" aria-label="Change profile photo" title="Change profile photo"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
             style="position:relative">
             <img id="deskAvatarPhoto" alt="" class="hidden"
@@ -2282,13 +2296,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span id="deskAvatarInitial"></span>
           </button>
           <div class="text-right">
-            <span id="deskHello" class="text-[13.5px] text-[#5A6473]"></span>
-            <div class="flex items-center justify-end gap-3">
-              <button type="button" id="deskAvatarChange"
-                class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Add a photo</button>
-              <button type="button" id="deskAvatarRemove"
-                class="hidden text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Remove</button>
-            </div>
+            <button type="button" id="deskAvatarRemove"
+              class="hidden text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">Remove photo</button>
             <p id="deskAvatarMsg" class="hidden text-xs text-red-700"></p>
           </div>
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
@@ -11859,9 +11868,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("deskAvatarInitial"),
       user);
     const has = Boolean(user && user.avatarRev);
-    const change = document.getElementById("deskAvatarChange");
+    // Remove is the only control left in the desk header (the "Add a photo"
+    // twin went with the identity cluster on 2026-08-29; the circle itself is
+    // the upload control now, and settings carries the labelled one). Still
+    // guarded: this also runs before the desk markup matters.
     const remove = document.getElementById("deskAvatarRemove");
-    if (change) change.textContent = has ? "Change photo" : "Add a photo";
     if (remove) remove.classList.toggle("hidden", !has);
   }
 
@@ -12183,10 +12194,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     applyAvatarUI(currentUser);
   }
 
+  // Two triggers reach the one hidden input: the workspace circle and the
+  // settings panel's labelled button. #deskAvatarChange was a third, beside
+  // the circle, and went with the identity cluster.
   document.getElementById("deskAvatarBtn").addEventListener("click", () => {
-    document.getElementById("deskAvatarFile").click();
-  });
-  document.getElementById("deskAvatarChange").addEventListener("click", () => {
     document.getElementById("deskAvatarFile").click();
   });
   document.getElementById("deskAvatarFile").addEventListener("change", async (e) => {
@@ -12591,7 +12602,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       return;
     }
     desk.classList.remove("hidden");
-    document.getElementById("deskHello").textContent = currentUser.name ? `Signed in as ${currentUser.name}` : currentUser.email;
+    // No "Signed in as {name}" line any more: the account menu in the nav
+    // carries the identity and the same photo, and a workspace only ever has
+    // one owner, so saying it a second time above their own book was telling
+    // them something they could not not know.
     applyAvatarUI(currentUser);
     if (location.hash === "#avatar") {
       const el = document.getElementById("deskAvatarBtn");
@@ -12680,7 +12694,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
         cell("Between checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
           bookPct == null ? "re-run a property to start the trail" : betweenNote, false, bookPct == null ? "" : betweenTitle) +
-        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
+        // Placeholder only: renderWatchFeed fills this in from a second
+        // request. Label and anatomy match what it writes, so the cell never
+        // changes shape when the feed lands.
+        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">New comps</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
     }
     const grid = document.getElementById("portfolioGrid");
     grid.innerHTML = "";
@@ -13126,11 +13143,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? (totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} across ${feed.items.length} market${feed.items.length === 1 ? "" : "s"}` : `${feed.items.length} market${feed.items.length === 1 ? "" : "s"} watched · quiet`)
       : "";
     const mk = document.getElementById("deskLedgerMarkets");
-    // Same anatomy as renderMyDesk's placeholder cell (dk-lfig/dk-lnote) —
-    // a test pins the two writers together, because a cell that changes
-    // shape when the feed fills it in reads as a glitch.
-    if (mk) mk.innerHTML = `<span class="rd-lab">Markets watched</span><div class="dk-lfig">${feed.items.length}</div>` +
-      `<div class="dk-lnote">${totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} waiting` : "&nbsp;"}</div>`;
+    // The fourth cell counts NEW COMPS, not watched markets (2026-08-29). The
+    // other three are facts about the book; this one was a count of a
+    // preference, with the only live thing on the whole strip — "N new comps
+    // waiting" — demoted to the 11px note beneath it. The signal is the figure
+    // now and the markets are the context, which is the way round that makes
+    // the cell worth looking at.
+    //
+    // Same anatomy as renderMyDesk's placeholder (dk-lfig/dk-lnote): a test
+    // pins the two writers together, because a cell that changes shape when
+    // the feed fills it in reads as a glitch.
+    const mkts = feed.items.length;
+    const mkNote = !mkts
+      ? "watch a market to see new comps here"
+      : totalNew
+        ? `across ${mkts} market${mkts === 1 ? "" : "s"} you watch`
+        : `${mkts} market${mkts === 1 ? "" : "s"} watched · quiet`;
+    if (mk) mk.innerHTML = `<span class="rd-lab">New comps</span><div class="dk-lfig">${mkts ? totalNew : "—"}</div>` +
+      `<div class="dk-lnote">${mkNote}</div>`;
     if (markSeen && feed.unseen) {
       try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
     }

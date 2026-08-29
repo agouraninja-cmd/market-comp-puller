@@ -16317,7 +16317,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // because whether Pricing is offered at all is `live && !pro`, and that is
     // only known once /api/config lands. One-shot, and the hash is cleared
     // either way so a refresh doesn't reopen a modal that was closed.
-    if (pendingPricingHash) {
+    //
+    // WAIT for a real config answer before consuming it — the same one-shot
+    // rule applyExplorerGating() states at more length. refreshBillingUI runs
+    // during bootstrap too (refreshAccountUI calls it), and at that point
+    // proConfig is still the boot-time `{ enabled: false }` default, whose
+    // `billing` is undefined, so `live` is FALSE for a deployment whose
+    // billing is perfectly live. Without this guard that early call ate the
+    // link: it flipped the one-shot, skipped the modal because `live` was a
+    // guess, and cleared ?pricing=1 from the URL anyway -- so clicking
+    // Pricing from any server-rendered header landed on a bare home page with
+    // no modal, and only a SECOND click (on #pricingLink, unhidden by then)
+    // opened it. Reported 2026-08-29 and reproduced on the first load of
+    // /?pricing=1. Do not fold this into the `live && !pro` test below: the
+    // point is to leave the link UNCONSUMED and the URL intact so the next
+    // call, the one with a real answer, still finds it.
+    if (pendingPricingHash && proConfigResolved) {
       pendingPricingHash = false;
       if (live && !pro) openPricingModal();
       // Clear BOTH forms of the door so a refresh doesn't reopen a modal the

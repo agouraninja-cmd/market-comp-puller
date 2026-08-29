@@ -45,11 +45,24 @@ function renderVaultHTML(boot, chrome) {
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
   const THEME_CSS = chrome.THEME_CSS || "";
   const THEME_BOOT = chrome.THEME_BOOT || "";
+  // The rail, taken whole from server.js rather than restated here. This page
+  // draws its own stylesheet, so a pasted copy would be the THIRD -- and the
+  // Explore-hide bug that took the account cluster off every market page had
+  // to be fixed in two places precisely because there were already two.
+  const RAIL_CSS = chrome.RAIL_CSS || "";
+  // The class the rules hang off, empty when NAV_SHELL=bar. Gated on this
+  // rather than on RAIL_CSS, which is a constant and true in both modes.
+  const NAV_SHELL_CLASS = chrome.NAV_SHELL_CLASS || "";
+  // Whether to wear it. Signed-in only, the rule every other surface follows:
+  // the rail marks "you are inside the product". Decided on cookie PRESENCE,
+  // like every marketShell page, so the chrome never disagrees with the page
+  // it frames -- the real gate is the boot payload the route resolved.
+  const signedIn = Boolean(chrome.signedIn);
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"${signedIn && NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : ""}><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
@@ -532,23 +545,38 @@ footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
 ${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
+${RAIL_CSS}
+/* The brand. marketBar wraps it in .hleft, which the rail pads; this page
+   puts .brand straight in the header, so the same padding is applied here
+   rather than adding a wrapper the bar layout would then have to absorb. */
+@media (min-width:900px){
+  html.nav-rail .hdr .brand{padding:0 20px 16px}
+}
 </style>
 ${THEME_BOOT}
 </head><body>
 <header class="hdr"><div class="wrap">
   <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
   <nav>
-    <details>
-      <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/">Run a report</a></div>
-    </details>
+    ${ACCOUNT_NAV_PRICING}
     <!-- The same rows in the same order as marketBar and the app's bar --
          Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
          (owner's, 2026-08-29). This header is composed by hand rather than by
          marketBar, so it is the surface that drifts: it had Markets and the
-         1031 guide buried in the dropdown above and no way at all to reach
-         bulk valuation, and the moment this page wears the rail that dropdown
-         stops rendering and the drift becomes two dead ends. -->
+         1031 guide buried in a dropdown and no way at all to reach bulk
+         valuation, and the moment this page wears the rail that dropdown
+         stops rendering and the drift becomes two dead ends.
+
+         The Explore <details> is GONE rather than reduced. #222 left Pricing
+         and "Run a report" inside it, which was right while this page wore
+         the top bar -- but the rail hides every nav <details> at >=900px, so
+         the moment the class lands (this branch) those two become the very
+         dead ends the comment above is about, and this page has no footer
+         links to fall back on: its footer is four lines of prose. Promoting
+         them is also what marketBar does, where Pricing is a top-level row
+         and "Run a report" is the trailing CTA -- so this converges the two
+         headers instead of leaving a third shape. The five rows the owner
+         named keep their order exactly, untouched, between them. -->
     <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
     <a href="/markets">Market explorer</a>
@@ -557,6 +585,7 @@ ${THEME_BOOT}
          all that is needed, and the entitlement read stays in the one place
          that owns it. -->
     <a id="navBulk" href="/bulk" hidden>Bulk valuation</a>
+    <a href="/">Run a report</a>
     ${ACCOUNT_NAV_SLOTS}
   </nav>
 </div></header>${ACCOUNT_NAV_JS}

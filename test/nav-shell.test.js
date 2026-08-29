@@ -24,6 +24,10 @@ const { boot } = require("./helpers/boot");
 
 const SESSION = { cookie: "cn_session=not-a-real-token" };
 const SERVER_JS = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+// The vault draws its own document, so it is the surface most easily left
+// behind when the shell changes — which is exactly what happened: it wore the
+// top bar while every other signed-in page had moved to the rail.
+const VAULT_JS = fs.readFileSync(path.join(__dirname, "..", "vault-page.js"), "utf8");
 
 // The rail rides on a class on the <html> TAG. It must be read from the tag
 // and never from the document, because the stylesheet in every page's <head>
@@ -117,27 +121,55 @@ test("the markup is identical in both modes — only the class differs", async (
   assert.equal(strip(a), strip(b), "the two modes must render the same markup");
 });
 
+// The rail's rules live in ONE const now (RAIL_CSS) with three consumers, so
+// these read the definition rather than each stylesheet. What still has to be
+// pinned per consumer is that each one actually interpolates it — a stylesheet
+// that quietly stopped would lose the rail with nothing else looking wrong.
+const railBlock = () => {
+  const m = SERVER_JS.match(/const RAIL_CSS = `[\s\S]*?\n`;/);
+  assert.ok(m, "could not read RAIL_CSS");
+  return m[0];
+};
+
 test("the rail rules are scoped so a phone never sees them", () => {
   // Below 900px the header is the wrapping bar it has always been. If the
   // rules were unscoped, the fix for a phone would be a drawer — the thing
   // this design exists to avoid building.
+  const css = railBlock();
+  assert.ok(css.includes("nav-rail"), "RAIL_CSS carries the rail rules");
+  assert.match(css, /@media\s*\(min-width:\s*900px\)[\s\S]*?nav-rail/,
+    "the rail rules are behind a min-width guard");
+
+  // Every nav-rail rule sits inside a min-width or print guard. Counted rather
+  // than eyeballed, because one rule added below the closing brace is exactly
+  // the edit that would put a 224px sidebar on a phone.
+  const guarded = css.slice(css.indexOf("@media"));
+  assert.equal(css.split("nav-rail").length - 1, guarded.split("nav-rail").length - 1,
+    "a nav-rail rule was added before the first @media guard");
+});
+
+test("both market stylesheets still take the rail, and the vault does too", () => {
+  // The whole point of one definition is that consumers cannot drift apart.
+  // The failure this catches is silent: a stylesheet that stops interpolating
+  // RAIL_CSS renders a perfectly correct page with no sidebar on it.
+  const uses = SERVER_JS.match(/\$\{RAIL_CSS\}/g) || [];
+  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate RAIL_CSS");
   for (const block of ["MARKET_CSS", "HOW_CSS"]) {
     const m = SERVER_JS.match(new RegExp(`const ${block} =[\\s\\S]*?\`;`));
     assert.ok(m, `could not read ${block}`);
-    assert.ok(m[0].includes("nav-rail"), `${block} carries the rail rules`);
-    // Every nav-rail rule must sit inside a min-width media query.
-    const railRules = m[0].split("nav-rail").length - 1;
-    assert.ok(railRules > 0, `${block} has rail rules`);
-    assert.match(m[0], /@media\s*\(min-width:\s*900px\)[\s\S]*?nav-rail/,
-      `${block}'s rail rules are behind a min-width guard`);
+    assert.ok(m[0].includes("${RAIL_CSS}"), `${block} no longer takes the rail`);
   }
+  // vault-page.js draws its own stylesheet, so it takes the same const through
+  // the chrome object rather than by pasting a third copy.
+  assert.match(SERVER_JS, /RAIL_CSS,/, "the vault's chrome object is not handed RAIL_CSS");
+  assert.ok(VAULT_JS.includes("chrome.RAIL_CSS"), "vault-page.js does not read RAIL_CSS");
+  assert.ok(VAULT_JS.includes("${RAIL_CSS}"), "vault-page.js reads RAIL_CSS but never emits it");
 });
 
 test("the rail never prints", () => {
   // #results is the only thing that should reach paper. A 224px empty column
   // down the left of every printed report is the failure this prevents.
-  const m = SERVER_JS.match(/const MARKET_CSS =[\s\S]*?`;/);
-  assert.match(m[0], /@media print[\s\S]*?padding-left:\s*0/,
+  assert.match(railBlock(), /@media print[\s\S]*?padding-left:\s*0/,
     "print resets the body's rail padding");
 });
 
@@ -240,12 +272,10 @@ test("the rail hides Explore without taking the account cluster with it", () => 
   // correct — only the computed style was wrong, which is the failure mode a
   // byte-identical-markup design is most exposed to.
   const hides = SERVER_JS.match(/html\.nav-rail \.hdr nav>details[^{]*\{display:none\}/g) || [];
-  assert.equal(hides.length, 2,
-    "MARKET_CSS and HOW_CSS are twins by design; both carry this rule or the two front doors drift");
-  for (const rule of hides) {
-    assert.ok(rule.includes(":not(#navAcct)"),
-      `the Explore hide must spare the account cluster, got: ${rule}`);
-  }
+  assert.equal(hides.length, 1,
+    "the rail is defined once (RAIL_CSS); a second copy of this rule means the duplication came back");
+  assert.ok(hides[0].includes(":not(#navAcct)"),
+    `the Explore hide must spare the account cluster, got: ${hides[0]}`);
   // The rules that lay #navAcct out FOR the rail are what prove it was always
   // meant to show. If they ever go, this test would start passing for the
   // wrong reason, so it fails instead.
@@ -279,4 +309,35 @@ test("the app re-decides the rail when identity changes in place", () => {
     "NAV_SHELL=bar must survive a client-side re-decide");
   assert.match(SERVER_JS, /rail: Boolean\(NAV_SHELL_CLASS\)/,
     "the deployment's shell choice has to reach the page for that guard to mean anything");
+});
+
+test("/vault wears the rail too, and never for a stranger", async (t) => {
+  // The vault was the last signed-in surface still wearing the top bar, which
+  // is what made the chrome look like it changed at random: sign in, land on
+  // the app, click Vault, and the sidebar vanished. It builds its own document
+  // rather than going through marketShell, so nothing else here covered it.
+  const srv = await boot({ NAV_SHELL: "rail" });
+  t.after(() => srv.stop());
+
+  const member = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  assert.ok(hasRail(member), "/vault stamps the rail for a member");
+
+  const anon = await (await fetch(srv.base + "/vault")).text();
+  assert.ok(!hasRail(anon), "/vault has no rail for an anonymous visitor");
+
+  // It varies on the cookie now, so it has to say so like every other page.
+  const res = await fetch(srv.base + "/vault", { headers: SESSION });
+  assert.match(String(res.headers.get("vary") || ""), /cookie/i,
+    "/vault renders two different documents by cookie and must declare it");
+});
+
+test("NAV_SHELL=bar reaches the vault as well as everything else", async (t) => {
+  // The rollback lever is only a lever if it covers every surface. A page that
+  // keeps the rail after NAV_SHELL=bar is a page that cannot be rolled back.
+  const srv = await boot({ NAV_SHELL: "bar" });
+  t.after(() => srv.stop());
+  for (const p of ["/vault", "/markets", "/"]) {
+    const html = await (await fetch(srv.base + p, { headers: SESSION })).text();
+    assert.ok(!hasRail(html), `${p} still wore the rail with NAV_SHELL=bar`);
+  }
 });

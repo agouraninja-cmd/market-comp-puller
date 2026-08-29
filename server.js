@@ -8414,6 +8414,82 @@ const FOOTER_DARK_CSS = `
 [data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
 `;
 
+// --- The rail's stylesheet, defined ONCE -----------------------------------
+//
+// This block used to be pasted verbatim into MARKET_CSS and HOW_CSS, under a
+// comment telling the next person to edit both together. That is the drift
+// this repo has been bitten by before, and it bit here: the Explore hide had
+// to be corrected in two places, and vault-page.js -- which draws its own
+// stylesheet -- could not have the rail at all without becoming a THIRD copy.
+//
+// So it is one const with three consumers: the two market stylesheets
+// interpolate it, and vault-page.js takes it through the same `chrome` object
+// that already hands it ACCOUNT_NAV_CSS, FOOTER_DARK_CSS and THEME_CSS for
+// exactly this reason.
+//
+// theme.test.js checks these stylesheets for var(--x) names that are not
+// theme.js tokens; it reads each block by name, so RAIL_CSS is in its list
+// too. Lifting rules out of a checked block and into an unchecked one is the
+// quiet way to lose that guarantee.
+const RAIL_CSS = `
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes.
+     :not(#navAcct) because the account cluster is a <details> TOO, and a bare
+     details rule took it -- email, Upgrade, Manage billing, Sign out -- off
+     every server-rendered page in rail mode. The two rules just below style
+     #navAcct FOR the rail, which is what proves it was meant to show. */
+  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
+`;
+
 const MARKET_CSS = `
 ${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
@@ -8481,62 +8557,7 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
-/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
-   The header, stood on its end. Not a new component: the same element, the
-   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
-   render stamps. Everything here is inside a min-width guard, so below 900px
-   the bar above is untouched -- which is the entire mobile answer, and why
-   there is no drawer, no focus trap and no scroll lock anywhere in this file.
-   The content never moves: .wrap keeps its margin:0 auto, so every centered
-   band re-centres inside the body's new left padding by itself.
-   224px is a literal on purpose. A rail-width custom property would fail
-   theme.test.js's rule that every custom property in these stylesheets names a
-   theme.js token, and a width is not a colour anyway.
-   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
-   design; edit them together or the two front doors drift. */
-@media (min-width:900px){
-  html.nav-rail body{padding-left:224px}
-  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
-    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
-    /* Below the dropdowns (1100) and far below the modals, so an opened
-       account menu and any overlay still cover the rail. */
-    z-index:30}
-  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
-    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
-    row-gap:0;padding:22px 0 18px}
-  html.nav-rail .hleft{padding:0 20px 16px}
-  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
-    flex-wrap:nowrap;gap:0}
-  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
-    padding:7px 20px;border-left:3px solid transparent;text-align:left}
-  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
-  /* Where the reader already is. marketBar passes its current argument, which is what
-     puts aria-current on the matching link, so this needs no new markup. */
-  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
-    border-left-color:var(--red-fill);background:var(--wash)}
-  /* The call to action is a button, not a nav row. */
-  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
-  /* Explore has nowhere to open in a 224px column, and its two links belong
-     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
-     rather than removed so the markup stays identical in both modes.
-     :not(#navAcct) because the account cluster is a <details> TOO, and a bare
-     details rule took it -- email, Upgrade, Manage billing, Sign out -- off
-     every server-rendered page in rail mode. The two rules just below style
-     #navAcct FOR the rail, which is what proves it was meant to show. */
-  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
-  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
-     dropdown's default top:calc(100% + 10px) would run off the bottom of
-     the viewport from there. */
-  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
-  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
-  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
-}
-/* Paper has no sidebar. Without this the printed page carries a 224px empty
-   column down its left edge on every server-rendered surface. */
-@media print{
-  html.nav-rail body{padding-left:0}
-  html.nav-rail .hdr{position:static;width:auto;border-right:0}
-}
+${RAIL_CSS}
 /* Phones: anchor the menu to the HEADER rather than to its own trigger. The
    nav wraps to its own row below ~450px, which puts the Explore <details> at
    the left edge — where right:0 sent 105px of a 176px menu off-screen, every
@@ -11276,62 +11297,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
-/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
-   The header, stood on its end. Not a new component: the same element, the
-   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
-   render stamps. Everything here is inside a min-width guard, so below 900px
-   the bar above is untouched -- which is the entire mobile answer, and why
-   there is no drawer, no focus trap and no scroll lock anywhere in this file.
-   The content never moves: .wrap keeps its margin:0 auto, so every centered
-   band re-centres inside the body's new left padding by itself.
-   224px is a literal on purpose. A rail-width custom property would fail
-   theme.test.js's rule that every custom property in these stylesheets names a
-   theme.js token, and a width is not a colour anyway.
-   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
-   design; edit them together or the two front doors drift. */
-@media (min-width:900px){
-  html.nav-rail body{padding-left:224px}
-  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
-    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
-    /* Below the dropdowns (1100) and far below the modals, so an opened
-       account menu and any overlay still cover the rail. */
-    z-index:30}
-  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
-    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
-    row-gap:0;padding:22px 0 18px}
-  html.nav-rail .hleft{padding:0 20px 16px}
-  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
-    flex-wrap:nowrap;gap:0}
-  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
-    padding:7px 20px;border-left:3px solid transparent;text-align:left}
-  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
-  /* Where the reader already is. marketBar passes its current argument, which is what
-     puts aria-current on the matching link, so this needs no new markup. */
-  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
-    border-left-color:var(--red-fill);background:var(--wash)}
-  /* The call to action is a button, not a nav row. */
-  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
-  /* Explore has nowhere to open in a 224px column, and its two links belong
-     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
-     rather than removed so the markup stays identical in both modes.
-     :not(#navAcct) because the account cluster is a <details> TOO, and a bare
-     details rule took it -- email, Upgrade, Manage billing, Sign out -- off
-     every server-rendered page in rail mode. The two rules just below style
-     #navAcct FOR the rail, which is what proves it was meant to show. */
-  html.nav-rail .hdr nav>details:not(#navAcct){display:none}
-  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
-     dropdown's default top:calc(100% + 10px) would run off the bottom of
-     the viewport from there. */
-  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
-  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
-  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
-}
-/* Paper has no sidebar. Without this the printed page carries a 224px empty
-   column down its left edge on every server-rendered surface. */
-@media print{
-  html.nav-rail body{padding-left:0}
-  html.nav-rail .hdr{position:static;width:auto;border-right:0}
-}
+${RAIL_CSS}
 @media (max-width:639.98px){
   .hdr .wrap{position:relative}
   .hdr nav details{position:static}
@@ -24488,6 +24454,9 @@ const server = http.createServer((req, res) =>
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
+        // The document now varies on the session cookie, because the cookie is
+        // what decides the rail. Same declaration every other rail page makes.
+        vary: "cookie",
         "x-robots-tag": "noindex, nofollow",
       });
       res.end(renderVaultHTML(boot, {
@@ -24500,6 +24469,27 @@ const server = http.createServer((req, res) =>
         ACCOUNT_NAV_JS,
         ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
         ACCOUNT_NAV_PRICING,
+        // The rail, on the last signed-in surface that was still wearing the
+        // top bar. The vault draws its own stylesheet, so it takes the shared
+        // const rather than a third copy of the rules — the same route
+        // ACCOUNT_NAV_CSS and FOOTER_DARK_CSS already travel by.
+        //
+        // This is NOT the chrome fold (the plan's Task 9, which retires this
+        // page's hand-written header entirely and renders it through
+        // marketShell). That is a much larger change to the page holding
+        // brokers' private books, and it is still owed. This is the shell
+        // consistency on its own, which is what a member actually sees.
+        RAIL_CSS,
+        // The CLASS, not just the stylesheet. RAIL_CSS is a constant and is
+        // therefore truthy in BOTH modes, so a vault that inferred the mode
+        // from it kept the sidebar after NAV_SHELL=bar -- a rollback lever
+        // that misses a surface is not a lever. This is the same value every
+        // other page gates on, and it is empty in bar mode.
+        NAV_SHELL_CLASS,
+        // Cookie PRESENCE, the identical cheap rule every marketShell page
+        // uses. The real gate is the boot payload resolved above; this only
+        // decides which shape the chrome takes.
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
       }));
     })();
     return;

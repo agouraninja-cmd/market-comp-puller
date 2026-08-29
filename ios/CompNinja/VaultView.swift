@@ -14,6 +14,7 @@ import CompNinjaKit
 struct VaultView: View {
     @EnvironmentObject private var model: AppModel
     @StateObject private var vm = VaultModel()
+    @State private var adding = false
 
     var body: some View {
         NavigationStack {
@@ -43,6 +44,28 @@ struct VaultView: View {
             .navigationTitle("Your book")
             .searchable(text: $vm.filter.search, prompt: "Find an address, note or tenant")
             .refreshable { await vm.load(api: model.api) }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        adding = true
+                    } label: { Label("Add a comp", systemImage: "plus") }
+                }
+            }
+            .sheet(isPresented: $adding) {
+                VaultCompFormView(mode: .add) {
+                    Task { await vm.load(api: model.api) }
+                }
+                .environmentObject(model)
+            }
+            .safeAreaInset(edge: .bottom) {
+                if let notice = vm.notice {
+                    NoticeBar(text: notice,
+                              undo: vm.undoable != nil
+                                  ? { Task { await vm.undoDelete(api: model.api) } }
+                                  : nil,
+                              dismiss: { vm.notice = nil; vm.undoable = nil })
+                }
+            }
         }
         .task { await vm.load(api: model.api) }
     }
@@ -80,10 +103,16 @@ struct VaultView: View {
                 Section {
                     ForEach(vm.visible) { comp in
                         NavigationLink {
-                            VaultCompView(comp: comp, payload: vm.payload)
+                            VaultCompView(comp: comp, payload: vm.payload,
+                                          onChanged: { Task { await vm.load(api: model.api) } })
                         } label: {
                             VaultCompRow(comp: comp,
                                          sharedWithFirm: vm.payload.sharedWithFirm.contains(comp.id))
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                Task { await vm.delete(comp, api: model.api) }
+                            } label: { Label("Delete", systemImage: "trash") }
                         }
                     }
                 } header: {
@@ -291,6 +320,54 @@ final class VaultModel: ObservableObject {
 
     func clearFilters() { filter = VaultFilter() }
 
+    // MARK: Delete, and putting it back
+
+    /// The last deleted comp, held IN MEMORY ONLY.
+    ///
+    /// This catches the misclick noticed immediately, not a deletion regretted
+    /// tomorrow. A store that survived a relaunch would promise more than it
+    /// keeps, and the confirm below is worded to match what this actually is.
+    @Published var undoable: VaultComp?
+    @Published var notice: String?
+
+    func delete(_ comp: VaultComp, api: APIClient) async {
+        do {
+            try await api.deleteVaultComp(id: comp.id)
+            undoable = comp
+            notice = "Deleted \(comp.address.isEmpty ? "that comp" : comp.address)."
+            await load(api: api)
+        } catch let e as APIError {
+            notice = e.message
+        } catch {
+            notice = "Couldn't delete that. Please try again."
+        }
+    }
+
+    /// Put it back through the ordinary add route.
+    ///
+    /// Deliberately POST /api/vault/comp rather than some restore endpoint, so
+    /// a restored comp goes through `normalizeRow` like every other written
+    /// row and cannot put back something the vault would refuse to be told
+    /// today. Two consequences said plainly rather than left to be discovered:
+    /// it comes back as a NEW entry belonging to no import, and a comp that
+    /// was published is NOT republished, because publishing is a deliberate
+    /// public act and undoing a delete is not consent to repeat it.
+    func undoDelete(api: APIClient) async {
+        guard let comp = undoable else { return }
+        undoable = nil
+        do {
+            try await api.addVaultComp(VaultDraft(comp).body())
+            notice = comp.published
+                ? "Put back as a new entry. It is not published again, so publish it when you want to."
+                : "Put back as a new entry."
+            await load(api: api)
+        } catch let e as APIError {
+            notice = e.message
+        } catch {
+            notice = "Couldn't put that back. Please try again."
+        }
+    }
+
     func load(api: APIClient) async {
         do {
             payload = try await api.vault()
@@ -302,5 +379,30 @@ final class VaultModel: ObservableObject {
         } catch {
             state = .failed("Something went wrong. Please try again.")
         }
+    }
+}
+
+/// What just happened, with the way back where there is one.
+private struct NoticeBar: View {
+    let text: String
+    let undo: (() -> Void)?
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(text).font(.caption).lineLimit(2)
+            Spacer()
+            if let undo {
+                Button("Undo", action: undo).font(.caption.weight(.semibold))
+            }
+            Button {
+                dismiss()
+            } label: { Image(systemName: "xmark").font(.caption2) }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
     }
 }

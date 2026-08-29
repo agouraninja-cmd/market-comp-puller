@@ -9,6 +9,10 @@ import CompNinjaKit
 struct VaultCompView: View {
     let comp: VaultComp
     let payload: VaultPayload
+    var onChanged: () -> Void = {}
+
+    @EnvironmentObject private var model: AppModel
+    @State private var editing = false
 
     var body: some View {
         List {
@@ -71,6 +75,17 @@ struct VaultCompView: View {
         }
         .navigationTitle(comp.dealDate.isEmpty ? "Comp" : comp.dealDate)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Edit") { editing = true }
+            }
+        }
+        .sheet(isPresented: $editing) {
+            VaultCompFormView(mode: .edit(id: comp.id), draft: VaultDraft(comp)) {
+                onChanged()
+            }
+            .environmentObject(model)
+        }
     }
 
     private var dealRows: [(label: String, value: String)] {

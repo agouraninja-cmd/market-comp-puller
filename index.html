@@ -1294,8 +1294,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
     .dk-up { color: var(--ok-text); font-size: 11px; font-weight: 500; }
     .dk-down { color: var(--red); font-size: 11px; font-weight: 500; }
-    .dk-mkt { padding: 14px 0; border-bottom: 1px solid var(--hair); }
-    .dk-mkt:last-child { border-bottom: 0; }
+    /* Feed entries read as briefing cards since 2026-08-29, not ruled rows:
+       each watched market is a self-contained "what changed" note, and the
+       card edge is what keeps its comp list from reading as the next
+       market's. #feedWrap's space-y-4 already spaces them. */
+    .dk-mkt { padding: 14px 16px; border: 1px solid var(--edge); border-radius: 6px; background: var(--card); }
     .dk-mname { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 15px; color: var(--ink); }
     .dk-new { display: inline-block; font-size: 9.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--red); margin-top: 6px; }
     /* The search-demand line. Vars, not literals, so it follows dark mode with
@@ -1338,6 +1341,47 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* First section under a deck heading sits closer than the mt-8 the
        sections carry between themselves — the heading already separates. */
     .dk-deck > .dk-deck-h + * { margin-top: 18px; }
+    /* The chamber's desk-context header (2026-08-29): the demoted search form
+       reads as one more deck of the workspace. Lives inside #searchSection so
+       the wall's boot CSS hides it with its parent.
+       The .hidden line below is LOAD-BEARING, not belt-and-braces: dk-deck-h
+       sets display:flex in this style block, which loads after tailwind.css,
+       so at equal specificity it beats Tailwind's .hidden and the header
+       showed on the signed-out home — vault-page.js's ".deck.hide" cascade
+       trap, caught here by a screenshot, not by reading. */
+    #searchDeckHead { margin: 44px 0 14px; }
+    #searchDeckHead.hidden { display: none; }
+    /* The workspace ledger, promoted a full step (2026-08-29): with the
+       workspace leading the page, this strip is its opening statement, so the
+       figures go Georgia and the cells get room. dk-lfig/dk-lnote replace the
+       old dk-fig text-[21px] pairing so the scale lives here, in the style
+       block, not in a Tailwind utility the vendored build may not carry.
+       rd-lcell/rd-lab are kept underneath so the dark-theme overrides that
+       target them keep working. */
+    .dk-ledger .rd-lcell { padding: 18px 20px 16px; }
+    .dk-lfig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 30px; line-height: 1.1; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 34px; }
+    .dk-lnote { font-size: 11px; color: var(--ink-3); margin-top: 5px; text-align: left; }
+    @media (max-width: 639.98px) {
+      .dk-lfig, .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 24px; }
+    }
+    /* Deck interiors (2026-08-29). One family: addresses go Georgia
+       (.dk-addr), people and shelf entries go hairline rows, and the two
+       static cards stop hard-coding bg-white (which was wrong in dark mode
+       anyway). All in the style block, never new Tailwind utilities — the
+       vendored build silently drops a class it was not purged against, and
+       this file already carries three scars from that. */
+    .dk-addr { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 14px; color: var(--ink); }
+    .dk-stmt tbody tr:not(.det):hover td { background: var(--wash); }
+    .dk-shelf-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
+    .dk-shelf-row:last-child { border-bottom: 0; }
+    .dk-shelf-meta { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .dk-person { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
+    .dk-person:last-child { border-bottom: 0; }
+    .dk-person .who { font-weight: 500; color: var(--ink); }
+    .dk-person .what { font-size: 11px; color: var(--ink-3); }
+    .dk-person .act { margin-left: auto; font-size: 11.5px; white-space: nowrap; }
+    .dk-card { border: 1px solid var(--edge); border-radius: 6px; background: var(--card); padding: 16px; }
     /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
        but cells top-align because a row can carry a viewer list or the
        inline people editor, and the detail row needs its own quiet berth. */
@@ -2192,378 +2236,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <p class="text-[12.5px] text-[#8A8577] mt-4">An automated estimate, not an appraisal.</p>
     </div>
 
-    <!-- Search form — one bordered Research Desk, two chambers (Mock A,
-         owner-approved 2026-08-14). #compForm is the building chamber only;
-         Market Explorer is a sibling so Enter there cannot submit a report.
-         Every field id is unchanged. -->
-    <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
-      <div class="rd-form rd-desk">
-      <form id="compForm" class="rd-desk-build">
-        <div class="rd-chamber-head">
-          <div class="rd-chamber-lab">Value a building</div>
-        </div>
-        <!-- Direction N (owner-approved 2026-08-09): the address gets the full
-             top row alone in the largest text on the form; the everyday
-             settings share one calm row of three below. Direction N's separate
-             hint STRIP under those settings is gone (2026-08-10): it was the
-             only filled row in an otherwise white card, so the page's one band
-             of grey landed on its quietest text and read as a rule cutting the
-             card in half. Its contents live under the address now, which is
-             also where they belong — both sentences describe the building the
-             address just named, not the settings they were sitting beneath. -->
-        <div class="rd-row">
-          <div class="rd-cell">
-            <label class="rd-lab" for="address">Property address</label>
-            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in rd-in-lg" />
-            <!-- aria-live on the type slot: the type can change without the
-                 visitor touching anything (OSM detection landing, a remembered
-                 type being recalled), and this line is the only thing that says
-                 so. Polite, not assertive — the confirm dialog restates the
-                 type with real buttons before any search runs.
-                 #sizeEstimateNote no longer has a standing sentence to hide
-                 (see the retired CSS rule in the style block), so it is a plain
-                 show/hide with no ordering constraint on what follows it. -->
-            <div class="text-xs text-[#68707E] mt-1.5">
-              <!-- A div, not the span it was in the strip: it sits directly
-                   above the type sentence now, and two inline spans would run
-                   the two together with no space the moment an estimate lands.
-                   The four call sites toggle it by id and never by tag. -->
-              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it below if it's off.</div>
-              <span id="typeStatusLine" aria-live="polite"></span>
-              <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
-              <div id="typeAutoNote" class="mt-1"></div>
-            </div>
-          </div>
-        </div>
-        <!-- LIST MODE. Revealed when a multi-address paste lands in #address
-             (see the paste listener), and the reason bulk valuation has no
-             link of its own any more: pasting a list IS how you reach it.
-             Ships hidden and is only ever opened for an account whose
-             entitlements carry canBulkValue — /api/bulk re-checks that
-             server-side, so this markup grants nothing.
-             Plain rd-* classes, which exist in index.html itself and so
-             survive the tailwind.css purge; the run view below the form
-             brings its own CSS instead, because it is injected. -->
-        <div id="bkListPanel" class="hidden">
-          <div class="rd-row">
-            <div class="rd-cell">
-              <label class="rd-lab" for="bkListText">Addresses</label>
-              <!-- .rd-in and deliberately NO font-size utility: that class pins
-                   16px because anything smaller makes iOS Safari auto-zoom on
-                   focus and never zoom back (see the note above .rd-in).
-                   .rd-in-list adds only the monospace, the height and the
-                   resize handle — plain CSS in the style block rather than
-                   Tailwind, because font-mono/resize-y are not in the vendored
-                   build and would have silently done nothing. -->
-              <textarea id="bkListText" rows="6" spellcheck="false" class="rd-in rd-in-list"></textarea>
-              <div class="text-xs text-[#68707E] mt-1.5">
-                <span id="bkListCount"></span>
-                <span id="bkCapLine"></span>
-                <button type="button" id="bkListBack" class="underline text-[#B91C1C]">Value one address instead</button>
-              </div>
-            </div>
-          </div>
-          <div class="rd-row">
-            <div class="rd-cell">
-              <label class="rd-lab" for="bkListType">Property type</label>
-            <!-- Its own required select rather than the form's hidden
-                 #propertyType. A run needs ONE type for every row, and
-                 typeResolution may still be null (nothing detected, nothing
-                 remembered) — there is no confirm dialog on this path to
-                 resolve it. Deliberately does NOT call setTypeProgrammatic:
-                 that resets the lookback and rebuilds the subject fields,
-                 which belong to the single-address form and must come back
-                 untouched when list mode is left. -->
-              <select id="bkListType" class="rd-in">
-                <option value="">Choose a property type…</option>
-              </select>
-              <div id="bkListMsg" class="text-xs mt-1.5 text-[#B91C1C]"></div>
-            </div>
-          </div>
-        </div>
-        <!-- Still the single source of truth for the current type (and for the
-             list of types every picker builds itself from), just no longer a
-             control the visitor operates. Hidden rather than removed so every
-             read/write path, the watch-type option copy, and the remembered-
-             type validation all keep working unchanged.
-             Must NOT sit inside the address .rd-row: a sibling there keeps
-             .rd-cell from matching :last-child, so that row painted a second
-             right border on top of .rd-desk-build's divider and the line
-             between the two chambers jogged on the address row only. -->
-        <select id="propertyType" class="hidden" tabindex="-1" aria-hidden="true">
-          <option>Industrial</option>
-          <option>Office</option>
-          <option>Retail</option>
-          <option>Multifamily</option>
-          <option>Land</option>
-          <option>Residential</option>
-        </select>
-        <!-- Address Explorer — hands a visitor with no address a stable list of
-             real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
-             design.md). Corpus first via /api/explore-addresses, browser-side
-             OSM Overpass top-up for thin markets. Each chip carries its
-             property type so Tabbing through them cannot pick a warehouse as
-             an office; clicking one fills address AND type. The list is
-             deterministic on purpose: everyone exploring a market sees the
-             same addresses, so repeat clicks land on the 30-day search cache
-             instead of billing. -->
-        <div id="exploreAddrPanel" class="hidden rd-row px-4 py-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
-              class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-            <button id="exploreAddrBtn" type="button"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
-            <span id="exploreAddrStatus" class="text-xs text-[#68707E]"></span>
-          </div>
-          <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
-        </div>
-        <!-- The everyday settings, behind a line that states what they
-             currently say (owner's call, 2026-08-23). The form asked four
-             questions before it would show anything — Focus, Lookback,
-             Property SF, and the drawer below — and it already held an answer
-             to all three of these: focus and window have defaults, the
-             window's own caption says "Recommended for Industrial", and the
-             size is looked up from public records or the footprint on most
-             searches. Asking is now stating, and the address is the only open
-             question on the form.
-             The line names the VALUES, not the fields, so a reader who never
-             opens this still knows what is about to run — that is the whole
-             trade, and it is why refreshSearchSettingsLine is derived at every
-             seam that can move one of the three rather than written once.
-             Three across on ONE line inside, the shape this row has held since
-             the asking price moved down into "Details for comps" (2026-08-17).
-             Three is still the most it takes: the build chamber is ~552px, so
-             a fourth leaves ~106px of content and .rd-lab's tracking wraps the
-             label to two lines. With no wrap, .rd-cell:last-child does the
-             right-hand border on its own and no nth-child rule is needed —
-             that is why .rd-row-2up is gone from the style block rather than
-             left sitting unused. -->
-        <details id="searchSettings" class="rd-row">
-          <summary class="cursor-pointer select-none px-4 py-3 text-sm text-[#5A6473] hover:text-[#1A2433]">
-            <span id="searchSettingsLine"></span>
-            <span class="rd-sum-act">Change</span>
-          </summary>
-          <div class="rd-settings grid grid-cols-1 sm:grid-cols-3">
-          <div class="rd-cell" id="txFocusWrap">
-            <label class="rd-lab" for="txFocus">Focus</label>
-            <select id="txFocus" class="rd-in">
-              <option value="both" selected>Sales &amp; leases</option>
-              <option value="sales">Sales only</option>
-              <option value="leases">Leases only</option>
-            </select>
-          </div>
-          <div class="rd-cell">
-            <label class="rd-lab" for="lookback">Lookback</label>
-            <select id="lookback" class="rd-in">
-              <option value="6">Last 6 months</option>
-              <option value="12">Last 12 months</option>
-              <option value="24" selected>Last 24 months</option>
-              <option value="36">Last 36 months</option>
-              <option value="custom">Custom…</option>
-            </select>
-            <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
-              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-[#D8D4C9] px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-              <span class="text-sm text-[#68707E] shrink-0">months</span>
-            </div>
-            <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
-          </div>
-          <div class="rd-cell">
-            <!-- Back on the form 2026-08-16 (owner's call). It went down to
-                 Refine on 2026-08-10 because it is answered automatically on
-                 most searches — true, but the two automatic answers can both be
-                 wrong (the footprint estimate refuses outright on a unit
-                 address or a campus, and the record lookup can miss), and the
-                 only way to correct them was to cancel out of the confirm
-                 dialog and go open a collapsed section. It is also the number
-                 the hero multiplies, so it earns a visible slot more than its
-                 hit rate suggests.
-                 ONE input, no range: the owner's call. A size BAND is a
-                 comp-selection filter, which is a different question from "how
-                 big is my building" — and this field's answer is the one the
-                 hero multiplies, so a second box invited a spread where a
-                 single figure is wanted.
-                 #targetSizeMax is gone with it; sizeMax survives in meta.subject
-                 exactly as priceMax has since 2026-08-10, so saved reports and
-                 shares written while the range existed still render it.
-                 "Property SF", not the per-type SIZE_LABELS wording: one label
-                 that is true for a warehouse, a parcel and a house alike, so it
-                 no longer changes under the visitor when the type resolves.
-                 SIZE_LABELS still drives the hero's basis line — it is not dead.
-                 The input takes .rd-in rather than the bordered Refine styling
-                 so the cell gets .rd-cell:focus-within's red inset ring like
-                 every other cell on the desk. -->
-            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Property SF <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-            <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 24800" class="rd-in" />
-            <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
-          </div>
-          </div>
-        </details>
-        <!-- Refine (optional; the address, focus, lookback and size live up
-             top). The asking price came back down here on 2026-08-17 (owner's
-             call) so the row above holds one line: it is a fact about the
-             subject rather than a control over the search, which is what
-             everything else behind this summary is. -->
-        <details id="subjectDetails" class="rd-row group">
-          <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
-            <!-- Owner's retitle (2026-08-08 notes): "Details for comps", not
-                 the upstream "Refine" — the fields exist to steer comp
-                 selection and the title should say so. Structure and field
-                 list are upstream's 2026-08-10 redesign (price promoted to
-                 the form, size demoted here, market note tucked here). -->
-            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(asking price, NOI, cap rate, market note: optional)</span></span>
-          </summary>
-          <div class="px-4 pb-4 pt-1">
-            <!-- The lead sentence ("what you enter here steers which comps we pick")
-                 moved down into the first group's note on 2026-08-21, where it is
-                 true: it was making a claim about every field behind this
-                 summary, and three of them never reach the search at all. -->
-            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size is behind Change above, and only needs a value to override what we found.</p>
-            <!-- Two groups, split on where the data actually goes
-                 (2026-08-21). Every field behind this summary looked alike, so
-                 the one real difference between them was invisible: the market
-                 note and the per-type facts ride to our server with the search
-                 and steer which comps come back, while the asking price, NOI
-                 and cap rate are read only by this browser and are not in the
-                 /api/comps body at all — so they are not in the cache key
-                 either. The code has enforced that split from the start; this
-                 is the first time the form says so.
-
-                 The copy is worded against what the code does, not what reads
-                 well. "Not sent with your search" rather than "never leaves
-                 your browser", because publishing a share DOES upload the
-                 report: /api/share nulls meta.subject.noi but keeps capRate
-                 and the asking price, so a blanket never-leaves claim would be
-                 false the moment somebody shares. The share sentence is the
-                 per-type half of the note below, set beside hintIncome, since
-                 Land hides the two income fields entirely.
-
-                 Asking price leads the second group deliberately: it stays
-                 adjacent to the per-type facts it was placed beside on
-                 2026-08-17, while sitting under the header that tells the
-                 truth about it. -->
-            <div class="rf-group" role="group" aria-labelledby="rfSentLab">
-              <div class="rf-ghead"><span class="rf-glab" id="rfSentLab">Sent with your search</span><span class="rf-grule"></span></div>
-              <p id="rfSentNote" class="rf-gnote">Used to pick comps — buildings like yours.</p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <!-- Size is NOT here any more — it went back up onto the form
-                     on 2026-08-16. Do not add a second size input down here to
-                     be helpful: #targetSize is a single id read by the
-                     footprint estimate, targetRange(), and every report
-                     restore, and a duplicate would either break those or
-                     silently disagree with the value the search actually
-                     sends. -->
-                <div id="subjectTypeFields" class="contents"></div>
-  <div>
-                  <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-                  <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                </div>
-              </div>
-            </div>
-
-            <div class="rf-group" role="group" aria-labelledby="rfLocalLab">
-              <div class="rf-ghead"><span class="rf-glab" id="rfLocalLab">Yours alone</span><span class="rf-grule"></span></div>
-              <p class="rf-gnote">Not sent with your search, and they never change which comps we find. <span id="rfLocalShare"></span></p>
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-  <div>
-                  <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
-                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <p class="text-xs text-[#68707E] mt-1">What it's listed at, or what you'd ask today. Shows your $/SF against the market's.</p>
-                </div>
-  <div id="noiWrap">
-                  <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
-                  <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <p class="text-xs text-[#68707E] mt-1">Powers the income-approach cross-check and the DCF. Stripped from any report link you share.</p>
-                </div>
-  <div id="capRateWrap">
-                  <!-- Took the Price max slot on 2026-08-10. That max earned its
-                       place when the asking price also lived down here; once the
-                       price moved up onto the form itself, a lone "max" in Refine
-                       was a control that only made sense if you remembered the
-                       field it belonged to. A cap rate is what a commercial owner
-                       actually reaches for, and it lights up an approach the
-                       report could not otherwise hear an opinion about: the
-                       income line values NOI at the MODEL's range and had no way
-                       to be told the owner disagrees. Browser-only, exactly like
-                       the NOI beside it - never in the /api/comps body, so never
-                       in the cache key. -->
-                  <label class="rd-lab" for="capRate">Cap rate (%)</label>
-                  <input id="capRate" type="number" min="0" step="0.01" placeholder="e.g. 6.25" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
-                  <p class="text-xs text-[#68707E] mt-1">Your own cap rate. With NOI it adds an income-approach value line.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </details>
-
-        <!-- Submit row; stays in normal flow on phones (no longer docks to the
-             viewport bottom - the owner found that motion distracting). On
-             desktop the red button sits on the right, per the approved mockup. -->
-        <div class="rd-desk-actions static px-4 py-3.5 bg-white border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
-          <button id="submitBtn" type="submit"
-            class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
-            <span id="btnLabel">Run a report</span>
-          </button>
-          <button id="sampleBtn" type="button"
-            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
-            View a sample report
-          </button>
-          <!-- Pro-gated (applyExplorerGating). Free users don't see this
-               link at all — the owner's call is that the Address Explorer
-               is discovered only through the Upgrade-to-Pro card, which
-               lists it as a Pro perk. Direction N moved it down here with
-               the other secondary actions; while the tier is dark it shows
-               for everyone, the pre-Pro behavior PRO_ENABLED promises. -->
-          <button id="exploreAddrLink" type="button"
-            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
-            No address? Find one
-          </button>
-        </div>
-      </form>
-      <!-- Market Explorer: still self-contained (builds standing market pages,
-           never hands a query to the comp form). Sibling of #compForm on
-           purpose — see the rd-desk comment above. IDs unchanged. -->
-      <aside class="rd-desk-market" aria-label="Or read a market">
-        <div class="rd-chamber-head">
-          <div class="rd-chamber-lab">Or read a market</div>
-        </div>
-        <div class="rd-desk-market-body">
-          <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
-          <div class="relative">
-            <!-- The placeholder is REPLACED at serve time, rotating through the
-                 seeded markets on every load (MARKET_EXAMPLE_MARKER in
-                 server.js matches this attribute byte for byte). What stands
-                 here is the fallback, so it must name a SEEDED market: Tab
-                 types this example in, and a market with no standing page
-                 makes Tab-then-Enter a billed 30-60s build. -->
-            <input id="marketSearch" type="search" placeholder="e.g. industrial Ontario, CA" autocomplete="off"
-                   class="rd-desk-market-in" />
-            <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
-          </div>
-          <!-- The door to /markets — moved here from the Explore menu
-               (owner's call, 2026-08-21): browsing markets belongs beside the
-               box that searches them, not in the header. NAV_LINKS in
-               server.js no longer carries it; the footer still does. -->
-          <a href="/markets" class="inline-block mt-2 text-[12.5px] text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">Our markets &rarr;</a>
-        </div>
-      </aside>
-      </div>
-      <div class="text-[12.5px] text-[#8A8577] mt-3">
-        <div>Cited comps · about a minute · every source disclosed</div>
-        <div>An automated estimate, not an appraisal.</div>
-      </div>
-      <!-- Shown only once /api/config says this signed-out visitor is out of
-           free searches; sign-in/refreshProConfig hides it again. The lead-in
-           sentence is written by renderGuestSearchHint, because at a limit of
-           0 (what ACCOUNT_WALL forces) the visitor never had a free search and
-           must not be told they used one. -->
-
-      <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
-        <span id="guestSearchHintLead">You've used your free search.</span>
-        <button id="guestHintSignIn" type="button" class="underline hover:text-[#1A2433]">Sign in free</button>
-        to keep searching.
-      </div>
-    </div>
-
     <!-- My Desk view — its own /desk page (mutually exclusive with the home
          stack). Works signed out: the chip rows below are localStorage-driven;
          the account-backed #myDesk section shows only when signed in. -->
@@ -2571,6 +2243,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
+          <!-- The chamber moved below the workspace (2026-08-29); this is the
+               daily user's shortcut back to it, so demotion never costs a hunt.
+               Utility classes are ones deskAvatarChange already uses — the
+               vendored tailwind.css is purged and a new class styles nothing. -->
+          <button type="button" id="deskRunReport"
+            class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9] whitespace-nowrap">Run a report ↓</button>
           <button type="button" id="deskAvatarBtn" aria-label="Change profile photo"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
             style="position:relative">
@@ -2605,10 +2283,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            renderWatchFeed once the feed answers. Rendered and toggled by
            renderMyDesk() — hidden with 0 properties (a 0-0 scoreboard over
            an empty desk is the vault first-run lesson) and on sign-out. -->
-      <div id="deskLedger" class="hidden rd-ledger mt-4 bg-white"></div>
+      <div id="deskLedger" class="hidden rd-ledger dk-ledger mt-4 bg-white"></div>
 
       <!-- Signed-out prompt for the account-backed areas -->
-      <div id="deskSignIn" class="hidden mt-8 border border-[#D8D4C9] rounded-lg bg-white p-4">
+      <div id="deskSignIn" class="hidden mt-8 dk-card">
         <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps, free.</p>
         <button id="deskSignInBtn" type="button"
           class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
@@ -3014,7 +2692,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            middle-click and open-in-new-tab should work. -->
       <div id="vaultCard" class="hidden mt-8">
         <div class="dk-rule"><span class="rd-lab">Broker vault</span></div>
-        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+        <div class="mt-2 dk-card">
           <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
           <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
           <div id="vaultCardLeads" class="hidden text-xs text-[#68707E] mt-1"></div>
@@ -3038,7 +2716,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="deskBranding" class="hidden mt-8">
         <div class="dk-rule"><span class="rd-lab">Report branding</span></div>
         <p class="text-sm text-[#5A6473] mt-2">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
-        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+        <div class="mt-2 dk-card">
           <div class="flex flex-wrap items-center gap-3">
             <!-- Persistent element (fillBrandForm() and the choose/remove
                  handlers keep referencing this id on every future load), so
@@ -3090,7 +2768,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            refreshBillingUI() from /api/config, never from local state. -->
       <div id="billingCard" class="hidden mt-8">
         <div class="dk-rule"><span class="rd-lab">Plan</span></div>
-        <div class="mt-2 border border-[#D8D4C9] rounded-lg bg-white p-4">
+        <div class="mt-2 dk-card">
           <div id="billingStatus" class="text-sm font-semibold text-[#1A2433]"></div>
           <div id="billingDetail" class="text-xs text-[#68707E] mt-1"></div>
           <div class="mt-3 flex flex-wrap items-center gap-2">
@@ -3109,6 +2787,387 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div><!-- /deckAccount -->
       </section>
     </section>
+
+    <!-- Search form — one bordered Research Desk, two chambers (Mock A,
+         owner-approved 2026-08-14). #compForm is the building chamber only;
+         Market Explorer is a sibling so Enter there cannot submit a report.
+         Every field id is unchanged. -->
+    <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
+      <!-- Desk-context header: shown only while the workspace is on screen,
+           so the demoted chamber reads as one more deck of it. showDeskView
+           reveals it; showHomeView, beginAssembly and renderResults all hide
+           it, because a report screen and the plain home must not carry a
+           stray workspace rule over the form. Deliberately dk-deck-h, never
+           rd-chamber-head: a test counts exactly two of those in this span. -->
+      <div id="searchDeckHead" class="hidden dk-deck-h">
+        <span class="dk-deck-lab">Run a report</span><span class="dk-deck-ln"></span>
+      </div>
+      <div class="rd-form rd-desk">
+      <form id="compForm" class="rd-desk-build">
+        <div class="rd-chamber-head">
+          <div class="rd-chamber-lab">Value a building</div>
+        </div>
+        <!-- Direction N (owner-approved 2026-08-09): the address gets the full
+             top row alone in the largest text on the form; the everyday
+             settings share one calm row of three below. Direction N's separate
+             hint STRIP under those settings is gone (2026-08-10): it was the
+             only filled row in an otherwise white card, so the page's one band
+             of grey landed on its quietest text and read as a rule cutting the
+             card in half. Its contents live under the address now, which is
+             also where they belong — both sentences describe the building the
+             address just named, not the settings they were sitting beneath. -->
+        <div class="rd-row">
+          <div class="rd-cell">
+            <label class="rd-lab" for="address">Property address</label>
+            <input id="address" type="text" required placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX" class="rd-in rd-in-lg" />
+            <!-- aria-live on the type slot: the type can change without the
+                 visitor touching anything (OSM detection landing, a remembered
+                 type being recalled), and this line is the only thing that says
+                 so. Polite, not assertive — the confirm dialog restates the
+                 type with real buttons before any search runs.
+                 #sizeEstimateNote no longer has a standing sentence to hide
+                 (see the retired CSS rule in the style block), so it is a plain
+                 show/hide with no ordering constraint on what follows it. -->
+            <div class="text-xs text-[#68707E] mt-1.5">
+              <!-- A div, not the span it was in the strip: it sits directly
+                   above the type sentence now, and two inline spans would run
+                   the two together with no space the moment an estimate lands.
+                   The four call sites toggle it by id and never by tag. -->
+              <div id="sizeEstimateNote" class="hidden">Size estimated from the building's footprint; edit it below if it's off.</div>
+              <span id="typeStatusLine" aria-live="polite"></span>
+              <div id="typeInlinePicker" class="hidden mt-1.5 flex flex-wrap gap-1.5"></div>
+              <div id="typeAutoNote" class="mt-1"></div>
+            </div>
+          </div>
+        </div>
+        <!-- LIST MODE. Revealed when a multi-address paste lands in #address
+             (see the paste listener), and the reason bulk valuation has no
+             link of its own any more: pasting a list IS how you reach it.
+             Ships hidden and is only ever opened for an account whose
+             entitlements carry canBulkValue — /api/bulk re-checks that
+             server-side, so this markup grants nothing.
+             Plain rd-* classes, which exist in index.html itself and so
+             survive the tailwind.css purge; the run view below the form
+             brings its own CSS instead, because it is injected. -->
+        <div id="bkListPanel" class="hidden">
+          <div class="rd-row">
+            <div class="rd-cell">
+              <label class="rd-lab" for="bkListText">Addresses</label>
+              <!-- .rd-in and deliberately NO font-size utility: that class pins
+                   16px because anything smaller makes iOS Safari auto-zoom on
+                   focus and never zoom back (see the note above .rd-in).
+                   .rd-in-list adds only the monospace, the height and the
+                   resize handle — plain CSS in the style block rather than
+                   Tailwind, because font-mono/resize-y are not in the vendored
+                   build and would have silently done nothing. -->
+              <textarea id="bkListText" rows="6" spellcheck="false" class="rd-in rd-in-list"></textarea>
+              <div class="text-xs text-[#68707E] mt-1.5">
+                <span id="bkListCount"></span>
+                <span id="bkCapLine"></span>
+                <button type="button" id="bkListBack" class="underline text-[#B91C1C]">Value one address instead</button>
+              </div>
+            </div>
+          </div>
+          <div class="rd-row">
+            <div class="rd-cell">
+              <label class="rd-lab" for="bkListType">Property type</label>
+            <!-- Its own required select rather than the form's hidden
+                 #propertyType. A run needs ONE type for every row, and
+                 typeResolution may still be null (nothing detected, nothing
+                 remembered) — there is no confirm dialog on this path to
+                 resolve it. Deliberately does NOT call setTypeProgrammatic:
+                 that resets the lookback and rebuilds the subject fields,
+                 which belong to the single-address form and must come back
+                 untouched when list mode is left. -->
+              <select id="bkListType" class="rd-in">
+                <option value="">Choose a property type…</option>
+              </select>
+              <div id="bkListMsg" class="text-xs mt-1.5 text-[#B91C1C]"></div>
+            </div>
+          </div>
+        </div>
+        <!-- Still the single source of truth for the current type (and for the
+             list of types every picker builds itself from), just no longer a
+             control the visitor operates. Hidden rather than removed so every
+             read/write path, the watch-type option copy, and the remembered-
+             type validation all keep working unchanged.
+             Must NOT sit inside the address .rd-row: a sibling there keeps
+             .rd-cell from matching :last-child, so that row painted a second
+             right border on top of .rd-desk-build's divider and the line
+             between the two chambers jogged on the address row only. -->
+        <select id="propertyType" class="hidden" tabindex="-1" aria-hidden="true">
+          <option>Industrial</option>
+          <option>Office</option>
+          <option>Retail</option>
+          <option>Multifamily</option>
+          <option>Land</option>
+          <option>Residential</option>
+        </select>
+        <!-- Address Explorer — hands a visitor with no address a stable list of
+             real ones (see docs/superpowers/specs/2026-08-03-address-explorer-
+             design.md). Corpus first via /api/explore-addresses, browser-side
+             OSM Overpass top-up for thin markets. Each chip carries its
+             property type so Tabbing through them cannot pick a warehouse as
+             an office; clicking one fills address AND type. The list is
+             deterministic on purpose: everyone exploring a market sees the
+             same addresses, so repeat clicks land on the 30-day search cache
+             instead of billing. -->
+        <div id="exploreAddrPanel" class="hidden rd-row px-4 py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="exploreAddrInput" type="text" placeholder="City, ST or 5-digit zip" aria-label="City and state, or zip code"
+              class="w-56 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+            <button id="exploreAddrBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded px-3 py-1.5">Find addresses</button>
+            <span id="exploreAddrStatus" class="text-xs text-[#68707E]"></span>
+          </div>
+          <div id="exploreAddrList" class="mt-2 flex flex-wrap gap-2"></div>
+        </div>
+        <!-- The everyday settings, behind a line that states what they
+             currently say (owner's call, 2026-08-23). The form asked four
+             questions before it would show anything — Focus, Lookback,
+             Property SF, and the drawer below — and it already held an answer
+             to all three of these: focus and window have defaults, the
+             window's own caption says "Recommended for Industrial", and the
+             size is looked up from public records or the footprint on most
+             searches. Asking is now stating, and the address is the only open
+             question on the form.
+             The line names the VALUES, not the fields, so a reader who never
+             opens this still knows what is about to run — that is the whole
+             trade, and it is why refreshSearchSettingsLine is derived at every
+             seam that can move one of the three rather than written once.
+             Three across on ONE line inside, the shape this row has held since
+             the asking price moved down into "Details for comps" (2026-08-17).
+             Three is still the most it takes: the build chamber is ~552px, so
+             a fourth leaves ~106px of content and .rd-lab's tracking wraps the
+             label to two lines. With no wrap, .rd-cell:last-child does the
+             right-hand border on its own and no nth-child rule is needed —
+             that is why .rd-row-2up is gone from the style block rather than
+             left sitting unused. -->
+        <details id="searchSettings" class="rd-row">
+          <summary class="cursor-pointer select-none px-4 py-3 text-sm text-[#5A6473] hover:text-[#1A2433]">
+            <span id="searchSettingsLine"></span>
+            <span class="rd-sum-act">Change</span>
+          </summary>
+          <div class="rd-settings grid grid-cols-1 sm:grid-cols-3">
+          <div class="rd-cell" id="txFocusWrap">
+            <label class="rd-lab" for="txFocus">Focus</label>
+            <select id="txFocus" class="rd-in">
+              <option value="both" selected>Sales &amp; leases</option>
+              <option value="sales">Sales only</option>
+              <option value="leases">Leases only</option>
+            </select>
+          </div>
+          <div class="rd-cell">
+            <label class="rd-lab" for="lookback">Lookback</label>
+            <select id="lookback" class="rd-in">
+              <option value="6">Last 6 months</option>
+              <option value="12">Last 12 months</option>
+              <option value="24" selected>Last 24 months</option>
+              <option value="36">Last 36 months</option>
+              <option value="custom">Custom…</option>
+            </select>
+            <div id="lookbackCustomWrap" class="hidden mt-2 flex items-center gap-2">
+              <input id="lookbackCustom" type="number" min="1" max="120" step="1" placeholder="e.g. 18" class="w-24 rounded border border-[#D8D4C9] px-2 py-1 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+              <span class="text-sm text-[#68707E] shrink-0">months</span>
+            </div>
+            <div id="lookbackHint" class="text-xs text-[#68707E] mt-1"></div>
+          </div>
+          <div class="rd-cell">
+            <!-- Back on the form 2026-08-16 (owner's call). It went down to
+                 Refine on 2026-08-10 because it is answered automatically on
+                 most searches — true, but the two automatic answers can both be
+                 wrong (the footprint estimate refuses outright on a unit
+                 address or a campus, and the record lookup can miss), and the
+                 only way to correct them was to cancel out of the confirm
+                 dialog and go open a collapsed section. It is also the number
+                 the hero multiplies, so it earns a visible slot more than its
+                 hit rate suggests.
+                 ONE input, no range: the owner's call. A size BAND is a
+                 comp-selection filter, which is a different question from "how
+                 big is my building" — and this field's answer is the one the
+                 hero multiplies, so a second box invited a spread where a
+                 single figure is wanted.
+                 #targetSizeMax is gone with it; sizeMax survives in meta.subject
+                 exactly as priceMax has since 2026-08-10, so saved reports and
+                 shares written while the range existed still render it.
+                 "Property SF", not the per-type SIZE_LABELS wording: one label
+                 that is true for a warehouse, a parcel and a house alike, so it
+                 no longer changes under the visitor when the type resolves.
+                 SIZE_LABELS still drives the hero's basis line — it is not dead.
+                 The input takes .rd-in rather than the bordered Refine styling
+                 so the cell gets .rd-cell:focus-within's red inset ring like
+                 every other cell on the desk. -->
+            <label id="targetSizeLabel" class="rd-lab" for="targetSize">Property SF <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+            <input id="targetSize" type="number" min="0" step="any" placeholder="e.g. 24800" class="rd-in" />
+            <p id="targetSizeHint" class="text-xs text-[#68707E] mt-1">Left blank, it comes from public records or the building's footprint.</p>
+          </div>
+          </div>
+        </details>
+        <!-- Refine (optional; the address, focus, lookback and size live up
+             top). The asking price came back down here on 2026-08-17 (owner's
+             call) so the row above holds one line: it is a fact about the
+             subject rather than a control over the search, which is what
+             everything else behind this summary is. -->
+        <details id="subjectDetails" class="rd-row group">
+          <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium text-[#5A6473] hover:text-[#1A2433]">
+            <!-- Owner's retitle (2026-08-08 notes): "Details for comps", not
+                 the upstream "Refine" — the fields exist to steer comp
+                 selection and the title should say so. Structure and field
+                 list are upstream's 2026-08-10 redesign (price promoted to
+                 the form, size demoted here, market note tucked here). -->
+            <span id="subjectSummary">+ Details for comps <span id="subjectSummaryBits" class="text-[#68707E] font-normal">(asking price, NOI, cap rate, market note: optional)</span></span>
+          </summary>
+          <div class="px-4 pb-4 pt-1">
+            <!-- The lead sentence ("what you enter here steers which comps we pick")
+                 moved down into the first group's note on 2026-08-21, where it is
+                 true: it was making a claim about every field behind this
+                 summary, and three of them never reach the search at all. -->
+            <p id="subjectHint" class="text-xs text-[#68707E] mb-3"><span id="subjectHintIncome">Add NOI for an income-approach cross-check plus a DCF hold-or-sell analysis.</span> Property type comes from public records automatically; the size is behind Change above, and only needs a value to override what we found.</p>
+            <!-- Two groups, split on where the data actually goes
+                 (2026-08-21). Every field behind this summary looked alike, so
+                 the one real difference between them was invisible: the market
+                 note and the per-type facts ride to our server with the search
+                 and steer which comps come back, while the asking price, NOI
+                 and cap rate are read only by this browser and are not in the
+                 /api/comps body at all — so they are not in the cache key
+                 either. The code has enforced that split from the start; this
+                 is the first time the form says so.
+
+                 The copy is worded against what the code does, not what reads
+                 well. "Not sent with your search" rather than "never leaves
+                 your browser", because publishing a share DOES upload the
+                 report: /api/share nulls meta.subject.noi but keeps capRate
+                 and the asking price, so a blanket never-leaves claim would be
+                 false the moment somebody shares. The share sentence is the
+                 per-type half of the note below, set beside hintIncome, since
+                 Land hides the two income fields entirely.
+
+                 Asking price leads the second group deliberately: it stays
+                 adjacent to the per-type facts it was placed beside on
+                 2026-08-17, while sitting under the header that tells the
+                 truth about it. -->
+            <div class="rf-group" role="group" aria-labelledby="rfSentLab">
+              <div class="rf-ghead"><span class="rf-glab" id="rfSentLab">Sent with your search</span><span class="rf-grule"></span></div>
+              <p id="rfSentNote" class="rf-gnote">Used to pick comps — buildings like yours.</p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <!-- Size is NOT here any more — it went back up onto the form
+                     on 2026-08-16. Do not add a second size input down here to
+                     be helpful: #targetSize is a single id read by the
+                     footprint estimate, targetRange(), and every report
+                     restore, and a duplicate would either break those or
+                     silently disagree with the value the search actually
+                     sends. -->
+                <div id="subjectTypeFields" class="contents"></div>
+  <div>
+                  <label class="rd-lab" for="marketNote">Market note <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                  <input id="marketNote" type="text" placeholder="e.g. within 5 miles, submarket: North Dallas" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                </div>
+              </div>
+            </div>
+
+            <div class="rf-group" role="group" aria-labelledby="rfLocalLab">
+              <div class="rf-ghead"><span class="rf-glab" id="rfLocalLab">Yours alone</span><span class="rf-grule"></span></div>
+              <p class="rf-gnote">Not sent with your search, and they never change which comps we find. <span id="rfLocalShare"></span></p>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  <div>
+                  <label id="targetPriceLabel" class="rd-lab" for="targetPrice">Asking price <span style="text-transform:none;letter-spacing:0;font-weight:400">(optional)</span></label>
+                  <input id="targetPrice" type="number" min="0" step="any" placeholder="e.g. 3125000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">What it's listed at, or what you'd ask today. Shows your $/SF against the market's.</p>
+                </div>
+  <div id="noiWrap">
+                  <label class="rd-lab" for="noi">Net operating income ($/yr)</label>
+                  <input id="noi" type="number" min="0" step="any" placeholder="e.g. 210000" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">Powers the income-approach cross-check and the DCF. Stripped from any report link you share.</p>
+                </div>
+  <div id="capRateWrap">
+                  <!-- Took the Price max slot on 2026-08-10. That max earned its
+                       place when the asking price also lived down here; once the
+                       price moved up onto the form itself, a lone "max" in Refine
+                       was a control that only made sense if you remembered the
+                       field it belonged to. A cap rate is what a commercial owner
+                       actually reaches for, and it lights up an approach the
+                       report could not otherwise hear an opinion about: the
+                       income line values NOI at the MODEL's range and had no way
+                       to be told the owner disagrees. Browser-only, exactly like
+                       the NOI beside it - never in the /api/comps body, so never
+                       in the cache key. -->
+                  <label class="rd-lab" for="capRate">Cap rate (%)</label>
+                  <input id="capRate" type="number" min="0" step="0.01" placeholder="e.g. 6.25" class="w-full min-w-0 rounded border border-[#D8D4C9] px-2.5 py-1.5 text-sm text-[#1A2433] focus:border-[#B91C1C] focus:ring-1 focus:ring-[#B91C1C] outline-none" />
+                  <p class="text-xs text-[#68707E] mt-1">Your own cap rate. With NOI it adds an income-approach value line.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- Submit row; stays in normal flow on phones (no longer docks to the
+             viewport bottom - the owner found that motion distracting). On
+             desktop the red button sits on the right, per the approved mockup. -->
+        <div class="rd-desk-actions static px-4 py-3.5 bg-white border-t border-[#ECEAE3] flex flex-col sm:flex-row sm:items-center gap-3">
+          <button id="submitBtn" type="submit"
+            class="btn-live w-full sm:w-auto sm:order-2 sm:ml-auto inline-flex items-center justify-center gap-2 bg-[#B91C1C] hover:bg-[#991B1B] text-white font-semibold px-7 py-2.5 rounded disabled:opacity-60 disabled:cursor-not-allowed">
+            <span id="btnLabel">Run a report</span>
+          </button>
+          <button id="sampleBtn" type="button"
+            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            View a sample report
+          </button>
+          <!-- Pro-gated (applyExplorerGating). Free users don't see this
+               link at all — the owner's call is that the Address Explorer
+               is discovered only through the Upgrade-to-Pro card, which
+               lists it as a Pro perk. Direction N moved it down here with
+               the other secondary actions; while the tier is dark it shows
+               for everyone, the pre-Pro behavior PRO_ENABLED promises. -->
+          <button id="exploreAddrLink" type="button"
+            class="btn-live w-full sm:w-auto sm:order-1 inline-flex items-center justify-center text-sm font-medium text-[#5A6473] hover:text-[#1A2433] px-3 py-2.5">
+            No address? Find one
+          </button>
+        </div>
+      </form>
+      <!-- Market Explorer: still self-contained (builds standing market pages,
+           never hands a query to the comp form). Sibling of #compForm on
+           purpose — see the rd-desk comment above. IDs unchanged. -->
+      <aside class="rd-desk-market" aria-label="Or read a market">
+        <div class="rd-chamber-head">
+          <div class="rd-chamber-lab">Or read a market</div>
+        </div>
+        <div class="rd-desk-market-body">
+          <p class="rd-chamber-note">Search any market. We'll pull recent sales and build its page on the spot.</p>
+          <div class="relative">
+            <!-- The placeholder is REPLACED at serve time, rotating through the
+                 seeded markets on every load (MARKET_EXAMPLE_MARKER in
+                 server.js matches this attribute byte for byte). What stands
+                 here is the fallback, so it must name a SEEDED market: Tab
+                 types this example in, and a market with no standing page
+                 makes Tab-then-Enter a billed 30-60s build. -->
+            <input id="marketSearch" type="search" placeholder="e.g. industrial Ontario, CA" autocomplete="off"
+                   class="rd-desk-market-in" />
+            <div id="marketSearchResults" class="dd-fade hidden absolute left-0 right-0 mt-1 z-50 rounded border border-[#E4E2DA] bg-white shadow-sm py-1 text-[13.5px]"></div>
+          </div>
+          <!-- The door to /markets — moved here from the Explore menu
+               (owner's call, 2026-08-21): browsing markets belongs beside the
+               box that searches them, not in the header. NAV_LINKS in
+               server.js no longer carries it; the footer still does. -->
+          <a href="/markets" class="inline-block mt-2 text-[12.5px] text-[#68707E] underline decoration-[#D8D4C9] hover:text-[#1A2433]">Our markets &rarr;</a>
+        </div>
+      </aside>
+      </div>
+      <div class="text-[12.5px] text-[#8A8577] mt-3">
+        <div>Cited comps · about a minute · every source disclosed</div>
+        <div>An automated estimate, not an appraisal.</div>
+      </div>
+      <!-- Shown only once /api/config says this signed-out visitor is out of
+           free searches; sign-in/refreshProConfig hides it again. The lead-in
+           sentence is written by renderGuestSearchHint, because at a limit of
+           0 (what ACCOUNT_WALL forces) the visitor never had a free search and
+           must not be told they used one. -->
+
+      <div id="guestSearchHint" class="hidden text-[12.5px] text-[#5A6473] mt-1">
+        <span id="guestSearchHintLead">You've used your free search.</span>
+        <button id="guestHintSignIn" type="button" class="underline hover:text-[#1A2433]">Sign in free</button>
+        to keep searching.
+      </div>
+    </div>
 
     <!-- Status / Error -->
     <div id="statusBox" class="hidden mt-6 no-print" role="status" aria-live="polite"></div>
@@ -5370,6 +5429,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // shelf. This is the earlier of the two seams — assembly puts cards on
     // screen up to a minute before renderResults repaints wholesale.
     document.getElementById("deskView").classList.add("hidden");
+    document.getElementById("searchDeckHead").classList.add("hidden");
     // The loading card slims down: its decorative gray skeletons are
     // redundant once real cards are filling in below it.
     document.getElementById("loadingSkeletons").classList.add("hidden");
@@ -11241,6 +11301,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // render BELOW the firm shelf and the deal board, which is both a long
     // scroll and the wrong thing on top. "My Desk" brings the workspace back.
     document.getElementById("deskView").classList.add("hidden");
+    document.getElementById("searchDeckHead").classList.add("hidden");
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -12537,29 +12598,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="var(--red-fill)"/>`;
       return svg;
     };
-    let combined = 0, curOfPaired = 0, prevOfPaired = 0;
+    let combined = 0, curOfPaired = 0, prevOfPaired = 0, pairedN = 0;
     const typeCounts = {};
     items.forEach((item) => {
       const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
       if (last && last.likely) combined += Number(last.likely);
-      if (last && prev && last.likely && prev.likely) { curOfPaired += Number(last.likely); prevOfPaired += Number(prev.likely); }
+      if (last && prev && last.likely && prev.likely) { curOfPaired += Number(last.likely); prevOfPaired += Number(prev.likely); pairedN += 1; }
       const t = String(item.property_type || "").toLowerCase();
       if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     const ledger = document.getElementById("deskLedger");
     ledger.classList.toggle("hidden", items.length === 0 || !showValues);
     const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
-    const cell = (k, v, n, mid) =>
-      `<div class="rd-lcell${mid ? " mid" : ""}"><span class="rd-lab">${k}</span><div class="dk-fig text-[21px]${mid ? "" : ""}">${v}</div><div class="dk-note" style="text-align:left">${n}</div></div>`;
+    // "Between checks", and the note names its own sample. The old label,
+    // "Since last checks", read as a portfolio return — and the number is
+    // not one: it compares each property's last two check-ins, over ONLY the
+    // properties checked at least twice, with no time window at all (one
+    // pair may be a day apart and another eight months). Arithmetic
+    // unchanged; the caption stops over-claiming. Everything interpolated
+    // here is a number or our own copy, so innerHTML stays legitimate.
+    const betweenTitle = "Change in combined likely value between the last two checks of each " +
+      "property checked at least twice. Checks happen when you re-run a report, " +
+      "so this is not a return over any period of time.";
+    const betweenNote = pairedN === items.length
+      ? `all ${items.length} properties, last check vs the check before`
+      : `${pairedN} of ${items.length} properties, last check vs the check before`;
+    const cell = (k, v, n, mid, title) =>
+      `<div class="rd-lcell${mid ? " mid" : ""}"${title ? ` title="${title}"` : ""}><span class="rd-lab">${k}</span><div class="dk-lfig">${v}</div><div class="dk-lnote">${n}</div></div>`;
     if (showValues) {
       ledger.innerHTML =
         cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
         cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
-        cell("Since last checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
-          bookPct == null ? "re-run a property to start the trail" : "across properties checked twice", false) +
-        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">—</div><div class="dk-note" style="text-align:left">&nbsp;</div></div>`;
+        cell("Between checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
+          bookPct == null ? "re-run a property to start the trail" : betweenNote, false, bookPct == null ? "" : betweenTitle) +
+        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
     }
     const grid = document.getElementById("portfolioGrid");
     grid.innerHTML = "";
@@ -12578,7 +12652,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         const tdA = document.createElement("td");
         const addr = document.createElement("button");
         addr.type = "button";
-        addr.className = "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C]";
+        // dk-addr: Georgia, like every address a member owns on this page —
+        // the statement table, the shelf and the shares all read as one book.
+        addr.className = "text-left dk-addr hover:text-[#B91C1C]";
         addr.textContent = item.address;
         addr.title = "Open this report (no new search, no cost)";
         addr.addEventListener("click", () => openPortfolioItem(item.id));
@@ -12691,8 +12767,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // The closing total only earns its double rule with something to sum.
       if (showValues && items.length > 1 && combined) {
         const tfoot = document.createElement("tfoot");
+        // Same bookPct and the same title as the ledger's Between-checks cell
+        // — one figure, computed once, so the two can never disagree, and one
+        // explanation of what it is not.
         const pctCell = bookPct == null ? "" :
-          `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
+          `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" title="${betweenTitle}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
         tfoot.innerHTML = `<tr><td class="tl" colspan="2">Combined · ${items.length} properties</td>` +
           `<td class="num dk-fig text-[16px]">${fmtDeskUsd(combined)}</td><td class="num">${pctCell}</td><td></td></tr>`;
         table.appendChild(tfoot);
@@ -12737,6 +12816,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // the first to drift. applySearchLock() below still governs it, so the
     // wall's signup card still wins where it should.
     document.getElementById("searchSection").classList.remove("hidden");
+    // The chamber sits BELOW the workspace since 2026-08-29 and wears a deck
+    // header there, so it reads as the workspace's own "Run a report" section
+    // rather than a page of its own that happens to follow one.
+    document.getElementById("searchDeckHead").classList.remove("hidden");
     document.getElementById("results").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
@@ -12751,6 +12834,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
+    // Home shows the chamber standalone; the workspace rule over it would be
+    // a heading for a section that is not on screen.
+    document.getElementById("searchDeckHead").classList.add("hidden");
     // fade-in is added here rather than in markup so it doesn't double-animate
     // against the .enter page-load entrance on first paint.
     ["hero", "searchSection", "homeInfo"].forEach((id) => {
@@ -12809,6 +12895,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("myDeskLink").addEventListener("click", () => enterDesk({ markSeen: true }));
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
+  // The workspace header's shortcut to the demoted chamber. The scroll is an
+  // instant jump ON PURPOSE: paired with a focus() it must land exactly once,
+  // and a smooth scroll plus a focus proved unverifiable together (in an
+  // emulated viewport the glide silently went nowhere while the caret sat in
+  // an off-screen field — the worst outcome a shortcut can have). An instant
+  // jump cannot half-happen, and it is what prefers-reduced-motion would ask
+  // for anyway. preventScroll keeps the focus from fighting the jump.
+  document.getElementById("deskRunReport").addEventListener("click", () => {
+    document.getElementById("searchSection").scrollIntoView({ block: "start" });
+    document.getElementById("address").focus({ preventScroll: true });
+  });
 
   // ----------------------------------------------------------------------------
   // Watchlist + updates feed. Opening My Desk marks the feed seen, so each
@@ -12982,8 +13079,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? (totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} across ${feed.items.length} market${feed.items.length === 1 ? "" : "s"}` : `${feed.items.length} market${feed.items.length === 1 ? "" : "s"} watched · quiet`)
       : "";
     const mk = document.getElementById("deskLedgerMarkets");
-    if (mk) mk.innerHTML = `<span class="rd-lab">Markets watched</span><div class="dk-fig text-[21px]">${feed.items.length}</div>` +
-      `<div class="dk-note" style="text-align:left">${totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} waiting` : "&nbsp;"}</div>`;
+    // Same anatomy as renderMyDesk's placeholder cell (dk-lfig/dk-lnote) —
+    // a test pins the two writers together, because a cell that changes
+    // shape when the feed fills it in reads as a glitch.
+    if (mk) mk.innerHTML = `<span class="rd-lab">Markets watched</span><div class="dk-lfig">${feed.items.length}</div>` +
+      `<div class="dk-lnote">${totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} waiting` : "&nbsp;"}</div>`;
     if (markSeen && feed.unseen) {
       try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
     }
@@ -13033,13 +13133,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     rowsEl.innerHTML = "";
     d.submissions.forEach((sub) => {
       const row = document.createElement("div");
-      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      row.className = "dk-person";
       const addr = document.createElement("span");
-      addr.className = "font-medium text-[#1A2433]";
+      addr.className = "who";
       addr.textContent = sub.address;
       row.appendChild(addr);
       const meta = document.createElement("span");
-      meta.className = "text-xs text-[#68707E]";
+      meta.className = "what";
       meta.textContent = [sub.property_type, sub.transaction, sub.deal_date].filter(Boolean).join(" · ");
       row.appendChild(meta);
       const st = ["approved", "rejected"].includes(sub.status) ? sub.status : "pending";
@@ -13281,13 +13381,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       filtering ? `${shown.length} of ${firmShelfItems.length}` : "";
 
     shown.forEach((r) => {
+      // Hairline rows (2026-08-29): the shelf is the firm's record, so it
+      // reads like the ledger tables around it — Georgia address left, quiet
+      // attribution pushed right. Addresses stay textContent: user-authored.
       const row = document.createElement("div");
-      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      row.className = "dk-shelf-row";
       const addr = document.createElement("a");
       addr.href = r.url;
       addr.target = "_blank";
       addr.rel = "noopener noreferrer";
-      addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      addr.className = "dk-addr hover:text-[#B91C1C] underline";
       addr.textContent = r.address;
       row.appendChild(addr);
       // Attribution is the point of a shelf: a row nobody can be asked about
@@ -13296,7 +13399,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const bits = [r.type, r.mine ? "shared by you" : `shared by ${r.sharedBy}`];
       if (r.createdAt) bits.push(fmtShareDate(r.createdAt));
       const meta = document.createElement("span");
-      meta.className = "text-xs text-[#68707E]";
+      meta.className = "dk-shelf-meta";
       meta.textContent = bits.filter(Boolean).join(" · ");
       row.appendChild(meta);
       wrap.appendChild(row);
@@ -13706,13 +13809,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     wrap.innerHTML = "";
     invites.forEach((inv) => {
       const row = document.createElement("div");
-      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      row.className = "dk-person";
       const name = document.createElement("span");
-      name.className = "font-medium text-[#1A2433]";
+      name.className = "who";
       name.textContent = inv.name || "A firm";
       row.appendChild(name);
       const note = document.createElement("span");
-      note.className = "text-xs text-[#68707E]";
+      note.className = "what";
       // Disclosed BEFORE the accept, never after: joining a firm whose default
       // is on changes what happens to work you have not run yet, and being
       // told once you are already in is being told too late. The spec's
@@ -13774,9 +13877,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     members.forEach((m) => {
       const row = document.createElement("div");
-      row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
+      row.className = "dk-person";
       const who = document.createElement("span");
-      who.className = "font-medium text-[#1A2433]";
+      who.className = "who";
       who.textContent = m.email;
       row.appendChild(who);
       const bits = [];
@@ -13784,7 +13887,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       if (m.pending) bits.push("invited, not accepted");
       if (m.self) bits.push("you");
       const meta = document.createElement("span");
-      meta.className = "text-xs text-[#68707E]";
+      meta.className = "what";
       meta.textContent = bits.join(" · ");
       row.appendChild(meta);
 
@@ -14126,7 +14229,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // A revoked link opens for nobody, so its address is not a link — a
       // control that can only 403 is worse than no control.
       const addr = document.createElement("span");
-      addr.className = "font-medium text-[#68707E]";
+      addr.className = "dk-addr";
+      addr.style.color = "var(--ink-3)"; // dead: quiet, but still the book's serif
       addr.textContent = r.address;
       td.appendChild(addr);
     } else {
@@ -14134,7 +14238,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       addr.href = r.url;
       addr.target = "_blank";
       addr.rel = "noopener noreferrer";
-      addr.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      addr.className = "dk-addr hover:text-[#B91C1C] underline";
       addr.textContent = r.address;
       td.appendChild(addr);
     }
@@ -14194,12 +14298,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // who restricted a report to their firm that they had published it, which
     // is the one wrong answer on this line that could make them forward it.
     const tdAud = document.createElement("td");
-    if (revoked) tdAud.className = "text-[#68707E]";
-    tdAud.textContent = revoked
+    // The audience wears a chip (2026-08-29) so who-can-see-this scans as a
+    // STATE, not a sentence lost in table prose. Same strings as before,
+    // still textContent (r.firm is user-authored); revoked gets the outline
+    // variant, the quiet one.
+    const aud = document.createElement("span");
+    aud.className = revoked ? "rd-chip o" : "rd-chip";
+    aud.textContent = revoked
       ? "Link turned off"
       : invited ? `${viewers.length} invited`
       : r.visibility === "org" ? (r.firm ? `Shared with ${r.firm}` : "Shared with your firm")
       : "Anyone with the link";
+    tdAud.appendChild(aud);
     tr.appendChild(tdAud);
 
     const tdActs = document.createElement("td");

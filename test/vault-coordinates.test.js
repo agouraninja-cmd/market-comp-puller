@@ -143,11 +143,13 @@ test("buildings with no coordinates contribute nothing to write", () => {
   assert.deepEqual(PROPS.propertyCoordsFrom([comp("1450 mission ave", "2026-01-01")]), []);
 });
 
-test("geo_source is 'broker', never 'census'", () => {
-  // 'census' is import-time geocoding — step 2, deliberately deferred by the
-  // owner's section 7 decision. No code writes it, and this pins that: if it
-  // ever appears, it is because someone built step 2 and this test should be
-  // the thing that makes them say so.
+test("the spreadsheet path writes 'broker', never 'census'", () => {
+  // Step 2 (import-time geocoding) was built 2026-08-29, and 'census' is now
+  // written — but only by server.js's scheduleVaultGeocode, for buildings the
+  // spreadsheet left unlocated. This function describes what the broker
+  // themselves supplied, so its answer stays 'broker' forever; the census
+  // PATCH is guarded lat=is.null, so the broker's value always wins.
+  // test/vault-geocode-run.test.js covers the census half.
   const out = PROPS.propertyCoordsFrom([comp("1450 mission ave", "2026-01-01", 43.6, -116.2)]);
   assert.equal(out[0].geo_source, "broker");
 });
@@ -155,6 +157,47 @@ test("geo_source is 'broker', never 'census'", () => {
 test("a comp missing one half of the pair is not written", () => {
   const half = { ...comp("1450 mission ave", "2026-01-01"), _lat: 43.6 };
   assert.deepEqual(PROPS.propertyCoordsFrom([half]), []);
+});
+
+// ---------------------------------------------------------------------------
+// propertiesNeedingGeocode — the import-time geocode's pure filter (step 2)
+// ---------------------------------------------------------------------------
+
+const prop = (over) => ({
+  id: "p1", address_key: "1450 mission ave", address: "1450 Mission Ave",
+  lat: null, lng: null, ...over,
+});
+
+test("only unlocated rows with a real address are attempted", () => {
+  const rows = [
+    prop({ id: "p1" }),
+    prop({ id: "p2", lat: 43.6, lng: -116.2 }),   // already located: skip
+    prop({ id: "p3", address: "   " }),            // nothing to send: skip
+    prop({ id: "p4", address: undefined }),        // nothing to send: skip
+    { id: null, address: "5 Elm St", lat: null },  // nothing to PATCH: skip
+  ];
+  assert.deepEqual(PROPS.propertiesNeedingGeocode(rows, 10).map((r) => r.id), ["p1"]);
+});
+
+test("lat 0 is a located building, not a missing one", () => {
+  // Number(null) === 0 is the Null Island bug this file already documents on
+  // the stitch path; the filter must only treat NULL as unlocated, or a real
+  // (if nautical) coordinate at the equator would be rewritten.
+  assert.deepEqual(PROPS.propertiesNeedingGeocode([prop({ lat: 0, lng: 0 })], 10), []);
+});
+
+test("the cap bounds the attempt, not the truth", () => {
+  const rows = [prop({ id: "p1" }), prop({ id: "p2" }), prop({ id: "p3" })];
+  assert.equal(PROPS.propertiesNeedingGeocode(rows, 2).length, 2);
+  // Rows past the cap are postponed, not lost: every trigger re-reads
+  // whatever is still null, so the next upload or vault read picks them up.
+  assert.equal(PROPS.propertiesNeedingGeocode(rows, 10).length, 3);
+});
+
+test("a non-array and a nonsense cap both answer nothing", () => {
+  assert.deepEqual(PROPS.propertiesNeedingGeocode(null, 5), []);
+  assert.deepEqual(PROPS.propertiesNeedingGeocode([prop({})], 0), []);
+  assert.deepEqual(PROPS.propertiesNeedingGeocode([prop({})], NaN), []);
 });
 
 // ---------------------------------------------------------------------------

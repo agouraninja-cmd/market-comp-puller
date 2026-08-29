@@ -768,12 +768,22 @@ dependency. `.env` is git-ignored — never commit it.
   consequence: `psf_reconciled` now fires only on a real CORRECTION, never
   on a fill, because a "calc" mark on every row would drain the meaning
   out of a mark that says "we did not trust the figure we were handed".
-  **On the DEFAULT provider none of the above is the big lever, and the
-  streaming assembly does not run at all.** Gemini declares
-  `streaming: false`, so `useStream` is false and the whole live-progress
-  path (`makeCompExtractor`, the `comp` events, `assemblyComp`) is dark in
-  production — though since 2026-08-21 the *reason* is only an unconfirmed
-  frame shape, not missing capability. **Reading a stream now lives behind
+  **The default provider streams too, since 2026-08-29.** Gemini's wire
+  format was confirmed live that day with
+  **`node scripts/verify-gemini-stream.js`** (~$0.001 a run; plain and
+  `--grounded`), and the first run FAILED — the real stream is
+  `event_type`-tagged frames (`interaction.created`, `step.start`/`.delta`/
+  `.stop`, `interaction.completed`), not the `{steps:[...]}` snapshots the
+  reader was guessed from — which is exactly why it shipped dark behind a
+  verifier instead of guessing on the default path. The reader was rewritten
+  from the frames the script printed; the captured frames are committed as
+  `test/fixtures/gemini-stream-frames*.json` and replayed by
+  `test/search-provider-gemini.test.js`, the new ground truth. Keep the
+  script: it is how a vendor-side frame change gets diagnosed, and how a
+  future provider earns `streaming: true` the same way. The
+  `STREAM_UNVERIFIED` env opt-in and `capabilities.streamingUnverified` are
+  deleted, not just off — a test pins the flag as GONE so the branch cannot
+  quietly return. **Reading a stream lives behind
   the provider seam**: `PROVIDER.createStreamReader()` takes one decoded SSE
   frame and returns normalized events (`start` / `text` / `results` /
   `search` / `usage` / `error` / `done`), and owns rebuilding the final
@@ -781,23 +791,20 @@ dependency. `.env` is git-ignored — never commit it.
   makes it safe, and the first test this code ever had: a reader's `text()`
   must be **byte-identical** to what that provider's `parseResponse()`
   produces from the equivalent non-streaming body, or `parseCompJson` sees
-  different input depending on a setting nobody thinks about. Gemini's
-  reader exists but is gated behind `capabilities.streamingUnverified` +
-  `STREAM_UNVERIFIED=on` (default off), because the Interactions API frame
-  shape is documented only as "each event includes a type and JSON data" and
-  a wrong guess fails CLOSED — no text recovered, every report an error.
-  The request FORM is confirmed live (`?alt=sse` **and** `stream: true`;
-  either alone silently returns ordinary JSON).
-  **`node scripts/verify-gemini-stream.js`** settles the rest for ~$0.001:
-  it runs the real reader over real bytes and either passes or prints the
-  frame types it did not recognize. On a pass, set `streaming: true`, delete
-  `streamingUnverified` and the `STREAM_UNVERIFIED` branch, and commit a
-  frame sample as a fixture. Two traps the reader already guards: a re-sent
+  different input depending on a setting nobody thinks about. (One
+  deliberate asymmetry survives: streamed Gemini calls emit real `search`
+  events — the `google_search_call` delta carries the model's query strings
+  — while `parseResponse` still honestly reports `searches: 0`, because the
+  non-streaming body has nothing to count them from.) The request FORM
+  needs `?alt=sse` **and** `stream: true`; either alone silently returns
+  ordinary JSON. Three traps the reader guards, all test-pinned: a re-sent
   cumulative snapshot must REPLACE rather than append (appending duplicates
   the whole report, which still parses and is wrong — the worst failure
-  available), and only newly-arrived characters may be emitted as `text`
-  events or the comp extractor re-scans and double-counts every comp — a visitor sees the simulated wall-clock card and then the
-  finished report. And thought tokens count toward OUTPUT there: a
+  available); only newly-arrived characters may be emitted as `text`
+  events or the comp extractor re-scans and double-counts every comp; and
+  report text is harvested ONLY from a `model_output` step's deltas, so a
+  thought delta that one day carries text can never leak reasoning into
+  `parseCompJson`'s input. And thought tokens count toward OUTPUT there: a
   measured call spent **4,207 in / 928 out / 6,473 thought**, so the report
   JSON is about one eighth of what the model generates and reasoning is the
   other seven eighths. That makes `THINKING_LEVEL` (see its bullet under

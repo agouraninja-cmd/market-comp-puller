@@ -27,28 +27,51 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
-- **The import confirm table is where the remaining cost is, and it has not
-  been designed yet** (measured 2026-08-28, full record in
+- **The import confirm table: two causes fixed, two waiting on decisions**
+  (measured 2026-08-28, full record in
   `docs/evals/extract-2026-08-28-verdict-final.md`). Spec §9's correction-time
   condition was finally timed: **4m 51s to verify 12 extracted rows, with zero
   corrections needed** — 4x over the 60-second bar, on rows that were all
   correct. The extraction took 9.9 seconds; the person took 291. Every cause
   the reviewer named is presentation:
-  1. **Rows are not in source order**, so verifying row 4 means hunting for it
-     page by page. Biggest single lever, and nothing requires reordering.
-  2. **Figures render raw** (`410000` against a page printing `$410,000.00`).
-     `/vault`'s comps table already solved this — formatted to read, raw on
-     focus to edit (`cellDisplay`/`data-raw`) — and the confirm table should
-     reuse that rather than invent a second convention.
+  1. ~~Rows are not in source order~~ — **shipped 2026-08-29** (#217). The
+     extract prompt now asks for document order, top to bottom, page by page,
+     never sorted or grouped. Nothing downstream ever needed a particular
+     order, so the order the model picks IS the order the reviewer reads.
+  2. ~~Figures render raw~~ — **shipped 2026-08-29** (#217). The confirm
+     table reuses `/vault`'s own `cellDisplay`/`data-raw` convention rather
+     than a second one, and the raw value is still what imports. The GUARD is
+     the part worth remembering: these rows have not been through
+     `normalizeRow`, and the rows a broker most needs to read are exactly the
+     ones holding something it refused, so only genuine numbers are formatted
+     — an unguarded `money()` renders "1.2M" as "$NaN" and erases the only
+     clue about what to fix.
   3. **No business name beside the type.** The row says Retail; the page says
      Altitude Tire and Alignment. That name is how a person knows which
-     property they are looking at.
+     property they are looking at. **Blocked on a field decision, not on
+     effort**: `tenancy` means "Single tenant / Multi-tenant" and
+     `anchor_tenant` means the anchor of a center, so there is no honest
+     existing home for it. Either the vault gains a name field (migration,
+     and it then has to earn its place in the CSV template and the comps
+     table) or the confirm table carries review-only metadata that is never
+     stored — which is the smaller change and the one to cost first.
   4. **A fixed column set regardless of the document**, so reviewers scan past
-     columns the source never had.
+     columns the source never had. **Coupled to the dateless-deal sentinel
+     below**: an all-empty required column is currently how a reviewer sees
+     WHY a batch of rows failed, so hiding empty columns before that decision
+     lands would remove the explanation along with the noise.
+  A fifth cause was found while photographing the table for the before/after
+  and fixed in the same change: five lease columns (`rent_psf`, `rent_basis`,
+  `lease_type`, `lease_expiry`, `option_notice_date`) reached `PDF_KEYS` in
+  migration 029 and never reached `TARGET_LABELS`, and the label lookup falls
+  back to the key — so a lease sheet was headed with our own column names and
+  nothing failed. Every column is now pinned to a label by test.
   **The measurement that actually decides the archive is still missing**, and
   it is now the cheapest one left: nobody has timed a broker keying 12 comps
   BY HAND. The whole gate is whether correcting beats typing, and only one
-  side of that comparison has ever been measured.
+  side of that comparison has ever been measured. It also decides how much
+  more the two remaining causes are worth: if hand-keying is slower than
+  4m51s, the table is already past the bar and 3 and 4 are polish.
 
 - **Two decisions before ingestion ships, neither an extraction problem**
   (the extraction test is DONE and the two prompt defects it found are fixed
@@ -97,20 +120,6 @@ intent, the devlog states history.
   `commitVaultBatch()` out of `POST /api/vault/upload` the way `runCompSearch`
   came out of `/api/comps` for bulk valuation is what makes the existing
   cascading undo work on a forwarded email with no new code.
-- **Import-time geocoding for vault comps** (step 2 of
-  `docs/superpowers/specs/2026-08-06-private-comp-geocoding.md`; the other
-  follow-on from that spec, the `/api/geocode` POST move Owen ranked above
-  this one, shipped 2026-08-17 and is in the log below).
-  Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
-  what fraction of broker exports already carry coordinates — could not be
-  answered because there were **no vault uploads at all** yet. It is work that
-  should be bought with evidence from the first real broker book, not
-  estimated. Nothing is wasted by waiting: `geo_source` already allows
-  `'census'`, so step 2 lands as a pure addition with no migration change.
-  **Unblocked 2026-08-10** by the CSV column mapper: real broker exports can
-  now be imported, and `lat`/`lng` are mappable columns, so section 7's
-  premise is finally measurable rather than estimated. Read it off the first
-  few real books before deciding.
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on
@@ -209,6 +218,43 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-29: the default provider streams, the vault locates its own
+  buildings, and the confirm table stops making people translate figures.**
+  Three items on this file moved in one day.
+  - **Import-time geocoding for vault comps shipped** (#212), which closes
+    `2026-08-06-private-comp-geocoding.md` entirely — both follow-ons are now
+    built, the `/api/geocode` POST move on 2026-08-17 and this. It was
+    deferred on 2026-08-06 for a good reason (nobody had uploaded a vault, so
+    section 7's premise was unmeasurable) and unblocked on 2026-08-10 by the
+    CSV column mapper. The server now locates the buildings an import left
+    blank, at import time, through the same in-process Census call the proxy
+    fronts — never Nominatim, never the browser, never a URL. A coordinate the
+    broker typed always wins, and a miss leaves the building unlocated rather
+    than guessed, because a wrong pin puts a building on the wrong continent
+    and nobody would recognise it as wrong.
+  - **Gemini streaming was verified against the live wire and switched on**
+    (#211). The live comp-by-comp report assembly was built 2026-08-09 and had
+    been dark in production ever since Gemini became the default provider,
+    because the SSE frame shape was unconfirmed and the reader shipped behind
+    a verifier rather than a guess. That caution paid: the verifier's FIRST
+    run disproved the guessed parser outright — the live wire is
+    `event_type`-tagged frames, not `{steps:[...]}` snapshots. The reader was
+    rewritten from the real frames, which are committed as fixtures the suite
+    replays, and the `STREAM_UNVERIFIED` opt-in is deleted rather than left
+    off. A bonus the non-streaming body cannot offer: streamed calls surface
+    the model's real search queries. Rollback is `STREAM_ANTHROPIC=off`, no
+    deploy.
+  - **...and immediately exposed a bug that had been invisible for three
+    weeks** (#214). The streamed-comp callback called `expandComp`, which
+    moved into `report-parse.js` in the 2026-08-08 extraction and was never
+    exported; the ReferenceError was swallowed PER COMP by
+    `makeCompExtractor`'s catch, so every live comp event died with no log and
+    a perfectly fine report. Worth remembering as a shape: a feature that is
+    dark cannot report its own breakage, so turning one on is also a test of
+    everything downstream of it.
+  - **The confirm table's first two causes** of the 4m51s review are fixed
+    (#217) — see the Now item above for what remains and why each is blocked.
+
 - **2026-08-28: §9's last unmeasured condition is measured.** Correction time
   finally has a number: 4m 51s for 12 rows, zero corrections required. It
   fails the 60-second bar 4x and the failure is entirely in the review UI —
@@ -296,8 +342,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 - **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
   higher-ranked of the two follow-ons from the private-comp geocoding work
-  (Owen's section 7 ordering: above import-time geocoding, which stays in
-  "Next"). Every comp's address used to travel in a query string, so it landed
+  (Owen's section 7 ordering: above import-time geocoding, which was still in
+  "Next" then and shipped 2026-08-29 — see the entry at the top of this log).
+  Every comp's address used to travel in a query string, so it landed
   in Render's access logs and in any outbound Referer; it rides in the body
   now, the same reasoning `POST /api/report-access` and `POST /api/hub/access`
   already carry. It matters most for the comps that are not public — a vault
@@ -424,8 +471,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   Verified end to end after both halves merged, since neither of us had run
   them together: coordinates survive `attachPropertyCoords` →`toApiComp` →
   `blendPrivateComps` → the browser guard, which then skips geocoding.
-  Import-time geocoding is deliberately deferred; see Next for it and for the
-  `/api/geocode` POST change that Owen ranked above it.
+  Import-time geocoding was deliberately deferred at the time; both it and the
+  `/api/geocode` POST change Owen ranked above it have since shipped
+  (2026-08-29 and 2026-08-17), so this spec is now built in full.
 - **2026-08-06: CI can be started by hand** (#44). GitHub had a seven-hour
   Actions incident that throttled webhooks to ~15%, so pushes and PRs stopped
   creating workflow runs at all — four branches merged with no CI result while

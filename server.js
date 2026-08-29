@@ -2165,6 +2165,41 @@ async function findBrandingProfile(userId) {
   }
 }
 
+// The FIRM fallback for report branding (migration 041): the org_branding row
+// of the caller's firm, consulted only when their own branding_profiles row
+// normalizes to nothing — brandForRender owns that ordering, this only finds
+// the row. Oldest active membership wins when someone is ever in more than one
+// firm (`joined_at` asc — the seats-held-oldest-first precedent), taking the
+// first org whose row actually normalizes to a brand.
+//
+// FAILS OPEN like findBrandingProfile's share-path behavior, and unlike the
+// member's own read in GET /api/branding: a failed org read must never cost a
+// member their own letterhead, fail a share, or 503 the branding editor. The
+// asymmetry is safe here because nothing ever upserts over this value — the
+// blank-on-next-save hazard that forces the strict 503 on the own-profile
+// read has no analogue on a fallback nobody writes back.
+async function findOrgBrandingFor(user) {
+  if (!user || !user.email || !DB_CONFIGURED) return null;
+  try {
+    const memberships = (await orgMembershipsFor(user.email))
+      .filter((r) => ORG.isActive(r))
+      .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+    if (!memberships.length) return null;
+    const ids = [...new Set(memberships.map((r) => String(r.org_id)).filter(Boolean))];
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&limit=${ids.length}`);
+    const byOrg = new Map((rows || []).map((r) => [String(r.org_id), r]));
+    for (const m of memberships) {
+      const row = byOrg.get(String(m.org_id));
+      if (row && BRANDING.normalizeBrand(row)) return row;
+    }
+    return null;
+  } catch (e) {
+    console.error("Firm branding lookup failed:", e.message);
+    return null;
+  }
+}
+
 /**
  * What may this user do? The single entitlement entry point.
  *
@@ -17822,10 +17857,20 @@ const server = http.createServer((req, res) =>
         const rows = await sbRequest("GET",
           `branding_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
         const row = (rows && rows[0]) || null;
+        // The firm fallback rides along (041) so the browser needs no second
+        // round trip to know what a report will carry. Fail-open on purpose,
+        // unlike the own-profile read above: this value is never upserted
+        // back, so a swallowed error costs one render's fallback, not data.
+        const firmRow = await findOrgBrandingFor(user);
         // Answer the API shape, not the table shape, so the column names stay
         // ours to change. An absent profile is {}, not 404: "you have no
-        // branding yet" is a normal state, not an error.
-        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(row) || {} });
+        // branding yet" is a normal state, not an error. `firm` is null when
+        // there is nothing — the browser branches on it, and {} would read as
+        // a brand that normalizes to nothing.
+        return sendJson(res, 200, {
+          branding: BRANDING.normalizeBrand(row) || {},
+          firm: BRANDING.normalizeBrand(firmRow),
+        });
       })().catch((err) => {
         console.error("Branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load your branding. Please try again in a minute." });
@@ -21343,7 +21388,14 @@ const server = http.createServer((req, res) =>
         delete safeMeta.branding;
         if (user && ent.canBrand) {
           const brandRow = await findBrandingProfile(user.id);
-          const brand = BRANDING.normalizeBrand(brandRow);
+          // The firm profile is the fallback, never the override (041) —
+          // brandForRender's own ordering, restated here because this path
+          // snapshots a row rather than rendering one. Only consulted when
+          // the member's own profile normalizes to nothing, so a member with
+          // their own mark costs no org read. Covers auto-share too, which
+          // reaches this route like any other share.
+          const brand = BRANDING.normalizeBrand(brandRow)
+            || BRANDING.normalizeBrand(await findOrgBrandingFor(user));
           if (brand) safeMeta.branding = brand;
         }
 
@@ -22461,6 +22513,92 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm settings update failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't save that setting. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET|PUT|DELETE /api/org/branding — the firm's letterhead (041) -----
+    //
+    // One profile per firm, the fallback a member's report carries when they
+    // have no personal one (brandForRender owns that ordering). Reading is
+    // any active member's — it is about to appear on their own documents, so
+    // they are owed the disclosure. Writing is owner/admin, the same
+    // authority as shareDefault/kind on /api/org/settings and for the same
+    // reason: it changes what every colleague's reports carry, not one
+    // person's own work. Validation is BRANDING.validateForSave, byte for
+    // byte the personal editor's rules — one decision table, two tables.
+    if (orgPath === "/api/org/branding" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+        // API shape, not table shape, and {} for "none yet" — GET
+        // /api/branding's contract, kept identical so the browser's one form
+        // can edit either profile.
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand((rows && rows[0]) || null) || {} });
+      })().catch((err) => {
+        console.error("Firm branding read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "PUT") {
+      (async () => {
+        if (rateLimited("orgbrand:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await openOrg();
+        if (!user) return;
+        // 300KB, /api/branding's own cap: a 150KB logo is ~200KB as base64
+        // inside JSON, plus the fields. readOrgBody's 10KB default was sized
+        // for names and emails, not letterheads.
+        const body = await readOrgBody(3e5);
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        const checked = BRANDING.validateForSave(body);
+        if (checked.error) return sendJson(res, 400, { error: checked.error });
+        await sbRequest("POST", "org_branding?on_conflict=org_id",
+          [{ ...checked.row, org_id: orgId, updated_at: new Date().toISOString() }],
+          { prefer: "resolution=merge-duplicates,return=minimal" });
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(checked.row) || {} });
+      })().catch((err) => {
+        if (err instanceof SyntaxError || (err && err.message === "too_big")) {
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        console.error("Firm branding save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "DELETE") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        // Scoped by org_id in the QUERY, membership proven above — the
+        // personal DELETE's rule, one level up.
+        await sbRequest("DELETE",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}`, undefined,
+          { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("Firm branding delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove the firm's branding. Please try again in a minute." });
       });
       return;
     }

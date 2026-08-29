@@ -189,7 +189,12 @@ function loadRenderFirm(state) {
     "let currentUser = __user; let firmState = null; const __calls = [];\n" +
     "async function loadMyFirms() { firmState = __state; return __state; }\n" +
     "async function renderFirmMembers(f) { __calls.push(['members', f]); }\n" +
-    "function renderFirmInvites(i) { __calls.push(['invites', i]); }",
+    "function renderFirmInvites(i) { __calls.push(['invites', i]); }\n" +
+    // The branding card's scope row follows the firm state (041). A silent
+    // stub, not a __calls entry: these tests assert the render-call LIST, and
+    // the scope hook fires on every path by design, so recording it would
+    // add noise to every assertion without proving anything new.
+    "function updateBrandScopeUI() {}",
     { __user: { email: "brad@colliers.com" }, __state: state });
 }
 
@@ -254,7 +259,8 @@ test("a signed-out desk asks nothing and shows nothing", async () => {
   const ctx = load(FIRM_RE, "this.renderFirm = renderFirm; this.asked = () => __asked;",
     "let currentUser = null; let firmState = null; let __asked = false;\n" +
     "async function loadMyFirms() { __asked = true; return null; }\n" +
-    "async function renderFirmMembers() {} function renderFirmInvites() {}");
+    "async function renderFirmMembers() {} function renderFirmInvites() {}\n" +
+    "function updateBrandScopeUI() {}");
   await ctx.renderFirm();
   assert.equal(ctx.dom.hidden("deskFirm"), true);
   assert.equal(ctx.asked(), false, "the desk read a firm membership for a signed-out visitor");

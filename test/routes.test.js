@@ -3264,3 +3264,22 @@ test("the live comp extractor's callback resolves every identifier it calls", ()
   assert.equal(typeof require("../report-parse").expandComp, "function",
     "report-parse must keep exporting it, or the module call above throws the same way");
 });
+
+test("EXTRACT_PROMPT asks for the rows in the order the document prints them", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 2026-08-28: verifying 12 correct rows took 4m51s against spec
+  // §9's 60-second bar, and out-of-order rows were the biggest single cause —
+  // checking row 4 meant hunting the document for it, page by page. Nothing
+  // downstream needs a particular order (classifyExtractRows maps in place and
+  // the confirm table renders in place), so the order the model chooses IS the
+  // order the reviewer reads.
+  assert.match(body, /order they appear/i,
+    "the prompt must ask for document order, or the model is free to group and sort");
+  assert.match(body, /Never sort or group/i,
+    "and must forbid sorting by name - an unstated order is one the model picks");
+});

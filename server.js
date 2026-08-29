@@ -5412,6 +5412,7 @@ cap_rate, and every other percentage, must be the percent number the page shows:
 
 Rules:
 - Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
+- Return the rows in the order they appear in the document: top to bottom, page by page. Never sort or group them - not by type, price, date, or anything else. A person checks these rows against the page they came from, and a reordered list makes them hunt the page for every single row.
 - Omit a field rather than invent it. Never invent a price, date, or size.
 - A row with no sale price and no sale date is a LISTING, not a completed deal, however much it looks like the sold rows around it. Omit transaction and deal_date for it. Never source deal_date from a list date, an assessment date, a photo date or a report date: if the row does not say when the deal closed, omit deal_date.
 - address must be a specific property with a street number, not a district or "general submarket estimate".

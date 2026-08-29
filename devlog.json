@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-29",
+    "type": "improvement",
+    "title": "The import confirm table reads like the document it came from",
+    "details": "Verifying twelve extracted rows was timed at 4m51s against the 60-second bar, with zero corrections needed — the extraction took 9.9 seconds and the person took 291. The cost is the review, not the read, so this takes the two causes that are pure presentation. Figures are now shown the way the source page prints them (,250,000, not 4250000) using the comps table’s own convention rather than a second one: formatted to read, raw on focus to edit, and the raw value is what imports — a dollar sign can never reach the vault. The guard matters more than the formatting: these rows have NOT been through normalizeRow, and the rows a broker most needs to read are the ones holding something it refused, so anything that is not genuinely a number is shown exactly as it was read. An unguarded formatter would have rendered 1.2M as  and erased the only clue about what to fix. The model is also now asked to return rows in the order the document prints them, top to bottom, page by page — out-of-order rows were the biggest single cause, because checking row 4 meant hunting the page for it. And a lease sheet was headed rent_psf and rent_basis: migration 029 added five lease fields to the confirm table’s column list and never to its labels, and the label lookup falls back to the key, so nothing failed and nobody saw it until a lease row was photographed. Every column is now pinned to a label by test."
+  },
+  {
+    "date": "2026-08-29",
     "type": "fix",
     "title": "The live comp lines actually appear — a swallowed ReferenceError, one year of silence",
     "details": "The first real streamed Gemini report showed searches, results and the summary arriving live — and not one comp line, while the finished report held four. The streamed-comp callback in server.js calls expandComp, which moved into report-parse.js in the 2026-08-08 extraction and was never exported; the resulting ReferenceError was swallowed PER COMP by makeCompExtractor’s catch, so every live comp event died with no log, no error, and a perfectly fine report. Nothing noticed because the whole streaming path was dark on the default provider until today. The call now goes through the module, the export exists, and two tests pin it: report-parse must export expandComp, and a source scan fails the build on any bare expandComp( call in server.js — the exact shape a future refactor would reintroduce."

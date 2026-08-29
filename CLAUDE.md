@@ -3450,7 +3450,37 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   exists specifically to catch drift between the two copies.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
-- `GET /` — serves `index.html`. The same handler covers `/index.html`,
+- `GET /` — serves `index.html`. **For a signed-in member `/` opens the
+  WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
+  board and their own properties, with the real search desk above them. That
+  is the whole firm-first reorganization, and three rules hold it up:
+  - **The search desk stays visible on the workspace.** `showDeskView()` used
+    to hide `#searchSection`; it now shows it. Landing a member on a home page
+    with no address field would be worse than the page it replaced, so the
+    route change was only made after this one. It is the REAL `#compForm`, not
+    a compact copy — one form, one set of ids, read by `targetRange()`, the
+    footprint estimate, every report restore and the confirm dialog. A second
+    "launcher" would be a second address input to keep in step.
+  - **A report yields the workspace** rather than rendering under it, at BOTH
+    seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
+    Without both, comps stream in below the firm shelf.
+  - **The boot decision reads `looksSignedIn()`, never `currentUser`** (it runs
+    before the account bootstrap resolves, so every member would see the
+    marketing stack for a beat), and **`/r/<id>` is excluded by name** — a
+    shared report is somebody else's link and must never open the reader's own
+    desk. `popstate` mirrors the same rule, so Back to `/` does not drop a
+    member on marketing.
+  **`/desk` is kept working rather than redirected to `/`.** It is linked from
+  Stripe checkout returns *with a query string*, the watchlist digest, org
+  invite emails and `/bulk`; a 302 would drop the query and dead-end those.
+  Home moved by opening the same view, not by moving the URL. The five desk
+  decks now lead with **Your firm** (was third of five), and the label a person
+  reads is **Workspace** everywhere — prose says "your workspace" lowercase.
+  One duplicate is left undecided on purpose: for a member, `marketBar`'s
+  `Home` and the new `Workspace` link are the same destination. Suppressing
+  Home for members was tried and reverted — two tests defend that link for
+  signed-in visitors by name. See the comment on that line.
+  The same handler covers `/index.html`,
   `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
   `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
   and an exact `req.url` match 404'd it — along with every campaign link to

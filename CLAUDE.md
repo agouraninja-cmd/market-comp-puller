@@ -3254,10 +3254,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       the columns in its payload — coordinates travelling in it would mean a
       later upload that omitted them **wiped** the ones already stored. The
       PATCH filters `lat=is.null`, so a located building is never rewritten.
-    - **`geo_source` is only ever `'broker'`.** `'census'` is import-time
-      geocoding — step 2, deferred by the owner's §7 decision (zero real vault
-      uploads exist, so the question it answers cannot be measured yet, and it
-      is where the rate limit and retry policy would live). A test pins this.
+    - **`geo_source` is `'broker'` from the spreadsheet, `'census'` from the
+      import-time geocode — and the broker always wins.** Step 2 shipped
+      2026-08-29 (the §7 deferral was "buy it with evidence"; the roadmap
+      moved it to Next once the CSV mapper made `lat`/`lng` mappable):
+      `scheduleVaultGeocode` in server.js runs at the tail of
+      `linkVaultProperties`, fire-and-forget on `scheduleCorpusLocate`'s
+      contract, and geocodes up to 25 of an import's unlocated buildings
+      through `geocodeCensus` — our own in-process Census call, never
+      Nominatim, never the browser. It reads AND patches with `lat=is.null`,
+      and it runs after the broker-coordinate PATCHes, so a building the
+      broker located is never even read, let alone rewritten. A miss or an
+      outage is a skip, never a guess (outages are not cached in `GEO_MEM`,
+      so the next trigger retries). Pre-existing books backfill 8 per vault
+      read, riding `attachPropertyCoords` the way the corpus backfill rides
+      its own read. The pure filter is
+      `PROPS.propertiesNeedingGeocode` (`broker-properties.js`);
+      `test/vault-geocode-run.test.js` proves the wall end to end against
+      the fake PostgREST and a census stub on `CENSUS_API_URL` (test-only
+      env, `RESEND_API_URL`'s precedent — decides where a private address is
+      posted, so trusted config, unset in production).
   - **Gut check** (v4 slice 1, 2026-08-08; spec
     `docs/superpowers/specs/2026-08-08-gut-check-design.md`). A panel on
     `/vault` compares the broker's per-bucket median $/SF and cap rates
@@ -3630,8 +3646,9 @@ private row has not earned. Two rules matter when editing anything down here:
   storing that miss would deny the Nominatim fallback to the public callers
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
-  `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  `toApiComp` lifting them onto the comp); **import-time geocoding shipped
+  2026-08-29** — the rules live in the Private-comp coordinates bullet under
+  the broker vault above. Moving `/api/geocode` to POST ranked above it and
   **shipped 2026-08-17** — see that route's entry above; the address a private
   comp sends to our own proxy no longer lands in a URL.
 

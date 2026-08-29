@@ -844,6 +844,62 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
 });
 
 // ----------------------------------------------------------------------------
+// The workspace leads (2026-08-29). The owner's instruction was that the
+// search chamber and the market explorer stop being the top of the signed-in
+// home; before this, #searchSection sat above #deskView in document order and
+// nothing pinned it, so nothing stopped it drifting back.
+// ----------------------------------------------------------------------------
+test("the workspace leads and the chamber follows, in DOM order", () => {
+  const iLock = html.indexOf('id="searchLock"');
+  const iDesk = html.indexOf('id="deskView"');
+  const iChamber = html.indexOf('id="searchSection"');
+  const iStatus = html.indexOf('id="statusBox"');
+  assert.ok(iLock > -1 && iDesk > -1 && iChamber > -1 && iStatus > -1, "an id vanished");
+  assert.ok(iLock < iDesk, "the wall card stays above the workspace");
+  assert.ok(iDesk < iChamber, "the workspace opens the page; the chamber follows it");
+  assert.ok(iChamber < iStatus, "the chamber still sits above status, loading and results");
+});
+
+test("the chamber wears its desk header only while the workspace is on screen", () => {
+  // The header sits inside #searchSection (so the wall's boot CSS hides it
+  // with its parent) but BEFORE the rd-form span the Mock-A test measures,
+  // and it is dk-deck-h, never rd-chamber-head — that count must stay two.
+  const head = html.slice(html.indexOf('id="searchSection"'), html.indexOf('class="rd-form rd-desk"'));
+  assert.match(head, /id="searchDeckHead"[^>]*class="hidden dk-deck-h"/);
+  assert.match(head, /Run a report/);
+  // Plain-string pins (not regexes): the needles are full of ")(. characters,
+  // and an escaping slip here would pin nothing while looking like it did.
+  const reveal = 'getElementById("searchDeckHead").classList.remove("hidden")';
+  const retire = 'getElementById("searchDeckHead").classList.add("hidden")';
+  const show = html.slice(html.indexOf("function showDeskView"), html.indexOf("function showHomeView"));
+  assert.ok(show.includes(reveal), "desk view reveals the chamber's workspace rule");
+  const homeFn = html.slice(html.indexOf("function showHomeView"), html.indexOf("function showHomeView") + 1200);
+  assert.ok(homeFn.includes(retire), "plain home must not carry a workspace heading over the form");
+  // A rendering report yields the workspace at BOTH seams; the stray rule
+  // would otherwise float over the chamber while comps stream in.
+  for (const fn of ["function beginAssembly", "renderMap(parsed, meta)"]) {
+    const at = html.indexOf(fn);
+    assert.ok(at > -1, fn + " not found");
+    const windowTxt = fn === "function beginAssembly" ? html.slice(at, at + 6000) : html.slice(at - 2000, at);
+    assert.ok(windowTxt.includes(retire), fn + " must retire the chamber's workspace rule");
+  }
+});
+
+test("Run a report jumps to the chamber and seats the caret, deterministically", () => {
+  const at = html.indexOf('id="deskRunReport"');
+  assert.ok(at > -1, "the workspace header offers the shortcut");
+  const listener = html.slice(html.indexOf('deskRunReport").addEventListener'));
+  const body = listener.slice(0, 600);
+  assert.ok(body.includes('getElementById("searchSection").scrollIntoView'), "the shortcut goes to the chamber");
+  // Instant on purpose: a smooth scroll paired with a focus proved able to
+  // silently go nowhere, and a shortcut that half-works is worse than one
+  // that jumps. No smooth here also satisfies prefers-reduced-motion.
+  assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
+  assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
+    "the caret lands in the address field without fighting the jump");
+});
+
+// ----------------------------------------------------------------------------
 // Tab fills the rotating "e.g." address. The placeholder is a real building
 // someone can try, but it used to be display-only: Tab jumped to the next
 // field and left the box empty. The strip and the "should Tab accept?"

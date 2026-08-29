@@ -11801,6 +11801,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let pendingPricingHash = location.hash === "#pricing"
     || new URLSearchParams(location.search).get("pricing") === "1";
 
+  // Set when THIS page load arrived through the /?auth=signin door. That door
+  // is a full navigation off whatever page the visitor was reading, because
+  // the account modal lives only in this file — so cancelling it used to leave
+  // them HERE, on the app, behind the wall's lock card, with nothing pointing
+  // back to the page they started on. Consumed once by closeAcctModal, which
+  // returns them to the landing page instead.
+  //
+  // signin ONLY, never signup, and the asymmetry is the point. A signup
+  // arrival usually typed an address into the landing page's own form, which
+  // rides here in pendingLandingAddress.v1 and is waiting in the search field
+  // by the time they cancel; bouncing them back would throw that address away
+  // and undo the funnel the landing page exists to run. Someone asking to SIGN
+  // IN already has an account, and is the one visitor that funnel has nothing
+  // to offer.
+  let exitToLandingOnCancel = false;
+
   async function acctApi(method, url, bodyObj) {
     const r = await fetch(url, {
       method,
@@ -12004,12 +12020,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById(acctMode === "reset" ? "acctPassword" : "acctEmail").focus();
   }
   function closeAcctModal() {
+    // Captured and cleared FIRST, for the same reason every flag below is
+    // cleared here: it is one-shot. Signing out and back in on this same page
+    // load, or reopening the modal from the lock card, must not inherit a door
+    // arrival that was already answered.
+    const exitToLanding = exitToLandingOnCancel;
+    exitToLandingOnCancel = false;
     pendingPortfolioSave = false; // a cancelled nudge must not fire a surprise save later
     pendingSharedAddress = "";    // ...and must not prefill an address they walked away from
     pendingCheckoutPlan = null;   // ...and must not open Stripe Checkout later either
     pendingSharedReload = false;  // ...and a cancelled sign-in must not reload the page later
     pendingMarketExplore = null;  // ...and a cancelled gate must not fire a surprise market search later
     document.getElementById("acctModal").classList.add("hidden");
+    // Back to the landing page, which is what `/` renders for exactly this
+    // visitor (signed out, wall up, no door param).
+    //
+    // currentUser, because the successful-auth paths close this modal too --
+    // one of them twice, via the import prompt -- and a member must land on
+    // the app; that is what they just signed in FOR. accountWall, because with
+    // the wall off `/` serves this very file, so the navigation would be a
+    // pointless reload of the page they are already standing on.
+    if (exitToLanding && !currentUser && accountWall) location.href = "/";
   }
 
   document.getElementById("signInLink").addEventListener("click", () => openAcctModal("signin"));
@@ -12486,6 +12517,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // followed a static link from a page that is cached for everyone.
     const authParam = new URLSearchParams(location.search).get("auth");
     if (!currentUser && (authParam === "signup" || authParam === "signin")) {
+      // See the declaration for why this is signin-only. Inside the
+      // !currentUser guard, so a member following a stale link never arms it.
+      exitToLandingOnCancel = authParam === "signin";
       // An arrival via a market page's Explore link gets told up front that
       // the Explorer is Pro — the generic "run a report" nudge didn't match
       // what they clicked, and the gap only surfaced after they'd signed up

@@ -2257,6 +2257,54 @@ test("the Google button ships hidden and is revealed only by config", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Cancelling the /?auth=signin door returns a signed-out visitor to the
+// landing page, instead of stranding them on the app
+// ---------------------------------------------------------------------------
+//
+// Owner-reported 2026-08-29, alongside the Pricing half of the same defect.
+// The account modal lives only in this file, so /?auth=signin is a full
+// navigation off whatever page the visitor was reading. Nothing then pointed
+// back: closeAcctModal only added `hidden`, and the visitor was left on the
+// app behind the wall's lock card having never asked to see it.
+//
+// No DOM here, so these assert the shape in the source -- the same trade the
+// pricing one-shot tests below make, and for the same reason: cheap, and they
+// fail the moment somebody unpicks a guard.
+
+test("the signin door arms the landing-page exit, and signup never does", () => {
+  assert.match(html, /exitToLandingOnCancel = authParam === "signin";/,
+    "the door must arm the exit for signin only");
+  // The asymmetry is load-bearing, not an oversight. A signup arrival carries
+  // the address typed into the landing page's own form (pendingLandingAddress
+  // .v1), which is waiting in the search field by the time they cancel;
+  // bouncing them back would throw it away and undo that funnel.
+  assert.ok(!/exitToLandingOnCancel = true;/.test(html),
+    "nothing may arm the exit unconditionally -- signup would inherit it");
+  // Inside the !currentUser guard, so a member following a stale link from a
+  // cached page never arms it at all.
+  const door = html.match(
+    /if \(!currentUser && \(authParam === "signup" \|\| authParam === "signin"\)\) \{[\s\S]{0,400}?exitToLandingOnCancel/);
+  assert.ok(door, "the exit is armed outside the signed-out door block");
+});
+
+test("the landing-page exit is one-shot and never fires on a successful sign-in", () => {
+  const fn = html.match(/function closeAcctModal\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "closeAcctModal moved or changed shape");
+  const body = fn[0];
+  // Captured and cleared before anything else, like every pending flag beside
+  // it: reopening the modal from the lock card, or signing out and back in on
+  // this same page load, must not inherit an answered door arrival.
+  assert.match(body, /const exitToLanding = exitToLandingOnCancel;\s*\n\s*exitToLandingOnCancel = false;/,
+    "the exit flag must be captured and cleared at the top of the close");
+  // currentUser, because both successful-auth paths close this modal too (one
+  // of them twice, through the import prompt) and a member must land on the
+  // app -- that is what they signed in FOR. accountWall, because with the wall
+  // off `/` serves this very file and the navigation is a pointless reload.
+  assert.match(body, /if \(exitToLanding && !currentUser && accountWall\) location\.href = "\/";/,
+    "the exit must be guarded on both the visitor and the wall");
+});
+
+// ---------------------------------------------------------------------------
 // The pricing deep link is a one-shot, so it may never act on a GUESS
 // ---------------------------------------------------------------------------
 //

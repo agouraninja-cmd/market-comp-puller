@@ -37,9 +37,21 @@ const FAKE_COOKIE = "cn_session=not-a-real-session";
 
 // The classes are applied by the injected <script>; the <style> block names
 // both of them in its selectors, so match the assignment, not the stylesheet.
-function bootClasses(html) {
+function allBootClasses(html) {
   const m = html.match(/className\+="([^"]*)"/);
   return m ? m[1].trim().split(/\s+/).filter(Boolean) : [];
+}
+
+// Only the AUTH classes. This boot script stopped being auth's alone on
+// 2026-08-28, when NAV_SHELL's `nav-rail` started riding the same vehicle —
+// it needs the same before-paint timing, for the same reason (a sidebar drawn
+// and then taken away is the flicker this whole mechanism exists to prevent).
+// These tests are about what the page is told about the VISITOR, so they
+// filter to `cn-` rather than pinning the whole list; otherwise every future
+// use of the boot script breaks assertions that have nothing to do with it.
+// The rail's own presence is asserted in test/nav-shell.test.js.
+function bootClasses(html) {
+  return allBootClasses(html).filter((c) => c.startsWith("cn-"));
 }
 
 function bootData(html) {

@@ -150,7 +150,7 @@ function renderBulkRunMarkup(opts) {
     <p class="acts">
       <button type="button" class="lnk hide" id="bkCancel">Cancel the rest</button>
       <a class="lnk" id="bkDl" href="#" style="display:none">Download CSV</a>
-      <a class="lnk" href="/desk">Open My Desk</a>${past ? "" : `
+      <a class="lnk" href="/desk">Open your workspace</a>${past ? "" : `
       <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}
     </p>
     <div style="overflow-x:auto"><table id="bkRows"></table></div>
@@ -656,7 +656,7 @@ function run(){
     text:$("bulkText").value,type:$("bulkType").value,
     months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value
   }).then(function(d){
-    BULKRUN.msg("Running. You can close this tab \\u2014 the valuations keep going and land on My Desk.",false);
+    BULKRUN.msg("Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
     BULKRUN.showNotes(d);
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){

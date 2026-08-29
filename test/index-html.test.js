@@ -1570,6 +1570,35 @@ test("the Explorer badge uses only classes the vendored tailwind.css actually ha
   }
 });
 
+test("the nav links server.js injects into the app are styled by the vendored tailwind.css", () => {
+  // APP_NAV_LINK_CLASS is a Tailwind class string that lives in server.js and
+  // is injected into index.html at the <!--NAV_LINKS--> marker. tailwind.css
+  // is purged against index.html ALONE, so those utilities survive only while
+  // index.html happens to use them elsewhere — the moment it stops, the
+  // Explore menu's links render unstyled and nothing fails.
+  //
+  // server.js says "#pricingLink, one line above the marker, carries this
+  // identical set", and that has ALREADY drifted: Pricing moved out of the
+  // dropdown on 2026-08-21 and now carries "hidden hover:text-[#1A2433]".
+  // The invariant was prose-only until this test, which is why it went stale
+  // without anybody noticing. Checked against the CSS rather than against
+  // #pricingLink, because the CSS is what the invariant is actually for.
+  const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const m = serverSrc.match(/const APP_NAV_LINK_CLASS = "([^"]+)"/);
+  assert.ok(m, "could not find APP_NAV_LINK_CLASS in server.js");
+
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  for (const cls of m[1].split(/\s+/).filter(Boolean)) {
+    const selector = "." + cls.replace(/([:[\]().%#/,])/g, "\\$1");
+    assert.ok(
+      css.includes(selector),
+      `APP_NAV_LINK_CLASS uses "${cls}", which is not in the vendored tailwind.css. ` +
+        `Either index.html no longer uses it (regenerate tailwind.css) or the class string ` +
+        `needs changing — a server-injected class index.html never mentions is invisible to the purge.`,
+    );
+  }
+});
+
 // ---------------------------------------------------------------------------
 // The shop nouns, mirrored (migration 036)
 //

@@ -894,6 +894,58 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
     .rd-appbar > nav { flex-wrap: wrap; }
     .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
+    /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
+       The app's half of the shell server.js gives every other page. Same
+       geometry, same one class on <html> -- stamped by authBoot before first
+       paint, so the sidebar is never drawn and then taken away -- and the same
+       rule that only a SIGNED-IN visitor gets it.
+       Hand-written rather than Tailwind, deliberately: tailwind.css is a
+       vendored purged build and every utility this needs (inset-y-0, top-0,
+       h-screen, ml-*, pl-*, border-r, z-30, every md: variant) is absent from
+       it, so a class here would silently not style. That is the precedent
+       .rd-appbar, .rd-desk and .rd-heroband already set, and it also keeps
+       these colours out of theme.test.js's per-utility dark-bridge rule --
+       var() tokens are already theme-aware.
+       NOTHING inside the page moves. The four max-w-5xl bands (this bar, the
+       hero, the content container and the footer) each keep mx-auto, so they
+       re-centre themselves inside the body's new left padding. */
+    @media (min-width: 900px) {
+      html.nav-rail body { padding-left: 224px; }
+      html.nav-rail body > header {
+        position: fixed; top: 0; left: 0; bottom: 0; width: 224px;
+        border-bottom: 0; border-right: 1px solid var(--line);
+        background: var(--paper); overflow-y: auto;
+        /* Above the page, below the dropdowns (1100) and the modals (1200),
+           so an opened account menu and every overlay still cover the rail. */
+        z-index: 30;
+      }
+      html.nav-rail .rd-appbar {
+        flex-direction: column; align-items: stretch; justify-content: flex-start;
+        flex-wrap: nowrap; max-width: none; height: 100%; row-gap: 0;
+        padding: 22px 0 18px;
+      }
+      html.nav-rail .rd-appbar > a { padding: 0 20px 16px; }
+      html.nav-rail .rd-appbar > nav {
+        flex: 1; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 0;
+      }
+      html.nav-rail .rd-appbar > nav > button,
+      html.nav-rail .rd-appbar > nav > a {
+        padding: 7px 20px; text-align: left; border-left: 3px solid transparent;
+      }
+      html.nav-rail .rd-appbar > nav > button:hover { background: var(--wash); }
+      /* Explore has nowhere to open in a 224px column; its links live in the
+         footer, exactly as on the server-rendered pages. */
+      html.nav-rail #exploreMenuWrap { display: none; }
+      /* The account cluster sits at the foot, and its menu opens UPWARD: the
+         default top-9 would put it off the bottom of the viewport from there. */
+      html.nav-rail #acctMenuWrap {
+        margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
+      }
+      html.nav-rail #acctMenu { right: auto; left: 16px; top: auto; bottom: calc(100% + 8px); }
+    }
+    /* Paper has no sidebar. The header is already no-print; this is the body
+       padding it would otherwise leave behind as an empty left column. */
+    @media print { html.nav-rail body { padding-left: 0; } }
     /* The home hero used to stack kicker / claim / lead down the left, each
        capped at 22ch and 58ch inside a max-w-5xl band, so the right ~450px of
        it was empty and the band ran 326px tall before the search form -- the
@@ -2043,7 +2095,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              to carry are used on 40-plus other lines in this file, so the
              tailwind purge still emits them for the server-injected NAV_LINKS. -->
         <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
-        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">My Desk</button>
+        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">Workspace</button>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -2517,7 +2569,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          the account-backed #myDesk section shows only when signed in. -->
     <section id="deskView" class="hidden mt-8 no-print">
       <div class="flex items-center justify-between border-b rd-hairline pb-2">
-        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">My Desk</h2>
+        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
           <button type="button" id="deskAvatarBtn" aria-label="Change profile photo"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
@@ -2583,108 +2635,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
 
       <!-- My Desk — the signed-in areas, grouped into five decks (2026-08-21;
-           the vault's Direction-U pattern): Your properties, Sharing, Your
-           firm, Broker, Account. Every section keeps its id and its own
+           the vault's Direction-U pattern): Your firm, Your properties,
+           Sharing, Broker, Account. Every section keeps its id and its own
            hidden toggling — the deck wrappers are presentation only, and
            refreshDeckVisibility() hides any deck whose sections are all
-           hidden so a heading never floats over nothing. -->
+           hidden so a heading never floats over nothing.
+
+           YOUR FIRM LEADS (2026-08-28). It was third of five, below a
+           member's own properties and their shared reports, so the shop's
+           work sat past two decks of personal work — the opposite of a
+           product whose pitch is that the firm is the centre. Nothing about
+           the deck changed in the move: the block is byte-identical, so every
+           id, gate and renderer inside it is untouched, and
+           refreshDeckVisibility() still hides the whole heading for a member
+           who is in no firm and holds no invitation. A solo member therefore
+           sees no change at all. -->
       <section id="myDesk" class="hidden mt-4">
-      <div class="dk-deck" data-deck id="deckProperties">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
-      <div class="mt-4">
-        <div class="dk-rule">
-          <span class="rd-lab">Portfolio</span>
-          <span id="deskCount" class="dk-note"></span>
-        </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
-        <!-- The other empty state, and the reason they are two elements: a
-             failed read used to render as the invitation above, which tells
-             somebody with a book of sixteen properties that it is gone. Same
-             rule the vault's comps table, the lead inbox and the hub list
-             each had to learn: an outage must never be reported as an
-             absence. Shown by renderMyDesk(); the rows and the count are left
-             exactly as they were rather than wiped.
-             ⚠ This wording is the MODEL for every other failed read on the
-             desk, and the reassurance is the load-bearing half: a bare
-             "couldn't load" on a section that holds saved work reads as data
-             loss to the person most likely to be looking at it. Keep the two
-             sentences (what failed, then that nothing is gone) on any new
-             one. -->
-        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
-        <!-- Statement table container (was a 3-col card grid). The id keeps
-             every existing reference; renderMyDesk builds the table inside.
-             The book line (#deskLedger) that used to sit above it is now the
-             desk-level reading strip under the page header. -->
-        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-      <div id="deskWatch" class="mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Watchlist</span>
-          <span id="deskWatchNote" class="dk-note"></span>
-        </div>
-        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
-          <input id="watchCity" type="text" placeholder="City" aria-label="City"
-            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
-            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <select id="watchType" aria-label="Property type"
-            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
-          <button type="submit"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
-          <span id="watchError" class="hidden text-sm text-red-600"></span>
-        </form>
-        <div id="feedWrap" class="mt-3 space-y-4"></div>
-      </div>
-      </div><!-- /deckProperties -->
-
-      <div class="dk-deck" data-deck id="deckSharing">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
-      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
-           stacked lists merged). One GET (/api/shares) still covers both. A
-           401 (signed out) hides it silently, since the sign-in card above
-           already covers that case; a 503 shows the one error line instead
-           and leaves the rest of the desk working. See renderShares() /
-           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
-           it is a firm-level record with its own rules (whole-shelf count,
-           1000-row truncation notice, its own search) and lives in the firm
-           deck below. -->
-      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-           only "Couldn't load your shared reports", which is the failure
-           without the reassurance — and this line covers the sections that
-           name COLLEAGUES and their work, so it is the one where a bare
-           "couldn't load" is likeliest to read as somebody's shared reports
-           having been lost. It already hides the sections rather than
-           fabricating a "0 shares" empty state; this only finishes the
-           sentence. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-      <div id="deskShares" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Shared reports</span>
-          <span id="deskSharesStats" class="dk-note"></span>
-        </div>
-        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
-        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-
-      <!-- Hubs someone has invited this member into. The TENANT side only —
-           a broker's own hubs live on /vault beside the pipeline deck (the
-           owner's answer, 2026-08-13), because creating one is a broker
-           surface gated on canUseVault and this page is seen by every free
-           account. Spec:
-           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-           NOT the connection hub at /brokers.
-
-           Rendered ONLY when there is something in it: a member who has
-           never been invited into a hub should not be shown an empty
-           section for a feature they have no way to start. That is the
-           opposite of the shared-reports table above, which teaches a
-           feature this member can use themselves. -->
-      <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
-        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
-      </div>
-      </div><!-- /deckSharing -->
-
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
@@ -2920,6 +2886,102 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </div>
       </div><!-- /deckFirm -->
+
+      <div class="dk-deck" data-deck id="deckProperties">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
+      <div class="mt-4">
+        <div class="dk-rule">
+          <span class="rd-lab">Portfolio</span>
+          <span id="deskCount" class="dk-note"></span>
+        </div>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
+        <!-- The other empty state, and the reason they are two elements: a
+             failed read used to render as the invitation above, which tells
+             somebody with a book of sixteen properties that it is gone. Same
+             rule the vault's comps table, the lead inbox and the hub list
+             each had to learn: an outage must never be reported as an
+             absence. Shown by renderMyDesk(); the rows and the count are left
+             exactly as they were rather than wiped.
+             ⚠ This wording is the MODEL for every other failed read on the
+             desk, and the reassurance is the load-bearing half: a bare
+             "couldn't load" on a section that holds saved work reads as data
+             loss to the person most likely to be looking at it. Keep the two
+             sentences (what failed, then that nothing is gone) on any new
+             one. -->
+        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
+        <!-- Statement table container (was a 3-col card grid). The id keeps
+             every existing reference; renderMyDesk builds the table inside.
+             The book line (#deskLedger) that used to sit above it is now the
+             desk-level reading strip under the page header. -->
+        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
+      </div>
+      <div id="deskWatch" class="mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Watchlist</span>
+          <span id="deskWatchNote" class="dk-note"></span>
+        </div>
+        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
+          <input id="watchCity" type="text" placeholder="City" aria-label="City"
+            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
+            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <select id="watchType" aria-label="Property type"
+            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
+          <button type="submit"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
+          <span id="watchError" class="hidden text-sm text-red-600"></span>
+        </form>
+        <div id="feedWrap" class="mt-3 space-y-4"></div>
+      </div>
+      </div><!-- /deckProperties -->
+
+      <div class="dk-deck" data-deck id="deckSharing">
+        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
+      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
+           stacked lists merged). One GET (/api/shares) still covers both. A
+           401 (signed out) hides it silently, since the sign-in card above
+           already covers that case; a 503 shows the one error line instead
+           and leaves the rest of the desk working. See renderShares() /
+           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
+           it is a firm-level record with its own rules (whole-shelf count,
+           1000-row truncation notice, its own search) and lives in the firm
+           deck below. -->
+      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+           only "Couldn't load your shared reports", which is the failure
+           without the reassurance — and this line covers the sections that
+           name COLLEAGUES and their work, so it is the one where a bare
+           "couldn't load" is likeliest to read as somebody's shared reports
+           having been lost. It already hides the sections rather than
+           fabricating a "0 shares" empty state; this only finishes the
+           sentence. -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
+      <div id="deskShares" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Shared reports</span>
+          <span id="deskSharesStats" class="dk-note"></span>
+        </div>
+        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
+      </div>
+
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the shared-reports table above, which teaches a
+           feature this member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      </div>
+      </div><!-- /deckSharing -->
 
       <!-- Broker deck: the public contributor side (submissions, profile) and
            the private vault door. Each section keeps its own gate — the deck
@@ -5303,6 +5365,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     results.classList.add("assembling");
     results.setAttribute("aria-busy", "true");
     results.classList.remove("hidden");
+    // Same reason as renderResults': the workspace yields to a report the
+    // moment one starts assembling, or the comps stream in below the firm
+    // shelf. This is the earlier of the two seams — assembly puts cards on
+    // screen up to a minute before renderResults repaints wholesale.
+    document.getElementById("deskView").classList.add("hidden");
     // The loading card slims down: its decorative gray skeletons are
     // redundant once real cards are filling in below it.
     document.getElementById("loadingSkeletons").classList.add("hidden");
@@ -11168,6 +11235,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The pitch has already landed once there's a report to read — hide it
     // so the report starts near the top instead of below a sales headline.
     document.getElementById("hero").classList.add("hidden");
+    // And the workspace yields to the report for the same reason. Since the
+    // search desk stays visible on the workspace (2026-08-28), a search can
+    // now be started from there — without this the finished report would
+    // render BELOW the firm shelf and the deal board, which is both a long
+    // scroll and the wrong thing on top. "My Desk" brings the workspace back.
+    document.getElementById("deskView").classList.add("hidden");
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -12653,7 +12726,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ----------------------------------------------------------------------------
   function showDeskView() {
     document.getElementById("hero").classList.add("hidden");
-    document.getElementById("searchSection").classList.add("hidden");
+    // The search desk STAYS (2026-08-28). It used to be hidden here, which
+    // meant the workspace — the page a member is meant to live on — had no way
+    // to start the one thing the product does; you had to leave it first.
+    //
+    // Showing the REAL form rather than a compact copy is the whole point:
+    // #compForm is one form with one set of ids, read by targetRange(), the
+    // footprint estimate, every report restore and the confirm dialog. A
+    // second "launcher" would be a second address input to keep in step, and
+    // the first to drift. applySearchLock() below still governs it, so the
+    // wall's signup card still wins where it should.
+    document.getElementById("searchSection").classList.remove("hidden");
     document.getElementById("results").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
@@ -12714,7 +12797,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     showHomeView();
   }
   window.addEventListener("popstate", () => {
-    if (location.pathname === "/desk") showDeskView();
+    // Mirrors the boot rule exactly (see "Which view a fresh load lands on"):
+    // for a member, "/" is the workspace, so going Back to it must not drop
+    // them on the marketing stack they never asked for. Kept as one condition
+    // in two places rather than a helper only because the boot copy runs
+    // before this listener is even registered.
+    if (location.pathname === "/desk"
+        || (location.pathname === "/" && looksSignedIn())) showDeskView();
     else showHomeView();
   });
 
@@ -14890,9 +14979,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
   });
 
-  // Direct load / hard refresh on /desk. Runs after `let currentUser` executes;
-  // renderMyDesk early-returns until the auth bootstrap fills the portfolio in.
-  if (location.pathname === "/desk") showDeskView();
+  // Which view a fresh load lands on.
+  //
+  // /desk has always opened the workspace. Since 2026-08-28 so does "/" FOR A
+  // MEMBER: home is the firm's workspace, not the search page. That is the
+  // whole reorganization in one line — and it is only safe because the
+  // workspace now carries the real search desk at its top (see showDeskView),
+  // so landing here still puts the address field in front of the visitor.
+  //
+  // Read from AUTH_BOOT, not currentUser: this runs before the account
+  // bootstrap resolves, and AUTH_BOOT already carries cookie presence decided
+  // server-side for exactly this kind of first-paint question. A forged cookie
+  // buys the sight of an empty workspace and nothing else — every section
+  // inside it fetches its own data and each of those is authenticated.
+  //
+  // /r/<id> is excluded by name: a shared report is somebody else's link and
+  // must render the report, never the reader's own desk. /desk is kept working
+  // rather than redirected to "/" because it is linked from Stripe checkout
+  // returns (with a query string), the watchlist digest, org invite emails and
+  // /bulk — a redirect would drop the query and dead-end those.
+  //
+  // Runs after `let currentUser` executes; renderMyDesk early-returns until
+  // the auth bootstrap fills the portfolio in.
+  const _sharedPath = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname);
+  if (location.pathname === "/desk"
+      || (!_sharedPath && location.pathname === "/" && looksSignedIn())) {
+    showDeskView();
+  }
 
   // Restore the last-searched property type (saved on each submit) so repeat
   // visitors don't reselect their asset class every session.
@@ -15153,7 +15266,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("hero").classList.remove("hidden");
     // Samples and shared reports aren't saved to this browser, so no note.
     if (currentMeta && !currentMeta.sample && !currentMeta.shared) {
-      showStatus("Report closed. Reopen it any time from <strong>My Desk</strong>, at no cost.", "info");
+      showStatus("Report closed. Reopen it any time from <strong>your workspace</strong>, at no cost.", "info");
     } else {
       hideStatus();
     }
@@ -19200,7 +19313,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
       showBulkRun();
       window.BULKRUN.showNotes(d);
-      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on My Desk.", false);
+      window.BULKRUN.msg("Running. You can leave this page — the valuations keep going and land on your workspace.", false);
       window.BULKRUN.showRun(d);
       window.BULKRUN.poll(d.job.id);
     } catch (err) {

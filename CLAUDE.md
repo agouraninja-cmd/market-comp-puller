@@ -837,6 +837,40 @@ dependency. `.env` is git-ignored — never commit it.
   no reason to roll back the other. `off` restores exact-market matching in
   the inbox, the intro gate and the new-lead alert together. Rules live in
   `broker-leads.js`, so `npm test` covers them.
+- `NAV_SHELL` — optional `rail` (**default**) or `bar`, added 2026-08-28. Which
+  shape the SIGNED-IN chrome takes on every server-rendered page. `rail` lays
+  the header out as a persistent 224px left sidebar at **900px and up**; `bar`
+  is the horizontal header exactly as it shipped before that date, and is the
+  instant rollback lever. An unrecognized value **exits at boot** (the
+  `SEARCH_PROVIDER` / `THINKING_LEVEL` no-fallthrough rule).
+  **It gates ONE CSS class on `<html>` and nothing else.** The rail is not a
+  new component: every surface already renders the same header shape — brand,
+  `<nav>`, account slots, in a centered container — so the rail is that same
+  element re-laid-out, and **the markup is byte-identical in both modes**.
+  `test/nav-shell.test.js` diffs the two renders to hold that, because the
+  moment a second markup branch appears the eight-page header assertions in
+  `routes.test.js` are only checking one of them. Never grow one.
+  **No content wrapper moves.** `.wrap` keeps its own `margin:0 auto`, so with
+  the body padded on the left every centered band re-centres itself — measured
+  on `/markets`, where `main` lands 1120px wide beside the rail with nothing
+  else edited. The 224px width is a **literal**, never a `var()`: `theme.js`
+  holds colours, and `theme.test.js` fails any custom property that is not one
+  of its tokens.
+  **Below 900px the class does nothing** and the wrapping bar returns. That is
+  the whole mobile answer — no drawer, no focus trap, no scroll lock.
+  **Anonymous visitors never get it** (it marks being inside the product, and a
+  marketing page read by a stranger is not that); it is decided on cookie
+  presence, and those routes already send `vary: cookie`. The rules live in
+  **both** `MARKET_CSS` and `HOW_CSS`, which are twins — edit them together.
+  Two things moved because the rail forced them: the Explore `<details>` has
+  nowhere to open in a 224px column so it is hidden there and **its links moved
+  to `MARKET_FOOTER`** (which finally puts `/download` in a footer at all — it
+  had been in the Explore menu and in neither footer), and **Markets, Vault and
+  Bulk became nav destinations**. `/bulk` previously had NO link anywhere on
+  the site: not a menu, not a footer, not a header, only a link from inside
+  itself. `#navVault` moved out of the account dropdown to join them, so a hub
+  — which builds its header from `accountNavSlots` and not from `marketBar` —
+  no longer shows a vault link.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -1886,6 +1920,36 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
+- `GET /firms` — the public front door for firm accounts (2026-08-28). Body in
+  **`firms-page.js`**, a marketShell BODY like `bulk-page.js`, so it carries no
+  CSS of its own and does NOT depend on the purged `tailwind.css`; server.js
+  owns the SEO metadata. It exists because everything about firm accounts has
+  worked since migration 030 — shelf, invites, auto-share, shared vault comps,
+  per-seat billing, three shop kinds — with **no public surface at all**: no
+  nav entry, no footer link, no tier on the pricing modal, and an invite email
+  as the only door, which only reaches somebody a member already knows.
+  Two rules: **the shop copy is PASSED IN** from `ORG.SHOP_COPY` (the same map
+  the invite email and the create box read) and `test/firms-page.test.js` fails
+  the build if any of the three `arrivals` strings appears as a literal in the
+  page; and **every privacy claim on it is a promise the code keeps** —
+  never-retroactive auto-share, the member veto that beats the firm, and the
+  rule that no whole vault comp travels. Those reach search engines, so check
+  each against the code before editing one, as the /brokers FAQ answers are.
+- `GET /pricing` — the rate card, at a URL for the first time (2026-08-28).
+  Body in **`pricing-page.js`**. Pricing had lived ONLY in index.html's modal,
+  which cannot be linked, indexed or emailed — and that modal carried Free /
+  Pro / Founding and **no firm tier**, while the /how-it-works FAQ had been
+  quoting the seat price in prose for weeks. The figures come from one
+  **`PRICING`** constant in server.js (`monthly`, `foundingAnnual`, `firmSeat`,
+  `minSeats` = `ORG.MIN_SEATS`) which the FAQ answer also reads, and
+  `test/pricing-page.test.js` pins index.html's modal to the same numbers —
+  that modal's own comment conceded "nothing catches a drift", which was true
+  of a figure typed into three files. **The page never buys anything**: every
+  control hands off to `/?pricing=1` or signup, because checkout needs the
+  session, the entitlements and — for a firm — an orgId and an ownership check
+  a cached page cannot make. The Firm tile's CTA is "how a firm works" for the
+  same reason: a firm subscription is bought by an owner for a firm that
+  already exists.
 - `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), linked
   from the footer of every surface and from the landing page’s "For brokers"
   line; it left the Explore menu 2026-08-25 with /how-it-works. Hero split
@@ -3386,7 +3450,37 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   exists specifically to catch drift between the two copies.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
-- `GET /` — serves `index.html`. The same handler covers `/index.html`,
+- `GET /` — serves `index.html`. **For a signed-in member `/` opens the
+  WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
+  board and their own properties, with the real search desk above them. That
+  is the whole firm-first reorganization, and three rules hold it up:
+  - **The search desk stays visible on the workspace.** `showDeskView()` used
+    to hide `#searchSection`; it now shows it. Landing a member on a home page
+    with no address field would be worse than the page it replaced, so the
+    route change was only made after this one. It is the REAL `#compForm`, not
+    a compact copy — one form, one set of ids, read by `targetRange()`, the
+    footprint estimate, every report restore and the confirm dialog. A second
+    "launcher" would be a second address input to keep in step.
+  - **A report yields the workspace** rather than rendering under it, at BOTH
+    seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
+    Without both, comps stream in below the firm shelf.
+  - **The boot decision reads `looksSignedIn()`, never `currentUser`** (it runs
+    before the account bootstrap resolves, so every member would see the
+    marketing stack for a beat), and **`/r/<id>` is excluded by name** — a
+    shared report is somebody else's link and must never open the reader's own
+    desk. `popstate` mirrors the same rule, so Back to `/` does not drop a
+    member on marketing.
+  **`/desk` is kept working rather than redirected to `/`.** It is linked from
+  Stripe checkout returns *with a query string*, the watchlist digest, org
+  invite emails and `/bulk`; a 302 would drop the query and dead-end those.
+  Home moved by opening the same view, not by moving the URL. The five desk
+  decks now lead with **Your firm** (was third of five), and the label a person
+  reads is **Workspace** everywhere — prose says "your workspace" lowercase.
+  One duplicate is left undecided on purpose: for a member, `marketBar`'s
+  `Home` and the new `Workspace` link are the same destination. Suppressing
+  Home for members was tried and reverted — two tests defend that link for
+  signed-in visitors by name. See the comment on that line.
+  The same handler covers `/index.html`,
   `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
   `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
   and an exact `req.url` match 404'd it — along with every campaign link to

@@ -180,6 +180,13 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
+// /firms — the public pitch for firm accounts. A marketShell BODY, like
+// bulk-page.js. The shop-kind sentences are PASSED IN from ORG rather than
+// required there, so this page can never become a second copy of them.
+const { renderFirmsPageBody } = require("./firms-page");
+// /pricing — the linkable rate card. Same body-only shape; the figures are
+// handed in from PRICING so the page and the FAQ cannot quote different ones.
+const { renderPricingPageBody } = require("./pricing-page");
 const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
@@ -261,6 +268,33 @@ const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
 // level this provider cannot act on is refused rather than accepted and
 // ignored - a knob that appears to work and changes nothing is the worst of the
 // three outcomes. Read through capabilities, never through PROVIDER.name.
+// --- NAV_SHELL: which shape the signed-in chrome takes ----------------------
+//
+// `rail` (the default) lays the header out as a persistent left sidebar at
+// 900px and up; `bar` is the horizontal header exactly as it shipped before
+// 2026-08-28, and is the instant rollback lever.
+//
+// It gates ONE CSS class on <html> and nothing else. The markup is
+// byte-identical in both modes — the rail IS the existing header element,
+// re-laid-out — which is what keeps the eight-page header assertions in
+// routes.test.js green and what makes rollback a variable rather than a
+// deploy. Never grow a second markup branch off this flag.
+//
+// Anonymous visitors never get the rail whatever this says: it marks "you are
+// inside the product", and a marketing page read by a stranger is not that.
+//
+// Unrecognized values EXIT, per the SEARCH_PROVIDER / THINKING_LEVEL rule
+// below: a knob that appears to work and changes nothing is the worst of the
+// three outcomes.
+const NAV_SHELL = (process.env.NAV_SHELL || "rail").trim().toLowerCase();
+if (!["rail", "bar"].includes(NAV_SHELL)) {
+  console.error(`⛔ NAV_SHELL="${NAV_SHELL}" is not one of: rail, bar`);
+  process.exit(1);
+}
+// The class every signed-in server-rendered page stamps on <html>. Empty in
+// bar mode, so the attribute simply is not written.
+const NAV_SHELL_CLASS = NAV_SHELL === "rail" ? "nav-rail" : "";
+
 const THINKING_LEVEL = (process.env.THINKING_LEVEL || "").trim().toLowerCase();
 if (THINKING_LEVEL) {
   const levels = PROVIDER.capabilities.thinkingLevels;
@@ -407,6 +441,30 @@ const STRIPE_PRICES = {
   // env var that silently becomes sellable the day someone fills it in.
 };
 const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
+
+// --- The figures a VISITOR reads --------------------------------------------
+//
+// Not the charge — that comes from the Stripe price IDs above, and these
+// numbers can never move it. They are the prose, and until 2026-08-28 the
+// prose was scattered: the monthly price was typed into index.html's pricing
+// modal, into the /how-it-works FAQ answer and into /terms, while the SEAT
+// price existed in exactly one sentence of that FAQ and nowhere a buyer could
+// click. The modal's own comment conceded the hazard — "nothing catches a
+// drift" — which is true of any figure typed in more than one place.
+//
+// So: one constant, read by /pricing and by the FAQ, with a test pinning
+// index.html's modal to it. A price change is now one edit plus whatever the
+// test then fails on, instead of a hunt through three files.
+//
+// `firmSeat` is per seat per month and `minSeats` MUST equal ORG.MIN_SEATS —
+// /api/checkout refuses a firm plan below that by name and number, so a page
+// advertising a smaller minimum would be sending somebody to a refusal.
+const PRICING = {
+  monthly: 100,
+  foundingAnnual: 840,
+  firmSeat: 79,
+  minSeats: ORG.MIN_SEATS,
+};
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
 // count is of subscriptions ever created rather than currently active.
 const FOUNDING_MEMBER_LIMIT = Number(process.env.FOUNDING_MEMBER_LIMIT || 50);
@@ -8031,7 +8089,15 @@ const AUTH_BOOT_MARKER = "<!--AUTH_BOOT-->";
 // card it owns would flip once on its own first call.
 function authBoot(signedIn) {
   const locked = ACCOUNT_WALL && !signedIn;
-  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "");
+  // The rail, on the app's own front door. Same rule as every server-rendered
+  // page: signed-in only, and it rides a class rather than a markup branch.
+  // This is the right vehicle because it already runs inline in <head> before
+  // first paint, so the sidebar is never drawn and then taken away — and
+  // unlike cn-in / cn-locked it is NOT retired by refreshAccountUI(), because
+  // it is a layout choice about the shell rather than a stand-in for an answer
+  // the page is still waiting on.
+  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "") +
+    (signedIn && NAV_SHELL_CLASS ? ` ${NAV_SHELL_CLASS}` : "");
   return `<style>${AUTH_BOOT_CSS}</style>\n` +
     `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL })};` +
     (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
@@ -8096,14 +8162,23 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
     `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
     (desk
-    ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
+    ? `<a id="navDesk" href="/desk" hidden>Workspace</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
     `<details id="navAcct" class="acct" hidden>` +
     `<summary aria-label="Account menu"><span class="ini" id="navAcctInitial"></span></summary>` +
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
-    `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
+    // No #navVault here any more (2026-08-28). It moved up into marketBar's
+    // nav, beside the new Bulk link, so both Pro tools are destinations rather
+    // than items buried one click inside an account menu — which is what the
+    // rail draws as rows. Ids are unique, so it can only live in one place:
+    // ACCOUNT_NAV_JS still finds it by the same id wherever it renders.
+    //
+    // Consequence worth knowing: hub-page.js builds its header from this
+    // helper and NOT from marketBar, so a hub no longer shows a vault link.
+    // That is correct for a client-facing page whose spec asks for minimal
+    // chrome, and the broker viewing their own hub navigates away for it.
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
@@ -8142,6 +8217,11 @@ const ACCOUNT_NAV_JS =
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
+  // Same shape as the vault's rule, against the entitlement /api/config
+  // already carries. Both links ship hidden and appear together once the
+  // account resolves, which is why the rail is a fixed width — an item
+  // arriving after paint must not reflow the page around it.
+  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this
@@ -8307,6 +8387,58 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
 /* Phones: anchor the menu to the HEADER rather than to its own trigger. The
    nav wraps to its own row below ~450px, which puts the Explore <details> at
    the left edge — where right:0 sent 105px of a 176px menu off-screen, every
@@ -8834,6 +8966,25 @@ const marketBar = (signedIn = false, current = "") =>
   // ONLY when signed out — a member reading /how-it-works is not at home and
   // is owed the link.
   `<nav>` +
+  // OPEN QUESTION for the owner (2026-08-28), deliberately NOT decided here.
+  //
+  // For a signed-in member, Home and the new "Workspace" link below are now
+  // the same destination: "/" opens the workspace. Two nav rows to one place
+  // is the drift this reorganization exists to remove, and it is sharper in
+  // the rail, where they stack one above the other.
+  //
+  // Suppressing Home for members was tried and REVERTED, because two tests
+  // named "…gives a signed-in member the Home link it withholds from a
+  // visitor" and "a signed-in member gets the same Home link" defend that
+  // behaviour on purpose — the same-day decision above records that
+  // signed-out-only was already tried once and judged wrong.
+  //
+  // The objection it was judged wrong for ("a member is left with the
+  // wordmark and a call to action") is arguably answered now by Workspace,
+  // which is a destination rather than a CTA. But that is a product call
+  // about a decision made hours earlier, not a refactor, so it stays as-is
+  // until somebody chooses. Whoever does: change this line and those two
+  // tests together, or leave both.
   (current !== "/" ? `<a href="/">Home</a>` : "") +
   `<details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current)}</div></details>` +
@@ -8844,8 +8995,25 @@ const marketBar = (signedIn = false, current = "") =>
   // (`live && !isPro`), so it still hides for a Pro member and on a deployment
   // with no billing configured; only the position moved.
   ACCOUNT_NAV_PRICING +
+  // Markets is a public page with 27-odd standing snapshots and, until now, no
+  // header link on any surface — it was reachable from the footers and from
+  // one line inside the app. It renders for every visitor because it is the
+  // cheapest thing a stranger can be shown that is actually the product.
+  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Markets</a>` +
   (signedIn
-    ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
+    ? `<a href="/desk">Workspace</a>` +
+      // The two Pro tools, hydrated after paint by ACCOUNT_NAV_JS exactly as
+      // the account slots are — their entitlements are database reads this
+      // synchronous render must never make, so both ship hidden.
+      //
+      // /bulk had NO link anywhere on the site before this: not in a menu, not
+      // in a footer, not in a header. Its only inbound link was from inside
+      // itself, so a Pro member could only reach it by typing the URL or by
+      // pasting a multi-line list into the main search and discovering the
+      // mode by accident. A billed feature nobody can find is one nobody buys.
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
+      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk</a>` +
+      `<a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must
@@ -9211,13 +9379,27 @@ const MARKET_FOOTER =
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
   `<li><a href="/brokers">Brokers</a></li>` +
+  // /firms sits beside /brokers: the two are the same kind of page (a pitch to
+  // a professional audience) and the footer is the only surface every public
+  // page shares, so a page missing from it is a page nothing links to.
+  `<li><a href="/firms">For firms</a></li>` +
+  // Pricing had no URL at all until 2026-08-28 — only a modal inside
+  // index.html, which cannot be linked, indexed, or sent in an email.
+  `<li><a href="/pricing">Pricing</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li>` +
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/leadership">Leadership</a></li><li><a href="/terms">Terms</a></li>` +
-  `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  `<li><a href="/privacy">Privacy</a></li>` +
+  // Download was reachable ONLY through the Explore dropdown, which the rail
+  // hides (it has nowhere to open in a 224px column). It belonged here anyway:
+  // it was in the Explore menu and in NEITHER footer, so the page answering
+  // "where do I download it" was the hardest one on the site to find. The
+  // nav-dl class travels with the link so INAPP_BOOT still hides it when the
+  // page is already being read inside the app.
+  `<li><a class="nav-dl" href="/download">Download the app</a></li></ul></div>` +
   // Follow was in index.html's footer and NOWHERE ELSE, which put the only
   // links to the company's own accounts BEHIND the login. Every indexable
   // page -- the landing a stranger actually arrives on, every market page,
@@ -9825,7 +10007,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "Watching — see My Desk";
+      watch.textContent = "Watching — see your workspace";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -9921,9 +10103,20 @@ function brandGraph() {
   ];
 }
 
+// The rail rides on ONE class and nothing else - see NAV_SHELL. It is written
+// on <html> rather than <body> so the stylesheet can reach the body's own
+// padding, and it is gated on signedIn (cookie presence, the same cheap rule
+// the rest of this render uses) because a marketing page read by a stranger
+// must not wear the product's sidebar. These routes already send
+// "vary: cookie", so the two variants cannot reach the wrong visitor.
+//
+// Keep this note OUT of the function body: theme.test.js reads only
+// marketShell's first 2000 characters looking for THEME_BOOT, and six lines of
+// comment in there is enough to push the boot script out of that window.
 function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
+  return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
@@ -10632,7 +10825,7 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
-      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<p>Watch it on your workspace, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
@@ -10945,6 +11138,58 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
 .hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
   content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
 @media (max-width:639.98px){
   .hdr .wrap{position:relative}
   .hdr nav details{position:static}
@@ -11242,8 +11487,12 @@ const HOW_FAQ = [
   // ("all" comps, 36 months free) and the pricing modal in index.html, which
   // are the numbers being charged; a test in public-pages.test.js now pins
   // the two retired claims out.
+  // The figures come from PRICING, not from prose typed here — this answer and
+  // /pricing are the two public statements of the price and they must agree.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. Pro, at $100 a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. Firms can put a whole office on one plan at $79 a seat, minimum two seats."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. " +
+   `Pro, at $${PRICING.monthly} a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. ` +
+   `Firms can put a whole office on one plan at $${PRICING.firmSeat} a seat, minimum ${PRICING.minSeats === 2 ? "two" : PRICING.minSeats} seats. See the full rate card at /pricing.`],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -11548,6 +11797,112 @@ const TEAM = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// /firms — the public front door for firm accounts.
+//
+// Rendered through marketShell like /brokers and /leadership, so it carries no
+// CSS of its own and does NOT depend on the purged tailwind.css. The body
+// lives in firms-page.js; this function owns only the SEO metadata and the
+// shell, which is where every other page's metadata lives too.
+//
+// ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
+// page module, which keeps that module pure and — more to the point — keeps
+// the three shop sentences single-sourced. They are read here by the invite
+// email, the create box in index.html and now this page; a fourth hand-typed
+// copy is the one that goes stale, so test/firms-page.test.js fails the build
+// if any of them appears as a literal in firms-page.js.
+// ---------------------------------------------------------------------------
+function renderFirmsPageHTML(signedIn) {
+  const title = "Firm Accounts for Brokerages, Developers & Tenant Reps | CompNinja";
+  const canonical = `${SITE_URL}/firms`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "One shared shelf for your whole shop. Every valuation anyone runs lands on " +
+    "every colleague's workspace, attributed and searchable.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Firm accounts",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Firms", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderFirmsPageBody({
+    signedIn,
+    shopKinds: ORG.SHOP_KINDS,
+    shopCopy: ORG.SHOP_COPY,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/firms" });
+}
+
+// ---------------------------------------------------------------------------
+// /pricing — the rate card, at a URL for the first time.
+//
+// marketShell like the other public pages. The body is in pricing-page.js; the
+// FIGURES come from PRICING, which the /how-it-works FAQ answer also reads, so
+// the two public statements of the price cannot drift apart. index.html's
+// modal keeps its own hardcoded copies and is pinned to PRICING by
+// test/pricing-page.test.js.
+//
+// `billingLive` is STRIPE_CONFIGURED, not PRO_ENABLED: this page describes the
+// product's prices to the whole internet, which stays true on a deployment
+// that has not switched the tier on. It only decides whether the Pro tile
+// renders a control at all — the Buy-button rule, one page further out.
+// ---------------------------------------------------------------------------
+function renderPricingPageHTML(signedIn) {
+  const title = "Pricing | CompNinja";
+  const canonical = `${SITE_URL}/pricing`;
+  const description =
+    `Free comp reports with every comparable cited. Pro at $${PRICING.monthly} a month, ` +
+    `firm accounts at $${PRICING.firmSeat} a seat.`;
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Pricing",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Pricing", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderPricingPageBody({
+    signedIn,
+    pricing: PRICING,
+    billingLive: STRIPE_CONFIGURED,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/pricing" });
+}
+
 function renderLeadershipPageHTML(signedIn) {
   const title = "Leadership | CompNinja";
   const canonical = `${SITE_URL}/leadership`;
@@ -11811,7 +12166,7 @@ function renderPrivacyPageHTML(signedIn) {
 
     `<h2>7. Data Retention and Deletion</h2>` +
     `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
-    `account at any time from within the application (My Desk, Delete account); doing so removes the ` +
+    `account at any time from within the application (Workspace, Delete account); doing so removes the ` +
     `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
@@ -12194,7 +12549,10 @@ ${MARKET_FOOTER}
 })();
 </script>`;
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  // Same rail stamp as marketShell. This page builds its own document rather
+  // than going through that helper, so it is the one most easily forgotten
+  // when the shell changes — test/nav-shell.test.js checks it by name.
+  return `<!DOCTYPE html>\n<html lang="en"${signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : ""}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)} | CompNinja</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
@@ -17073,7 +17431,7 @@ const server = http.createServer((req, res) =>
           noindex: true,
           body: `<div class="wrap"><h1>This link is not recognized</h1>` +
             `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
-            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+            `You can turn the emails off from your workspace, or reply to any CompNinja email and we will do it for you.</p></div>`,
         }));
       }
       if (req.method === "POST") {
@@ -17089,7 +17447,7 @@ const server = http.createServer((req, res) =>
               ? "You will get a digest again when a market you watch has new comps."
               : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to your workspace</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -17100,7 +17458,7 @@ const server = http.createServer((req, res) =>
         body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
           `<p>${resubscribe
             ? "You will get an email when a market you watch has new comps."
-            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your workspace."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
@@ -17182,7 +17540,7 @@ const server = http.createServer((req, res) =>
               : "You will not get another email about notes. Nothing else changes: every hub you were invited to is still open to you, " +
                 "the notes are all still there, and you can read and reply any time."}</p>` +
             `<p><a href="${link(!resubscribe)}">${resubscribe ? "Turn them off again" : "Turn them back on"}</a>` +
-            ` &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+            ` &middot; <a href="/desk">Go to your workspace</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -23153,6 +23511,14 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
   }
 
+  if (req.method === "GET" && pagePath === "/firms") {
+    return sendShellPage(req, res, (signedIn) => renderFirmsPageHTML(signedIn));
+  }
+
+  if (req.method === "GET" && pagePath === "/pricing") {
+    return sendShellPage(req, res, (signedIn) => renderPricingPageHTML(signedIn));
+  }
+
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
@@ -23671,6 +24037,8 @@ const server = http.createServer((req, res) =>
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/firms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +

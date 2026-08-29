@@ -787,24 +787,26 @@ test("bare environment", async (t) => {
   // shared circle, so it is one of two pages that can end up with two of
   // them. /vault is the other: it keeps a visible My Desk next to Vault.
   // accountNavSlots({ desk: false }) is what prevents that.
-  await t.test("/how-it-works does not double up its My Desk link", async () => {
+  await t.test("/how-it-works does not double up its workspace link", async () => {
     const html = await (await fetch(srv.base + "/how-it-works", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    const desks = (html.match(/>My Desk</g) || []).length;
-    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    // Renamed 2026-08-28: the label is "Workspace" everywhere a person
+    // reads it. The invariant is unchanged — one link, not two.
+    const desks = (html.match(/>Workspace</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
-      "this page renders its own My Desk — the hydrated one must stay off it");
+      "this page renders its own workspace link — the hydrated one must stay off it");
   });
 
-  await t.test("/vault does not double up its My Desk link", async () => {
+  await t.test("/vault does not double up its workspace link", async () => {
     const html = await (await fetch(srv.base + "/vault", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    const desks = (html.match(/>My Desk</g) || []).length;
-    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    const desks = (html.match(/>Workspace</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
-      "the vault renders its own My Desk — the hydrated one must stay off it");
+      "the vault renders its own workspace link — the hydrated one must stay off it");
   });
 
   // The vault gate, wired.

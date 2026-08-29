@@ -2290,12 +2290,26 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Run a report ↓</button>
           <!-- The photo pipeline's one entry, and all that is left of the
                profile cluster that used to sit here — circle, greeting, Add a
-               photo / Remove. It went on 2026-08-29 because in rail mode it put
-               the same face twice on one screen: bottom-left in the rail, where
-               it belongs, and again top-right over this heading. The controls
-               moved into the settings panel; this input stays because
-               #settingsAvatarBtn clicks it, and it works from a hidden
-               container (the panel already opened it from the home view). -->
+               photo / Remove.
+
+               It came down in two passes on the same day, and the second one
+               is why the first one's comment is gone. The first took the
+               greeting and "Add a photo" and deliberately KEPT the circle, on
+               two grounds: the circle is itself the upload control, and
+               settings had no Remove, so dropping the cluster would have
+               deleted the only way to take a photo off an account. Both were
+               true. The owner still wanted the circle gone, and under
+               NAV_SHELL=rail the reason is plain — the account circle is
+               pinned bottom-left in the sidebar, so a second one top-right
+               shows the same face twice on one screen. So the circle went too,
+               and the blocker was REMOVED rather than argued with:
+               #settingsAvatarRemove now carries Remove, which is the whole
+               reason that button exists.
+
+               This input stays because #settingsAvatarBtn clicks it, and it
+               works from a hidden container (the panel already opened it from
+               the home view). -->
+
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
       </div>
@@ -11864,6 +11878,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("acctMenuInitial"),
       user);
     const has = Boolean(user && user.avatarRev);
+    // Both controls are the settings panel's now: the workspace header's
+    // cluster went entirely on 2026-08-29, Remove included, so the panel is
+    // the only place a photo is added or taken off. Still guarded, because
+    // this also runs before the panel's markup matters.
     const change = document.getElementById("settingsAvatarBtn");
     const remove = document.getElementById("settingsAvatarRemove");
     if (change) change.textContent = has ? "Change photo" : "Add a photo";
@@ -12187,8 +12205,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     applyAvatarUI(currentUser);
   }
 
-  // The picker's only openers are in the settings panel now (#settingsAvatarBtn,
-  // above); the workspace header's circle and "Add a photo" link are gone.
+  // One trigger reaches the one hidden input: the settings panel's labelled
+  // button (#settingsAvatarBtn, above). #deskAvatarChange and the workspace
+  // circle were the other two, and both went with the identity cluster.
   document.getElementById("deskAvatarFile").addEventListener("change", async (e) => {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
@@ -12591,10 +12610,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       return;
     }
     desk.classList.remove("hidden");
-    // The greeting and the #avatar jump both addressed the workspace header's
-    // profile cluster, which went on 2026-08-29. Who is signed in is answered
-    // by the rail's account menu (#acctMenuEmail); nothing has linked to
-    // #avatar since the dropdown item that did was removed.
+    // No "Signed in as {name}" line any more: the account menu in the nav
+    // carries the identity and the same photo, and a workspace only ever has
+    // one owner, so saying it a second time above their own book was telling
+    // them something they could not not know. The #avatar jump went with it —
+    // it scrolled to the header circle, which no longer exists, and nothing
+    // has linked to that hash since the dropdown item that did was removed.
     applyAvatarUI(currentUser);
     let items = [];
     let loadFailed = false;
@@ -12679,7 +12700,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
         cell("Between checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
           bookPct == null ? "re-run a property to start the trail" : betweenNote, false, bookPct == null ? "" : betweenTitle) +
-        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">Markets watched</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
+        // Placeholder only: renderWatchFeed fills this in from a second
+        // request. Label and anatomy match what it writes, so the cell never
+        // changes shape when the feed lands.
+        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">New comps</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
     }
     const grid = document.getElementById("portfolioGrid");
     grid.innerHTML = "";
@@ -13125,11 +13149,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       ? (totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} across ${feed.items.length} market${feed.items.length === 1 ? "" : "s"}` : `${feed.items.length} market${feed.items.length === 1 ? "" : "s"} watched · quiet`)
       : "";
     const mk = document.getElementById("deskLedgerMarkets");
-    // Same anatomy as renderMyDesk's placeholder cell (dk-lfig/dk-lnote) —
-    // a test pins the two writers together, because a cell that changes
-    // shape when the feed fills it in reads as a glitch.
-    if (mk) mk.innerHTML = `<span class="rd-lab">Markets watched</span><div class="dk-lfig">${feed.items.length}</div>` +
-      `<div class="dk-lnote">${totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} waiting` : "&nbsp;"}</div>`;
+    // The fourth cell counts NEW COMPS, not watched markets (2026-08-29). The
+    // other three are facts about the book; this one was a count of a
+    // preference, with the only live thing on the whole strip — "N new comps
+    // waiting" — demoted to the 11px note beneath it. The signal is the figure
+    // now and the markets are the context, which is the way round that makes
+    // the cell worth looking at.
+    //
+    // Same anatomy as renderMyDesk's placeholder (dk-lfig/dk-lnote): a test
+    // pins the two writers together, because a cell that changes shape when
+    // the feed fills it in reads as a glitch.
+    const mkts = feed.items.length;
+    const mkNote = !mkts
+      ? "watch a market to see new comps here"
+      : totalNew
+        ? `across ${mkts} market${mkts === 1 ? "" : "s"} you watch`
+        : `${mkts} market${mkts === 1 ? "" : "s"} watched · quiet`;
+    if (mk) mk.innerHTML = `<span class="rd-lab">New comps</span><div class="dk-lfig">${mkts ? totalNew : "—"}</div>` +
+      `<div class="dk-lnote">${mkNote}</div>`;
     if (markSeen && feed.unseen) {
       try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
     }

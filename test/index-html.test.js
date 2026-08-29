@@ -935,24 +935,10 @@ test("the vault is a nav item, not a row inside the account menu", () => {
     "still shown from canUseVault and nothing else");
 });
 
-test("the profile appears once, and the photo controls live with it", () => {
-  // The workspace header carried a second avatar circle, greeting and
-  // Add a photo / Remove pair until 2026-08-29. In rail mode that put the same
-  // face twice on one screen -- bottom-left in the rail, and again top-right
-  // over the Workspace heading -- so the cluster went and its controls moved
-  // into the settings panel.
-  for (const id of ["deskAvatarBtn", "deskAvatarPhoto", "deskAvatarInitial",
-                    "deskHello", "deskAvatarChange", "deskAvatarRemove", "deskAvatarMsg"]) {
-    assert.ok(!html.includes('id="' + id + '"'), id + " is gone from the workspace header");
-    assert.ok(!html.includes('getElementById("' + id + '")'), "nothing still reaches for " + id);
-  }
-  // Removing a photo has to survive the move, or the panel could add one and
-  // never take it off -- a capability the desk header used to carry.
-  assert.match(html, /id="settingsAvatarRemove"/);
-  assert.ok(html.includes(`getElementById("settingsAvatarRemove").addEventListener`));
-  // The picker itself stays: #settingsAvatarBtn clicks it.
-  assert.match(html, /id="deskAvatarFile"/);
-});
+// The workspace header's profile cluster is pinned by "the workspace header
+// does not say who you are at all" further down -- it started life as that
+// pass's own test and absorbed this one, rather than two tests asserting the
+// same removals under different names.
 
 test("the between-checks cell names its sample and cannot read as a return", () => {
   // "Since last checks" read as a portfolio return, and the figure is not
@@ -987,10 +973,69 @@ test("both writers of the markets cell emit the same anatomy", () => {
     const seg = html.slice(at, at + 30000);
     const cellAt = seg.indexOf("deskLedgerMarkets");
     assert.ok(cellAt > -1, fnName + " must write the markets cell");
-    const cell = seg.slice(cellAt, cellAt + 300);
+    // Wide enough to clear the explanatory comment above the feed's writer.
+    const cell = seg.slice(cellAt, cellAt + 1600);
     assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
     assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
+    // Both must also agree on the LABEL, or the cell renames itself when the
+    // feed lands a moment after first paint.
+    assert.ok(cell.includes(">New comps<"), fnName + " must label the cell New comps");
   }
+});
+
+test("the fourth ledger cell counts new comps, not watched markets", () => {
+  // The other three cells are facts about the book. This one was a count of a
+  // preference, with the only live thing on the strip ("N new comps waiting")
+  // demoted to the 11px note under it. The signal is the figure now.
+  const at = html.indexOf("async function renderWatchFeed");
+  const seg = html.slice(at, at + 30000);
+  const cellAt = seg.indexOf("const mk = document.getElementById");
+  assert.ok(cellAt > -1, "the feed still writes the cell");
+  const blk = seg.slice(cellAt, cellAt + 1400);
+  assert.ok(blk.includes('<span class="rd-lab">New comps</span>'), "the label names what the figure counts");
+  assert.ok(blk.includes("mkts ? totalNew"), "the figure is the new-comp count");
+  // Three honest notes, and an em dash rather than a 0 when there is nothing
+  // to count yet: "0 new comps" over an empty watchlist states a fact about
+  // markets the member never asked about.
+  assert.ok(blk.includes("watch a market to see new comps here"), "no markets: an invitation");
+  assert.ok(blk.includes("you watch"), "with news: the markets are the context");
+  assert.ok(blk.includes("watched · quiet"), "no news: says so plainly");
+  assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
+});
+
+test("the workspace header does not say who you are at all", () => {
+  // The row carried the circle, "Signed in as {name}" and "Add a photo",
+  // beside a nav that already shows the same photo and account menu. It came
+  // down in two passes on 2026-08-29. The first took the greeting and the
+  // labelled button and KEPT the circle, because the circle is itself the
+  // upload trigger and because the settings panel had no Remove -- so dropping
+  // the cluster would have deleted the only way to take a photo off an
+  // account. Both were true, and the second pass removed that blocker instead
+  // of arguing with it: #settingsAvatarRemove carries Remove now, so the whole
+  // cluster could go. Under NAV_SHELL=rail that is the point -- the account
+  // circle is pinned bottom-left in the sidebar, so a second one top-right is
+  // the same face twice on one screen.
+  const at = html.indexOf('id="deskView"');
+  const head = html.slice(at, html.indexOf('id="checkoutNotice"'));
+  const gone = ["deskAvatarBtn", "deskAvatarPhoto", "deskAvatarInitial",
+                "deskHello", "deskAvatarChange", "deskAvatarRemove", "deskAvatarMsg"];
+  for (const id of gone) {
+    assert.ok(!head.includes('id="' + id + '"'), id + " is gone from the workspace header");
+    // Nothing may still REACH one either: several were unguarded reads, and an
+    // unguarded getElementById on a deleted node throws and takes the desk
+    // down with it. This is the half a comment cannot enforce.
+    assert.ok(!html.includes('getElementById("' + id + '")'), "no live reference to " + id);
+  }
+  // The capability has to survive the move in BOTH directions. A panel that can
+  // add a photo and never take one off is the loss the first pass refused to
+  // take, and it would be just as real now.
+  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings adds and changes");
+  assert.ok(html.includes('id="settingsAvatarRemove"'), "settings removes");
+  assert.ok(html.includes(`getElementById("settingsAvatarRemove").addEventListener`),
+    "and Remove is wired, not merely drawn");
+  // The picker stays where it is: #settingsAvatarBtn clicks it, so the photo
+  // pipeline still has exactly one entry.
+  assert.ok(html.includes('id="deskAvatarFile"'), "the one hidden input stays");
 });
 
 // ----------------------------------------------------------------------------

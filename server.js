@@ -4828,6 +4828,15 @@ function corpusKeyOf(c) {
 const GEO_MEM = new Map();
 const GEO_MEM_MAX = 500;
 
+// Test-only, unset in production — RESEND_API_URL's precedent for
+// RESEND_API_URL's reason: import-time vault geocoding's whole point is a
+// private address leaving the process, and without this the suite could reach
+// the Census call and then had to stop and assume. Not a secret and
+// authorizes nothing, but it decides where a broker's address is posted, so
+// treat it as trusted config.
+const CENSUS_API_URL = (process.env.CENSUS_API_URL ||
+  "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress").trim();
+
 function parseCensusMatch(j) {
   const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
   if (m && m.coordinates && Number.isFinite(m.coordinates.y) && Number.isFinite(m.coordinates.x)) {
@@ -4844,7 +4853,7 @@ async function geocodeCensus(address) {
   let cacheable = false;
   try {
     const r = await fetch(
-      "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
+      CENSUS_API_URL + "?benchmark=Public_AR_Current&format=json&address=" +
         encodeURIComponent(String(address).trim().slice(0, 200)),
       { signal: AbortSignal.timeout(6000) }
     );
@@ -15317,10 +15326,73 @@ async function linkVaultProperties(userId, comps) {
         { lat: coord.lat, lng: coord.lng, geo_source: coord.geo_source },
         { prefer: "return=minimal" });
     }
+
+    // The buildings this import left unlocated get the import-time geocode
+    // (spec §3 step 2). Scheduled AFTER the broker-coordinate PATCHes above,
+    // so the lat=is.null read already excludes every building the broker
+    // located themselves.
+    scheduleVaultGeocode(userId, [...index.keys()]);
   } catch (err) {
     // Loud in the log, invisible to the broker.
     console.error("vault property link failed (comps are stored; link deferred):", err.message);
   }
+}
+
+// Import-time geocoding for a broker's unlocated buildings (spec
+// docs/superpowers/specs/2026-08-06-private-comp-geocoding.md §3 step 2 —
+// deferred by the owner's §7 decision on 2026-08-06, built 2026-08-29).
+//
+// THE PRIVACY WALL HOLDS: the address goes to geocodeCensus — our own
+// in-process Census call, the same one POST /api/geocode fronts — and nowhere
+// else. Never Nominatim, never the browser, never a third party the spec did
+// not name. A miss is a skip, never a guess: an unlocated building costs a
+// map pin, while a wrong coordinate puts the building on the wrong continent
+// and nobody would recognize it as wrong.
+//
+// FIRE-AND-FORGET, scheduleCorpusLocate's contract: never awaited on the
+// request path, never throws, no-op without a database. The upload response
+// is already decided by the time this runs; a Census outage leaves lat null
+// and the next upload or vault read retries (outages are not cached in
+// GEO_MEM; real misses are, so a bad address is not re-hammered).
+//
+// `lat=is.null` rides BOTH the read and the PATCH, and that pair is what
+// keeps broker-supplied coordinates authoritative: linkVaultProperties writes
+// the broker's own coordinates first, so this never even reads those
+// buildings — and if a broker write lands between our read and our PATCH,
+// the PATCH matches zero rows. geo_source is 'census' here and only here;
+// the spreadsheet path (broker-properties.js) writes 'broker' and wins.
+const VAULT_GEOCODE_CAP = 25;          // per import — a first real upload should locate in one pass
+const VAULT_GEOCODE_BACKFILL_CAP = 8;  // per vault read, mirroring scheduleCorpusLocate's 8
+
+async function geocodeVaultPropertyRows(userId, rows) {
+  for (const row of rows) {
+    const ll = await geocodeCensus(row.address);
+    if (!ll) continue; // miss or outage: skip, never guess
+    try {
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&id=eq.${encodeURIComponent(row.id)}&lat=is.null`,
+        { lat: ll.lat, lng: ll.lng, geo_source: "census",
+          geocoded_at: new Date().toISOString() },
+        { prefer: "return=minimal" });
+    } catch (_) { /* best-effort, the corpus backfill's stance */ }
+  }
+}
+
+function scheduleVaultGeocode(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = [...new Set((Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean))];
+  if (!keys.length) return;
+  Promise.resolve().then(async () => {
+    const quoted = keys
+      .map((k) => `"${String(k).replace(/"/g, '""')}"`).join(",");
+    const props = await sbRequest("GET",
+      `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+      `&address_key=in.(${encodeURIComponent(quoted)})&lat=is.null` +
+      `&select=id,address_key,address`);
+    await geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_CAP));
+  }).catch(() => {});
 }
 
 // How often each published comp has been cited in a report, read from the
@@ -15710,7 +15782,16 @@ async function attachPropertyCoords(userId, comps) {
       // vault read in this file is user-scoped and an unscoped one is the
       // shape of the next mistake.
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
+      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source,address`);
+
+    // Books uploaded before import-time geocoding shipped (2026-08-29) would
+    // otherwise stay unlocated forever unless re-uploaded. This read already
+    // holds the rows, so the backfill rides it — scheduleCorpusLocate's
+    // pattern with scheduleCorpusLocate's cap, fire-and-forget so the blend
+    // never waits a millisecond on a geocoder.
+    Promise.resolve().then(() => geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_BACKFILL_CAP)
+    )).catch(() => {});
 
     // Both or neither, and null is not a coordinate — the rule lives in the
     // pure, tested BLEND.propertyCoordsById. The bare Number() guard that

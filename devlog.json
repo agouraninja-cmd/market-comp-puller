@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-08-29",
+    "type": "feature",
+    "title": "Vault comps get map pins without the CSV carrying coordinates",
+    "details": "A broker's private comp only ever earned a map pin if their spreadsheet supplied lat/lng columns, because geocoding it any other way meant the address leaving their browser for a third party — the exact thing the vault promises not to do. The server now locates the buildings an import left blank itself, at import time, through the same in-process Census call our own /api/geocode proxy fronts: never Nominatim, never the browser, never a URL. Up to 25 buildings per import, and books uploaded before today backfill 8 at a time whenever the vault's comps are read for a report. A coordinate the broker typed always wins — the census write only ever fills a building that has none, and a miss or a Census outage leaves the building unlocated rather than guessed, because a wrong pin puts the building on the wrong continent and nobody would recognize it as wrong. The whole path is proven end to end against a stand-in database and a stand-in geocoder, including that a located building's address is never sent anywhere at all."
+  },
+  {
+    "date": "2026-08-29",
     "type": "improvement",
     "title": "Brokers and For firms are back in the Explore menu",
     "details": "The Explore menu now reads Brokers, For firms, 1031 Guide, Download the app. The two audience pages left the menu on 2026-08-25 and kept only a footer link, which is not where a stranger browsing the site looks for them. For firms was never in the menu at all. Both are in one list in server.js (NAV_LINKS), so the change lands at once on the app's own header and on every server-rendered page, and each page's own link still gets the current-page style."

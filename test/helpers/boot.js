@@ -161,6 +161,46 @@ async function bootOnce(env) {
   });
   let stderr = "";
   child.stderr.on("data", (c) => { if (stderr.length < 8192) stderr += c; });
+  // A child that dies on its OWN, after it was healthy, is the suite's one
+  // remaining source of random red — and until this it was invisible. The
+  // stderr captured just above is reported only by the health-check loop
+  // below; past that point it was thrown away. So a server that died
+  // MID-SUITE surfaced as a bare `TypeError: fetch failed` in whichever
+  // test happened to run next: no mention of a server, no exit code, no
+  // stderr. That is why it read as a socket-pool problem through two rounds
+  // of investigation, and it is not one — the request in flight gets
+  // ECONNRESET and every request after it gets ECONNREFUSED, because the
+  // port is now dead. Both, in that order, are what a failing run shows.
+  //
+  // Measured here 2026-08-29: a run boots ~179 of these, and roughly one
+  // boot in a thousand dies by itself with Windows exit code 3221226505
+  // (0xC0000409, a hard abort) having printed nothing at all — no fatal
+  // message even with stderr captured to a file rather than a pipe, no
+  // --report-on-fatalerror report, and no uncaughtException. Whichever
+  // suite owned that child is the suite that goes red, which is why the
+  // failure wanders and why it always passes when that file is re-run
+  // alone.
+  //
+  // This prevents nothing. It names the death, in the run that suffered
+  // it, so the next person starts from the server's own last words rather
+  // than from a stack trace that only says fetch failed.
+  let everHealthy = false;
+  child.on("close", (code, signal) => {
+    // code is null for a signal, which is how stop() ends a child; a real
+    // non-zero status is a death nobody asked for, even if stop() has since
+    // run. Boots that never became healthy are the health-check loop's to
+    // report, with the stderr it already has.
+    if (!everHealthy || code === null || code === 0) return;
+    const NL = String.fromCharCode(10);
+    const tail = stderr.trim().slice(-500);
+    process.stderr.write(NL + "⛔ the test server on port " + port
+      + " exited on its own (code " + code + ", signal " + signal + ")."
+      + " Every fetch to it from here on fails: ECONNRESET for the request"
+      + " in flight, then ECONNREFUSED. A test below that failed with"
+      + " 'fetch failed' failed because of this, not its own assertion." + NL
+      + (tail ? "   its last words: " + tail + NL
+              : "   it printed nothing to stderr." + NL));
+  });
   const base = `http://localhost:${port}`;
   for (let i = 0; i < 60; i++) {
     if (child.exitCode !== null) {
@@ -182,6 +222,7 @@ async function bootOnce(env) {
         // Windows the kill and the unlink race, and a leftover temp dir is
         // harmless where a thrown error in t.after() would fail a passing test.
         if (body.boot_id === bootId) {
+          everHealthy = true;
           return {
             base,
             stop: () => {

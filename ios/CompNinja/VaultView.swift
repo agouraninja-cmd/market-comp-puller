@@ -83,7 +83,7 @@ struct VaultView: View {
             }
 
             if !vm.visible.isEmpty {
-                VaultNumbers(comps: vm.visible)
+                VaultNumbers(comps: vm.visible, gut: vm.gut)
             }
 
             if vm.visible.isEmpty {
@@ -325,6 +325,26 @@ final class VaultModel: ObservableObject {
 
     func clearFilters() { filter = VaultFilter() }
 
+    /// Asks only for the broker's bucket KEYS and computes the verdicts here.
+    ///
+    /// Never throws outward: the gut check is a supporting panel, and a book
+    /// that would not open because a benchmark read failed would be a strictly
+    /// worse trade. A failure simply leaves the panel absent.
+    private func loadBenchmarks(api: APIClient) async {
+        let keys = Set(payload.comps.map { GutCheck.bucketKey($0.market, $0.propertyType) })
+        let buckets = keys.compactMap { key -> (market: String, type: String)? in
+            let parts = key.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+            guard parts.count == 2, !parts[0].isEmpty else { return nil }
+            return (String(parts[0]), String(parts[1]))
+        }
+        guard !buckets.isEmpty else { gut = nil; return }
+        guard let benchmarks = try? await api.vaultBenchmarks(buckets: buckets) else {
+            gut = nil
+            return
+        }
+        gut = GutCheck.run(comps: payload.comps, benchmarks: benchmarks)
+    }
+
     // MARK: Delete, and putting it back
 
     /// The last deleted comp, held IN MEMORY ONLY.
@@ -373,10 +393,15 @@ final class VaultModel: ObservableObject {
         }
     }
 
+    /// Per-bucket verdicts, computed ON THIS DEVICE from public benchmarks.
+    /// The comps never leave; see the note atop GutCheck.swift.
+    @Published var gut: GutCheck.Result?
+
     func load(api: APIClient) async {
         do {
             payload = try await api.vault()
             state = .loaded
+            await loadBenchmarks(api: api)
         } catch let e as APIError {
             // The server's own sentence. Its 403 explains what a broker needs,
             // and rewriting that locally would be a second copy of a rule.
@@ -425,6 +450,7 @@ private struct NoticeBar: View {
 /// figure here always describes exactly what is on screen.
 private struct VaultNumbers: View {
     let comps: [VaultComp]
+    let gut: GutCheck.Result?
 
     var body: some View {
         let buckets = VaultAnalytics.rollup(comps)
@@ -492,6 +518,19 @@ private struct VaultNumbers: View {
                 }
             }
 
+            if let gut, !gut.buckets.isEmpty {
+                DisclosureGroup("Against the market") {
+                    ForEach(gut.buckets) { bucket in
+                        GutBucketRow(bucket: bucket)
+                    }
+                    // The framing is part of the contract, not the panel's
+                    // decoration. A divergence is a flashlight, never a grade:
+                    // the broker's own comps may well be the better data.
+                    Text("Worth a look, not a verdict on your numbers. Your own comps may be the better data.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
             if !repeats.isEmpty {
                 DisclosureGroup("Repeat properties (\(repeats.count))") {
                     ForEach(repeats) { property in
@@ -509,5 +548,67 @@ private struct VaultNumbers: View {
     private static func rate(_ value: Double, _ unit: String) -> String {
         let n = value >= 100 ? String(Int(value.rounded())) : String(format: "%.2f", value)
         return "$\(n)\(unit.hasPrefix("$") ? String(unit.dropFirst()) : unit)"
+    }
+}
+
+/// One bucket's standing against the public market layer.
+private struct GutBucketRow: View {
+    let bucket: GutCheck.BucketResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(bucket.market).font(.subheadline)
+                    Text(bucket.type).font(.caption2).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(headline).font(.caption.weight(.semibold)).foregroundStyle(tint)
+            }
+            // Counts and both benchmark halves are carried so every number can
+            // be labelled with where it came from.
+            Text(provenance).font(.caption2).foregroundStyle(.secondary)
+            if let cap = bucket.cap {
+                Text("Cap rate \(fmt(cap.median))% against \(fmt(cap.low))-\(fmt(cap.high))% · \(cap.count) of your deals")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var headline: String {
+        switch bucket.verdict {
+        case .noData: return "No benchmark"
+        case .inLine: return "In line"
+        case .above: return "\(bucket.deltaPct ?? 0)% above"
+        case .below: return "\(abs(bucket.deltaPct ?? 0))% below"
+        }
+    }
+
+    private var tint: Color {
+        switch bucket.verdict {
+        case .inLine: return .green
+        case .above, .below: return .orange
+        case .noData: return .secondary
+        }
+    }
+
+    private var provenance: String {
+        guard let band = bucket.band, let median = bucket.medianPpsf else {
+            return "\(bucket.pricedSales) priced sale\(bucket.pricedSales == 1 ? "" : "s"), no public benchmark for this market yet"
+        }
+        var sources: [String] = []
+        if let corpus = bucket.corpus, corpus.count >= GutCheck.minCorpusPpsf {
+            sources.append("\(corpus.count) recorded deals")
+        }
+        if bucket.snapshot?.ppsf != nil { sources.append("the market page") }
+        let from = sources.isEmpty ? "" : " from " + sources.joined(separator: " and ")
+        return "Your $\(fmt(median))/SF against $\(fmt(band.low))-$\(fmt(band.high))\(from)"
+    }
+
+    /// A whole number reads as a whole number. "$90.0-$110" in a panel whose
+    /// whole job is numbers looks like a rounding bug even when it is not.
+    private func fmt(_ v: Double) -> String {
+        v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
     }
 }

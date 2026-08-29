@@ -296,6 +296,25 @@ public final class APIClient: @unchecked Sendable {
                             query: ["id": id], body: fields)
     }
 
+    /// Public benchmarks for the broker's own bucket list.
+    ///
+    /// Sends only market and property-type PAIRS, never comps. That is the
+    /// whole privacy shape of this feature: the endpoint reads no vault rows
+    /// and receives none, so it cannot leak a private comp even in principle,
+    /// and the verdict is computed on the device by `GutCheck`. Do not "just
+    /// send the comps up" to simplify something later.
+    ///
+    /// The server caps at 50 buckets — a broker's own bucket list, not a scan
+    /// surface — so this sends at most that many.
+    public func vaultBenchmarks(buckets: [(market: String, type: String)])
+    async throws -> [GutCheck.Benchmark] {
+        let asked = buckets.prefix(50).map { ["market": $0.market, "type": $0.type] }
+        let answer = try await postJSON(GutCheck.BenchmarkResponse.self,
+                                        path: "/api/vault/benchmarks",
+                                        body: ["buckets": Array(asked)])
+        return answer.buckets
+    }
+
     public func deleteVaultComp(id: String) async throws {
         _ = try await write(method: "DELETE", path: "/api/vault/comp", query: ["id": id])
     }

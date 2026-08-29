@@ -473,6 +473,34 @@ test("bare environment", async (t) => {
     }
   });
 
+  // Where the header's Pricing link points, which is not the same place for
+  // both visitors (owner-reported 2026-08-29). The modal door /?pricing=1 is a
+  // full navigation onto index.html, which strips the param and whose close
+  // handler only hides the modal — so a signed-out reader who clicked Pricing
+  // from any of these pages and then backed out was left standing on the app,
+  // behind the wall's lock card, with nothing pointing back.
+  //
+  // Two halves, and both matter. The markup must ship the SIGNED-OUT href,
+  // because that is the common case, the one a crawler follows, and the one
+  // that survives the hydration script never running. The rewrite to the modal
+  // door must sit under ACCOUNT_NAV_JS's `if(!me)return;`, because that single
+  // line is the whole guarantee that a signed-out visitor is never handed it.
+  await t.test("the header's Pricing link is the rate card for a signed-out reader", async () => {
+    const pages = ["/markets", "/brokers", "/how-it-works", "/leadership", "/pricing"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /<a id="navPricing" href="\/pricing"/,
+        p + " ships the modal door to a signed-out reader instead of the rate card");
+      // The member rewrite exists...
+      assert.match(html, /navPricing"\);if\(np\)np\.setAttribute\("href","\/\?pricing=1"\)/,
+        p + " never upgrades a member's Pricing link to the checkout door");
+      // ...and is downstream of the signed-out bail-out. Anything that moved it
+      // above that line would hand the stranding door back to everybody.
+      assert.ok(html.indexOf('if(!me)return;') < html.indexOf('np.setAttribute("href","/?pricing=1")'),
+        p + " rewrites Pricing before it knows whether anyone is signed in");
+    }
+  });
+
   // The Home link, first in the nav (owner-reported 2026-08-28). A logged-out
   // visitor who opened Explore and landed on one of these pages had nothing
   // that READ as a way back: the wordmark links `/` but does not look like a

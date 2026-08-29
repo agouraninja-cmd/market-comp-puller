@@ -8247,11 +8247,26 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `</div></details>`;
 }
 
-// Pricing lives in a modal that exists only in index.html, so from here it is
-// the /?pricing=1 door — the same shape as /?submit=comp, needed for
-// /#submit-comp, not a new pattern. index.html opens the modal and clears the
-// hash. Rendered inside the Explore dropdown, last, matching index.html.
-const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>`;
+// Pricing has two homes, and this link picks by visitor.
+//
+// A SIGNED-OUT reader gets /pricing, the standalone rate card, because the
+// modal door stranded them: the pricing modal exists only in index.html, so
+// /?pricing=1 is a full navigation OFF whatever page they were reading, onto
+// the app; index.html then strips the param, and closing the modal only hides
+// it. "Not now" therefore left somebody who had never asked to see the app
+// standing on it, behind the account wall's lock card, with nothing pointing
+// back. /pricing is a real page with a real URL and the same figures (both
+// read PRICING), so nothing is lost by sending them there.
+//
+// A SIGNED-IN member keeps the /?pricing=1 door, rewritten onto this element
+// by ACCOUNT_NAV_JS below. For them the modal is the checkout control, not a
+// rate card, and index.html is already their home page — closing it strands
+// nobody.
+//
+// The signed-out href is the one written into the markup on purpose: it is the
+// common case, it is what a crawler follows, and it is what survives if the
+// hydration script never runs. The rewrite is the exception, not the rule.
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>Pricing</a>`;
 
 const ACCOUNT_NAV_JS =
   `<script>(function(){` +
@@ -8272,6 +8287,11 @@ const ACCOUNT_NAV_JS =
   `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
+  // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
+  // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
+  // it impossible to hand a signed-out visitor the door that strands them, so
+  // do not move this call above it for tidiness.
+  `var np=$("navPricing");if(np)np.setAttribute("href","/?pricing=1");` +
   `var lab=String(me.name||me.email||"").trim();` +
   `var ini=$("navAcctInitial");if(ini){` +
   `if(me.avatarRev){ini.className="ini photo";ini.style.backgroundImage="url(/api/account/avatar?v="+encodeURIComponent(me.avatarRev)+")";ini.textContent="";}` +

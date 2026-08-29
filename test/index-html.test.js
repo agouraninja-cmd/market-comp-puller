@@ -1003,6 +1003,60 @@ test("the fourth ledger cell counts new comps, not watched markets", () => {
   assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
 });
 
+// ----------------------------------------------------------------------------
+// The attention line (2026-08-29). The workspace opened with numbers and lists
+// and nothing that was waiting on the member. It names ONE thing, because one
+// thing is what the data honestly supports: new comps are already the ledger's
+// fourth cell a line above, a pending firm invitation is already the first
+// deck a line below, and lease expiries never reach this surface at all.
+// ----------------------------------------------------------------------------
+test("the attention line says nothing when nothing is waiting", () => {
+  const at = html.indexOf('id="deskAttention"');
+  assert.ok(at > -1, "the line exists");
+  assert.match(html.slice(at - 60, at + 60), /class="hidden dk-attn"/,
+    "it ships hidden; a standing all-caught-up banner is the vault's 0-0 scoreboard");
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const showAttn = showValues && staleN > 0"),
+    "shown only when something is actually stale, and never on a values-free free desk");
+  // Sign-out must drop it for the same reason the ledger beside it is dropped:
+  // it is a statement about one person's own properties.
+  assert.ok(fn.includes('getElementById("deskAttention").classList.add("hidden")'),
+    "sign-out drops the line");
+  assert.ok(fn.includes("1 property was last checked over a year ago"), "singular copy");
+  assert.ok(fn.includes("properties were last checked over a year ago"), "plural copy");
+  assert.ok(!/deskAttention[\s\S]{0,400}innerHTML/.test(fn), "textContent only");
+});
+
+test("stale is a year, and it is not a number invented here", () => {
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const STALE_MS = 365 * 24 * 60 * 60 * 1000"), "one year");
+  // portfolio-delta.js already draws this line, and says why: past a year a
+  // window "stops being 'since you last looked' and becomes market history".
+  // It is a server module and cannot be required here, so the mirror is
+  // marked — the same treatment compWeight and SHOP_COPY get.
+  assert.ok(fn.includes("portfolio-delta.js"), "the source of the threshold is named");
+  assert.ok(fn.includes("MIRRORED CONSTANT"), "the duplication is flagged, not silent");
+  const delta = fs.readFileSync(path.join(__dirname, "..", "portfolio-delta.js"), "utf8");
+  assert.match(delta, /MAX_WINDOW_YEARS = 1/, "the constant this mirrors still says a year");
+});
+
+test("the checked date and the attention line count the same fact", () => {
+  // The table said "checked {updated_at}" — when the ROW was last written by
+  // anything — while the line counts the last time a value was produced. Two
+  // dates for one word, thirty pixels apart, contradicted each other on screen
+  // (caught in a browser against an aged store, not by reading).
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const lastTs = last && last.ts ? last.ts : item.updated_at"),
+    "the row reads the last snapshot, falling back only when there is none");
+  assert.ok(!fn.includes("checked ${new Date(item.updated_at)"),
+    "the row must not go back to the row-written date");
+  assert.ok(fn.includes("const ts = last && last.ts ? Date.parse(last.ts) : NaN"),
+    "the count reads the same field");
+});
+
 test("the workspace header does not say who you are at all", () => {
   // The row carried the circle, "Signed in as {name}" and "Add a photo",
   // beside a nav that already shows the same photo and account menu. It came

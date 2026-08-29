@@ -867,6 +867,12 @@ test("the chamber wears its desk header only while the workspace is on screen", 
   const head = html.slice(html.indexOf('id="searchSection"'), html.indexOf('class="rd-form rd-desk"'));
   assert.match(head, /id="searchDeckHead"[^>]*class="hidden dk-deck-h"/);
   assert.match(head, /Run a report/);
+  // dk-deck-h sets display:flex in the style block, which loads AFTER
+  // tailwind.css, so at equal specificity it beats Tailwind's .hidden — the
+  // header rendered on the signed-out home until this override existed
+  // (caught by a byte-compare screenshot, the vault's ".deck.hide" trap).
+  assert.ok(html.includes("#searchDeckHead.hidden { display: none; }"),
+    "the hidden state needs its own higher-specificity rule or the header shows signed out");
   // Plain-string pins (not regexes): the needles are full of ")(. characters,
   // and an escaping slip here would pin nothing while looking like it did.
   const reveal = 'getElementById("searchDeckHead").classList.remove("hidden")';
@@ -897,6 +903,45 @@ test("Run a report jumps to the chamber and seats the caret, deterministically",
   assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
   assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
     "the caret lands in the address field without fighting the jump");
+});
+
+test("the between-checks cell names its sample and cannot read as a return", () => {
+  // "Since last checks" read as a portfolio return, and the figure is not
+  // one: it compares each property's last two check-ins, over only the
+  // properties checked at least twice, with no time window at all. The
+  // arithmetic stays; the caption stops over-claiming.
+  const start = html.indexOf("async function renderMyDesk");
+  const end = html.indexOf("// /desk — My Desk lives on its own URL");
+  assert.ok(start > -1 && end > start, "renderMyDesk slice anchors moved");
+  const fn = html.slice(start, end);
+  assert.ok(fn.includes("Between checks"), "the cell is labelled Between checks");
+  assert.ok(fn.includes("last check vs the check before"), "the note names the basis");
+  assert.ok(fn.includes("of ${items.length} properties"), "the note names its sample");
+  // The old label survives in a comment explaining WHY it went; the pin is on
+  // the cell() call, so history stays readable while the label cannot return.
+  assert.ok(!fn.includes('cell("Since last checks"'), "the return-shaped label must not come back");
+  assert.ok(!fn.includes("across properties checked twice"), "nor its old under-disclosing note");
+  assert.ok(fn.includes("not a return over any period of time"),
+    "the title says outright what the figure is not");
+  // One figure, computed once: the same bookPct feeds the ledger cell and the
+  // statement's tfoot, so the two can never disagree.
+  assert.ok((fn.match(/bookPct/g) || []).length >= 4, "bookPct must feed both surfaces");
+});
+
+test("both writers of the markets cell emit the same anatomy", () => {
+  // renderMyDesk renders #deskLedgerMarkets as a placeholder; renderWatchFeed
+  // fills it in later. If the two emit different markup the cell visibly
+  // changes shape when the feed lands, which reads as a glitch.
+  for (const fnName of ["async function renderMyDesk", "async function renderWatchFeed"]) {
+    const at = html.indexOf(fnName);
+    assert.ok(at > -1, fnName + " not found");
+    const seg = html.slice(at, at + 30000);
+    const cellAt = seg.indexOf("deskLedgerMarkets");
+    assert.ok(cellAt > -1, fnName + " must write the markets cell");
+    const cell = seg.slice(cellAt, cellAt + 300);
+    assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
+    assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
+  }
 });
 
 // ----------------------------------------------------------------------------

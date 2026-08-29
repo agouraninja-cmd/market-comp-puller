@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import CompNinjaKit
 
 /// The broker's book: every comp they hold, filterable, on a phone.
@@ -79,6 +80,10 @@ struct VaultView: View {
                               median: Vault.medianRate(vm.visible))
                     FilterRow(vm: vm)
                 }
+            }
+
+            if !vm.visible.isEmpty {
+                VaultNumbers(comps: vm.visible)
             }
 
             if vm.visible.isEmpty {
@@ -404,5 +409,105 @@ private struct NoticeBar: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
         .padding(.horizontal, 12)
         .padding(.bottom, 6)
+    }
+}
+
+/// The three panels the web keeps behind a reading strip: markets, years, and
+/// buildings this book holds more than one deal on.
+///
+/// All three ship COLLAPSED, which is not a style choice. On the web these
+/// were three bordered panels in front of the table and, measured on a seeded
+/// book, they pushed the comps table from 1101px down to 4363px. A phone has
+/// far less room, so the list a broker came for stays at the top and the
+/// numbers are one tap away.
+///
+/// Every one of them is scoped by the SAME filter as the list above, so a
+/// figure here always describes exactly what is on screen.
+private struct VaultNumbers: View {
+    let comps: [VaultComp]
+
+    var body: some View {
+        let buckets = VaultAnalytics.rollup(comps)
+        let years = VaultAnalytics.byYear(comps)
+        let repeats = VaultAnalytics.repeatProperties(comps)
+
+        Section {
+            if buckets.count > 1 {
+                DisclosureGroup("Markets (\(buckets.count))") {
+                    ForEach(buckets) { bucket in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(bucket.market).font(.subheadline)
+                                Text(bucket.propertyType)
+                                    .font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            // A bucket with no median shows its comp count
+                            // instead of a fabricated number.
+                            if let median = bucket.median, let unit = bucket.unit {
+                                Text(Self.rate(median, unit))
+                                    .font(.subheadline.weight(.medium)).monospacedDigit()
+                            } else {
+                                Text("\(bucket.count) comp\(bucket.count == 1 ? "" : "s")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+            }
+
+            if years.contains(where: { $0.median != nil }) {
+                DisclosureGroup("By year") {
+                    Chart(years.filter { $0.median != nil }) { point in
+                        BarMark(x: .value("Year", String(point.year)),
+                                y: .value("Median", point.median ?? 0))
+                    }
+                    .chartYAxis {
+                        AxisMarks { value in
+                            AxisGridLine()
+                            AxisValueLabel {
+                                if let n = value.as(Double.self) {
+                                    Text(Self.rate(n, years.first?.unit ?? ""))
+                                }
+                            }
+                        }
+                    }
+                    .frame(height: 160)
+                    .padding(.vertical, 6)
+
+                    // A year that could not state a median is named rather
+                    // than silently missing from the chart.
+                    let quiet = years.filter { $0.median == nil }
+                    if !quiet.isEmpty {
+                        // String(), never interpolation: SwiftUI's Text
+                        // locale-formats an interpolated Int, so a year comes
+                        // out as "2,025". The same trap the report side already
+                        // carries a rule about for year_built — sizes get
+                        // thousands separators, years never do.
+                        Text(quiet.count == 1
+                             ? "\(String(quiet[0].year)) mixes sales and leases, so it states no median."
+                             : "\(quiet.map { String($0.year) }.joined(separator: ", ")) mix sales and leases, so they state no median.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if !repeats.isEmpty {
+                DisclosureGroup("Repeat properties (\(repeats.count))") {
+                    ForEach(repeats) { property in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(property.address).font(.subheadline).lineLimit(2)
+                            Text("\(property.count) deals · \(property.comps.compactMap { $0.dealDate.isEmpty ? nil : String($0.dealDate.prefix(4)) }.joined(separator: ", "))")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func rate(_ value: Double, _ unit: String) -> String {
+        let n = value >= 100 ? String(Int(value.rounded())) : String(format: "%.2f", value)
+        return "$\(n)\(unit.hasPrefix("$") ? String(unit.dropFirst()) : unit)"
     }
 }

@@ -1362,6 +1362,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-lfig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 30px; line-height: 1.1; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
     .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 34px; }
     .dk-lnote { font-size: 11px; color: var(--ink-3); margin-top: 5px; text-align: left; }
+    /* The attention line under the ledger. A left rule in brand red rather
+       than a filled banner: it is worth noticing once, not worth shouting,
+       and it appears directly beneath a strip this page wants read first. */
+    .dk-attn { margin-top: 10px; padding: 8px 0 8px 12px; border-left: 2px solid var(--red); font-size: 12.5px; color: var(--ink-body); }
     @media (max-width: 639.98px) {
       .dk-lfig, .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 24px; }
     }
@@ -2333,6 +2337,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            renderMyDesk() — hidden with 0 properties (a 0-0 scoreboard over
            an empty desk is the vault first-run lesson) and on sign-out. -->
       <div id="deskLedger" class="hidden rd-ledger dk-ledger mt-4 bg-white"></div>
+      <!-- The one thing on this page that is waiting on the member. It says
+           nothing at all when nothing is waiting, which is most days: a
+           standing "you're all caught up" banner is the 0-0 scoreboard the
+           vault's first run already taught us not to draw.
+           Deliberately NOT a general notifications strip. New comps are the
+           ledger's fourth cell one line above, a pending firm invitation is
+           the first deck one line below, and repeating either here would be
+           the same mistake the header just had removed from it. -->
+      <p id="deskAttention" class="hidden dk-attn"></p>
 
       <!-- Signed-out prompt for the account-backed areas -->
       <div id="deskSignIn" class="hidden mt-8 dk-card">
@@ -12626,6 +12639,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // The reading strip sits outside #myDesk (under the page header), so
       // sign-out must drop it here or it would outlive the account it sums.
       document.getElementById("deskLedger").classList.add("hidden");
+      // Same for the attention line beside it, for the sharper version of the
+      // same reason: it is a statement about somebody's own properties.
+      document.getElementById("deskAttention").classList.add("hidden");
       return;
     }
     desk.classList.remove("hidden");
@@ -12684,19 +12700,47 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="var(--red-fill)"/>`;
       return svg;
     };
-    let combined = 0, curOfPaired = 0, prevOfPaired = 0, pairedN = 0;
+    // A year, and not a number picked here. portfolio-delta.js draws the same
+    // line for the same reason (MAX_WINDOW_YEARS = 1): "a window wider than
+    // this stops being 'since you last looked' and becomes market history."
+    // Past it, this property's figure is not a stale-ish reading of the
+    // market, it is a different question.
+    // ⚠ MIRRORED CONSTANT: portfolio-delta.js is a server module and cannot be
+    // required here. If that one moves, move this with it.
+    const STALE_MS = 365 * 24 * 60 * 60 * 1000;
+    let combined = 0, curOfPaired = 0, prevOfPaired = 0, pairedN = 0, staleN = 0;
     const typeCounts = {};
+    const nowMs = Date.now();
     items.forEach((item) => {
       const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
       const last = snaps[snaps.length - 1] || null;
       const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
       if (last && last.likely) combined += Number(last.likely);
       if (last && prev && last.likely && prev.likely) { curOfPaired += Number(last.likely); prevOfPaired += Number(prev.likely); pairedN += 1; }
+      // Counted off the last CHECK, not off updated_at: a row can be touched
+      // by a rename or a re-save without anybody re-running the search that
+      // produced its number. An unparseable or missing timestamp is not
+      // counted — silence beats calling a property stale on a bad date.
+      const ts = last && last.ts ? Date.parse(last.ts) : NaN;
+      if (Number.isFinite(ts) && nowMs - ts > STALE_MS) staleN += 1;
       const t = String(item.property_type || "").toLowerCase();
       if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
     });
     const ledger = document.getElementById("deskLedger");
     ledger.classList.toggle("hidden", items.length === 0 || !showValues);
+    // Gated on showValues with the ledger above it: a free desk is an address
+    // list with no figures on it, and telling somebody their values are a year
+    // out when the page never showed them a value would be answering a
+    // question they were not asked. textContent, and no member-authored text
+    // in it either way.
+    const attn = document.getElementById("deskAttention");
+    const showAttn = showValues && staleN > 0;
+    attn.classList.toggle("hidden", !showAttn);
+    if (showAttn) {
+      attn.textContent = staleN === 1
+        ? "1 property was last checked over a year ago. Refresh it below to bring its value up to date."
+        : `${staleN} properties were last checked over a year ago. Refresh them below to bring their values up to date.`;
+    }
     const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
     // "Between checks", and the note names its own sample. The old label,
     // "Since last checks", read as a portfolio return — and the number is
@@ -12750,7 +12794,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         tdA.appendChild(addr);
         const sub = document.createElement("div");
         sub.className = "text-[10.5px] text-[#68707E]";
-        sub.textContent = `${item.property_type} · checked ${new Date(item.updated_at).toLocaleDateString()}`;
+        // "Checked" is the last time a VALUE was produced, so it reads the
+        // last snapshot and falls back to updated_at only when there is none.
+        // It read updated_at outright until 2026-08-29, which is when the row
+        // was last written by anything: a save that produced no valuation
+        // (cleanSnapshot drops one with no likely value) moved this date
+        // without anybody having checked the property. It also has to agree
+        // with the attention line above the table, which counts the same
+        // fact; two dates for one word, thirty pixels apart, is worse than
+        // either of them being slightly off.
+        const lastTs = last && last.ts ? last.ts : item.updated_at;
+        sub.textContent = `${item.property_type} · checked ${new Date(lastTs).toLocaleDateString()}`;
         // Door to the standing market page for this property's market + type.
         // The server attaches `market_page` only when such a page exists
         // (marketPageInfo), so absence renders nothing — same contract as

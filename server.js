@@ -6083,9 +6083,6 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
-// Opt-in to a provider stream whose wire format we have not yet confirmed
-// against a live call. Default OFF; see the useStream note in callAnthropicOnce.
-const STREAM_UNVERIFIED = /^(1|on|true|yes)$/i.test(String(process.env.STREAM_UNVERIFIED || ""));
 
 // Where the search actually goes. Overridable ONLY so the suite can stand a
 // stub in front of it — RESEND_API_URL's precedent, for RESEND_API_URL's
@@ -6466,17 +6463,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
-  // non-streaming path rather than ask for a mode it doesn't support.
-  // STREAM_UNVERIFIED is the opt-in for a provider whose API supports streaming
-  // and which has a reader here, but whose live wire format has never been
-  // confirmed (Gemini, as of 2026-08-21). It is separate from STREAM_ANTHROPIC
-  // and defaults OFF because a wrong frame shape fails CLOSED — the reader
-  // recovers no text and the report errors out — so this must never be
-  // something a deployment enables by accident. Confirm with
-  // `node scripts/verify-gemini-stream.js`, then flip that provider's
-  // capabilities.streaming and delete this branch.
-  const useStream = STREAM_ANTHROPIC && (PROVIDER.capabilities.streaming
-    || (STREAM_UNVERIFIED && PROVIDER.capabilities.streamingUnverified));
+  // non-streaming path rather than ask for a mode it doesn't support. (Both
+  // providers stream since 2026-08-29 — Gemini's wire format was confirmed
+  // live with scripts/verify-gemini-stream.js — but the capability read stays,
+  // because a future provider earns streaming the same way: a verified reader,
+  // never a guessed one on the default path.)
+  const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,

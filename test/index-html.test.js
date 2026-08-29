@@ -903,7 +903,42 @@ test("Run a report jumps to the chamber and seats the caret, deterministically",
   assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
   assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
     "the caret lands in the address field without fighting the jump");
+  // Red, on the owner's call (2026-08-29): with the profile cluster gone from
+  // that row it is the only control on it, and it starts the same act as the
+  // red button at the foot of the chamber. The classes have to be ones the
+  // file already uses somewhere else -- tailwind.css is a purged vendored
+  // build, so a colour that appears only here would silently not paint.
+  const runBtn = html.slice(at, html.indexOf(">", html.indexOf("Run a report", at)));
+  assert.match(runBtn, /bg-brand-600/, "the workspace shortcut is red");
+  assert.match(runBtn, /hover:bg-brand-700/, "and it has the matching hover");
+  for (const cls of ["bg-brand-600", "hover:bg-brand-700"]) {
+    const uses = html.split(cls).length - 1;
+    assert.ok(uses > 1, cls + " must be used elsewhere too, or the purge drops it");
+  }
 });
+
+test("the vault is a nav item, not a row inside the account menu", () => {
+  // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
+  // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
+  // broker's daily workspace was two clicks down a menu -- while "Workspace"
+  // itself sat one click away in the rail. The gate is unchanged; only the
+  // position moved.
+  const nav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
+  assert.match(nav, /id="menuVaultLink"/, "the vault link is a sibling of Workspace in the rail nav");
+  assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
+  const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
+  assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
+  // One link, one toggle: refreshBillingUI still owns it off canUseVault, so
+  // moving it cannot have widened who sees it.
+  assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
+  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !canVault)`),
+    "still shown from canUseVault and nothing else");
+});
+
+// The workspace header's profile cluster is pinned by "the workspace header
+// does not say who you are at all" further down -- it started life as that
+// pass's own test and absorbed this one, rather than two tests asserting the
+// same removals under different names.
 
 test("the between-checks cell names its sample and cannot read as a return", () => {
   // "Since last checks" read as a portfolio return, and the figure is not
@@ -938,10 +973,69 @@ test("both writers of the markets cell emit the same anatomy", () => {
     const seg = html.slice(at, at + 30000);
     const cellAt = seg.indexOf("deskLedgerMarkets");
     assert.ok(cellAt > -1, fnName + " must write the markets cell");
-    const cell = seg.slice(cellAt, cellAt + 300);
+    // Wide enough to clear the explanatory comment above the feed's writer.
+    const cell = seg.slice(cellAt, cellAt + 1600);
     assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
     assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
+    // Both must also agree on the LABEL, or the cell renames itself when the
+    // feed lands a moment after first paint.
+    assert.ok(cell.includes(">New comps<"), fnName + " must label the cell New comps");
   }
+});
+
+test("the fourth ledger cell counts new comps, not watched markets", () => {
+  // The other three cells are facts about the book. This one was a count of a
+  // preference, with the only live thing on the strip ("N new comps waiting")
+  // demoted to the 11px note under it. The signal is the figure now.
+  const at = html.indexOf("async function renderWatchFeed");
+  const seg = html.slice(at, at + 30000);
+  const cellAt = seg.indexOf("const mk = document.getElementById");
+  assert.ok(cellAt > -1, "the feed still writes the cell");
+  const blk = seg.slice(cellAt, cellAt + 1400);
+  assert.ok(blk.includes('<span class="rd-lab">New comps</span>'), "the label names what the figure counts");
+  assert.ok(blk.includes("mkts ? totalNew"), "the figure is the new-comp count");
+  // Three honest notes, and an em dash rather than a 0 when there is nothing
+  // to count yet: "0 new comps" over an empty watchlist states a fact about
+  // markets the member never asked about.
+  assert.ok(blk.includes("watch a market to see new comps here"), "no markets: an invitation");
+  assert.ok(blk.includes("you watch"), "with news: the markets are the context");
+  assert.ok(blk.includes("watched · quiet"), "no news: says so plainly");
+  assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
+});
+
+test("the workspace header does not say who you are at all", () => {
+  // The row carried the circle, "Signed in as {name}" and "Add a photo",
+  // beside a nav that already shows the same photo and account menu. It came
+  // down in two passes on 2026-08-29. The first took the greeting and the
+  // labelled button and KEPT the circle, because the circle is itself the
+  // upload trigger and because the settings panel had no Remove -- so dropping
+  // the cluster would have deleted the only way to take a photo off an
+  // account. Both were true, and the second pass removed that blocker instead
+  // of arguing with it: #settingsAvatarRemove carries Remove now, so the whole
+  // cluster could go. Under NAV_SHELL=rail that is the point -- the account
+  // circle is pinned bottom-left in the sidebar, so a second one top-right is
+  // the same face twice on one screen.
+  const at = html.indexOf('id="deskView"');
+  const head = html.slice(at, html.indexOf('id="checkoutNotice"'));
+  const gone = ["deskAvatarBtn", "deskAvatarPhoto", "deskAvatarInitial",
+                "deskHello", "deskAvatarChange", "deskAvatarRemove", "deskAvatarMsg"];
+  for (const id of gone) {
+    assert.ok(!head.includes('id="' + id + '"'), id + " is gone from the workspace header");
+    // Nothing may still REACH one either: several were unguarded reads, and an
+    // unguarded getElementById on a deleted node throws and takes the desk
+    // down with it. This is the half a comment cannot enforce.
+    assert.ok(!html.includes('getElementById("' + id + '")'), "no live reference to " + id);
+  }
+  // The capability has to survive the move in BOTH directions. A panel that can
+  // add a photo and never take one off is the loss the first pass refused to
+  // take, and it would be just as real now.
+  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings adds and changes");
+  assert.ok(html.includes('id="settingsAvatarRemove"'), "settings removes");
+  assert.ok(html.includes(`getElementById("settingsAvatarRemove").addEventListener`),
+    "and Remove is wired, not merely drawn");
+  // The picker stays where it is: #settingsAvatarBtn clicks it, so the photo
+  // pipeline still has exactly one entry.
+  assert.ok(html.includes('id="deskAvatarFile"'), "the one hidden input stays");
 });
 
 // ----------------------------------------------------------------------------
@@ -1156,14 +1250,16 @@ test("the type chip is followed by the table's own comp count, never a bare digi
   assert.match(html, /renderReportMeta\(currentMeta\)/);
 });
 
-test("My Desk and the settings panel have a place to put a profile photo", () => {
+test("the settings panel has a place to put a profile photo", () => {
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);
   assert.match(html, /id="deskAvatarFile"/);
-  assert.match(html, /id="deskAvatarChange"/);
   // Change photo moved from the account dropdown into the settings panel
-  // (2026-08-23); it drives the same hidden #deskAvatarFile input.
+  // (2026-08-23) and Remove followed it there when the workspace header's
+  // profile cluster went (2026-08-29); both drive the same hidden
+  // #deskAvatarFile input and the same pipeline.
   assert.match(html, /id="settingsAvatarBtn"/);
+  assert.match(html, /id="settingsAvatarRemove"/);
   assert.match(html, /function applyAvatarUI\(/);
   assert.match(html, /function readAvatarFile\(/);
   assert.match(html, /\/api\/account\/avatar/);
@@ -2104,4 +2200,54 @@ test("the Google button ships hidden and is revealed only by config", () => {
     "the button belongs to the two sign-in tabs, not the reset/forgot forms");
   assert.match(html, /get\("gerr"\)/,
     "the callback's failure exit (?auth=signin&gerr=1) needs its message");
+});
+
+// ---------------------------------------------------------------------------
+// The pricing deep link is a one-shot, so it may never act on a GUESS
+// ---------------------------------------------------------------------------
+//
+// Reported 2026-08-29: clicking Pricing in any server-rendered header landed
+// on a bare home page with no modal, and only a SECOND click opened it.
+//
+// refreshBillingUI() runs during bootstrap as well (refreshAccountUI calls
+// it), before /api/config has answered. At that point proConfig is still the
+// boot-time `{ enabled: false }` default, so billingLive() reads FALSE on a
+// deployment whose billing is perfectly live. The consumption block flipped
+// the one-shot on that early call, skipped the modal, and cleared ?pricing=1
+// from the URL anyway -- leaving nothing for the later call that had the real
+// answer.
+//
+// This is the identical mistake applyExplorerGating() already guards against,
+// and `proConfigResolved` is the flag written for it. There is no DOM here to
+// drive the race, so these assert the guard is present in the source: cheap,
+// and they fail the moment someone removes it.
+
+test("the pricing deep link waits for a real config answer before consuming", () => {
+  assert.match(html, /if \(pendingPricingHash && proConfigResolved\) \{/,
+    "the ?pricing=1 one-shot must be gated on proConfigResolved, not consumed " +
+    "on the boot-time proConfig default");
+});
+
+test("the pricing one-shot is not cleared on the same pass that skips the modal", () => {
+  // The guard has to sit on the OUTER `if`. Folding it into the `live && !pro`
+  // test would still flip pendingPricingHash and still rewrite the URL, which
+  // is the whole bug -- the modal is not the only thing being lost.
+  const block = html.match(
+    /if \(pendingPricingHash && proConfigResolved\) \{[\s\S]{0,700}?\n    \}/);
+  assert.ok(block, "the pricing consumption block moved or changed shape");
+  assert.ok(/pendingPricingHash = false;/.test(block[0]),
+    "the one-shot is still cleared inside the guarded block");
+  assert.ok(/history\.replaceState/.test(block[0]),
+    "the URL cleanup is still inside the guarded block, not outside it");
+});
+
+test("proConfigResolved is only ever set from a real /api/config answer", () => {
+  // Two call sites (initGate and refreshProConfig), both immediately after the
+  // assignment from cfg. If a third appears that guesses, both deep links --
+  // pricing and ?explore= -- silently regain the bug above.
+  const sets = html.match(/proConfigResolved = true/g) || [];
+  assert.equal(sets.length, 2,
+    "expected exactly the two config-answer call sites to set proConfigResolved");
+  assert.match(html, /let proConfigResolved = false;/,
+    "the flag must default to false, so nothing acts before config lands");
 });

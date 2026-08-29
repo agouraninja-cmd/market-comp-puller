@@ -1,0 +1,40 @@
+{
+  "name": "compninja-desktop",
+  "productName": "CompNinja",
+  "version": "1.0.1",
+  "private": true,
+  "description": "CompNinja desktop app — a standalone shell around compninja.co.",
+  "author": "CompNinja LLC <info@compninja.co>",
+  "repository": { "type": "git", "url": "https://github.com/agouraninja-cmd/market-comp-puller.git" },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "co.compninja.desktop",
+    "productName": "CompNinja",
+    "files": ["main.js", "offline.html", "build/icon.png"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "win": { "target": "nsis" },
+    "nsis": {
+      "oneClick": true,
+      "artifactName": "CompNinja-Setup.${ext}"
+    },
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "artifactName": "CompNinja.${ext}",
+      "category": "public.app-category.business"
+    },
+    "dmg": { "artifactName": "CompNinja.${ext}" },
+    "linux": {
+      "target": "AppImage",
+      "artifactName": "CompNinja.${ext}",
+      "category": "Office"
+    }
+  }
+}

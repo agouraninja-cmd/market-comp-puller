@@ -1,0 +1,49 @@
+# Momentum reads expire on a cliff — this is the alarm that goes off first.
+#
+# Every seeded market page is regenerated in one run, so they all carry the
+# same `generatedAt`, and freshDirection() stops publishing all of them on the
+# SAME DAY. Since the momentum map went on /markets, that day is the day the
+# map turns entirely hollow — an event a customer should never be the one to
+# notice.
+#
+# The job fails when the soonest read is inside the warning window, because a
+# failed scheduled workflow is what actually reaches somebody; a passing job
+# that printed a warning would be read by nobody. A failure here means "go
+# regenerate", never "the build is broken" — no deploy depends on it.
+#
+# The fix it is asking for costs money (one billed search per market), which
+# is why the script reports and this workflow notifies, rather than either of
+# them regenerating anything on their own:
+#
+#     npm start                  # one shell
+#     node gen-market-seed.js    # another; then commit market-seed.json
+#
+# UNLIKE market-heroes.yml this needs NO secrets: it reads the committed seed
+# file and nothing else. Explorer-published pages in Supabase are deliberately
+# out of scope — they are generated one at a time as visitors find them, so
+# they carry their own stamps and do not share a cliff.
+#
+# Weekly, not monthly: a monthly run can land just after a warning window
+# opens and burn most of the runway before saying anything.
+name: Market freshness
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # Mondays, 13:00 UTC
+  workflow_dispatch:
+    inputs:
+      warn_days:
+        description: "Warn when the soonest momentum read is within this many days"
+        required: false
+        default: "30"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check how long the momentum reads have left
+        run: node scripts/check-market-freshness.js --warn-days "${{ github.event.inputs.warn_days || '30' }}"

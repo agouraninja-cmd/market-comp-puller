@@ -14,6 +14,10 @@ defined centrally, so changing one changes every page at once. Sizes, spacing
 and fonts are not yet tokenised; those are written into each stylesheet, so
 changing one means finding each place it appears.
 
+**For the non-visual half of the brand** — name, legal entity, voice, and the
+language rules that are promises rather than style choices — see
+[BRAND.md](BRAND.md).
+
 Read §1 before changing a colour. It is the shortest section and the only one
 with a trap in it.
 
@@ -69,13 +73,20 @@ The mark is a **navy rounded rectangle crossed by a red diagonal band**. It is
 drawn in code (SVG), not stored as an image file, so it stays sharp at any size
 and can change colour with the theme.
 
-| Where | Name | Lives in | Notes |
-|---|---|---|---|
-| Site header | `CN_LOGO` | `server.js` (~line 5410) | Themed — card is `--ink`, sweep is `--red-fill` |
-| Dark footer | `CN_LOGO_LIGHT` | `server.js` (~line 5423) | Card is **always** white, never themed |
-| Browser tab | `favicon.ico`, `favicon.svg`, `favicon.png` | repo root | |
-| iOS home screen | `apple-touch-icon.png` | repo root | 180×180 |
-| Link previews | `og-image.png` | repo root | 1200×630, shown when the site is shared |
+<img src="brand-logos.svg" alt="The CompNinja mark in its three shipped appearances: header light, header dark, and the footer slab." width="920">
+
+All three appearances above are the same two shapes; only the fills differ.
+
+| | Where | Name | Lives in | Notes |
+|---|---|---|---|---|
+| | Site header | `CN_LOGO` | `server.js` (~line 5410) | Themed — card is `--ink`, sweep is `--red-fill` |
+| | Dark footer | `CN_LOGO_LIGHT` | `server.js` (~line 5423) | Card is **always** white, never themed |
+| <img src="../favicon.svg" width="28"> | Browser tab | `favicon.ico`, `favicon.svg`, `favicon.png` | repo root | |
+| <img src="../apple-touch-icon.png" width="28"> | iOS home screen | `apple-touch-icon.png` | repo root | 180×180 |
+| <img src="../og-image.png" width="64"> | Link previews | `og-image.png` | repo root | 1200×630, shown when the site is shared |
+| <img src="../icon-192.png" width="28"> | Installed app | `icon-192.png` | repo root | 192×192, PWA install |
+| <img src="../icon-512.png" width="28"> | Installed app | `icon-512.png` | repo root | 512×512, PWA install |
+| <img src="../icon-maskable-512.png" width="28"> | Android adaptive | `icon-maskable-512.png` | repo root | 512×512, safe-zone padded |
 
 **The wordmark** is set beside the mark, not part of it: `Comp` in ink and
 `Ninja` in red, uppercase, 15px, weight 600, letter-spacing `.14em`.
@@ -90,7 +101,10 @@ one you merged into would break in the other context.
 - Sweep: `polygon` 3.5,26 → 28,5.5 → 28,10 → 8,26
 
 Changing the artwork means editing those two shapes in both places, plus
-regenerating the five image files above from the new shape.
+regenerating the eight image files above from the new shape. The three PWA
+icons are easy to forget — they are pinned against `manifest.webmanifest` by
+`test/manifest.test.js`, so a stale one survives every check the suite makes
+and only shows up on somebody's installed copy.
 
 ---
 
@@ -302,7 +316,24 @@ bottom edges.
 
 **Badge** — `.badge`. 10.5px, weight 600, 3px radius, 1.5px 7px padding.
 Neutral by default; `.v` is green Verified, `.li` is amber Listing. Estimate
-and vault badges use their own tokens (§4).
+and vault badges use their own tokens (§4). `.bv` is the vault chip —
+`--bv-text` on `--bv-bg`, reading "From your vault". It is an *ownership*
+statement, never provenance: it must never be `.v`, because green Verified is a
+public claim the server awards when a named broker vouches, and a private row
+has not earned it.
+
+**Vault sheet** — `.vault` / `.vrow` / `.vout`. HOW_CSS only; the landing
+page's hero exhibit. Same shell recipe as `.exhibit` (1px `--edge`, `--card`,
+6px, `--lift`) because a broker should read them as two views of one product,
+but a separate class: the landing page is allowed exactly one `.exhibit` and a
+test counts them. Hairline `--hair` rows, address left with the rate right in
+Georgia, and a `--wash-2` foot strip carrying the redaction line. Deliberately
+**not** animated — it is above the fold.
+
+**Audience panes** — `.three` / `.pane` / `.pane.r`. A 3-up of the same record
+shown to different readers. `.pane.r` is the redacted one and fills with
+`--wash-2`, the one token that darkens in light and lightens in dark, so "less
+is shown here" reads at a glance in both themes.
 
 **Table** — 13.5px, tabular figures, 640px minimum width inside a horizontally
 scrolling `.scroll` wrapper. Headers are the 10.5px uppercase micro-label on
@@ -333,10 +364,20 @@ The three-part unit that most numbers on the site are presented in.
 | Tailwind red ramp | `tailwind.config.js` |
 | Generated Tailwind CSS | `tailwind.css` — **generated, never hand-edit** |
 
-**Three headers.** The site has three separate header implementations —
-`index.html`, `MARKET_BAR` in `server.js`, and the `/how-it-works` header. A
-change to one must be made to all three or the header shifts as you move
-between pages. Same for the footer.
+**Two headers, not three.** `/how-it-works` kept a hand-copied third header
+until 2026-08-20, when it was folded into `marketBar` (the two had drifted to
+within one `aria-current`). What remains is `index.html`'s own header and
+`marketBar` in `server.js`, which every server-rendered page shares. A change
+to one must be made to both, or the header shifts as you move between pages.
+Same for the footer, which is `MARKET_FOOTER` on every server-rendered page
+including the landing one.
+
+**`.bk` / `.bkrow` / `.bklag` are declared TWICE**, and they are not shared:
+`MARKET_CSS` (for `/brokers`) and `HOW_CSS` (for the landing page). Editing one
+copy does not change the other — which is convenient right up until someone
+assumes it does. The landing page uses the ledger twice on its own (the firm
+layer and the broker trades), so a change there moves two sections and leaves
+`/brokers` untouched. Shoot `/brokers` as well when you touch it.
 
 **Two deliberate exceptions to the no-hex rule.** Both are places where a
 colour must *not* follow the theme:

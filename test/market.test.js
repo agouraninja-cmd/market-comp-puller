@@ -157,3 +157,47 @@ test("no city belongs to two metros", () => {
     }
   }
 });
+
+// --- exampleMarketOrder: the Explorer's rotating example --------------------
+// The placeholder is a WORKING QUERY (Tab types it in), so the constraint
+// under every one of these is that the example must name a market with a
+// standing page. Fed MARKET_PAGES, the committed seed, that holds by
+// construction — which is why the rotation must never be fed the merged store.
+
+test("exampleMarketOrder covers every seeded market exactly once", () => {
+  const seed = require("../market-seed.json");
+  const order = M.exampleMarketOrder(seed);
+  assert.equal(order.length, Object.keys(seed).length);
+  assert.equal(new Set(order).size, order.length, "an example must not repeat inside one cycle");
+});
+
+test("exampleMarketOrder interleaves the types instead of grouping them", () => {
+  // The seed is 8 industrial / 8 office / 5 retail / 6 multifamily. Straight
+  // down the file, a visitor would refresh eight times before seeing an
+  // office page — the reason this rotates at all is to show the range.
+  const order = M.exampleMarketOrder(require("../market-seed.json"));
+  const typeOf = (s) => s.split(" ")[0];
+  assert.deepEqual(order.slice(0, 4).map(typeOf),
+    ["industrial", "office", "retail", "multifamily"]);
+  assert.equal(order[0], "industrial Ontario, CA",
+    "entry 0 is what a fresh process serves and what scripts/shot.js pins");
+});
+
+test("exampleMarketOrder lower-cases the type and keeps the comma", () => {
+  const order = M.exampleMarketOrder({
+    "office-dallas-tx": { type: "Office", city: "Dallas", state: "TX" },
+  });
+  // Lower-case matches the copy the box has always used; the comma is what
+  // the rest of the product writes, and explore-query.js strips it anyway.
+  assert.deepEqual(order, ["office Dallas, TX"]);
+});
+
+test("exampleMarketOrder skips incomplete entries and survives an empty map", () => {
+  assert.deepEqual(M.exampleMarketOrder({}), []);
+  assert.deepEqual(M.exampleMarketOrder(null), []);
+  assert.deepEqual(M.exampleMarketOrder({
+    ok: { type: "Retail", city: "Orlando", state: "FL" },
+    noCity: { type: "Retail", state: "FL" },
+    noType: { city: "Tampa", state: "FL" },
+  }), ["retail Orlando, FL"]);
+});

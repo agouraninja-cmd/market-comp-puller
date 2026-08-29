@@ -22,18 +22,30 @@ test("the pre-existing token vocabulary keeps its exact light values", () => {
   }
 });
 
-// The 2026-08-13 lift (paper/card/wash) plus the 2026-08-14 ink notch.
-// Light values stay on EXISTING above; paper/card do not move. A silent
-// revert to slate-950 would still satisfy "has a dark hex" and the
-// index.html mirror (if both copies moved together), so this table is
-// the lock.
+// The 2026-08-13 lift (paper/card/wash), the 2026-08-14 ink notch, and the
+// 2026-08-21 ramp/rule pass. Light values stay on EXISTING above; paper,
+// card and wash do not move in any of the three. A silent revert to
+// slate-950 would still satisfy "has a dark hex" and the index.html mirror
+// (if both copies moved together), so this table is the lock.
+//
+// Moved on 2026-08-21, and why, so a future reader can tell a deliberate
+// retune from a drift:
+//   ink        #D5DDE8 -> #E4E9F0  11.41:1 -> 12.81:1 on --card
+//   ink-faint  #7C8899 -> #5E6978   4.34:1 ->  2.80:1 (a whisper again)
+//   hair       #1E2938 -> #253346   1.06:1 ->  1.22:1 (was not a line)
+//   line       unchanged at #2A3648  1.28:1  (see the 08-21 revert below)
+// The four middle ink steps and --edge are deliberately unchanged.
 const DARK_LIFT = {
   paper: "#121826", card: "#1A2433", wash: "#243044",
   "wash-2": "#334155", slab: "#243044",
-  edge: "#3D4B5F", line: "#2A3648", hair: "#1E2938",
-  ink: "#D5DDE8", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
+  edge: "#333E4F", line: "#2A3648", hair: "#222F40",
+  ink: "#E4E9F0", "ink-body": "#B6C1CF", "ink-2": "#A8B6C6",
   "ink-mute": "#96A3B4", "ink-3": "#8B98A8",
-  "ink-faint": "#7C8899", "ink-4": "#475569",
+  "ink-faint": "#5E6978", "ink-4": "#475569",
+  // Brought DOWN to its siblings on 2026-08-21 (--ok-rule 1.96:1,
+  // --warn-rule 1.79:1) after shipping at 4.80:1 made the error box the
+  // only alert wearing a bright outline. Locked here so it stays a rule.
+  "err-rule": "#943F3F",
 };
 
 test("dark tokens match the lifted-slate table", () => {
@@ -161,6 +173,7 @@ const root = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8").repla
 // here: they declare their own :root and are out of scope (spec section 1).
 const SERVER_JS = root("server.js");
 const VAULT_JS = root("vault-page.js");
+const INDEX_HTML = root("index.html");
 
 // Slice one template-literal CSS constant out of server.js by name.
 function cssBlock(name) {
@@ -175,6 +188,145 @@ function cssBlock(name) {
   assert.notEqual(end, -1, `${name} has no closing backtick`);
   return SERVER_JS.slice(from, end);
 }
+
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab), so the
+// ink ramp runs backwards on it: --ink-4, which is a pale outline colour in
+// light, is a dark slate in dark. Measured on /brokers before the fix, every
+// footer link sat at 1.75:1 and the legal small print at 2.38:1. index.html
+// was protected by its class bridge; the three server-rendered footers set
+// var(--ink-4) DIRECTLY, so no bridge could reach them.
+//
+// The footer block already carried a "Mirrored in HOW_CSS and in index.html's
+// footer; keep the three in step" comment that it had NOT been kept in step
+// with, which is exactly why the fix is one shared constant and why this test
+// checks it arrives in all three rather than trusting the comment.
+// index.html and the market pages each own a Leaflet map, and index.html is
+// static so the two cannot share a constant -- the same hand-copy relationship
+// DARK_CHROME already has. The market pages had NO Leaflet dark rules at all
+// until 2026-08-21, so in dark the container showed leaflet.css's #ddd behind
+// every tile gap. This pins the copies together: a rule added to one and not
+// the other is the failure mode a comment alone has never prevented in this
+// file.
+test("the market pages' Leaflet dark chrome matches index.html's copy", () => {
+  // Both sides are parsed into selector -> declaration-set, because the two
+  // files format identically-meaning CSS differently: index.html keeps its
+  // selector lists on separate lines with spaces and a trailing semicolon,
+  // server.js writes them compact. Comparing text would fail on whitespace.
+  const parse = (css) => {
+    const map = new Map();
+    css.replace(/\/\*[\s\S]*?\*\//g, "").split("}").forEach((chunk) => {
+      const at = chunk.indexOf("{");
+      if (at < 0) return;
+      const sels = chunk.slice(0, at).split(",").map((x) => x.replace(/\s+/g, " ").trim());
+      const decls = chunk.slice(at + 1).split(";")
+        .map((d) => d.replace(/\s+/g, " ").replace(/\s*:\s*/, ":").trim())
+        .filter(Boolean).sort().join(";");
+      sels.filter(Boolean).forEach((sel) => { if (sel.includes("leaflet")) map.set(sel, decls); });
+    });
+    return map;
+  };
+
+  const block = SERVER_JS.match(/const LEAFLET_DARK_CSS = `([\s\S]*?)`;/);
+  assert.ok(block, "LEAFLET_DARK_CSS must exist in server.js");
+  const market = parse(block[1]);
+  const index = parse(INDEX_HTML.split("</style>")[0]);
+
+  assert.ok(market.size >= 6, `expected the whole block, got ${market.size} selectors`);
+  for (const [sel, decls] of market) {
+    assert.ok(index.has(sel), `index.html has no dark Leaflet rule for ${sel}`);
+    assert.equal(index.get(sel), decls, `${sel} disagrees between index.html and LEAFLET_DARK_CSS`);
+  }
+});
+
+// The market map used to hardcode a light basemap, so a dark market page
+// rendered a white rectangle in the middle of it. It follows the theme now,
+// and swaps by setUrl rather than rebuilding the layer, because the theme
+// toggle lives in the shared header and can fire long after the pins have
+// been placed. (The provider moved from CARTO to Esri on 2026-08-26, when
+// CARTO began watermarking keyless raster tiles — including the printed
+// exports a broker hands a client.)
+test("the market map's basemap follows the theme", () => {
+  assert.match(SERVER_JS, /dark \? "World_Dark_Gray_Base" : "World_Light_Gray_Base"/,
+    "the market basemap must be chosen from the theme, not pinned");
+  assert.match(SERVER_JS, /dark \? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference"/,
+    "the label layer must follow the theme too, or dark pages get light labels");
+  assert.match(SERVER_JS, /attributeFilter: \["data-theme"\]/,
+    "a theme change must reach the tile layer");
+  assert.match(SERVER_JS, /tiles\.setTheme\(\)/,
+    "swap the URLs rather than re-adding the layers, which would drop the pins");
+  // The watermark that forced the move: no keyless CARTO raster may come back
+  // on any surface, and that includes the print/PNG export path in index.html.
+  for (const [where, src] of [["server.js", SERVER_JS], ["index.html", INDEX]]) {
+    assert.equal(/basemaps\.cartocdn\.com/.test(src), false,
+      where + " still requests CARTO raster tiles, which are watermarked without an API key");
+  }
+});
+
+// Esri numbers its tiles {z}/{y}/{x} — ROW before column — where every XYZ
+// service (and this repo's own aerials) uses {z}/{x}/{y}. Getting it backwards
+// mirrors the world, which looks like a plausible map of nowhere rather than
+// an error, so it is pinned rather than left to review.
+test("every Esri Canvas tile URL is row-before-column", () => {
+  for (const [where, src] of [["server.js", SERVER_JS], ["index.html", INDEX]]) {
+    // The service name and the tile path are separate string pieces in both
+    // files (concatenated in server.js, interpolated in index.html), so the
+    // tile path is what gets checked rather than a whole URL.
+    const paths = src.match(/\/MapServer\/tile\/[^"'`\s)]*/g) || [];
+    assert.ok(paths.length >= 2, where + " lost its Esri MapServer tile paths");
+    // The row/column variables are named y/x in the Leaflet templates and
+    // ty/tx in the hand-stitched aerials; what must hold is the ORDER —
+    // zoom, then row, then column.
+    for (const p of paths) {
+      assert.ok(/^\/MapServer\/tile\/\$?\{z\}\/\$?\{t?y\}\/\$?\{t?x\}/.test(p),
+        where + " has an Esri tile path that is not zoom/row/column: " + p);
+    }
+    assert.ok(/World_(Light|Dark)_Gray_Base/.test(src), where + " lost its Canvas basemap");
+    assert.ok(/World_(Light|Dark)_Gray_Reference/.test(src), where + " lost its Canvas label layer");
+  }
+});
+
+test("the dark-mode footer ink reaches all three server-rendered footers", () => {
+  const rule = /\[data-theme="dark"\] footer a[^{]*\{color:var\(--ink-body\)\}/;
+
+  // Defined once, not restated per stylesheet.
+  const definitions = SERVER_JS.match(/const FOOTER_DARK_CSS =/g) || [];
+  assert.equal(definitions.length, 1, "FOOTER_DARK_CSS must be defined exactly once");
+  assert.match(SERVER_JS, rule, "server.js does not define the dark footer link rule");
+
+  // Interpolated into both server-side stylesheets, and handed to the vault.
+  const uses = SERVER_JS.match(/\$\{FOOTER_DARK_CSS\}/g) || [];
+  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate it");
+  assert.match(SERVER_JS, /renderVaultHTML\(boot, \{[^}]*FOOTER_DARK_CSS/s,
+    "the vault must be handed FOOTER_DARK_CSS through the chrome object");
+  assert.match(VAULT_JS, /chrome\.FOOTER_DARK_CSS/, "vault-page.js must read it");
+  assert.match(VAULT_JS, /\$\{FOOTER_DARK_CSS\}/, "vault-page.js must interpolate it");
+
+  // And it must not have quietly gone back to a token that inverts.
+  assert.equal(/\[data-theme="dark"\] footer[^{]*\{color:var\(--ink-4\)\}/.test(SERVER_JS), false,
+    "--ink-4 is 1.75:1 on the dark footer slab; it must not be the dark value");
+});
+
+test("the footer's dark ink clears AA on the slab it actually sits on", () => {
+  const lum = (hex) => {
+    const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+  };
+  const ratio = (a, b) => {
+    const x = lum(a), y = lum(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  const slab = THEME_TOKENS.slab.dark;
+  // Links carry navigation and the contact address; the small print is a
+  // legal disclaimer. Both have to be readable, which --ink-faint no longer
+  // is by design -- it is a whisper token in both themes now.
+  assert.ok(ratio(THEME_TOKENS["ink-body"].dark, slab) >= 4.5,
+    "footer links must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-3"].dark, slab) >= 4.5,
+    "footer small print must clear AA on --slab");
+  assert.ok(ratio(THEME_TOKENS["ink-faint"].dark, slab) < 4.5,
+    "--ink-faint is a whisper; if it now clears AA this test's premise changed");
+});
 
 test("no in-scope stylesheet references an undefined variable", () => {
   const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));
@@ -593,6 +745,12 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     // the declaration), so literal white text and brand red read correctly
     // regardless of site theme.
     "color:#ef4444", "fill:#ffffff", "fill:#b91c1c",
+    // The Google "G" in the account modal's Continue-with-Google button:
+    // a third party's trademark, drawn in Google's own four brand colours
+    // per their sign-in branding guidelines. A theme has no business
+    // repainting someone else's mark — it renders on the modal card in both
+    // themes, like the G on Google's own dark-theme button.
+    "fill:#ea4335", "fill:#4285f4", "fill:#fbbc05", "fill:#34a853",
     // Print letterhead's CompNinja icon: .print-only is display:none on
     // screen, so this markup is only ever seen by print, which is pinned
     // light on purpose and never reads data-theme at all.
@@ -627,10 +785,21 @@ test("no raw colour literal remains in index.html's generated markup (the JS hal
     `raw colour literal(s) in index.html's generated markup, outside the allowlist: ${named.join(", ")}`);
 });
 
-test("index.html sets the theme before first paint", () => {
+test("index.html sets the theme before first paint, defaulting to light", () => {
+  // Light is the default (owner's call, 2026-08-23): the boot script applies
+  // only an explicit stored "dark" and never consults the OS. The check
+  // slices out the script itself rather than searching the whole <head>,
+  // because the theme-color <meta> tags legitimately say
+  // "prefers-color-scheme" and would mask a reintroduced OS fallback.
   const head = INDEX.slice(0, INDEX.indexOf("<style>"));
-  assert.ok(head.includes(`setAttribute("data-theme"`), "no boot script in <head>");
-  assert.ok(head.includes("prefers-color-scheme"), "boot script ignores the OS preference");
+  const bootStart = head.indexOf("<script>(function(){try{var t=localStorage");
+  assert.notEqual(bootStart, -1, "no boot script in <head>");
+  const boot = head.slice(bootStart, head.indexOf("</script>", bootStart));
+  assert.ok(boot.includes(`setAttribute("data-theme"`), "boot script never sets data-theme");
+  assert.equal(boot.includes("matchMedia"), false,
+    "boot script consults the OS -- the default is light, not prefers-color-scheme");
+  assert.equal(boot.includes("prefers-color-scheme"), false,
+    "boot script consults the OS -- the default is light, not prefers-color-scheme");
 });
 
 test("the PNG export is never dark", () => {
@@ -702,6 +871,12 @@ test("index.html's theme boot script and toggle handler mirror server.js's THEME
     "index.html's boot script disagrees with THEME_BOOT (storage key / stored values / attribute / element)");
   assert.deepEqual(ternaries(indexBootText), ternaries(serverBootText),
     "index.html's boot script picks \"dark\"/\"light\" in a different branch order than THEME_BOOT -- one of them has an inverted ternary");
+  // Belt and braces on the light default: the mirror comparison would pass
+  // with the OS fallback present in BOTH copies, so pin its absence here too.
+  for (const [name, text] of [["THEME_BOOT", serverBootText], ["index.html's boot script", indexBootText]]) {
+    assert.equal(text.includes("prefers-color-scheme"), false,
+      `${name} consults the OS preference -- the default is light (owner's call, 2026-08-23)`);
+  }
 
   const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
   assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");
@@ -826,19 +1001,19 @@ test("no raw hex colour remains in vault-page.js's generated markup (the JS half
 });
 
 test("a dark basemap never ships without the pin recolour", () => {
-  // The comp roundel is drawn to read against a LIGHT basemap. On
-  // dark_all it disappears. These two must land together. pinColors()'s
+  // The comp roundel is drawn to read against a LIGHT basemap. On a dark
+  // one it disappears. These two must land together. pinColors()'s
   // returned keys are named pinInk/pinInkText/pinEdge/pinSubject (not the
   // brief's generic ink/edge/subject) specifically so this substring check
   // is a real, load-bearing fact about the code rather than an incidental
   // one -- "pinInk" only appears in the file because the pin-recolour
   // function actually declares a property by that name.
-  const dark = INDEX.includes("dark_all");
+  const dark = INDEX.includes("World_Dark_Gray_Base");
   const pins = INDEX.includes("pinInk") || INDEX.includes("--pin-ink");
   assert.equal(dark, pins,
-    "dark_all tiles and the pin recolour must ship together, not one without the other");
+    "dark tiles and the pin recolour must ship together, not one without the other");
   assert.ok(INDEX.includes(".leaflet-tile-pane"),
-    "dark_all stays the provider; charcoal lift is a tile-pane filter, not a new basemap");
+    "the dark basemap stays a provider choice; the charcoal lift is a tile-pane filter");
 });
 
 test("every CSS comment in vault-page.js's style block actually closes where it looks like it does", () => {
@@ -1051,3 +1226,68 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
     `raw colour literal(s) in in-scope server.js generated markup: ${named.join(", ")}`);
 });
 
+
+// ---------------------------------------------------------------------------
+// Motion that hides content must be undone in BOTH escape hatches.
+//
+// HOW_CSS hides things before revealing them on scroll (`.anim … {opacity:0}`),
+// with an IntersectionObserver adding `.on`. Two contexts never fire that
+// observer and must therefore get the finished page: a reader who asked for
+// reduced motion, and paper.
+//
+// This is not a style nicety, it is why the standing before/after screenshot
+// rule can be trusted. scripts/shot.js forces prefers-reduced-motion (it has
+// to: an observer never fires in a beyond-viewport capture), so a hiding rule
+// with no reduced-motion reset does not fail any test and does not look wrong
+// in a browser -- it silently photographs as a BLANK BAND where a whole
+// section should be. That has happened once already, to Method and the FAQ,
+// and shot.js carries a comment about it.
+//
+// So: every selector that HOW_CSS hides under `.anim` must appear again inside
+// both the reduced-motion block and the print block.
+test("every .anim hiding rule in HOW_CSS is undone for reduced motion and print", () => {
+  const start = SERVER_JS.indexOf("const HOW_CSS = ");
+  assert.ok(start > -1, "HOW_CSS not found");
+  const how = SERVER_JS.slice(start, SERVER_JS.indexOf("\nconst ", start + 20));
+
+  // ALL blocks carrying this at-rule, joined. HOW_CSS has TWO @media print
+  // blocks — one for general print styling, one that undoes the scroll
+  // choreography — so reading only the first finds the wrong one and reports
+  // every animated selector as unreset. (Caught by this test on its first run.)
+  const blocksFor = (needle) => {
+    let out = "";
+    let at = how.indexOf(needle);
+    assert.ok(at > -1, needle + " block missing from HOW_CSS");
+    while (at > -1) {
+      const open = how.indexOf("{", at);
+      let depth = 0;
+      for (let i = open; i < how.length; i++) {
+        if (how[i] === "{") depth++;
+        else if (how[i] === "}" && --depth === 0) { out += how.slice(open, i); break; }
+      }
+      at = how.indexOf(needle, at + needle.length);
+    }
+    return out;
+  };
+  const reduced = blocksFor("@media (prefers-reduced-motion:reduce)");
+  const print = blocksFor("@media print");
+
+  // Every rule that sets opacity:0 on an .anim selector, outside those blocks.
+  const hidden = [];
+  for (const m of how.matchAll(/(^|\})\s*([^{}]*\.anim [^{}]*)\{([^{}]*)\}/g)) {
+    if (!/opacity\s*:\s*0\b/.test(m[3])) continue;
+    for (const sel of m[2].split(",")) {
+      const s = sel.trim();
+      // :nth-child delay rules carry no opacity; only real hiders reach here.
+      if (s.startsWith(".anim ")) hidden.push(s);
+    }
+  }
+  assert.ok(hidden.length > 0, "found no .anim hiding rules — did the selector shape change?");
+
+  // A selector counts as covered if it, or the bare element it hangs off,
+  // is reset. `.anim .three .pane` is covered by `.anim .three .pane`.
+  const missing = hidden.filter((s) => !reduced.includes(s) || !print.includes(s));
+  assert.deepEqual(missing, [],
+    "these .anim rules hide content with no reduced-motion/print reset, so they "
+    + "will photograph as blank bands in scripts/shot.js: " + missing.join(" | "));
+});

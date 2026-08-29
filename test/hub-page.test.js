@@ -384,6 +384,47 @@ test("hub-page.js and vault-page.js contain exactly two backticks", () => {
   }
 });
 
+test("no single-backslash escape hides inside either template literal", () => {
+  // The sibling of the backtick guard above, and the general form of the
+  // invite-splitter bug. Inside a template literal JavaScript keeps \\n, \\t,
+  // \\r, \\\\, \\", \\', \\`, \\x.., \\u.... and \\$ — every OTHER backslash is
+  // dropped before the browser sees the source. So /\\s+/ ships as /s+/ and
+  // /\\d/ as /d/: still valid JavaScript, still passes `node --check`, and
+  // now matches a letter instead of a class.
+  //
+  // Escapes inside a ${} interpolation are ordinary code and are NOT at risk,
+  // so those spans are skipped.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const KEPT = new Set(["n", "t", "r", "\\", '"', "'", "`", "x", "u", "0", "$", "\n"]);
+  for (const f of ["hub-page.js", "vault-page.js"]) {
+    const src = fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+    const found = [];
+    let inTemplate = false, depth = 0, line = 1;
+    for (let i = 0; i < src.length; i++) {
+      const c = src[i];
+      if (c === "\n") { line++; continue; }
+      if (c === "\\") {
+        if (inTemplate && depth === 0 && !KEPT.has(src[i + 1])) {
+          found.push(`${f}:${line} eats \\${src[i + 1]}`);
+        }
+        i++;
+        continue;
+      }
+      if (inTemplate && depth === 0 && c === "$" && src[i + 1] === "{") { depth = 1; i++; continue; }
+      if (inTemplate && depth > 0) {
+        if (c === "{") depth++;
+        else if (c === "}") depth--;
+        continue;
+      }
+      if (c === "`") inTemplate = !inTemplate;
+    }
+    assert.deepStrictEqual(found, [],
+      `${f} carries an escape the template literal will eat before the browser sees it. ` +
+      `Write it with TWO backslashes.`);
+  }
+});
+
 // --- who is in a hub, and closing it (2026-08-14) -------------------------
 
 test("the People card is the OWNER's, and its presence is the server's answer", () => {
@@ -405,10 +446,56 @@ test("editing the guest list sends the WHOLE list, because the route replaces it
   assert.match(js, /people\.filter\(function\(p\)\{ return p\.email !== email; \}\)/);
 });
 
-test("invite links are shown only when the server could NOT email them", () => {
+test("the invite splitter survives the template literal, and keeps plus-addresses whole", () => {
+  // The bug this test exists for, found by inviting a real address on
+  // production 2026-08-19. The source said /[,;\\s]+/ with ONE backslash, so
+  // the template literal ate it and the page shipped /[,;s]+/ — a class
+  // matching the LETTER s. "okb336+hubtest@gmail.com" split at the s in
+  // "hubtest" into "okb336+hubte" and "t@gmail.com"; normalizeEmail dropped
+  // the first for having no @ and accepted the second, so the invitation went
+  // to a stranger while the broker was told it was sent, with the link hidden
+  // because emailed was true.
+  //
+  // The existing guard above compiles the script, and /[,;s]+/ compiles
+  // perfectly. So this asserts BEHAVIOUR on the emitted regex, not that the
+  // page parses: any escape the template eats changes what it matches.
+  const js = pageScript(html);
+  const m = js.match(/el\("peopleEmails"\)\.value\.split\((\/[^/]+\/)\)/);
+  assert.ok(m, "the invite input must still be split before it is sent");
+
+  const emitted = new RegExp(m[1].slice(1, -1));
+  const split = (v) => v.split(emitted).filter(Boolean);
+
+  assert.deepStrictEqual(split("okb336+hubtest@gmail.com"), ["okb336+hubtest@gmail.com"],
+    "a plus-address is ONE recipient; splitting it invents a second one");
+  assert.deepStrictEqual(split("sam@shore.com"), ["sam@shore.com"],
+    "an address full of the letter s is still one address");
+  assert.deepStrictEqual(split("a@x.com, b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com; b@y.com"), ["a@x.com", "b@y.com"]);
+  assert.deepStrictEqual(split("a@x.com b@y.com"), ["a@x.com", "b@y.com"],
+    "whitespace still separates, which is the whole reason for the escape");
+});
+
+test("invite links are shown only for the people the server could NOT email", () => {
   // When it did email, the links are still secrets and there is no reason to
   // put them on screen.
-  assert.match(pageScript(html), /if \(!list\.length \|\| j\.emailed\)\{ show\("peopleInvites", false\)/);
+  //
+  // PER PERSON, and that is the fix rather than a refinement. The panel used
+  // to hide every link on a single all-or-nothing `j.emailed`, which the
+  // server answered from its own configuration — so a send Resend refused hid
+  // the link anyway, and a hub token cannot be shown a second time. The
+  // invitation was destroyed and the broker was told it had been sent.
+  const js = pageScript(html);
+  assert.match(js, /var failed = j\.emailFailed;/,
+    "the panel must decide from who was actually mailed");
+  assert.match(js, /failed\.indexOf\(inv\.email\) >= 0/,
+    "a failed address keeps its link; a mailed one does not");
+  // The fallback direction is load-bearing: a response with no emailFailed
+  // must show the links, because a link shown needlessly costs a copy-paste
+  // and a link withheld wrongly costs the invitation.
+  assert.match(js, /Array\.isArray\(failed\) \? all\.filter\(/);
+  assert.doesNotMatch(js, /if \(!list\.length \|\| j\.emailed\)/,
+    "the all-or-nothing gate is the bug and must not come back");
 });
 
 test("show() is never handed a DOM node", () => {

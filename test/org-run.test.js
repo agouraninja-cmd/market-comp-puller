@@ -17,6 +17,7 @@ const assert = require("node:assert");
 const crypto = require("node:crypto");
 const shared = require("./helpers/boot");
 const fake = require("./helpers/fake-supabase");
+const ORG = require("../org-access");
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
@@ -41,7 +42,7 @@ function seedTables() {
       user_id: BRAD.id, plan: "pro_monthly", status: "active",
       current_period_end: YEAR_OUT, cancel_at_period_end: false,
     }],
-    orgs: [], org_members: [], shared_reports: [], report_viewers: [],
+    orgs: [], org_members: [], shared_reports: [], report_viewers: [], org_contacts: [],
     analytics_events: [], export_usage: [], report_purchases: [],
   };
 }
@@ -83,7 +84,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a free account cannot create a firm, and is told it is Pro", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(MIKE, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }));
+      as(MIKE, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }));
     assert.equal(r.status, 403);
     const body = await r.json();
     assert.equal(body.upgrade, true, "the browser branches on the flag, never the prose");
@@ -92,7 +93,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a Pro member creates a firm and is its owner", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(BRAD, { method: "POST", body: JSON.stringify({ name: "  Colliers   Boise " }) }));
+      as(BRAD, { method: "POST", body: JSON.stringify({ name: "  Colliers   Boise ", kind: "broker" }) }));
     assert.equal(r.status, 200);
     const body = await r.json();
     orgId = body.id;
@@ -105,7 +106,7 @@ test("firms, end to end", async (t) => {
 
   await t.test("a second firm is refused rather than silently created", async () => {
     const r = await fetch(srv.base + "/api/org",
-      as(BRAD, { method: "POST", body: JSON.stringify({ name: "Another Firm" }) }));
+      as(BRAD, { method: "POST", body: JSON.stringify({ name: "Another Firm", kind: "broker" }) }));
     assert.equal(r.status, 409);
     assert.equal(tables.orgs.length, 1);
   });
@@ -301,7 +302,7 @@ test("joining a firm is something the joiner does", async (t) => {
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
 
   await t.test("posting a firm id you were never invited to joins nothing", async () => {
     // The accept PATCH matches on the CALLER'S OWN email, so an org id — which
@@ -357,7 +358,7 @@ test("the firm's auto-share default, and the member's veto over it", async (t) =
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   await fetch(srv.base + "/api/org/invite", as(BRAD, {
     method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
   }));
@@ -463,7 +464,7 @@ test("the shared vault: a comp's whole life on the firm's shelf", async (t) => {
   const COMP = tables.broker_comps[0].id;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   const firm = (method, body) => fetch(srv.base + "/api/vault/firm",
     as(BRAD, { method, body: JSON.stringify(body) }));
 
@@ -565,7 +566,7 @@ test("per-seat firm billing", async (t) => {
   const { srv } = ctx;
 
   const org = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
   const orgRow = tables.orgs[0];
   const buy = (user, body) => fetch(srv.base + "/api/checkout",
     as(user, { method: "POST", body: JSON.stringify({ plan: "firm_monthly", orgId: org.id, ...body }) }));
@@ -609,13 +610,51 @@ test("per-seat firm billing", async (t) => {
     assert.match((await notOwner.json()).error, /owner/);
     const stranger = await buy(OUTSIDER, { seats: 5 });
     assert.equal(stranger.status, 403);
-    // Two people are in the firm, so one seat would drop a named colleague to
-    // free the moment the webhook landed.
-    const tooFew = await buy(BRAD, { seats: 1 });
+    // Three in the firm now, so two seats would drop a named colleague to free
+    // the moment the webhook landed. Asked for THREE people rather than the
+    // original two because one seat is refused by the minimum before the
+    // headcount is ever consulted — the two rules need separate arithmetic to
+    // stay separately tested.
+    orgRow.seats = 200;
+    assert.equal((await invite([OUTSIDER.email])).status, 200);
+    const tooFew = await buy(BRAD, { seats: 2 });
     assert.equal(tooFew.status, 400);
     const body = await tooFew.json();
     assert.equal(body.code, "seats_below_headcount");
-    assert.equal(body.headcount, 2);
+    assert.equal(body.headcount, 3, "a pending invitation still counts as a person");
+    // Put the firm back to the two people the rest of this sequence expects.
+    // The third was only ever arithmetic for the assertion above, and leaving
+    // them in place fails a later test that counts survivors after a lapse.
+    tables.org_members = tables.org_members.filter((m) => m.email !== OUTSIDER.email);
+    orgRow.seats = 2;
+  });
+
+  // The solo-arbitrage close. `canUseOrg` gates CREATING a firm on already
+  // holding Pro, but getEntitlements grants Pro from a firm SEAT once a
+  // personal subscription lapses — so a one-seat firm plan is a cheaper Pro
+  // wearing a firm's clothes, and the seat price is below the individual
+  // price by construction. Refused by name and number so the buyer is told
+  // the rule rather than left clicking a button that fails.
+  await t.test("a one-seat firm plan cannot be bought", async () => {
+    const one = await buy(BRAD, { seats: 1 });
+    assert.equal(one.status, 400);
+    const body = await one.json();
+    assert.equal(body.code, "seats_below_minimum");
+    assert.equal(body.minimum, ORG.MIN_SEATS);
+    assert.match(body.error, new RegExp(String(ORG.MIN_SEATS)),
+      "the refusal should name the smallest plan that exists");
+  });
+
+  await t.test("nonsense seat counts are refused without claiming a minimum", async () => {
+    // Same branch, deliberately without the `seats_below_minimum` code: zero,
+    // a negative and a non-number are not somebody asking for a small firm,
+    // and labelling them as such would send a caller looking for a pricing
+    // rule when they have a bug.
+    for (const seats of [0, -3, "lots", null]) {
+      const r = await buy(BRAD, { seats });
+      assert.equal(r.status, 400, `seats: ${JSON.stringify(seats)}`);
+      assert.equal((await r.json()).code, undefined, `seats: ${JSON.stringify(seats)}`);
+    }
   });
 
   await t.test("checkout refuses a firm the caller is not in", async () => {
@@ -686,7 +725,7 @@ test("a firm share still refuses to carry whole vault comps", async (t) => {
   const { srv } = ctx;
 
   const created = await (await fetch(srv.base + "/api/org",
-    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise" }) }))).json();
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }))).json();
 
   // 400 rather than a silent strip: sharing a broker's book across their firm
   // is the spec's §7 and is deliberately not built, so a client asking for it
@@ -698,4 +737,502 @@ test("a firm share still refuses to carry whole vault comps", async (t) => {
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /can't be shared with a firm yet/);
   assert.equal(tables.shared_reports.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// The invitation email
+//
+// Every test above asserts the ROW an invitation writes. None of them asserted
+// the mail, which is the half the invited colleague actually experiences —
+// and the half where the mistakes are expensive: mailing somebody twice,
+// mailing the inviter, mailing an address that was refused, or sending a
+// stranger a message that reads as though a firm already has their data.
+//
+// RESEND_API_URL is the test-only hook that makes this possible (see
+// CLAUDE.md's bullet on it); the fake collects every post to it.
+// ---------------------------------------------------------------------------
+
+// Mail is fire-and-forget on purpose — a provider having a bad minute must
+// never turn a written invitation into an error — so the route answers before
+// the post lands.
+async function settleMail(db, want) {
+  for (let i = 0; i < 80 && db.sent.length < want; i++) await new Promise((r) => setTimeout(r, 25));
+  return db.sent;
+}
+
+test("what an invited colleague actually receives", async (t) => {
+  // Booted by hand rather than through bootWithDb: the fake's Resend url is
+  // only knowable once it is listening, and server.js reads its environment
+  // once at startup, so the server has to be started after it.
+  const tables = seedTables();
+  const db = await fake.start({ tables });
+  const srv2 = await shared.boot({
+    ACCOUNT_WALL: "off", PRO_ENABLED: "on",
+    SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key",
+    SITE_URL: "https://compninja.co",
+    // Both are required for a send: sendOutboundEmail is a silent no-op
+    // without EMAIL_FROM, which is the state every deployment without a
+    // verified domain is in.
+    EMAIL_FROM: "CompNinja <reports@compninja.co>",
+    RESEND_API_KEY: "resend-key", RESEND_API_URL: db.resendUrl,
+  });
+  t.after(async () => { srv2.stop(); await db.stop(); });
+
+  const create = await fetch(srv2.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }) }));
+  assert.equal(create.status, 200);
+  const org = await create.json();
+  const invite = (emails) => fetch(srv2.base + "/api/org/invite",
+    as(BRAD, { method: "POST", body: JSON.stringify({ orgId: org.id, emails }) }));
+
+  await t.test("the invitation says who, which firm, and what accepting does", async () => {
+    assert.equal((await invite([MIKE.email])).status, 200);
+    const [mail] = await settleMail(db, 1);
+    assert.ok(mail, "no invitation reached the provider");
+    assert.deepEqual(mail.to, [MIKE.email]);
+    assert.match(mail.subject, /Colliers Boise invited you/);
+    assert.match(mail.text, /brad@colliers\.com/, "the invitation must name who sent it");
+    assert.match(mail.text, /https:\/\/compninja\.co\/desk/, "no way to accept");
+    // Identity is the EMAIL — 018's decision, adopted by 030 — so the mail has
+    // to name the address that will work, or a colleague signs in with another
+    // one and finds nothing.
+    assert.match(mail.text, new RegExp(MIKE.email.replace(".", "\\.") + "\\)"));
+    // Case-insensitive: the sentence moved from a mid-sentence clause after an
+    // em dash to a sentence of its own, matching how sendShareInvites has
+    // always written it. What this asserts is the PROMISE, not its punctuation.
+    assert.match(mail.text, /a free account is all it takes/i,
+      "a colleague who needs no plan must not be left assuming they need to buy one");
+    // The safeguard, restated to the person it protects: this mail can reach
+    // somebody who has never heard of the firm.
+    assert.match(mail.text, /Nothing is shared with you until you accept/);
+    assert.match(mail.text, /an unaccepted invitation gives nobody access to anything/);
+  });
+
+  await t.test("a colleague already invited is not mailed again", async () => {
+    // The MAIL has to be idempotent as well as the row, or a firm working
+    // through a list turns one invitation into four. A list that dropped to
+    // nothing is answered as an error rather than a cheerful 200 — the
+    // inviter typed somebody, and "sent!" would be a lie about a person.
+    const before = db.sent.length;
+    const r = await invite([MIKE.email]);
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /No new email addresses/);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before, "an already-invited colleague was mailed a second time");
+  });
+
+  await t.test("only the newly-added addresses are mailed", async () => {
+    const before = db.sent.length;
+    const r = await invite([MIKE.email, "  New@Colliers.com  ", "new@colliers.com"]);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).invited, 1, "the count must be the server's own, after dedupe");
+    const sent = await settleMail(db, before + 1);
+    await new Promise((res) => setTimeout(res, 100));
+    assert.equal(sent.length, before + 1, "one address, two spellings, two emails");
+    assert.deepEqual(sent[sent.length - 1].to, ["new@colliers.com"]);
+  });
+
+  await t.test("the inviter never invites themselves", async () => {
+    // Dropped by normalizeInviteEmails before the route ever gets a list, so
+    // this is refused for the same reason as the line above rather than
+    // quietly mailing the sender an invitation to their own firm.
+    const before = db.sent.length;
+    const r = await invite([BRAD.email]);
+    assert.equal(r.status, 400);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before);
+  });
+
+  await t.test("a refused invitation mails nobody", async () => {
+    // Mike is a plain member. The mail must ride BEHIND the permission check,
+    // not beside it — an invitation nobody was authorized to send must not
+    // still arrive in somebody's inbox.
+    const before = db.sent.length;
+    const r = await fetch(srv2.base + "/api/org/invite",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId: org.id, emails: ["someone@else.com"] }) }));
+    assert.equal(r.status, 403);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(db.sent.length, before, "a refused invitation was still mailed");
+  });
+
+  await t.test("the invitation speaks the shop's own language", async () => {
+    // 036. The first sentence a stranger reads about the product describes
+    // what this shelf holds, and describing a development shop's shelf as
+    // "comp sets and BOVs" describes somebody else's job to them.
+    const broker = db.sent[0];
+    assert.match(broker.text, /comp sets, BOVs, market reports and lease abstracts/);
+
+    const flip = await fetch(srv2.base + "/api/org/settings", as(BRAD, {
+      method: "POST", body: JSON.stringify({ orgId: org.id, kind: "development" }),
+    }));
+    assert.equal(flip.status, 200);
+    assert.equal((await flip.json()).kind, "development");
+
+    const before = db.sent.length;
+    assert.equal((await invite(["land@colliers.com"])).status, 200);
+    const sent = await settleMail(db, before + 1);
+    const mail = sent[sent.length - 1];
+    assert.match(mail.text, /land comps, rent comps, absorption studies and feasibility packets/);
+    assert.doesNotMatch(mail.text, /lease abstracts/,
+      "the two vocabularies must not both arrive in one invitation");
+  });
+
+  await t.test("the fake never had to guess at a query it did not understand", () => {
+    assert.deepEqual(db.unparsed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shop kind (migrations 036 and 037) — Transition Plan v2 §6's customer
+// types, plus the tenant rep shop added on top of it 2026-08-21.
+//
+// The rules worth executing rather than arguing: the question cannot be
+// answered by silence, changing the answer is an admin's job, and the answer
+// survives a fresh read. org-access.test.js proves the pure half with no
+// database; this is the half that writes a column.
+// ---------------------------------------------------------------------------
+test("a firm is one of three shops, and says which", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  const create = (body) => fetch(srv.base + "/api/org",
+    as(BRAD, { method: "POST", body: JSON.stringify(body) }));
+  const myOrg = async (user) => (await (await fetch(srv.base + "/api/org", as(user))).json());
+
+  await t.test("a firm cannot be created without answering the question", async () => {
+    for (const body of [{ name: "Colliers Boise" },
+                        { name: "Colliers Boise", kind: "" },
+                        { name: "Colliers Boise", kind: "enterprise" }]) {
+      const r = await create(body);
+      assert.equal(r.status, 400, JSON.stringify(body));
+      assert.match((await r.json()).error,
+        /broker shop, a development shop or a tenant rep shop/);
+    }
+    assert.equal(tables.orgs.length, 0, "and nothing was written");
+  });
+
+  await t.test("the name is checked first, so one missing answer is reported at a time", async () => {
+    const r = await create({ name: "x", kind: "development" });
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).error, /firm's name/);
+  });
+
+  await t.test("a development shop is created, and stays one", async () => {
+    const r = await create({ name: "Boise Land Partners", kind: "  Development " });
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).kind, "development", "normalized server-side, not echoed");
+    assert.equal(tables.orgs[0].kind, "development", "and written to the column");
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development", "and survives a fresh read");
+  });
+
+  await t.test("an owner changes it; a plain member cannot", async () => {
+    const orgId = tables.orgs[0].id;
+    const settings = (user, body) => fetch(srv.base + "/api/org/settings",
+      as(user, { method: "POST", body: JSON.stringify({ orgId, ...body }) }));
+
+    await fetch(srv.base + "/api/org/invite",
+      as(BRAD, { method: "POST", body: JSON.stringify({ orgId, emails: [MIKE.email] }) }));
+    await fetch(srv.base + "/api/org/accept",
+      as(MIKE, { method: "POST", body: JSON.stringify({ orgId }) }));
+
+    const refused = await settings(MIKE, { kind: "broker" });
+    assert.equal(refused.status, 403, "it re-labels every colleague's desk, not one person's work");
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development", "and nothing changed");
+
+    assert.equal((await settings(BRAD, { kind: "broker" })).status, 200);
+    assert.equal((await myOrg(MIKE)).orgs[0].kind, "broker", "the colleague reads the new words too");
+
+    for (const junk of ["enterprise", "", true, "dev", "brokerage",
+                        "tenant", "tenant rep", "tenant-rep"]) {
+      assert.equal((await settings(BRAD, { kind: junk })).status, 400, JSON.stringify(junk));
+    }
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "broker", "a refused change changed nothing");
+
+    // Case and padding are NORMALIZED on the way in rather than refused, the
+    // way validateOrgName collapses a name. The column may only ever hold the
+    // three exact values (037's CHECK says so, widening 036's), and that is
+    // what this proves: the write path cleans, the read path in org-access.js
+    // stays strict.
+    assert.equal((await settings(BRAD, { kind: "  DEVELOPMENT " })).status, 200);
+    assert.equal((await myOrg(BRAD)).orgs[0].kind, "development");
+    assert.equal(tables.orgs[0].kind, "development", "stored lower case, never as typed");
+
+    // 037's value, driven all the way to the column. The fake database does
+    // not enforce a CHECK, so this cannot prove Supabase will accept it — that
+    // is what running the migration before the deploy is for — but it does
+    // prove every layer above the column agrees on the exact string, which is
+    // the half that a typo would break silently.
+    assert.equal((await settings(BRAD, { kind: " Tenant_Rep " })).status, 200);
+    assert.equal(tables.orgs[0].kind, "tenant_rep", "underscored, lower case, never as typed");
+    assert.equal((await myOrg(MIKE)).orgs[0].kind, "tenant_rep",
+      "and the colleague reads the new words too");
+  });
+
+  await t.test("the fake never had to guess at a query it did not understand", () => {
+    assert.deepEqual(ctx.db.unparsed, []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The deal board's attribution after somebody leaves (038).
+//
+// This is the split the snapshot column exists to close. `org_comps` has
+// denormalized `shared_by_name` since 032, so a member who deletes their
+// account keeps their attribution on their COMPS; `shared_reports` had no name
+// column and 018 sets `user_id` to null on delete, so the same person lost it
+// on their REPORTS. The board keys on the id first and the name second, so one
+// person arrived as TWO rows — once by name, once unattributed — with correct
+// totals and a wrong-looking roster.
+// ---------------------------------------------------------------------------
+test("a departed member is one row on the deal board, not two", async (t) => {
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+    method: "POST", body: JSON.stringify({ orgId: org.id }),
+  }));
+
+  // Mike shares a report with the firm while his account still exists.
+  const share = await fetch(srv.base + "/api/share", as(MIKE, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+  assert.equal(share.status, 200);
+
+  // The name is snapshotted at share time — the half that makes the rest work.
+  const row = tables.shared_reports.find((r) => r.user_id === MIKE.id);
+  assert.ok(row, "the share was written");
+  assert.equal(row.shared_by_name, "Mike",
+    "the sharer's name is stored, not merely joined from users at read time");
+
+  // Now Mike deletes his account: 018's rule nulls user_id and the users row
+  // is gone, so the live lookup can no longer answer who shared this.
+  tables.shared_reports.forEach((r) => { if (r.user_id === MIKE.id) r.user_id = null; });
+  tables.users = tables.users.filter((u) => u.id !== MIKE.id);
+
+  const board = (await (await fetch(srv.base +
+    `/api/org/board?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).board;
+  assert.ok(board, "the firm has shared something, so there is a board");
+
+  const mike = board.members.filter((m) => m.name === "Mike");
+  assert.equal(mike.length, 1, "Mike is one row");
+  assert.equal(mike[0].reports, 1);
+  // And crucially NOT an extra anonymous row beside him.
+  const anon = board.members.filter((m) => !m.name);
+  assert.deepEqual(anon, [],
+    "a departed member with a stored name never also appears as an unattributed row");
+});
+
+test("the live name wins over the snapshot while the account exists", async (t) => {
+  // The opposite ordering to report branding's, deliberately: a mark must look
+  // the way it looked when it was sent, while an attribution should say what a
+  // colleague is called TODAY. Somebody who fixes a typo in their profile
+  // should not read the old spelling back on their own shelf row.
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
+  }))).json();
+  await fetch(srv.base + "/api/share", as(BRAD, {
+    method: "POST",
+    body: JSON.stringify({ ...REPORT, visibility: "org", orgId: org.id }),
+  }));
+
+  // Brad renames himself after sharing. The snapshot still says "Brad".
+  tables.users.find((u) => u.id === BRAD.id).name = "Bradley";
+
+  const shelf = await (await fetch(srv.base +
+    `/api/org/shelf?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+  assert.equal(shelf.items[0].sharedBy, "Bradley",
+    "the shelf shows the current name, not the one snapshotted at share time");
+});
+
+// ---------------------------------------------------------------------------
+// The firm's tenant contacts (039).
+//
+// Firm-wide by design, so the assertion that matters most is the one about
+// ANOTHER firm: this list is the only place the product stores tenant names
+// and addresses a customer typed, and a scoping mistake here hands one
+// brokerage another's client list.
+// ---------------------------------------------------------------------------
+const CONTACT_CSV = [
+  "name,email,company",
+  "# a note line the importer skips",
+  "Dana Wu,dana@acme.com,Acme Logistics",
+  "Ray Ortiz,,Nordic Cold",
+  "Bad Row,not-an-email,X",
+].join("\n");
+
+async function firmWithMike(t) {
+  const tables = seedTables();
+  const { db, srv, stop } = await bootWithDb(tables);
+  t.after(stop);
+  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "tenant_rep" }),
+  }))).json();
+  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+    method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
+  }));
+  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+    method: "POST", body: JSON.stringify({ orgId: org.id }),
+  }));
+  return { tables, db, srv, org };
+}
+
+test("a firm's tenant contacts", async (t) => {
+  await t.test("one member adds, every member sees, and who added it is recorded", async () => {
+    const { srv, org } = await firmWithMike(t);
+
+    const add = await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(MIKE, {
+      method: "POST",
+      body: JSON.stringify({ name: "Dana Wu", email: "Dana@Acme.com", company: "Acme Logistics" }),
+    }));
+    assert.equal(add.status, 200);
+    assert.equal((await add.json()).imported, 1);
+
+    // Brad reads what Mike typed — the whole point of firm-scoping it.
+    const list = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(list.contacts.length, 1);
+    assert.equal(list.contacts[0].name, "Dana Wu");
+    assert.equal(list.contacts[0].email, "dana@acme.com", "stored lowercased");
+    assert.equal(list.contacts[0].addedBy, "Mike",
+      "the member who added it is recorded, which is what keeps the private-by-default option open");
+    assert.equal(list.contacts[0].mine, false, "and Brad is told it is not his");
+  });
+
+  await t.test("a CSV imports, refuses its bad rows by line, and counts its note lines", async () => {
+    const { srv, org } = await firmWithMike(t);
+    const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    }))).json();
+    assert.equal(r.imported, 2);
+    assert.equal(r.total, 3, "the note line is not counted as data");
+    assert.equal(r.commented, 1);
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /^Line 5:/);
+    assert.match(r.errors[0], /not an email address/);
+  });
+
+  await t.test("importing the same file twice never doubles an emailed contact", async () => {
+    const { srv, org } = await firmWithMike(t);
+    const post = () => fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    })).then((x) => x.json());
+
+    await post();
+    const again = await post();
+
+    // The EMAILED contact is recognised and dropped; the un-emailed one is
+    // not, and that asymmetry is deliberate rather than a gap. Merging Ray
+    // would mean deciding that two contacts sharing a name are one person,
+    // which is exactly the guess this module refuses to make — the same rule
+    // that keeps two "Dana Wu"s apart. The cost is a duplicate somebody can
+    // delete; the cost of the alternative is quietly destroying one of two
+    // real contacts, which nothing on screen would show.
+    assert.equal(again.duplicates, 1, "the emailed one is recognised and reported");
+    assert.equal(again.imported, 1, "the un-emailed one is imported again, by design");
+
+    const list = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(list.contacts.filter((c) => c.email === "dana@acme.com").length, 1,
+      "so the firm never ends up with two rows for one address");
+
+    // And Ray, who has no email, is imported AGAIN — the visible cost of
+    // refusing to merge on a name. The fake models Postgres here (a NULL in a
+    // unique key never conflicts), which it did not until this feature was
+    // built: it was collapsing two un-emailed rows into one, so this exact
+    // assertion would have proved the opposite of what production does.
+    assert.equal(list.contacts.filter((c) => c.name === "Ray Ortiz").length, 2,
+      "an un-emailed contact is never merged, so a re-import duplicates it");
+  });
+
+  await t.test("an edit is refused when it would make a row the import would reject", async () => {
+    const { srv, org } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = (await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json()).contacts[0].id;
+
+    const bad = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`, as(BRAD, {
+        method: "PATCH", body: JSON.stringify({ email: "nope" }),
+      }));
+    assert.equal(bad.status, 400);
+
+    const good = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`, as(BRAD, {
+        method: "PATCH", body: JSON.stringify({ company: "Nordic Cold" }),
+      }));
+    assert.equal(good.status, 200);
+    const after = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.equal(after.contacts[0].company, "Nordic Cold");
+    assert.equal(after.contacts[0].name, "Dana Wu", "an untouched field survives the edit");
+  });
+
+  await t.test("another firm cannot read, edit or delete these contacts", async () => {
+    const { srv, org, tables } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = tables.org_contacts[0].id;
+
+    // The outsider is in no firm at all.
+    for (const [method, path] of [
+      ["GET", `/api/org/contacts?id=${encodeURIComponent(org.id)}`],
+      ["PATCH", `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`],
+      ["DELETE", `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`],
+    ]) {
+      const res = await fetch(srv.base + path, as(OUTSIDER, {
+        method, ...(method === "PATCH" ? { body: JSON.stringify({ name: "Stolen" }) } : {}),
+      }));
+      assert.equal(res.status, 403, `${method} ${path}`);
+    }
+    assert.equal(tables.org_contacts.length, 1, "and nothing was written or removed");
+    assert.equal(tables.org_contacts[0].name, "Dana Wu");
+  });
+
+  await t.test("a delete is scoped to the firm as well as the id", async () => {
+    const { srv, org, tables } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
+    }));
+    const id = tables.org_contacts[0].id;
+
+    // Brad's own firm, a real id, but the WRONG org in the query — the shape a
+    // scoping bug would let through.
+    const wrongOrg = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent("00000000-0000-4000-8000-000000000000")}` +
+      `&contact=${encodeURIComponent(id)}`, as(BRAD, { method: "DELETE" }));
+    assert.equal(wrongOrg.status, 403, "membership is checked before the row is ever looked up");
+    assert.equal(tables.org_contacts.length, 1);
+
+    const ok = await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}&contact=${encodeURIComponent(id)}`,
+      as(BRAD, { method: "DELETE" }));
+    assert.equal(ok.status, 200);
+    assert.equal(tables.org_contacts.length, 0);
+  });
+
+  await t.test("the fake understood every filter these routes sent", async () => {
+    const { srv, org, db } = await firmWithMike(t);
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
+    }));
+    await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD));
+    assert.deepEqual(db.unparsed, [],
+      `fake-supabase refused a filter: ${db.unparsed.join(", ")}`);
+  });
 });

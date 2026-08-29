@@ -8,13 +8,68 @@ entries written per ship. The three routes that shipped with no caller
 (`POST /api/hub/items`, `PUT /api/hub/participants`, `POST /api/hub/close`)
 were wired 2026-08-16, so nothing in §6 is now reachable only from a
 console.
-**What is NOT done, as of 2026-08-17:** nobody has driven a hub as two
-people end to end. The tenant WRITE half (status, note, added comp) and
-every control added on 2026-08-16 have never been used by a person, and
-production holds one hub, one comp still at `new`, and zero messages.
-Email invitations are written and dormant — they need `EMAIL_FROM` +
-`RESEND_API_KEY` on Render and a verified Resend domain, which is Jacob's
-to set, not a code change. See §11.
+**DRIVEN ON PRODUCTION, 2026-08-26.** A broker
+(jacobadler@compninja.co) and a client (agouraninja@gmail.com), in two
+browsers, worked one requirement start to finish: hub created from /vault
+with an emailed invitation, the token link opened it, a vault comp sent
+("1 comp sent" — the ON CONFLICT scar in §6 is genuinely fixed in
+production), the client shortlisted it, added a building of their own,
+notes both ways, and the hub closed. The tenant WRITE half and the
+2026-08-16 controls have now been used by a person. Nothing in the product
+misbehaved. Two things looked like faults and were not, both recorded here
+so the next person does not re-open them: a broker's page left in a
+BACKGROUND window stays stale, which is the deliberate hidden-tab dormancy
+at hub-page.js's `if (document.hidden) return` — bringing the window
+forward woke it and pulled in every change with no reload; and a "Post
+note" click that appeared to do nothing was the automation missing the
+button, since the same click from the page's own context posted fine.
+
+**Removal and re-invitation were driven on a second hub the same day**, and
+the rule holds on production in all three doors. Removing the client killed
+their signed-in READ (403 `removed`), their WRITE, and a replay of the
+original invite link — the copy naming a deliberate removal rather than a
+bad link, which is the distinction hub-access.js draws on purpose.
+Re-inviting them restored access, and **the old link stayed dead**: it now
+answers `not_invited`, because the re-invite rotates `token_hash` and the
+old token matches no participant at all. Access came back through their
+SESSION (identity is the email, 018's rule), and writing worked again. Two
+observations worth keeping: the re-invited row keeps its `first_viewed_at`,
+so the guest reads as "opened" rather than resetting to never-opened; and
+the panel showed NO link to copy, because the send succeeded and a token
+cannot be shown twice — with mail live, the emailed link is the only copy.
+
+**One step has still never been taken by a person:** watching the BROKER's
+own window wake from a background tab. The live refresh was observed on the
+client's side, on the same page code and the same poller — what is unwatched
+is the broker-only furniture (the People panel's opened flag) repainting.
+`window.focus()` cannot raise a window from script, so this one needs a
+human click and nothing else; `test/hub-run.test.js` covers the refresh
+itself.
+
+**Email invitations are no longer dormant** (observed 2026-08-26). The
+create-hub response took the `emailed: true` branch on production, and that
+branch is `OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0` — it is the
+send's own answer, so both `EMAIL_FROM` and `RESEND_API_KEY` are set on
+Render and Resend accepted the message. §11's "written and waiting" is out
+of date. **What that does NOT prove is delivery to a stranger**: without a
+verified domain Resend only delivers to the address that owns the Resend
+account, and the client in this run was that address. An invitation to a
+real tenant is still unproven, and remains so until somebody sends one to
+an outside address and it lands.
+
+**Every one of those routes IS now driven end to end in software**
+(`test/hub-run.test.js`, 2026-08-26): a broker and a client work one
+requirement against a real server, the fake PostgREST and the fake Resend —
+create, invite, open by token with no account, send a vault comp, sign in,
+shortlist, add a comp of their own, trade messages, poll for what is new,
+add and remove a colleague, close. That closes the gap that let every vault
+send fail for a week (§6's ON CONFLICT scar), and it is why the live pass is
+now a confirmation rather than the only evidence. What it deliberately does
+NOT prove is anything only a real Postgres can answer — that same ON
+CONFLICT bug would have passed against the fake, which does its own
+filtering. So the live two-person run still has to happen; it is just no
+longer where the ordinary bugs get found.
+
 **Builds on:** `migrations/018-report-sharing.sql` + `report-access.js` (v3
 client sharing, shipped), `migrations/013-broker-vault.sql` + `016` (the
 vault star schema, shipped), `migrations/015-broker-lead-inbox.sql` (broker

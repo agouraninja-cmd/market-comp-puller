@@ -132,7 +132,28 @@ Check the PR list in Claude Chrome. A PR open more than a few days with no
 activity is worth a one-line status ask to the owner: merge, needs
 changes, or abandon?
 
-### 7. Working tree cleanliness
+### 7. Market momentum freshness
+
+```bash
+node scripts/check-market-freshness.js
+```
+
+The expanding/flat/contracting reads on the market pages expire 90 days
+after the snapshot that produced them, and because the seeded set is
+regenerated in one go they **all expire on the same day** — taking the
+`/markets` momentum map hollow and every Explorer badge dark at once. The
+`Market freshness` workflow runs this weekly and fails when the cliff is
+within 30 days, but a failing scheduled job is easy to scroll past, so
+check it here too.
+
+The only real fix is a regeneration (`npm start`, then
+`node gen-market-seed.js`), which bills one search per market — so this is
+an owner decision to raise, not a thing to do unprompted. Note that
+`scripts/derive-market-direction.js` does **not** help: it fills in a
+missing direction from the page's existing trend sentence and never
+touches `generatedAt`, which is what the age is measured from.
+
+### 8. Working tree cleanliness
 
 `git status --short` for stray untracked files that look like scratch
 output (not `.env`/data files the app owns — see `.gitignore`) sitting in

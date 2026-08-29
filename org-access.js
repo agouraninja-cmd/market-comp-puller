@@ -49,6 +49,25 @@ const MANAGE_ROLES = ["owner", "admin"];
 // any real brokerage office; it exists so a bug cannot write ten thousand
 // rows, not to price the product.
 const MAX_MEMBERS = 200;
+
+// The smallest firm subscription that may be BOUGHT. Unlike MAX_MEMBERS this
+// one really is about price, and it closes a hole rather than expressing a
+// preference: `canUseOrg` gates CREATING a firm on already holding Pro, but
+// getEntitlements grants Pro from a firm SEAT as a fallback once a personal
+// subscription lapses. So without a minimum one person could create a firm,
+// buy a single seat, cancel their own plan, and keep everything for the seat
+// price — which is below the individual price by construction, because a team
+// discount is the whole point of the plan.
+//
+// Two is the least that means "a firm", and it is enough: two seats bill above
+// the individual price, so the cheap way back to Pro is closed without
+// refusing genuinely small shops. Keep that relation true if either price
+// moves — a seat price above half the individual price is what makes 2 work.
+//
+// It bounds the PURCHASE, never the membership: a two-seat firm with one
+// member is fine, and a hand-granted firm has no subscription at all.
+const MIN_SEATS = 2;
+
 // Per call, not per firm — a paste of a whole address book should be told to
 // slow down rather than half-succeed.
 const MAX_INVITES_PER_CALL = 25;
@@ -104,6 +123,108 @@ function validateOrgName(raw) {
     return { ok: false, error: `A firm name can be up to ${MAX_NAME_LEN} characters.` };
   }
   return { ok: true, name };
+}
+
+// ---------------------------------------------------------------------------
+// What kind of shop a firm is.
+//
+// Plan:   Business Model Transition Plan v2 §6, Chuck Dickinson, 2026-08-17.
+// Schema: migrations/036-org-shop-kind.sql
+//
+// §6's claim, and the reason this is one column rather than a second product:
+// a broker shop and a development shop are "the same architecture and
+// different saved views". Both lose the same work the same way. Only the
+// nouns change, so only the nouns are stored.
+//
+// TWO KINDS, NOT THREE. The same section rules enterprise out as a target and
+// names its entry point as someone who used CompNinja at their last shop, so
+// there is no third value to select and nothing here pretends there is.
+//
+// Fails closed the way this file's other readers do, with one difference
+// worth stating: 'broker' is not the safe answer in an access sense, because
+// nothing here grants anything. It is the INCUMBENT answer. Every firm that
+// existed before 036 has only ever been shown broker-shop words, so an
+// unrecognized kind renders what its members have already been reading rather
+// than switching a firm's vocabulary on the strength of a typo.
+// ---------------------------------------------------------------------------
+const SHOP_KINDS = ["broker", "development", "tenant_rep"];
+
+// The nouns, in one place, because two of them are read by a server that
+// writes an email and a browser that writes a page. index.html carries its
+// own copy of this map (it cannot require a module) and test/index-html.test.js
+// pins the two together, which is the repo's standing answer to a mirrored
+// constant: mirror it deliberately, then make the suite refuse to let the
+// mirror drift.
+const SHOP_COPY = {
+  broker: {
+    label: "Broker shop",
+    // What arrives, per §6's table. Used in the invite email and beside the
+    // create box, where it is the one line that tells a stranger what this
+    // shelf is going to hold. Lower case and no final stop: both callers drop
+    // it mid-sentence, and a capital there reads as a heading that lost its
+    // heading.
+    arrivals: "comp sets, BOVs, market reports and lease abstracts",
+    // What the shelf opens on. A broker shop's work spans every type, so it
+    // opens on all of them; see shelfType's use in index.html.
+    shelfType: "",
+  },
+  development: {
+    label: "Development shop",
+    arrivals: "land comps, rent comps, absorption studies and feasibility packets",
+    // §6 again: the subject is a site or a project in the pipeline, and Land
+    // is the only property type in VAULT.PROPERTY_TYPES that names one. This
+    // is a DEFAULT and not a filter the firm is stuck behind.
+    shelfType: "Land",
+  },
+  // The third kind (migration 037). Same architecture, third vocabulary: a
+  // tenant rep's subject is a lease rather than a sale, so the sentence names
+  // what they hand a tenant rather than what they hand an owner.
+  tenant_rep: {
+    label: "Tenant rep shop",
+    arrivals: "lease abstracts, rent comps and market surveys",
+    // EMPTY, unlike development, and this is the interesting one. Land earned
+    // development its default because exactly one property type names that
+    // shop's subject. Nothing in VAULT.PROPERTY_TYPES names a tenant rep's:
+    // office, industrial and retail tenant reps all exist and are all normal,
+    // so picking one would open two shops out of three on a filtered shelf.
+    // No honest default is the honest default.
+    shelfType: "",
+  },
+};
+
+function kindOf(org) {
+  const v = org && typeof org === "object" ? String(org.kind || "") : "";
+  return SHOP_KINDS.includes(v) ? v : "broker";
+}
+
+function shopCopyOf(org) {
+  return SHOP_COPY[kindOf(org)];
+}
+
+/**
+ * The choice a firm's creator must make, validated.
+ *
+ * REQUIRED, unlike share_default, which ships off and is changed later. The
+ * owner's decision here is about vocabulary they are about to read on every
+ * screen, they are the only person who knows the answer, and the moment they
+ * are naming the firm is the one moment they are certainly thinking about
+ * what kind of firm it is. A default would be answered by silence and never
+ * revisited.
+ *
+ * Missing and unrecognized are the SAME refusal on purpose: a browser that
+ * sends nothing and a browser that sends "enterprise" are both a client this
+ * route should not be guessing on behalf of.
+ *
+ * The sentence names every kind rather than saying "choose one", because it
+ * is read under a select the reader may have scrolled past. It is mirrored in
+ * index.html for the same reason SHOP_COPY is, and pinned by the same suite.
+ */
+function validateShopKind(raw) {
+  const kind = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!SHOP_KINDS.includes(kind)) {
+    return { ok: false, error: "Choose whether this is a broker shop, a development shop or a tenant rep shop." };
+  }
+  return { ok: true, kind };
 }
 
 // The caller's active membership of one firm, or null. Rows may be that
@@ -274,10 +395,11 @@ function normalizeInviteEmails(raw, { self = "", existing = [] } = {}) {
 }
 
 module.exports = {
-  ROLES, MANAGE_ROLES, MAX_MEMBERS, MAX_INVITES_PER_CALL, MAX_NAME_LEN,
-  SHARE_DEFAULTS, AUTO_SHARE_CHOICES,
+  ROLES, MANAGE_ROLES, MAX_MEMBERS, MIN_SEATS, MAX_INVITES_PER_CALL, MAX_NAME_LEN,
+  SHARE_DEFAULTS, AUTO_SHARE_CHOICES, SHOP_KINDS, SHOP_COPY,
   normalizeEmail, roleOf, isActive, isPending,
   validateOrgName, membershipOf, pendingInviteOf, activeOrgIds,
   canManageMembers, canPublishToOrg, canRemoveMember, normalizeInviteEmails,
   shareDefaultOf, autoShareFor, autoShareValue,
+  kindOf, shopCopyOf, validateShopKind,
 };

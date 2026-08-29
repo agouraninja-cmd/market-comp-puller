@@ -67,6 +67,11 @@ const TABLES = [
   ["org_members",         "030-enterprise-orgs.sql"],
   ["org_comps",           "032-org-shared-comps.sql"],
   ["org_subscriptions",   "033-org-billing.sql"],
+  ["bulk_jobs",           "036-bulk-valuations.sql"],
+  ["bulk_job_items",      "036-bulk-valuations.sql"],
+  ["hub_notify",          "040-hub-note-emails.sql"],
+  ["hub_email_prefs",     "040-hub-note-emails.sql"],
+  ["org_branding",        "041-org-branding.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -109,6 +114,12 @@ const COLUMNS = [
   // file is how "the owner said they ran it" becomes a fact.
   ["broker_comps",      ["rent_psf", "rent_basis", "lease_type", "rent_psf_yr"],
                                                                 "029-vault-lease-rent.sql"],
+  // 034 gates publishing on a license number. Its absence is the silent kind:
+  // canPublishAs reads the column off the profile row, PostgREST 400s the
+  // whole SELECT when a listed column does not exist, so findBrokerProfile
+  // returns nothing and EVERY broker is told to add a credit name they can
+  // see on their own screen.
+  ["broker_profiles",   ["license_number"],                     "034-broker-license.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which
@@ -182,6 +193,17 @@ const COLUMNS = [
   // follows the firm — which is exactly why it is named here: a member who
   // said NO would silently start following the firm again.
   ["org_members",       ["auto_share"],                         "031-org-auto-share.sql"],
+  // 036 is 030's hazard rather than 031's: orgsByIds() and findOrg() name
+  // `kind` in their SELECTs, so its absence 400s every firm surface at once
+  // instead of degrading one setting. Named here because that failure looks
+  // like the firm feature being broken, not like a migration being unrun.
+  ["orgs",              ["kind"],                               "036-org-shop-kind.sql"],
+  // Both columns of the one-nudge rule. Their absence would not break posting
+  // a note (every hub_notify read is wrapped and degrades to "mail them"), but
+  // it WOULD turn one email per absence into one per note, which is the
+  // failure most likely to make somebody switch the feature off for good.
+  ["hub_notify",        ["seen_at", "notified_at"],             "040-hub-note-emails.sql"],
+  ["hub_email_prefs",   ["notify"],                             "040-hub-note-emails.sql"],
 ];
 
 // Same tiny .env reader server.js uses, so this works the same way locally.

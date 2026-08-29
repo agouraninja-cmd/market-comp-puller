@@ -132,7 +132,11 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
 test("the vault header uses the site Explore menu, not a short Search bar", () => {
   const html = renderVaultHTML(boot([]), CHROME);
   assert.match(html, /<summary>Explore/);
-  assert.match(html, /href="\/how-it-works"/);
+  // /how-it-works left the Explore menu 2026-08-25 (and /brokers came back
+  // 2026-08-29); the 1031 guide is the entry that has been in this menu
+  // throughout, so it is what proves this is the site menu rather than a
+  // Search bar.
+  assert.match(html, /href="\/1031-exchange"/);
   assert.match(html, /aria-current="page">Vault/);
   assert.doesNotMatch(html, />Search</);
 });
@@ -421,7 +425,7 @@ async function runPage(comps, benchResult, opts, identity) {
         : Promise.resolve(jsonResponse(200, { filename: "book.pdf", rows: [] }));
     }
     if (u.indexOf("/api/vault/upload") === 0) {
-      return opts.upload ? opts.upload() : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
+      return opts.upload ? opts.upload(init, u) : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
     }
     // Checked BEFORE the single-publish prefix, which would otherwise swallow
     // it: "/api/vault/publish-many".indexOf("/api/vault/publish") is 0 too.
@@ -1526,6 +1530,103 @@ test("Open on an import shows only that file's comps", async () => {
   assert.ok(!html.includes("200 Oak Ave"),
     "opening one import must not mix in another file's comps");
   assert.match(doc.getElementById("sheetBar").textContent, /book\.csv/);
+});
+
+// ---- Removing an import ---------------------------------------------------
+//
+// The click handler was wired correctly and the route deleted the rows, and
+// the button still read as broken: the handler treated closeSheet() as an
+// ALTERNATIVE to load() when the import being removed was the one open in
+// spreadsheet mode. closeSheet re-renders from the arrays the page is already
+// holding, so the import stayed in the list with its comp count unchanged and
+// its comps stayed in the table until the broker reloaded the page. That is
+// the ordinary path into this button, not an exotic one — the other control on
+// the row is "Open", and a broker opens an import to check it before removing
+// it. These drive the real emitted script through both paths.
+
+test("removing an import sends the DELETE and reloads the book", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(200, { ok: true })),
+      reloadComps: [],
+      reloadUploads: [],
+    });
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.ok(calls.some((c) => c.url === "/api/vault/upload?id=u1"),
+      "the removal must reach the server");
+    assert.ok(calls.some((c) => c.url.indexOf("/api/vault?") === 0),
+      "and the book must be refetched, or the screen keeps showing what was deleted");
+    assert.match(doc.getElementById("ups").innerHTML, /No imports yet/);
+    assert.equal(doc.getElementById("compMsg").textContent, "Import removed.");
+  } finally {
+    global.confirm = realConfirm;
+  }
+});
+
+test("removing the import whose spreadsheet is open still reloads the book", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1", address: "100 Main St" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(200, { ok: true })),
+      reloadComps: [],
+      reloadUploads: [],
+    });
+    // Open that import's spreadsheet first — the way a broker gets here.
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-open-sheet]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+    assert.equal(doc.getElementById("sheetToggle").textContent, "Done", "the sheet should be open");
+
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.ok(calls.some((c) => c.url.indexOf("/api/vault?") === 0),
+      "closeSheet is not a substitute for load(): without the refetch the removed import stays on screen");
+    assert.match(doc.getElementById("ups").innerHTML, /No imports yet/);
+    assert.ok(!doc.getElementById("tbody").innerHTML.includes("100 Main St"),
+      "the removed import's comps must leave the table");
+    assert.equal(doc.getElementById("sheetToggle").textContent, "Open spreadsheet",
+      "the spreadsheet of a removed import must close");
+  } finally {
+    global.confirm = realConfirm;
+  }
+});
+
+test("a refused removal says so rather than looking like it worked", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c1", upload_id: "u1" })], null, {
+      uploads: [{ id: "u1", filename: "book.csv", row_count: 1, created_at: "2026-08-14" }],
+      upload: () => Promise.resolve(jsonResponse(502, { error: "Could not remove that import. Please try again." })),
+    });
+    const before = calls.length;
+    doc.getElementById("ups").fire("click", {
+      target: { closest: (sel) => sel === "button[data-del]" ? { getAttribute: () => "u1" } : null },
+    });
+    await tick();
+
+    assert.match(doc.getElementById("compMsg").textContent, /Could not remove that import/);
+    assert.equal(doc.getElementById("compMsg").className, "msg bad");
+    assert.equal(calls.slice(before).filter((c) => c.url.indexOf("/api/vault?") === 0).length, 0,
+      "a refusal must not reload into an unchanged list with nothing said");
+    assert.match(doc.getElementById("ups").innerHTML, /book.csv/,
+      "the import is still there, and the page must go on showing it");
+  } finally {
+    global.confirm = realConfirm;
+  }
 });
 
 test("leaving a spreadsheet cell PATCHes only that field", async () => {
@@ -2695,4 +2796,245 @@ test("the spreadsheet shows the same count as the compact table", async () => {
   await tick();
   assert.match(doc.getElementById("tbody").innerHTML, /class="cites"[^>]*>2</,
     "one builder feeds both tables, so the two can never disagree");
+});
+
+// ---------------------------------------------------------------------------
+// The firm column — a comp's second, narrower audience (migration 032)
+//
+// Publishing and firm sharing are two different acts with two different
+// audiences, and the page has to keep them apart on screen as firmly as
+// server.js keeps org_comps apart from comp_submissions. Until this block
+// existed, nothing here mentioned firms at all: the toggle, its confirm, and
+// the correction to the vault's central privacy promise were all untested.
+// ---------------------------------------------------------------------------
+
+const FIRM = { id: "o1", name: "Colliers Boise" };
+
+function firmBoot(comps, firm, sharedIds) {
+  const b = boot(comps);
+  b.j.firm = firm || null;
+  b.j.sharedWithFirm = sharedIds || [];
+  return b;
+}
+
+// renderFirmPrivacy, executed. It writes two elements and reads two module
+// variables, so a four-line stand-in DOM is the whole harness.
+function runFirmPrivacy(firm, sharedCount) {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], firm), CHROME));
+  const src = js.match(/function renderFirmPrivacy\(\)\{[\s\S]*?\n  \}/);
+  assert.ok(src, "renderFirmPrivacy is gone from the emitted page");
+  const els = {
+    deckSub: { textContent: "", innerHTML: "" },
+    trustNote: { textContent: "", innerHTML: "" },
+  };
+  const sharedIds = {};
+  for (let i = 0; i < sharedCount; i++) sharedIds["c" + i] = true;
+  const fn = new Function("$", "esc", "myFirm", "sharedIds",
+    src[0] + "\nreturn renderFirmPrivacy;")(
+    (id) => els[id], (s) => String(s), firm, sharedIds);
+  fn();
+  return els;
+}
+
+test("a vault with nothing shared keeps the promise the whole tier rests on", () => {
+  // Keyed on having actually SHARED something, not on being in a firm: a
+  // broker who has shared nothing really does have a vault visible only to
+  // them, and rewriting their copy frightens them about a thing that has not
+  // happened.
+  for (const firm of [null, FIRM]) {
+    const els = runFirmPrivacy(firm, 0);
+    assert.match(els.trustNote.innerHTML, /^Visible only to you\./);
+    assert.match(els.trustNote.innerHTML, /nothing is published unless you choose it/);
+    assert.match(els.deckSub.textContent, /Visible only to you\.$/);
+  }
+});
+
+test("sharing one comp corrects the promise rather than leaving it false", () => {
+  const els = runFirmPrivacy(FIRM, 1);
+  assert.match(els.trustNote.innerHTML, /^1 comp is shared with Colliers Boise\./);
+  // The rest of the promise survives — this is a correction, not a retraction.
+  assert.match(els.trustNote.innerHTML, /Everything else is visible only to you/);
+  assert.match(els.trustNote.innerHTML, /never|nothing here is ever read/i);
+  assert.doesNotMatch(els.trustNote.innerHTML, /^Visible only to you/);
+  assert.match(els.deckSub.textContent, /1 shared with Colliers Boise; the rest visible only to you/);
+});
+
+test("the corrected promise counts in plural", () => {
+  const els = runFirmPrivacy(FIRM, 3);
+  assert.match(els.trustNote.innerHTML, /^3 comps are shared with Colliers Boise\./);
+});
+
+test("the default promise lives in the MARKUP, not only in the script", () => {
+  // A page whose script failed must still make the true statement rather than
+  // none — this is the vault's central claim, and an empty <p> where it should
+  // be is worse than a stale one.
+  const html = renderVaultHTML(firmBoot([comp({})], FIRM, ["c1"]), CHROME);
+  assert.match(html, /<p class="note" id="trustNote">Visible only to you\./);
+  assert.match(html, /id="deckSub">Closed deals, leads, and BOVs\. Visible only to you\./);
+});
+
+test("the Firm column exists only for a broker who is in a firm", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /myFirm\?"<th>Firm<\/th>":""/,
+    "the Firm column is no longer conditional on being in a firm");
+  // And the row cell is behind the same condition, or the header and the
+  // cells would fall out of step and shift every column after them.
+  assert.match(js, /var firm="";\s*if\(myFirm\)\{/);
+});
+
+test("sharing with the firm is confirmed, and the confirm makes all three promises", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  const m = js.match(/if\(!on&&!confirm\("Share this comp with "\+myFirm\.name\+"\?([^"]*)"\)\)return;/);
+  assert.ok(m, "sharing a comp with the firm is no longer confirmed");
+  const copy = m[1];
+  assert.match(copy, /with your name on it/, "the confirm must say the comp is attributed");
+  assert.match(copy, /does NOT go into CompNinja's public records/,
+    "the confirm must tell the two audiences apart — this is not publishing");
+  assert.match(copy, /left out of every download and client link/);
+  assert.match(copy, /take it back at any time/);
+});
+
+test("taking a comp back is NOT confirmed — only giving it out is", () => {
+  // The asymmetry is deliberate: the irreversible-feeling act is the one that
+  // widens the audience. A dialog on the safe action trains people to click
+  // through the dangerous one.
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /if\(!on&&!confirm\("Share this comp/,
+    "the firm confirm is no longer gated on !on — unsharing now asks too");
+});
+
+test("the firm toggle is a separate handler from Publish", () => {
+  // One confirm dialog covering both is how a broker publishes to the world
+  // when they meant to show a colleague.
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  assert.match(js, /closest\("button\[data-firm\]"\)/);
+  assert.match(js, /closest\("button\[data-pub\]"\)/);
+  assert.notEqual(js.indexOf('button[data-firm]'), js.indexOf('button[data-pub]'));
+  // The publish confirm must never be the one a firm share reaches.
+  const firmHandler = js.match(/var b=e\.target\.closest\("button\[data-firm\]"\);[\s\S]*?\n  \}\);/);
+  assert.ok(firmHandler, "could not find the firm toggle handler");
+  assert.doesNotMatch(firmHandler[0], /public records, credited to your firm by name/,
+    "the firm toggle is showing the PUBLISH confirm");
+});
+
+test("the toggle posts the firm and the comp, and DELETEs to take it back", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], FIRM), CHROME));
+  const handler = js.match(/var b=e\.target\.closest\("button\[data-firm\]"\);[\s\S]*?\n  \}\);/)[0];
+  assert.match(handler, /fetch\("\/api\/vault\/firm",\{method:on\?"DELETE":"POST"/);
+  assert.match(handler, /body:JSON\.stringify\(\{orgId:myFirm\.id,compIds:\[id\]\}\)/);
+  // A refusal must give the button back, or a 403 leaves a dead control.
+  assert.match(handler, /b\.disabled=false;b\.textContent=on\?"Shared":"Share"/);
+  // And the privacy line is re-rendered on success, or the promise goes stale
+  // the moment it stops being true.
+  assert.match(handler, /renderFirmPrivacy\(\);/);
+});
+
+test("a broker in no firm gets no firm toggle at all", () => {
+  const js = pageScript(renderVaultHTML(firmBoot([comp({})], null), CHROME));
+  // The handler still exists (the page is one script for every broker), but it
+  // refuses without a firm rather than posting a null org id.
+  assert.match(js, /closest\("button\[data-firm\]"\);\s*if\(!b\|\|!myFirm\)return;/);
+  const html = renderVaultHTML(firmBoot([comp({})], null), CHROME);
+  assert.match(html, /"firm":null|firm":null/, "the boot payload should carry an explicit null firm");
+});
+
+// ---------------------------------------------------------------------------
+// The confirm table reads against the source document
+// ---------------------------------------------------------------------------
+// Measured 2026-08-28: verifying twelve extracted rows took 4m51s with zero
+// corrections needed, against spec §9's 60-second bar
+// (docs/evals/extract-2026-08-28-verdict-final.md). Raw figures were one of
+// the four named causes — a page printing $410,000.00 beside a cell reading
+// 410000 makes a person translate every number before they can agree with it.
+
+test("a numeric figure is shown formatted and held raw", async () => {
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "4250000", size_sqft: "9237" },
+        error: null,
+      }],
+    })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const cells = doc.getElementById("pdfBody").querySelectorAll("input");
+  const price = cells.find((el) => el.getAttribute("data-k") === "price");
+  const size = cells.find((el) => el.getAttribute("data-k") === "size_sqft");
+  assert.equal(price.value, "$4,250,000", "the cell should read like the page it came from");
+  assert.equal(price.getAttribute("data-raw"), "4250000", "and still HOLD the raw figure");
+  assert.equal(size.value, "9,237");
+  assert.equal(size.getAttribute("data-raw"), "9237");
+});
+
+test("a figure normalizeRow would refuse is shown verbatim, never as $NaN", async () => {
+  // The rows a broker most needs to READ are the ones holding something the
+  // parser refused. Number("1.2M") is NaN, so an unguarded money() would
+  // render "$NaN" and erase the only string that says what to fix.
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "1.2M" },
+        error: "price: could not read a number",
+      }],
+    })),
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const price = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "price");
+  assert.equal(price.value, "1.2M");
+  assert.equal(price.value.indexOf("NaN"), -1, "a refused value must survive the display layer intact");
+});
+
+test("focus shows the raw figure, blur shows the formatted one, and the import posts raw", async () => {
+  let posted = null;
+  const { doc } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, {
+      filename: "Q2.pdf",
+      rows: [{
+        values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+                  transaction: "sale", deal_date: "2026-03-12", price: "4250000" },
+        error: null,
+      }],
+    })),
+    upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })); },
+  });
+  await choosePdf(doc, "Q2.pdf");
+  const price = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "price");
+
+  price.fire("focus");
+  assert.equal(price.value, "4250000", "editing offers the stored figure, not the one with a $ in front");
+
+  price.value = "4300000";
+  price.fire("input");
+  assert.equal(price.getAttribute("data-raw"), "4300000", "data-raw is what the row holds");
+
+  price.fire("blur");
+  assert.equal(price.value, "$4,300,000", "and the reading comes back on the way out");
+
+  doc.getElementById("pdfGo").click();
+  await tick();
+  assert.ok(posted, "the import should have posted");
+  assert.equal(posted.rows[0].price, "4300000",
+    "formatting is a DISPLAY layer — a dollar sign must never reach the vault");
+});
+
+test("every column the confirm table can show has a human label", () => {
+  // tLabel falls back to the key, so a missing entry does not fail — it prints
+  // our own column name at a broker. Migration 029's lease fields reached
+  // PDF_KEYS and never reached TARGET_LABELS, and a lease sheet was headed
+  // "rent_psf" and "rent_basis" until somebody photographed one.
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const keys = JSON.parse(/var PDF_KEYS=(\[[^\]]*\])/.exec(script)[1].replace(/'/g, '"'));
+  const blob = /var TARGET_LABELS=\{([\s\S]*?)\n  \};/.exec(script)[1];
+  const labelled = new Set([...blob.matchAll(/([a-z_]+)\s*:\s*"/g)].map((m) => m[1]));
+  for (const k of keys) {
+    assert.ok(labelled.has(k),
+      `PDF_KEYS carries ${k} with no TARGET_LABELS entry — ` +
+      `the confirm table would head that column "${k}"`);
+  }
 });

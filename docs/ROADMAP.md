@@ -27,28 +27,99 @@ intent, the devlog states history.
   and a thin report is a real answer — evidence to stop investing in SEO, not
   a reason to do more of it.
 
+- **The import confirm table: two causes fixed, two waiting on decisions**
+  (measured 2026-08-28, full record in
+  `docs/evals/extract-2026-08-28-verdict-final.md`). Spec §9's correction-time
+  condition was finally timed: **4m 51s to verify 12 extracted rows, with zero
+  corrections needed** — 4x over the 60-second bar, on rows that were all
+  correct. The extraction took 9.9 seconds; the person took 291. Every cause
+  the reviewer named is presentation:
+  1. ~~Rows are not in source order~~ — **shipped 2026-08-29** (#217). The
+     extract prompt now asks for document order, top to bottom, page by page,
+     never sorted or grouped. Nothing downstream ever needed a particular
+     order, so the order the model picks IS the order the reviewer reads.
+  2. ~~Figures render raw~~ — **shipped 2026-08-29** (#217). The confirm
+     table reuses `/vault`'s own `cellDisplay`/`data-raw` convention rather
+     than a second one, and the raw value is still what imports. The GUARD is
+     the part worth remembering: these rows have not been through
+     `normalizeRow`, and the rows a broker most needs to read are exactly the
+     ones holding something it refused, so only genuine numbers are formatted
+     — an unguarded `money()` renders "1.2M" as "$NaN" and erases the only
+     clue about what to fix.
+  3. **No business name beside the type.** The row says Retail; the page says
+     Altitude Tire and Alignment. That name is how a person knows which
+     property they are looking at. **Blocked on a field decision, not on
+     effort**: `tenancy` means "Single tenant / Multi-tenant" and
+     `anchor_tenant` means the anchor of a center, so there is no honest
+     existing home for it. Either the vault gains a name field (migration,
+     and it then has to earn its place in the CSV template and the comps
+     table) or the confirm table carries review-only metadata that is never
+     stored — which is the smaller change and the one to cost first.
+  4. **A fixed column set regardless of the document**, so reviewers scan past
+     columns the source never had. **Coupled to the dateless-deal sentinel
+     below**: an all-empty required column is currently how a reviewer sees
+     WHY a batch of rows failed, so hiding empty columns before that decision
+     lands would remove the explanation along with the noise.
+  A fifth cause was found while photographing the table for the before/after
+  and fixed in the same change: five lease columns (`rent_psf`, `rent_basis`,
+  `lease_type`, `lease_expiry`, `option_notice_date`) reached `PDF_KEYS` in
+  migration 029 and never reached `TARGET_LABELS`, and the label lookup falls
+  back to the key — so a lease sheet was headed with our own column names and
+  nothing failed. Every column is now pinned to a label by test.
+  **The measurement that actually decides the archive is still missing**, and
+  it is now the cheapest one left: nobody has timed a broker keying 12 comps
+  BY HAND. The whole gate is whether correcting beats typing, and only one
+  side of that comparison has ever been measured. It also decides how much
+  more the two remaining causes are worth: if hand-keying is slower than
+  4m51s, the table is already past the bar and 3 and 4 are polish.
+
+- **Two decisions before ingestion ships, neither an extraction problem**
+  (the extraction test is DONE and the two prompt defects it found are fixed
+  and verified — final verdict in
+  `docs/evals/extract-2026-08-28-verdict-final.md`: cap rates went 0 of 8
+  correct to 8 of 8, invented sale dates 3 to 0, field precision 99.6%).
+  What the measurement surfaced that a prompt cannot fix:
+  1. **The `deal_date` and `rent_basis` refusals cost 13 real deals** in a
+     16-document set. A brokerage capital-markets report whose transactions
+     table has no date column loses all 9 rows; lease sheets that state a
+     rate but never the word "annual" lose 4 more. Both refusals are correct
+     — `rent_basis` exists because guessing is 12x wrong — but the honest
+     options are a dateless-deal sentinel (the `Active` precedent) and a
+     per-import rent basis, not a relaxed parser.
+  2. **Address completion versus the dedupe key.** The model now completes
+     addresses the page abbreviates ("Atlanta" to "Atlanta, GA", measured on
+     5 of 5 rows of one sheet). The completion is correct, but `addressKey`
+     is the vault's dedupe key, so the same sheet imported either side of
+     that behaviour yields duplicate properties.
+  And one thing no prompt fixes: **image quality produces silent wrong
+  numbers.** On a synthetic 60dpi grayscale render — not even a photograph —
+  one page returned nothing at all and another silently misread $566,000 as
+  $560,000. A confirm step the broker actually reads is not optional for
+  photographed input. Still owed on the test itself: a stopwatch on
+  correction time (§9's first condition; two exercises are staged by
+  `scripts/make-correction-exercise.js`) and a real photographed scan.
+
 ## Next
 
-- **`/api/geocode` should take a POST, not a query string.** The two
-  follow-ons left by the private-comp geocoding work, in the order Owen set
-  when he answered section 7 — this one ABOVE import-time geocoding, not
-  below it. Today every comp's address travels in a URL, which means the
-  platform's access logs and any Referer. `POST /api/report-access` is already
-  POST for exactly this reason (CLAUDE.md says so). It is the same class of
-  fix at a wider blast radius, because it covers *every* comp rather than only
-  private ones. Scoped out of the original change deliberately: it touches
-  every caller (the report map, the market pages, the Explorer).
-- **Import-time geocoding for vault comps** (step 2 of the same spec).
-  Deferred 2026-08-06, and the reason is worth keeping: section 7's premise —
-  what fraction of broker exports already carry coordinates — could not be
-  answered because there were **no vault uploads at all** yet. It is work that
-  should be bought with evidence from the first real broker book, not
-  estimated. Nothing is wasted by waiting: `geo_source` already allows
-  `'census'`, so step 2 lands as a pure addition with no migration change.
-  **Unblocked 2026-08-10** by the CSV column mapper: real broker exports can
-  now be imported, and `lat`/`lng` are mappable columns, so section 7's
-  premise is finally measurable rather than estimated. Read it off the first
-  few real books before deciding.
+- **Archive ingestion: forward an email into the vault** (building block 1 of
+  the Business Model Transition Plan; design and migration plan in
+  `docs/superpowers/specs/2026-08-21-archive-email-ingestion-design.md`).
+  Design only as of 2026-08-21 — no product code and no migration file, both
+  deliberately gated on the extraction test above. The storage half has
+  existed since migration 013; what is missing is the front door. Three things
+  worth knowing before picking it up. **The plan document is wrong about the
+  vendor in a way that changes the design**: Resend's inbound webhook carries
+  metadata only, and the body and attachments are fetched back afterwards, so
+  the handler makes outbound calls of its own and can fail halfway. **Sender
+  verification is the privacy wall's weakest new surface**, and an SMTP
+  envelope sender is spoofable by anyone who learns the address, so the rule
+  is the envelope check AND the provider's SPF/DKIM verdict, with a missing
+  verdict quarantining rather than passing — and whether Resend exposes one at
+  all is the spec's first open question, to be settled against one real
+  message. **The commit path is a refactor, not new architecture**: pulling
+  `commitVaultBatch()` out of `POST /api/vault/upload` the way `runCompSearch`
+  came out of `/api/comps` for bulk valuation is what makes the existing
+  cascading undo work on a forwarded email with no new code.
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on
@@ -57,25 +128,14 @@ intent, the devlog states history.
   the rent roll feeds the DCF cash flows instead of sitting beside them.
 - **White-label exports**, riding on the branding profile once its UI
   exists.
+- **Bulk valuation follow-ons** (the feature shipped 2026-08-21; spec
+  `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md` §7). Three
+  questions the first real run should answer rather than a design should:
+  whether 50 is the right cap, whether a firm should be able to share a run
+  (which is exactly the case the enterprise shelf's own note says makes an
+  `org_shelf_items` table worth building), and whether per-address property
+  type is worth the mixed-list case it keeps being asked for.
 - **Market digest pages**, once the corpus holds 2+ quarters of history.
-- **Only a licensed broker may publish a vault comp** (decided 2026-08-12,
-  not yet built). The "Verified" badge means "a named broker vouched for
-  this deal" — the strongest provenance a report shows, and the entire
-  currency the broker tier trades in, since brokers are paid in credit
-  rather than cash. The owner is not a licensed broker, so his publishing
-  under any credit name would make the badge say something untrue, and the
-  same hole is open to anyone else who gets vault access. **The decision:
-  put a license field on the broker profile and refuse `POST
-  /api/vault/publish` without it** — enforced in code rather than
-  remembered as a rule. Deliberately deferred, not parked: nobody can
-  publish today except the owner, who has decided not to, so there is no
-  live exposure; build it before the first outside broker gets a vault
-  (i.e. alongside `vault_beta`, migration 023). Rejected alternatives, so
-  they are not re-litigated: a separate non-broker provenance tier (moves
-  SOURCE_TIERS, TIER_WEIGHT, the comp-gate mirror, badge copy and the
-  legend together, for a contributor class that does not exist yet), and
-  rewording "Verified" to claim less (weakens the badge for the actual
-  brokers it exists to reward).
 
 ## Later (broker-tier phases, in order)
 
@@ -88,7 +148,11 @@ subscription benefit.
 ## Engineering track (no product decisions needed)
 
 - Deploy-checklist project skill (tests → tailwind regen if needed →
-  pending migrations → push → verify live → devlog).
+  pending migrations → push → verify live → devlog). **Shipped 2026-08-04**
+  (`96bab16`): `.claude/skills/deploy/SKILL.md`, which carries the whole
+  chain plus the two things this line did not think to ask for — the
+  shared-checkout rules (stage explicit paths, never amend) and the Supabase
+  project to run migrations against.
 - Extract tested pure modules out of server.js as they're touched. Shipped
   2026-08-08: `marketOf` → market.js (+ the Canada fix); the ENTIRE
   /api/comps parse pipeline → report-parse.js (parse, salvage, compact-key
@@ -98,13 +162,22 @@ subscription benefit.
   same way: when touched, with tests first.
 - Branch protection on main once PR flow feels routine (CI is live but
   advisory today).
-- Market pages restyle onto the `rd-*` Research Desk tokens; regenerate
-  og-image.png from the cut-card logo.
+- Market pages restyle onto the `rd-*` Research Desk tokens. Still
+  outstanding: `MARKET_CSS` is the older skin, and `HOW_CSS` says so in its
+  own header — /how-it-works took the `rd-*` system "rather than the older
+  market-page skin". (The og-image half of this line is done: regenerated
+  from the cut-card mark 2026-07-15 in `660b563`, and byte-identical today,
+  the Sliced Tower attempt having been reverted whole in `017f2c5`.)
 - Re-measure `PARALLEL_SEARCH` on real traffic before ever flipping it on.
-- Fix `marketOf()` yielding "Canada" for Canadian addresses before
-  non-USD reports are ever harvested.
-  (Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
-  owner's yes — both now say "Comps in". See the Shipped log.)
+- Fix `marketOf()` yielding "Canada" for Canadian addresses before non-USD
+  reports are ever harvested. **Shipped 2026-08-08** (`fb190aa`), in the same
+  commit as the `marketOf` extraction the bullet above already credits —
+  which is why it sat here unnoticed. `market.js` reads Canadian
+  provinces, so "123 King St W, Toronto, ON, Canada" keys as "Toronto, ON"
+  rather than collapsing to the literal "Canada"; pinned by
+  `test/market.test.js`.
+- Market page `<h1>`/`<title>` disagreement: shipped 2026-08-09 with the
+  owner's yes — both now say "Comps in". See the Shipped log.
 
 ## Open business questions (not code)
 
@@ -145,6 +218,105 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-08-29: the default provider streams, the vault locates its own
+  buildings, and the confirm table stops making people translate figures.**
+  Three items on this file moved in one day.
+  - **Import-time geocoding for vault comps shipped** (#212), which closes
+    `2026-08-06-private-comp-geocoding.md` entirely — both follow-ons are now
+    built, the `/api/geocode` POST move on 2026-08-17 and this. It was
+    deferred on 2026-08-06 for a good reason (nobody had uploaded a vault, so
+    section 7's premise was unmeasurable) and unblocked on 2026-08-10 by the
+    CSV column mapper. The server now locates the buildings an import left
+    blank, at import time, through the same in-process Census call the proxy
+    fronts — never Nominatim, never the browser, never a URL. A coordinate the
+    broker typed always wins, and a miss leaves the building unlocated rather
+    than guessed, because a wrong pin puts a building on the wrong continent
+    and nobody would recognise it as wrong.
+  - **Gemini streaming was verified against the live wire and switched on**
+    (#211). The live comp-by-comp report assembly was built 2026-08-09 and had
+    been dark in production ever since Gemini became the default provider,
+    because the SSE frame shape was unconfirmed and the reader shipped behind
+    a verifier rather than a guess. That caution paid: the verifier's FIRST
+    run disproved the guessed parser outright — the live wire is
+    `event_type`-tagged frames, not `{steps:[...]}` snapshots. The reader was
+    rewritten from the real frames, which are committed as fixtures the suite
+    replays, and the `STREAM_UNVERIFIED` opt-in is deleted rather than left
+    off. A bonus the non-streaming body cannot offer: streamed calls surface
+    the model's real search queries. Rollback is `STREAM_ANTHROPIC=off`, no
+    deploy.
+  - **...and immediately exposed a bug that had been invisible for three
+    weeks** (#214). The streamed-comp callback called `expandComp`, which
+    moved into `report-parse.js` in the 2026-08-08 extraction and was never
+    exported; the ReferenceError was swallowed PER COMP by
+    `makeCompExtractor`'s catch, so every live comp event died with no log and
+    a perfectly fine report. Worth remembering as a shape: a feature that is
+    dark cannot report its own breakage, so turning one on is also a test of
+    everything downstream of it.
+  - **The confirm table's first two causes** of the 4m51s review are fixed
+    (#217) — see the Now item above for what remains and why each is blocked.
+
+- **2026-08-28: §9's last unmeasured condition is measured.** Correction time
+  finally has a number: 4m 51s for 12 rows, zero corrections required. It
+  fails the 60-second bar 4x and the failure is entirely in the review UI —
+  rows out of source order, unformatted figures, no business name, a fixed
+  column set. The extraction itself produced 12 correct rows in 9.9 seconds.
+  Recorded rather than smoothed over, along with the fact that the other half
+  of the comparison — a person typing 12 comps by hand — has still never been
+  timed, so "correcting beats typing" remains inference.
+
+- **2026-08-28: the extraction verdict is answered, and its two defects are
+  fixed.** The 2026-08-27 verdict found the capability sound but the prompt
+  broken in two ways, both of the silent-wrong-number kind `normalizeRow`
+  cannot catch: every cap rate returned as a decimal fraction (a page reading
+  5.10% became 0.051, storable as a cap rate of 0.051%), and three active
+  listings on a lender BOV reported as closed sales dated from the list date.
+  Both were unstated conventions rather than model failures. Fixed in
+  `EXTRACT_PROMPT`, pinned by tests, and re-measured against production on
+  16 documents and 144 hand-keyed deals: **cap rates 0 of 8 to 8 of 8,
+  invented dates 3 to 0, field precision 98.7% to 99.6%**, one wrong value in
+  the whole run. Raw recall reads lower (76.4%) because the fix makes the
+  extractor refuse three listings it used to invent; counting only deals the
+  vault would accept it is 94.5%.
+
+- **2026-08-27: the extraction verdict exists.** Step 1 of the Business Model
+  Transition Plan's sequence, and the gate on the whole Archive block, is
+  answered in writing: `docs/evals/extract-2026-08-27-verdict.md`. 14 public
+  documents from 11 organizations (6 broker-produced), 132 hand-keyed deals,
+  one run against production. Recall 85.6%, field precision 98.7%, fabrication
+  1.3%, zero omitted fields. Two blocking prompt defects found and named, both
+  one-line fixes, now the 'Now' item above. Two scope limits stated rather than
+  hidden: no proprietary broker files were available, and no true scans, so a
+  pass is an upper bound. The run's own first scoring said 4.2% fabrication and
+  was wrong — 21 of 27 'fabrications' were correct reads the truth file had
+  omitted, the pilot's lesson repeating on a bigger set. Truth is keyed from
+  rendered pages now, never a text extraction.
+
+- **2026-08-21: the pricing model simplified to one decision per customer.**
+  Two owner calls on one day, in order. First, `FREE_MAX_COMPS` went from 10
+  to `"all"` (PR #55's decision, rebuilt on current main — the branch had
+  drifted 1045 commits): the free report's value range was always computed
+  from the full comp set, so the list gate withheld the evidence for a number
+  already published. Second, the $20 single-report unlock was RETIRED the
+  same day, because with nothing locked its tile — keyed on
+  `lockedCount() > 0` — no longer surfaced and it was left selling only the
+  lookback. Purchases already made are honored forever (webhook,
+  `report_purchases`, `/api/report-access`, per-property entitlement all
+  kept); a source scan fails the build if `single_report` re-enters the
+  PLANS map. What remains: free = full report at 3 years; Pro = the ten-year
+  window, unlimited exports, the vault, Address Explorer, branding; firms =
+  per-seat. The landing-page FAQ was caught still selling both retired claims
+  and is now test-pinned against them (public-pages.test.js).
+- **2026-08-19: only a licensed broker may publish a vault comp.** Decided
+  2026-08-12 and built now: `broker_profiles.license_number` (migration 034,
+  NOT NULL DEFAULT ''), and one pure gate `VAULT.canPublishAs(profile)` that
+  both `POST /api/vault/publish` and `POST /api/vault/publish-many` call, so
+  the two cannot drift. Credit name is still refused first, so an existing
+  broker's refusal keeps its shape. Optional to SAVE an identity, required to
+  PUBLISH: a broker setting up a vault rarely has the number to hand, and
+  refusing the whole save would block the credit name too. Never rendered
+  publicly, and `publicBrokerRow`'s allowlist is now test-pinned against it.
+  **Needs migration 034 applied before it does anything on production**, and
+  until then every publish refuses, so apply it with the merge.
 - **2026-08-19: enterprise (firm) accounts, all four slices.** From Chuck's
   email of 2026-08-16; design in
   `docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md`.
@@ -170,8 +342,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 - **2026-08-17: `/api/geocode` takes a POST, and the GET form is gone.** The
   higher-ranked of the two follow-ons from the private-comp geocoding work
-  (Owen's section 7 ordering: above import-time geocoding, which stays in
-  "Next"). Every comp's address used to travel in a query string, so it landed
+  (Owen's section 7 ordering: above import-time geocoding, which was still in
+  "Next" then and shipped 2026-08-29 — see the entry at the top of this log).
+  Every comp's address used to travel in a query string, so it landed
   in Render's access logs and in any outbound Referer; it rides in the body
   now, the same reasoning `POST /api/report-access` and `POST /api/hub/access`
   already carry. It matters most for the comps that are not public — a vault
@@ -243,12 +416,20 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   display: the skip + no-third-party guards in `renderMap()`). This line
   sat in "Now" until 2026-08-08 — it was already done.
 
+- **2026-08-14: /1031-exchange is an identification worksheet.** The
+  education page stays on the same URL, underneath: selling property,
+  closing date → 45/180 calendar dates, three replacement slots, each
+  valued through the existing report handoff. Shareable via the URL
+  fragment so addresses never hit a server log. Not a written
+  identification, not an exchange, dates only — the 2026-08-08
+  compliance pins still hold.
 - **2026-08-08: v4 slice 3, the 1031 exchange guide.** Public education
   page at /1031-exchange: the exchange workflow in order, a client-side
   45/180-day deadline-dates widget (dates only, never taxes), the
   identification rules, common failure modes, and a FAQ with FAQPage
   JSON-LD. One page for both audiences — owners researching a sale find
   it, brokers hand it to clients. Education, never advice, test-pinned.
+  Worksheet layer added 2026-08-14 (see above).
 - **2026-08-08: v4 slice 1, the gut check.** A broker's book, sanity-checked
   against the public market layer on /vault: per-bucket median $/SF and cap
   rates vs corpus quartiles + model market figures (the owner's blended-
@@ -290,8 +471,9 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
   Verified end to end after both halves merged, since neither of us had run
   them together: coordinates survive `attachPropertyCoords` →`toApiComp` →
   `blendPrivateComps` → the browser guard, which then skips geocoding.
-  Import-time geocoding is deliberately deferred; see Next for it and for the
-  `/api/geocode` POST change that Owen ranked above it.
+  Import-time geocoding was deliberately deferred at the time; both it and the
+  `/api/geocode` POST change Owen ranked above it have since shipped
+  (2026-08-29 and 2026-08-17), so this spec is now built in full.
 - **2026-08-06: CI can be started by hand** (#44). GitHub had a seven-hour
   Actions incident that throttled webhooks to ~15%, so pushes and PRs stopped
   creating workflow runs at all — four branches merged with no CI result while

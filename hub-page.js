@@ -860,22 +860,38 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
       });
   }
 
-  // The invite links, shown ONLY when the server could not email them. When it
-  // did, the links are still secrets and there is no reason to put them on
-  // screen.
+  // The invite links, shown ONLY for the people the server could not email.
+  // Anyone who WAS mailed has their link withheld: it is a credential, and
+  // there is no reason to put it on screen.
+  //
+  // PER PERSON, not all-or-nothing, and that is the whole point. The server
+  // used to answer "emailed" from its own configuration, so a send Resend
+  // refused still hid the link — and a hub token cannot be shown twice, so the
+  // invitation was simply lost with the broker told it had gone. emailFailed
+  // names exactly who still needs a link.
   function showPeopleInvites(j){
     var box = el("peopleInvites");
-    var list = (j.invites || []);
+    var all = (j.invites || []);
+    // An older response carries no emailFailed. Falling back to "show them
+    // all" keeps the safe direction: a link shown needlessly is a copy-paste,
+    // a link withheld wrongly is a lost invitation.
+    var failed = j.emailFailed;
+    var list = j.emailed ? []
+      : (Array.isArray(failed) ? all.filter(function(inv){ return failed.indexOf(inv.email) >= 0; }) : all);
     // show() takes an ID, not a node. Passing the element made
     // getElementById(node) return null and .classList throw, which the
     // caller's catch then reported to the broker as "that did not reach the
     // server" — after the invitation had in fact been saved. A failure message
     // that describes the opposite of what happened is worse than none.
-    if (!list.length || j.emailed){ show("peopleInvites", false); box.textContent = ""; return; }
+    if (!list.length){ show("peopleInvites", false); box.textContent = ""; return; }
     box.textContent = "";
     var p = document.createElement("p");
     p.className = "who";
-    p.textContent = "Copy each link and send it yourself. They cannot be shown again.";
+    // Names WHY the link is on screen. "We could not email them" is the fact
+    // the broker has to act on; without it this reads as a routine extra copy.
+    p.textContent = all.length === list.length
+      ? "Copy each link and send it yourself. They cannot be shown again."
+      : "We could not email everyone. Copy the links below and send them yourself. They cannot be shown again.";
     box.appendChild(p);
     list.forEach(function(inv){
       var row = document.createElement("div");
@@ -891,7 +907,16 @@ textarea{width:100%;min-height:76px;padding:10px;border:1px solid var(--line);bo
   }
 
   el("peopleSave").addEventListener("click", function(){
-    var typed = el("peopleEmails").value.split(/[,;\s]+/).filter(Boolean);
+    // DOUBLE backslash, and it is load-bearing: this whole page is one
+    // template literal, so a single-backslash escape is eaten before the
+    // browser sees it. Written with ONE, this class emitted as comma,
+    // semicolon and the LETTER s, which split "okb336+hubtest@gmail.com" into
+    // "okb336+hubte" and "t@gmail.com" and invited the second one. The first
+    // failed normalizeEmail and vanished; the second is a real address, so a
+    // stranger got the invite and the broker was told it was sent. Same trap
+    // documented at vault-page.js:1231. It still PARSES, which is why 1,432
+    // tests and a syntax check all passed.
+    var typed = el("peopleEmails").value.split(/[,;\\s]+/).filter(Boolean);
     if (!typed.length) return peopleMsg("Type an email address first.", true);
     el("peopleSave").disabled = true;
     peopleMsg("");

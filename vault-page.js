@@ -35,6 +35,11 @@ function renderVaultHTML(boot, chrome) {
   // object; the vault draws its own stylesheet and only lifts the account-nav
   // pieces from it, because a second copy of MARKET_BAR would drift.
   const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
+  // The dark-mode footer ink, shared with MARKET_CSS and HOW_CSS rather than
+  // restated here: this page draws its own stylesheet but its footer is the
+  // same navy slab with the same selectors, and that block already carries a
+  // "keep the three in step" warning it has not always been kept in step with.
+  const FOOTER_DARK_CSS = chrome.FOOTER_DARK_CSS || "";
   const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
   const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
@@ -223,8 +228,33 @@ tbody tr:hover td{background:var(--wash)}
 tfoot td{padding:12px 14px;border-top:1px solid var(--ink);
   border-bottom:3px double var(--ink);font-weight:600;color:var(--ink);background:var(--card)}
 tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-2)}
+/* Scrolling shadows, the same CSS-only pair the market pages' comps table
+   uses (MARKET_CSS's .scroll). The comp table is ~1200px wide inside a
+   ~1070px scroller on an ordinary laptop, and macOS
+   draws no scrollbar until something is already scrolling, so the last two
+   columns — Firm (the Share control that is the shared vault's ONLY entry
+   point) and the trash — were off the right-hand edge with nothing on screen
+   saying the table went any further. The two attachment:local layers are
+   opaque card-coloured patches pinned to the content, so each edge shadow is
+   covered while that end is in view and uncovered as it scrolls away: the
+   hint appears only when there is really more to see, with no script and no
+   scroll listener.
+
+   The shade is --edge rather than the 13%-black literal this pair shipped
+   with, because 13% black over a #1A2433 card is invisible and both pages
+   have a dark theme. --edge is right in both directions by construction — it
+   is the colour a border of this card already is, darker than the card in
+   light and lighter in dark — and in light mode it lands within a hair of
+   the literal it replaces. The patches need no such treatment: they are
+   var(--card) already. Keep the two copies in step. */
 .tw{overflow-x:auto;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
-  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
+  margin-top:var(--s4);box-shadow:var(--shadow),var(--lift);
+  background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,var(--edge),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,var(--edge),rgba(0,0,0,0));
+  background-position:left center,right center,left center,right center;
+  background-repeat:no-repeat;
+  background-size:28px 100%,28px 100%,13px 100%,13px 100%;
+  background-attachment:local,local,scroll,scroll}
 .msg{margin-top:var(--s4);padding:12px 16px;border-radius:var(--r);font-size:var(--t5);border:1px solid}
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
@@ -500,6 +530,7 @@ footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border
 footer .wrap{padding:36px var(--s6)}
 footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
+${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
 </style>
 ${THEME_BOOT}
@@ -509,11 +540,10 @@ ${THEME_BOOT}
   <nav>
     <details>
       <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>
-      <a href="/markets">Markets</a><a href="/how-it-works">How it works</a>
+      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/markets">Markets</a>
       <a href="/1031-exchange">1031 Guide</a><a href="/">Run a report</a></div>
     </details>
-    <a href="/desk">My Desk</a>
+    <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
     ${ACCOUNT_NAV_SLOTS}
   </nav>
@@ -575,6 +605,7 @@ if(dd)dd.open=false;});</script>
         <div class="form">
           <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
           <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
+          <label>License number <input id="idLicense" type="text" placeholder="01899123" maxlength="60"/></label>
           <div class="formact">
             <button class="btn" id="idSave">Save</button>
             <button class="btn ghost" id="idCancel">Cancel</button>
@@ -583,6 +614,9 @@ if(dd)dd.open=false;});</script>
         <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
           when you have one, otherwise to your name. This is not a public listing &mdash; it only
           names the credit on comps you choose to publish.</p>
+        <p class="fine">Your license number is required to publish, because the Verified badge on a
+          published comp tells a reader that a licensed broker vouched for the deal. It is never
+          shown to anyone: it backs that badge rather than appearing beside it.</p>
         <p class="msg bad hide" id="idMsg"></p>
       </div>
     </div>
@@ -1287,10 +1321,12 @@ if(dd)dd.open=false;});</script>
   // nowhere to put.
   var EDIT_FIELDS=["address","property_type","transaction","deal_date",
                    "price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type",
+                   "lease_expiry","option_notice_date",
                    "tenancy","year_built","notes"];
   var EDIT_LABELS={address:"Address",property_type:"Type",transaction:"Sale/lease",
     deal_date:"Date",price:"Price",size_sqft:"Size (SF)",cap_rate:"Cap rate",
     rent_psf:"Rent $/SF",rent_basis:"Rent per",lease_type:"Lease type",
+    lease_expiry:"Lease expires",option_notice_date:"Option notice by",
     tenancy:"Tenancy",year_built:"Year built",notes:"Notes"};
 
   function sheetLabel(k){
@@ -1305,6 +1341,11 @@ if(dd)dd.open=false;});</script>
   // worse than not offering it. Both are refreshed after an edit from the row
   // the server sends back. Every entry here must be in EDIT_FIELDS, or the
   // PATCH would reject the field it just offered.
+  // The renewal watch's two dates (038) are deliberately NOT here. They are
+  // spreadsheet-mode fields for the reason stated above: the compact table has
+  // six columns and a stated budget, they apply to leases only, and 029's rent
+  // fields took the same door. A broker fills them in through the spreadsheet,
+  // the CSV template, or the extract confirm table.
   var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft"];
 
   // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
@@ -1386,11 +1427,12 @@ if(dd)dd.open=false;});</script>
   // table, none in the spreadsheet) while swapping the save state, so a
   // className assignment cannot quietly strip the styling off the cell.
   // split(" "), NOT a regex: this whole page is one template literal, where a
-  // single-backslash escape is eaten before the browser ever sees it — /\s+/
-  // in this source emits as /s+/, which splits "saving" into ["","aving"] and
-  // leaves the state class stuck on the cell forever. Class names here are
-  // written by this file and are single-space separated, so a plain split is
-  // both correct and immune to that.
+  // single-backslash escape is eaten before the browser ever sees it — a
+  // whitespace class written with one emits as the LETTER s, which would
+  // split "saving" into ["", "aving"] and leave the state class stuck on the
+  // cell forever. Class names here are written by this file and are
+  // single-space separated, so a plain split is both correct and immune to
+  // that.
   function cellState(el,state){
     var base=String(el.className||"").split(" ").filter(function(c){
       return c&&c!=="saving"&&c!=="saved"&&c!=="err";
@@ -2061,16 +2103,26 @@ if(dd)dd.open=false;});</script>
   // credit could promise a name the write would not produce.
   // (No backticks anywhere in this block: the whole page is one template
   // literal, and one stray backtick ends it — see the file's header note.)
-  var identity={display_name:"",company:"",creditedTo:""};
+  var identity={display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
 
   function renderIdentity(idn){
-    identity=idn||{display_name:"",company:"",creditedTo:""};
+    identity=idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
     var to=identity.creditedTo||"";
-    $("creditLine").innerHTML=to
-      ? "Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
-        '<button class="pubbtn" id="idEdit">Change</button>'
-      : "Comps you publish need a name to credit them to. "+
+    // Three states, not two. A broker with a credit name but no license is
+    // ready in every way the old copy could describe and would still be
+    // refused on click, so the line says which of the two is missing BEFORE
+    // the Publish button is pressed rather than after.
+    if(!to){
+      $("creditLine").innerHTML="Comps you publish need a name to credit them to. "+
         '<button class="pubbtn" id="idEdit">Add your firm</button>';
+    }else if(!identity.canPublish){
+      $("creditLine").innerHTML="Comps you publish are credited to <strong>"+esc(to)+"</strong>, "+
+        "and publishing needs your license number. "+
+        '<button class="pubbtn" id="idEdit">Add it</button>';
+    }else{
+      $("creditLine").innerHTML="Comps you publish are credited to <strong>"+esc(to)+"</strong>. "+
+        '<button class="pubbtn" id="idEdit">Change</button>';
+    }
   }
 
   // The single writer of the form's visibility, like setAddOpen: the fields
@@ -2080,6 +2132,7 @@ if(dd)dd.open=false;});</script>
     if(open){
       $("idCompany").value=identity.company||"";
       $("idName").value=identity.display_name||"";
+      $("idLicense").value=identity.license_number||"";
       $("idMsg").className="msg bad hide";
     }
     $("idForm").className=open?"":"hide";
@@ -2091,7 +2144,8 @@ if(dd)dd.open=false;});</script>
   });
   $("idCancel").addEventListener("click",function(){ setIdOpen(false); });
   $("idSave").addEventListener("click",function(){
-    var body={company:$("idCompany").value,display_name:$("idName").value};
+    var body={company:$("idCompany").value,display_name:$("idName").value,
+      license_number:$("idLicense").value};
     $("idSave").disabled=true; $("idSave").textContent="Saving\\u2026";
     fetch("/api/vault/identity",{method:"POST",credentials:"same-origin",
       headers:{"content-type":"application/json"},body:JSON.stringify(body)})
@@ -2104,7 +2158,8 @@ if(dd)dd.open=false;});</script>
           return;
         }
         renderIdentity({display_name:o.j.identity.display_name,
-          company:o.j.identity.company,creditedTo:o.j.creditedTo});
+          company:o.j.identity.company,license_number:o.j.identity.license_number,
+          creditedTo:o.j.creditedTo,canPublish:o.j.canPublish});
         setIdOpen(false);
       })
       .catch(function(){
@@ -2302,7 +2357,7 @@ if(dd)dd.open=false;});</script>
         out.push({kind:"lead",id:l.id,stage:"new",stageRank:0,
           received:String(l.ts||"").slice(0,10),market:l.market||"",address:"",
           property_type:l.type||"",size_sqft:l.size_sqft||null,
-          source:"lead",sourceLabel:"CompNinja lead",notes:"",
+          source:"lead",sourceLabel:l.is_1031?"CompNinja lead · 1031 exchange":"CompNinja lead",notes:"",
           intro_requested:!!l.intro_requested,status:""});
       });
     }
@@ -2693,7 +2748,7 @@ if(dd)dd.open=false;});</script>
   // Keep in step with broker-vault.js REQUIRED_TARGETS / TEMPLATE_COLUMNS /
   // OPTIONAL_SPEC_COLUMNS. This page cannot require that module.
   var PDF_REQUIRED=["address","property_type","transaction","deal_date"];
-  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
+  var PDF_KEYS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate","rent_psf","rent_basis","lease_type","lease_expiry","option_notice_date","tenancy","year_built","notes","lat","lng","clear_height","dock_doors","building_class","floor_plate","center_type","anchor_tenant","units","price_per_unit","lot_acres","price_per_acre","zoning","beds_baths"];
   var TARGET_LABELS={
     address:"Address", property_type:"Property type", transaction:"Sale or lease",
     deal_date:"Deal date", price:"Price", size_sqft:"Size (SF)", cap_rate:"Cap rate",
@@ -2704,7 +2759,15 @@ if(dd)dd.open=false;});</script>
     center_type:"Center type", anchor_tenant:"Anchor tenant",
     units:"Units", price_per_unit:"Price per unit",
     lot_acres:"Lot (acres)", price_per_acre:"Price per acre", zoning:"Zoning",
-    beds_baths:"Beds / baths"
+    beds_baths:"Beds / baths",
+    // Migration 029's lease fields reached PDF_KEYS and never reached here, so
+    // a lease sheet headed its columns "rent_psf" and "rent_basis" — our own
+    // column names, printed at a broker as though they were words. tLabel
+    // falls back to the key, which is why nothing failed and nobody saw it
+    // until a lease row was actually photographed. A test now pins every
+    // PDF_KEYS entry to a label.
+    rent_psf:"Rent ($/SF)", rent_basis:"Rent basis", lease_type:"Lease type",
+    lease_expiry:"Lease expiry", option_notice_date:"Option notice date"
   };
   function tLabel(t){ return TARGET_LABELS[t]||t }
   // A required field can be unclaimable rather than merely unclaimed: a CoStar
@@ -2868,6 +2931,30 @@ if(dd)dd.open=false;});</script>
     $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
   });
 
+  // The confirm table's own display rule, and it is cellDisplay's CONVENTION
+  // rather than a second one: show the formatted figure, hold the raw one,
+  // swap to raw on focus. It exists because this table is read against the
+  // source document — a page printing $410,000.00 beside a cell reading
+  // 410000 makes a person translate every figure before they can agree with
+  // it, which is most of what made verifying twelve correct rows take four
+  // minutes fifty-one (docs/evals/extract-2026-08-28-verdict-final.md).
+  //
+  // The GUARD is why this is not a bare cellDisplay call. The comps table's
+  // values come from the server already through normalizeRow, so they are
+  // numeric and money() can have them unconditionally. These have not been
+  // normalized yet — and the rows a broker most needs to read are exactly the
+  // ones holding something normalizeRow REFUSED, like "1.2M" or "call for
+  // price" — where Number() yields NaN and money() would render "$NaN",
+  // erasing the very string they need in order to fix it. So format only what
+  // is genuinely a number, and show everything else exactly as it was read.
+  function pdfDisplay(k,v){
+    if(v==null||v==="")return "";
+    var s=String(v);
+    var bare=s.replace(/,/g,"");
+    if(!/^-?\\d+(\\.\\d+)?$/.test(bare))return s;
+    return cellDisplay(k,bare);
+  }
+
   function pdfColumns(rows){
     var cols=PDF_REQUIRED.slice();
     PDF_KEYS.forEach(function(k){
@@ -2917,7 +3004,9 @@ if(dd)dd.open=false;});</script>
       var tint=r.error!=null?' class="need-fix"':"";
       var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
       var cells=cols.map(function(k){
-        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+'" value="'+escA(r.values[k]||"")+'"/></td>';
+        var raw=r.values[k]==null?"":String(r.values[k]);
+        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
+          '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
       }).join("");
       return "<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
     }).join("");
@@ -2942,8 +3031,20 @@ if(dd)dd.open=false;});</script>
           refreshPdfGo();
         });
       }else{
+        // data-raw is what the row actually holds and what gets imported; the
+        // value attribute is only ever what is being SHOWN. Focus swaps to raw
+        // so a broker edits 410000 rather than deciding whether the $ and the
+        // commas in front of them are part of what they are about to retype;
+        // blur puts the formatted reading back.
+        inp.addEventListener("focus",function(){
+          inp.value=inp.getAttribute("data-raw")||"";
+        });
         inp.addEventListener("input",function(){
+          inp.setAttribute("data-raw",inp.value);
           if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+        });
+        inp.addEventListener("blur",function(){
+          inp.value=pdfDisplay(inp.getAttribute("data-k"),inp.getAttribute("data-raw")||"");
         });
       }
     });
@@ -3172,7 +3273,7 @@ if(dd)dd.open=false;});</script>
           compMsg(o.j.error||"That didn't go through.",true);
           // The one refusal a broker can fix on this page, same as the single
           // publish: open the form that supplies the missing credit name.
-          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          if(o.j.code==="needs_credit_name"||o.j.code==="needs_license")setIdOpen(true);
           load();
           return;
         }
@@ -3286,7 +3387,7 @@ if(dd)dd.open=false;});</script>
           // turns "you need a name" into the field that supplies it, instead
           // of sending them off to find where identity is set — which, until
           // this shipped, was nowhere.
-          if(o.j.code==="needs_credit_name")setIdOpen(true);
+          if(o.j.code==="needs_credit_name"||o.j.code==="needs_license")setIdOpen(true);
         }else if(o.j.published&&o.j.creditedTo){
           compMsg("Published, credited to "+o.j.creditedTo+".");
         }else{
@@ -3550,12 +3651,37 @@ if(dd)dd.open=false;});</script>
     if(open)return openSheet(open.getAttribute("data-open-sheet"));
     var b=e.target.closest("button[data-del]"); if(!b)return;
     if(!confirm("Remove this import and all the comps that came in with it?"))return;
-    fetch("/api/vault/upload?id="+encodeURIComponent(b.getAttribute("data-del")),
-      {method:"DELETE",credentials:"same-origin"}).then(function(){
-        if(sheetUploadId&&String(sheetUploadId)===String(b.getAttribute("data-del")))closeSheet();
-        else load();
-      }).catch(load);
+    removeUpload(b.getAttribute("data-del"));
   });
+
+  // Removing an import ALWAYS ends in load(). It used to end in closeSheet()
+  // INSTEAD of load() whenever the import being removed was the one open in
+  // spreadsheet mode -- which is the ordinary way to get here, since the other
+  // button on that row is "Open" and a broker opens an import to check it
+  // before removing it. closeSheet() only re-renders from the arrays the page
+  // is already holding, so the server deleted the comps and the screen went on
+  // showing them: the import still listed, its comp count unchanged, its rows
+  // still in the table. The button read as broken until the page was reloaded.
+  // It closes the sheet AND reloads now -- the close is the immediate repaint,
+  // load() is the truth.
+  //
+  // The status is checked for the same reason. Every refusal -- a lapsed
+  // subscription (403), a Supabase outage (502) -- took the success path, so a
+  // delete that removed nothing looked exactly like one that worked.
+  async function removeUpload(id){
+    var r;
+    try{
+      r=await fetch("/api/vault/upload?id="+encodeURIComponent(id),
+        {method:"DELETE",credentials:"same-origin"});
+    }catch(err){
+      return compMsg("That didn't reach the server. Nothing was removed.",true);
+    }
+    var j=await r.json().catch(function(){return{};});
+    if(!r.ok)return compMsg(j.error||"Could not remove that import.",true);
+    if(sheetUploadId&&String(sheetUploadId)===String(id))closeSheet();
+    load();
+    compMsg("Import removed.");
+  }
 
   // ---- The hubs deck --------------------------------------------------------
   //
@@ -3694,12 +3820,21 @@ if(dd)dd.open=false;});</script>
     // reports as the emailed flag. This used to hard-code "CompNinja does not email
     // them yet" — true when hubs shipped, and a lie the day a domain is
     // verified in Resend, told to the one person relying on it.
+    // THREE cases, because "we did not try" and "we tried and it failed" are
+    // different things to tell a broker. emailed is now the send's own answer
+    // rather than a restatement of the configuration, so a partial failure is
+    // reportable and names who still needs a link.
+    var failed = Array.isArray(j.emailFailed) ? j.emailFailed : [];
     var head = j.emailed
       ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
         'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
-      : '<p class="note">Your hub is ready. Copy each link and send it to that '+
-        'person yourself: CompNinja cannot email them until a sending domain is verified, '+
-        'and these links cannot be shown again.</p>';
+      : failed.length && failed.length < list.length
+        ? '<p class="note">Your hub is ready, but '+esc(failed.join(", "))+
+          ' could not be emailed. Copy their link below and send it yourself; '+
+          'these links cannot be shown again.</p>'
+        : '<p class="note">Your hub is ready. Copy each link and send it to that '+
+          'person yourself: CompNinja could not email them, '+
+          'and these links cannot be shown again.</p>';
     if(!list.length){
       box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
         '">Open the hub</a> and add people to it when you are ready.</p>';

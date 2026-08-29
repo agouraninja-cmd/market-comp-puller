@@ -113,7 +113,10 @@ test("firm routes on a bare server (no database)", async (t) => {
     // firm's private book is served to the next visitor who searches that
     // address; blend before harvestComps() and it enters the public corpus
     // permanently, on a path that swallows its own errors.
-    const gateAt = SERVER.indexOf("const gate = async (rep) => {");
+    // gate() became the module-level finishReportForViewer on 2026-08-21 so
+    // the bulk worker serializes through the same funnel; the rule is
+    // unchanged, and harvestComps now lives in runCompSearch, upstream of it.
+    const gateAt = SERVER.indexOf("async function finishReportForViewer(rep, ctx) {");
     const blendAt = SERVER.indexOf("BLEND.dedupeFirmComps");
     const harvestAt = SERVER.indexOf("harvestComps(");
     assert.ok(gateAt > 0 && blendAt > gateAt, "firm comps must blend inside gate()");
@@ -155,6 +158,31 @@ test("firm routes on a bare server (no database)", async (t) => {
     assert.doesNotMatch(SERVER.replace(/function seatCapOf[\s\S]*?\n}/, ""),
       /Number\(org(Row)? && org(Row)?\.seats\)/,
       "nothing may read orgs.seats except that function");
+  });
+
+  await t.test("every read that feeds seatCapOf actually selects orgs.seats", () => {
+    // The test above pins the funnel; this one pins the fuel, and the gap
+    // between them is what shipped on 2026-08-16. orgsByIds() selected
+    // `id,name,share_default`, so seatCapOf() got `undefined`, and its
+    // documented fallback answered MAX_MEMBERS — 200 — for the invite gate,
+    // the billing display AND the entitlement read. A firm with seats=2
+    // accepted a third member without a word, and every member of a 2-seat
+    // firm would have held Pro. Nothing failed, nothing logged: an omitted
+    // PostgREST column is absent, not an error.
+    //
+    // Both MAX_MEMBERS and 030's column default are 200, which is why no
+    // amount of reading caught it — the wrong answer and the right answer
+    // were the same number until a firm bought a different one.
+    for (const fn of ["orgsByIds", "findOrg"]) {
+      const i = SERVER.indexOf(`async function ${fn}(`);
+      assert.ok(i > 0, `${fn} should exist`);
+      const body = SERVER.slice(i, i + 1200);
+      const select = body.match(/orgs\?[^`]*?select=([a-z_,]+)/);
+      assert.ok(select, `${fn} should read the orgs table with an explicit select`);
+      assert.ok(select[1].split(",").includes("seats"),
+        `${fn} must select orgs.seats — seatCapOf() reads a missing column as MAX_MEMBERS, ` +
+        `so leaving it out disables the seat cap everywhere instead of failing`);
+    }
   });
 
   await t.test("the firm share write is refused without a database, never written to the file store", () => {

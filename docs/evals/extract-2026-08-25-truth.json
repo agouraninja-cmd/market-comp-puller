@@ -1,0 +1,395 @@
+{
+  "_how": "One entry per file. Keyed FROM THE SOURCE DOCUMENT. Month-only sale dates are recorded as the first of the month (see NOTE.txt). Omit a field the document does not state.",
+  "_verify_first": [
+    "CORRECTED again: the Brookdale page DOES state \"Total Square Footage 3600 square feet\" — verified from the source page. Removing it in the previous pass was my error; restored.",
+    "CORRECTED after the first run: c17 year_built and lot_acres were omitted from truth by mistake - both ARE printed on every page (Adjusted Year Built, Land Area) and were verified from the source, not from the run output. Brookdale's address now matches the source's exact punctuation, and its derived size_sqft was removed because the page states none.",
+    "c02 rows 3, 5, 7 - the source TRUNCATES the address with an ellipsis (4647 International..., 1845-1853 Interna..., 2840-2846 Chapman...). I completed them to the likeliest street name. Check against the PDF or drop the street word.",
+    "c02 - source Type column says Warehouse / Manufacturing / Light Distribution. Keyed as Industrial, because the vault accepts only its six types. Retail row kept as Retail.",
+    "c17 row 4 (Brookdale) - the page states $113.89/SF but no square footage; 3600 is derived from 410000/113.89. Verify or omit size_sqft.",
+    "c17 - Building Type is a code list (Retail Store (353), Lodging (225)...). Mapped to the nearest vault type. Row 1 is Lodging+Retail, keyed Retail; row 12 is Restaurant+Residence, keyed Retail.",
+    "c01 - the sixth row (Sulgrave Package, 'subject') is the subject property, NOT a comp. Deliberately absent.",
+    "c19 and c20 are image renders of c02 page 2 and c01. Same deals, so the same truth - that pairing measures PDF vs image on identical content."
+  ],
+  "_fields": "address, property_type, transaction, deal_date, price, size_sqft, cap_rate, rent_psf, rent_basis, lease_type, lease_expiry, option_notice_date, tenancy, year_built, notes, clear_height, dock_doors, building_class, floor_plate, center_type, anchor_tenant, units, price_per_unit, lot_acres, price_per_acre, zoning, beds_baths",
+  "_types": "Industrial, Office, Retail, Multifamily, Land, Residential",
+  "files": [
+    {
+      "file": "c01-multifamily-sale-comps.pdf",
+      "deals": [
+        {
+          "address": "4-6 E 30th",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-07-01",
+          "price": "3100000",
+          "size_sqft": "13300",
+          "units": "24",
+          "price_per_unit": "129167"
+        },
+        {
+          "address": "3522 Beech",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "10000000",
+          "size_sqft": "64122",
+          "units": "76",
+          "price_per_unit": "131579"
+        },
+        {
+          "address": "5924 Bellona Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-10-01",
+          "price": "419000",
+          "size_sqft": "2968",
+          "units": "3",
+          "price_per_unit": "139667"
+        },
+        {
+          "address": "435 Nicoll Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-11-01",
+          "price": "2000000",
+          "size_sqft": "14400",
+          "units": "12",
+          "price_per_unit": "166667"
+        },
+        {
+          "address": "5021 Roland Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "566000",
+          "size_sqft": "2737",
+          "units": "3",
+          "price_per_unit": "188667"
+        }
+      ]
+    },
+    {
+      "file": "c02-costar-sale-comps-report.pdf",
+      "deals": [
+        {
+          "address": "1622 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-09-13",
+          "price": "2350000",
+          "size_sqft": "10500",
+          "year_built": "1925"
+        },
+        {
+          "address": "2036-2040 Livingston St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-04-01",
+          "price": "4250000",
+          "size_sqft": "21000",
+          "year_built": "1920"
+        },
+        {
+          "address": "4647 International, Oakland, CA 94601",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-11-29",
+          "price": "1500000",
+          "size_sqft": "13327",
+          "year_built": "1966"
+        },
+        {
+          "address": "2121 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-09-21",
+          "price": "4500000",
+          "size_sqft": "23824",
+          "year_built": "1959"
+        },
+        {
+          "address": "1845-1853 International, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-06-22",
+          "price": "1150000",
+          "size_sqft": "10175",
+          "year_built": "1940"
+        },
+        {
+          "address": "1900-1906 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-05-06",
+          "price": "2300000",
+          "size_sqft": "21000",
+          "year_built": "1912"
+        },
+        {
+          "address": "2840-2846 Chapman, Oakland, CA 94601",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-03-19",
+          "price": "1842500",
+          "size_sqft": "10500",
+          "year_built": "1949"
+        }
+      ]
+    },
+    {
+      "file": "c17-chaffee-sales-p3-14.pdf",
+      "deals": [
+        {
+          "address": "33975 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-02-04",
+          "price": "1900000",
+          "size_sqft": "4829",
+          "lot_acres": "21.11"
+        },
+        {
+          "address": "16450 County Road 306, Buena Vista, CO 81211",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-06-29",
+          "price": "400000",
+          "size_sqft": "2146",
+          "year_built": "1975",
+          "lot_acres": "1.46"
+        },
+        {
+          "address": "527 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-12-29",
+          "price": "1267500",
+          "size_sqft": "6099",
+          "year_built": "1993",
+          "lot_acres": "1.19"
+        },
+        {
+          "address": "102 – 104 Brookdale Ave. Buena Vista, CO. 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2020-12-29",
+          "price": "410000",
+          "year_built": "1997",
+          "lot_acres": "0.82",
+          "size_sqft": "3600"
+        },
+        {
+          "address": "545 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-04-23",
+          "price": "600000",
+          "size_sqft": "2505",
+          "year_built": "2000",
+          "lot_acres": "0.30"
+        },
+        {
+          "address": "507 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-09-30",
+          "price": "700000",
+          "size_sqft": "864",
+          "year_built": "1979",
+          "lot_acres": "0.92"
+        },
+        {
+          "address": "308 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-04-20",
+          "price": "1026000",
+          "size_sqft": "3679",
+          "year_built": "1990",
+          "lot_acres": "0.13"
+        },
+        {
+          "address": "330 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2020-11-20",
+          "price": "620000",
+          "size_sqft": "1700",
+          "year_built": "1965",
+          "lot_acres": "0.07"
+        },
+        {
+          "address": "413 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Office",
+          "transaction": "sale",
+          "deal_date": "2021-01-22",
+          "price": "1450000",
+          "size_sqft": "9900",
+          "year_built": "1987",
+          "lot_acres": "0.29"
+        },
+        {
+          "address": "415 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-09-30",
+          "price": "3275000",
+          "size_sqft": "23164",
+          "year_built": "2000",
+          "lot_acres": "1.19"
+        },
+        {
+          "address": "401 N. Hwy 24, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-06-09",
+          "price": "2000000",
+          "size_sqft": "13800",
+          "year_built": "1995",
+          "lot_acres": "0.85"
+        },
+        {
+          "address": "206 E. Main St, Buena Vista, CO 81211",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2022-04-27",
+          "price": "2400000",
+          "size_sqft": "7125",
+          "year_built": "2003",
+          "lot_acres": "0.16"
+        }
+      ]
+    },
+    {
+      "file": "c19-costar-comps-2.png",
+      "deals": [
+        {
+          "address": "1622 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-09-13",
+          "price": "2350000",
+          "size_sqft": "10500",
+          "year_built": "1925"
+        },
+        {
+          "address": "2036-2040 Livingston St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2022-04-01",
+          "price": "4250000",
+          "size_sqft": "21000",
+          "year_built": "1920"
+        },
+        {
+          "address": "4647 International, Oakland, CA 94601",
+          "property_type": "Retail",
+          "transaction": "sale",
+          "deal_date": "2021-11-29",
+          "price": "1500000",
+          "size_sqft": "13327",
+          "year_built": "1966"
+        },
+        {
+          "address": "2121 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-09-21",
+          "price": "4500000",
+          "size_sqft": "23824",
+          "year_built": "1959"
+        },
+        {
+          "address": "1845-1853 International, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-06-22",
+          "price": "1150000",
+          "size_sqft": "10175",
+          "year_built": "1940"
+        },
+        {
+          "address": "1900-1906 E 12th St, Oakland, CA 94606",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-05-06",
+          "price": "2300000",
+          "size_sqft": "21000",
+          "year_built": "1912"
+        },
+        {
+          "address": "2840-2846 Chapman, Oakland, CA 94601",
+          "property_type": "Industrial",
+          "transaction": "sale",
+          "deal_date": "2021-03-19",
+          "price": "1842500",
+          "size_sqft": "10500",
+          "year_built": "1949"
+        }
+      ]
+    },
+    {
+      "file": "c20-benfrederick-img-1.png",
+      "deals": [
+        {
+          "address": "4-6 E 30th",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-07-01",
+          "price": "3100000",
+          "size_sqft": "13300",
+          "units": "24",
+          "price_per_unit": "129167"
+        },
+        {
+          "address": "3522 Beech",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "10000000",
+          "size_sqft": "64122",
+          "units": "76",
+          "price_per_unit": "131579"
+        },
+        {
+          "address": "5924 Bellona Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-10-01",
+          "price": "419000",
+          "size_sqft": "2968",
+          "units": "3",
+          "price_per_unit": "139667"
+        },
+        {
+          "address": "435 Nicoll Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2024-11-01",
+          "price": "2000000",
+          "size_sqft": "14400",
+          "units": "12",
+          "price_per_unit": "166667"
+        },
+        {
+          "address": "5021 Roland Ave",
+          "property_type": "Multifamily",
+          "transaction": "sale",
+          "deal_date": "2023-08-01",
+          "price": "566000",
+          "size_sqft": "2737",
+          "units": "3",
+          "price_per_unit": "188667"
+        }
+      ]
+    }
+  ],
+  "_sources": {
+    "_": "Public documents, downloaded 2026-08-25. extract-eval/ is gitignored, so re-download these to re-run.",
+    "c01-multifamily-sale-comps.pdf": "https://benfrederick.com/wp-content/uploads/2025/02/Sale-Comps.pdf",
+    "c02-costar-sale-comps-report.pdf": "https://app2.boardontrack.com/org/maUTAb/attachment/publicDownload/260560?s=maUTAb",
+    "c17-chaffee-sales-p3-14.pdf": "pages 3-14 of https://cms2.revize.com/revize/chaffeecounty/Documents/Departments/Assessor/2025%20PDF%20Commerical%20Sales%20Book.pdf (extracted with pdftocairo; the whole book is 19.5MB, over the route's 4MB cap)",
+    "c19-costar-comps-2.png": "page 2 of c02 rendered at 150dpi with pdftoppm — same deals as c02, which is what makes the PDF-vs-image comparison possible",
+    "c20-benfrederick-img-1.png": "c01 rendered at 150dpi with pdftoppm — same deals as c01"
+  }
+}

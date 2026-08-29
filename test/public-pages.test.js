@@ -131,6 +131,53 @@ test("the broker contribution path is not a dead end", async (t) => {
     assert.match(html, /Working a 1031 exchange\?/);
     assert.match(html, /CompNinja is not a licensed brokerage/);
     assert.match(html, /id="upgradeProLink"/);
+    assert.match(html, /class="bkhero"/, "the claim sits beside a report exhibit");
+    assert.match(html, /class="bkex"/, "the exhibit shows the Verified chip in situ");
+    assert.match(offer, /Illustrative/, "the exhibit must not read as a live pull");
+    assert.equal((html.match(/class="bkpath"/g) || []).length, 1,
+      "how a submission works is one path, not Method");
+    assert.equal((html.match(/class="bkbeat"/g) || []).length, 3,
+      "the path is three beats");
+    const pathChunk = html.split('class="bkpath"')[1].split('class="cta"')[0];
+    assert.ok(!/href="\/\?submit=comp"/.test(pathChunk),
+      "the path is not a second Submit door");
+  });
+
+  await t.test("/brokers FAQ matches its JSON-LD, and does not claim we are a broker", async () => {
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    const visible = (html.match(/<details class="q">/g) || []).length;
+    assert.equal(visible, 5, "five broker questions");
+    const ldBlocks = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)];
+    const faq = ldBlocks.map((m) => JSON.parse(m[1])).map((doc) => {
+      const graph = doc["@graph"] || (doc["@type"] === "FAQPage" ? [doc] : []);
+      return graph.find((n) => n && n["@type"] === "FAQPage");
+    }).find(Boolean);
+    assert.ok(faq, "FAQPage node must ride the brokers page");
+    assert.equal(faq.mainEntity.length, visible,
+      "accordions and JSON-LD must both render every FAQ entry");
+    const answers = faq.mainEntity.map((q) => q.acceptedAnswer.text).join(" ");
+    assert.ok(!/\bwe are (a )?brokers?\b/i.test(answers),
+      "FAQ must not claim CompNinja is a brokerage");
+    assert.ok(!/\bappraisal\b/i.test(answers),
+      "FAQ must not call a report an appraisal");
+    assert.match(answers, /Submitting is free/,
+      "the first question has to stay the honest price answer");
+
+    // The vault-privacy answer is a PUBLIC promise about a broker's own book,
+    // and it rides into FAQPage JSON-LD, so search engines quote it back. It
+    // must name every way a comp can leave the vault. When this page was
+    // written publishing was the only one; sharing a comp with your firm
+    // (migration 032) landed before it merged, and the vault page itself
+    // stops saying "visible only to you" the moment something is shared
+    // (renderFirmPrivacy). A flat "never appears in anyone else's report
+    // unless you publish" would deny a sharing path that exists.
+    const vault = faq.mainEntity.find((q) => /vault private/i.test(q.name));
+    assert.ok(vault, "the vault-privacy question must stay on the page");
+    assert.match(vault.acceptedAnswer.text, /firm/i,
+      "the privacy answer must name firm sharing, not just publishing");
+    assert.ok(!/never appear in anyone else's report unless you publish one/i
+      .test(vault.acceptedAnswer.text),
+      "that phrasing denies firm sharing, which exists");
   });
 
   await t.test("that door serves the app, not the landing page", async () => {
@@ -170,6 +217,53 @@ test("the cost answer matches what the product actually sells", async (t) => {
     }
   });
 
+  // The same failure mode from the other direction: on 2026-08-21 the free
+  // tier went to every-comp and the $20 one-off was retired, and this page —
+  // the landing page under the wall, whose answers Google serves as facts —
+  // spent the day still selling both. The price answer must never promise a
+  // free comp limit that no longer exists or a product that cannot be bought.
+  await t.test("it no longer sells the retired $20 unlock or a free comp limit", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/itemizes ten comps/i.test(html),
+        p + " must not claim a ten-comp free limit; FREE_MAX_COMPS is \"all\"");
+      assert.ok(!/unlocks on its own for \$20/i.test(html) && !/single report unlocks/i.test(html),
+        p + " must not sell the single-report unlock; it was retired 2026-08-21");
+      assert.ok(/itemize every comparable/i.test(html),
+        p + " should state the real free tier, not go vague about it");
+    }
+  });
+
+  // The third time this answer has needed pinning against reality, and the
+  // first about the PRICE. PRO-BILLING-SETUP.md has warned since 2026-07-31
+  // that the monthly figure is hard-coded in the pricing modal while the
+  // actual charge comes from a Stripe price ID, so "nothing catches a drift"
+  // — and on 2026-08-25 the price moved $129 -> $100, which meant editing the
+  // modal, the compare table and this answer in one go.
+  //
+  // Stripe cannot be reached from here, so this pins the two IN-REPO copies to
+  // each other: whatever the modal's Pro tile charges per month, the FAQ
+  // answer Google serves as a fact about this product must say the same. It
+  // cannot catch both being wrong together; it does catch the likelier
+  // failure, which is one being edited and the other forgotten.
+  await t.test("the FAQ's monthly price is the pricing modal's monthly price", async () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const page = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+
+    // The Pro tile: the figure immediately followed by "per month".
+    const tile = page.match(/<div class="pr-fig">\$([\d,]+)<\/div>\s*<div class="pr-per">per month/);
+    assert.ok(tile, "the pricing modal's Pro monthly tile is gone or restructured — this pin is blind");
+
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const said = html.match(/Pro, at \$([\d,]+) a month/);
+      assert.ok(said, p + " no longer states a monthly price in the cost answer");
+      assert.equal(said[1], tile[1],
+        p + " quotes $" + said[1] + " a month while the pricing modal charges $" + tile[1]);
+    }
+  });
+
   await t.test("brokers have a path off the landing page, not just an FAQ row", async () => {
     // Until 2026-08-12 a broker arriving here met one FAQ answer and a link
     // inside the Explore dropdown. The owner's own read is that broker
@@ -177,9 +271,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
     // that every visitor lands on should say what a broker gets and where to
     // go. Asserted on both surfaces because `/` and /how-it-works serve the
     // same bytes while the wall is up.
+    //
+    // The heading became "Where a comp can go." on 2026-08-29, when the page
+    // went broker-first throughout. "What brokers get" was right for a
+    // sidebar on an owner-facing page; on a page whose hero is already the
+    // broker's own vault it reads as a leftover. What the section has to DO is
+    // unchanged, and the three promises below are what actually matter.
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
-      assert.match(html, /What brokers get/, p + " should address brokers directly");
+      assert.match(html, /Where a comp can go/, p + " should address brokers directly");
       assert.match(html, /href="\/brokers"/, p + " should link to the broker page");
       // The three concrete trades, not a pitch. Matched around the
       // apostrophes, which escHtml turns into &#39; on the way out.
@@ -199,7 +299,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
       const html = await (await fetch(srv.base + p)).text();
       const chunk = html.split('kicker">Brokers')[1];
       assert.ok(chunk, p + " must still have a Brokers kicker");
-      const brokers = chunk.split("See it on your own building")[0];
+      // Bounded by the CTA's CLASS, not by its heading text. This split used
+      // to look for "See it on your own building", which the 2026-08-29
+      // rewrite deleted — and a split on a string that is not there returns
+      // the whole remainder, so the slice would have quietly grown to the end
+      // of the document and every assertion below would have stopped meaning
+      // what it says. The class is the structural boundary and cannot drift
+      // with copy.
+      const brokers = chunk.split('class="cta')[0];
+      assert.ok(brokers.length < chunk.length, p + " must still close with the CTA");
       assert.equal((brokers.match(/class="bkrow"/g) || []).length, 3,
         p + " should show three trades as rows");
       assert.match(brokers, /class="bklag">Private</, p + " should label the privacy trade");
@@ -239,14 +347,23 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
+  // Every CTA door off a market page: primary <a class="btn"> links AND the
+  // "value a property here" form (2026-08-20), whose data-dest is the URL it
+  // navigates to after stashing the typed address for the search form.
+  const ctaDoors = (html) => [
+    ...[...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]),
+    ...[...html.matchAll(/<form class="vform" data-dest="([^"]*)"/g)].map((m) => m[1]),
+  ];
+
   await t.test("the primary button is at least as smart as the link below it", async () => {
     // The loudest CTA was a bare href="/", which under the wall answers with
     // a generic explainer: the visitor asks to value their building and gets
     // another marketing page. The secondary link beneath it already carried
     // the market and type, so the pattern existed and the big button ignored
-    // it.
+    // it. Since 2026-08-20 the loudest CTA is the vform, which carries the
+    // ADDRESS as well — the same rules hold for its destination.
     const html = await (await fetch(srv.base + MARKET_PAGE)).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     assert.ok(ctas.length > 0, "the market page must still have a primary CTA");
     for (const href of ctas) {
       assert.ok(href !== "/", "a bare / bounces an anonymous visitor back into marketing");
@@ -257,10 +374,13 @@ test("the market page CTA carries the market a visitor is reading", async (t) =>
 
   await t.test("a signed-in visitor is not shown a signup CTA either", async () => {
     const html = await (await fetch(srv.base + MARKET_PAGE, { headers: SESSION })).text();
-    const ctas = [...html.matchAll(/<a class="btn" href="([^"]*)"/g)].map((m) => m[1]);
+    const ctas = ctaDoors(html);
     for (const href of ctas) {
       assert.ok(!/auth=signup/.test(href), "a member already has an account: " + href);
     }
+    // The member's value-a-property door still carries the type it was read on.
+    assert.match(html, /<form class="vform" data-dest="\/\?type=Industrial"/,
+      "a member's vform lands straight on the prefilled search");
   });
 
   await t.test("the comps table is a research set, not only a teaser", async () => {
@@ -378,7 +498,7 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
     const html = await (await fetch(srv.base + "/")).text();
     const exhibits = html.match(/class="exhibit\b/g) || [];
     assert.equal(exhibits.length, 1, "one sample report; the mini + full pair is the bug");
-    assert.match(html, /id="landingAddress"/, "the hero asks for a building");
+    assert.match(html, /id="landingAddress"/, "the page still asks for a building");
     assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise the landing");
     assert.ok(!/id="compForm"/.test(html), "the real search form lives only in index.html");
     assert.ok(
@@ -397,6 +517,96 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
     const brokersBlock = afterBrokers.split(/class="cta/)[0];
     assert.ok(!/class="steps"/.test(brokersBlock), "do not reuse Method's 3-up for brokers");
     assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
+  });
+});
+
+// The 2026-08-29 rebuild. The owner's instruction was that the single-address
+// comp puller stop being the centre of attention and leave the top of the
+// page; before this, the hero's CTA WAS the address field and the exhibit
+// beside it was a one-property report. Nothing pinned that, so nothing stopped
+// it drifting back — these do. Asserted on both surfaces, because `/` and
+// /how-it-works serve the same bytes while the wall is up.
+test("the landing leads with the archive, not the address field", async (t) => {
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const pages = ["/", "/how-it-works"];
+
+  await t.test("the vault is the first beat and the search sits below Method", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      const vault = html.indexOf('class="vault"');
+      const addr = html.indexOf('id="landingAddress"');
+      const method = html.indexOf('kicker">Method');
+      assert.ok(vault > -1, p + " must show the vault sheet");
+      assert.ok(vault < addr, p + " must lead with the vault, not the address field");
+      assert.ok(method < addr, p + " must put the search below Method, in the proof section");
+      assert.equal((html.match(/class="vault"/g) || []).length, 1,
+        p + " needs one vault sheet; a second is the mini+full bug in a new costume");
+    }
+  });
+
+  await t.test("the vault chip is ownership, never provenance", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /class="badge bv">From your vault</,
+        p + " should show the chip a broker meets inside their own report");
+      // "Verified" is a word the SERVER awards when a named broker vouches.
+      // A private row has not earned it, and the two must never be conflated
+      // in the one place a broker is being told what the vault is.
+      assert.ok(!/[Vv]erified[^<]{0,24}vault/.test(html),
+        p + " must never describe a vault comp as verified");
+    }
+  });
+
+  await t.test("it states what leaves the vault, in full", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /no address, no total price, no notes/i,
+        p + " should say exactly what a shared comp keeps");
+      // "no price" would be false: $/SF x size implies it, which is the
+      // trade-off comp-gate.js names when it builds a locked_basis row.
+      assert.ok(!/no address, no price\b/i.test(html),
+        p + " must not claim the price is withheld; the basis implies it");
+    }
+  });
+
+  // BRAND.md §4 protects this sentence, and it had never been asserted on the
+  // page it most needs to be on. It is the line most likely to be lost to a
+  // future layout tidy-up.
+  await t.test("the appraisal disclaimer survives the layout", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /An automated estimate, not an appraisal/,
+        p + " must carry the disclaimer verbatim");
+    }
+  });
+
+  // Archive-first retrieval floors the web-search budget when a broker's own
+  // vault is strong -- but it is gated on PROVIDER.capabilities.searchBudget,
+  // and the default provider (Gemini) takes no max_uses, so it is INERT in
+  // production. Selling it would be selling something that does not happen.
+  await t.test("it does not sell the search saving, which is inert in production", async () => {
+    const forbidden = [/cheaper search/i, /fewer searches/i, /without spending a search/i,
+                       /costs? (you )?less to search/i, /skips? the search/i];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      for (const bad of forbidden) {
+        assert.ok(!bad.test(html), p + " must not claim the archive cheapens a search: " + bad);
+      }
+    }
+  });
+
+  // deal-board.js is explicit that it counts CONTRIBUTION to the firm, not
+  // closings. A landing page that promised otherwise would be selling
+  // surveillance the product deliberately does not do.
+  await t.test("the firm section does not promise a closings leaderboard", async () => {
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/who (is|are) closing what[^<]*\./i.test(html.replace(/It does not report who is closing what\./g, "")),
+        p + " must not offer a record of who is closing what");
+      assert.match(html, /does not report who is closing what/i,
+        p + " should say plainly what the deal board is not");
+    }
   });
 });
 
@@ -420,8 +630,9 @@ test("a market page with no brokers does not promise a Broker Opinion of Value",
     "with no broker covering this market, the page must not promise one");
   assert.match(html, /with the source cited on every one/,
     "the fallback should sell the report, which is the thing that exists");
-  // The hand-raise itself is unaffected: the CTA still opens the app.
-  assert.match(html, /<a class="btn" href="[^"]*auth=signup/,
+  // The hand-raise itself is unaffected: the CTA (the value-a-property form
+  // since 2026-08-20) still opens the app through the wall-honored door.
+  assert.match(html, /<form class="vform" data-dest="[^"]*auth=signup/,
     "the primary CTA must still be there");
 });
 
@@ -480,7 +691,7 @@ test("a market page header is a photograph of that city, or a satellite aerial i
   const html = await (await fetch(srv.base + MARKET_PAGE)).text();
   assert.equal(MARKETHERO.cityKey(MARKET.city, MARKET.state), "ontario, ca",
     "this fixture is Ontario, CA — the city whose Commons file is too small");
-  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipKeys: ["ontario, ca"] });
+  const live = MARKETHERO.heroFor(MARKET.city, MARKET.state, { skipFiles: ["ontario-ca.jpg"] });
   assert.ok(live, "the seeded fixture city must still have a header picture");
   assert.match(html, /class="mkt-hero"/);
   assert.match(html, /class="mkt-hero-img"/);

@@ -317,3 +317,117 @@ test("autoShareValue maps the three named choices, and refuses anything else", (
     assert.equal(ORG.autoShareValue(junk), undefined, JSON.stringify(junk));
   }
 });
+
+// ---------------------------------------------------------------------------
+// Shop kind (migrations 036 and 037) — the customer types of Transition Plan
+// v2 §6, plus the tenant rep shop added on top of it 2026-08-21.
+//
+// One column, two vocabularies. These pin the two rules that make it safe to
+// read anywhere: an unrecognized kind renders the words a firm has already
+// been reading, and creating a firm cannot answer the question by silence.
+// ---------------------------------------------------------------------------
+
+test("an unrecognized kind reads as 'broker' — the words the firm already saw", () => {
+  // Not a security fallback (nothing here grants anything) but an incumbency
+  // one: every firm created before 036 has only ever been shown broker-shop
+  // copy, so a typo must not re-label their whole desk.
+  for (const v of ["BROKER", "enterprise", "dev", "", null, undefined, true, 3]) {
+    assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
+  }
+  // 037's near misses, which are the ones a hand-written row or an older
+  // client would actually produce. None of them is the value.
+  for (const v of ["tenant", "tenant rep", "tenant-rep", "TENANT_REP", "rep"]) {
+    assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
+  }
+  assert.equal(ORG.kindOf(null), "broker");
+  assert.equal(ORG.kindOf("development"), "broker", "a string is not an org row");
+  assert.equal(ORG.kindOf({ kind: "development" }), "development");
+  assert.equal(ORG.kindOf({ kind: "tenant_rep" }), "tenant_rep");
+});
+
+test("creating a firm cannot answer the shop question by silence", () => {
+  // The one place this differs from share_default, which ships off and is
+  // changed later: the creator is the only person who knows the answer, and a
+  // default would be taken by everyone who never thought about it.
+  for (const missing of [undefined, null, "", "   "]) {
+    assert.equal(ORG.validateShopKind(missing).ok, false, JSON.stringify(missing));
+  }
+  // "enterprise" is refused like any other junk: §6 rules it out as a target,
+  // so it is not a value the product has.
+  for (const junk of ["enterprise", "brokerage", "dev", 1, true, {}]) {
+    assert.equal(ORG.validateShopKind(junk).ok, false, JSON.stringify(junk));
+  }
+  // The write path normalizes case and padding and NOTHING else: a space or a
+  // hyphen where the underscore goes is a different string, and the CHECK in
+  // 037 would refuse it one layer down anyway. Refusing here keeps the two
+  // layers saying the same thing.
+  for (const near of ["tenant", "tenant rep", "tenant-rep", "tenantrep"]) {
+    assert.equal(ORG.validateShopKind(near).ok, false, JSON.stringify(near));
+  }
+  assert.deepEqual(ORG.validateShopKind("  Development "), { ok: true, kind: "development" },
+    "trimmed and lowercased, the way validateOrgName collapses a name");
+  assert.deepEqual(ORG.validateShopKind("broker"), { ok: true, kind: "broker" });
+  assert.deepEqual(ORG.validateShopKind(" Tenant_Rep "), { ok: true, kind: "tenant_rep" });
+});
+
+test("the refusal names every shop there is", () => {
+  // The sentence is read under a select the reader may have scrolled past, so
+  // it enumerates rather than saying "choose one" — which makes it the one
+  // string that silently goes stale the day a fourth kind lands. index.html
+  // repeats it word for word (the browser refuses before spending a round
+  // trip), and test/org-desk.test.js pins that copy to this one.
+  const { error } = ORG.validateShopKind("");
+  for (const kind of ORG.SHOP_KINDS) {
+    const noun = ORG.SHOP_COPY[kind].label.toLowerCase();
+    assert.ok(error.includes(noun), `the refusal never mentions a ${noun}: ${error}`);
+  }
+});
+
+test("every kind has copy, and only the kinds do", () => {
+  // SHOP_COPY is read through kindOf, so a kind without an entry would be an
+  // undefined dereference on a desk rather than a missing word.
+  assert.deepEqual(Object.keys(ORG.SHOP_COPY).sort(), [...ORG.SHOP_KINDS].sort());
+  for (const kind of ORG.SHOP_KINDS) {
+    const copy = ORG.SHOP_COPY[kind];
+    assert.ok(copy.label && copy.arrivals, kind);
+    assert.equal(typeof copy.shelfType, "string", `${kind} shelfType is a string, "" meaning all`);
+  }
+  assert.equal(ORG.shopCopyOf({ kind: "development" }).shelfType, "Land");
+  assert.equal(ORG.shopCopyOf({ kind: "nonsense" }), ORG.SHOP_COPY.broker);
+
+  // Land is a DEFAULT VIEW and not a claim about what a development shop may
+  // file, which is why only one kind has one. A tenant rep works across
+  // office, industrial and retail, so any single type here would open two
+  // shops out of three on a shelf that looks like it lost rows.
+  assert.equal(ORG.shopCopyOf({ kind: "tenant_rep" }).shelfType, "",
+    "a filtered default nobody chose is worse than no default");
+
+  // Three kinds, three sentences. A copy-paste that left two shops reading the
+  // same nouns would pass every other assertion in this file.
+  const said = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].arrivals);
+  assert.equal(new Set(said).size, said.length, "two shops read the same shelf sentence");
+  const labels = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].label);
+  assert.equal(new Set(labels).size, labels.length, "two shops share a label");
+});
+
+// --- MIN_SEATS --------------------------------------------------------------
+//
+// The one constant in this file that is about PRICE rather than shape, and it
+// closes a hole rather than expressing a preference: without it one person
+// could create a firm, buy a single seat, cancel their personal plan and keep
+// Pro at the seat price — which sits below the individual price by
+// construction, because a team discount is the point of the plan.
+//
+// Two is the smallest number that both means "a firm" and bills above the
+// individual price. These assertions are the properties that make it work, so
+// that moving the number forces the reasoning to be redone rather than
+// quietly reopening the hole.
+// ---------------------------------------------------------------------------
+test("MIN_SEATS is at least two and never exceeds the structural cap", () => {
+  assert.equal(typeof ORG.MIN_SEATS, "number");
+  assert.ok(Number.isInteger(ORG.MIN_SEATS), "a fractional seat is not a thing to sell");
+  assert.ok(ORG.MIN_SEATS >= 2,
+    "one seat is a cheaper Pro wearing a firm's clothes — see the constant's comment");
+  assert.ok(ORG.MIN_SEATS <= ORG.MAX_MEMBERS,
+    "a minimum above the cap would make every firm plan unbuyable");
+});

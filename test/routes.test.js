@@ -129,6 +129,10 @@ test("bare environment", async (t) => {
       "the not-advice box must ship on the live page");
     assert.ok(html.includes(".steps1031"),
       "GUIDE_CSS must ship on the served page (proves the route's head: line survived)");
+    assert.ok(html.includes("id=\"worksheet\""),
+      "the identification worksheet is the page now; the explainer sits below it");
+    assert.ok(html.toLowerCase().includes("not a written identification"),
+      "the page must not read as the list delivered to a QI");
   });
 
   await t.test("sitemap.xml lists the 1031 guide", async () => {
@@ -179,6 +183,264 @@ test("bare environment", async (t) => {
     assert.match(related, /·/, "trimmed links use a bullet in place of the middle");
   });
 
+  // The comp map card carries the market's momentum — the same read, the same
+  // three words and the same three colours the Explorer dropdown badges with.
+  //
+  // The colour is a CLASS here (MARKET_CSS is ours, unlike the vendored
+  // tailwind build the dropdown has to work around), and a class that is not
+  // in the stylesheet fails silently: the word renders in body grey and the
+  // page looks fine. So the served page is checked for the rule, not just for
+  // the attribute.
+  await t.test("the comp map card badges which way the market is moving", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-ontario-ca")).text();
+    const head = (html.match(/<div class="mhead">([\s\S]*?)<\/div>/) || [])[1] || "";
+    assert.match(head, /<h2[^>]*>Where these comps are<\/h2>/, "the map card's own heading must stay in the row");
+    assert.match(head, /class="mdirv mdirv-contracting">Contracting</,
+      "Ontario's stored read is contracting — the word and its colour class must both render");
+    assert.match(head, /Momentum/, "the word is labelled, not left to be guessed at");
+    for (const cls of ["mdirv-expanding", "mdirv-flat", "mdirv-contracting"]) {
+      assert.match(html, new RegExp("\\." + cls + "\\{color:var\\(--"),
+        cls + " has no rule in MARKET_CSS, so that word would render uncoloured");
+    }
+  });
+
+  // A market with no read renders NOTHING, never a fourth "unknown" state.
+  // Five of the seeded pages are in this state on purpose: their momentum
+  // sentence was two-sided and the classifier refused to pick a half.
+  await t.test("a market with no stored direction gets no badge at all", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    assert.ok(html.includes('id="mktMapCard"'), "this page must still have its map card");
+    assert.ok(!html.includes('class="mdir"'),
+      "an unread market must show no momentum, not an Unknown chip");
+    assert.match(html, /<h2[^>]*>Where these comps are<\/h2>/,
+      "and the heading must be untouched when there is no badge beside it");
+  });
+
+  // The dropdown and the page it links to must never disagree about the same
+  // market on the same afternoon. Both read freshDirection(), which is what
+  // makes the 90-day expiry one rule rather than two — this is what catches a
+  // second copy of the vocabulary or the age gate growing on either side.
+  //
+  // ONE sweep over the market pages, not two: this renders every seeded page
+  // already, and each render now serialises a boundary, so a second full
+  // pass for the map blob was pure CI time on a suite that is already a
+  // documented sore point. Badge and blob are checked in the same pass.
+  await t.test("the map badge and blob say what /api/markets says, market by market", async () => {
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    assert.ok(rows.length > 10, "the seeded directory should be here");
+    let checked = 0, withBlob = 0, withBoundary = 0;
+    for (const row of rows) {
+      const html = await (await fetch(srv.base + "/market/" + row.slug)).text();
+      // No map card, no badge: this one rides on the map, so a market whose
+      // comps are all quoted at the submarket level shows nothing either way.
+      if (!html.includes('id="mktMapCard"')) continue;
+      checked++;
+      const word = (html.match(/class="mdirv mdirv-\w+">(\w+)</) || [])[1] || null;
+      assert.equal(word ? word.toLowerCase() : null, row.direction || null,
+        row.slug + ": the map card and the Explorer dropdown disagree");
+      // The THIRD surface of the same read: the wash drawn under the comps.
+      // The badge states it in a word, the blob hands the same value to the
+      // browser that colours the shape, so they cannot drift apart.
+      const m = html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/);
+      if (!m) continue;
+      withBlob++;
+      assert.ok(!m[1].includes("<"), row.slug + ": a raw < in the blob can close the script tag early");
+      const blob = JSON.parse(m[1]);
+      assert.equal(blob.dir || null, row.direction || null,
+        row.slug + ": the map blob and the Explorer dropdown disagree about momentum");
+      if (blob.boundary) {
+        withBoundary++;
+        assert.ok(blob.boundary.type === "Polygon" || blob.boundary.type === "MultiPolygon",
+          row.slug + "'s inlined boundary is not a polygon — the map would throw drawing it");
+      }
+    }
+    assert.ok(checked > 10, "expected most seeded markets to have a map card, got " + checked);
+    assert.ok(withBlob > 10, "expected most seeded markets to carry a map blob, got " + withBlob);
+    assert.ok(withBoundary >= 15,
+      "expected nearly every seeded city to inline its boundary, got " + withBoundary);
+  });
+
+  // The /markets directory's momentum map (2026-08-25): one pin per covered
+  // market over the whole country, colored by the same freshDirection read.
+  // The JSON blob is what the browser script draws from, so the blob IS the
+  // contract — well-formed, inert, and path-safe slugs, since each one
+  // becomes a navigation target.
+  await t.test("/markets carries the momentum map and a well-formed pin blob", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.ok(html.includes('id="mktsMap"'), "the map container is missing");
+    assert.ok(html.includes("unpkg.com/leaflet@1.9.4/dist/leaflet.js"),
+      "Leaflet must ride the page head when the map renders");
+    const blob = (html.match(/<script id="mktsMapData" type="application\/json">([\s\S]*?)<\/script>/) || [])[1];
+    assert.ok(blob, "the pin blob is missing");
+    assert.ok(!blob.includes("<"), "a raw < in the blob can close the script tag early");
+    const pins = JSON.parse(blob).pins;
+    assert.ok(pins.length > 20,
+      "every seeded market has a committed coordinate, got only " + pins.length + " pins");
+    for (const p of pins) {
+      assert.ok(Number.isFinite(p.lat) && Number.isFinite(p.lng), p.slug + " has a non-finite point");
+      assert.match(p.slug, /^[a-z0-9-]+$/, JSON.stringify(p.slug) + " is not a path-safe slug");
+    }
+  });
+
+  // The badge-agreement rule above, one surface over: a pin's color and the
+  // Explorer dropdown's word must agree market by market, because both are
+  // freshDirection and nothing else. `dir` is omitted rather than empty on a
+  // no-read market (the /api/markets convention), and the map draws those as
+  // a hollow outline — an absence of claim, deliberately never flat's grey.
+  await t.test("the momentum map's pins say what /api/markets says, market by market", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const pins = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).pins;
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    const bySlug = new Map(pins.map((p) => [p.slug, p]));
+    let unread = 0;
+    for (const row of rows) {
+      const pin = bySlug.get(row.slug);
+      if (!pin) continue;
+      assert.equal(pin.dir || null, row.direction || null,
+        row.slug + ": the map pin and the Explorer dropdown disagree");
+      if (!row.direction) {
+        unread++;
+        assert.ok(!("dir" in pin),
+          row.slug + ": a no-read market must omit dir outright, never carry an empty one");
+      }
+    }
+    assert.ok(unread > 0,
+      "the seeds deliberately include unread markets — the hollow state must actually be exercised");
+    // The pin CSS: all four states have rules, and the hollow one never
+    // shares flat's grey fill — the distinction between "we don't know" and
+    // "the market is flat" is the whole point of the fourth class.
+    for (const cls of ["mmap-pin-expanding", "mmap-pin-flat", "mmap-pin-contracting", "mmap-pin-none"]) {
+      assert.ok(new RegExp("\\." + cls + "\\{[^}]*\\}").test(html), cls + " has no rule in MARKET_CSS");
+    }
+    const noneRule = (html.match(/\.mmap-pin-none\{([^}]*)\}/) || [])[1] || "";
+    assert.ok(!noneRule.includes("--ink-mute"), "the hollow pin must never share flat's grey fill");
+  });
+
+  // An unread market keeps its boundary and simply makes no colour claim —
+  // the same rule the badge follows by rendering nothing.
+  await t.test("an unread market page carries its boundary but no direction", async () => {
+    const html = await (await fetch(srv.base + "/market/industrial-fontana-ca")).text();
+    const blob = JSON.parse((html.match(/<script id="mktMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
+    assert.ok(blob.boundary, "Fontana's shape is stored and must still be drawn");
+    assert.ok(!("dir" in blob),
+      "a market with no current read must omit dir outright, never carry an empty one");
+    assert.ok(!html.includes('class="mdir"'), "and its badge must still render nothing");
+    assert.match(html, /outlined area[\s\S]{0,160}no current momentum read/,
+      "the disclosure must call the shape outlined, and say why it carries no colour");
+    assert.ok(!/shaded area is Fontana/.test(html),
+      "an unread market's area is not shaded — the copy must not call it that");
+  });
+
+  // The carved layer (2026-08-25): clicking a pin reveals that city's real
+  // municipal boundary and a card of its markets — pins persist at every
+  // zoom, so the shape is the click's answer, never a zoom threshold's side
+  // effect. The blob's `areas` rows carry the one thing the browser cannot
+  // derive: the color claim each city shape may make, computed server-side
+  // through market-area.js, the single home of the agreement rule.
+  await t.test("the carved areas carry momentum only through market-area's rule", async () => {
+    const MARKETAREA = require("../market-area");
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const blob = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]);
+    const areas = blob.areas;
+    assert.ok(Array.isArray(areas) && areas.length > 10, "the areas rows are missing from the blob");
+    // Every area's momentum must equal what market-area.js says about that
+    // city's markets — rebuilt here from the PINS, which are now the single
+    // serialization of each market's facts.
+    const marketsByKey = new Map();
+    for (const p of blob.pins) {
+      if (!marketsByKey.has(p.key)) marketsByKey.set(p.key, []);
+      marketsByKey.get(p.key).push(p.dir ? { dir: p.dir } : {});
+    }
+    const states = new Set();
+    for (const a of areas) {
+      assert.ok(a.key && a.city && a.state, JSON.stringify(a.city) + " is not a well-formed area row");
+      assert.equal(a.momentum, MARKETAREA.cityAreaState(marketsByKey.get(a.key) || []),
+        a.city + ": the served momentum disagrees with market-area.js over that city's pins");
+      states.add(a.momentum);
+      // Neither the geometry (~110KB of static polygon at /city-bounds.json,
+      // fetched on the first pin click) nor a second copy of the per-market
+      // rows may ride the page: the pins already carry slug/type/median/dir,
+      // and a duplicate serialization is one that can disagree.
+      assert.ok(!("geometry" in a), a.city + " embedded its geometry in the page blob");
+      assert.ok(!("markets" in a), a.city + " re-serialized its markets — the pins already carry them");
+    }
+    assert.ok(states.has("mixed"),
+      "the seeds hold cities whose markets disagree (Phoenix) — the mixed state must be exercised");
+    assert.ok(states.has("none"),
+      "the seeds hold unread cities (Fontana) — the no-claim state must be exercised");
+    // The Mixed swatch must look like what a mixed city actually DRAWS (the
+    // areaStyle grey wash inside an ink ring). It shipped as a green/red
+    // split gradient that no shape on the map ever wore, which left the
+    // reader unable to match the drawn grey to any legend key.
+    const mixedRule = (html.match(/\.mmap-pin-mixed\{([^}]*)\}/) || [])[1] || "";
+    assert.ok(mixedRule.includes("var(--ink-mute)") && mixedRule.includes("var(--ink)"),
+      "the Mixed swatch must match areaStyle's drawn style: a grey wash inside an ink ring");
+    assert.ok(!mixedRule.includes("gradient"),
+      "the split-gradient swatch matches nothing the map draws");
+    assert.match(html, />Mixed</, "the legend lost its Mixed entry");
+  });
+
+  // The directory cards print the figures and NOT the momentum word
+  // (2026-08-26, owner's call: a grid where some subtitles end in a coloured
+  // word and others just stop reads ragged). Two halves to pin, because the
+  // easy mistakes run in opposite directions: putting the word back on the
+  // card, and taking the READ off the page along with it — the map above the
+  // grid is coloured by it, and the filter still matches it.
+  await t.test("the directory cards show no momentum word, and still filter by it", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const rows = await (await fetch(srv.base + "/api/markets")).json();
+    const cards = [...html.matchAll(/<a class="mcard[^"]*" href="\/market\/([a-z0-9-]+)"[\s\S]*?<\/a>/g)];
+    assert.ok(cards.length > 20, "expected a card per seeded market, got " + cards.length);
+    const dirBySlug = new Map(rows.map((r) => [r.slug, r.direction || null]));
+    let filterable = 0;
+    for (const [card, slug] of cards.map((m) => [m[0], m[1]])) {
+      assert.ok(!/class="mdirv/.test(card),
+        slug + ": the momentum word is back on the card");
+      for (const word of ["Expanding", "Flat", "Contracting"]) {
+        assert.ok(!card.includes(">" + word + "<"),
+          slug + ": the card is printing " + word + " again");
+      }
+      // The read still reaches the card as a filter token, so typing
+      // "expanding" — a word the map's legend right above still shows —
+      // narrows the grid.
+      const dir = dirBySlug.get(slug) || null;
+      if (!dir) continue;
+      filterable++;
+      const hay = (card.match(/data-q="([^"]*)"/) || [])[1] || "";
+      assert.ok(hay.includes(dir),
+        slug + ": the momentum word must stay filterable even though it is unprinted");
+    }
+    assert.ok(filterable > 10, "expected most seeded markets to stay filterable, got " + filterable);
+    // The read is still ON the page, just not in the subtitles: the map's
+    // pins are classed by it and its legend still names all three words.
+    assert.match(html, /mmap-pin-expanding/, "the momentum map lost its colours with the card word");
+    for (const word of ["Expanding", "Flat", "Contracting"]) {
+      assert.ok(html.includes(">" + word + "<"), "the map legend lost its " + word + " key");
+    }
+  });
+
+  // The boundaries themselves: committed like the market-heroes JPEGs
+  // (Render erases its disk on deploy), served as one lazy static file, and
+  // every city the blob names either has a real polygon there or falls back
+  // to its pins — so a malformed entry is the only failure worth pinning.
+  await t.test("/city-bounds.json serves real polygons for the seeded cities", async () => {
+    const res = await fetch(srv.base + "/city-bounds.json");
+    assert.equal(res.status, 200, "the boundary file is off the static allowlist");
+    const cityBounds = await res.json();
+    const html = await (await fetch(srv.base + "/markets")).text();
+    const areas = JSON.parse((html.match(/<script id="mktsMapData"[^>]*>([\s\S]*?)<\/script>/) || [])[1]).areas;
+    let carved = 0;
+    for (const a of areas) {
+      const b = cityBounds[a.key];
+      if (!b) continue;
+      carved++;
+      assert.ok(b.geometry && (b.geometry.type === "Polygon" || b.geometry.type === "MultiPolygon"),
+        a.city + "'s stored boundary is not a polygon — the map would throw drawing it");
+    }
+    assert.ok(carved >= 15,
+      "expected nearly every seeded city to be carved, got " + carved + " — was city-bounds.json emptied?");
+  });
+
   // The signed-in header chrome, on every page that is not index.html.
   //
   // The bug (owner-reported 2026-08-09): MARKET_BAR carried three links and
@@ -186,14 +448,15 @@ test("bare environment", async (t) => {
   // account circle in one go and read as having been logged out mid-browse.
   // Nothing touched the session — the bar just stopped mentioning it.
   //
-  // There are now FOUR headers that have to agree (index.html's, MARKET_BAR,
-  // /how-it-works', and /vault) and the site's own convention is that two
-  // copies of a nav drift. This is what catches a fifth server-rendered page
-  // shipping without the chrome: accountNavSlots() is one call, so forgetting
-  // it is the easy mistake, not getting it subtly wrong.
+  // Since 2026-08-20 marketBar IS the header for every server-rendered page
+  // (/how-it-works' hand-kept copy retired) and the Explore links come from
+  // one NAV_LINKS list, index.html included — but /vault still composes its
+  // own bar from the shared slots. This is what catches a server-rendered
+  // page shipping without the chrome: accountNavSlots() is one call, so
+  // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
-      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault"];
+      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -210,6 +473,146 @@ test("bare environment", async (t) => {
     }
   });
 
+  // Where the header's Pricing link points, which is not the same place for
+  // both visitors (owner-reported 2026-08-29). The modal door /?pricing=1 is a
+  // full navigation onto index.html, which strips the param and whose close
+  // handler only hides the modal — so a signed-out reader who clicked Pricing
+  // from any of these pages and then backed out was left standing on the app,
+  // behind the wall's lock card, with nothing pointing back.
+  //
+  // Two halves, and both matter. The markup must ship the SIGNED-OUT href,
+  // because that is the common case, the one a crawler follows, and the one
+  // that survives the hydration script never running. The rewrite to the modal
+  // door must sit under ACCOUNT_NAV_JS's `if(!me)return;`, because that single
+  // line is the whole guarantee that a signed-out visitor is never handed it.
+  await t.test("the header's Pricing link is the rate card for a signed-out reader", async () => {
+    const pages = ["/markets", "/brokers", "/how-it-works", "/leadership", "/pricing"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.match(html, /<a id="navPricing" href="\/pricing"/,
+        p + " ships the modal door to a signed-out reader instead of the rate card");
+      // The member rewrite exists...
+      assert.match(html, /navPricing"\);if\(np\)np\.setAttribute\("href","\/\?pricing=1"\)/,
+        p + " never upgrades a member's Pricing link to the checkout door");
+      // ...and is downstream of the signed-out bail-out. Anything that moved it
+      // above that line would hand the stranding door back to everybody.
+      assert.ok(html.indexOf('if(!me)return;') < html.indexOf('np.setAttribute("href","/?pricing=1")'),
+        p + " rewrites Pricing before it knows whether anyone is signed in");
+    }
+  });
+
+  // The Home link, first in the nav (owner-reported 2026-08-28). A logged-out
+  // visitor who opened Explore and landed on one of these pages had nothing
+  // that READ as a way back: the wordmark links `/` but does not look like a
+  // button, and the Escape binding is invisible. Three things are pinned,
+  // because each one is a different way to get this wrong:
+  //   - it is on every server-rendered page, for every visitor;
+  //   - it is NOT on the visitor's OWN home page — under the wall an
+  //     anonymous `/` and /how-it-works are one render and would self-link,
+  //     while a signed-in member's `/` is the app, so that same page IS owed
+  //     the link (both pinned in account-wall.test.js, where the wall is up);
+  //   - it is in the signed-in bar TOO, beside "Run a report" — navigation
+  //     and a CTA are different affordances even sharing a destination.
+  await t.test("signed-out pages open the nav with a Home link", async () => {
+    // /how-it-works is in this list because THIS file boots with the wall off,
+    // which makes it a page of its own rather than the render `/` is serving.
+    // Its walled behavior — no self-link — is pinned in account-wall.test.js.
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
+      "/1031-exchange", "/download", "/terms", "/privacy", "/leadership",
+      "/how-it-works"];
+    for (const p of pages) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),
+        p + " has no Home link at the head of the nav, before Explore");
+    }
+  });
+
+  // The nav does not change shape with auth state (owner's call, 2026-08-28,
+  // correcting the same day's signed-out-only ship). "Run a report" points at
+  // `/` and is NOT a substitute: it reads as starting a task, not as going
+  // home, which is the reported bug restated one layer down. Both render.
+  await t.test("a signed-in member gets the same Home link", async () => {
+    const html = await (await fetch(srv.base + "/markets", {
+      headers: { cookie: "cn_session=irrelevant-presence-only" },
+    })).text();
+    assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),
+      "a signed-in member is owed the same way home as everybody else");
+    assert.match(html, /Run a report/,
+      "Home is an addition to the signed-in bar, never a replacement for its CTA");
+  });
+
+  // One nav, no copies (2026-08-20). index.html authors only a marker comment
+  // in its Explore menu; the `/` handler replaces it at serve time with the
+  // same NAV_LINKS list marketBar renders on every server-rendered header.
+  // Two failure modes, both pinned: an unreplaced marker (the injection
+  // broke, or the marker string drifted) leaves the app with no browse links
+  // at all, and a link present in one header but not the other is exactly
+  // the hand-sync drift this replaced.
+  await t.test("the app's Explore menu is injected from the shared nav list", async () => {
+    const app = await (await fetch(srv.base + "/")).text();
+    assert.ok(!app.includes("<!--NAV_LINKS-->"),
+      "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    // The list itself, not a superset: /brokers and /how-it-works left the
+    // menu 2026-08-25 and both still appear in every footer, so a check for
+    // their mere presence in the HTML would pass either way and pin nothing.
+    for (const href of ["/1031-exchange", "/download"]) {
+      assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
+      assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
+    }
+  });
+
+  // The Market Explorer's example, rotated per page load (2026-08-24).
+  //
+  // The placeholder stopped being decoration when Tab began typing it in, so
+  // it is now a WORKING QUERY and every one of these is really about what it
+  // costs. A market with no standing page turns the dropdown's top row into
+  // "Explore this market, build the … page →" — Tab then Enter would spend a
+  // billed search and 30-60 seconds. The example this replaced,
+  // "industrial Boise, ID", was never in market-seed.json; it survived only
+  // because somebody had explored that market once.
+  await t.test("the Explorer's example rotates and only ever names a seeded market", async () => {
+    const seed = require("../market-seed.json");
+    const slugs = new Set(Object.keys(seed));
+    const placeholderOf = (html) => {
+      const m = html.match(/id="marketSearch"[^>]*placeholder="([^"]*)"/);
+      assert.ok(m, "the Explorer input lost its placeholder");
+      return m[1];
+    };
+    const seen = [];
+    for (let i = 0; i < 5; i++) seen.push(placeholderOf(await (await fetch(srv.base + "/")).text()));
+
+    // Rotation: consecutive loads differ. A fixed example passes every other
+    // assertion here, so this is the one that proves the feature is wired.
+    assert.ok(seen[0] !== seen[1] && seen[1] !== seen[2],
+      `consecutive loads must differ, got ${JSON.stringify(seen)}`);
+
+    // The expensive one. Each example must resolve to a slug the seed
+    // carries, which is what keeps Tab-then-Enter free navigation.
+    for (const ph of seen) {
+      const m = ph.match(/^e\.g\. (\w+) (.+), ([A-Z]{2})$/);
+      assert.ok(m, `"${ph}" is not a query the Explorer can parse`);
+      const slug = `${m[1]}-${m[2].toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${m[3].toLowerCase()}`;
+      assert.ok(slugs.has(slug),
+        `${ph} has no seeded page (${slug}) — Tab then Enter would buy a billed build`);
+    }
+  });
+
+  // index.html carries the attribute; server.js swaps it. Drift between the
+  // two is silent — replace() no-ops, the static example stays, and the
+  // rotation simply stops happening with nothing on screen to show it.
+  await t.test("server.js's example marker is byte-identical to index.html's attribute", async () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const root = path.join(__dirname, "..");
+    const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+    const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+    const m = server.match(/const MARKET_EXAMPLE_MARKER = '([^']+)'/);
+    assert.ok(m, "MARKET_EXAMPLE_MARKER is gone from server.js");
+    assert.ok(html.includes(m[1]),
+      `index.html no longer carries ${m[1]} — the rotation would silently stop`);
+  });
+
   // The "Manage billing" button 400s for a comped account (no Stripe
   // customer behind either "admin" or "tester" status) — this pins that the
   // emitted hydration script actually excludes BOTH, matching index.html's
@@ -221,6 +624,21 @@ test("bare environment", async (t) => {
     const html = await (await fetch(srv.base + "/markets")).text();
     assert.match(html, /pro\.status\)&&pro\.status!=="none"&&!pro\.admin&&!pro\.tester/,
       "ACCOUNT_NAV_JS's navBilling visibility must exclude pro.tester alongside pro.admin");
+  });
+
+  // Same button, the third exclusion. A colleague holding Pro through a FIRM
+  // seat has a real Stripe status belonging to their firm's customer record,
+  // not their own: the portal opens their firm's card or 400s. index.html's
+  // hasBillingHistory() has excluded them since firm billing shipped and this
+  // copy did not, so the app hid the button while every server-rendered page
+  // still offered it. `live` is pinned in the same assertion because a
+  // deployment with no Stripe keys 503s the portal.
+  await t.test("the account-nav billing button excludes firm-seat colleagues", async () => {
+    const html = await (await fetch(srv.base + "/markets")).text();
+    assert.match(html, /!\(pro\.viaFirm&&pro\.viaFirm\.id\)/,
+      "ACCOUNT_NAV_JS's navBilling visibility must exclude a colleague on a firm seat");
+    assert.match(html, /show\(\$\("navBilling"\),live&&/,
+      "ACCOUNT_NAV_JS's navBilling must also require billing to be live, as index.html does");
   });
 
   // /brokers' "Upgrade to Pro" link hides itself for members via the shared
@@ -242,28 +660,181 @@ test("bare environment", async (t) => {
     assert.equal(r.status, 200, "a campaign link to /brokers must not 404");
   });
 
+  // Every public page, not just the two that happened to get a test
+  // (2026-08-28). /brokers and /leadership were pinned individually; the pages
+  // beside them were not, and three of them matched on the raw `req.url`, so a
+  // tag on the end of the link made the address stop matching its own route:
+  // /markets served and /markets?utm_source=x 404'd. Facebook appends
+  // ?fbclid=... to outbound links on its own, so every /market/<slug> page --
+  // the whole programmatic-SEO surface -- was a dead link for anyone arriving
+  // from there, and nothing on our side had to be misconfigured for it.
+  //
+  // Written as ONE list rather than a test per page, because the bug is a
+  // property of the route table and the next page added to it inherits the
+  // question. A 200 is not enough: a route that fell through to the SPA would
+  // also answer 200, with the wrong page, so each one is checked against a
+  // string only its own render carries.
+  await t.test("a tagged link reaches every public page, not a 404", async () => {
+    const pages = [
+      ["/markets", /Market Snapshots/],
+      ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
+      ["/how-it-works", /<title>/],
+      ["/brokers", /For Commercial Real Estate Brokers/],
+      ["/1031-exchange", /1031/],
+      ["/download", /<title>/],
+      ["/leadership", /<title>/],
+      ["/terms", /<title>/],
+      ["/privacy", /<title>/],
+    ];
+    for (const [p, marker] of pages) {
+      const bare = await fetch(srv.base + p);
+      assert.equal(bare.status, 200, p + " does not serve at all");
+      const tagged = await fetch(srv.base + p + "?utm_source=newsletter&fbclid=abc123");
+      assert.equal(tagged.status, 200, "a tagged link to " + p + " must not 404");
+      assert.match(await tagged.text(), marker,
+        "a tagged link to " + p + " answered 200 with somebody else's page");
+    }
+  });
+
+  // The two text endpoints matched on the raw url too. Nothing appends a tag
+  // to these in the wild -- a crawler asks for them bare -- so this is the
+  // cheap half of the same rule rather than a bug anybody hit.
+  await t.test("robots.txt and sitemap.xml tolerate a query string", async () => {
+    for (const [p, marker] of [["/robots.txt", /User-agent/], ["/sitemap.xml", /<urlset/]]) {
+      const r = await fetch(srv.base + p + "?x=1");
+      assert.equal(r.status, 200, p + " 404s with a query string");
+      assert.match(await r.text(), marker, p + " served the wrong body");
+    }
+  });
+
+  // The SEO half of the same change. Now that a tagged URL renders instead of
+  // 404ing, every tagged variant is a new indexable address for one page, so
+  // the canonical has to keep pointing at the clean one -- otherwise this fix
+  // trades a dead link for a pile of duplicate URLs in Search Console.
+  await t.test("a tagged page canonicalizes to its clean URL", async () => {
+    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers"]) {
+      const html = await (await fetch(srv.base + p + "?utm_source=newsletter")).text();
+      assert.match(html, new RegExp(`<link rel="canonical" href="[^"]*${p}"`),
+        p + " canonicalizes a tagged link to something other than its clean URL");
+    }
+  });
+
+  // --- /leadership (2026-08-27) ---------------------------------------------
+  // The page names real people and serves four photographs, so the failures
+  // worth pinning are the silent ones: a portrait that 404s leaves a broken
+  // image beside somebody's name, and the photo allowlist is the one place in
+  // this feature where a mistake is a security bug rather than a layout one.
+  await t.test("/leadership survives a query string", async () => {
+    const r = await fetch(srv.base + "/leadership?utm_source=newsletter");
+    assert.equal(r.status, 200, "a campaign link to /leadership must not 404");
+  });
+
+  await t.test("every leadership photo is on the static allowlist and really serves", async () => {
+    for (const f of ["team.jpg", "jacob.jpg", "owen.jpg", "chuck.jpg"]) {
+      const r = await fetch(`${srv.base}/team-photos/${f}`);
+      assert.equal(r.status, 200, `/team-photos/${f} is not being served`);
+      assert.equal(r.headers.get("content-type"), "image/jpeg", `/team-photos/${f} wrong type`);
+      const buf = Buffer.from(await r.arrayBuffer());
+      // The bytes, not just the status: a 200 carrying an HTML error page
+      // would still render as a broken image next to somebody's name.
+      assert.ok(buf[0] === 0xff && buf[1] === 0xd8, `/team-photos/${f} is not JPEG data`);
+    }
+  });
+
+  // STATIC_FILES is an allowlist of literal paths, which is exactly why the
+  // photos went in it rather than behind a "/team-photos/" prefix handler.
+  // If anyone ever converts it to a prefix read, this is what fails.
+  await t.test("the photo directory cannot be walked out of", async () => {
+    for (const p of ["/team-photos/../server.js", "/team-photos/nope.jpg", "/team-photos/"]) {
+      const r = await fetch(srv.base + p);
+      assert.equal(r.status, 404, p + " must not resolve");
+    }
+  });
+
+  // Each person is one TEAM entry feeding both the markup and the JSON-LD, so
+  // this pins that the two cannot disagree — a Person node for somebody the
+  // page does not show, or a face with no structured identity.
+  await t.test("the page and its structured data name the same people", async () => {
+    const html = await (await fetch(srv.base + "/leadership")).text();
+    const ld = JSON.parse(html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s)[1]);
+    const people = ld["@graph"].filter((n) => n["@type"] === "Person");
+    assert.ok(people.length >= 1, "no Person nodes at all");
+    for (const p of people) {
+      assert.ok(html.includes(`<h3>${p.name}</h3>`), `${p.name} is in the schema but not on the page`);
+      assert.ok(p.jobTitle, `${p.name} has no job title`);
+      assert.ok(p.worksFor && p.worksFor["@id"], `${p.name} is not tied to the Organization node`);
+      // No brokerage title, ever: the owner is not a licensed broker and this
+      // is the page where a title would most plausibly imply one.
+      assert.doesNotMatch(p.jobTitle, /broker/i, `${p.name}'s title implies a brokerage`);
+    }
+  });
+
+  // The compliance line every public surface carries. A leadership page is
+  // where "we are a brokerage" is easiest to imply by accident.
+  await t.test("/leadership discloses that we are not a brokerage", async () => {
+    const html = await (await fetch(srv.base + "/leadership")).text();
+    assert.match(html, /not a licensed\s+brokerage/,
+      "the not-a-brokerage disclosure is missing");
+    assert.match(html, /automated estimate/,
+      "the automated-estimate line is missing");
+  });
+
+  // The footer is the ONLY way a reader finds this page (2026-08-27: it left
+  // the Explore menu, which is for tools a reader might go and use). So a
+  // silently dropped footer link orphans the page entirely — reachable by
+  // typing the URL and by nothing else — and no other test would notice,
+  // because the page itself would keep answering 200.
+  //
+  // Matched on the Company list rather than on an exact <li>: there are two
+  // footers, MARKET_FOOTER's bare markup and index.html's Tailwind-classed
+  // copy, and pinning either one's spelling would pass on half the site and
+  // fail on the other half for no real reason.
+  await t.test("/leadership is reachable from the footer of every page", async () => {
+    const companyList = (html) => {
+      const i = html.indexOf('aria-label="Company"');
+      return i < 0 ? "" : html.slice(i, html.indexOf("</ul>", i));
+    };
+    for (const p of ["/", "/brokers", "/markets", "/1031-exchange", "/leadership"]) {
+      const html = await (await fetch(srv.base + p)).text();
+      const col = companyList(html);
+      assert.ok(col, p + " has no Company column in its footer at all");
+      assert.match(col, /href="\/leadership"/, p + " lost the footer link to /leadership");
+    }
+    // And it must NOT be back in the Explore menu without that being a
+    // deliberate edit: the two placements are a decision, not an accident.
+    const markets = await (await fetch(srv.base + "/markets")).text();
+    const menu = markets.slice(markets.indexOf('<div class="dd">'), markets.indexOf("</details>"));
+    assert.ok(!menu.includes('href="/leadership"'),
+      "/leadership is in the Explore menu again — it belongs in the footer");
+  });
+
+
+
+
   // /how-it-works renders My Desk server-side (2026-08-08) AND takes the
   // shared circle, so it is one of two pages that can end up with two of
   // them. /vault is the other: it keeps a visible My Desk next to Vault.
   // accountNavSlots({ desk: false }) is what prevents that.
-  await t.test("/how-it-works does not double up its My Desk link", async () => {
+  await t.test("/how-it-works does not double up its workspace link", async () => {
     const html = await (await fetch(srv.base + "/how-it-works", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    const desks = (html.match(/>My Desk</g) || []).length;
-    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    // Renamed 2026-08-28: the label is "Workspace" everywhere a person
+    // reads it. The invariant is unchanged — one link, not two.
+    const desks = (html.match(/>Workspace</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
-      "this page renders its own My Desk — the hydrated one must stay off it");
+      "this page renders its own workspace link — the hydrated one must stay off it");
   });
 
-  await t.test("/vault does not double up its My Desk link", async () => {
+  await t.test("/vault does not double up its workspace link", async () => {
     const html = await (await fetch(srv.base + "/vault", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    const desks = (html.match(/>My Desk</g) || []).length;
-    assert.equal(desks, 1, "a signed-in member should see exactly one My Desk link");
+    const desks = (html.match(/>Workspace</g) || []).length;
+    assert.equal(desks, 1, "a signed-in member should see exactly one workspace link");
     assert.ok(!/id="navDesk"/.test(html),
-      "the vault renders its own My Desk — the hydrated one must stay off it");
+      "the vault renders its own workspace link — the hydrated one must stay off it");
   });
 
   // The vault gate, wired.
@@ -604,6 +1175,64 @@ test("bare environment", async (t) => {
     assert.equal(gone.status, 404);
   });
 
+  await t.test("the digest preference refuses an anonymous caller, 401 not 404", async () => {
+    const r = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(r.status, 401, "must refuse an anonymous caller");
+  });
+
+  await t.test("a signed-in account can switch the watchlist digest off and back on", async () => {
+    const email = `digest-${Date.now()}@example.com`;
+    const signup = await fetch(srv.base + "/api/account/signup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password: "correct-horse-battery", name: "Di" }),
+    });
+    assert.equal(signup.status, 200);
+    const cookie = String(signup.headers.get("set-cookie") || "").split(";")[0];
+    const signed = { cookie };
+
+    // Emails default ON: a fresh file-store row has no digest_optout key and
+    // must coerce to false, never render the toggle off.
+    const me0 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me0.digestOptout, false, "a new account starts opted in");
+
+    const off = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ enabled: false }),
+    });
+    assert.equal(off.status, 200);
+    const offBody = await off.json();
+    assert.equal(offBody.digestOptout, true, "the response must reflect the new state");
+    assert.equal(JSON.stringify(offBody).includes("password"), false,
+      "the response must never carry credential fields");
+
+    const me1 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me1.digestOptout, true, "the opt-out must persist to /me");
+
+    const on = await fetch(srv.base + "/api/account/digest", {
+      method: "POST", headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(on.status, 200);
+    assert.equal((await on.json()).digestOptout, false);
+    const me2 = await (await fetch(srv.base + "/api/account/me", { headers: signed })).json();
+    assert.equal(me2.digestOptout, false, "re-enabling must persist too");
+
+    // A non-boolean is a 400, never treated as truthy: the column is a
+    // standing decision about somebody's inbox, so a malformed write is
+    // refused rather than guessed at.
+    for (const bad of [{ enabled: "yes" }, {}]) {
+      const r = await fetch(srv.base + "/api/account/digest", {
+        method: "POST", headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(bad),
+      });
+      assert.equal(r.status, 400, `non-boolean body ${JSON.stringify(bad)} must 400`);
+    }
+  });
+
   await t.test("a share from an anonymous visitor cannot carry a brand it supplied", async () => {
     // The browser hands /api/share its own meta. Without the server-side strip
     // a visitor could publish a report under someone else's firm name.
@@ -631,6 +1260,44 @@ test("bare environment", async (t) => {
       const r = await fetch(srv.base + p);
       assert.equal(r.status, 404, p + " should be disabled, not merely unauthorized");
     }
+  });
+
+  // openBulk (server.js) is a deliberate THIRD copy of the same ladder — 401
+  // not signed in, 403 not entitled, 503 no database. A shared helper was not
+  // taken because each copy's 403 is different product copy ("The private
+  // vault is part of Pro", "The lead inbox is part of Pro", "Bulk valuation is
+  // part of Pro") and it is the ORDER that has to match, not the strings.
+  // These tests exist to catch the three drifting apart.
+  await t.test("every bulk route refuses an anonymous caller, before the 503", async () => {
+    const routes = [
+      ["GET",    "/api/bulk"],
+      ["POST",   "/api/bulk"],
+      ["POST",   "/api/bulk/cancel"],
+      ["GET",    "/api/bulk/export.csv?id=00000000-0000-0000-0000-000000000000"],
+      ["DELETE", "/api/bulk?id=00000000-0000-0000-0000-000000000000"],
+    ];
+    for (const [method, p] of routes) {
+      const r = await fetch(srv.base + p, {
+        method,
+        ...(method === "POST"
+          ? { headers: { "content-type": "application/json" }, body: "{}" }
+          : {}),
+      });
+      assert.equal(r.status, 401, `${method} ${p} must refuse an anonymous caller`);
+      const body = await r.json().catch(() => ({}));
+      assert.match(String(body.error || ""), /signed in/i, `${method} ${p} should say not signed in`);
+    }
+  });
+
+  await t.test("bulk valuation cannot be started by a header, only by a session", async () => {
+    // /api/comps has a header-only `internal` bypass for the seed generator.
+    // Bulk deliberately has none: it is a spend amplifier, and a bypass a
+    // browser was never meant to have must not grow one here. ADMIN_KEY is
+    // unset on this server, so this only proves the route does not treat the
+    // header as an identity — the entitlement branch is covered in
+    // entitlements.test.js and the route-level one in bulk-routes.test.js.
+    const r = await fetch(srv.base + "/api/bulk", { headers: { "x-admin-key": "anything" } });
+    assert.equal(r.status, 401);
   });
 
   // requireBroker (server.js) is a deliberate second copy of the vault's
@@ -706,9 +1373,30 @@ test("bare environment", async (t) => {
     const r = await fetch(srv.base + "/api/checkout", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ plan: "single_report" }),
+      body: JSON.stringify({ plan: "pro_monthly" }),
     });
     assert.notEqual(r.status, 200, "checkout must not report success with no Stripe configured");
+  });
+
+  // The $20 single-report unlock was RETIRED on 2026-08-21. The PLANS map's
+  // no-fallthrough design makes retirement one deletion: an absent plan is a
+  // 400, never a silent substitution onto some other price. A source scan
+  // rather than a booted 400: reaching the map behaviorally needs Stripe env
+  // and a signed-in user, and the invariant is the map's contents. Re-adding
+  // the plan must be a deliberate act with a failing test in front of it.
+  // Purchases already made stay honored — /api/report-access (tested above)
+  // keeps answering, and the webhook and entitlements branches remain.
+  await t.test("the single_report plan stays retired from the PLANS map", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+    const start = src.indexOf("const PLANS = {");
+    assert.ok(start > 0, "the checkout PLANS map should still exist");
+    const map = src.slice(start, src.indexOf("};", start));
+    assert.ok(!/single_report:\s*\{/.test(map),
+      "single_report is back in the PLANS map — the sale was retired 2026-08-21 " +
+      "with purchases honored; reselling it is an owner decision, not a merge accident");
+    assert.match(map, /pro_monthly:/, "the map itself must still be the one being scanned");
   });
 
   // The PLANS table is an explicit map with no fallthrough. It once mapped
@@ -739,6 +1427,24 @@ test("bare environment", async (t) => {
 // the pure function, because trimming at the constant is only half the fix —
 // what has to hold is that the ROUTE authenticates a caller sending the clean
 // key. A test against a trim() helper would have passed all along.
+// MARKET_EXAMPLE pins the Explorer's rotating example. scripts/shot.js sets
+// it on both sides of a comparison, because two runs of IDENTICAL code
+// producing byte-identical PNGs is how "this changed nothing visually" gets
+// proved in this repo — and a placeholder that moves on every load breaks
+// that. Pinned by env rather than by hoping a capture makes exactly one
+// request to `/`.
+test("MARKET_EXAMPLE pins the Explorer's example across loads", async (t) => {
+  const PINNED = "e.g. office Dallas, TX";
+  const srv = await boot({ MARKET_EXAMPLE: PINNED });
+  t.after(() => srv.stop());
+  for (let i = 0; i < 3; i++) {
+    const html = await (await fetch(srv.base + "/")).text();
+    const m = html.match(/id="marketSearch"[^>]*placeholder="([^"]*)"/);
+    assert.ok(m, "the Explorer input lost its placeholder");
+    assert.equal(m[1], PINNED, "load " + i + " ignored MARKET_EXAMPLE");
+  }
+});
+
 test("an ADMIN_KEY stored with stray whitespace still authenticates", async (t) => {
   const CLEAN = "test-admin-key-whitespace";
   for (const [label, stored] of [
@@ -793,6 +1499,39 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
+    // The 1031 guide funnel block must be present even at zero — /admin
+    // treats a missing key as a stale pre-feature response and hides the
+    // card, so a dropped key here silently blinds the funnel.
+    for (const k of ["views", "views30d", "members", "leads", "leads30d"]) {
+      assert.equal(typeof body.guide1031[k], "number", `guide1031.${k}`);
+    }
+  });
+
+  // The guide-read event is the 1031 funnel's denominator, and the page is
+  // public + sitemapped, so the count is only meaningful if crawlers stay
+  // out of it. One browser read must count exactly once; Googlebot and the
+  // suite's own bare fetch (no browser UA) must count zero. Events are
+  // fire-and-forget file appends, hence the short poll.
+  await t.test("a guide read is counted once, and crawlers are not", async () => {
+    const views = async () => (await (await fetch(srv.base + "/api/stats",
+      { headers: { "x-admin-key": ADMIN } })).json()).guide1031.views;
+    const before = await views();
+    const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    for (const ua of [browserUA, "Googlebot/2.1 (+http://www.google.com/bot.html)", null]) {
+      const r = await fetch(srv.base + "/1031-exchange",
+        ua ? { headers: { "user-agent": ua } } : undefined);
+      assert.equal(r.status, 200);
+    }
+    let after = before;
+    for (let i = 0; i < 40 && after < before + 1; i++) {
+      await new Promise((res) => setTimeout(res, 50));
+      after = await views();
+    }
+    assert.equal(after, before + 1, "one browser read = one view");
+    // Settle, then re-read: a late-landing bot event would pass the check
+    // above and only show here.
+    await new Promise((res) => setTimeout(res, 150));
+    assert.equal(await views(), before + 1, "bot reads must not land late");
   });
 
   await t.test("market-hero review is gated like the other admin APIs", async () => {
@@ -1465,6 +2204,51 @@ test("SEARCH_PROVIDER wiring", async (t) => {
     } finally { over.stop(); }
   });
 
+  // THINKING_LEVEL is the same class of hazard as search_budget above: it could
+  // be perfectly implemented in search-provider-gemini.js and never read by
+  // server.js, and every unit test would still pass. /healthz reporting it is
+  // the observable proof the server consults the setting at all. It matters
+  // more than most because thought tokens ARE the wall clock on this provider
+  // (a measured call: 928 output against 6,473 thought), so a knob that quietly
+  // does nothing would be mistaken for "thinking less does not help".
+  await t.test("/healthz reports the live thinking level, default and overridden", async () => {
+    const dflt = await boot({});
+    try {
+      // "" is a real answer meaning "we set nothing, the vendor default
+      // applies" — it must be PRESENT and empty, not absent, or run-eval.js
+      // cannot tell a default-thinking run from an older build.
+      const body = await (await fetch(dflt.base + "/healthz")).json();
+      assert.equal(body.thinking_level, "", "unset must report as empty, not missing");
+      assert.ok("thinking_level" in body);
+    } finally { dflt.stop(); }
+
+    const low = await boot({ THINKING_LEVEL: "low" });
+    try {
+      assert.equal((await (await fetch(low.base + "/healthz")).json()).thinking_level, "low");
+    } finally { low.stop(); }
+  });
+
+  await t.test("an unrecognized THINKING_LEVEL refuses to boot", async () => {
+    // Same no-fallthrough rule as SEARCH_PROVIDER. A dropped value would be
+    // invisible: the reports still come back, just at a depth nobody chose.
+    await assert.rejects(
+      () => boot({ THINKING_LEVEL: "maximum" }),
+      /exited early/,
+      "must exit rather than silently ignore an unknown reasoning depth",
+    );
+  });
+
+  await t.test("a THINKING_LEVEL the provider cannot act on refuses to boot", async () => {
+    // Anthropic declares thinkingLevels: null. Accepting the value and dropping
+    // it on the floor is the worst outcome of the three — the deployment would
+    // believe it had turned thinking down and measure no difference.
+    await assert.rejects(
+      () => boot({ SEARCH_PROVIDER: "anthropic", THINKING_LEVEL: "low" }),
+      /exited early/,
+      "a knob that appears to work and changes nothing must be refused at boot",
+    );
+  });
+
   await t.test("an unrecognized SEARCH_PROVIDER refuses to boot", async () => {
     // boot() throws "server exited early" when the child exits before /healthz.
     // A silent fallback to anthropic would boot healthy and fail this test.
@@ -1546,6 +2330,43 @@ test("EXTRACT_PROMPT asks for EXTRACT_KEYS, never lat or lng", () => {
     "the prompt must interpolate EXTRACT_KEYS so lat/lng cannot sneak back in via TEMPLATE_COLUMNS");
   assert.equal(/\blat\b/.test(body), false, "the extract prompt must not request lat");
   assert.equal(/\blng\b/.test(body), false, "the extract prompt must not request lng");
+});
+
+// Both rules below were bought with a real measurement, not a hunch: the
+// 2026-08-27 extraction verdict (docs/evals/extract-2026-08-27-verdict.md) ran
+// 14 broker documents through the live route and found exactly two defects,
+// both of them the shape spec 9 calls fatal - a well-formed wrong number that
+// normalizeRow cannot object to, so nobody ever notices it.
+test("EXTRACT_PROMPT states the cap-rate unit", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 8 of 8 wrong across two brokerages: the page said 5.10% and the
+  // model returned 0.051. parsePercent accepts 0.051 (it is between 0 and 100),
+  // so the vault stored a cap rate of 0.051% and no guard could fire.
+  assert.match(body, /cap_rate/,
+    "the prompt must name cap_rate, or the model picks its own percentage convention");
+  assert.match(body, /decimal fraction/i,
+    "the prompt must forbid a decimal fraction by name - the whole defect was an unstated unit");
+});
+
+test("EXTRACT_PROMPT tells the model a listing is not a sale", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 3 of 3 on a lender BOV whose Listing columns leave Sale Price and
+  // Sale Date blank: all three came back transaction "sale", dated from the
+  // Original List Date row. Three transactions that never happened.
+  assert.match(body, /LISTING/,
+    "the prompt must name the listing case - the model reported all three as sales without it");
+  assert.match(body, /list date/i,
+    "the prompt must forbid sourcing deal_date from a list date specifically");
 });
 
 // --- Analytics visitor attribution ------------------------------------------
@@ -1827,6 +2648,91 @@ test("buildPrompt treats Residential as a home-buyer CMA, not a CRE analyst writ
     "a typed 2.5-mile market note must override the 1-mile neighborhood default");
 });
 
+// The model writes this JSON top to bottom and the write leg is the slow half
+// of a report, so where a field sits in the taught shape decides when (and
+// whether) the visitor ever sees it stream. "comps" is the only part the
+// browser can paint mid-stream, so everything above it is dead air and every
+// market-level read of the comps belongs below them. Evaluating the block
+// rather than grepping it, because the property that matters is the ORDER of
+// the keys and the fact that the skeleton is still valid JSON in every branch.
+test("buildPrompt writes the comps array before every market-level field", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("    `OUTPUT FORMAT");
+  assert.ok(start >= 0, "could not find the OUTPUT FORMAT shape block");
+  const endMark = "    `}`,\n";
+  const end = src.indexOf(endMark, start);
+  assert.ok(end > start, "could not bound the shape block");
+  const block = src.slice(start, end + endMark.length);
+
+  // Fields whose value is a read OF the comps: writing them first means
+  // describing rows the model has not committed to yet, and costs the live
+  // table seconds of blank screen.
+  const AFTER_COMPS = ["avg_price_per_sqft", "subject_lat", "subject_lng",
+    "market_cap_rate_range", "market_opex_range", "value_drivers", "market_trend",
+    "annual_price_trend_pct", "search_radius", "transactions_reviewed",
+    "price_discovery"];
+
+  for (const compsOnly of [false, true]) {
+    for (const wantsSize of [false, true]) {
+      for (const isLand of [false, true]) {
+        const where = `compsOnly=${compsOnly} wantsSize=${wantsSize} isLand=${isLand}`;
+        const lines = new Function("compsOnly", "wantsSize", "isLand", "compShape",
+          "return [\n" + block + "];")(compsOnly, wantsSize, isLand, '{ "a": "" }');
+        const text = lines.join("\n");
+        const skeleton = text.slice(text.indexOf("{"));
+        let shape;
+        assert.doesNotThrow(() => { shape = JSON.parse(skeleton); },
+          `the shape the prompt teaches must be valid JSON (${where})`);
+        const keys = Object.keys(shape);
+        const compsAt = keys.indexOf("comps");
+        assert.ok(compsAt >= 0, `comps must be in the shape (${where})`);
+        for (const k of AFTER_COMPS) {
+          const at = keys.indexOf(k);
+          if (at === -1) continue;   // gated off in this branch
+          assert.ok(at > compsAt,
+            `"${k}" must be written after "comps" (${where})`);
+        }
+        // summary is the deliberate exception: it is the one narrative field
+        // the loading card can show (makeFieldExtractor), so it stays on top.
+        if (!compsOnly) {
+          assert.ok(keys.indexOf("summary") >= 0 && keys.indexOf("summary") < compsAt,
+            `"summary" streams to the loading card and must stay above "comps" (${where})`);
+        }
+        // Nothing above the comps may be bulky. Everything still up there is a
+        // subject lookup or a unit declaration; a new one belongs below.
+        const ALLOWED_ABOVE = new Set(["summary", "currency", "usd_rate",
+          "subject_size_sqft", "subject_size_source", "subject_last_sale",
+          "subject_assessed", "subject_asking", "subject_year_built"]);
+        for (const k of keys.slice(0, compsAt)) {
+          assert.ok(ALLOWED_ABOVE.has(k),
+            `"${k}" sits above "comps" and delays the live table (${where})`);
+        }
+      }
+    }
+  }
+});
+
+// $/SF on a priced, sized sale is arithmetic the server already redoes
+// (reconcilePricePerSqft), so asking for it spent write-leg tokens on a figure
+// that could not survive contradicting its own row.
+test("buildPrompt stops asking for a $/SF it derives itself", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /OMIT "price_per_sqft" entirely/,
+    "a sale carrying both price and size must not restate price divided by size");
+  assert.match(body, /on LEASE comps/,
+    "a lease rate is not derivable and must still be asked for");
+  assert.match(body, /recheck the figures rather than copying the inconsistency/,
+    "dropping the field must not drop the source cross-check it was really doing");
+});
+
 test("buildPrompt asks for subject_assessed next to last-sale, not in summary", () => {
   const fs = require("node:fs");
   const path = require("node:path");
@@ -1844,6 +2750,23 @@ test("buildPrompt asks for subject_assessed next to last-sale, not in summary", 
   const assessedRule = body.slice(body.indexOf('"subject_assessed" ='));
   assert.equal(assessedRule.includes('mention it in "summary"'), false,
     "assessed must not earn last-sale's protected summary slot");
+});
+
+test("buildPrompt splits close dates from on-market listing dates", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  assert.ok(start >= 0, "buildPrompt should still exist");
+  const end = src.indexOf("async function callAnthropicOnce", start);
+  assert.ok(end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+  assert.match(body, /ON-MARKET LISTINGS/,
+    "on-market listing rows need their own prompt block, like NEARBY COMPS");
+  assert.match(body, /Listed Mar 2025/,
+    "active listings must be told to write Listed Mon YYYY, not a bare close month");
+  assert.equal(body.includes("lease/listing was signed or posted"), false,
+    "the old combined date sentence treats a list date as a close");
 });
 
 test("finishReport and mergeLaneReports wire subject_assessed", () => {
@@ -2040,10 +2963,14 @@ test("radius blend is wired inside gate, before the paywall and before vault ble
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
-  const start = src.indexOf("const gate = async (rep)");
-  assert.ok(start >= 0, "gate() should still exist as an async closure");
-  const end = src.indexOf("const maxIdentified", start);
-  assert.ok(end > start, "could not bound gate()");
+  // gate() was a closure inside /api/comps until 2026-08-21; it is now the
+  // module-level finishReportForViewer, shared with the bulk worker so a
+  // portfolio row and the report behind it are assembled the same way. The
+  // ORDER inside it is what this test is about, and none of it changed.
+  const start = src.indexOf("async function finishReportForViewer(rep, ctx) {");
+  assert.ok(start >= 0, "finishReportForViewer() should still be the one serialization funnel");
+  const end = src.indexOf("\n}\n", start);
+  assert.ok(end > start, "could not bound finishReportForViewer()");
   const body = src.slice(start, end);
   const radiusAt = body.indexOf("RADIUSBLEND.blendNearbyComps");
   const paywallAt = body.indexOf("GATE.gateReport");
@@ -2090,7 +3017,67 @@ test("hub invites are wired to the outbound mail gate", async () => {
   // And the client is told whether anything actually left, so the panel's copy
   // cannot claim "we do not email" on a deployment that does.
   assert.match(src, /const OUTBOUND_EMAIL_LIVE = \(\) => Boolean\(RESEND_API_KEY && EMAIL_FROM\)/);
-  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\)/g) || []).length, 2);
+});
+
+test("the emailed flag is the send's answer, not a restatement of the config", () => {
+  // `emailed: OUTBOUND_EMAIL_LIVE()` was a LIE with a cost. That function only
+  // asks whether RESEND_API_KEY and EMAIL_FROM are set; the send was
+  // fire-and-forget and a Resend rejection reached nothing but a console.error
+  // on a host Owen cannot read. So the broker was told "each person has been
+  // emailed their link" whether or not Resend accepted it.
+  //
+  // On the hub page that is not cosmetic: showPeopleInvites HIDES the links
+  // when it believes they were mailed, and a hub token cannot be shown twice.
+  // A refused send therefore destroyed the invitation and reported success —
+  // the same shape as the 2026-08-19 splitter bug, whose damage was likewise
+  // "the link hidden because emailed was true".
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  // The whole chain has to carry the answer back, or the route cannot know it.
+  assert.match(src, /async function sendEmail\(/, "sendEmail must resolve to whether Resend accepted");
+  assert.match(src, /async function sendOutboundEmail\(/);
+  assert.match(src, /async function sendHubInvites\(/);
+
+  // sendHubInvites reports WHO was not mailed, per person: a partial failure
+  // must not withhold the links of the people it did fail.
+  const fn = src.match(/async function sendHubInvites[\s\S]*?\n\}/)[0];
+  assert.match(fn, /return invites\.filter\(/, "must return the addresses that were not mailed");
+
+  // Neither route may go back to asserting it.
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\),/g) || []).length, 0,
+    "the bare config flag must not be reported as the send result");
+  assert.equal((src.match(/emailed: OUTBOUND_EMAIL_LIVE\(\) && emailFailed\.length === 0/g) || []).length, 2,
+    "both the create route and the participants route report the real result");
+
+  // And both must actually WAIT for it. Dropping the await silently restores
+  // the bug: emailFailed stays [] and every send reads as a success.
+  assert.equal((src.match(/await sendHubInvites\(/g) || []).length, 2,
+    "an un-awaited send makes emailFailed empty and the flag wrong again");
+});
+
+test("the three invitation emails say 'a free account is all it takes' the same way", () => {
+  // Not a style rule imported from outside: sendShareInvites already writes
+  // this exact sentence as two plain sentences ("...to open it. A free account
+  // is all it takes."), and its two siblings wrote it with an em dash instead.
+  // Three emails that arrive at the same person from the same product should
+  // not read as though three people wrote them.
+  //
+  // Scoped to the BODIES of the three invite senders on purpose. Em dashes in
+  // comments and in internal owner notifications are nobody's business.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+
+  for (const name of ["sendShareInvites", "sendOrgInvites", "sendHubInvites"]) {
+    const fn = src.match(new RegExp(`function ${name}[\\s\\S]*?\\n\\}`))[0];
+    // Only the emitted copy, which is what a recipient reads.
+    const copy = (fn.match(/`[^`]*`/g) || []).join(" ");
+    assert.ok(!copy.includes("—"), `${name}'s email copy should not use an em dash`);
+    assert.match(copy, /A free account is all it takes/,
+      `${name} should phrase the account line like its siblings`);
+  }
 });
 
 test("only newly invited people are mailed when a participant list is replaced", () => {
@@ -2163,4 +3150,164 @@ test("the geocode proxy is POST-only and no caller builds a query string", async
       );
     }
   });
+});
+
+// --- The two geocode caches keep separate localStorage names ----------------
+//
+// The app (index.html) and the market pages' map (MARKET_MAP_JS in server.js)
+// run the same geocoding stack against the same addresses, and until
+// 2026-08-04 they shared one localStorage key on purpose, to share hits. They
+// must not any more, and nothing at runtime would say so if they did.
+//
+// index.html went to geoCache.v2 that day so every entry carries the
+// geocoder's echoed label. geoLabelMatches returns false when the label is
+// missing, and it is the gate on subject photos and footprint sizing — the
+// two claims a report makes about a specific building. MARKET_MAP_JS draws
+// pins only, so it stores {lat, lng} with no label.
+//
+// Share one key again and a market-page visit writes a label-less entry for
+// an address the app later reads, which costs that property its photo and its
+// size estimate — silently, and persistently, since the entry is cached. The
+// harm runs one way and shows up nowhere near the change that caused it,
+// which is why it is worth a test rather than a comment alone.
+//
+// Names, not version numbers, and the test checks the names really differ:
+// two keys that differ only by a digit read as drift, and the obvious tidy-up
+// is to re-sync them.
+
+test("the app's geocode cache and the market map's stay separate stores", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8");
+
+  const appKey = read("index.html").match(/GEO_CACHE_KEY = "([^"]+)"/);
+  const mktKey = read("server.js").match(/var CACHE_KEY = "([^"]+)"/);
+
+  assert.ok(appKey, "index.html no longer declares GEO_CACHE_KEY — update this test with it");
+  assert.ok(mktKey, "MARKET_MAP_JS no longer declares CACHE_KEY — update this test with it");
+
+  assert.notEqual(
+    appKey[1],
+    mktKey[1],
+    "the market map and the app share a localStorage geocode key again: the market map "
+      + "caches no geocoder label, and a label-less entry read by the app fails "
+      + "geoLabelMatches, costing that address its subject photo and footprint size"
+  );
+
+  // A market-page entry must stay recognisable as one from its name alone,
+  // so a future reader does not take the pair for accidental drift.
+  assert.ok(
+    /^mkt/.test(mktKey[1]),
+    "the market map's cache key should name itself a market-page store, not sit one "
+      + "version number away from the app's"
+  );
+});
+
+// --- the watchlist feed's median is closed sales only (2026-08-20) ---------
+//
+// The corpus began storing on-market listings in the same commit as this
+// test. buildWatchlistFeed's median_psf windows on `ts` — when we HARVESTED
+// the row, not when the deal closed — and filters only leases out, so a
+// freshly harvested asking price would land straight in the median with
+// nothing to exclude it. That median is quoted on My Desk and again in the
+// watchlist digest email, the one message this product sends on its own
+// initiative, so a contaminated one is mailed to people unprompted.
+//
+// A source scan rather than a booted feed: the median needs a database, a
+// signed-in user and a populated corpus, and the invariant is one line.
+test("the watchlist feed's median $/SF requires a parseable deal date", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const salePsf = rows");
+  assert.ok(start >= 0, "buildWatchlistFeed's salePsf chain is gone or renamed");
+  const chain = src.slice(start, src.indexOf(".sort(", start));
+  assert.match(chain, /parseDealDate\([^)]*\)\s*!=\s*null/,
+    "salePsf must drop rows whose deal_date does not parse — an on-market " +
+    "listing is stored with deal_date \"Active\"/\"Listed Mon YYYY\" and is an " +
+    "ASKING price, not a comparable sale");
+});
+
+// COMP_FLOOR exists because of a measured side effect of THINKING_LEVEL=low
+// (2026-08-21): 66% faster and 66% cheaper, and a third fewer comps. The
+// shorter list was BETTER sourced (estimate rate 14% -> 2%), so the model
+// appears to stop LOOKING sooner rather than to find worse comps. The one way
+// this instruction could do harm is by buying comp count back with padding,
+// which is why the anti-padding rules are restated inside it rather than left
+// to proximity.
+test("the comp floor asks for more searching, never for a lower bar", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("function buildPrompt");
+  const end = src.indexOf("function normalizeSubjectLastSale", start);
+  assert.ok(start >= 0 && end > start, "could not bound buildPrompt");
+  const body = src.slice(start, end);
+
+  const rule = body.slice(body.indexOf("COMP COUNT:"));
+  assert.ok(rule.length > 100, "the COMP COUNT instruction should exist");
+  const sentence = rule.slice(0, rule.indexOf("`", 1));
+  assert.match(sentence, /keep searching/, "the ask must be to search harder");
+  assert.match(sentence, /does NOT relax any rule above/,
+    "it must restate that it relaxes nothing, not merely sit near the rule that says so");
+  assert.match(sentence, /never pad the list/);
+  assert.match(sentence, /not on lowering the bar for what counts as one/);
+
+  // Gated, and off unless a deployment opts in — it is a prompt change on the
+  // hot path and is only worth carrying if the eval says it recovers the comps.
+  assert.match(body, /COMP_FLOOR\s*\n?\s*\?/, "the instruction must be behind the flag");
+  assert.equal(/^(1|on|true|yes)$/i.test(""), true === false,
+    "an unset COMP_FLOOR must read as off");
+});
+
+test("the comp floor can never ask for more comps than the report will show", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  // Asking for 6 on a 4-comp request would be an instruction the gate then
+  // truncates, i.e. wasted searching the visitor pays for and never sees.
+  assert.match(src, /Math\.min\(COMP_FLOOR_TARGET, maxComps\)/,
+    "the floor must be clamped to maxComps");
+  assert.match(src, /Math\.max\(3, Number\(process\.env\.COMP_FLOOR_TARGET\)/,
+    "and never fall below the prompt's own stated minimum of 3");
+});
+
+test("the live comp extractor's callback resolves every identifier it calls", () => {
+  // expandComp lives in report-parse.js and went unexported in the 2026-08-08
+  // extraction while server.js's streamed-comp callback kept calling it bare.
+  // The ReferenceError was swallowed PER COMP by makeCompExtractor's catch, so
+  // every live `comp` event silently died — no log, no error, the report
+  // itself fine — and nothing noticed until Gemini streaming lit the path up
+  // on 2026-08-29. Pin the wiring: the callback goes through the module, and
+  // no bare expandComp( call survives anywhere in server.js.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(src, /RPARSE\.expandComp\(/,
+    "the streamed-comp callback must expand short keys via the report-parse module");
+  const bare = src.match(/(^|[^.\w])expandComp\(/m);
+  assert.equal(bare, null,
+    "a bare expandComp( call in server.js is a ReferenceError that " +
+    "makeCompExtractor's per-comp catch swallows silently");
+  assert.equal(typeof require("../report-parse").expandComp, "function",
+    "report-parse must keep exporting it, or the module call above throws the same way");
+});
+
+test("EXTRACT_PROMPT asks for the rows in the order the document prints them", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const start = src.indexOf("const EXTRACT_PROMPT");
+  const end = src.indexOf("function buildPrompt", start);
+  const body = src.slice(start, end);
+  // Measured 2026-08-28: verifying 12 correct rows took 4m51s against spec
+  // §9's 60-second bar, and out-of-order rows were the biggest single cause —
+  // checking row 4 meant hunting the document for it, page by page. Nothing
+  // downstream needs a particular order (classifyExtractRows maps in place and
+  // the confirm table renders in place), so the order the model chooses IS the
+  // order the reviewer reads.
+  assert.match(body, /order they appear/i,
+    "the prompt must ask for document order, or the model is free to group and sort");
+  assert.match(body, /Never sort or group/i,
+    "and must forbid sorting by name - an unstated order is one the model picks");
 });

@@ -1,0 +1,382 @@
+{
+  "version": 1,
+  "generatedAt": "2026-08-21",
+  "cities": {
+    "agoura hills, ca": {
+      "coords": {
+        "lat": 34.1533,
+        "lng": -118.7617
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "agoura-hills-ca.jpg",
+        "credit": "Arspickles17 at English Wikipedia",
+        "license": "CC BY-SA 3.0",
+        "commons": "Agouravista.jpg",
+        "alt": "Agoura Hills, CA from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp, well-exposed distant view of the town and surrounding hills with no conflicting text or landmarks."
+        }
+      },
+      "rejected": [
+        {
+          "title": "29414 Roadside Drive, Agoura Hills, CA 91301 - panoramio",
+          "reason": "Close-up of a dog behind a chain-link fence, not a city view."
+        },
+        {
+          "title": "Agoura-Hills-highway-101-Aerial-from-west-August-2014",
+          "reason": "High-altitude aerial is hazy and low-contrast with no discernible subject, reading more like a map than a place photograph."
+        }
+      ]
+    },
+    "boise, id": {
+      "coords": {
+        "lat": 43.6158,
+        "lng": -116.2017
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "boise-id.jpg",
+        "credit": "Patrick R.",
+        "license": "CC BY-SA 3.0",
+        "commons": "Front St. Downtown Boise.jpg",
+        "alt": "Aerial view of Boise, ID",
+        "source": "category-aerial",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp nighttime downtown cityscape at distance with an Idaho bank sign consistent with Boise."
+        }
+      },
+      "rejected": []
+    },
+    "coeur d'alene, id": {
+      "coords": {
+        "lat": 47.6928,
+        "lng": -116.78
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "coeur-d-alene-id.jpg",
+        "credit": "Spicypepper999",
+        "license": "CC0",
+        "commons": "Coeur d'Alene aerial, May 2023 (cropped).png",
+        "alt": "Coeur D'Alene, ID from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial of a lakeside downtown with no conflicting text or landmarks, suitable for overlaid type."
+        }
+      },
+      "rejected": []
+    },
+    "cumberland, md": {
+      "coords": {
+        "lat": 39.6528,
+        "lng": -78.7625
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "cumberland-md.jpg",
+        "credit": "Matthew Binebrink",
+        "license": "CC BY-SA 4.0",
+        "commons": "Cumberland Aerial 2022.jpg",
+        "alt": "Cumberland, MD from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial of a downtown with streets, churches and buildings, no conflicting text or landmarks."
+        }
+      },
+      "rejected": []
+    },
+    "flint, mi": {
+      "coords": {
+        "lat": 43.0189,
+        "lng": -83.6933
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "flint-mi.jpg",
+        "credit": "Michael Barera",
+        "license": "CC BY-SA 4.0",
+        "commons": "Flint July 2018 30 (downtown).jpg",
+        "alt": "Aerial view of Flint, MI",
+        "source": "category-aerial",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp, well-exposed distant view of a downtown skyline with no conflicting signage or overlays."
+        }
+      },
+      "rejected": []
+    },
+    "milwaukee, wi": {
+      "coords": {
+        "lat": 43.05,
+        "lng": -87.95
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "milwaukee-wi.jpg",
+        "credit": "Jeramey Jannene from Milwaukee, WI, United States of America",
+        "license": "CC BY 2.0",
+        "commons": "Downtown Milwaukee from US Bank Center.jpg",
+        "alt": "Aerial view of Milwaukee, WI",
+        "source": "category-aerial",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial of a dense downtown skyline with no conflicting text or landmarks, suitable for white type."
+        }
+      },
+      "rejected": []
+    },
+    "nampa, id": {
+      "coords": {
+        "lat": 43.6014,
+        "lng": -116.5278
+      },
+      "checkedAt": "2026-08-21",
+      "hero": null,
+      "rejected": [
+        {
+          "title": "Nampa Water Tower (Nampa, Idaho)",
+          "reason": "It shows a fenced grassy utility yard at a water tower, not a city view or skyline."
+        },
+        {
+          "title": "Before I Die (Nampa, Idaho)",
+          "reason": "It is a close-up of a graffiti wall covered in text, not a distant view of the city."
+        },
+        {
+          "title": "College of Western Idaho Nampa Campus Academic Building",
+          "reason": "It's a close-up of a single building's facade rather than a wider city or downtown view."
+        },
+        {
+          "title": "Overland Brewery Office (Nampa, Idaho)",
+          "reason": "It is a close-up of a single building's facade rather than a city view at a distance."
+        },
+        {
+          "title": "Sportsman Bar (Nampa, Idaho)",
+          "reason": "The crop shows only empty asphalt pavement and curb, with no identifiable cityscape."
+        },
+        {
+          "title": "Nampa Depot",
+          "reason": "It is a close-up of a single building's facade with signage rather than a wider city, skyline or streetscape view."
+        }
+      ]
+    },
+    "new bedford, ma": {
+      "coords": {
+        "lat": 41.6361,
+        "lng": -70.9347
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "new-bedford-ma.jpg",
+        "credit": "Massachusetts Dept. of Environmental Protection",
+        "license": "CC BY 2.0",
+        "commons": "Aerial view of New Bedford Harbor (2), June 1988.jpg",
+        "alt": "Aerial view of New Bedford, MA",
+        "source": "category-aerial",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial photograph of a harbor city from a distance, no text or contradicting landmarks."
+        }
+      },
+      "rejected": []
+    },
+    "raleigh, nc": {
+      "coords": {
+        "lat": 35.8542,
+        "lng": -78.7619
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "raleigh-nc.jpg",
+        "credit": "Abhiram Juvvadi",
+        "license": "CC BY-SA 4.0",
+        "commons": "Raleigh Skyline.jpg",
+        "alt": "Raleigh, NC from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial photograph of a downtown skyline consistent with Raleigh, suitable for overlaid white type."
+        }
+      },
+      "rejected": []
+    },
+    "salt lake city, ut": {
+      "coords": {
+        "lat": 40.7608,
+        "lng": -111.8911
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "salt-lake-city-ut.jpg",
+        "credit": "Invictus323",
+        "license": "CC BY 4.0",
+        "commons": "SLC Skyline 2024.jpg",
+        "alt": "Salt Lake City, UT from above",
+        "source": "wikipedia",
+        "crop": "bottom",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp, well-exposed distant skyline with mountain backdrop consistent with Salt Lake City."
+        }
+      },
+      "rejected": []
+    },
+    "shreveport, la": {
+      "coords": {
+        "lat": 32.4639,
+        "lng": -93.7944
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "shreveport-la.jpg",
+        "credit": "Roman Eugeniusz",
+        "license": "CC BY-SA 3.0",
+        "commons": "Shreveport LA, USA - panoramio (6).jpg",
+        "alt": "Shreveport, LA from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp real photograph of a riverfront bridge with downtown skyline at distance, no conflicting text or landmarks."
+        }
+      },
+      "rejected": []
+    },
+    "vero beach, fl": {
+      "coords": {
+        "lat": 27.6306,
+        "lng": -80.3786
+      },
+      "checkedAt": "2026-08-21",
+      "hero": null,
+      "rejected": [
+        {
+          "title": "Vero Beach arial view at night (2023)",
+          "reason": "Soft, blurry hazy night aerial lacking sharpness and clear subject for white type."
+        },
+        {
+          "title": "Vero Beach FL Treasure Hammock Ranch Farmstead02",
+          "reason": "The crop is entirely overgrown grass and brush with no city, skyline or street visible."
+        },
+        {
+          "title": "Merrill P. Barber Bridge Vero Beach 20230304 151634",
+          "reason": "The crop is entirely open water with no city, skyline or landmark visible."
+        },
+        {
+          "title": "Repairs on the Alma Lee Loy bridge in Vero Beach",
+          "reason": "It is a dashcam-style road construction shot with barricade lettering and container signage, not a city view from a distance."
+        },
+        {
+          "title": "Main Transit Hub in Vero Beach",
+          "reason": "Close-up of a single transit building's facade rather than a city view at distance."
+        },
+        {
+          "title": "Marina in Grand Harbor, Vero Beach, Florida 001",
+          "reason": "It shows a close-up marina full of docked boats rather than a city skyline, downtown or distant urban view."
+        }
+      ]
+    },
+    "westlake village, ca": {
+      "coords": {
+        "lat": 34.1419,
+        "lng": -118.8194
+      },
+      "checkedAt": "2026-08-21",
+      "hero": {
+        "file": "westlake-village-ca.jpg",
+        "credit": "Niceley",
+        "license": "CC BY-SA 4.0",
+        "commons": "Aerial-of-Westlake-Lake-in-Westlake-Village.jpg",
+        "alt": "Westlake Village, CA from above",
+        "source": "wikipedia",
+        "crop": "center",
+        "judge": {
+          "verdict": "good",
+          "reason": "Sharp aerial photograph of a lakeside town from a distance, with no conflicting text or landmarks."
+        }
+      },
+      "rejected": []
+    },
+    "woodland hills, ca": {
+      "coords": {
+        "lat": 34.1683,
+        "lng": -118.605
+      },
+      "checkedAt": "2026-08-21",
+      "hero": null,
+      "rejected": [
+        {
+          "title": "Taft High School Woodland Hills",
+          "reason": "It is a close-up of a single school building's facade with prominent signage text, not a city view."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9935)",
+          "reason": "Close-up of ferns and foliage, not a city view."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9934)",
+          "reason": "Close-up of rocks and vegetation with a signpost, not a city view."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9936)",
+          "reason": "Close-up of vegetation and a shallow creek bed, with no city view."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9938)",
+          "reason": "Close-up of a single apartment building's entrance and shrubbery, not a city view at distance."
+        },
+        {
+          "title": "Los Angeles CA 20230805 (9939)",
+          "reason": "Close-up of ivy and rocks, not a city view."
+        }
+      ]
+    },
+    "ontario, ca": {
+      "coords": {
+        "lat": 34.0528,
+        "lng": -117.6278
+      },
+      "checkedAt": "2026-08-21",
+      "hero": null,
+      "rejected": [
+        {
+          "title": "GraberOliveHouseVatRoom",
+          "reason": "Interior close-up of olive curing vats, not a city view."
+        },
+        {
+          "title": "Ontario Convention Center",
+          "reason": "It is a close-up of a single building's facade with large signage text rather than a wider city view."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269248098)",
+          "reason": "Ground-level yard scene with workers and equipment, not a city view from a distance."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269017836)",
+          "reason": "It shows a group of people in a work yard, not a city viewed from outside at distance."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54268126257)",
+          "reason": "It is a close-up of people's uniforms in a yard, not a city view."
+        },
+        {
+          "title": "On January 15, 2025, United States Forest Service Chief Randy Moore Visits Operations Southern California Staff (54269434200)",
+          "reason": "It's a close-up group photo of people in a yard, not a distant city view."
+        }
+      ]
+    }
+  }
+}

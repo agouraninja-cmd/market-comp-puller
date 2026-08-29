@@ -35,6 +35,11 @@ function comp(over = {}) {
 }
 const report = (comps) => ({ summary: "A market.", avg_price_per_sqft: "$140", comps });
 const freeEnt = computeEntitlements({ user: null, now: NOW, enabled: true });
+// gateReport() caps whenever maxComps is a NUMBER. The free tier stopped
+// supplying one on 2026-08-21 (FREE_MAX_COMPS is "all"), but the cap itself is
+// still live code for any future numeric limit, so the tests below state the
+// number they are testing instead of borrowing whatever the free tier is.
+const cappedEnt = { ...computeEntitlements({ user: null, now: NOW, enabled: true }), maxComps: 10 };
 const proEnt = computeEntitlements({
   user: { id: "u1" }, now: NOW, enabled: true,
   subscription: { plan: "pro_monthly", status: "active", current_period_end: "2026-09-01T00:00:00Z" },
@@ -43,7 +48,7 @@ const proEnt = computeEntitlements({
 // --- the gate itself -------------------------------------------------------
 
 test("free report is cut to 10 comps and says how many are locked", () => {
-  const r = gateReport(report(Array.from({ length: 18 }, () => comp())), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(Array.from({ length: 18 }, () => comp())), cappedEnt, { asOfMs: NOW });
   assert.equal(r.comps.length, 10);
   assert.equal(r.locked_count, 8);
   assert.equal(r.locked_basis.length, 8);
@@ -72,7 +77,7 @@ test("gating never mutates the caller's report (the cache keeps the full set)", 
 // --- the non-negotiable: no identity in a basis row ------------------------
 
 test("basis rows carry arithmetic only — no address, price, url, notes or coords", () => {
-  const r = gateReport(report(Array.from({ length: 12 }, () => comp())), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(Array.from({ length: 12 }, () => comp())), cappedEnt, { asOfMs: NOW });
   const serialized = JSON.stringify(r.locked_basis);
   for (const row of r.locked_basis) {
     for (const field of IDENTIFYING) {
@@ -92,7 +97,7 @@ test("a whole gated response leaks nothing about a locked comp", () => {
     ...Array.from({ length: 10 }, (_, i) => comp({ address: `${i} Visible Way, Dallas, TX`, date: "Jul 2026" })),
     comp({ address: "999 SECRET BLVD, Dallas, TX", date: "Feb 2024", source_url: "https://secret.example" }),
   ];
-  const wire = JSON.stringify(gateReport(report(comps), freeEnt, { asOfMs: NOW }));
+  const wire = JSON.stringify(gateReport(report(comps), cappedEnt, { asOfMs: NOW }));
   assert.ok(!wire.includes("SECRET"), "the locked comp's address must not appear anywhere in the response");
   assert.ok(!wire.includes("secret.example"));
   assert.ok(wire.includes("Visible Way"), "the ten visible comps still arrive in full");
@@ -144,7 +149,7 @@ test("sales fill the free slots before leases", () => {
     ...Array.from({ length: 10 }, (_, i) =>
       comp({ transaction: "Sale", address: `S${i + 1}`, date: "Jan 2025" })),
   ];
-  const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(comps), cappedEnt, { asOfMs: NOW });
   const shown = r.comps.map((c) => c.address);
   assert.deepEqual(shown, Array.from({ length: 10 }, (_, i) => `S${i + 1}`),
     "even though the leases are far more recent, the valuation is sales-based");
@@ -157,7 +162,7 @@ test("leases fill the slots sales cannot", () => {
     comp({ transaction: "Sale", address: "S3" }),
     ...Array.from({ length: 10 }, (_, i) => comp({ transaction: "Lease", address: `L${i + 1}` })),
   ];
-  const r = gateReport(report(comps), freeEnt, { asOfMs: NOW });
+  const r = gateReport(report(comps), cappedEnt, { asOfMs: NOW });
   assert.equal(r.comps.length, 10);
   assert.ok(["S1", "S2", "S3"].every((a) => r.comps.some((c) => c.address === a)),
     "every sale is always shown");
@@ -225,7 +230,7 @@ test("free and Pro compute the same $/SF set from the same report", () => {
   const comps = Array.from({ length: 15 }, (_, i) =>
     comp({ address: `${i} Main`, price_per_sqft: `$${100 + i * 5}`, size_sqft: "50,000" }));
   const full = gateReport(report(comps), proEnt, { asOfMs: NOW });
-  const free = gateReport(report(comps), freeEnt, { asOfMs: NOW });
+  const free = gateReport(report(comps), cappedEnt, { asOfMs: NOW });
 
   const psfOf = (c) => Number(String(c.price_per_sqft).replace(/[^0-9.]/g, ""));
   const proSet = full.comps.map(psfOf).sort((a, b) => a - b);
@@ -256,4 +261,40 @@ test("a zero limit locks everything and still reports the count", () => {
   const { visible, locked } = selectVisible([comp(), comp()], 0, { asOfMs: NOW });
   assert.equal(visible.length, 0);
   assert.equal(locked.length, 2);
+});
+
+// --- the free tier itemizes everything (2026-08-21) -------------------------
+//
+// The list gate was the free tier's conversion driver until this date. It was
+// dropped because the headline value range was ALREADY computed from the full
+// comp set (the locked_basis rows above), so the gate withheld the evidence
+// for a number it had already published. Pro sells the ten-year window,
+// unlimited exports, the vault, Address Explorer and branding instead.
+//
+// Pinned here rather than left to the constant: a numeric FREE_MAX_COMPS would
+// restore the gate silently, and the only visible symptom is a free report
+// quietly getting shorter.
+
+test("a free account's itemized list is not capped", () => {
+  const r = gateReport(report(Array.from({ length: 18 }, () => comp())), freeEnt, { asOfMs: NOW });
+  assert.equal(r.comps.length, 18, "every comparable the search found is itemized");
+  assert.equal(r.locked_count, 0);
+  assert.equal(r.locked_basis, undefined,
+    "nothing is withheld, so there is nothing for a basis row to stand in for");
+});
+
+test("an anonymous visitor is not capped either", () => {
+  // The signup wall is what gates an anonymous visitor, not the comp list.
+  const anon = computeEntitlements({ user: null, now: NOW, enabled: true });
+  const r = gateReport(report(Array.from({ length: 14 }, () => comp())), anon, { asOfMs: NOW });
+  assert.equal(r.comps.length, 14);
+  assert.equal(r.locked_count, 0);
+});
+
+test("a free report and a Pro report are now the same itemized list", () => {
+  const src = report(Array.from({ length: 16 }, () => comp()));
+  const free = gateReport(src, freeEnt, { asOfMs: NOW });
+  const pro = gateReport(src, proEnt, { asOfMs: NOW });
+  assert.equal(free.comps.length, pro.comps.length);
+  assert.deepEqual(free.comps.map((c) => c.address), pro.comps.map((c) => c.address));
 });

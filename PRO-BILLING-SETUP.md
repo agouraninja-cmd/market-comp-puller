@@ -1,7 +1,20 @@
 # Pro Billing — Setup State & Resume Point
 
-Written 2026-07-31. **Last updated 2026-08-03**, after phase 8 Stages A–E6 and
-the export cap. Read this first when picking the Pro tier back up.
+Written 2026-07-31. **Last updated 2026-08-25**, adding the firm-seats
+(`firm_monthly`) launch runbook. Read this first when picking the Pro tier
+back up.
+
+**⚠ 2026-08-21: the single-report unlock is RETIRED.** Every mention of it
+below is HISTORY, kept because the setup record must not be rewritten — do
+not follow it forward. `single_report` is deleted from `/api/checkout`'s
+PLANS map (a source scan in `test/routes.test.js` fails the build if it
+returns), `STRIPE_PRICE_SINGLE_REPORT` is no longer read and can be unset
+in Render with the price archived in Stripe, and the free tier itemizes
+every comp (`FREE_MAX_COMPS: "all"`, same date). Purchases already made
+are honored forever — the webhook, `report_purchases`,
+`/api/report-access` and the per-property entitlement all remain. The
+current sellable plans are `pro_monthly`, `pro_annual_founding` and
+`firm_monthly`. See CLAUDE.md's "single-report unlock — RETIRED" section.
 
 **⚠ Stripe is in LIVE mode as of 2026-08-03.** Earlier revisions of this file
 said "test mode"; that is no longer true and the difference is real money. See
@@ -23,12 +36,13 @@ the warning below before touching anything.
 | 8. Stage D — clean up the test data | ✅ Done — 0 rows, 50 founding seats restored |
 | 8. Stage E0–E6 — live mode rebuilt and proved | ✅ Done 2026-08-03 |
 | 8. Stage E7 — reconcile hard-coded prices | ✅ N/A — live amounts match test |
-| **9. Stage E8 — delete `PRO_AUDIENCE`** | ❌ **NOT done — this is the launch** |
-| 9. Stage E9 — verify after launch | ❌ Not until E8 |
+| 9. Stage E8 — delete `PRO_AUDIENCE` | ✅ Done 2026-08-03 per the roadmap's shipped log ("Pro tier public launch") — this table was not updated at the time |
+| 9. Stage E9 — verify after launch | ✅ Same — Pro has been selling publicly since 2026-08-03 |
 | Export cap enforced (5 reports/mo free) | ✅ Shipped 2026-08-03 |
 | Admins get Pro comped on sign-in | ✅ Shipped 2026-08-03 — see below |
-| Report branding | ❌ Not built — no UI exists |
-| $39 single-report unlock | ✅ Shipped 2026-08-03 — `comp_snapshot` ALTER verified applied 2026-08-03 |
+| Report branding | ✅ Shipped 2026-08-08 (this table was not updated at the time; see the roadmap's shipped log) |
+| $39 single-report unlock | ✅ Shipped 2026-08-03 — **RETIRED 2026-08-21**, see the warning above |
+| **Firm seats (`firm_monthly`)** | ❌ **Code shipped + migration 033 applied 2026-08-19; `STRIPE_PRICE_FIRM_MONTHLY` unset — the runbook below is the launch** |
 
 ---
 
@@ -71,12 +85,18 @@ Stripe and resumes the moment it is switched back on.
 
 Not secret — a price ID identifies a product, it does not authorize anything.
 
-**LIVE mode (what production uses today, created 2026-08-03):**
+**⚠ 2026-08-25: the prices below are the ORIGINAL ones and three of the four
+lines are superseded.** The repricing decision and the new values are in
+"The 2026-08-25 repricing" further down; the price IDs created for it get
+recorded there. This block is kept as the historical record, per the same
+rule as the retired single-report entries.
+
+**LIVE mode (created 2026-08-03):**
 
 ```
-STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo
-STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding
-STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, sold since 2026-08-03
+STRIPE_PRICE_PRO_MONTHLY          = price_1U0QKkRztxjkvpo57UcIq0uv   # $129/mo — superseded 2026-08-25 by $100
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U0QKmRztxjkvpo5mSa8uS9G   # $990/yr founding — superseded 2026-08-25 by $840
+STRIPE_PRICE_SINGLE_REPORT        = price_1U0QKlRztxjkvpo5mK9VEvjJ   # $39, RETIRED 2026-08-21
 ```
 
 Note the prefixes run `Kk`, `Kl`, `Km` but map to **Monthly, Single Report,
@@ -576,6 +596,195 @@ withhold the file. Every failure path lets the export through.
   single-report unlock" above. Its `comp_snapshot` ALTER was verified applied
   on 2026-08-03, so nothing is outstanding. It has still never been exercised
   against a real card — see "Untested" below.
+
+---
+
+## Firm seats (`firm_monthly`) — launch runbook (written 2026-08-25)
+
+The third sellable plan, and the only dark one. The code shipped 2026-08-16
+(enterprise slice 4) and migration 033 (`org_subscriptions`) was applied and
+verified on production 2026-08-19 — see `migrations/APPLIED.md`. All nine
+webhook events are enabled on the live destination (2026-08-17), and the
+webhook's firm branch already handles quantity, so **nothing below is a
+deploy**. The entire launch is owner-console work: one Stripe price and one
+Render env var.
+
+**While `STRIPE_PRICE_FIRM_MONTHLY` is unset** (today's state): a
+`firm_monthly` checkout answers 503 "That plan isn't configured", `canBill`
+is false so the "Add seats" button never renders for anyone, and firms run on
+hand-granted seats (`orgs.seats`, 200 by default at creation). That is the
+designed dark state, and unsetting the var is also the rollback — existing
+subscriptions stay valid in Stripe and resume when it returns.
+
+### What the code already enforces (don't rebuild, don't re-check by hand)
+
+- **Owner only.** Only the firm's owner sees the Buy and portal controls, and
+  both routes re-check ownership server-side. Admins and members see the seat
+  count and nothing to click.
+- **Seats ≥ headcount.** Buying fewer seats than current members + pending
+  invitations is refused by name (`seats_below_headcount`), because the
+  webhook would otherwise drop named colleagues to free. There is
+  deliberately **no minimum seat count in code** (decided 2026-08-25): the
+  proposed 5-seat minimum is a pricing question for Chuck, and if it is ever
+  wanted it lands as another named refusal beside `seats_below_headcount`.
+- **Seats bought = seats enforced.** The webhook writes `orgs.seats` from the
+  SUBSCRIPTION's quantity (`STRIPE.seatsOf`), so a portal quantity change
+  updates the cap with no code in the loop. Corollary: a checkout on a
+  hand-granted firm **replaces** its 200 seats with the bought number.
+- **The firm is the customer.** Checkout creates (or reuses) the firm's own
+  Stripe customer, never the buying owner's personal one, and `org_id` rides
+  in the metadata of both the session and the subscription.
+- **No dollar amount renders anywhere in the UI.** The seats prompt and plan
+  card show counts only; Stripe's checkout page is the price surface. Unlike
+  `$129`/`$990` (hard-coded in the pricing modal), the firm price can change
+  in the dashboard without a repo edit.
+
+### The 2026-08-25 repricing — what was decided and why
+
+Chuck was unavailable for the price check, so it was done against the market
+instead. Per-seat pricing for broker-facing CRE tools clusters hard at
+**$129/user/mo** (Apto, Rethink CRM, ClientLook — ClientLook entry ~$89);
+above that sit Crexi Pro at $249, Buildout at $85–249/broker **plus** a
+$275/mo platform fee, and CoStar at $300–$1,200+/mo. Team plans in the 5–50
+seat range conventionally run **10–25% off** the individual price.
+
+The owner's call, taken 2026-08-25:
+
+| | Was | Now |
+|---|---|---|
+| Pro monthly | $129/mo | **$100/mo** |
+| Founding annual | $990/yr ("saves $558") | **$840/yr ("saves $360")** |
+| Firm seats | not sold | **$79/seat/mo, minimum 2 seats** |
+
+$79 against $100 is a 21% team discount, inside the conventional band. The
+founding annual moved because $990 against $100/mo would have saved only
+$210 — a visibly worse deal still wearing the word "founding".
+
+**The 2-seat minimum is not a pricing preference, it closes a hole.**
+`canUseOrg` gates *creating* a firm on already holding Pro, but
+`getEntitlements` grants Pro from a firm **seat** as a fallback once a
+personal subscription lapses (`server.js`, the `firmSeatSubscriptionFor`
+branch). Without a minimum, one person could create a firm, buy a single
+seat, cancel their own plan, and keep everything at the seat price — which
+is below the individual price by construction, because a team discount is
+the point. Two seats bill $158 against $100, so the cheap path back to Pro
+is closed. **Keep that relation true if either price moves**: it works
+because the seat price is above half the individual price. The rule lives in
+`ORG.MIN_SEATS` (org-access.js), is refused by name at checkout
+(`seats_below_minimum`), and is mirrored into index.html's seats prompt with
+a test pinning the two.
+
+New live price IDs — **record them here as they are created**:
+
+```
+STRIPE_PRICE_PRO_MONTHLY          = price_1U8iOORztxjkvpo5m6v1nAK0   # $100.00/mo
+STRIPE_PRICE_PRO_ANNUAL_FOUNDING  = price_1U8iSERztxjkvpo5ReDQ2YCF   # $840.00/yr
+STRIPE_PRICE_FIRM_MONTHLY         = price_1U8iViRztxjkvpo5mrjCONar   # $79.00/seat/mo  <- LIVE
+                                    price_1U8iViRztxjkvpo5DIPhXbGL   # $1.00/seat/mo, ARCHIVED after the test
+```
+
+**Done, and proved on production 2026-08-26.** All three are set on Render and
+the firm plan is selling at $79 a seat. What the live round trip established,
+in order:
+
+- A firm checkout for 1 seat is refused `seats_below_minimum` (minimum 2); 0
+  and a non-number are refused with no code, which is the intended asymmetry.
+- Two seats at the $1 test price billed $2.00 ("Qty 2, $1.00 each"), and the
+  webhook wrote `org_subscriptions` AND set `orgs.seats` to 2 from the
+  subscription quantity. The desk read "1 of 2 seats used - 1 free - active"
+  and grew a working "Manage firm billing" button.
+- Cancelling flowed back the same way: `status` went to `cancelled` on its own.
+- After the env swap, a fresh session quotes **$158.00/mo, Qty 2, $79.00
+  each**. The $1 price is archived.
+
+**It also found that checkout had been broken for five days** -- the retired
+$20 unlock left a dead `reportId` reference in the Stripe call, so every
+successful checkout threw ReferenceError while the suite stayed green. Fixed
+with the test that was missing (see STRIPE_API_URL in stripe.js and
+test/checkout-run.test.js). That is the case for doing this round trip on a
+real card rather than trusting a green build.
+
+Left behind on purpose: the scratch firm `Seat Billing Test (scratch)`
+(`5c1afe5f-e591-404c-b0a3-42ee5fbe381c`), which has a cancelled subscription
+row and `seats = 2`. There is no delete-org route, so removing it is SQL:
+
+```sql
+delete from org_subscriptions where org_id = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
+delete from org_members     where org_id = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
+delete from orgs            where id     = '5c1afe5f-e591-404c-b0a3-42ee5fbe381c';
+```
+
+All four were created live on 2026-08-26. `CompNinja Firm` is a new product,
+`prod_V90WpmtIrSm0Yg`; the two Pro prices were added to the existing products
+(`prod_UzJpxsAE3jlkFD`, `prod_UzJqRs6PpYfqAI`), and the old $129/$990 prices are
+left unarchived until the new ones are proved.
+
+**The migration step turned out to be moot.** Account MRR was $0.00 and both old
+prices showed **0 active subscriptions**, so nobody was on $129 or $990 to move.
+The one live subscription is the E6 test from 2026-08-03 (okb336@gmail.com,
+$1/mo against the archived Pro Monthly $1 price), already set to cancel
+2026-09-03. Re-check before assuming that is still true.
+
+No portal or webhook work: the existing destination and portal configuration
+cover subscriptions generally, and the portal's plan-switching stays OFF (the
+founding-cap reason, unchanged).
+
+**Two ordering rules for the repricing**, both learned from what would go
+wrong otherwise:
+
+- **Env vars before the copy deploy.** Between the two the site advertises
+  $129 while charging $100 — under-advertising, which is the safe direction.
+  The reverse order advertises $100 and charges $129.
+- **Existing subscribers do not move on their own.** A Stripe price change
+  never touches live subscriptions, so anyone on $129 keeps paying it while
+  the site says $100. They are migrated down by hand in the dashboard;
+  founding annual members keep the $990 they bought.
+
+### Step 2 — prove it with a $1 price first (the E6 pattern)
+
+Stripe is live, so the round trip is proved the way E6 proved Pro: a
+temporary price, a real card, a refund.
+
+1. Create a second, temporary **$1.00/seat monthly** price on the same
+   product.
+2. Render → set `STRIPE_PRICE_FIRM_MONTHLY` to the $1 price ID → save,
+   deploy.
+3. Sign in as the owner of a **scratch firm** (create one — `kind` is
+   required at creation). **Not a real hand-granted firm**: the webhook will
+   set its seats to the bought quantity, replacing the hand-granted 200.
+4. My Desk → firm section now shows "N of N seats used" and **Add seats**.
+   Buy 2 seats ($2 real charge).
+5. Verify, in order:
+   - Stripe: checkout completed, subscription active, quantity 2, the
+     customer is the firm's own (name/metadata), webhook deliveries 200.
+   - Supabase: `select org_id, plan, status, current_period_end from
+     org_subscriptions;` shows the row (`firm_monthly` / `active`), and
+     `select seats from orgs where id = '<org id>';` reads **2**.
+   - The plan card now also shows the **portal** button (it only renders once
+     a subscription exists); open it and confirm it lands on the firm's
+     customer.
+   - A second browser signed in as a non-owner member of the firm sees the
+     seat count and **no** buttons.
+6. Cancel the subscription (portal or dashboard) and refund the $2 charge in
+   Stripe. Note the refund alone changes nothing on our side by design (a
+   refunded subscription invoice is left to the subscription's own lifecycle
+   events) — the cancel is what ends it.
+7. Swap `STRIPE_PRICE_FIRM_MONTHLY` to the real price ID, archive the $1
+   price.
+8. Clean up the scratch rows: `delete from org_subscriptions where org_id =
+   '<org id>';` and `update orgs set seats = 200 where id = '<org id>';` (or
+   delete the scratch firm outright — `org_subscriptions` cascades).
+
+Timing note: the firm plan card reads `org_subscriptions` fresh on every
+open, but a member's Pro-via-firm **entitlement** rides a 60-second seat
+cache (`SEAT_CACHE_TTL_MS`) — wait a minute before concluding a colleague's
+Pro didn't arrive, or that a hand-edited row didn't take.
+
+### Done when
+
+The done-when from the Aug 27 plan, verbatim: the firm plan card renders a
+working Buy for an org owner, and a test checkout writes an
+`org_subscriptions` row. Step 2 proves both.
 
 ---
 

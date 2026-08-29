@@ -2,6 +2,29 @@
 // market-seed entry shape that renderMarketPageHTML consumes. Used by BOTH
 // gen-market-seed.js (the curated seed script) and server.js's on-demand
 // /api/explore-market endpoint — keep it dependency-free.
+//
+// DUAL-EXPORTED since 2026-08-21 (Node for the two callers above and npm test,
+// a browser global `MARKETSNAP` for index.html), like valuation.js,
+// gut-check.js and explore-query.js, and served with the same maxAge: 0 rule
+// for the same reason: a stale copy against a newer index.html is the failure
+// nobody detects.
+//
+// WHY the browser needs it. A leases-only report headlines a rent range, and
+// that range is rentFromComps — the same function the market pages have used
+// since 2026-08-19. The report recomputes it on every render because a reader
+// can exclude a comp, so the figure cannot be computed once on the server and
+// shipped; and a second copy of leaseRentPsfYr in index.html would be a second
+// answer to "is this rate monthly or annual", which is exactly the parse that
+// function exists to get right.
+//
+// The body below is deliberately NOT re-indented into the factory. The wrapper
+// is the entire change, and a 270-line whitespace diff would bury it.
+
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === "object" && module.exports) module.exports = api;
+  else root.MARKETSNAP = api;
+})(typeof self !== "undefined" ? self : this, function () {
 
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 
@@ -83,6 +106,42 @@ function leaseRentPsfYr(c) {
   return n > 0 ? n : NaN;
 }
 
+// Which basis a market QUOTES in, read off the comps instead of guessed.
+//
+// The FIGURE is always annual and stays that way: leaseRentPsfYr normalizes on
+// the way in and rentFromComps medians one canonical number, which is
+// broker-vault.js's rule (migration 029) and for its reason — a book holding
+// two bases quotes three different rents for one lease.
+//
+// This is the DISPLAY half of that same rule. California industrial and retail
+// quote rent MONTHLY while most of the country quotes annually, so $1.35/SF is
+// an ordinary monthly rent and an impossible annual one, and a report that
+// says "$16.20/SF/yr" in Fontana is quoting a number nobody there says out
+// loud. The vault REFUSES to default the basis because it is writing a stored
+// figure and a wrong guess is 12x wrong forever. Nothing is stored here and
+// the annual figure is already right, so falling back to annual is safe rather
+// than a guess: it is at worst unidiomatic, never incorrect. That asymmetry is
+// the whole reason this function may have a default and parseRentBasis may not.
+//
+// EVIDENCE ONLY. A comp carrying a bare numeric price_per_sqft states no basis
+// and votes for neither. And the LEADING quote wins: "$1.08/SF/month NNN
+// ($12.96/SF/yr NNN)" is a monthly-quoted comp with an annual parenthetical,
+// not one vote each.
+const PER_MONTH = /\/\s*sf\s*\/\s*(mo\b|month)/i;
+const PER_YEAR = /\/\s*sf\s*\/\s*(yr\b|year)/i;
+function leaseQuoteBasis(comps) {
+  let monthly = 0, annual = 0;
+  for (const c of (comps || [])) {
+    if (!isLease(c)) continue;
+    const raw = String((c && c.price_or_rate) || "");
+    const m = raw.search(PER_MONTH), y = raw.search(PER_YEAR);
+    if (m === -1 && y === -1) continue;
+    if (m !== -1 && (y === -1 || m < y)) monthly++;
+    else annual++;
+  }
+  return monthly > annual ? "monthly" : "annual";
+}
+
 // ≥2 priced leases or null — under-claim, never a one-comp "band".
 function rentFromComps(comps) {
   const vals = (comps || []).filter(isLease).map(leaseRentPsfYr).filter((v) => v > 0).sort((a, b) => a - b);
@@ -103,6 +162,56 @@ function opexRangeFrom(data) {
   const high = String(r.high || "").trim();
   if (!low || !high) return null;
   return { low, high, note: String(r.note || "").trim().slice(0, 120) };
+}
+
+// The market's momentum as ONE of three words, or null. The model already
+// answers this on every search — `price_discovery.direction` is constrained to
+// exactly "expanding" / "flat" / "contracting" by the prompt (server.js), and
+// fills on roughly 5 searches in 6 — but the snapshot shape dropped it, so no
+// market page has ever carried a direction. Read here so the Explorer can show
+// one without a second question to the model.
+//
+// An unrecognized word is null, never passed through: this string reaches the
+// Explorer dropdown as a COLOR (green / grey / red), and a colour is a claim.
+// Null renders no badge at all, which is the same under-claim rule the rent
+// band and the opex range already follow.
+const DIRECTIONS = new Set(["expanding", "flat", "contracting"]);
+function directionFrom(data) {
+  const pd = data && data.price_discovery;
+  if (!pd || typeof pd !== "object") return null;
+  const d = String(pd.direction || "").trim().toLowerCase();
+  return DIRECTIONS.has(d) ? d : null;
+}
+
+// How long a stored direction is allowed to speak for the market it names.
+//
+// "Expanding" is a claim about RIGHT NOW — a direction of travel — while a
+// median $/SF is a claim about a stated window of past sales. So the two age
+// differently, and the badge is the one that needs an expiry. The market page
+// can afford to show July's medians because it prints "Updated <date>" directly
+// above them; the Explorer dropdown, which is where this badge renders, shows
+// no date at all.
+//
+// 90 days rather than 30: these pages only move when someone deliberately
+// regenerates them, and the seeded set routinely sits well over a month between
+// runs, so a tighter window would leave the badge dark on most markets most of
+// the time. An expired direction renders NOTHING, which is what an Explorer row
+// already looks like — it degrades to the familiar, not to a warning.
+const DIRECTION_MAX_AGE_DAYS = 90;
+
+// The direction a page may still show today, or null. Pure and clock-free —
+// `nowMs` is passed in, the same way isBetterSnapshot compares two stamps
+// rather than reading a clock — so `npm test` can pin the boundary exactly.
+//
+// A snapshot with no readable `generatedAt` has an UNKNOWN age, and unknown is
+// not young: it returns null rather than assuming the read is current.
+function freshDirection(snapshot, nowMs) {
+  const d = String((snapshot && snapshot.direction) || "").trim().toLowerCase();
+  if (!DIRECTIONS.has(d)) return null;
+  const stamp = Date.parse(`${String((snapshot && snapshot.generatedAt) || "").trim()}T00:00:00Z`);
+  if (!Number.isFinite(stamp)) return null;
+  const ageDays = (nowMs - stamp) / 86400000;
+  return ageDays > DIRECTION_MAX_AGE_DAYS ? null : d;
 }
 
 // Same bounds as report-parse.js normalizeTrendPct (±30%/yr, refuse 0). Copied
@@ -174,6 +283,17 @@ function distillMarketSnapshot(t, data) {
   if (opex) snapshot.market_opex_range = opex;
   const trend = trendPctFrom(data);
   if (trend != null) snapshot.annual_price_trend_pct = trend;
+  const direction = directionFrom(data);
+  if (direction) {
+    snapshot.direction = direction;
+    // Provenance. A direction can also be DERIVED from a page's own
+    // market_trend sentence for pages built before this field existed
+    // (scripts/derive-market-direction.js, which stamps "market_trend").
+    // Recording which is which is what lets that script skip a page whose read
+    // came from the search itself, and what stops a second-hand read being
+    // mistaken for a first-hand one months from now.
+    snapshot.direction_source = "price_discovery";
+  }
   const rent = rentFromComps(comps);
   if (rent) snapshot.rent = rent;
   return { snapshot, pricedSaleCount: ppsfVals.length };
@@ -203,8 +323,11 @@ function isBetterSnapshot(candidate, current) {
   return n(candidate) >= n(current);
 }
 
-module.exports = {
+return {
   MIN_PRICED_SALE_COMPS, slugify, distillMarketSnapshot, isBetterSnapshot,
-  dateKey, safeHttpUrl, isLease, leaseRentPsfYr, rentFromComps,
-  opexRangeFrom, trendPctFrom,
+  dateKey, safeHttpUrl, isLease, leaseRentPsfYr, leaseQuoteBasis, rentFromComps,
+  opexRangeFrom, trendPctFrom, directionFrom, DIRECTIONS,
+  freshDirection, DIRECTION_MAX_AGE_DAYS,
 };
+
+});

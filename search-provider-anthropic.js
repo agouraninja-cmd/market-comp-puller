@@ -14,6 +14,12 @@ const capabilities = {
   streaming: true,
   // cache_control is an explicit breakpoint we place ourselves.
   promptCaching: "explicit",
+  // No tunable reasoning depth on this path: extended thinking is a separate
+  // opt-in this product does not use, so there is no level to set. Declared
+  // as null rather than omitted so server.js can REFUSE a THINKING_LEVEL that
+  // this provider would silently ignore - a knob that appears to work and
+  // changes nothing is worse than one that says it does not apply.
+  thinkingLevels: null,
   pdfExtract: true,
   // Screenshots and photos of a deals table, through the same extract call.
   imageExtract: true,
@@ -95,8 +101,97 @@ function parseExtractResponse(data) {
   return { text: parsed.text, usage: parsed.usage, stopReason: parsed.stopReason };
 }
 
-// Non-streaming branch only. The streaming branch stays in server.js for now;
-// moving it is phase 4's streaming-parity work.
+// ---------------------------------------------------------------------------
+// Streaming reader. The stateful half of parseResponse: server.js hands it one
+// decoded SSE frame at a time and gets back NORMALIZED events, so the read loop
+// there never names a vendor's event types. Extracted from server.js
+// 2026-08-21 — it had grown eight hardcoded Anthropic event names, which is why
+// a second provider could not stream at all no matter what its API supported.
+//
+// The one invariant that matters, and the reason `text()` rebuilds rather than
+// simply concatenating every delta it saw: the final string must be BYTE
+// IDENTICAL to what parseResponse() produces from the equivalent non-streaming
+// body — text blocks only, in index order, joined with "\n", trimmed. Anything
+// else and parseCompJson starts seeing different input on the two paths, which
+// is the class of bug that shows up as "the report is fine unless streaming is
+// on". test/search-provider-anthropic.test.js pins the two against each other.
+//
+// Normalized event kinds (the whole vocabulary a provider may emit):
+//   start   {usage}            the message opened
+//   text    {text}             a text delta, for the live extractors
+//   results {count}            a search returned, count of results
+//   search  {query}            one search round completed, with its query
+//   usage   {usage}            a usage update; merge non-zero keys only
+//   error   {status, message}  a mid-stream vendor error
+//   done    {stopReason}
+function createStreamReader() {
+  const blocks = new Map();   // index -> { type, text, json }
+  let stopReason = "";
+  return {
+    push(ev) {
+      const out = [];
+      if (!ev || typeof ev !== "object") return out;
+      if (ev.type === "error") {
+        // A mid-stream error carries the same vendor-authored text as a
+        // non-2xx, just after the 200 — so it goes through the same door.
+        // `overloaded_error` is the 529 that never got a status line.
+        const e = ev.error || {};
+        out.push({ kind: "error", status: e.type === "overloaded_error" ? 529 : "stream",
+                   message: e.message || e.type || "unknown" });
+        return out;
+      }
+      if (ev.type === "message_start") {
+        out.push({ kind: "start", usage: normalizeUsage(ev.message && ev.message.usage) });
+      } else if (ev.type === "content_block_start") {
+        const cb = ev.content_block || {};
+        blocks.set(ev.index, { type: cb.type, text: "", json: "" });
+        if (cb.type === "web_search_tool_result") {
+          out.push({ kind: "results", count: Array.isArray(cb.content) ? cb.content.length : null });
+        }
+      } else if (ev.type === "content_block_delta") {
+        const b = blocks.get(ev.index);
+        const d = ev.delta || {};
+        if (!b) return out;
+        // citations_delta also arrives on text blocks and carries no .text —
+        // never let it fall through into the text branch.
+        if (d.type === "text_delta" && typeof d.text === "string") {
+          b.text += d.text;
+          out.push({ kind: "text", text: d.text });
+        } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") {
+          b.json += d.partial_json;
+        }
+      } else if (ev.type === "content_block_stop") {
+        const b = blocks.get(ev.index);
+        if (b && b.type === "server_tool_use") {
+          let query = "";
+          // The query only exists once the block is complete — content_block_start
+          // carries input:{}. A truncated stream would throw here, and a raw
+          // SyntaxError would make solo() think the REPORT failed to parse and
+          // silently re-bill an entire search. Swallow it.
+          try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
+          out.push({ kind: "search", query });
+        }
+      } else if (ev.type === "message_delta") {
+        stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
+        if (ev.usage) out.push({ kind: "usage", usage: normalizeUsage(ev.usage) });
+        out.push({ kind: "done", stopReason });
+      }
+      return out;
+    },
+    text() {
+      return [...blocks.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .map(([, b]) => b)
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+    },
+  };
+}
+
+// Non-streaming branch. createStreamReader() above is its stateful twin, and
+// the two must agree on the text they produce (see that function's header).
 function parseResponse(data) {
   const content = (data && data.content) || [];
   return {
@@ -115,6 +210,13 @@ function normalizeUsage(raw) {
   return {
     input_tokens: n(u.input_tokens),
     output_tokens: n(u.output_tokens),
+    // Always 0 here: extended thinking is a separate opt-in this product does
+    // not use on the search path (hence capabilities.thinkingLevels: null), so
+    // no output token is a thought token. Present rather than omitted so every
+    // consumer of a normalized usage object sees the same keys whichever
+    // provider produced it - the eval scorecard averages this field, and an
+    // undefined would poison the average rather than read as zero.
+    thought_tokens: 0,
     cache_read_tokens: n(u.cache_read_input_tokens),
     cache_write_tokens: n(u.cache_creation_input_tokens),
   };
@@ -153,6 +255,7 @@ module.exports = {
   buildRequestBody,
   requestInit,
   parseResponse,
+  createStreamReader,
   normalizeUsage,
   costOf,
   deadlineTokens,

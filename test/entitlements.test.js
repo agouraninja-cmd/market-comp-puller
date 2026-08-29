@@ -92,7 +92,7 @@ test("every Pro-granting branch answers every Pro question", () => {
   for (const key of Object.keys(pro)) {
     assert.ok(key in admin, `admin entitlements are missing "${key}"`);
   }
-  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses", "portfolioMaxItems", "portfolioValues"]) {
+  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses", "canSeeSearchDemand", "portfolioMaxItems", "portfolioValues"]) {
     assert.deepEqual(admin[key], pro[key], `admin should match Pro on "${key}"`);
   }
 });
@@ -236,6 +236,35 @@ test("the Address Explorer is Pro-only once the tier is on", () => {
   assert.equal(
     ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canExploreAddresses,
     false, "expired");
+});
+
+test("search demand is Pro-only, and a single-report purchase does not buy it", () => {
+  // Same shape as the Explorer test above, plus the one rule that is its own:
+  // a $39 unlock buys one property's history, and a market's search demand is
+  // not scoped to a property.
+  assert.equal(ent({ user: null }).canSeeSearchDemand, false, "anonymous");
+  assert.equal(ent({ user: USER }).canSeeSearchDemand, false, "free account");
+  assert.equal(ent({ user: USER, subscription: activeSub() }).canSeeSearchDemand, true, "active");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", cancel_at_period_end: true }) }).canSeeSearchDemand,
+    true, "cancelling, still inside the paid period");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "past_due", grace_until: iso(NOW + 3 * DAY) }) }).canSeeSearchDemand,
+    true, "inside the payment grace window");
+  assert.equal(
+    ent({ user: USER, subscription: activeSub({ status: "canceled", current_period_end: iso(NOW - 30 * DAY) }) }).canSeeSearchDemand,
+    false, "expired");
+  assert.equal(
+    ent({ user: USER, reportId: "r1", purchase: { report_id: "r1" } }).canSeeSearchDemand,
+    false, "single-report purchase");
+});
+
+test("search demand stays dark when the Pro tier is off", () => {
+  // Unlike the Explorer and the desk's value column, this was never free
+  // before the tier existed — and it reports this site's own traffic, which a
+  // dark deployment must not hand to every anonymous visitor.
+  assert.equal(computeEntitlements({ now: NOW, enabled: false, user: USER }).canSeeSearchDemand, false);
+  assert.equal(computeEntitlements({ now: NOW, enabled: false, user: null }).canSeeSearchDemand, false);
 });
 
 test("free account: FREE_MAX_COMPS comps and three exports a month", () => {
@@ -891,4 +920,68 @@ test("a single-report purchase does not buy a firm", () => {
   const e = ent({ user: USER, reportId: "r1", purchase: { report_id: "r1" } });
   assert.equal(e.reportUnlocked, true);
   assert.equal(e.canUseOrg, false);
+});
+
+// --- Bulk valuation (2026-08-21) -------------------------------------------
+//
+// The capability that fans one click out into fifty billed searches, so every
+// branch here is a spend decision before it is a product one.
+
+test("bulk valuation is Pro, and nothing below it", () => {
+  const now = Date.now();
+  const paid = {
+    plan: "pro_monthly", status: "active",
+    current_period_end: new Date(now + 30 * 24 * 3600e3).toISOString(),
+  };
+  const pro = computeEntitlements({ user: { id: "u" }, subscription: paid, now, enabled: true });
+  assert.equal(pro.canBulkValue, true);
+  assert.equal(pro.bulkMaxAddresses, 50);
+
+  for (const [label, ent] of [
+    ["anonymous", computeEntitlements({ now, enabled: true })],
+    ["free", computeEntitlements({ user: { id: "u" }, now, enabled: true })],
+  ]) {
+    assert.equal(ent.canBulkValue, false, label);
+    assert.equal(ent.bulkMaxAddresses, 0, label);
+  }
+});
+
+test("a dark deployment grants no bulk valuation, unlike every other capability", () => {
+  // The vault's asymmetry, for a sharper reason. "Pre-Pro behavior" restores
+  // what visitors USED TO HAVE free; bulk valuation did not exist. And unlike
+  // the vault it is not merely an access surface — it is a spend surface, so
+  // granting it on a deployment that has simply not switched Pro on yet (the
+  // default) hands out an unmetered invoice.
+  const ent = computeEntitlements({ user: { id: "u" }, now: Date.now(), enabled: false });
+  assert.equal(ent.canBulkValue, false);
+  assert.equal(ent.bulkMaxAddresses, 0);
+  assert.equal(ent.canExploreAddresses, true, "the contrast: the Explorer WAS free before the tier");
+});
+
+test("a beta tester gets Pro's reports, not a fan-out that spends", () => {
+  // TESTER_PASSKEY is one string handed to a group. "Try Pro's reports" is
+  // what the code is for, and a report at a time is what it grants; fifty
+  // billed searches per click, unbounded in how often, is not that.
+  const ent = computeEntitlements({ user: { id: "u" }, tester: true, now: Date.now(), enabled: true });
+  assert.equal(ent.pro, true, "a tester really does get Pro's report features");
+  assert.equal(ent.canBulkValue, false);
+  assert.equal(ent.bulkMaxAddresses, 0);
+});
+
+test("an admin gets bulk valuation, because the team renders every surface", () => {
+  const ent = computeEntitlements({ user: { id: "u" }, admin: true, now: Date.now(), enabled: true });
+  assert.equal(ent.canBulkValue, true);
+  assert.equal(ent.bulkMaxAddresses, 50);
+});
+
+test("a single-report unlock does not reach bulk valuation", () => {
+  // The Address Explorer's argument and then some: a one-off unlock is scoped
+  // to one address+type, and a tool whose whole purpose is running fifty OTHER
+  // addresses cannot be scoped to one of them.
+  const ent = computeEntitlements({
+    user: { id: "u" }, purchase: { report_id: "r1" }, reportId: "r1",
+    now: Date.now(), enabled: true,
+  });
+  assert.equal(ent.reportUnlocked, true);
+  assert.equal(ent.canBulkValue, false);
 });

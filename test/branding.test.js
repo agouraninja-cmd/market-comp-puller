@@ -88,6 +88,37 @@ test("a shared report with junk branding is unbranded, not viewer-branded", () =
   assert.equal(b, null);
 });
 
+// --- the firm fallback (041) -----------------------------------------------
+
+const FIRM_ROW = { firm_name: "Colliers Boise", license_number: "FB-99" };
+
+test("a member with no profile of their own falls back to the firm's", () => {
+  const b = brandForRender({ profile: null, canBrand: true, firmProfile: FIRM_ROW });
+  assert.equal(b.firmName, "Colliers Boise");
+});
+
+test("the member's own profile always beats the firm's — fallback, never override", () => {
+  const b = brandForRender({ profile: ROW, canBrand: true, firmProfile: FIRM_ROW });
+  assert.equal(b.firmName, "Adler Industrial");
+});
+
+test("no entitlement means no brand, firm profile or not", () => {
+  assert.equal(brandForRender({ profile: null, canBrand: false, firmProfile: FIRM_ROW }), null);
+});
+
+test("a firm profile that is not a brand (no logo, no name) falls to null, not {}", () => {
+  const b = brandForRender({ profile: null, canBrand: true, firmProfile: { phone: "208-555-0100" } });
+  assert.equal(b, null);
+});
+
+test("a shared report never falls back to the viewer's FIRM profile either", () => {
+  const b = brandForRender({
+    isShared: true, sharedBranding: null,
+    profile: null, canBrand: true, firmProfile: FIRM_ROW,
+  });
+  assert.equal(b, null);
+});
+
 // --- validateForSave -------------------------------------------------------
 
 test("a good profile saves as a snake_case row", () => {

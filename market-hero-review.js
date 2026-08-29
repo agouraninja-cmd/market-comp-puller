@@ -74,6 +74,8 @@ h1.h{font-family:var(--serif);font-weight:500;letter-spacing:-.005em;color:var(-
 .meta{font-size:var(--t5);color:var(--ink-3)}
 .badge{font-size:var(--t6);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-2)}
 .badge.look{color:var(--red)}
+.who{font-size:var(--t6);letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink-3);margin-right:var(--s4)}
+.judge{color:var(--ink-2);font-size:var(--t5);margin:var(--s3) 0 0}
 .frame{position:relative;height:340px;overflow:hidden;background:var(--ink);color:#fff}
 .frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 40%}
 .frame.full{height:auto;background:var(--wash)}
@@ -103,7 +105,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div class="wrap">
 <div class="kicker">Internal</div>
 <h1 class="h">Market heroes</h1>
-<p class="sub">Each photograph as stored. The badge catches a wrong size or a file too small to be sharp; those live headers automatically switch to a satellite aerial of the same city. A technical OK still does not mean it is a good picture &mdash; look at the crop.</p>
+<p class="sub">Each photograph as stored, curated picks first, then the ones <code>scripts/auto-market-heroes.js</code> found and a model approved. The badge catches a wrong size or a file too small to be sharp; those live headers automatically switch to a satellite aerial of the same city. A technical OK still does not mean it is a good picture &mdash; look at the crop, and look hardest at the automatic ones.</p>
 <div id="gate" class="gate"><span class="lab">Enter admin key</span>
 <input id="k" type="password" placeholder="ADMIN_KEY" autocomplete="off"/>
 <button id="go">Review photos</button><div id="err" class="err"></div></div>
@@ -137,9 +139,14 @@ function render(d){
     : "All <b>"+rows.length+"</b> pass the file checks &mdash; still look at the pictures";
   var ordered=look.concat(rows.filter(function(r){return r.ok;}));
   el("list").innerHTML=ordered.map(function(r){
-    var badge=r.ok?'<span class="badge">OK</span>':'<span class="badge look">Needs a look</span>';
+    var badge=(r.picked==="auto"?'<span class="who">Auto</span>':'')+
+      (r.live===false&&r.ok?'<span class="who">Standby</span>':'')+
+      (r.ok?'<span class="badge">OK</span>':'<span class="badge look">Needs a look</span>');
     var why=(r.reasons||[]).length?'<p class="reasons">'+r.reasons.map(esc).join(" · ")+"</p>":"";
-    if(!r.ok) why+='<p class="reasons">Live pages show a satellite aerial of this city instead.</p>';
+    if(!r.ok) why+='<p class="reasons">'+(r.liveKind==="photo"
+      ?"Live pages show the other photograph for this city instead."
+      :r.liveKind==="satellite"?"Live pages show a satellite aerial of this city instead."
+      :"Live pages show no picture for this city at all.")+"</p>";
     var links=[];
     if(r.samplePath)links.push('<a href="'+esc(r.samplePath)+'" target="_blank" rel="noopener">Live page</a>');
     if(r.commonsUrl)links.push('<a href="'+esc(r.commonsUrl)+'" target="_blank" rel="noopener">Commons original</a>');
@@ -150,6 +157,7 @@ function render(d){
       '<div class="frame'+(FULL?" full":"")+'"><img src="'+esc(r.src)+'" alt="'+esc(r.alt||r.label)+'"/></div>'+
       '<p class="meta">'+esc(dims)+" · "+esc(kb)+(r.credit?" · "+esc(r.credit):"")+(r.license?" · "+esc(r.license):"")+"</p>"+
       why+
+      (r.judge&&r.judge.reason?'<p class="judge">Reviewer: '+esc(r.judge.verdict)+" &mdash; "+esc(r.judge.reason)+"</p>":"")+
       (links.length?'<p class="links">'+links.join("")+"</p>":"")+
     "</div>";
   }).join("");

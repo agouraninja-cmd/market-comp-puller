@@ -4,6 +4,8 @@
 const { spawn } = require("node:child_process");
 const net = require("node:net");
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 
 const SERVER = path.join(__dirname, "..", "..", "server.js");
 
@@ -16,22 +18,78 @@ const SERVER = path.join(__dirname, "..", "..", "server.js");
 // on 39140: the suite adopted it and failed on the decoy's env. Asking the
 // OS for a free port removes the determinism; the child-alive check after a
 // healthy /healthz closes the remaining adoption window.
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.on("error", reject);
-    srv.listen(0, () => {
-      const port = srv.address().port;
-      srv.close((err) => (err ? reject(err) : resolve(port)));
+// Ports this worker has already handed out. A port is never reused, even after
+// its child is dead and the OS is happy to hand it back (2026-08-29).
+//
+// The failure this fixes is `TypeError: fetch failed` / `ECONNRESET` in the
+// middle of a passing suite. Node's global fetch keeps a keep-alive connection
+// pool keyed by ORIGIN, and every server here is on localhost — so the origin
+// is just the port. When a suite stops its child, that child's sockets die,
+// but a pooled entry for `localhost:<port>` can outlive it inside this
+// worker. If the OS then hands the same port to the next boot, the next fetch
+// reuses the dead socket and the request is reset before it is even sent.
+//
+// Not the same hazard as the decoy-server one above: nothing foreign answers,
+// and /healthz passes, because the pool only bites a LATER request. Which is
+// why it read as random, hit a different suite each run, and never reproduced
+// in isolation — one worker has to reuse a port for it to happen at all.
+//
+// Cheaper and more honest than reaching into undici to evict a pool: a port is
+// a number, and this worker simply never asks for one twice.
+const usedPorts = new Set();
+async function freePort() {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const port = await new Promise((resolve, reject) => {
+      const srv = net.createServer();
+      srv.on("error", reject);
+      srv.listen(0, () => {
+        const p = srv.address().port;
+        srv.close((err) => (err ? reject(err) : resolve(p)));
+      });
     });
-  });
+    if (!usedPorts.has(port)) {
+      usedPorts.add(port);
+      return port;
+    }
+  }
+  throw new Error("could not find an unused port after 50 attempts");
 }
 
 // `env` REPLACES rather than extends the parent environment for the keys that
 // matter, so a developer's local .env cannot change what these tests prove.
+//
+// freePort() is inherently a race: the probe socket closes before the child
+// binds, so anything else on the machine can take the port in that window and
+// the child dies on EADDRINUSE with exit code 1. Rare locally, real on CI
+// runners (it failed the main build after passing the identical tree twice,
+// 2026-08-20) — and because `prestart` runs this suite, the same race can
+// block a production deploy. So boot() retries on a NEW port, but only when
+// the child's stderr proves it was the port race: a deterministic boot crash
+// (e.g. the bogus-SEARCH_PROVIDER test, which asserts on "exited early") must
+// still fail on the first attempt, loudly, with its stderr in the message —
+// the CI failure this fixes was undiagnosable precisely because stderr went
+// to stdio: "ignore".
 let bootSeq = 0;
 async function boot(env) {
-  const port = await freePort();
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await bootOnce(env);
+    } catch (err) {
+      lastErr = err;
+      if (!err.portRace) throw err;
+    }
+  }
+  throw lastErr;
+}
+
+async function bootOnce(env) {
+  // An explicit PORT is honoured, which is what lets a caller know the URL
+  // BEFORE the server starts — scripts/firm-sandbox.js needs it, because
+  // SITE_URL is read once at startup and every link the app generates is
+  // built from it. Every suite omits it and keeps the OS-assigned port.
+  const fixedPort = env && env.PORT ? Number(env.PORT) : 0;
+  const port = fixedPort || await freePort();
   // The responder-identity nonce: /healthz echoes TEST_BOOT_ID, and this boot
   // accepts only a responder echoing ITS nonce. "Something answers on my
   // port" is not "my child is ready" — a foreign server (another suite run,
@@ -39,11 +97,30 @@ async function boot(env) {
   // died on EADDRINUSE, and adopting the foreigner runs every assertion
   // against the wrong environment.
   const bootId = `${process.pid}-${++bootSeq}`;
+  // A private scratch directory per child (2026-08-29).
+  //
+  // Every server booted here has SUPABASE_URL blanked, so all of them fall back
+  // to local JSON files — and until this, those files were the REPO ROOT,
+  // shared by the ~23 suites `node --test` runs at once. account-store.json is
+  // the one that bit: the server loads the whole store into memory once and
+  // saveAccountStore() writes the whole thing back, so two children that each
+  // load 10 users and each add one produce two 11-user writes, and the second
+  // silently destroys the first's user. The fixed `.tmp` path raced too.
+  //
+  // That is why failures wandered — account-wall, routes, renewal-watch,
+  // bulk-routes, archive-first, vault citations — and never reproduced in
+  // isolation: whichever suite's account got clobbered failed that run. Eight
+  // red runs in one afternoon, every one green when re-run alone.
+  //
+  // Under the OS temp dir rather than the repo, so an interrupted run leaves
+  // nothing behind for somebody to commit by accident.
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "cn-test-"));
   const child = spawn(process.execPath, [SERVER], {
     env: {
       ...process.env,
       PORT: String(port),
       TEST_BOOT_ID: bootId,
+      DATA_DIR: dataDir,
       ANTHROPIC_API_KEY: "",
       // Blanked for the same reason as the Anthropic key, and it became
       // load-bearing the day SEARCH_PROVIDER started defaulting to gemini: with
@@ -68,18 +145,92 @@ async function boot(env) {
       // with neither, so a developer's own VAULT_PASSKEY would turn that 404
       // into a 401 and fail a test about a deployment they are not running.
       VAULT_PASSKEY: "",
+      // Same argument again: "the Google routes 404 when unconfigured" boots
+      // with neither set, and a developer holding a real OAuth client in their
+      // environment would turn that 404 into a live redirect to Google.
+      GOOGLE_OAUTH_CLIENT_ID: "",
+      GOOGLE_OAUTH_CLIENT_SECRET: "",
+      GOOGLE_OAUTH_TOKEN_URL: "",
       ...env,
     },
-    stdio: "ignore",
+    // stderr is piped (stdout stays ignored: the startup banner is noise)
+    // so an early exit can say WHY — and so the EADDRINUSE race is
+    // distinguishable from a real crash. Capped: a crash message is small,
+    // and this must never buffer a runaway log.
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (c) => { if (stderr.length < 8192) stderr += c; });
+  // A child that dies on its OWN, after it was healthy, is the suite's one
+  // remaining source of random red — and until this it was invisible. The
+  // stderr captured just above is reported only by the health-check loop
+  // below; past that point it was thrown away. So a server that died
+  // MID-SUITE surfaced as a bare `TypeError: fetch failed` in whichever
+  // test happened to run next: no mention of a server, no exit code, no
+  // stderr. That is why it read as a socket-pool problem through two rounds
+  // of investigation, and it is not one — the request in flight gets
+  // ECONNRESET and every request after it gets ECONNREFUSED, because the
+  // port is now dead. Both, in that order, are what a failing run shows.
+  //
+  // Measured here 2026-08-29: a run boots ~179 of these, and roughly one
+  // boot in a thousand dies by itself with Windows exit code 3221226505
+  // (0xC0000409, a hard abort) having printed nothing at all — no fatal
+  // message even with stderr captured to a file rather than a pipe, no
+  // --report-on-fatalerror report, and no uncaughtException. Whichever
+  // suite owned that child is the suite that goes red, which is why the
+  // failure wanders and why it always passes when that file is re-run
+  // alone.
+  //
+  // This prevents nothing. It names the death, in the run that suffered
+  // it, so the next person starts from the server's own last words rather
+  // than from a stack trace that only says fetch failed.
+  let everHealthy = false;
+  child.on("close", (code, signal) => {
+    // code is null for a signal, which is how stop() ends a child; a real
+    // non-zero status is a death nobody asked for, even if stop() has since
+    // run. Boots that never became healthy are the health-check loop's to
+    // report, with the stderr it already has.
+    if (!everHealthy || code === null || code === 0) return;
+    const NL = String.fromCharCode(10);
+    const tail = stderr.trim().slice(-500);
+    process.stderr.write(NL + "⛔ the test server on port " + port
+      + " exited on its own (code " + code + ", signal " + signal + ")."
+      + " Every fetch to it from here on fails: ECONNRESET for the request"
+      + " in flight, then ECONNREFUSED. A test below that failed with"
+      + " 'fetch failed' failed because of this, not its own assertion." + NL
+      + (tail ? "   its last words: " + tail + NL
+              : "   it printed nothing to stderr." + NL));
   });
   const base = `http://localhost:${port}`;
   for (let i = 0; i < 60; i++) {
-    if (child.exitCode !== null) throw new Error("server exited early, code " + child.exitCode);
+    if (child.exitCode !== null) {
+      const excerpt = stderr.trim().split("\n").slice(0, 3).join(" | ").slice(0, 300);
+      const err = new Error("server exited early, code " + child.exitCode
+        + (excerpt ? " — " + excerpt : ""));
+      // Only this one failure retries (see boot()): the port was stolen in
+      // freePort()'s close-to-bind window, which says nothing about the code.
+      // Never retried when the caller named the port: a different port is not
+      // what they asked for, and retrying the SAME one would just loop.
+      err.portRace = !fixedPort && /EADDRINUSE/.test(stderr);
+      throw err;
+    }
     try {
       const r = await fetch(base + "/healthz");
       if (r.ok) {
         const body = await r.json();
-        if (body.boot_id === bootId) return { base, stop: () => child.kill() };
+        // stop() also removes the child's scratch directory. Best-effort: on
+        // Windows the kill and the unlink race, and a leftover temp dir is
+        // harmless where a thrown error in t.after() would fail a passing test.
+        if (body.boot_id === bootId) {
+          everHealthy = true;
+          return {
+            base,
+            stop: () => {
+              child.kill();
+              try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) {}
+            },
+          };
+        }
         // Healthy answer, wrong (or no) nonce: a foreign process holds the
         // port. The child is dead or doomed; the top-of-loop check or the
         // timeout will fail this boot loudly instead of adopting a stranger.

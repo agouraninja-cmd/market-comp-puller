@@ -15,7 +15,24 @@
 
 const crypto = require("crypto");
 
-const STRIPE_API = "https://api.stripe.com/v1";
+// STRIPE_API_URL is TEST-ONLY and unset in production, where Stripe's own
+// endpoint is the live value. It exists for RESEND_API_URL's and
+// SEARCH_API_URL's reason, and this one was earned the hard way: on
+// 2026-08-21 the retired $20 unlock took its `reportId` variable with it and
+// left one reference behind in /api/checkout, so EVERY successful checkout
+// threw ReferenceError for five days while the whole suite stayed green --
+// because every checkout test was a refusal that returned before Stripe was
+// ever called. A suite that cannot reach the call can only assume what
+// happens on the other side of it.
+//
+// Not a secret and authorizes nothing (the secret key still does), but it
+// decides where a billing request is posted, so treat it as trusted config.
+const STRIPE_API = stripBase(process.env.STRIPE_API_URL) || "https://api.stripe.com/v1";
+
+function stripBase(v) {
+  const s = String(v == null ? "" : v).trim();
+  return s ? s.replace(/\/+$/, "") : "";
+}
 
 // Stripe wants form-encoded bodies with bracketed paths for nesting:
 //   { line_items: [{ price: "price_1" }] } -> line_items[0][price]=price_1
@@ -35,6 +52,36 @@ function formEncode(obj, prefix = "", out = []) {
     }
   }
   return out.join("&");
+}
+
+
+// The idempotency key for a create call, derived from the request ITSELF.
+//
+// Stripe's rule is that a key may only be reused with the SAME parameters --
+// reuse it with different ones and the call is refused. Hand-building a key
+// out of the fields you remember are variable is therefore a trap: miss one
+// (the return origin differs between compninja.co and the onrender.com host;
+// the customer field flips from customer_email to customer the moment a
+// customer row exists) and a legitimate second attempt is rejected outright.
+//
+// Hashing the encoded body sidesteps the whole question. Identical request ->
+// identical key -> Stripe returns the ORIGINAL object instead of making a
+// second one, which is what stops a double-click becoming two subscriptions.
+// Any difference at all -> a different key -> a new object, which is what
+// keeps a genuine change (more seats, a different plan) working. The two
+// failure modes are mutually exclusive by construction rather than by
+// somebody keeping a list up to date.
+//
+// It hashes formEncode's output rather than JSON, so the key is a hash of
+// literally the bytes that go on the wire.
+//
+// NOT a guard against buying twice on PURPOSE. Stripe keys expire after 24
+// hours, and once a first purchase writes a customer id the parameters change
+// anyway, so a firm that already has a subscription can still start a second
+// one. That is a product decision (send them to the billing portal instead),
+// not something a hash can decide.
+function idempotencyKeyFor(params) {
+  return crypto.createHash("sha256").update(formEncode(params)).digest("hex");
 }
 
 async function stripeRequest(secretKey, method, path, body, idempotencyKey) {
@@ -236,6 +283,7 @@ function refundOf(charge) {
 module.exports = {
   STRIPE_API,
   formEncode,
+  idempotencyKeyFor,
   stripeRequest,
   verifyWebhookSignature,
   planForPrice,

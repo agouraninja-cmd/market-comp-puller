@@ -146,3 +146,51 @@ test("checkCity: 404 then a throw is unavailable, not unknown", async () => {
   const f = stubFetch([{ status: 404 }, new Error("aborted")]);
   assert.equal(await CITYCHECK.checkCity(f, "St. Louis", "MO"), "unavailable");
 });
+
+// --- where the city is (the market page's satellite fallback) --------------
+
+const { cityPointFrom, wikiPointFrom } = require("../city-check");
+
+test("a PO-box ZIP's placeholder coordinate cannot drag the city miles away", () => {
+  // Zippopotam's real answer for Agoura Hills, CA: two ZIP centroids in the
+  // city and one county placeholder 30 km southeast. Averaging all three put
+  // the market page's aerial in the Santa Monica Mountains.
+  const agoura = cityPointFrom([
+    { latitude: "34.1227", longitude: "-118.7573", "post code": "91301" },
+    { latitude: "34.1429", longitude: "-118.737", "post code": "91375" },
+    { latitude: "33.7866", longitude: "-118.2987", "post code": "91376" },
+  ]);
+  assert.ok(Math.abs(agoura.lat - 34.15) < 0.05, "lat drifted: " + agoura.lat);
+  assert.ok(Math.abs(agoura.lng + 118.76) < 0.05, "lng drifted: " + agoura.lng);
+});
+
+test("the placeholder repeated across several ZIPs still cannot outvote the city", () => {
+  // Woodland Hills' real answer: THREE copies of the same placeholder against
+  // two genuine centroids, so a plain median picks the placeholder. Identical
+  // points are the placeholder's signature — two real ZIP centroids are not
+  // equal to four decimals — so repeats are dropped before the median.
+  const wh = cityPointFrom([
+    { latitude: "34.1557", longitude: "-118.6" },
+    { latitude: "33.7866", longitude: "-118.2987" },
+    { latitude: "34.1767", longitude: "-118.6159" },
+    { latitude: "33.7866", longitude: "-118.2987" },
+    { latitude: "33.7866", longitude: "-118.2987" },
+  ]);
+  assert.ok(Math.abs(wh.lat - 34.17) < 0.05, "lat drifted: " + wh.lat);
+  assert.ok(Math.abs(wh.lng + 118.61) < 0.05, "lng drifted: " + wh.lng);
+});
+
+test("one place is the answer, and nothing usable is null rather than a guess", () => {
+  assert.deepEqual(cityPointFrom([{ latitude: "42.85", longitude: "-106.325" }]), { lat: 42.85, lng: -106.325 });
+  assert.equal(cityPointFrom([]), null);
+  assert.equal(cityPointFrom(null), null);
+  assert.equal(cityPointFrom([{ latitude: "north", longitude: "west" }]), null);
+});
+
+test("a Wikipedia article's own coordinates parse, and nothing else does", () => {
+  const page = { query: { pages: [{ title: "Casper, Wyoming", coordinates: [{ lat: 42.85, lon: -106.325 }] }] } };
+  assert.deepEqual(wikiPointFrom(page), { lat: 42.85, lng: -106.325 });
+  assert.equal(wikiPointFrom({ query: { pages: [{ title: "Nowhere", missing: true }] } }), null);
+  assert.equal(wikiPointFrom({}), null);
+  assert.equal(wikiPointFrom(null), null);
+});

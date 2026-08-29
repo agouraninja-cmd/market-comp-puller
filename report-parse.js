@@ -191,11 +191,15 @@ function normalizeCurrency(parsed) {
 // the caller — the prompt already forbids market-level rows as comps, but in
 // thin markets the model pads anyway, and a prompt rule is a request while
 // normalization is a guarantee.
-function normalizeSourceTypes(parsed, enforcedSourceType) {
+// `propertyType` is passed through to the rule because what counts as an
+// address identifying ONE property is type-dependent: a vacant parcel is
+// identified by its corner, having no building to number. Omitted, the rule
+// falls back to the street-number test alone.
+function normalizeSourceTypes(parsed, enforcedSourceType, propertyType) {
   if (!parsed || !Array.isArray(parsed.comps)) return parsed;
   for (const c of parsed.comps) {
     if (!c || typeof c !== "object") continue;
-    c.source_type = enforcedSourceType(c.source_type, c.address);
+    c.source_type = enforcedSourceType(c.source_type, c.address, propertyType);
   }
   return parsed;
 }
@@ -324,7 +328,17 @@ function reconcilePricePerSqft(parsed) {
       // Same sane per-SF band the front-end uses for user-added comps.
       if (derived < 1 || derived > 100000) continue;
       const stated = parsePsf(c.price_per_sqft);
-      if (stated === null || Math.abs(stated - derived) / derived > 0.10) {
+      // A FILL and a CORRECTION are not the same event, and only one of them is
+      // worth telling the reader about. Since 2026-08-21 the prompt asks the
+      // model to OMIT $/SF on any sale carrying both a price and a size, because
+      // this function derives it exactly - so "absent" is now the normal case on
+      // most priced sales, not a model failure. Flagging it would put the "calc"
+      // mark on nearly every row and drain the meaning out of a mark that exists
+      // to say "we did not trust the figure we were handed". A stated figure
+      // that disagrees with its own row still earns it.
+      if (stated === null) {
+        c.price_per_sqft = fmtPsf(derived);
+      } else if (Math.abs(stated - derived) / derived > 0.10) {
         c.price_per_sqft = fmtPsf(derived);
         c.psf_reconciled = true; // front-end discloses the recompute
       }
@@ -485,11 +499,43 @@ function normalizeSubjectYearBuilt(parsed) {
   return parsed;
 }
 
+// The subject's size and the PROVENANCE of that size travel as two separate
+// model-written fields, and nothing tied them together: the 2026-08-19 eval's
+// Atlanta multifamily report came back with subject_size_sqft "" and
+// subject_size_source "public_record", a provenance claim attached to no
+// value. index.html happens to read the source only inside its `found > 0`
+// branch, so this never reached a screen, but the orphan is written into the
+// cache, the harvest and every share, where the next reader of that payload
+// has no reason to expect it. A source with nothing to source is not a
+// smaller truth than a missing size, it is a different and false one.
+//
+// Same shape as normalizeSubjectLastSale's "no date drops the whole field":
+// the pair is kept or dropped together, never half-populated. The size is
+// normalized to "" rather than deleted, because it is a documented key of the
+// report shape that callers test for emptiness.
+function normalizeSubjectSize(parsed) {
+  if (!parsed || typeof parsed !== "object") return parsed;
+  const size = Number(String(parsed.subject_size_sqft == null ? "" : parsed.subject_size_sqft)
+    .replace(/[^0-9.]/g, ""));
+  if (Number.isFinite(size) && size > 0) return parsed;
+  if ("subject_size_sqft" in parsed) parsed.subject_size_sqft = "";
+  delete parsed.subject_size_source;
+  return parsed;
+}
+
 module.exports = {
+  normalizeSubjectSize,
   extractFirstJsonObject,
   parseCompJson,
   stripEmDashes,
   SHORT_COMP_KEYS,
+  // Exported for the live comp extractor's callback in server.js, which
+  // expands ONE streamed comp at a time; expandCompKeys below is the whole-
+  // report pass. It went unexported when the pipeline moved here (2026-08-08)
+  // while server.js kept calling it bare, and the resulting ReferenceError was
+  // swallowed per comp by makeCompExtractor's catch — every live `comp` event
+  // silently died, discovered only when Gemini streaming lit the path up.
+  expandComp,
   expandCompKeys,
   normalizeSourceTypes,
   normalizeCurrency,

@@ -262,6 +262,29 @@ test("static map tiles are requested in CORS mode, before the src is set", () =>
   assert.ok(co < src, "crossOrigin must be set BEFORE src or the tile loads tainted");
 });
 
+test("the collapsed approaches stay collapsed on a phone, and open on paper", () => {
+  // The approaches that produced no figure hide behind a toggle, and the
+  // whole thing was silently inert under 560px: the phone treatment sets
+  // `.ap-stmt tbody { display: block }` at (0,1,1), which out-specifies
+  // Tailwind's `.hidden` at (0,1,0), so the rows rendered anyway while a
+  // desktop looked perfectly correct. Measured at 375px before this line
+  // existed. Same trap as .deck.hide in vault-page.js and the
+  // `.hdr nav [hidden]` line in ACCOUNT_NAV_CSS, which is why it is pinned
+  // rather than trusted to survive the next tidy-up.
+  assert.match(html, /\.ap-stmt tbody\.hidden \{ display: none; \}/,
+    "without this the toggle does nothing on any screen under 560px");
+  // An export is the copy that gets forwarded, so it carries every approach
+  // whether it ran or not. Two separate reveals because html2canvas ignores
+  // @media print, exactly as #ownerTrustHow already documents.
+  assert.match(html, /#apOff \{ display: table-row-group !important; \}/);
+  const onclone = html.match(/onclone: \(doc\) => \{[\s\S]*?doc\.head\.appendChild\(s\)/);
+  assert.ok(onclone, "downloadImage's onclone must still exist");
+  assert.match(onclone[0], /#apOff \{ display: table-row-group !important; \}/,
+    "the PNG must not be the one copy of the report that hides the unrun approaches");
+  // The control itself is navigation, not report content, in both exports.
+  assert.match(html, /toggleRow\.className = "no-print no-capture ap-toggle"/);
+});
+
 test("print unhides the map card only for a ready, unhidden raster", () => {
   // Three ways this goes wrong and prints something worse than the missing map
   // it replaces: unhiding the card with no raster (an empty box under a
@@ -496,7 +519,7 @@ test("a house report's CTA says talk to a local agent and still stores source bo
 
 test("Residential comps table drops tenancy and keeps year built", () => {
   const start = html.indexOf("  const BASE_COLUMNS = [");
-  const fn = html.indexOf("  function columnsForType(type) {", start);
+  const fn = html.indexOf("  function columnsForType(type, txFocus) {", start);
   const end = html.indexOf("\n  }", fn);
   assert.ok(start >= 0 && fn > start && end > fn, "could not bound columnsForType");
   const src = html.slice(start, end + 4);
@@ -564,7 +587,11 @@ test("the shared status line matches what the reader can actually see", () => {
   // field would be.
   const fn = html.match(/function showSharedStatus\(\)[\s\S]{0,700}/);
   assert.ok(fn, "showSharedStatus should exist");
-  assert.match(fn[0], /accountWall && !currentUser/, "it must branch on the lock state");
+  // Through looksSignedIn(), not currentUser: this line is drawn from
+  // applySearchLock, which can run before /api/account/me answers, and a
+  // signed-in member opening a shared link was told to create an account for
+  // the length of that fetch. Same question, one answer (see auth-boot.test.js).
+  assert.match(fn[0], /accountWall && !looksSignedIn()/, "it must branch on the lock state");
   assert.match(fn[0], /Create a free account below/, "the locked wording points at the card");
   assert.match(fn[0], /Enter an address above/, "the unlocked wording points at the form");
   assert.match(html, /applySearchLock[\s\S]{0,400}showSharedStatus\(\)/,
@@ -647,8 +674,25 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
 });
 
 test("empty desk copy no longer tells them to press Save", () => {
-  assert.match(html, /id="deskEmpty"[^>]*>Run a report — it will show up here\./);
+  // The em dash came out on 2026-08-22 (owner's standing copy rule), which is
+  // why this pins the new wording. The assertion below it is the one carrying
+  // the test's actual name and must outlive any future rewording.
+  assert.match(html, /id="deskEmpty"[^>]*>Run a report and it will show up here\./);
   assert.doesNotMatch(html, /press "Save to portfolio"/);
+});
+
+test("a failed desk read says nothing has been lost, not just that it failed", () => {
+  // Both lines cover sections holding saved work — one the member's own
+  // portfolio, one the reports colleagues shared with them — and a bare
+  // "couldn't load" there reads as data loss to exactly the person most
+  // likely to be looking at it. The shares line said only that it failed
+  // until 2026-08-22. Neither may go back to one sentence.
+  for (const id of ["deskLoadError", "deskSharesLoadError"]) {
+    const m = html.match(new RegExp('id="' + id + '"[^>]*>([^<]+)<'));
+    assert.ok(m, `${id} is gone`);
+    assert.match(m[1], /Couldn't load/, `${id} must name the failure`);
+    assert.match(m[1], /Nothing has been lost/, `${id} must say nothing is gone`);
+  }
 });
 
 test("auto-save lives inside saveHistory, behind the same three guards", () => {
@@ -739,8 +783,28 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   // search any market; the placeholder is only the example, with the
   // comma the rest of the product uses. appearance:none drops the
   // searchfield cancel gutter that ate the last letters on top of that.
-  assert.match(desk[0], /placeholder="e\.g\. industrial Boise, ID"/);
+  // This exact string is ALSO server.js's MARKET_EXAMPLE_MARKER, which the `/`
+  // handler swaps for a rotating example; test/routes.test.js pins the two
+  // together. What stands here is the fallback, and it names a SEEDED market
+  // on purpose — Tab types the example in, and a market with no standing page
+  // would make Tab-then-Enter a billed 30-60s build. "industrial Boise, ID"
+  // stood here until 2026-08-24 and was never seeded.
+  assert.match(desk[0], /placeholder="e\.g\. industrial Ontario, CA"/);
   assert.doesNotMatch(desk[0], /Try any market, e\.g\./);
+  // Tab on an empty box types that example in. It is READ off the
+  // placeholder rather than kept as a second copy, so the assertion above is
+  // also the assertion about what Tab types. The second check is the guard
+  // without which Tab would stop moving focus for anyone mid-query.
+  assert.match(
+    html,
+    /getAttribute\("placeholder"\)[\s\S]{0,200}?replace\(\/\^\\s\*e\\\.g\\\.\\s\*\//,
+    "the Explorer's Tab example is read off the placeholder, never a second copy"
+  );
+  assert.match(
+    html,
+    /e\.key === "Tab" && !e\.shiftKey[\s\S]{0,240}?!input\.value/,
+    "Tab only fills the Explorer box while it is empty and unmodified"
+  );
   assert.match(html, /\.rd-desk-market-in \{[^}]*appearance:\s*none/);
   assert.equal((desk[0].match(/class="rd-chamber-head"/g) || []).length, 2,
     "both chambers share a rd-chamber-head so the title hairline is one rule");
@@ -777,6 +841,316 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(home, /gap-x-4/);
   assert.doesNotMatch(home, /gap-x-3/);
   assert.ok(!/id="marketSearch"/.test(home), "explorer moved out of homeInfo");
+});
+
+// ----------------------------------------------------------------------------
+// The workspace leads (2026-08-29). The owner's instruction was that the
+// search chamber and the market explorer stop being the top of the signed-in
+// home; before this, #searchSection sat above #deskView in document order and
+// nothing pinned it, so nothing stopped it drifting back.
+// ----------------------------------------------------------------------------
+test("the workspace leads and the chamber follows, in DOM order", () => {
+  const iLock = html.indexOf('id="searchLock"');
+  const iDesk = html.indexOf('id="deskView"');
+  const iChamber = html.indexOf('id="searchSection"');
+  const iStatus = html.indexOf('id="statusBox"');
+  assert.ok(iLock > -1 && iDesk > -1 && iChamber > -1 && iStatus > -1, "an id vanished");
+  assert.ok(iLock < iDesk, "the wall card stays above the workspace");
+  assert.ok(iDesk < iChamber, "the workspace opens the page; the chamber follows it");
+  assert.ok(iChamber < iStatus, "the chamber still sits above status, loading and results");
+});
+
+test("the chamber wears its desk header only while the workspace is on screen", () => {
+  // The header sits inside #searchSection (so the wall's boot CSS hides it
+  // with its parent) but BEFORE the rd-form span the Mock-A test measures,
+  // and it is dk-deck-h, never rd-chamber-head — that count must stay two.
+  const head = html.slice(html.indexOf('id="searchSection"'), html.indexOf('class="rd-form rd-desk"'));
+  assert.match(head, /id="searchDeckHead"[^>]*class="hidden dk-deck-h"/);
+  assert.match(head, /Run a report/);
+  // dk-deck-h sets display:flex in the style block, which loads AFTER
+  // tailwind.css, so at equal specificity it beats Tailwind's .hidden — the
+  // header rendered on the signed-out home until this override existed
+  // (caught by a byte-compare screenshot, the vault's ".deck.hide" trap).
+  assert.ok(html.includes("#searchDeckHead.hidden { display: none; }"),
+    "the hidden state needs its own higher-specificity rule or the header shows signed out");
+  // Plain-string pins (not regexes): the needles are full of ")(. characters,
+  // and an escaping slip here would pin nothing while looking like it did.
+  const reveal = 'getElementById("searchDeckHead").classList.remove("hidden")';
+  const retire = 'getElementById("searchDeckHead").classList.add("hidden")';
+  const show = html.slice(html.indexOf("function showDeskView"), html.indexOf("function showHomeView"));
+  assert.ok(show.includes(reveal), "desk view reveals the chamber's workspace rule");
+  const homeFn = html.slice(html.indexOf("function showHomeView"), html.indexOf("function showHomeView") + 1200);
+  assert.ok(homeFn.includes(retire), "plain home must not carry a workspace heading over the form");
+  // A rendering report yields the workspace at BOTH seams; the stray rule
+  // would otherwise float over the chamber while comps stream in.
+  for (const fn of ["function beginAssembly", "renderMap(parsed, meta)"]) {
+    const at = html.indexOf(fn);
+    assert.ok(at > -1, fn + " not found");
+    const windowTxt = fn === "function beginAssembly" ? html.slice(at, at + 6000) : html.slice(at - 2000, at);
+    assert.ok(windowTxt.includes(retire), fn + " must retire the chamber's workspace rule");
+  }
+});
+
+test("Run a report jumps to the chamber and seats the caret, deterministically", () => {
+  const at = html.indexOf('id="deskRunReport"');
+  assert.ok(at > -1, "the workspace header offers the shortcut");
+  const listener = html.slice(html.indexOf('deskRunReport").addEventListener'));
+  const body = listener.slice(0, 600);
+  assert.ok(body.includes('getElementById("searchSection").scrollIntoView'), "the shortcut goes to the chamber");
+  // Instant on purpose: a smooth scroll paired with a focus proved able to
+  // silently go nowhere, and a shortcut that half-works is worse than one
+  // that jumps. No smooth here also satisfies prefers-reduced-motion.
+  assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
+  assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
+    "the caret lands in the address field without fighting the jump");
+  // Red, on the owner's call (2026-08-29): with the profile cluster gone from
+  // that row it is the only control on it, and it starts the same act as the
+  // red button at the foot of the chamber. The classes have to be ones the
+  // file already uses somewhere else -- tailwind.css is a purged vendored
+  // build, so a colour that appears only here would silently not paint.
+  const runBtn = html.slice(at, html.indexOf(">", html.indexOf("Run a report", at)));
+  assert.match(runBtn, /bg-brand-600/, "the workspace shortcut is red");
+  assert.match(runBtn, /hover:bg-brand-700/, "and it has the matching hover");
+  for (const cls of ["bg-brand-600", "hover:bg-brand-700"]) {
+    const uses = html.split(cls).length - 1;
+    assert.ok(uses > 1, cls + " must be used elsewhere too, or the purge drops it");
+  }
+});
+
+test("the vault is a nav item, not a row inside the account menu", () => {
+  // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
+  // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
+  // broker's daily workspace was two clicks down a menu -- while "Workspace"
+  // itself sat one click away in the rail. The gate is unchanged; only the
+  // position moved.
+  const nav = html.slice(html.indexOf('id="myDeskLink"'), html.indexOf('id="acctMenuWrap"'));
+  assert.match(nav, /id="menuVaultLink"/, "the vault link is a sibling of Workspace in the rail nav");
+  assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
+  const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
+  assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
+  // One link, one toggle: refreshBillingUI still owns it off canUseVault, so
+  // moving it cannot have widened who sees it.
+  assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
+  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !canVault)`),
+    "still shown from canUseVault and nothing else");
+});
+
+// The workspace header's profile cluster is pinned by "the workspace header
+// does not say who you are at all" further down -- it started life as that
+// pass's own test and absorbed this one, rather than two tests asserting the
+// same removals under different names.
+
+test("the between-checks cell names its sample and cannot read as a return", () => {
+  // "Since last checks" read as a portfolio return, and the figure is not
+  // one: it compares each property's last two check-ins, over only the
+  // properties checked at least twice, with no time window at all. The
+  // arithmetic stays; the caption stops over-claiming.
+  const start = html.indexOf("async function renderMyDesk");
+  const end = html.indexOf("// /desk — My Desk lives on its own URL");
+  assert.ok(start > -1 && end > start, "renderMyDesk slice anchors moved");
+  const fn = html.slice(start, end);
+  assert.ok(fn.includes("Between checks"), "the cell is labelled Between checks");
+  assert.ok(fn.includes("last check vs the check before"), "the note names the basis");
+  assert.ok(fn.includes("of ${items.length} properties"), "the note names its sample");
+  // The old label survives in a comment explaining WHY it went; the pin is on
+  // the cell() call, so history stays readable while the label cannot return.
+  assert.ok(!fn.includes('cell("Since last checks"'), "the return-shaped label must not come back");
+  assert.ok(!fn.includes("across properties checked twice"), "nor its old under-disclosing note");
+  assert.ok(fn.includes("not a return over any period of time"),
+    "the title says outright what the figure is not");
+  // One figure, computed once: the same bookPct feeds the ledger cell and the
+  // statement's tfoot, so the two can never disagree.
+  assert.ok((fn.match(/bookPct/g) || []).length >= 4, "bookPct must feed both surfaces");
+});
+
+test("both writers of the markets cell emit the same anatomy", () => {
+  // renderMyDesk renders #deskLedgerMarkets as a placeholder; renderWatchFeed
+  // fills it in later. If the two emit different markup the cell visibly
+  // changes shape when the feed lands, which reads as a glitch.
+  for (const fnName of ["async function renderMyDesk", "async function renderWatchFeed"]) {
+    const at = html.indexOf(fnName);
+    assert.ok(at > -1, fnName + " not found");
+    const seg = html.slice(at, at + 30000);
+    const cellAt = seg.indexOf("deskLedgerMarkets");
+    assert.ok(cellAt > -1, fnName + " must write the markets cell");
+    // Wide enough to clear the explanatory comment above the feed's writer.
+    const cell = seg.slice(cellAt, cellAt + 1600);
+    assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
+    assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
+    // Both must also agree on the LABEL, or the cell renames itself when the
+    // feed lands a moment after first paint.
+    assert.ok(cell.includes(">New comps<"), fnName + " must label the cell New comps");
+  }
+});
+
+test("the fourth ledger cell counts new comps, not watched markets", () => {
+  // The other three cells are facts about the book. This one was a count of a
+  // preference, with the only live thing on the strip ("N new comps waiting")
+  // demoted to the 11px note under it. The signal is the figure now.
+  const at = html.indexOf("async function renderWatchFeed");
+  const seg = html.slice(at, at + 30000);
+  const cellAt = seg.indexOf("const mk = document.getElementById");
+  assert.ok(cellAt > -1, "the feed still writes the cell");
+  const blk = seg.slice(cellAt, cellAt + 1400);
+  assert.ok(blk.includes('<span class="rd-lab">New comps</span>'), "the label names what the figure counts");
+  assert.ok(blk.includes("mkts ? totalNew"), "the figure is the new-comp count");
+  // Three honest notes, and an em dash rather than a 0 when there is nothing
+  // to count yet: "0 new comps" over an empty watchlist states a fact about
+  // markets the member never asked about.
+  assert.ok(blk.includes("watch a market to see new comps here"), "no markets: an invitation");
+  assert.ok(blk.includes("you watch"), "with news: the markets are the context");
+  assert.ok(blk.includes("watched · quiet"), "no news: says so plainly");
+  assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
+});
+
+// ----------------------------------------------------------------------------
+// The attention line (2026-08-29). The workspace opened with numbers and lists
+// and nothing that was waiting on the member. It names ONE thing, because one
+// thing is what the data honestly supports: new comps are already the ledger's
+// fourth cell a line above, a pending firm invitation is already the first
+// deck a line below, and lease expiries never reach this surface at all.
+// ----------------------------------------------------------------------------
+test("the attention line says nothing when nothing is waiting", () => {
+  const at = html.indexOf('id="deskAttention"');
+  assert.ok(at > -1, "the line exists");
+  assert.match(html.slice(at - 60, at + 60), /class="hidden dk-attn"/,
+    "it ships hidden; a standing all-caught-up banner is the vault's 0-0 scoreboard");
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const showAttn = showValues && staleN > 0"),
+    "shown only when something is actually stale, and never on a values-free free desk");
+  // Sign-out must drop it for the same reason the ledger beside it is dropped:
+  // it is a statement about one person's own properties.
+  assert.ok(fn.includes('getElementById("deskAttention").classList.add("hidden")'),
+    "sign-out drops the line");
+  assert.ok(fn.includes("1 property was last checked over a year ago"), "singular copy");
+  assert.ok(fn.includes("properties were last checked over a year ago"), "plural copy");
+  assert.ok(!/deskAttention[\s\S]{0,400}innerHTML/.test(fn), "textContent only");
+});
+
+test("stale is a year, and it is not a number invented here", () => {
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const STALE_MS = 365 * 24 * 60 * 60 * 1000"), "one year");
+  // portfolio-delta.js already draws this line, and says why: past a year a
+  // window "stops being 'since you last looked' and becomes market history".
+  // It is a server module and cannot be required here, so the mirror is
+  // marked — the same treatment compWeight and SHOP_COPY get.
+  assert.ok(fn.includes("portfolio-delta.js"), "the source of the threshold is named");
+  assert.ok(fn.includes("MIRRORED CONSTANT"), "the duplication is flagged, not silent");
+  const delta = fs.readFileSync(path.join(__dirname, "..", "portfolio-delta.js"), "utf8");
+  assert.match(delta, /MAX_WINDOW_YEARS = 1/, "the constant this mirrors still says a year");
+});
+
+test("the checked date and the attention line count the same fact", () => {
+  // The table said "checked {updated_at}" — when the ROW was last written by
+  // anything — while the line counts the last time a value was produced. Two
+  // dates for one word, thirty pixels apart, contradicted each other on screen
+  // (caught in a browser against an aged store, not by reading).
+  const fn = html.slice(html.indexOf("async function renderMyDesk"),
+                        html.indexOf("// /desk — My Desk lives on its own URL"));
+  assert.ok(fn.includes("const lastTs = last && last.ts ? last.ts : item.updated_at"),
+    "the row reads the last snapshot, falling back only when there is none");
+  assert.ok(!fn.includes("checked ${new Date(item.updated_at)"),
+    "the row must not go back to the row-written date");
+  assert.ok(fn.includes("const ts = last && last.ts ? Date.parse(last.ts) : NaN"),
+    "the count reads the same field");
+});
+
+test("the workspace header does not say who you are at all", () => {
+  // The row carried the circle, "Signed in as {name}" and "Add a photo",
+  // beside a nav that already shows the same photo and account menu. It came
+  // down in two passes on 2026-08-29. The first took the greeting and the
+  // labelled button and KEPT the circle, because the circle is itself the
+  // upload trigger and because the settings panel had no Remove -- so dropping
+  // the cluster would have deleted the only way to take a photo off an
+  // account. Both were true, and the second pass removed that blocker instead
+  // of arguing with it: #settingsAvatarRemove carries Remove now, so the whole
+  // cluster could go. Under NAV_SHELL=rail that is the point -- the account
+  // circle is pinned bottom-left in the sidebar, so a second one top-right is
+  // the same face twice on one screen.
+  const at = html.indexOf('id="deskView"');
+  const head = html.slice(at, html.indexOf('id="checkoutNotice"'));
+  const gone = ["deskAvatarBtn", "deskAvatarPhoto", "deskAvatarInitial",
+                "deskHello", "deskAvatarChange", "deskAvatarRemove", "deskAvatarMsg"];
+  for (const id of gone) {
+    assert.ok(!head.includes('id="' + id + '"'), id + " is gone from the workspace header");
+    // Nothing may still REACH one either: several were unguarded reads, and an
+    // unguarded getElementById on a deleted node throws and takes the desk
+    // down with it. This is the half a comment cannot enforce.
+    assert.ok(!html.includes('getElementById("' + id + '")'), "no live reference to " + id);
+  }
+  // The capability has to survive the move in BOTH directions. A panel that can
+  // add a photo and never take one off is the loss the first pass refused to
+  // take, and it would be just as real now.
+  assert.ok(html.includes('id="settingsAvatarBtn"'), "settings adds and changes");
+  assert.ok(html.includes('id="settingsAvatarRemove"'), "settings removes");
+  assert.ok(html.includes(`getElementById("settingsAvatarRemove").addEventListener`),
+    "and Remove is wired, not merely drawn");
+  // The picker stays where it is: #settingsAvatarBtn clicks it, so the photo
+  // pipeline still has exactly one entry.
+  assert.ok(html.includes('id="deskAvatarFile"'), "the one hidden input stays");
+});
+
+// ----------------------------------------------------------------------------
+// Workspace polish, 2026-08-29. Report branding was a permanently-expanded
+// form on the daily workspace: measured at 629px against 568px for the whole
+// portfolio deck, i.e. a set-once setting taking more of the page than
+// everything the member owns. Collapsing it took the page from 2371px to
+// 1859px. None of this surface was pinned before.
+// ----------------------------------------------------------------------------
+test("report branding is collapsed behind a summary that states what is saved", () => {
+  const at = html.indexOf('id="deskBranding"');
+  assert.ok(at > -1, "the branding section is still there");
+  const sec = html.slice(at, html.indexOf('id="billingCard"'));
+  assert.ok(sec.includes('<details id="brandBox"'), "the form collapses");
+  assert.ok(sec.includes('id="brandSummary"'), "the collapsed row carries a state line");
+  // The rule and the explanation stay OUTSIDE the details, so the deck still
+  // reads as furnished rather than as a lone twisty.
+  assert.ok(sec.indexOf("Report branding") < sec.indexOf("<details"),
+    "the section rule stays above the collapse");
+  // Every control the save/delete/preview handlers reach by id must still be
+  // inside it — collapsing must not have dropped one.
+  for (const id of ["brandLogoPreview", "brandLogo", "brandLogoRemove", "brandLogoFile",
+                    "brandFirm", "brandPreparer", "brandPhone", "brandEmail", "brandLicense",
+                    "brandDisclaimer", "brandMsg", "brandSave", "brandDelete", "brandPreview"]) {
+    assert.ok(sec.includes('id="' + id + '"'), id + " must survive the collapse");
+  }
+  // The summary is written from the live form by renderBrandPreview, which
+  // already runs on load, save, delete, logo change and every keystroke — so
+  // the line cannot drift from the form the way a separate updater would.
+  const prev = html.slice(html.indexOf("function renderBrandPreview"), html.indexOf("function renderBrandPreview") + 400);
+  assert.ok(prev.includes("renderBrandSummary("), "the summary rides the function that already tracks state");
+  // #brandMsg lives inside the collapsed box, so a FAILED LOAD would report
+  // into something nobody can see. Both load-failure paths open it.
+  const loadAt = html.indexOf("function loadBranding");
+  const load = html.slice(loadAt, html.indexOf("brandingLoadPromise = null", loadAt));
+  assert.equal((load.match(/openBrandBox\(\)/g) || []).length, 2,
+    "both load-failure paths must open the box so the message is visible");
+});
+
+test("the workspace subtitle describes the page it introduces", () => {
+  assert.ok(html.includes("Your properties, your firm's shelf, and everything you have shared."),
+    "the subtitle names what the workspace actually holds");
+  assert.ok(!html.includes("Your recent searches and tracked properties."),
+    "the old line described about a fifth of the page and must not come back");
+});
+
+test("the workspace ledger goes 2x2 on a phone instead of four deep", () => {
+  // At 375px the single column filled the entire first screen, so a member
+  // scrolled past a phone-full of statistics before reaching a property.
+  // Scoped to .dk-ledger: every other .rd-ledger is a 2-3 cell strip that
+  // stacks fine.
+  // Anchored on the ledger's own stacking rule: index.html has several
+  // 639.98px blocks and the first one is about form cells, not the ledger.
+  const at = html.indexOf(".rd-ledger { flex-direction: column; }");
+  assert.ok(at > -1, "the generic ledger stack rule moved");
+  const block = html.slice(at, at + 1400);
+  assert.ok(block.includes(".dk-ledger { flex-direction: row; flex-wrap: wrap; }"),
+    "the workspace ledger wraps rather than stacking");
+  assert.ok(block.includes("flex: 1 1 50%"), "two cells per row");
+  assert.ok(block.includes(":nth-last-child(-n+2) { border-bottom: 0; }"),
+    "the bottom ROW owns the last rule; :last-child alone leaves a stray hairline");
 });
 
 // ----------------------------------------------------------------------------
@@ -930,12 +1304,16 @@ test("the type chip is followed by the table's own comp count, never a bare digi
   assert.match(html, /renderReportMeta\(currentMeta\)/);
 });
 
-test("My Desk and the account circle have a place to put a profile photo", () => {
+test("the settings panel has a place to put a profile photo", () => {
   assert.match(html, /id="acctMenuPhoto"/);
   assert.match(html, /id="acctMenuInitial"/);
   assert.match(html, /id="deskAvatarFile"/);
-  assert.match(html, /id="deskAvatarChange"/);
-  assert.match(html, /id="menuAvatarBtn"/);
+  // Change photo moved from the account dropdown into the settings panel
+  // (2026-08-23) and Remove followed it there when the workspace header's
+  // profile cluster went (2026-08-29); both drive the same hidden
+  // #deskAvatarFile input and the same pipeline.
+  assert.match(html, /id="settingsAvatarBtn"/);
+  assert.match(html, /id="settingsAvatarRemove"/);
   assert.match(html, /function applyAvatarUI\(/);
   assert.match(html, /function readAvatarFile\(/);
   assert.match(html, /\/api\/account\/avatar/);
@@ -1077,7 +1455,9 @@ test("mechanics are routed to the collapsed half, not the visible line", () => {
   // Routed into the mechanics array, and only when a trust line actually
   // rendered — an explanation of the weighting with no range above it explains
   // nothing. (unshift vs push is ordering, not routing; don't pin the method.)
-  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\(weighNote\)/);
+  assert.match(body, /if \(trustEl\.textContent\) mechanics\.(un)?shift\([^)]*weighNote[^)]*\)/,
+    "routing, not wording: the note may now be chosen per branch, but it still "
+    + "goes to the mechanics array and still only when a trust line rendered");
 });
 
 test("the collapsed half is forced open on paper and in the PNG", () => {
@@ -1104,6 +1484,269 @@ test("the agent-intro pointer is screen-only", () => {
   // The sentences that stay in both media make no reference to a control.
   assert.match(html, /can't see without someone walking the property/);
   assert.match(html, /half of the range is the fairer read/);
+});
+
+// ---------------------------------------------------------------------------
+// A leases-only report answers a lease question (2026-08-21).
+//
+// Before this, a "Leases only" search put three dashes under Low / Likely /
+// High, said "No priced sale comps came back in this window", and offered a
+// button to re-run the whole thing as SALES. Every part of that was the
+// product telling somebody their question was the wrong one, and it cost a
+// billed search to find out.
+// ---------------------------------------------------------------------------
+test("a leases-only report headlines the rent range, from the market pages' own function", () => {
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  // Reached, not re-implemented. The whole point of serving the module to the
+  // browser is that this stays the only copy of the parse.
+  assert.match(body, /MARKETSNAP\.rentFromComps\(leaseComps\)/);
+  assert.match(body, /MARKETSNAP\.leaseRentPsfYr\(c\)/);
+  assert.match(body, /MARKETSNAP\.isLease\(c\)/);
+  // A second copy would look exactly like this.
+  assert.doesNotMatch(body, /\/\s*sf\s*\?\/\s*yr\/i/i,
+    "a rate parse in the hero is a second answer to monthly-vs-annual");
+
+  // Gated on the SEARCH, so a sales report that came back empty still says so
+  // and still offers the wider re-run.
+  assert.match(body, /meta\.txFocus === "leases"/);
+  // Curated like the sale side: excluding a comp has to move this range too.
+  assert.match(body, /valuationComps\(\)\.filter\(\(c\) => MARKETSNAP\.isLease\(c\)\)/);
+
+  // A rent is not a value. lastValuation feeds the asking-price check, the BOV
+  // and a portfolio save, all of which mean dollars of building.
+  // Bounded from the branch to the give-up branch that follows it. An
+  // indexOf on the dashes would find the NOI branch's copy, further up.
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+  assert.ok(branch.length > 200, "could not bound the lease branch");
+  assert.doesNotMatch(branch, /lastValuation\s*=/,
+    "a $/SF/yr rent written into lastValuation would be read downstream as a price");
+  assert.doesNotMatch(branch, /currentPsfBand\s*=/);
+  // And the sales-only rescue button belongs to the branch below this one.
+  assert.doesNotMatch(branch, /widenWrap\.classList\.remove/);
+  assert.doesNotMatch(branch, /txFocus: "sales"/);
+
+  // The unit is on the tiles. "$12.50" under a label reading "Likely", with
+  // the unit only in grey at the top right, is a number that travels.
+  assert.match(branch, /per SF\/yr/);
+  // Cents, not whole dollars: heroRound would flatten a real spread to none.
+  assert.match(branch, /minimumFractionDigits: 2/);
+  assert.doesNotMatch(branch, /fmtTotal\(leaseRent\.median\)/);
+  // Under-claiming below four, since rentFromComps interpolates quartiles at
+  // any count and has no `trimmed` flag to lean on.
+  assert.match(branch, /n < 4/);
+});
+
+test("the hero quotes the market's own basis, off one annual figure", () => {
+  // The plan's acceptance clause: "$/SF/yr, or /mo where the market quotes
+  // monthly - the vault's rent_basis lesson". The lesson is BOTH halves: one
+  // canonical annual figure (broker-vault 029, because a book holding two
+  // bases quotes three rents for one lease), displayed in the basis the market
+  // actually uses.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+
+  assert.match(branch, /MARKETSNAP\.leaseQuoteBasis\(leaseComps\) === "monthly"/,
+    "the basis is read off the comps, not guessed and not taken from the address");
+  // Divided for DISPLAY only. The band, the scatter and the annual translation
+  // all still read the same annual figure.
+  assert.match(branch, /formatUsd\(v \/ perDiv/);
+  assert.doesNotMatch(branch, /leaseRent\.(low|median|high)\s*\/\s*12/,
+    "dividing the band itself would leave two canonical figures");
+  assert.doesNotMatch(branch, /rentFromComps[^\n]*12/);
+
+  // Unit follows the basis everywhere it appears: tiles, chart, chart legend.
+  assert.match(branch, /monthlyBasis \? "per SF\/mo" : "per SF\/yr"/);
+  assert.match(branch, /monthlyBasis \? "\/SF\/mo" : "\/SF\/yr"/);
+  assert.match(branch, /fmt: \(v\) => rate\(v\) \+ unitSuffix/);
+  assert.doesNotMatch(branch, /"\$\/SF\/yr"/,
+    "a hardcoded annual unit anywhere in this branch is the monthly market reading a number nobody says");
+
+  // The cost translation stays a YEAR figure in both bases — it is the cost of
+  // a lease year and it says so, so it cannot be read as a monthly bill.
+  assert.match(branch, /a year, before any pass-throughs/);
+});
+
+test("a leases-only report says so at both heading seams, and when it has no range", () => {
+  // The heading is set TWICE — once by beginAssembly when the search starts,
+  // once by renderOwnerHero when it lands — because assembly puts the hero on
+  // screen a minute before the real render repaints it. Worded in one place or
+  // a leases-only search sits under "What This Building Is Worth" for that
+  // whole minute and then flips.
+  const fn = html.match(/function setHeroTitle\(type, txFocus\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound setHeroTitle");
+  assert.match(fn[0], /txFocus === "leases" \? "Rents For" : "Is Worth"/);
+  assert.match(html, /setHeroTitle\(propertyTypeSel\.value, document\.getElementById\("txFocus"\)\.value\)/);
+  assert.match(html, /setHeroTitle\(meta\.type, meta\.txFocus\)/);
+
+  // And the branch that CANNOT build a range is the other half of the same
+  // bug: one priced lease used to be reported as "No priced sale comps came
+  // back in this window" with a button offering a sales-only re-run.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  assert.match(body, /basisEl\.textContent = wantLeases/,
+    "the lease case has to be read before the sale-flavoured answers, which are all 0 here");
+  assert.match(body, /no rent range to build/);
+  assert.match(body, /a rent range needs at least two/);
+  assert.match(body, /Not enough included lease comps/);
+  // The re-run keeps the question and widens the window.
+  assert.match(body, /const focus = wantLeases \? "leases" : "sales"/);
+  assert.match(body, /txFocus: focus/);
+  assert.doesNotMatch(body, /txFocus: "sales"/,
+    "offering a leases-only search a sales-only re-run is the wrong-question failure again");
+});
+
+test("nothing under a rent range still says 'sales'", () => {
+  // Found by rendering one, not by reading the diff. The rent branch was
+  // correct and the furniture around it was not: the scatter caption said
+  // "5 sale comps" and the disclaimer said "from recent comparable sales",
+  // both directly under a $/SF/yr band.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+  const start = body.indexOf("} else if (leaseRent) {");
+  const branch = body.slice(start, body.indexOf("\n    } else {", start));
+  assert.match(branch, /compNoun: "lease comps"/);
+  assert.match(branch, /comparable leases/);
+
+  // The noun is a parameter with the sale wording as its default, so every
+  // existing caller keeps its copy without being touched.
+  assert.match(html, /\$\{o\.compNoun \|\| "sale comps"\}/);
+
+  // And it is reset on EVERY render, not just set by the branch that needs it.
+  // renderOwnerHero runs again on every subject-field edit, so a report that
+  // switched branches would otherwise keep the previous branch's noun — which
+  // is exactly what happened the first time, rendering a lease report and then
+  // a sale one in the same tab.
+  assert.match(body, /estimateNoteEl\.textContent = "Automated estimate from recent comparable sales\. "/);
+  const resetAt = body.indexOf("estimateNoteEl.textContent");
+  assert.ok(resetAt > 0 && resetAt < start,
+    "the default has to be assigned above the branch chain, or it cannot be a reset");
+  assert.match(html, /id="ownerEstimateNote"/);
+});
+
+test("a lease report says which rate its $/SF figures are", () => {
+  // The hero may quote per MONTH (leaseQuoteBasis) while the table and the
+  // market tile hold the annual figure, so an unlabelled 13.5 sitting under a
+  // headline of $1.18 is the one number on the page a reader could take for a
+  // monthly rate and be 12x out.
+  const start = html.indexOf("  const BASE_COLUMNS = [");
+  const at = html.indexOf("  function columnsForType(type, txFocus) {", start);
+  const end = html.indexOf("\n  }", at);
+  assert.ok(start >= 0 && at > start && end > at, "could not bound columnsForType");
+  const ctx = vm.createContext({});
+  new vm.Script(html.slice(start, end + 4) + "\n;this.columnsForType = columnsForType;",
+    { filename: "index.html" }).runInContext(ctx);
+
+  const sale = ctx.columnsForType("Industrial", "sales");
+  const lease = ctx.columnsForType("Industrial", "leases");
+  const labelOf = (cols) => cols.find((c) => c.key === "price_per_sqft").label;
+  assert.equal(labelOf(sale), "$/SF");
+  assert.equal(labelOf(lease), "$/SF/yr");
+
+  // LABEL ONLY, and nothing else moves. The figures are deliberately not
+  // converted to match the hero: this column is shared with sale reports and
+  // feeds sorting and the exports, and a column meaning different things on
+  // different reports is the two-bases hazard broker-vault.js refuses to take
+  // on. So the two column sets must be identical in every other respect.
+  assert.deepEqual(lease.map((c) => c.key), sale.map((c) => c.key),
+    "the transaction focus may relabel a column, never add, drop or reorder one");
+  for (let i = 0; i < sale.length; i++) {
+    if (sale[i].key === "price_per_sqft") continue;
+    assert.deepEqual(lease[i], sale[i], `${sale[i].key} changed on a lease report`);
+  }
+
+  // A copy is relabelled, not BASE_COLUMNS itself — otherwise the first lease
+  // report would leave "$/SF/yr" on every sale report after it, in the same
+  // browser session.
+  assert.equal(labelOf(ctx.columnsForType("Industrial", "sales")), "$/SF",
+    "a lease report leaked its label into the next sale report");
+
+  // Every render site has to pass the focus or the label never appears. Bare
+  // mentions in prose are not calls, so require a real first argument.
+  const calls = (html.match(/columnsForType\([a-zA-Z][^)]*\)/g) || [])
+    .filter((c) => !c.startsWith("columnsForType(type"));
+  assert.ok(calls.length >= 3, `expected every render site to call it, saw ${calls.length}`);
+  for (const c of calls) {
+    assert.match(c, /txFocus/, `${c} does not pass the transaction focus`);
+  }
+
+  // And the market tile, which sits inches under the hero.
+  assert.match(html, /meta\.txFocus === "leases" \? "Market Avg \$\/SF\/yr" : "Market Avg \$\/SF"/);
+});
+
+test("the mechanics half describes the math that actually ran", () => {
+  // Worse than the wrong-noun copy bugs, and found the same way — by rendering
+  // one. The mechanics line explained the headline using compWeight and the
+  // trend index, and the rent range applies NEITHER: rentFromComps takes plain
+  // unweighted quartiles. That is not odd phrasing, it is untrue.
+  const body = html.slice(html.indexOf("function renderOwnerHero("), html.indexOf("function sellTodayEstimate("));
+
+  // Chosen off a flag SET INSIDE the branch, never derived from leaseRent
+  // being non-null: a leases-only search where somebody typed an NOI and a cap
+  // rate still leads with the income approach, and would then be described by
+  // the wrong sentence.
+  assert.match(body, /let leaseHero = false;/);
+  assert.match(body, /\} else if \(leaseRent\) \{\n      leaseHero = true;/);
+  assert.match(body, /mechanics\.(un)?shift\(leaseHero \? leaseWeighNote : weighNote\)/);
+  assert.doesNotMatch(body, /leaseHero = leaseRent/, "that would describe a branch that did not render");
+
+  // The MLS sentence is a claim about SALE comp coverage (MLS, a CMA and an
+  // appraisal are all sale-price instruments), so it is omitted on a rent
+  // range rather than reworded — there is no true lease version of it.
+  assert.match(body, /if \(!leaseHero\) mechanics\.push\("Residential sales mostly live in the MLS/);
+
+  // And the lease sentence says what did happen, including the annualization,
+  // because a reader in a monthly market is looking at a converted number.
+  assert.match(body, /const leaseWeighNote = /);
+  assert.match(body, /converted to a year before it is taken/);
+});
+
+test("a lease report asks for the lead in lease words, and still stores a bov", () => {
+  // "Get a free Broker Opinion of Value / Want a real number?" sitting under a
+  // rent range offers a SALE price and reads as the report disowning the figure
+  // it just published. Same fix as the Residential branch, and the same rule:
+  // the words change, the lead does not.
+  const fn = html.match(/function bovCopy\(meta\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "could not bound bovCopy");
+  assert.match(fn[0], /\(meta && meta\.txFocus\) === "leases"/);
+  assert.match(fn[0], /button: "Talk to a local leasing broker"/);
+  // Bounded to the lease branch itself. Slicing to the end of bovCopy would
+  // run straight into the DEFAULT return, which is where "Want a real number"
+  // correctly still lives.
+  const leaseStart = fn[0].indexOf('txFocus) === "leases"');
+  const leaseBranch = fn[0].slice(leaseStart, fn[0].indexOf("\n    return {", leaseStart));
+  assert.ok(leaseBranch.length > 200, "could not bound the lease branch");
+  assert.doesNotMatch(leaseBranch, /Want a real number/,
+    "the lease branch must not carry the sale-price line it exists to replace");
+  assert.doesNotMatch(leaseBranch, /Broker Opinion of Value/,
+    "a rent range must not be answered with an offer of a sale price");
+
+  // ORDER: Residential is read FIRST. A house that rents is a Residential
+  // report, and the trust line's screen-only pointer ("A local agent below can
+  // confirm it") is Residential-only and names that button by its noun — so a
+  // lease branch above it would say agent above and leasing broker below,
+  // which is the drift that block's own ⚠ warns about.
+  const resAt = fn[0].indexOf('=== "Residential"');
+  const leaseAt = fn[0].indexOf('=== "leases"');
+  assert.ok(resAt > 0 && leaseAt > resAt,
+    "the Residential branch must be read before the leases one");
+  assert.match(html, /A local agent below can confirm it/);
+
+  // The lead is unchanged, which is the whole point: the broker inbox, the
+  // coverage-gated intro and the BOV tracker all key on this string.
+  assert.match(html, /bovCtaBtn"\)\.addEventListener\("click", \(\) => openLeadModal\("bov"\)\)/);
+  assert.doesNotMatch(fn[0], /source:/, "bovCopy words the ask; it does not route the lead");
+});
+
+test("the browser can actually reach MARKETSNAP", () => {
+  // The script tag and the allowlist entry are two halves of one thing: the
+  // hero throws on a leases-only report without the tag, and the tag 404s
+  // without the entry. maxAge 0 for valuation.js's reason — a cached copy
+  // against a newer index.html is the failure nobody detects.
+  assert.match(html, /<script src="\/market-snapshot\.js"><\/script>/);
+  const serverSrc = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "server.js"), "utf8");
+  assert.match(serverSrc,
+    /"\/market-snapshot\.js": \{ file: "market-snapshot\.js", type: "text\/javascript; charset=utf-8", maxAge: 0 \}/);
 });
 
 test("the mechanics toggle is registered once, not per render", () => {
@@ -1142,4 +1785,571 @@ test("askFit and conditionFit share one direction vocabulary", () => {
   assert.equal(down.dir, "below");
   assert.equal(V.askFit(1000000, 2000000).dir, "above");
   assert.equal(V.askFit(2000000, 1000000).dir, "below");
+});
+
+// --- the comp table <-> map hover link (2026-08-19) -----------------------
+
+test("the marker index is module-scoped, so the table can reach a pin", () => {
+  // It used to be `const compMarkersByNum = {}` INSIDE renderMap, which is
+  // precisely why hovering a row could never do anything to the map: the only
+  // handle on a marker died with the call that created it. If this regresses
+  // the feature goes silently dead -- setPinLit just stops finding markers,
+  // and nothing throws.
+  const decl = html.match(/^\s*(const|let|var)\s+compMarkersByNum\s*=/gm) || [];
+  assert.equal(decl.length, 1, "compMarkersByNum must be declared exactly once");
+  const i = html.indexOf("compMarkersByNum =");
+  const renderMapAt = html.indexOf("function renderMap(");
+  assert.ok(i < renderMapAt,
+    "compMarkersByNum must be declared BEFORE renderMap, not inside it");
+});
+
+test("every comp row carries the number its pin carries", () => {
+  // data-comp-num is the handle both directions of the link use. The roundel
+  // in the cell is not enough: it is inside the row, and the delegated
+  // listener needs the identity ON the row it matched.
+  assert.match(html, /tr\.dataset\.compNum = comp\._num/);
+  assert.match(html, /tr\[data-comp-num\]/);
+});
+
+test("the row hover listener is delegated once, not re-attached per render", () => {
+  // renderTableBody runs on every sort, filter, exclude and added comp. A
+  // listener attached per row, or per render on the body, would stack up
+  // dozens deep in one sitting and fire the handler once per copy.
+  assert.match(html, /body\.dataset\.mapLinkWired/);
+});
+
+test("a re-render clears every lit pin", () => {
+  // A row removed from under the cursor -- excluded, filtered out, sorted
+  // away -- never fires mouseout, so its pin would stay lit for the rest of
+  // the report. renderTableBody clears them all at the top.
+  const at = html.indexOf("function renderTableBody(");
+  const body = html.slice(at, at + 2500);
+  assert.match(body, /setPinLit\(n, false\)/,
+    "renderTableBody must clear lit pins before rebuilding rows");
+});
+
+test("the pin scale is on the inner dot, never on the Leaflet-positioned element", () => {
+  // Leaflet owns .comp-pin's transform for positioning. Animating that makes
+  // every lit pin drift off its building as the map pans.
+  assert.match(html, /\.comp-pin\.lit \.comp-pin-dot \{[^}]*transform: scale/);
+  assert.doesNotMatch(html, /\.comp-pin\.lit \{[^}]*transform:/);
+});
+
+test("the Explorer's momentum badge colours exactly the three directions", () => {
+  const src = html.match(/const DIR_COLOR = \{[\s\S]*?const dirBadge = \(d\) => \{[\s\S]*?\n      \};/);
+  assert.ok(src, "could not find the Explorer's dirBadge — was it renamed or moved?");
+  const ctx = vm.createContext({
+    escq: (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch])),
+  });
+  new vm.Script(src[0] + "\n;this.fn = dirBadge;", { filename: "index.html" }).runInContext(ctx);
+  // Tokens, not literals: --green and --red invert in dark mode, so a badge
+  // pinned to the light shades would go unreadable on the dark dropdown.
+  assert.match(ctx.fn("expanding"), /var\(--green\)[\s\S]*Expanding/);
+  assert.match(ctx.fn("flat"), /var\(--ink-mute\)[\s\S]*Flat/);
+  assert.match(ctx.fn("contracting"), /var\(--red\)[\s\S]*Contracting/);
+  // A market page with no stored read shows nothing at all — most of the pages
+  // standing today predate the field, and a fourth "unknown" chip on every one
+  // of them would be the loudest thing in the dropdown.
+  assert.equal(ctx.fn(undefined), "");
+  assert.equal(ctx.fn(""), "");
+  assert.equal(ctx.fn("booming"), "");
+  // A bare DIR_COLOR[d] lookup would let an inherited key through as a truthy
+  // "colour" and print the word into the row.
+  assert.equal(ctx.fn("constructor"), "");
+  assert.equal(ctx.fn("toString"), "");
+});
+
+test("the Explorer badge uses only classes the vendored tailwind.css actually has", () => {
+  // index.html has no build step: a utility class missing from the committed
+  // tailwind.css silently does nothing, so the badge would render unstyled
+  // rather than fail. text-[11.5px], ml-2 and capitalize are all absent from
+  // that build today, which is why the badge's size and colour ride in a
+  // style attribute instead.
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  const row = html.match(/<a href="\/market\/\$\{escq\(m\.slug\)\}" class="([^"]+)"/);
+  assert.ok(row, "could not find the Explorer's covered-market row");
+  const badge = html.match(/<span class="(shrink-0[^"]*)" style="color:/);
+  assert.ok(badge, "could not find the Explorer's momentum badge span");
+  const used = (row[1] + " " + badge[1]).split(/\s+/).filter(Boolean)
+    // Interactive variants and the arbitrary text/bg colours already in the
+    // row are checked by the same escaped-selector rule below.
+    .filter((c) => !c.startsWith("hover:"));
+  for (const cls of used) {
+    const selector = "." + cls.replace(/([:[\]().%#/,])/g, "\\$1");
+    assert.ok(css.includes(selector),
+      `class "${cls}" is not in the vendored tailwind.css — regenerate it (see tailwind.config.js) or use an inline style`);
+  }
+});
+
+test("the nav links server.js injects into the app are styled by the vendored tailwind.css", () => {
+  // APP_NAV_LINK_CLASS is a Tailwind class string that lives in server.js and
+  // is injected into index.html at the <!--NAV_LINKS--> marker. tailwind.css
+  // is purged against index.html ALONE, so those utilities survive only while
+  // index.html happens to use them elsewhere — the moment it stops, the
+  // Explore menu's links render unstyled and nothing fails.
+  //
+  // server.js says "#pricingLink, one line above the marker, carries this
+  // identical set", and that has ALREADY drifted: Pricing moved out of the
+  // dropdown on 2026-08-21 and now carries "hidden hover:text-[#1A2433]".
+  // The invariant was prose-only until this test, which is why it went stale
+  // without anybody noticing. Checked against the CSS rather than against
+  // #pricingLink, because the CSS is what the invariant is actually for.
+  const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const m = serverSrc.match(/const APP_NAV_LINK_CLASS = "([^"]+)"/);
+  assert.ok(m, "could not find APP_NAV_LINK_CLASS in server.js");
+
+  const css = fs.readFileSync(path.join(__dirname, "..", "tailwind.css"), "utf8");
+  for (const cls of m[1].split(/\s+/).filter(Boolean)) {
+    const selector = "." + cls.replace(/([:[\]().%#/,])/g, "\\$1");
+    assert.ok(
+      css.includes(selector),
+      `APP_NAV_LINK_CLASS uses "${cls}", which is not in the vendored tailwind.css. ` +
+        `Either index.html no longer uses it (regenerate tailwind.css) or the class string ` +
+        `needs changing — a server-injected class index.html never mentions is invisible to the purge.`,
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The shop nouns, mirrored (migration 036)
+//
+// index.html cannot require org-access.js, so the two shops' words exist
+// twice: once in the module the server writes emails from, once in the script
+// that writes the desk. That is a mirrored constant, which CLAUDE.md and
+// Chuck's own trap list name as the way this codebase breaks quietly -- so it
+// is mirrored deliberately and pinned here, the way exportReportKey and
+// PRO-BILLING-SETUP.md are.
+//
+// What drift would look like without this: a firm invited as a development
+// shop, told by email that its shelf holds land comps, opening a desk that
+// says comp sets and BOVs.
+// ---------------------------------------------------------------------------
+test("index.html's SHOP_COPY is the same map as org-access.js's", () => {
+  const ORG = require("../org-access.js");
+  const src = html.match(/  const SHOP_COPY = \{[\s\S]*?\n  \};/);
+  assert.ok(src, "index.html's SHOP_COPY block is gone or renamed — the mirror is unpinned");
+  const ctx = vm.createContext({});
+  new vm.Script(src[0] + "\nthis.copy = SHOP_COPY;", { filename: "index.html" }).runInContext(ctx);
+  assert.deepEqual(ctx.copy, ORG.SHOP_COPY,
+    "the desk and the invite email would describe the same firm differently");
+  // Both halves read an unknown kind as broker; SHOP_COPY having a `broker`
+  // key is what makes that fallback a value rather than undefined.
+  assert.ok(ctx.copy.broker, "the fallback both halves use is missing from the page's map");
+});
+
+// --- The seat minimum is mirrored into the buy prompt -----------------------
+//
+// The same hazard as SHOP_COPY above, with money on it. The seats prompt
+// defaults and validates against its own copy of ORG.MIN_SEATS, because
+// index.html cannot require the module. Drift is bad in both directions and
+// loud in neither: a page minimum BELOW the module's offers a number the
+// route then refuses, which reads as a broken Buy button; a page minimum
+// ABOVE it quietly stops selling the smallest firm plan that exists.
+// ---------------------------------------------------------------------------
+test("index.html's seat minimum is org-access.js's MIN_SEATS", () => {
+  const ORG = require("../org-access.js");
+  const m = html.match(/const MIN_SEATS = (\d+);/);
+  assert.ok(m, "index.html's MIN_SEATS is gone or renamed — the mirror is unpinned");
+  assert.equal(Number(m[1]), ORG.MIN_SEATS,
+    "the seats prompt and the checkout route disagree about the smallest firm plan");
+});
+
+// --- Development returns card (C6) ------------------------------------------
+// renderDevCard is straight-line DOM code: every figure is written with
+// getElementById(...).textContent, so a mistyped or renamed id does not throw
+// anywhere a person would see — it writes into nothing, and the tile silently
+// keeps its "—" forever while the arithmetic behind it is perfectly correct.
+// That is the failure this pins.
+
+test("every element renderDevCard writes to exists in the markup", () => {
+  const ids = [
+    "devCard", "devBasis",
+    "devLand", "devHard", "devSoft", "devCont", "devMonths",
+    "devTotal", "devTotalSub",
+    "devYoc", "devYocSub",
+    "devSpread", "devSpreadSub",
+    "devIrr", "devIrrSub",
+    "devProfit", "devProfitSub",
+  ];
+  for (const id of ids) {
+    assert.ok(html.includes(`id="${id}"`), `renderDevCard writes to #${id}, which index.html does not contain`);
+  }
+});
+
+test("the dev card's set() helper convention holds: every tile has its Sub sibling", () => {
+  // set(id, txt, sub) writes to `id` AND `id + "Sub"`. A tile added without
+  // its Sub element loses its explanatory line with no error.
+  for (const base of ["devTotal", "devYoc", "devSpread", "devIrr"]) {
+    assert.ok(html.includes(`id="${base}"`) && html.includes(`id="${base}Sub"`),
+      `${base} is missing its ${base}Sub sibling`);
+  }
+});
+
+test("dev-returns.js is loaded by the page and served with no caching", () => {
+  assert.ok(/<script src="\/dev-returns\.js"><\/script>/.test(html),
+    "index.html must load /dev-returns.js — the inline script calls DEVRETURNS");
+  const server = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  // Same rule as /valuation.js: a stale copy against fresh HTML throws where
+  // the card renders. The STATIC_FILES entry must carry maxAge: 0.
+  const entry = server.match(/"\/dev-returns\.js":\s*\{[^}]*\}/);
+  assert.ok(entry, "server.js does not serve /dev-returns.js");
+  assert.match(entry[0], /maxAge:\s*0\b/,
+    "/dev-returns.js must be served with maxAge: 0, like /valuation.js");
+});
+
+test("development costs are private: never sent to the server's search", () => {
+  // devCost lives in meta.assumptions beside debt/opex/rentRoll, which
+  // /api/share strips and the search body never carries. If a future edit
+  // ever puts it in the /api/comps body it would enter the cache key and a
+  // stranger's report would be keyed on somebody's construction budget.
+  const body = html.match(/JSON\.stringify\(\{\s*address[\s\S]{0,600}?\}\)/g) || [];
+  for (const b of body) {
+    assert.ok(!/devCost/.test(b), "a development cost reached the /api/comps request body");
+  }
+});
+
+// The SECOND mirrored string of the firm panel, and the one with no map to
+// hide behind. The browser refuses an unanswered shop question itself rather
+// than spending a round trip on it, so the sentence exists twice; the sentence
+// also enumerates the shops, so it goes stale the day a kind is added. Pinning
+// it to the module's own words is what turns that from a silent drift into a
+// failing test (037 is the migration that proved it can happen).
+test("index.html refuses the shop question in org-access.js's own words", () => {
+  const ORG = require("../org-access.js");
+  const expected = ORG.validateShopKind("").error;
+  assert.ok(html.includes(`"${expected}"`),
+    `the page's refusal has drifted from validateShopKind's: ${expected}`);
+});
+
+// ---------------------------------------------------------------------------
+// The collapsed search settings (2026-08-23). Focus, Lookback and Property SF
+// moved behind a line that states their current values, so the form's only
+// open question is the address. The trade is that the line IS the only thing
+// on screen saying what the search will do — three controls the reader can
+// see explain themselves, and a summary that has gone stale does not.
+// ---------------------------------------------------------------------------
+
+test("the collapsed settings line states what the search will actually do", () => {
+  const words = html.match(/const TX_FOCUS_WORDS = \{[^}]*\};/);
+  const fn = html.match(/function refreshSearchSettingsLine\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(words && fn, "could not bound refreshSearchSettingsLine — renamed or moved?");
+
+  const line = { textContent: "" };
+  const focus = { value: "both" };
+  const size = { value: "" };
+  let months = 24;
+  const ctx = vm.createContext({
+    searchSettingsLine: line,
+    txFocusSel: focus,
+    targetSizeInput: size,
+    selectedLookbackMonths: () => months,
+    // valuation.js's, copied rather than required: the browser reads it off
+    // the VALUATION global, which this extraction has no way to destructure.
+    numericValue: (str) => {
+      if (str == null) return NaN;
+      const m = String(str).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+      return m ? parseFloat(m[0]) : NaN;
+    },
+  });
+  new vm.Script(`${words[0]}\n${fn[0]}\n;this.refresh = refreshSearchSettingsLine;`,
+    { filename: "index.html" }).runInContext(ctx);
+
+  // The defaults, which is what nearly every visitor will read. Naming the
+  // size default is the point: somebody who leaves the box empty should learn
+  // it gets looked up, not wonder whether they have cost themselves the
+  // number the hero multiplies.
+  ctx.refresh();
+  assert.equal(line.textContent, "Sales & leases · last 24 months · size from public records");
+
+  focus.value = "leases";
+  months = 6;
+  ctx.refresh();
+  assert.equal(line.textContent, "Leases only · last 6 months · size from public records");
+
+  // A size that IS set replaces the promise to look one up.
+  focus.value = "sales";
+  months = 36;
+  size.value = "24800";
+  ctx.refresh();
+  assert.equal(line.textContent, `Sales only · last 36 months · ${(24800).toLocaleString()} SF`);
+  assert.match(line.textContent, / SF$/);
+
+  // A half-typed custom window. Submit refuses this state, and while the
+  // control is collapsed this line is the only thing that can say why — so it
+  // must not quietly name a window that is not set.
+  months = null;
+  ctx.refresh();
+  assert.match(line.textContent, /lookback not set/);
+});
+
+test("every seam that moves focus, window or size refreshes the settings line", () => {
+  // The failure this guards is invisible on screen: the line keeps describing
+  // the previous search while the controls it describes are collapsed. Only
+  // the lookback has a funnel (setLookbackControls); focus and size are
+  // assigned directly at the restore paths, so each of those needs the call.
+  const seams = [
+    // The user-facing controls.
+    [/txFocusSel\.addEventListener\("change", refreshSearchSettingsLine\)/, "the focus select"],
+    [/function setLookbackControls\(months\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "setLookbackControls"],
+    // Machine writes that fire no "input" event of their own.
+    [/function dropMachineSize\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "dropMachineSize"],
+    [/noteMachineSize\(meta\.address, Math\.round\(found\)\);\s*\n\s*\/\/[\s\S]{0,220}?refreshSearchSettingsLine\(\)/,
+      "the record-backed size autofill"],
+    // Restores, which assign every one of the three without an event.
+    [/function rerunHistory\(m\) \{[\s\S]*?refreshSearchSettingsLine\(\)[\s\S]*?requestSubmit\(\)/, "rerunHistory"],
+    [/function syncSubjectFieldsToType\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "syncSubjectFieldsToType"],
+  ];
+  for (const [re, what] of seams) {
+    assert.match(html, re, `${what} can move a settings value without refreshing the line`);
+  }
+  // The footprint estimate is the one machine write that needs no call of its
+  // own: it dispatches "input" on #targetSize, and that listener refreshes.
+  assert.match(html,
+    /getElementById\("targetSize"\)\.addEventListener\("input", \(e\) => \{[\s\S]*?refreshSearchSettingsLine\(\)/,
+    "the size input listener no longer refreshes the line, which also covers the footprint estimate");
+});
+
+test("the three controls are behind the settings summary, and keep their ids", () => {
+  const open = html.indexOf('<details id="searchSettings"');
+  const close = html.indexOf("</details>", open);
+  assert.ok(open > 0 && close > open, "the search-settings disclosure is gone");
+  const inside = html.slice(open, close);
+  for (const id of ["txFocus", "lookback", "lookbackCustom", "targetSize", "lookbackHint", "targetSizeHint"]) {
+    assert.ok(inside.includes(`id="${id}"`), `#${id} left the settings disclosure`);
+  }
+  // The summary has to carry the line and a word saying it can be opened: a
+  // row of values with only a chevron reads as a status line, not a control.
+  assert.match(inside, /<summary[\s\S]*?id="searchSettingsLine"[\s\S]*?rd-sum-act[\s\S]*?<\/summary>/);
+});
+
+test("the footprint estimate points at where the size actually is", () => {
+  // It said "edit it under Details for comps", which had been wrong since the
+  // size moved back onto the form (2026-08-16): it sent anyone correcting an
+  // estimate to a drawer that does not contain the field.
+  const note = html.match(/estNote\.textContent = `[^`]*`/);
+  assert.ok(note, "could not find the footprint estimate's note");
+  assert.ok(!/Details for comps/.test(note[0]),
+    "the estimate note points at Details for comps, which has not held the size since 2026-08-16");
+  assert.match(note[0], /change it below/);
+});
+
+// ---------------------------------------------------------------------------
+// Two labels that credited the wrong thing (2026-08-23). Both were found by
+// running the app and reading the screen, which is the only way this class
+// shows up: each sentence is fine in isolation and wrong beside its neighbour.
+// ---------------------------------------------------------------------------
+
+test("the market-average card does not credit the comps it ignores", () => {
+  // #compareMidSub sits under parsed.avg_price_per_sqft, which is deliberately
+  // NOT recomputed when the reader excludes a comp. Measured on the sample:
+  // excluding one moved the hero to $7,775,000-$8,500,000, the footer to
+  // "MEDIAN OF 3 SALE COMPS - $110/SF" and the trust line to "1 excluded by
+  // you", while this card held $113 under a label crediting those same comps.
+  //
+  // The markup default paints before renderComparison runs, so the two have to
+  // agree or the honest label is preceded by a flash of the misleading one.
+  const markup = html.match(/id="compareMidSub"[^>]*>([^<]*)</);
+  assert.ok(markup, "could not find the #compareMidSub default");
+  const call = html.match(/setCompareLabels\(\s*"Your Property vs\. Market",[\s\S]*?\n\s*\);/);
+  assert.ok(call, "could not find the CRE comparison's setCompareLabels call");
+  assert.ok(call[0].includes('"' + markup[1] + '"'),
+    "#compareMidSub's default has drifted from the label renderComparison paints: " + markup[1]);
+
+  // Scoped to the two sites that actually reach a screen rather than the whole
+  // file: the comment at the call site quotes the old wording on purpose, and
+  // a blanket search would forbid explaining the very bug being fixed.
+  for (const [where, text] of [["the markup default", markup[1]], ["renderComparison", call[0]]]) {
+    assert.ok(!/from pulled comps/.test(text),
+      where + " credits the pulled comps for a figure that ignores the reader's exclusions");
+  }
+
+  // Whatever the wording becomes, it has to place the figure at the market
+  // rather than at this reader's comp set — that is the whole correction.
+  assert.match(markup[1], /market/i);
+
+  // The Residential branch compares the ask against lastValuation, which DOES
+  // track curation, so it must never inherit this caveat.
+  const res = html.match(/function renderResidentialAskComparison\([\s\S]*?setCompareLabels\([\s\S]*?\);/);
+  assert.ok(res, "could not bound the Residential comparison");
+  assert.ok(!/not just these comps/.test(res[0]),
+    "the Residential card compares against the live estimate; it has no stale-average caveat to make");
+});
+
+test("the analysis gate names a section that is actually on the form", () => {
+  // It said "Property details", which the form has not been called since the
+  // owner retitled it "Details for comps" on 2026-08-08 — so the one
+  // instruction for unlocking the analysis tools named nothing on screen.
+  const gate = html.match(/id="analysisEmpty"[^>]*>([^<]*)</);
+  assert.ok(gate, "could not find the analysis gate copy");
+  assert.ok(!/Property details/.test(gate[1]),
+    "the analysis gate points at 'Property details', a section name the form does not use");
+  const named = gate[1].match(/Enter an NOI in (.+?) above/);
+  assert.ok(named, "the analysis gate no longer names where the NOI field is: " + gate[1]);
+  // Pinned against the summary the form actually renders, so a future retitle
+  // fails the build here rather than stranding this sentence again.
+  assert.ok(html.includes("+ " + named[1] + " <span"),
+    'the analysis gate sends the reader to "' + named[1] + '", which is not the form\'s own summary label');
+});
+
+// The sample report is the one CompNinja a prospect reads before signing up,
+// so its illustrative data has to survive the product's own honesty checks.
+test("the sample report's stated search radius covers its own comps", () => {
+  const V = require("../valuation.js");
+  const i = html.indexOf("const SAMPLE_REPORT");
+  assert.ok(i > 0, "could not find SAMPLE_REPORT");
+  const src = html.slice(i, html.indexOf("\n  };", i) + 5);
+  const ctx = vm.createContext({});
+  new vm.Script(src + "\n;this.S = SAMPLE_REPORT;", { filename: "index.html" }).runInContext(ctx);
+  const S = ctx.S;
+
+  const R = 3958.8, rad = (d) => (d * Math.PI) / 180;
+  const miles = (a, b, c, d) => {
+    const dLat = rad(c - a), dLon = rad(d - b);
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a)) * Math.cos(rad(c)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  };
+  const sLat = Number(S.subject_lat), sLng = Number(S.subject_lng);
+  const dists = S.comps
+    .filter((c) => isFinite(Number(c.lat)) && isFinite(Number(c.lng)))
+    .map((c) => miles(sLat, sLng, Number(c.lat), Number(c.lng)));
+  assert.ok(dists.length >= 3, "the sample's comps lost their coordinates");
+  const farthest = Math.max(...dists);
+
+  const claimed = V.parseRadiusMiles(S.search_radius);
+  assert.ok(claimed != null, `the sample's search_radius states no distance: ${S.search_radius}`);
+
+  // The claim said "~5 miles" against comps 8-17 miles out until 2026-08-23.
+  // Nothing wrong reached the screen — reconcileRadiusClaim suppressed the
+  // line once the real distances arrived (that is what #166 shipped) — but
+  // the demo therefore showed no search radius at all, and the fixture was
+  // relying on the product papering over it on every render.
+  assert.ok(!V.radiusClaimContradicted(S.search_radius, farthest),
+    `the sample claims ${claimed} mi but its own comps reach ${farthest.toFixed(1)} mi, so the report suppresses the line`);
+
+  // Stricter than radiusClaimContradicted on purpose: that function allows a
+  // 25% slack because a real search's radius is approximate. This fixture is
+  // written by us, so it should cover its comps outright rather than survive
+  // on the tolerance — otherwise a later comp edit silently spends the slack.
+  assert.ok(claimed >= farthest,
+    `the sample's radius (${claimed} mi) only clears its farthest comp (${farthest.toFixed(1)} mi) on slack`);
+});
+
+// ---------------------------------------------------------------------------
+// "Continue with Google" (2026-08-25). The button is a plain anchor into
+// GET /auth/google, shipped hidden and revealed only by /api/config's
+// googleAuth flag — the Buy-button rule, because most deployments (and every
+// local dev run) have no OAuth client and the anchor would 404. These pin the
+// three pieces that have to agree: the markup ships dark, the reveal reads
+// the config flag, and the callback's failure exit (?gerr=1) has a message
+// waiting for it.
+test("the Google button ships hidden and is revealed only by config", () => {
+  assert.match(html, /<div id="acctGoogleRow" class="hidden">/,
+    "the button must ship hidden — a control that can only fail never renders");
+  assert.match(html, /id="acctGoogle" href="\/auth\/google"/,
+    "the button is an anchor into the server's OAuth door, not a JS submit");
+  assert.match(html, /googleAuthLive = Boolean\(cfg\.googleAuth\)/,
+    "the reveal must read /api/config's flag, never assume");
+  assert.match(html, /acctMode === "signin" \|\| acctMode === "signup"/,
+    "the button belongs to the two sign-in tabs, not the reset/forgot forms");
+  assert.match(html, /get\("gerr"\)/,
+    "the callback's failure exit (?auth=signin&gerr=1) needs its message");
+});
+
+// ---------------------------------------------------------------------------
+// Cancelling the /?auth=signin door returns a signed-out visitor to the
+// landing page, instead of stranding them on the app
+// ---------------------------------------------------------------------------
+//
+// Owner-reported 2026-08-29, alongside the Pricing half of the same defect.
+// The account modal lives only in this file, so /?auth=signin is a full
+// navigation off whatever page the visitor was reading. Nothing then pointed
+// back: closeAcctModal only added `hidden`, and the visitor was left on the
+// app behind the wall's lock card having never asked to see it.
+//
+// No DOM here, so these assert the shape in the source -- the same trade the
+// pricing one-shot tests below make, and for the same reason: cheap, and they
+// fail the moment somebody unpicks a guard.
+
+test("the signin door arms the landing-page exit, and signup never does", () => {
+  assert.match(html, /exitToLandingOnCancel = authParam === "signin";/,
+    "the door must arm the exit for signin only");
+  // The asymmetry is load-bearing, not an oversight. A signup arrival carries
+  // the address typed into the landing page's own form (pendingLandingAddress
+  // .v1), which is waiting in the search field by the time they cancel;
+  // bouncing them back would throw it away and undo that funnel.
+  assert.ok(!/exitToLandingOnCancel = true;/.test(html),
+    "nothing may arm the exit unconditionally -- signup would inherit it");
+  // Inside the !currentUser guard, so a member following a stale link from a
+  // cached page never arms it at all.
+  const door = html.match(
+    /if \(!currentUser && \(authParam === "signup" \|\| authParam === "signin"\)\) \{[\s\S]{0,400}?exitToLandingOnCancel/);
+  assert.ok(door, "the exit is armed outside the signed-out door block");
+});
+
+test("the landing-page exit is one-shot and never fires on a successful sign-in", () => {
+  const fn = html.match(/function closeAcctModal\(\) \{[\s\S]*?\n  \}/);
+  assert.ok(fn, "closeAcctModal moved or changed shape");
+  const body = fn[0];
+  // Captured and cleared before anything else, like every pending flag beside
+  // it: reopening the modal from the lock card, or signing out and back in on
+  // this same page load, must not inherit an answered door arrival.
+  assert.match(body, /const exitToLanding = exitToLandingOnCancel;\s*\n\s*exitToLandingOnCancel = false;/,
+    "the exit flag must be captured and cleared at the top of the close");
+  // currentUser, because both successful-auth paths close this modal too (one
+  // of them twice, through the import prompt) and a member must land on the
+  // app -- that is what they signed in FOR. accountWall, because with the wall
+  // off `/` serves this very file and the navigation is a pointless reload.
+  assert.match(body, /if \(exitToLanding && !currentUser && accountWall\) location\.href = "\/";/,
+    "the exit must be guarded on both the visitor and the wall");
+});
+
+// ---------------------------------------------------------------------------
+// The pricing deep link is a one-shot, so it may never act on a GUESS
+// ---------------------------------------------------------------------------
+//
+// Reported 2026-08-29: clicking Pricing in any server-rendered header landed
+// on a bare home page with no modal, and only a SECOND click opened it.
+//
+// refreshBillingUI() runs during bootstrap as well (refreshAccountUI calls
+// it), before /api/config has answered. At that point proConfig is still the
+// boot-time `{ enabled: false }` default, so billingLive() reads FALSE on a
+// deployment whose billing is perfectly live. The consumption block flipped
+// the one-shot on that early call, skipped the modal, and cleared ?pricing=1
+// from the URL anyway -- leaving nothing for the later call that had the real
+// answer.
+//
+// This is the identical mistake applyExplorerGating() already guards against,
+// and `proConfigResolved` is the flag written for it. There is no DOM here to
+// drive the race, so these assert the guard is present in the source: cheap,
+// and they fail the moment someone removes it.
+
+test("the pricing deep link waits for a real config answer before consuming", () => {
+  assert.match(html, /if \(pendingPricingHash && proConfigResolved\) \{/,
+    "the ?pricing=1 one-shot must be gated on proConfigResolved, not consumed " +
+    "on the boot-time proConfig default");
+});
+
+test("the pricing one-shot is not cleared on the same pass that skips the modal", () => {
+  // The guard has to sit on the OUTER `if`. Folding it into the `live && !pro`
+  // test would still flip pendingPricingHash and still rewrite the URL, which
+  // is the whole bug -- the modal is not the only thing being lost.
+  const block = html.match(
+    /if \(pendingPricingHash && proConfigResolved\) \{[\s\S]{0,700}?\n    \}/);
+  assert.ok(block, "the pricing consumption block moved or changed shape");
+  assert.ok(/pendingPricingHash = false;/.test(block[0]),
+    "the one-shot is still cleared inside the guarded block");
+  assert.ok(/history\.replaceState/.test(block[0]),
+    "the URL cleanup is still inside the guarded block, not outside it");
+});
+
+test("proConfigResolved is only ever set from a real /api/config answer", () => {
+  // Two call sites (initGate and refreshProConfig), both immediately after the
+  // assignment from cfg. If a third appears that guesses, both deep links --
+  // pricing and ?explore= -- silently regain the bug above.
+  const sets = html.match(/proConfigResolved = true/g) || [];
+  assert.equal(sets.length, 2,
+    "expected exactly the two config-answer call sites to set proConfigResolved");
+  assert.match(html, /let proConfigResolved = false;/,
+    "the flag must default to false, so nothing acts before config lands");
 });

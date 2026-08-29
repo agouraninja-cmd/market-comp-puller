@@ -198,3 +198,44 @@ test("no_price still fires on genuinely priceless rows", () => {
     assert.equal(out.findings.no_price, 1, "expected no_price for " + JSON.stringify(v));
   }
 });
+
+// --- Land corner addresses (2026-08-19) -------------------------------------
+// An unimproved parcel has no building to number, so the market names it by
+// its corner. The 2026-08-19 eval demoted three real priced Olathe land
+// listings to "estimate" (38% of that report's comps) for exactly this.
+
+test("enforcedSourceType keeps provenance on a Land intersection address", () => {
+  assert.equal(enforcedSourceType("listing", "129th & Somerset Ter, Olathe, KS 66062", "Land"), "listing");
+  assert.equal(enforcedSourceType("listing", "S Mur-Len Rd & W 127th St, Olathe, KS 66062", "Land"), "listing");
+  assert.equal(enforcedSourceType("listing", "NEC 159th & Brentwood St, Olathe, KS 66062", "Land"), "listing");
+});
+
+test("the Land exemption does NOT apply to types that have a building to number", () => {
+  for (const t of ["Industrial", "Office", "Retail", "Multifamily", "Residential", undefined]) {
+    assert.equal(enforcedSourceType("listing", "129th & Somerset Ter, Olathe, KS 66062", t), "estimate",
+      `an intersection address must stay an estimate for ${t}`);
+  }
+});
+
+test("a Land address that is still an AGGREGATE is forced to estimate however it is punctuated", () => {
+  assert.equal(enforcedSourceType("listing", "129th & Somerset Ter market median, Olathe, KS", "Land"), "estimate");
+  assert.equal(enforcedSourceType("listing", "Olathe KS land benchmark", "Land"), "estimate");
+});
+
+test("Land with no street number and no corner is still an estimate", () => {
+  assert.equal(enforcedSourceType("listing", "Olathe, KS (2.5 acre parcel)", "Land"), "estimate");
+});
+
+test("isIntersectionAddress reads the STREET LINE only, and refuses the word 'and'", () => {
+  const { isIntersectionAddress } = require("../corpus-audit");
+  assert.equal(isIntersectionAddress("NEC 159th & Brentwood St, Olathe, KS"), true);
+  assert.equal(isIntersectionAddress("SW corner of 135th, Olathe, KS"), true);
+  // "&" after the first comma is a company or city suffix, not an intersection.
+  assert.equal(isIntersectionAddress("100 Main St, Smith & Jones LLC, Olathe, KS"), false);
+  // " and " appears inside ordinary names; only "&" counts.
+  assert.equal(isIntersectionAddress("Land and Cattle Co, Olathe, KS"), false);
+});
+
+test("a street-numbered Land address is unaffected by the exemption", () => {
+  assert.equal(enforcedSourceType("listing", "13450 S Arapaho Dr, Olathe, KS 66062", "Land"), "listing");
+});

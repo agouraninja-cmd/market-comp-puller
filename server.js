@@ -20,7 +20,7 @@ const { AsyncLocalStorage, AsyncResource } = require("node:async_hooks");
 // Market-snapshot distillation, shared with gen-market-seed.js so on-demand
 // Explorer pages are shaped exactly like the curated seed pages.
 const { MIN_PRICED_SALE_COMPS, slugify: slugifyMarket, distillMarketSnapshot, isBetterSnapshot,
-  dateKey, safeHttpUrl, isLease, rentFromComps } = require("./market-snapshot");
+  dateKey, safeHttpUrl, isLease, rentFromComps, freshDirection } = require("./market-snapshot");
 // Pro-tier entitlement rules. Pure and dependency-free so `npm test` can
 // exercise the whole decision table without a database — see the Pro section
 // below for the reads that feed it.
@@ -49,12 +49,21 @@ const RADIUSBLEND = require("./blend-corpus");
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
 const SHAREACCESS = require("./report-access.js");
-// Who is in a firm, and what their membership lets them do (migration 032).
+// Who is in a firm, and what their membership lets them do (migration 030).
 // Same pure, fails-closed contract as report-access.js, and it feeds that
 // file directly: activeOrgIds() is the sole source of the `orgIds` canReadShare
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+// A firm's own tenant contacts: what may be stored and what a CSV of them
+// means (039). Pure and tested, and deliberately holding NO way to build a
+// contact from a lead or a hub participant — see its header.
+const CONTACTS = require("./org-contacts.js");
+// Who shared what to the firm, by market and by month. Pure and clockless like
+// org-access.js — this file owns the two reads and hands the rows in. It counts
+// CONTRIBUTION to the firm, never closings; see its header for why that is the
+// only number a firm can honestly be shown.
+const BOARD = require("./deal-board.js");
 // Who may read, write and add to a messaging hub. Same pure, fails-closed
 // contract as report-access.js: this file owns the reads, that one owns the
 // rules. NOT the connection hub at /brokers — see the spec's naming warning
@@ -69,7 +78,7 @@ const HUBCOMP = require("./hub-comp.js");
 const { renderVaultHTML } = require("./vault-page");
 // The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
 const { renderHubHTML } = require("./hub-page");
-// The 1031 exchange guide's content. A web page, so it is not server code —
+// The 1031 identification worksheet. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
 // The vault API's comp shape — the seam between how comps are STORED and how
@@ -91,12 +100,21 @@ const EMAILSHELL = require("./email-shell");
 // tested, because every judgment in it is about what a person is worth
 // interrupting for — see its header.
 const DIGEST = require("./watchlist-digest");
+// The renewal watch's copy and its send/skip rule (038). The SECOND thing this
+// product sends on its own initiative, and it inherits the digest's bar rather
+// than forking it — same purity, same "when in doubt send nothing", same run.
+const RENEWAL = require("./renewal-watch");
 // The "City, ST" market key and the analytics shape guard. Pure and tested.
 // marketOf() is the comp corpus key — see market.js's header before touching
 // the parse. US_STATES is shared with the Explorer/market-page validators,
 // which stay US-only on purpose (the module recognizes Canadian provinces
 // internally, for the key only).
-const { marketOf, marketForLog, US_STATES, siblingMarkets } = require("./market");
+const { marketOf, marketForLog, US_STATES, siblingMarkets,
+  exampleMarketOrder } = require("./market");
+// What counts as somebody looking at a market, and how those rows add up into
+// the figure a Pro subscriber sees on My Desk. Pure and tested, because every
+// line of it is a way the number could flatter us — see its header.
+const DEMAND = require("./search-demand");
 // The /api/comps parse pipeline's pure pieces, extracted one function at a
 // time as each gains tests (see its header for what still lives here). New
 // pipeline normalizers belong THERE. expandCompKeys is wrapped below where
@@ -122,6 +140,8 @@ const BOVSVC = require("./bov-log");
 // tightening of that rule, and a second copy would be one more mirrored pair to
 // keep in sync (this repo already carries one, compWeight, and it has a ⚠).
 const AUDIT = require("./corpus-audit");
+const { parseDealDate } = require("./deal-date");
+const HARVEST = require("./corpus-harvest");
 const { isAggregateAddress } = AUDIT;
 const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
@@ -140,7 +160,14 @@ const BRANDING = require("./branding.js");
 // avatar_rev field on GET /api/account/me.
 const AVATAR = require("./account-avatar.js");
 const CITYCHECK = require("./city-check");
+// "Continue with Google" — the decision half (consent URL, id_token claims,
+// what a token must prove). Pure and tested; server.js owns the state
+// cookie, the code exchange, and the two /auth/google* routes.
+const GAUTH = require("./google-auth");
 const MARKETHERO = require("./market-hero");
+// Which single momentum claim a city's carved map area may make when one
+// city shape holds several markets — see market-area.js's header.
+const MARKETAREA = require("./market-area");
 const HEROQUALITY = require("./market-hero-quality");
 const HEROREVIEW = require("./market-hero-review");
 const SVAIM = require("./streetview-aim");
@@ -148,6 +175,19 @@ const SVAIM = require("./streetview-aim");
 // desk's only figure that changes without the owner re-running anything.
 // Pure and tested; server.js owns the corpus read and passes in dated sales.
 const PFDELTA = require("./portfolio-delta");
+// Bulk valuation (Pro): what counts as an address in a pasted list, what one
+// finished report is worth as a portfolio row, and what the totals say. Pure;
+// server.js owns the job tables, the worker and the search itself.
+const BULK = require("./bulk");
+const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
+// /firms — the public pitch for firm accounts. A marketShell BODY, like
+// bulk-page.js. The shop-kind sentences are PASSED IN from ORG rather than
+// required there, so this page can never become a second copy of them.
+const { renderFirmsPageBody } = require("./firms-page");
+// /pricing — the linkable rate card. Same body-only shape; the figures are
+// handed in from PRICING so the page and the FAQ cannot quote different ones.
+const { renderPricingPageBody } = require("./pricing-page");
+const PFMATCH = require("./portfolio-match");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -185,7 +225,10 @@ const SEARCH_PROVIDERS = {
 // Default flipped to gemini on 2026-08-10 after the phase 2 validation gate
 // measured it better on every scored metric of the 12-target eval AND 3.9x
 // cheaper ($0.092 vs $0.36 per report) and 1.6x faster (56s vs 87s). Findings:
-// docs/evals/2026-08-10-gemini-pipeline-validation.md.
+// docs/evals/2026-08-10-gemini-pipeline-validation.md. That $0.092 used
+// USD_PER_MTOK's standard rate; billed today at Google's introductory rate
+// (in effect through 2026-12-31) the same measured tokens cost ~$0.045 — see
+// search-provider-gemini.js.
 // Rolling back is SEARCH_PROVIDER=anthropic, which needs no code change and no
 // deploy, just an env var. Note the deployment must carry GEMINI_API_KEY on a
 // PAID-tier Google project: a free-tier key authenticates and runs the model
@@ -203,6 +246,95 @@ if (!PROVIDER) {
 // default.
 // MODEL still overrides, so an existing MODEL=... deployment is unaffected.
 const MODEL = (process.env.MODEL || PROVIDER.defaultModel).trim();
+
+// How hard the model is allowed to think before it answers. Empty = leave the
+// vendor's own default alone, which is what every deployment does today and
+// what keeps the request byte-identical to the pre-knob wire format.
+//
+// This exists because on the default provider thinking is not a rounding error
+// on generation time, it IS generation time: a measured Gemini call spent
+// 4,207 in / 928 out / 6,473 thought, so roughly seven of every eight generated
+// tokens were reasoning and only one in eight was the report. Report-JSON trims
+// are real but they are attacking the small half; this knob is the big one.
+//
+// It ships UNSET on purpose. Google's guidance calls the default level the best
+// quality for agentic work, and comp selection accuracy is the product, so
+// turning this down is a thing to MEASURE (a run-eval.js --compare pair, about
+// $8.60 and one restart) rather than a thing to assume. Every field the
+// scorecard needs is already in eval-score.js.
+//
+// No fallthrough, same rule as SEARCH_PROVIDER above and /api/checkout's PLANS:
+// an unrecognized level exits at boot rather than being silently dropped, and a
+// level this provider cannot act on is refused rather than accepted and
+// ignored - a knob that appears to work and changes nothing is the worst of the
+// three outcomes. Read through capabilities, never through PROVIDER.name.
+// --- NAV_SHELL: which shape the signed-in chrome takes ----------------------
+//
+// `rail` (the default) lays the header out as a persistent left sidebar at
+// 900px and up; `bar` is the horizontal header exactly as it shipped before
+// 2026-08-28, and is the instant rollback lever.
+//
+// It gates ONE CSS class on <html> and nothing else. The markup is
+// byte-identical in both modes — the rail IS the existing header element,
+// re-laid-out — which is what keeps the eight-page header assertions in
+// routes.test.js green and what makes rollback a variable rather than a
+// deploy. Never grow a second markup branch off this flag.
+//
+// Anonymous visitors never get the rail whatever this says: it marks "you are
+// inside the product", and a marketing page read by a stranger is not that.
+//
+// Unrecognized values EXIT, per the SEARCH_PROVIDER / THINKING_LEVEL rule
+// below: a knob that appears to work and changes nothing is the worst of the
+// three outcomes.
+const NAV_SHELL = (process.env.NAV_SHELL || "rail").trim().toLowerCase();
+if (!["rail", "bar"].includes(NAV_SHELL)) {
+  console.error(`⛔ NAV_SHELL="${NAV_SHELL}" is not one of: rail, bar`);
+  process.exit(1);
+}
+// The class every signed-in server-rendered page stamps on <html>. Empty in
+// bar mode, so the attribute simply is not written.
+const NAV_SHELL_CLASS = NAV_SHELL === "rail" ? "nav-rail" : "";
+
+const THINKING_LEVEL = (process.env.THINKING_LEVEL || "").trim().toLowerCase();
+if (THINKING_LEVEL) {
+  const levels = PROVIDER.capabilities.thinkingLevels;
+  if (!levels) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" but the ${PROVIDER.name} provider has no tunable reasoning depth. Unset it, or switch SEARCH_PROVIDER.`);
+    process.exit(1);
+  }
+  if (!levels.includes(THINKING_LEVEL)) {
+    console.error(`⛔ THINKING_LEVEL="${THINKING_LEVEL}" is not one of: ${levels.join(", ")}`);
+    process.exit(1);
+  }
+}
+
+// Ask the model to keep hunting until it has a decent number of comps, rather
+// than stopping at the prompt's stated floor of 3.
+//
+// This exists because of a measured side effect of THINKING_LEVEL=low
+// (2026-08-21, 12-target eval): reasoning less made the report 66% faster and
+// 66% cheaper, and it also returned a THIRD fewer comps — 7.1 down to 4.8,
+// priced sales 6.7 down to 4.5. Both moves are 3-5x the run-to-run noise floor,
+// so they are real.
+//
+// The interesting part is that the shorter list was BETTER sourced, not worse:
+// provenance rose 8%, market-match rose 12%, and the unsourced-"estimate" rate
+// fell from 14% to 2%. So low thinking is not finding worse comps, it appears
+// to stop LOOKING sooner — satisficing at the low end of "find 3 to N".
+//
+// Hence a floor rather than a rewrite. The one thing this must never do is buy
+// comp count back by relaxing what counts as a comp: a 2% estimate rate is the
+// best this eval has ever recorded, and trading it for padding would be a worse
+// report that merely scores longer. The wording therefore spends its words on
+// searching harder, and restates the anti-padding rules rather than softening
+// them.
+//
+// Off by default: it is a prompt change on the hot path, and it is only worth
+// carrying if the eval says it recovers the comps.
+const COMP_FLOOR = /^(1|on|true|yes)$/i.test(String(process.env.COMP_FLOOR || ""));
+// How many the floor asks for. Sits just under the default arm's measured 7.1
+// so it is a target the market can actually satisfy, not a quota to pad toward.
+const COMP_FLOOR_TARGET = Math.max(3, Number(process.env.COMP_FLOOR_TARGET) || 6);
 
 // The provider names its own credential var, so this stays a lookup rather
 // than a branch. Testing PROVIDER.name here would be the first crack in the
@@ -292,7 +424,12 @@ const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
 const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
   annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
-  singleReport: (process.env.STRIPE_PRICE_SINGLE_REPORT || "").trim(),
+  // No singleReport price: the $20 single-report unlock RETIRED on 2026-08-21
+  // (owner's call, after FREE_MAX_COMPS went to "all" and left the tile with
+  // almost nothing to trigger on). STRIPE_PRICE_SINGLE_REPORT can be unset and
+  // the price archived in Stripe. Existing purchases are honored forever —
+  // the webhook, report_purchases, findReportPurchase, /api/report-access and
+  // the entitlements branch all stay; only the SALE is gone.
   // The per-seat firm plan (2026-08-16). Unset means firm checkout 503s and
   // the buy control never renders — the same "a button that can only fail is
   // worse than no button" rule the individual plans follow, and it is how
@@ -304,6 +441,30 @@ const STRIPE_PRICES = {
   // env var that silently becomes sellable the day someone fills it in.
 };
 const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
+
+// --- The figures a VISITOR reads --------------------------------------------
+//
+// Not the charge — that comes from the Stripe price IDs above, and these
+// numbers can never move it. They are the prose, and until 2026-08-28 the
+// prose was scattered: the monthly price was typed into index.html's pricing
+// modal, into the /how-it-works FAQ answer and into /terms, while the SEAT
+// price existed in exactly one sentence of that FAQ and nowhere a buyer could
+// click. The modal's own comment conceded the hazard — "nothing catches a
+// drift" — which is true of any figure typed in more than one place.
+//
+// So: one constant, read by /pricing and by the FAQ, with a test pinning
+// index.html's modal to it. A price change is now one edit plus whatever the
+// test then fails on, instead of a hunt through three files.
+//
+// `firmSeat` is per seat per month and `minSeats` MUST equal ORG.MIN_SEATS —
+// /api/checkout refuses a firm plan below that by name and number, so a page
+// advertising a smaller minimum would be sending somebody to a refusal.
+const PRICING = {
+  monthly: 100,
+  foundingAnnual: 840,
+  firmSeat: 79,
+  minSeats: ORG.MIN_SEATS,
+};
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
 // count is of subscriptions ever created rather than currently active.
 const FOUNDING_MEMBER_LIMIT = Number(process.env.FOUNDING_MEMBER_LIMIT || 50);
@@ -316,21 +477,47 @@ const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "")
 const SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY || "").trim();
 const DB_CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 
+// Where the file fallbacks live. Defaults to the repo root, which is what it
+// has always been and what production still uses — `DATA_DIR` is unset there.
+//
+// It exists for the TEST SUITE (2026-08-29). `node --test` runs ~23 files in
+// parallel and most of them boot a child server with SUPABASE_URL blanked, so
+// every one of those children fell back to the SAME files here. account-store
+// is the one that bit: each process loads the whole store into memory once and
+// `saveAccountStore()` writes the whole thing back, so two servers that each
+// load 10 users and each add one produce two 11-user writes and the second
+// silently destroys the first's user. The fixed `.tmp` path raced too. That is
+// a textbook lost update, and it is why suite failures wandered between
+// account-wall, routes, renewal-watch, bulk-routes and archive-first without
+// ever reproducing in isolation — whichever suite's account got clobbered
+// failed that run.
+//
+// So test/helpers/boot.js gives every child its own directory. Two rules:
+// only GITIGNORED scratch data belongs here — devlog.json and market-seed.json
+// are committed repo content read from __dirname and must never move — and the
+// default must stay __dirname, or an existing deployment loses its data on
+// upgrade.
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
+if (DATA_DIR !== __dirname) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); }
+  catch (e) { console.error(`⛔ DATA_DIR "${DATA_DIR}" is not usable: ${e.message}`); process.exit(1); }
+}
+
 // File fallbacks. NOTE: on hosts with an ephemeral filesystem (Render/Railway
 // free tiers) these files are lost on redeploy — configure Supabase for
 // anything you care about, or download via the admin endpoints before deploying.
-const LEADS_FILE = path.join(__dirname, "leads.jsonl");
-const COMP_SUBMISSIONS_FILE = path.join(__dirname, "comp-submissions.jsonl");
-const SEARCH_CACHE_FILE = path.join(__dirname, "search-cache.json");
-const SHARED_REPORTS_FILE = path.join(__dirname, "shared-reports.json");
-const ANALYTICS_FILE = path.join(__dirname, "analytics.jsonl");
-const DYNAMIC_MARKETS_FILE = path.join(__dirname, "market-pages-dynamic.json");
-const COMP_CORPUS_FILE = path.join(__dirname, "comp-corpus.jsonl");
+const LEADS_FILE = path.join(DATA_DIR, "leads.jsonl");
+const COMP_SUBMISSIONS_FILE = path.join(DATA_DIR, "comp-submissions.jsonl");
+const SEARCH_CACHE_FILE = path.join(DATA_DIR, "search-cache.json");
+const SHARED_REPORTS_FILE = path.join(DATA_DIR, "shared-reports.json");
+const ANALYTICS_FILE = path.join(DATA_DIR, "analytics.jsonl");
+const DYNAMIC_MARKETS_FILE = path.join(DATA_DIR, "market-pages-dynamic.json");
+const COMP_CORPUS_FILE = path.join(DATA_DIR, "comp-corpus.jsonl");
 const DEVLOG_FILE = path.join(__dirname, "devlog.json");
-const DEV_IDEAS_FILE = path.join(__dirname, "dev-ideas.json");
-const DEVLOG_OVERRIDES_FILE = path.join(__dirname, "devlog-overrides.json");
+const DEV_IDEAS_FILE = path.join(DATA_DIR, "dev-ideas.json");
+const DEVLOG_OVERRIDES_FILE = path.join(DATA_DIR, "devlog-overrides.json");
 // Internal contact book (/contacts). Holds PII — git-ignored, never commit.
-const CONTACTS_FILE = path.join(__dirname, "contacts.json");
+const CONTACTS_FILE = path.join(DATA_DIR, "contacts.json");
 
 // Curated market landing pages (programmatic SEO). Static data committed to the
 // repo — generated by gen-market-seed.js — so the pages survive redeploys and
@@ -372,6 +559,49 @@ function allMarketPages() {
   return out;
 }
 
+// The carved municipal boundary for a city, or null. The file is committed
+// (scripts/fetch-city-bounds.js writes it deliberately; Render wipes its disk
+// on deploy) and therefore only changes when this process restarts, so a
+// successful read is held for the life of the process. Two hard-won guards:
+// the parsed value must be a real object — the JSON text "null" parses
+// cleanly, defeats a truthiness memo check, and then `CITY_BOUNDS[key]`
+// throws on every market-page request, which with no handler above this is a
+// restart loop — and a READ failure is never memoized (city-check's rule:
+// ok and unknown memoize, an outage does not), so a torn read during a local
+// re-fetch costs one request's boundary, not the process's.
+let CITY_BOUNDS = null;
+function cityBoundary(cityKey) {
+  let all = CITY_BOUNDS;
+  if (!all) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(__dirname, "city-bounds.json"), "utf8"));
+      all = (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+      CITY_BOUNDS = all;
+    } catch (e) {
+      all = {};
+    }
+  }
+  const b = all[cityKey];
+  return (b && b.geometry) ? b.geometry : null;
+}
+
+// The standing /market/<slug> page covering a market + property type, if one
+// exists (seeded or explorer-published) — { slug, market } or null. This is
+// the cross-link between the report surfaces and the market pages: /api/comps
+// attaches it to every served report, /api/portfolio and the watchlist feed
+// attach it per item, so My Desk and every report can offer a door into the
+// standing page. Pure in-memory lookups (MARKET_PAGES / DYNAMIC_MARKET_PAGES),
+// so it costs nothing on those hot paths, and it re-resolves per serve — a
+// market page published after a report was cached still lights the link up.
+// Presentation only: absence hides a link and nothing else, so a miss (a
+// non-"City, ST" market, a type with no page) just returns null.
+function marketPageInfo(marketKey, propertyType) {
+  const mm = String(marketKey || "").match(/^(.+),\s([A-Z]{2})$/);
+  if (!mm || !propertyType) return null;
+  const slug = slugifyMarket(String(propertyType), mm[1], mm[2]);
+  return getMarketPage(slug) ? { slug, market: marketKey } : null;
+}
+
 // Optional key that unlocks GET /api/leads (the lead download). When unset,
 // that endpoint is disabled entirely.
 //
@@ -393,6 +623,35 @@ const GOOGLE_MAPS_API_KEY = (process.env.GOOGLE_MAPS_API_KEY || "").trim();
 // (streetview-aim.js) runs on the metadata response, so a far pano is a
 // cached miss, not a billed image of the neighbor. In-memory, capped.
 const STREETVIEW_META_CACHE = new Map();
+
+// Optional "Continue with Google" (dark until BOTH are set). Created in the
+// Google Cloud console — project "compninja", the one that already holds the
+// Street View key: APIs & Services -> Credentials -> OAuth client ID (Web
+// application), authorized redirect URIs
+//   https://compninja.co/auth/google/callback
+//   http://localhost:3000/auth/google/callback   (dev)
+// Unset = GET /auth/google and its callback 404 and the button in the
+// account modal never renders (the Buy-button rule: a control that can only
+// fail never renders). What a returned token must PROVE lives in
+// google-auth.js; this file owns every side effect. There is deliberately no
+// migration behind this feature — identity is the email (018's decision),
+// so a Google sign-in lands on the same users row a password sign-in does.
+const GOOGLE_OAUTH_CLIENT_ID = (process.env.GOOGLE_OAUTH_CLIENT_ID || "").trim();
+const GOOGLE_OAUTH_CLIENT_SECRET = (process.env.GOOGLE_OAUTH_CLIENT_SECRET || "").trim();
+const GOOGLE_OAUTH_CONFIGURED = Boolean(GOOGLE_OAUTH_CLIENT_ID && GOOGLE_OAUTH_CLIENT_SECRET);
+// Half-configured is a mistake worth a loud line, not a fatal one: the safe
+// state (dark) is exactly what a half-set pair produces, but the button
+// stays hidden with nothing else saying why.
+if (Boolean(GOOGLE_OAUTH_CLIENT_ID) !== Boolean(GOOGLE_OAUTH_CLIENT_SECRET)) {
+  console.error("⛔ Google sign-in is HALF-configured — set BOTH GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (or neither). It stays dark until they agree.");
+}
+// Test-only, RESEND_API_URL's precedent for RESEND_API_URL's reason: the
+// whole point of the callback is a credential exchange leaving the building,
+// and without this the suite could reach the exchange and then had to stop
+// and assume. Not a secret and authorizes nothing (the client secret still
+// does), but it decides where that exchange is posted, so treat it as
+// trusted config. Never set in production.
+const GOOGLE_OAUTH_TOKEN_URL = (process.env.GOOGLE_OAUTH_TOKEN_URL || "").trim() || GAUTH.TOKEN_ENDPOINT;
 
 // Optional email ping on every new lead / broker comp submission, sent via
 // Resend's REST API (free tier, plain fetch — no dependency). Note: without a
@@ -485,6 +744,26 @@ const SEARCH_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // determined caller with rotating IPs. Counts only genuinely billed searches
 // (cache hits are free and don't count). Override via env for more headroom.
 const DAILY_SEARCH_CAP = Number(process.env.DAILY_SEARCH_CAP) > 0 ? Number(process.env.DAILY_SEARCH_CAP) : 150;
+
+// The same backstop for bulk valuation, and it is a SEPARATE number for a
+// reason: DAILY_SEARCH_CAP above is site-wide and Pro deliberately bypasses
+// it (`countsDailyCap: !ent.pro`), so a paying subscriber is never told the
+// site is out of searches. That exemption was written for somebody typing
+// one address at a time. Bulk multiplies it by fifty per click: one run is
+// ~17 minutes and ~$18, and with one-job-at-a-time as the only bound a
+// member could start another the moment it finishes — roughly $63/hour,
+// indefinitely. This is PER MEMBER, so one person's ceiling never denies
+// anyone else a search (charging bulk to DAILY_SEARCH_CAP instead would let
+// one 50-address run eat a third of the site's daily allowance and lock out
+// the free visitors it exists to protect).
+//
+// 200 is about four full runs a day, which is far more than the workflow
+// this was built for (a broker valuing one portfolio) and far less than an
+// unbounded afternoon. Env-overridable because the moment it bites is the
+// moment a real customer is blocked mid-workday, and that must not need a
+// deploy. A smoke alarm, not accounting.
+const BULK_DAILY_ADDRESSES = Number(process.env.BULK_DAILY_ADDRESSES) > 0
+  ? Number(process.env.BULK_DAILY_ADDRESSES) : 200;
 
 // Rough per-search API cost, used ONLY for the /admin spend estimate — nothing
 // here reads a real invoice, so treat the tiles as a sanity check, not
@@ -743,7 +1022,7 @@ const GUEST_SEARCH_LIMIT =
     : Number.isInteger(Number(GUEST_LIMIT_RAW)) && Number(GUEST_LIMIT_RAW) >= 0 ? Number(GUEST_LIMIT_RAW)
       : 1;
 const GUEST_GATE_ON = GUEST_SEARCH_LIMIT !== Infinity;
-const GUEST_QUOTA_FILE = path.join(__dirname, "guest-quota.jsonl");
+const GUEST_QUOTA_FILE = path.join(DATA_DIR, "guest-quota.jsonl");
 const guestQuotaMem = new Map(); // ip_hash -> used; file-fallback store + outage buffer
 // Short-TTL read memo so /api/config (every page load) doesn't pay a DB read
 // per anonymous visit — the same reasoning that keeps the founding counter
@@ -849,7 +1128,7 @@ function consumeGuestSearchFor(gate, req, res, headersOpen) {
 // watchlist stores. Supabase when configured, one local JSON file otherwise.
 // DDL: migrations/002-accounts.sql (applied — see migrations/APPLIED.md).
 // ---------------------------------------------------------------------------
-const ACCOUNT_STORE_FILE = path.join(__dirname, "account-store.json");
+const ACCOUNT_STORE_FILE = path.join(DATA_DIR, "account-store.json");
 const SESSION_COOKIE = "cn_session";
 const SESSION_TTL_MS = 90 * 24 * 60 * 60 * 1000;   // stay signed in ~90 days
 const RESET_TTL_MS = 60 * 60 * 1000;               // reset links live 1 hour
@@ -902,10 +1181,39 @@ function parseCookies(req) {
   });
   return out;
 }
-function setSessionCookie(res, req, token, maxAgeSec) {
+// The cookie STRING is its own function because the Google callback has to
+// set two cookies in one response (clear the state nonce, set the session) —
+// res.setHeader replaces, so the callback passes an array, and this is the
+// piece both callers share.
+function sessionCookie(req, token, maxAgeSec) {
   const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
-  res.setHeader("set-cookie",
-    `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`);
+  return `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+function setSessionCookie(res, req, token, maxAgeSec) {
+  res.setHeader("set-cookie", sessionCookie(req, token, maxAgeSec));
+}
+
+// The Google sign-in state nonce — a one-shot CSRF check: the callback only
+// proceeds when Google echoes the nonce THIS browser was handed ten minutes
+// ago at most. httpOnly and SameSite=Lax like the session cookie (Lax rides
+// on the top-level GET navigation back from Google, which is the whole
+// point); cleared on every callback exit, success included.
+const GSTATE_COOKIE = "cn_gstate";
+function gstateCookie(req, value, maxAgeSec) {
+  const secure = /^(localhost(:\d+)?$|127\.)/.test(String(req.headers.host || "")) ? "" : "; Secure";
+  return `${GSTATE_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
+}
+
+// The redirect URI Google sends the visitor back to. It must match a URI
+// registered on the OAuth client byte for byte, so it is never derived from
+// an arbitrary Host header: production is pinned to SITE_URL, and only a
+// localhost host (dev, where SITE_URL still holds the Render default) is
+// echoed — the same host test the session cookie's Secure flag uses. Both
+// spellings are registered in the console.
+function oauthRedirectUri(req) {
+  const host = String(req.headers.host || "");
+  if (/^(localhost(:\d+)?$|127\.)/.test(host)) return `http://${host}/auth/google/callback`;
+  return `${SITE_URL}/auth/google/callback`;
 }
 
 // --- storage: Supabase REST when configured, account-store.json otherwise ---
@@ -1026,6 +1334,10 @@ function publicAccount(user) {
     email: user.email,
     name: user.name || "",
     avatarRev: String(user.avatarRev || user.avatar_rev || ""),
+    // Whether the watchlist digest email is switched off. A missing column
+    // (file store, deploy-then-migrate) coerces to false — emails on — which
+    // matches what the digest run itself assumes about such rows.
+    digestOptout: Boolean(user.digestOptout || user.digest_optout),
   };
 }
 
@@ -1159,6 +1471,13 @@ async function getSessionUser(req) {
       // no vault and nothing anywhere failed. Caught only by granting it to a
       // real account and looking. test/routes.test.js now pins the pairing.
       vault_beta: Boolean(user.vault_beta),
+      // The watchlist-digest opt-out (migration 025). Until the settings
+      // panel this was written only by the email unsubscribe link and read
+      // only by the digest run, which queries users directly — so it never
+      // needed to be here. The panel's toggle reads it off the session user,
+      // and the warning above applies: omit it and the toggle silently
+      // renders "on" for everybody, with nothing failing.
+      digest_optout: Boolean(user.digest_optout),
       // Short content hash of the profile photo (migration 027). Empty means
       // no photo. The bytes themselves live in user_avatars so this lookup
       // never pulls them; presence here is what paints the account circle.
@@ -1261,15 +1580,11 @@ async function listPortfolio(userId) {
       `portfolio_items?user_id=eq.${encodeURIComponent(userId)}` +
       // Must be ≥ PRO_PORTFOLIO_MAX_ITEMS or the cap count and the upsert
       // match both go blind past 200.
-      `&select=id,address,property_type,snapshots,created_at,updated_at&order=updated_at.desc&limit=500`) || [];
+      `&select=id,address,property_type,verified_key,snapshots,created_at,updated_at&order=updated_at.desc&limit=500`) || [];
   }
   return (await accountStore()).portfolio.filter((x) => x.user_id === userId)
     .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
     .map(({ payload, ...rest }) => rest);
-}
-async function findPortfolioMatch(userId, address, property_type) {
-  const items = await listPortfolio(userId);
-  return items.find((x) => x.address === address && x.property_type === property_type) || null;
 }
 async function getPortfolioItem(userId, id) {
   if (DB_CONFIGURED) {
@@ -1279,13 +1594,18 @@ async function getPortfolioItem(userId, id) {
   }
   return (await accountStore()).portfolio.find((x) => x.user_id === userId && x.id === id) || null;
 }
-async function insertPortfolioItem(userId, { address, property_type, payload, snapshot }) {
+async function insertPortfolioItem(userId, { address, property_type, payload, snapshot, verifiedKey }) {
   const now = new Date().toISOString();
   const row = {
     user_id: userId, address, property_type, payload,
     snapshots: snapshot ? [snapshot] : [],
     created_at: now, updated_at: now,
   };
+  // Conditional spread, the shape migration 015's size_sqft uses and for the
+  // same reason: PostgREST 400s an insert naming a column the table does not
+  // have, and that failure would take the whole SAVE down, not just the key.
+  // Absent the migration nothing sends it and saving behaves as it always has.
+  if (verifiedKey) row.verified_key = verifiedKey;
   if (DB_CONFIGURED) {
     const rows = await sbRequest("POST", "portfolio_items", row, { prefer: "return=representation" });
     return rows[0];
@@ -1295,7 +1615,7 @@ async function insertPortfolioItem(userId, { address, property_type, payload, sn
   await saveAccountStore();
   return row;
 }
-async function updatePortfolioItem(userId, id, { payload, snapshot }) {
+async function updatePortfolioItem(userId, id, { payload, snapshot, verifiedKey }) {
   const existing = await getPortfolioItem(userId, id);
   if (!existing) return null;
   const snapshots = Array.isArray(existing.snapshots) ? existing.snapshots.slice() : [];
@@ -1308,6 +1628,12 @@ async function updatePortfolioItem(userId, id, { payload, snapshot }) {
   }
   while (snapshots.length > PORTFOLIO_MAX_SNAPSHOTS) snapshots.shift();
   const patch = { payload, snapshots, updated_at: new Date().toISOString() };
+  // Only ever FILLS a key, never rewrites one — decided here rather than at
+  // the call sites because `existing` is already in hand here, so neither
+  // caller has to read the row again to be safe. A property that has already
+  // been verified keeps that identity even if a later save geocodes
+  // differently: an identity that moves is worse than one slightly stale.
+  if (verifiedKey && !existing.verified_key) patch.verified_key = verifiedKey;
   if (DB_CONFIGURED) {
     await sbRequest("PATCH",
       `portfolio_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
@@ -1383,6 +1709,59 @@ async function markWatchlistSeen(userId) {
   await saveAccountStore();
 }
 
+// --- Search demand (analytics_events -> the desk) ----------------------------
+//
+// The rows behind the "N people looked at this market" line. The RULES for
+// what counts live in the pure search-demand.js; this function is only the
+// read, and it is written to three constraints that module cannot enforce:
+//
+//   FILTERED AT THE DATABASE, not in Node. readRows() (the /admin path) pulls
+//   the whole table and reduces it in memory, which is right for a dashboard
+//   one person opens and wrong for a route every subscriber hits on every
+//   desk load. The window, the kinds and the markets all go into the query.
+//
+//   MARKET KEYS CONTAIN A COMMA. "Boise, ID" is also PostgREST's in.()
+//   separator, so values are quoted and percent-encoded with the separators
+//   left literal — pgInList's exact trap, and the reason this borrows it
+//   rather than joining the list itself.
+//
+//   NEVER THROWS. A demand figure is a bonus line on a card; a desk that
+//   would not render because an analytics read failed is a worse product than
+//   one with no number on it. Every failure resolves to "no rows", which the
+//   caller renders as a quiet market rather than an error.
+//
+// The file store is read too, unfiltered, for the same reason readRows does:
+// local dev has no database at all, and rows fall back to analytics.jsonl
+// during an outage. aggregateDemand re-applies every rule to both sources, so
+// the loose file read cannot let through anything the query would have
+// excluded.
+async function demandRowsForMarkets(markets, cutoff) {
+  const wanted = (Array.isArray(markets) ? markets : [markets]).filter(Boolean);
+  if (!wanted.length) return [];
+  const cols = "ts,kind,prop_type,market,source,visitor_id,user_id";
+  let dbRows = [];
+  if (DB_CONFIGURED) {
+    try {
+      dbRows = await sbRequest("GET",
+        `analytics_events?select=${cols}` +
+        `&kind=in.(${DEMAND.DEMAND_KINDS.map((k) => encodeURIComponent(k)).join(",")})` +
+        `&market=in.(${pgInList(wanted)})` +
+        `&ts=gte.${encodeURIComponent(cutoff)}` +
+        `&order=ts.desc&limit=5000`) || [];
+    } catch (err) {
+      console.error("search demand read failed (desk renders without it):", err.message);
+    }
+  }
+  let fileRows = [];
+  try {
+    const want = new Set(wanted);
+    fileRows = (await readRowsFromFile(ANALYTICS_FILE)).filter((r) => r && want.has(r.market));
+  } catch (err) {
+    console.error("search demand file read failed:", err.message);
+  }
+  return [...dbRows, ...fileRows];
+}
+
 // The feed itself, shared by GET /api/watchlist/feed and the digest so the
 // two can never quote different numbers for the same market. Extracted
 // 2026-08-13 when the digest arrived; the body is the route's, unchanged.
@@ -1398,10 +1777,32 @@ async function markWatchlistSeen(userId) {
 // from different places (a request, versus a loop over accounts) and
 // resolving entitlements is the one thing in this app that must have exactly
 // one owner.
-async function buildWatchlistFeed(user, ent, cutoffOf) {
+//
+// `opts.withDemand` is OPT-IN, and only the page asks for it. The digest does
+// not, for the reason the whole of watchlist-digest.js is written to: it is
+// the only thing this product sends uninvited, its bar is "when in doubt,
+// send nothing", and a search count is not news anybody asked to be mailed.
+// Opting in also keeps the digest's nightly loop over every account from
+// firing one analytics query per watcher for a figure it would then discard.
+async function buildWatchlistFeed(user, ent, cutoffOf, opts) {
   const feedRowCap = ent.maxComps === "all" ? 20 : Number(ent.maxComps);
   const items = await listWatchlist(user.id);
   const sixMonthsAgo = Date.now() - 183 * 24 * 60 * 60 * 1000;
+  // Pro only, and read ONCE for every watched market rather than per card: a
+  // desk with six markets is one query, not six. `excludeUserId` is what
+  // stops a broker's own searches being reported back to them as interest
+  // from other people — see rule 1 in search-demand.js.
+  const wantDemand = Boolean(opts && opts.withDemand) && Boolean(ent.canSeeSearchDemand);
+  let demandBuckets = null;
+  if (wantDemand && items.length) {
+    const cutoff = DEMAND.demandCutoff(Date.now(), DEMAND.DEMAND_WINDOW_DAYS);
+    const rows = await demandRowsForMarkets(items.map((w) => w.market), cutoff);
+    demandBuckets = DEMAND.aggregateDemand(rows, {
+      now: Date.now(),
+      windowDays: DEMAND.DEMAND_WINDOW_DAYS,
+      excludeUserId: user.id,
+    });
+  }
   let unseen = 0;
   const out = [];
   for (const w of items) {
@@ -1411,9 +1812,18 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     unseen += fresh.length;
     // Median $/SF: sale rows only, trailing ~6 months — matches the
     // client-side rule that lease $/SF never mixes into valuation.
+    // parseDealDate != null is the CLOSED-DEAL gate, and it is load-bearing
+    // since the corpus began storing on-market listings (2026-08-20): those
+    // carry deal_date "Active" or "Listed Mon YYYY", neither of which parses.
+    // Note this list is windowed on `ts` — when we HARVESTED the row, not when
+    // the deal closed — so a freshly harvested asking price would otherwise
+    // land straight in the median with nothing to exclude it. That median is
+    // quoted on My Desk and again in the watchlist digest email, which is the
+    // one message this product sends on its own initiative.
     const salePsf = rows
       .filter((r) => new Date(r.ts).getTime() > sixMonthsAgo)
       .filter((r) => !String(r.transaction || "").toLowerCase().startsWith("lease"))
+      .filter((r) => parseDealDate(r.deal_date) != null)
       .map((r) => corpusNum(r.price_per_sqft))
       .filter(Boolean)
       .sort((a, b) => a - b);
@@ -1427,10 +1837,27 @@ async function buildWatchlistFeed(user, ent, cutoffOf) {
     const priWin = datedSales.filter((d) => nowFrac - d.yearFrac > 0.5 && nowFrac - d.yearFrac <= 1.0).map((d) => d.psf);
     const median_trend = curWin.length >= 3 && priWin.length >= 3
       ? { current: medianPsfOf(curWin), prior: medianPsfOf(priWin) } : null;
+    // The watched market's standing /market/<slug> page, when one exists —
+    // the desk's feed section links each market it reports on to the page
+    // that covers it. Absent key = no page = no link; the digest builder
+    // ignores keys it does not read, so this rides the shared feed shape
+    // harmlessly.
+    const marketPage = marketPageInfo(w.market, w.property_type);
     out.push({
       id: w.id, market: w.market, property_type: w.property_type,
       median_psf, new_count: fresh.length,
+      ...(marketPage ? { market_page: marketPage } : {}),
       ...(median_trend ? { median_trend } : {}),
+      // Always present for a subscriber, including at zero — "nobody searched
+      // this market in 30 days" is a true answer and a useful one, and an
+      // omitted field would blank the line on exactly the quiet markets worth
+      // knowing about. Free callers get the flag instead of the figure, which
+      // is what the card's upgrade prompt hangs off; the count itself is
+      // never computed for them.
+      ...(demandBuckets
+        ? { demand: DEMAND.demandPayload(demandBuckets[w.market], w.property_type, DEMAND.DEMAND_WINDOW_DAYS) }
+        : {}),
+      ...(opts && opts.withDemand && !ent.canSeeSearchDemand ? { demand_locked: true } : {}),
       // new_count above stays the TRUE number of new comps — the visitor
       // is told what they are missing, they just don't receive it.
       ...(fresh.length > feedRowCap ? { locked_count: fresh.length - feedRowCap } : {}),
@@ -1481,9 +1908,100 @@ async function markWatchlistDigested(userId, ids) {
     `watchlist_items?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
     { last_digest_at: now });
 }
+// Leases whose renewal deadline is inside the watch window and that nobody has
+// been mailed about yet (038). The renewal watch's half of the digest run.
+//
+// TWO QUERIES AND A UNION IN JS, not one `or=(and(...),and(...))`. The house
+// pattern — this codebase runs two queries and stitches rather than asking
+// PostgREST for a nested boolean — and here it also keeps each shape simple
+// enough for test/helpers/fake-supabase to answer, which 400s a shape it does
+// not recognize rather than matching everything.
+//
+// The split is renewal-watch.js's own deadline rule expressed as SQL: the
+// option notice wins wherever it exists, so the second query takes only rows
+// with NO notice date and falls back to the expiry. Without that exclusion a
+// lease with a near expiry and a far-off notice would be selected here and
+// then correctly dropped by `isDue` — harmless but confusing, and it would
+// make the read's count disagree with the mail's.
+//
+// Neither query is trusted to be exactly right: `RENEWAL.isDue` re-checks
+// every row it is handed, so a widened filter here can only ever cost a read.
+// The reverse is not true, which is why the window below is generous by a day.
+async function leasesDueForRenewal(now = Date.now()) {
+  if (!DB_CONFIGURED) return [];
+  const day = 24 * 3600 * 1000;
+  const iso = (t) => new Date(t).toISOString().slice(0, 10);
+  // One day either side of the module's window: a `date` column compares by
+  // calendar day and this process's clock may sit either side of midnight UTC
+  // from the deadline's point of view. The module makes the real decision.
+  const from = iso(now - day);
+  const to = iso(now + (RENEWAL.LEAD_DAYS + 1) * day);
+  const cols = "id,user_id,address,market,property_type,transaction," +
+    "lease_expiry,option_notice_date,renewal_notified_at,rent_psf_yr,rent_basis";
+  const [byNotice, byExpiry] = await Promise.all([
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null` +
+      `&option_notice_date=gte.${from}&option_notice_date=lte.${to}` +
+      `&select=${cols}&order=option_notice_date.asc&limit=2000`),
+    sbRequest("GET", `broker_comps?renewal_notified_at=is.null&option_notice_date=is.null` +
+      `&lease_expiry=gte.${from}&lease_expiry=lte.${to}` +
+      `&select=${cols}&order=lease_expiry.asc&limit=2000`),
+  ]);
+  // Deduped by id, because the two filters are disjoint by construction and a
+  // change to either could quietly stop being so.
+  const seen = new Map();
+  for (const row of [...(byNotice || []), ...(byExpiry || [])]) {
+    if (row && row.id && !seen.has(row.id)) seen.set(row.id, row);
+  }
+  return [...seen.values()];
+}
+
+// The same high-water discipline as markWatchlistDigested, and its reason: one
+// email per lease, ever, enforced by a column rather than by remembering.
+async function markLeasesNotified(userId, ids) {
+  if (!DB_CONFIGURED || !ids.length) return;
+  await sbRequest("PATCH",
+    `broker_comps?user_id=eq.${encodeURIComponent(userId)}&id=in.(${pgInList(ids)})`,
+    { renewal_notified_at: new Date().toISOString() });
+}
+
+// What comparable space is quoting, for one lease's market and type.
+//
+// Read from the STANDING MARKET PAGE's stored snapshot, which is the same
+// public figure `/market/<slug>` already publishes — an in-memory lookup, so
+// it costs nothing per lease, and it can never quote a number the market page
+// itself would not. Deliberately NOT computed from the broker's own vault:
+// "what comparable space rents for" is a market claim, and answering it out of
+// the reader's own book would tell them their own rents back.
+//
+// Null whenever there is no page, no rent band, or fewer than two leases
+// behind it (`rentFromComps`'s own floor). The email drops the line rather
+// than printing a figure it cannot stand behind — Owen, 2026-08-22.
+function marketRentFor(marketKey, propertyType) {
+  try {
+    const info = marketPageInfo(marketKey, propertyType);
+    if (!info) return null;
+    const page = getMarketPage(info.slug);
+    const rent = page && page.rent;
+    const median = Number(rent && rent.median);
+    if (!Number.isFinite(median) || median <= 0) return null;
+    return { median, count: Number(rent.count) || 0 };
+  } catch (_) {
+    // A decoration, never the message. See the module header.
+    return null;
+  }
+}
+
 async function setDigestOptout(userId, optout) {
-  if (!DB_CONFIGURED) throw new Error("Supabase not configured.");
-  await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+  if (DB_CONFIGURED) {
+    await sbRequest("PATCH", `users?id=eq.${encodeURIComponent(userId)}`, { digest_optout: Boolean(optout) });
+    return;
+  }
+  // File-store branch (the setUserTester pattern): the PREFERENCE stores
+  // fine without a database even though the digest send itself refuses
+  // without one — and it is what lets test/routes.test.js exercise the
+  // settings toggle against account-store.json.
+  const u = (await accountStore()).users.find((x) => x.id === userId);
+  if (u) { u.digest_optout = Boolean(optout); await saveAccountStore(); }
 }
 async function findUsersByIds(ids) {
   if (!DB_CONFIGURED || !ids.length) return [];
@@ -1643,6 +2161,41 @@ async function findBrandingProfile(userId) {
     return (rows && rows[0]) || null;
   } catch (e) {
     console.error("Branding profile lookup failed:", e.message);
+    return null;
+  }
+}
+
+// The FIRM fallback for report branding (migration 041): the org_branding row
+// of the caller's firm, consulted only when their own branding_profiles row
+// normalizes to nothing — brandForRender owns that ordering, this only finds
+// the row. Oldest active membership wins when someone is ever in more than one
+// firm (`joined_at` asc — the seats-held-oldest-first precedent), taking the
+// first org whose row actually normalizes to a brand.
+//
+// FAILS OPEN like findBrandingProfile's share-path behavior, and unlike the
+// member's own read in GET /api/branding: a failed org read must never cost a
+// member their own letterhead, fail a share, or 503 the branding editor. The
+// asymmetry is safe here because nothing ever upserts over this value — the
+// blank-on-next-save hazard that forces the strict 503 on the own-profile
+// read has no analogue on a fallback nobody writes back.
+async function findOrgBrandingFor(user) {
+  if (!user || !user.email || !DB_CONFIGURED) return null;
+  try {
+    const memberships = (await orgMembershipsFor(user.email))
+      .filter((r) => ORG.isActive(r))
+      .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+    if (!memberships.length) return null;
+    const ids = [...new Set(memberships.map((r) => String(r.org_id)).filter(Boolean))];
+    const rows = await sbRequest("GET",
+      `org_branding?org_id=in.(${pgInList(ids)})&limit=${ids.length}`);
+    const byOrg = new Map((rows || []).map((r) => [String(r.org_id), r]));
+    for (const m of memberships) {
+      const row = byOrg.get(String(m.org_id));
+      if (row && BRANDING.normalizeBrand(row)) return row;
+    }
+    return null;
+  } catch (e) {
+    console.error("Firm branding lookup failed:", e.message);
     return null;
   }
 }
@@ -2427,58 +2980,45 @@ async function accuracyReport(force) {
 // exact-address search cache misses, so it never touches the cache key.
 // ---------------------------------------------------------------------------
 async function retrieveCorpusComps(market, type, months, maxComps) {
+  const empty = { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0, listed: [], listedCount: 0 };
   try {
     const sibs = CORPUS_METRO ? siblingMarkets(market) : [];
     const rows = await corpusRowsForMarket(market, type, 300);
-    // A second, separate read so the shared single-market helper keeps its
-    // exact contract for its four other callers.
     const nearbyRows = sibs.length ? await corpusRowsForMarkets(sibs, type, 300) : [];
-    if (!rows.length && !nearbyRows.length) return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    if (!rows.length && !nearbyRows.length) return empty;
 
-    // Window filter in year-fraction space (parseDealDate returns e.g. 2024.5).
     const now = new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth() - months, 1);
     const cutoffFrac = cutoff.getFullYear() + (cutoff.getMonth() + 0.5) / 12;
 
+    const split = HARVEST.splitRetrieved(rows, { parseDealDate, cutoffFrac, corpusNum });
+    const usable = split.usable;
+    const listedAll = CORPUS_LISTED ? split.listed : [];
+
     const isUsable = (r) => {
-      // Only feed higher-confidence provenance; a rough guess ("estimate") or a
-      // news mention shouldn't seed a report.
       const st = String(r.source_type || "").toLowerCase();
       if (st === "estimate" || st === "news") return false;
       const priced = corpusNum(r.price_or_rate) || corpusNum(r.price_per_sqft);
       const d = parseDealDate(r.deal_date);
       return Boolean(priced) && d != null && d >= cutoffFrac;
     };
-    const usable = rows.filter(isUsable);
-    // Nearby rows clear the identical bar: provenance better than estimate or
-    // news, a parseable price, and a deal date inside the requested window.
     const nearbyUsable = nearbyRows.filter(isUsable);
 
-    // corpusRowsForMarket returns newest-harvest-first, so rows[0].ts is the
-    // freshest we hold for this market. Stale coverage → fall back to the web.
-    // 75 days (was 45 until 2026-07-31): the 2026-07-30 speed work flagged
-    // this gate as the top untested cost lever, and the exposure is narrow —
-    // the only deals a corpus-assisted search can miss are ones that surfaced
-    // during the staleness gap, the 2-3 fresh searches are aimed at exactly
-    // that gap, and `usable` below is window-filtered, so a market whose
-    // comps have aged out of the requested lookback stops qualifying no
-    // matter what this constant says. Judge it by the /admin corpus hit rate
-    // and spot-checks of corpus-tagged reports; it is one constant to revert.
     const newest = rows[0] && rows[0].ts ? new Date(rows[0].ts) : null;
     const fresh = Boolean(newest && (now - newest) < 75 * 24 * 3600 * 1000);
 
     return {
       comps: usable.slice(0, maxComps * 2),
-      // coverage stays EXACT-market only: corpusIsStrong and the search budget
-      // read it, and nearby rows must never buy a smaller budget.
       coverage: usable.length,
       fresh,
       nearby: nearbyUsable.slice(0, maxComps),
       nearbyCount: nearbyUsable.length,
+      listed: listedAll.slice(0, maxComps),
+      listedCount: listedAll.length,
     };
   } catch (e) {
     console.error("Corpus retrieval failed (falling back to full search):", e.message);
-    return { comps: [], coverage: 0, fresh: false, nearby: [], nearbyCount: 0 };
+    return empty;
   }
 }
 
@@ -2497,7 +3037,14 @@ function corpusIsStrong(corpus) {
 // are handed to the model, so a bigger ask needs no extra fresh searches.
 function searchBudgetFor(corpus, subjectSizeSqft, maxComps) {
   const big = maxComps > 8;
-  if (!corpusIsStrong(corpus)) return subjectSizeSqft ? (big ? 8 : 6) : (big ? 10 : 8);
+  // Archive-first: the searcher's own vault being strong cuts the budget
+  // exactly as a strong public corpus does. The flag rides ON the corpus
+  // object (set once, in runCompSearch, from blend-comps.js's tested
+  // predicate) so this function and the analytics tag read one decision —
+  // and so the flag can never reach buildPrompt, which is only ever handed
+  // corpus.comps / corpus.nearby / corpus.listed, never the object itself.
+  const strong = corpusIsStrong(corpus) || Boolean(corpus && corpus.archiveStrong);
+  if (!strong) return subjectSizeSqft ? (big ? 8 : 6) : (big ? 10 : 8);
   return subjectSizeSqft ? 2 : 3;                               // conservative floor, not 0/1
 }
 
@@ -2543,6 +3090,46 @@ const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
 // serialization. Default ON; `off` restores search-only reports. Harvest
 // still writes either way.
 const CORPUS_RADIUS = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_RADIUS || ""));
+
+// Archive-first retrieval (transition plan §4.3: archive -> corpus -> web).
+// A broker whose OWN vault already holds 4+ usable comps for this market +
+// type searches the web on the corpus-strong floor — their book subsidizes
+// their search. Rules in blend-comps.js (archiveCoverage/archiveIsStrong);
+// the flag is set in runCompSearch and read in exactly two places, the budget
+// and the analytics tag, so the two can never disagree. Default ON;
+// `off` restores corpus-then-web for everyone.
+const ARCHIVE_FIRST = !/^(0|off|false|no)$/i.test(String(process.env.ARCHIVE_FIRST || ""));
+
+// Which build is serving, answerable from outside the box (see /healthz).
+// Resolved ONCE at startup and never on a request: the env vars are set by the
+// host, and the .git fallback touches the disk, which a health check hit by an
+// uptime monitor must not do per call.
+//
+// The env var comes first because the deploy target sets it and is right even
+// when no .git exists — Render ships RENDER_GIT_COMMIT, and the others are the
+// same fact under other hosts' names. The .git read is for a local checkout,
+// where it is the only source. Everything is best-effort: a missing commit is
+// "" (unknown), never a thrown error, because nothing about the app depends on
+// knowing its own version.
+const BOOT_AT = new Date().toISOString();
+const BUILD_COMMIT = (() => {
+  const fromEnv = process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION
+    || process.env.GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || "";
+  if (fromEnv) return String(fromEnv).trim().slice(0, 40);
+  try {
+    const head = require("fs").readFileSync(require("path").join(__dirname, ".git", "HEAD"), "utf8").trim();
+    // Detached HEAD holds the sha itself; otherwise it names the ref to read.
+    if (/^[0-9a-f]{40}$/i.test(head)) return head;
+    const ref = (head.match(/^ref:\s*(.+)$/) || [])[1];
+    if (!ref) return "";
+    return require("fs").readFileSync(require("path").join(__dirname, ".git", ref), "utf8").trim().slice(0, 40);
+  } catch (_) { return ""; }
+})();
+
+// On-market listing rows (unparseable deal_date) offered as extra candidates.
+// Default ON; `off` hides the prompt block and returns listed: []. The harvest
+// filter (no estimate/news) has no flag.
+const CORPUS_LISTED = !/^(0|off|false|no)$/i.test(String(process.env.CORPUS_LISTED || ""));
 
 // Even with the flag on, only split when the budget is deep enough for halving
 // to save wall clock. A corpus-strong search already runs on 2-3 searches, and
@@ -2852,7 +3439,7 @@ async function findDerivableReport(keyParams, months, txFocus, maxComps) {
 // is applied OUTSIDE cacheKeyFor, so cache keys stay a pure function of the
 // request — a memo appearing later can never orphan existing cache entries.
 // ---------------------------------------------------------------------------
-const SUBJECT_SIZES_FILE = path.join(__dirname, "subject-sizes.json");
+const SUBJECT_SIZES_FILE = path.join(DATA_DIR, "subject-sizes.json");
 const subjectSizesMem = new Map();
 
 // ⚠ Same normalization idea as the `norm` inside cacheKeyFor (one address,
@@ -3023,12 +3610,26 @@ async function getShareRecord(id) {
 async function storeSharedReport(id, payload, opts = {}) {
   const {
     userId = null, visibility = "public", includePrivate = false, viewers = [],
-    orgId = null,
+    orgId = null, sharedByName = "",
   } = opts;
   if (DB_CONFIGURED) {
     const row = {
       id, payload, created_at: new Date().toISOString(),
       user_id: userId, visibility, include_private: includePrivate,
+      // Who shared it, snapshotted (038). 032's pattern and 032's reason: 018
+      // sets `user_id` to null when an account is deleted, and the name was
+      // only ever joined from `users`, so a departed member's shelf rows lost
+      // their attribution entirely while their shared COMPS kept theirs. One
+      // person then appeared twice on the firm's deal board — once by name and
+      // once as an unattributed row.
+      //
+      // NAME ONLY, never the email, which is also 032's rule. The shelf's live
+      // read falls back to an email when a member has no display name, but
+      // that is a lookup against a row that still exists; persisting an address
+      // here would outlive the account it belongs to, which is the opposite of
+      // what deleting an account should mean. A member with no name still
+      // lands in the board's declared unattributed bucket, honestly.
+      shared_by_name: String(sharedByName || "").trim().slice(0, 120),
       // Only ever set on a firm share. The `visibility !== "public"` guards
       // below already refuse to write this row to the file store, so a firm
       // share is covered by the same refusal an invited one is — the file has
@@ -3148,7 +3749,7 @@ async function listSharesForViewer(email) {
 }
 
 // ---------------------------------------------------------------------------
-// Firms (migration 032) — the reads and writes behind /api/org*.
+// Firms (migration 030) — the reads and writes behind /api/org*.
 //
 // Spec: docs/superpowers/specs/2026-08-16-enterprise-team-accounts-design.md
 //
@@ -3193,6 +3794,21 @@ async function orgMembershipsFor(email) {
 // needs both, and a second read for the setting would be a second thing to
 // keep in step with membership.
 //
+// AND `seats`, which is not optional: every caller of seatCapOf() is fed by
+// this function, and seatCapOf() falls back to MAX_MEMBERS when the column is
+// absent. Omitting it here does not read as zero seats, it reads as 200 — so
+// the invite gate, the billing display and the entitlement read all silently
+// stop enforcing what a firm bought, and `orgs.seats` becomes a column the
+// webhook writes and nothing reads. Shipped that way on 2026-08-16 and found
+// on 2026-08-19 by a firm whose seats were 2 accepting a third member without
+// a word. MAX_MEMBERS and 030's column default are both 200, which is what
+// hid it. If a column is added to this select, add it to findOrg() too.
+//
+// AND `kind` (036), which fails the OTHER way. A missing `seats` is a silent
+// wrong answer; a missing `kind` is a 400 from PostgREST on every firm read at
+// once, because this select names its columns. That is why 036 runs BEFORE the
+// deploy that added this word - 030's ordering, for 030's reason.
+//
 // Never throws. A name is a label — a firm whose row could not be read still
 // admits its members, and the desk says "your firm". Note what that failure
 // does to auto-share: org-access.js reads a missing row as share_default
@@ -3204,7 +3820,7 @@ async function orgsByIds(ids) {
     const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
     if (!DB_CONFIGURED || !list.length) return out;
     const rows = await sbRequest("GET",
-      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default&limit=${list.length}`);
+      `orgs?id=in.(${pgInList(list)})&select=id,name,share_default,seats,kind&limit=${list.length}`);
     for (const r of rows || []) out.set(String(r.id), r);
   } catch (err) {
     console.error("Firm read failed (membership is unaffected):", err.message);
@@ -3220,7 +3836,16 @@ async function setOrgShareDefault(orgId, value) {
     { share_default: value }, { prefer: "return=minimal" });
 }
 
-// The member's own override (migration 033). Scoped by BOTH the org and the
+// Which of the two shops a firm is (migration 036). Nothing is gated on this
+// and nothing is published by it - it decides vocabulary and which property
+// type the shelf opens on - which is why it is an ordinary PATCH beside the
+// one above rather than a route of its own.
+async function setOrgKind(orgId, value) {
+  return sbRequest("PATCH", `orgs?id=eq.${encodeURIComponent(orgId)}`,
+    { kind: value }, { prefer: "return=minimal" });
+}
+
+// The member's own override (migration 031). Scoped by BOTH the org and the
 // caller's own email IN THE QUERY, never checked after the fact: this is the
 // switch that lets somebody refuse an admin's decision about their work, so
 // knowing an org id must not be enough to flip anybody else's.
@@ -3262,20 +3887,25 @@ async function orgMemberRows(orgId) {
 async function findOrg(orgId) {
   if (!DB_CONFIGURED || !orgId) return null;
   const rows = await sbRequest("GET",
-    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,created_at&limit=1`);
+    `orgs?id=eq.${encodeURIComponent(orgId)}&select=id,name,share_default,seats,kind,created_at&limit=1`);
   return (rows && rows[0]) || null;
 }
 
 // Create the firm and its first member in that order, and make the creator an
 // OWNER who has already joined: they are the one person whose membership needs
 // no accept step, because they are the one who asked for it.
-async function createOrgWithOwner(name, user) {
+async function createOrgWithOwner(name, kind, user) {
   const rows = await sbRequest("POST", "orgs",
     // `seats` is written explicitly rather than left to 030's column default.
     // A hand-granted firm is the ordinary case (§9: seats are granted by hand
     // until somebody asks to pay), and code that reads this column should
     // never have to distinguish "not set" from "set to the structural cap".
-    [{ name, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
+    // `kind` is written explicitly and always: 036 defaults it to 'broker'
+    // for the firms that predate the column, and a new firm has answered the
+    // question by the time it reaches here (validateShopKind refuses a create
+    // that has not). Letting the default catch a new firm would put the two
+    // paths back together and hide a browser that stopped sending it.
+    [{ name, kind, created_by: user.id, seats: ORG.MAX_MEMBERS }], { prefer: "return=representation" });
   const org = rows && rows[0];
   if (!org) throw new Error("Firm row was not returned.");
   await sbRequest("POST", "org_members", [{
@@ -3447,7 +4077,7 @@ async function orgShelfRows(orgId) {
   return (await sbRequest("GET",
     `shared_reports?org_id=eq.${encodeURIComponent(orgId)}` +
     `&visibility=eq.org&revoked_at=is.null` +
-    `&select=id,payload,org_id,created_at,user_id&order=created_at.desc&limit=1000`)) || [];
+    `&select=id,payload,org_id,created_at,user_id,shared_by_name&order=created_at.desc&limit=1000`)) || [];
 }
 
 // Display names for a set of user ids, as a Map. A SECOND QUERY and a stitch,
@@ -3467,6 +4097,55 @@ async function usersByIds(ids) {
     console.error("Shelf attribution read failed (rows are unaffected):", err.message);
   }
   return out;
+}
+
+// The comps a firm's members have opted in to it (032), for the deal board.
+//
+// A SECOND read of `org_comps` beside `orgCompsForReport`, deliberately, and
+// the two must not be merged. That one answers "which of my colleagues' comps
+// belong in THIS report" — one market, one type, inside the lookback, the
+// caller's own excluded — and it feeds a valuation. This one answers "what has
+// this firm put on its shelf", which is every row, every market, nobody
+// excluded, and feeds a count. Folding the board's needs into the blend read
+// would mean widening the filters a valuation depends on.
+//
+// **No `comp` jsonb.** The board renders counts and never a comp, so the
+// payload stays out of the select: the whole point of this table is that it
+// holds copies of brokers' deals, and a read that does not need them should
+// not carry them across the wire to be counted. `shared_by_name` is
+// denormalized at write time (032), so attribution needs no second query here
+// the way the shelf's does.
+//
+// The 1000 cap is `orgShelfRows`' cap, for its reason and with its rule
+// attached: past it the board SAYS it is truncated rather than under-reporting.
+// A firm's tenant contacts (039). Firm-scoped by design, with the member who
+// added each one recorded — see the migration for why that column exists even
+// though nothing gates on it yet.
+async function orgContactRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,name,email,company,notes,added_by_user_id,added_by_name,created_at` +
+    `&order=created_at.desc&limit=2000`)) || [];
+}
+
+// Just the emails, for the import's dedupe. A separate, narrower read than the
+// list above because an import of two thousand rows should not also pull two
+// thousand names and notes it will never look at.
+async function orgContactEmails(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const rows = await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&email=not.is.null&select=email&limit=5000`);
+  return (rows || []).map((r) => r.email).filter(Boolean);
+}
+
+async function orgCompRowsForBoard(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,market,property_type,created_at,shared_by_user_id,shared_by_name` +
+    `&order=created_at.desc&limit=1000`)) || [];
 }
 
 // ---------------------------------------------------------------------------
@@ -3584,6 +4263,281 @@ function touchHub(hubId) {
   sbRequest("PATCH", `hubs?id=eq.${encodeURIComponent(hubId)}`,
     { updated_at: new Date().toISOString() }, { prefer: "return=minimal" })
     .catch((err) => console.error("Hub touch failed:", err.message));
+}
+
+// ---------------------------------------------------------------------------
+// Telling somebody a note arrived (migration 040)
+// ---------------------------------------------------------------------------
+// Until this existed, POST /api/hub/message wrote its row and told nobody.
+// The poll skips hidden tabs by design, so the only way to see a reply was to
+// be looking at the hub when it landed.
+//
+// THE RULE IS ONE NUDGE PER ABSENCE: mail somebody when they have never been
+// mailed about this hub, or when they have opened it since the last time they
+// were. Ten notes posted while a tenant is away is one email; opening the hub
+// re-arms them for the next one. A per-note email would be the thing that
+// makes people reach for the off switch, and the off switch here is one
+// click, so restraint is load-bearing rather than polite.
+//
+// EVERY READ AND WRITE BELOW IS WRAPPED, and the wrap is the point: a missing
+// table, an unrun 040, or a Supabase blip must cost the EMAIL and never the
+// note. That is deliberately the opposite of 024's stance — 024 guards access
+// and fails closed, this guards a courtesy and fails open, because the two
+// wrong answers are not the same size.
+//
+// Degrading "fails open" one step further: an unreadable hub_notify means we
+// cannot tell who is due, so everybody due-by-default is mailed once for this
+// note. The alternative (mail nobody) turns a database hiccup into the silent
+// failure this whole feature exists to end.
+// Somebody with the hub open and visible polls every 15 seconds, so a seen_at
+// this fresh means they are looking at the page right now and will watch the
+// note arrive. Mailing them would be telling somebody something they are in
+// the middle of reading. Generous against the poll interval so one dropped
+// tick does not read as an absence.
+const HUB_PRESENT_MS = 2 * 60 * 1000;
+
+async function hubNotifyState(hubId, emails) {
+  const out = new Map();
+  if (!DB_CONFIGURED || !hubId || !emails.length) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `hub_notify?hub_id=eq.${encodeURIComponent(hubId)}` +
+      `&email=in.(${pgInList(emails)})` +
+      `&select=email,seen_at,notified_at&limit=100`);
+    for (const r of rows || []) out.set(HUB.normalizeEmail(r.email), r);
+  } catch (err) {
+    console.error("Hub notify state read failed:", err.message);
+  }
+  return out;
+}
+
+// Stamped on every successful hub READ, which is what re-arms the nudge.
+//
+// It cannot reuse hub_participants.last_seen_at for two reasons, and either
+// one alone would be enough: that column is stamped by the 15s poll as well
+// as by a real visit, and the hub OWNER has no participant row at all.
+//
+// Fire and forget, exactly like stampHubView: a failed stamp must never cost
+// anybody their read of the hub.
+//
+// One write per read, poll included, which sounds worse than it is: the read
+// it rides along with already fires stampHubView's TWO patches on the same
+// path, so this is a third alongside two that have been there since 024. The
+// alternative (stamp only the first load) would leave a tab somebody has had
+// open for an hour looking like an absence, and then mail them about a note
+// they are watching arrive.
+function stampHubSeen(hubId, email) {
+  const who = HUB.normalizeEmail(email);
+  if (!DB_CONFIGURED || !hubId || !who) return;
+  // on_conflict names the FULL primary key. 024's hub_items index was PARTIAL
+  // and PostgREST cannot infer one of those, which failed every vault send
+  // 100% of the time; migration 040 says in its own comment not to add a
+  // WHERE to this key for exactly that reason.
+  sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+    [{ hub_id: hubId, email: who, seen_at: new Date().toISOString() }],
+    { prefer: "resolution=merge-duplicates,return=minimal" })
+    .catch((err) => console.error("Hub seen stamp failed:", err.message));
+}
+
+// The off switch. An ABSENT row means on, so a row is only ever written by
+// somebody deliberately changing the setting — 025's shape, and it keeps the
+// default in one place instead of in a row per participant per hub.
+//
+// Unreadable prefs mean we do not know who opted out, and the safe answer
+// there is the opposite of everywhere else in this file: treat NOBODY as
+// muted only for people we have no row for, which is what an empty set does,
+// but log it, because silently mailing somebody who asked us not to is the
+// one failure in this feature that is genuinely rude rather than merely
+// unhelpful.
+async function hubMutedEmails(emails) {
+  const muted = new Set();
+  if (!DB_CONFIGURED || !emails.length) return muted;
+  try {
+    const rows = await sbRequest("GET",
+      `hub_email_prefs?email=in.(${pgInList(emails)})` +
+      `&notify=is.false&select=email&limit=100`);
+    for (const r of rows || []) muted.add(HUB.normalizeEmail(r.email));
+  } catch (err) {
+    console.error("Hub email prefs read failed (mailing anyway):", err.message);
+  }
+  return muted;
+}
+
+async function setHubNotifyPref(email, on) {
+  const who = HUB.normalizeEmail(email);
+  if (!DB_CONFIGURED || !who) return false;
+  await sbRequest("POST", "hub_email_prefs?on_conflict=email",
+    [{ email: who, notify: Boolean(on), updated_at: new Date().toISOString() }],
+    { prefer: "resolution=merge-duplicates,return=minimal" });
+  return true;
+}
+
+// The unsubscribe link has to work for somebody who is not signed in and may
+// never have had an account — a tenant reads a hub on an invite token alone,
+// and that is precisely the person most likely to want out. So it
+// authenticates itself: an HMAC of the ADDRESS, unguessable and unforgeable,
+// storing nothing new.
+//
+// Keyed and domain-separated exactly like digestMac() in 025, and for the
+// same reasons stated there. The string differs, so a watchlist token can
+// never unsubscribe a hub or the reverse.
+function hubNotifyMac(email) {
+  return crypto.createHmac("sha256", SUPABASE_SERVICE_KEY || "unset")
+    .update(`hub-note-emails-unsubscribe:${HUB.normalizeEmail(email)}`).digest("hex").slice(0, 32);
+}
+function hubNotifyTokenValid(email, token) {
+  if (!SUPABASE_SERVICE_KEY || !HUB.normalizeEmail(email)) return false;
+  return secretMatches(String(token || ""), hubNotifyMac(email));
+}
+function hubNotifyUnsubscribeUrl(email) {
+  // Three segments, not two: see the route's own comment. /hub/unsubscribe
+  // would collide with the /hub/<id> page pattern.
+  return `${SITE_URL}/hub/notes/unsubscribe?e=${encodeURIComponent(HUB.normalizeEmail(email))}&t=${hubNotifyMac(email)}`;
+}
+
+// Who should hear about a note: every live participant plus the hub's owner,
+// minus whoever wrote it.
+//
+// The OWNER is added by hand because nothing has ever written them a
+// hub_participants row (024's schema comment says so, and the dedupe in
+// GET /api/hubs relies on it staying true). Leaving them out would mean the
+// broker — the paying half of this relationship — was the one person the
+// feature never reached.
+//
+// Removed participants are excluded on removed_at, the same stamp that ends
+// their access. Somebody cut out of a hub must not keep getting its mail.
+// normalizeEmail is deliberately loose (one @, no whitespace), so it admits
+// characters that would tear a PostgREST `in.("a","b")` list in half: a comma
+// splits the list, a quote ends an element. Such an address is not a real one,
+// but the failure it would cause here is silent and wrong in the dangerous
+// direction — a torn list reads as "no row", which reads as "not muted".
+//
+// pgInList already quotes and percent-encodes every element, so this is the
+// second layer rather than the only one. It is worth having anyway: a quote
+// survives that encoding as a quote, and the cost of the guard is nothing.
+//
+// So an address we cannot safely ASK about is one we do not mail. That is the
+// one place in this feature that fails closed, and it is right that it does:
+// the question we cannot answer is "did this person opt out".
+function hubQueryableEmail(email) {
+  const e = HUB.normalizeEmail(email);
+  return /^[^\s@",()]+@[^\s@",()]+$/.test(e) ? e : "";
+}
+
+async function hubNoteAudience(hub, participants, authorEmail) {
+  const author = HUB.normalizeEmail(authorEmail);
+  const to = new Set();
+  for (const p of participants || []) {
+    if (p.removed_at) continue;
+    const e = hubQueryableEmail(p.email);
+    if (e && e !== author) to.add(e);
+  }
+  if (hub && hub.owner_user_id) {
+    try {
+      const owner = await findUserById(hub.owner_user_id);
+      const e = hubQueryableEmail(owner && owner.email);
+      if (e && e !== author) to.add(e);
+    } catch (err) {
+      console.error("Hub owner lookup failed:", err.message);
+    }
+  }
+  return [...to];
+}
+
+// One line naming what was posted on. A hub-level note says the hub; a
+// per-comp note says the building, because "Sarah left a note" with no
+// building attached is the version of this email that gets ignored.
+function hubNoteSubject(hub, itemAddress, fromName) {
+  const who = fromName || "Someone";
+  const what = itemAddress
+    ? itemAddress
+    : (hub.title || hub.subject_address || "your comps");
+  return `${who} left a note on ${what}`;
+}
+
+// Fire and forget from the route's point of view: the message row is already
+// written and answered before this runs, so a mail provider having a bad
+// afternoon can never turn a posted note into an error the author sees.
+//
+// It does NOT report whether Resend accepted, and nothing in the UI claims it
+// did. That is #174's lesson applied before the bug rather than after it: the
+// hub invite panel once told brokers "each person has been emailed their
+// link" on the strength of two env vars being set, and hid the only copy of
+// the token on that basis. Nothing here withholds anything, so there is no
+// flag to be wrong about.
+async function sendHubNoteEmails({ hub, participants, authorEmail, authorName, body, itemAddress }) {
+  if (!hub || !OUTBOUND_EMAIL_LIVE()) return;
+  const audience = await hubNoteAudience(hub, participants, authorEmail);
+  if (!audience.length) return;
+
+  const [state, muted] = await Promise.all([
+    hubNotifyState(hub.id, audience),
+    hubMutedEmails(audience),
+  ]);
+
+  const now = new Date().toISOString();
+  // The rule itself is hub-access.js's, not this route's. See
+  // HUB.shouldNotifyByEmail for what each answer means and why it leans the
+  // way it does.
+  const due = audience.filter((email) => {
+    const row = state.get(email) || {};
+    return HUB.shouldNotifyByEmail({
+      muted: muted.has(email),
+      seenAt: row.seen_at,
+      notifiedAt: row.notified_at,
+      now,
+      presentMs: HUB_PRESENT_MS,
+    });
+  });
+  if (!due.length) return;
+
+  const subject = hubNoteSubject(hub, itemAddress, authorName || authorEmail);
+  const where = itemAddress ? `on ${itemAddress}` : "in this hub";
+  const url = `${SITE_URL}/hub/${hub.id}`;
+
+  for (const to of due) {
+    // The note itself travels, because people reply to what they can read. It
+    // is already capped at 4,000 characters by the route that stored it.
+    const text =
+      `${authorName || authorEmail} left a note ${where}.\n\n` +
+      `${body}\n\n` +
+      `Read it and reply here: ${url}\n\n` +
+      `You are getting this because you are in this set of comps on CompNinja. ` +
+      `Turn these emails off: ${hubNotifyUnsubscribeUrl(to)}`;
+    // replyTo is the AUTHOR, not the site owner. Hitting Reply on a note about
+    // somebody's deal and having it land in a third party's personal inbox is
+    // both a lost message and a disclosure; sendOutboundEmail's default is
+    // right for leads and wrong here.
+    sendOutboundEmail(to, subject, text, { replyTo: authorEmail });
+  }
+
+  // Stamped for everybody the loop DISPATCHED to, in one write.
+  //
+  // Not for everybody Resend accepted, and the difference is deliberate:
+  // sendOutboundEmail is not awaited above, so at this point nothing knows
+  // which sends succeeded. Stamping anyway means a permanently bad address is
+  // attempted once per absence rather than re-attempted on every note, which
+  // is the behaviour worth having when the alternative is hammering a
+  // bouncing mailbox forever.
+  //
+  // It is written after the loop rather than before it so a crash in between
+  // re-mails somebody instead of silencing them. A duplicate is a nuisance; a
+  // swallowed notification is the bug this whole migration exists to end.
+  //
+  // What this does NOT do is claim anywhere that the mail arrived. No UI reads
+  // this table and nothing is withheld on the strength of it — #174's lesson
+  // taken before the bug rather than after it.
+  try {
+    await sbRequest("POST", "hub_notify?on_conflict=hub_id,email",
+      due.map((email) => ({ hub_id: hub.id, email, notified_at: now })),
+      { prefer: "resolution=merge-duplicates,return=minimal" });
+  } catch (err) {
+    console.error("Hub notify stamp failed:", err.message);
+  }
+  // `source` records WHICH KIND of note went out rather than how many people
+  // it reached: the useful question later is whether per-comp threads or the
+  // hub-level one is what people actually answer.
+  logEvent("hub_note_email", { market: hub.market || "", source: itemAddress ? "comp" : "hub" });
 }
 
 async function listHubsForOwner(userId) {
@@ -3734,6 +4688,81 @@ async function storeDynamicMarketPage(slug, payload) {
   }
 }
 
+// City coordinates for a market page, resolved once at PUBLISH time.
+//
+// The market pages' hero photograph falls back to an Esri satellite aerial of
+// the city when no photograph exists, and that fallback needs a point. Until
+// 2026-08-21 the only points were the 22 hardcoded in market-hero.js, so every
+// Explorer market outside that list opened with no picture at all — 13 of the
+// 16 live ones on the day this was measured.
+//
+// Two keyless sources, in the order of how much they know. Wikipedia's article
+// coordinates are the city's own stated position and survive the names ZIP
+// data disagrees about; Zippopotam — the service city-check.js already trusts
+// to say a city is real — is the fallback, read through `cityPointFrom`, which
+// is where the PO-box placeholder trap is handled and tested.
+//
+// Resolved on the publish path only: a page render must never wait on a
+// network call, so the answer is stored in the payload and read from there
+// forever after. Fails OPEN — no coordinates means the page renders exactly as
+// it did before this existed, with no hero.
+const cityCoordsMem = new Map();   // "ST|city" -> {lat,lng} | null
+// STATE_NAMES is declared further down this file; that is safe here and only
+// here, because nothing calls this before a page is published — i.e. long
+// after the module has finished evaluating.
+async function cityCoordsFromWikipedia(city, state) {
+  const name = STATE_NAMES[String(state || "").toUpperCase()] || state;
+  for (const title of [`${city}, ${name}`, String(city || "")]) {
+    try {
+      const r = await fetch("https://en.wikipedia.org/w/api.php?format=json&formatversion=2"
+        + "&action=query&redirects=1&prop=coordinates&titles=" + encodeURIComponent(title),
+        { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) continue;
+      const pt = CITYCHECK.wikiPointFrom(await r.json());
+      if (pt) return pt;
+    } catch (_) { /* try the next title, then Zippopotam */ }
+  }
+  return null;
+}
+
+async function cityCoordsFromZippopotam(city, state) {
+  for (const variant of CITYCHECK.cityVariants(city)) {
+    let places;
+    try {
+      const r = await fetch(
+        `https://api.zippopotam.us/us/${encodeURIComponent(state)}/${encodeURIComponent(variant)}`,
+        { signal: AbortSignal.timeout(4000) });
+      if (r.status === 404) continue;
+      if (!r.ok) return null;                     // unavailable is not "nowhere"
+      places = (await r.json()).places || [];
+    } catch (_) {
+      return null;
+    }
+    const pt = CITYCHECK.cityPointFrom(places);
+    if (pt) return pt;
+  }
+  return null;
+}
+
+async function cityCoordsFor(city, state) {
+  const key = `${String(state || "").toUpperCase()}|${String(city || "").toLowerCase()}`;
+  if (cityCoordsMem.has(key)) return cityCoordsMem.get(key);
+  const ll = (await cityCoordsFromWikipedia(city, state)) || (await cityCoordsFromZippopotam(city, state));
+  cityCoordsMem.set(key, ll || null);
+  return ll || null;
+}
+
+async function attachCityCoords(snapshot) {
+  try {
+    if (!snapshot || Number.isFinite(Number(snapshot.lat))) return snapshot;
+    const ll = await cityCoordsFor(snapshot.city, snapshot.state);
+    if (ll) { snapshot.lat = ll.lat; snapshot.lng = ll.lng; }
+  } catch (err) {
+    console.error("City coordinate lookup failed:", err.message);
+  }
+  return snapshot;
+}
+
 // Piggyback publisher: every billed /api/comps search already paid for fresh
 // comp data, so distill it into the market-page layer too — coverage grows
 // and refreshes as reports run, at zero extra API cost. Quietly skips
@@ -3770,7 +4799,7 @@ function maybePublishMarketSnapshot(type, address, data) {
     if (!isBetterSnapshot(snapshot, current)) return;
 
     const isNew = !current;
-    storeDynamicMarketPage(slug, snapshot).then(() => {
+    attachCityCoords(snapshot).then(() => storeDynamicMarketPage(slug, snapshot)).then(() => {
       if (!isNew) {
         console.log(`🧭 Market page refreshed from a report search: ${slug} ` +
           `(${pricedSaleCount} priced sale comps, was ${(current.ppsf && current.ppsf.count) || 0} on ${current.generatedAt})`);
@@ -3834,6 +4863,15 @@ function corpusKeyOf(c) {
 const GEO_MEM = new Map();
 const GEO_MEM_MAX = 500;
 
+// Test-only, unset in production — RESEND_API_URL's precedent for
+// RESEND_API_URL's reason: import-time vault geocoding's whole point is a
+// private address leaving the process, and without this the suite could reach
+// the Census call and then had to stop and assume. Not a secret and
+// authorizes nothing, but it decides where a broker's address is posted, so
+// treat it as trusted config.
+const CENSUS_API_URL = (process.env.CENSUS_API_URL ||
+  "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress").trim();
+
 function parseCensusMatch(j) {
   const m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
   if (m && m.coordinates && Number.isFinite(m.coordinates.y) && Number.isFinite(m.coordinates.x)) {
@@ -3850,7 +4888,7 @@ async function geocodeCensus(address) {
   let cacheable = false;
   try {
     const r = await fetch(
-      "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=" +
+      CENSUS_API_URL + "?benchmark=Public_AR_Current&format=json&address=" +
         encodeURIComponent(String(address).trim().slice(0, 200)),
       { signal: AbortSignal.timeout(6000) }
     );
@@ -3923,17 +4961,17 @@ async function harvestComps(type, searchAddress, payload) {
     const comps = payload && Array.isArray(payload.comps) ? payload.comps : [];
     const rows = [];
     for (const c of comps) {
-      if (!c || !String(c.address || "").trim()) continue;
-      // A comp with no price at all is not data worth keeping.
-      if (!String(c.price_or_rate || "").trim() && !String(c.price_per_sqft || "").trim()) continue;
-      // Backstop for the prompt's individual-property rule: a market median or
-      // research benchmark formatted as a comp would otherwise sit in the
-      // permanent corpus looking like a real transaction.
-      if (isAggregateAddress(c.address)) {
-        console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+      if (!HARVEST.shouldHarvest(c)) {
+        if (c && isAggregateAddress(c.address)) {
+          console.warn("Comp corpus: skipped market-aggregate row —", String(c.address).trim().slice(0, 80));
+        }
         continue;
       }
-      const key = corpusKeyOf(c);
+      // Fill empty listing dates before the dedupe key so "" and "Active"
+      // cannot both occupy the store for the same address + price.
+      const date = HARVEST.listingDateForHarvest(c);
+      const keyed = { ...c, date };
+      const key = corpusKeyOf(keyed);
       if (corpusSeen.has(key)) continue;
       corpusSeen.add(key);
       rows.push({
@@ -3943,14 +4981,11 @@ async function harvestComps(type, searchAddress, payload) {
         market: marketOf(c.address),
         address: String(c.address).trim(),
         transaction: String(c.transaction || ""),
-        deal_date: String(c.date || ""),
+        deal_date: date,
         size_sqft: String(c.size_sqft || ""),
         price_or_rate: String(c.price_or_rate || ""),
         price_per_sqft: String(c.price_per_sqft || ""),
         cap_rate: String(c.cap_rate || ""),
-        // Per-type specs (TYPE_COMP_FIELDS). One flat row per comp regardless
-        // of type, so every key is always present — the columns a given type
-        // doesn't use just stay empty.
         ...Object.fromEntries(ALL_TYPE_COMP_FIELDS.map((f) => [f, String(c[f] || "")])),
         tenancy: String(c.tenancy || ""),
         year_built: String(c.year_built || ""),
@@ -4079,25 +5114,37 @@ const STATE_NAMES = {
 // posted, so it belongs in the same trusted place as the key itself.
 const RESEND_API_URL = (process.env.RESEND_API_URL || "https://api.resend.com/emails").trim();
 
-function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
-  if (!RESEND_API_KEY) return;
-  fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      from: from || "CompNinja <onboarding@resend.dev>",
-      to: [to],
-      subject,
-      text,
-      ...(html ? { html } : {}),
-      ...(replyTo ? { reply_to: replyTo } : {}),
-    }),
-    signal: AbortSignal.timeout(8000),
-  })
-    .then(async (r) => {
-      if (!r.ok) console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
-    })
-    .catch((err) => console.error(`Email send failed (${subject}):`, err.message));
+// RESOLVES TO WHETHER RESEND ACCEPTED IT, and never rejects. Almost every
+// caller ignores the promise and stays fire-and-forget, which is why this
+// swallows its own failures — but a caller that has to TELL somebody the mail
+// went can now await the truth instead of inferring it from configuration.
+// The difference is not academic: a hub invite carries the only copy of a
+// token, and the panel hides that link when it believes the mail was sent.
+async function sendEmail(to, subject, text, { from, replyTo, html } = {}) {
+  if (!RESEND_API_KEY) return false;
+  try {
+    const r = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        from: from || "CompNinja <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        text,
+        ...(html ? { html } : {}),
+        ...(replyTo ? { reply_to: replyTo } : {}),
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) {
+      console.error(`Email send failed (${subject}):`, r.status, (await r.text().catch(() => "")).slice(0, 300));
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Email send failed (${subject}):`, err.message);
+    return false;
+  }
 }
 
 // Internal notification to the owner. Empty fields are dropped from the body.
@@ -4114,12 +5161,27 @@ function notifyByEmail(subject, fields) {
 // the SAME text — the text stays the source of truth and the fallback part,
 // so a call site edits its copy in one place and plain-text clients lose
 // nothing. Owner-facing notifyByEmail stays deliberately plain.
-function sendOutboundEmail(to, subject, text) {
+// Resolves to whether the mail was accepted, like sendEmail. A gated-off
+// deployment resolves FALSE rather than throwing: "we did not send it" and
+// "we tried and it bounced" are the same fact to a caller deciding whether to
+// show somebody a link they must now copy by hand.
+// replyTo DEFAULTS to the site owner and is overridable, which it was not
+// until hub note emails needed it. The default is right for a lead or a
+// broker introduction — those genuinely are conversations with CompNinja.
+// It is wrong for mail that relays one person's words to another: a tenant
+// who reads "Sarah left a note" and hits Reply expects Sarah, and sending
+// that reply to a third party's personal inbox loses the message and
+// discloses the deal in the same click. Pass the human when there is one.
+async function sendOutboundEmail(to, subject, text, { replyTo } = {}) {
   if (!RESEND_API_KEY || !EMAIL_FROM) {
     console.log(`Outbound email skipped (${!RESEND_API_KEY ? "RESEND_API_KEY" : "EMAIL_FROM"} unset): ${subject}`);
-    return;
+    return false;
   }
-  sendEmail(to, subject, text, { from: EMAIL_FROM, replyTo: LEAD_NOTIFY_EMAIL, html: EMAILSHELL.renderEmailHtml(subject, text) });
+  return sendEmail(to, subject, text, {
+    from: EMAIL_FROM,
+    replyTo: replyTo || LEAD_NOTIFY_EMAIL,
+    html: EMAILSHELL.renderEmailHtml(subject, text),
+  });
 }
 
 // The invitation. Rides the existing EMAIL_FROM gate, so with a custom domain
@@ -4140,7 +5202,7 @@ function sendShareInvites(emails, { url, address, fromName }) {
   }
 }
 
-// A colleague invited to a firm (migration 032). Rides the same outbound gate
+// A colleague invited to a firm (migration 030). Rides the same outbound gate
 // as everything else, so it silently no-ops until EMAIL_FROM is set.
 //
 // It says who invited them and from what address, because this mail arrives
@@ -4148,15 +5210,19 @@ function sendShareInvites(emails, { url, address, fromName }) {
 // the recipient's only way to check it is real is to recognise the sender.
 // Nothing about the firm's reports travels here — the invite grants no access
 // on its own, and does not until the person accepts it themselves.
-function sendOrgInvites(emails, { firm, fromName, fromEmail }) {
+function sendOrgInvites(emails, { firm, kind, fromName, fromEmail }) {
+  // The shop's own nouns (036). A development shop's colleague being told the
+  // shelf holds "comp sets and BOVs" is being described somebody else's job in
+  // the first sentence they read about the product.
+  const arrivals = ORG.SHOP_COPY[ORG.kindOf({ kind })].arrivals;
   for (const to of emails) {
     const who = fromName ? `${fromName} (${fromEmail})` : fromEmail;
     sendOutboundEmail(to, `${firm || "A firm"} invited you on CompNinja`,
       `${who} invited you to join ${firm || "their firm"} on CompNinja.\n\n` +
-      `A firm is a shared shelf: reports and BOVs a colleague shares with the firm ` +
+      `A firm is a shared shelf: ${arrivals} a colleague shares with the firm ` +
       `show up on your desk, while your own reports and dashboard stay yours.\n\n` +
       `Accept here: ${SITE_URL}/desk\n\n` +
-      `Sign in with this email address (${to}) — a free account is all it takes. ` +
+      `Sign in with this email address (${to}). A free account is all it takes. ` +
       `Nothing is shared with you until you accept, and you can leave at any time.\n\n` +
       `If you were not expecting this, ignore it: an unaccepted invitation gives nobody access to anything.`);
   }
@@ -4184,20 +5250,26 @@ const OUTBOUND_EMAIL_LIVE = () => Boolean(RESEND_API_KEY && EMAIL_FROM);
 // invite lets somebody READ, and only signing in as the invited address lets
 // them post.
 //
-// Fire and forget, ALWAYS: the hub and its participants are already written
-// when this runs. A mail provider having a bad afternoon must never turn a
-// created hub into an error, and the broker still holds every link.
-function sendHubInvites(invites, { hubTitle, fromName }) {
-  for (const inv of invites) {
+// NEVER FATAL, but no longer blind: the hub and its participants are already
+// written when this runs, so a mail provider having a bad afternoon must never
+// turn a created hub into an error. It must not be reported as a success
+// either. This RESOLVES TO THE ADDRESSES THAT WERE NOT MAILED, so the caller
+// can hand those people's links back to the broker to send by hand.
+//
+// Sent in parallel, because the caller is holding an HTTP response open: one
+// round trip for a list of twenty, bounded by sendEmail's own 8s abort.
+async function sendHubInvites(invites, { hubTitle, fromName }) {
+  const sent = await Promise.all(invites.map((inv) => {
     const who = fromName ? `${fromName} has` : "A broker has";
     const what = hubTitle ? `"${hubTitle}"` : "a set of comps";
-    sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
+    return sendOutboundEmail(inv.email, `${fromName || "A broker"} shared comps with you`,
       `${who} shared ${what} with you on CompNinja.\n\n` +
       `Open it here: ${inv.url}\n\n` +
       `You can read it without an account. To reply or shortlist a building, ` +
-      `sign in with this email address (${inv.email}) — a free account is all it takes.\n\n` +
+      `sign in with this email address (${inv.email}). A free account is all it takes.\n\n` +
       `Every CompNinja valuation is an automated estimate, not an appraisal.`);
-  }
+  }));
+  return invites.filter((_, i) => !sent[i]).map((inv) => inv.email);
 }
 
 // ---------------------------------------------------------------------------
@@ -4371,14 +5443,17 @@ Each object may only use these keys: ${VAULT.EXTRACT_KEYS.join(", ")}.
 property_type must be one of: ${VAULT.PROPERTY_TYPES.join(", ")}.
 transaction must be "sale" or "lease".
 deal_date must be YYYY-MM-DD.
+cap_rate, and every other percentage, must be the percent number the page shows: a page reading 7.3% is "7.3" or "7.3%". NEVER a decimal fraction - "0.073" is read as a cap rate of 0.073%, which is a legal number, so nothing downstream can catch it.
 
 Rules:
 - Extract every deal row from tables. Omit header rows, totals, averages, and submarket-summary rows.
+- Return the rows in the order they appear in the document: top to bottom, page by page. Never sort or group them - not by type, price, date, or anything else. A person checks these rows against the page they came from, and a reordered list makes them hunt the page for every single row.
 - Omit a field rather than invent it. Never invent a price, date, or size.
+- A row with no sale price and no sale date is a LISTING, not a completed deal, however much it looks like the sold rows around it. Omit transaction and deal_date for it. Never source deal_date from a list date, an assessment date, a photo date or a report date: if the row does not say when the deal closed, omit deal_date.
 - address must be a specific property with a street number, not a district or "general submarket estimate".
 - Do not include a verified flag or a source_url.`;
 
-function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, subjectDetails, lane = "solo") {
+function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
   // The records lane contributes comps (and the subject size, which lives in
   // assessor data) only — the primary lane owns every market-level figure and
   // all of the narrative, so the report has one coherent voice and one set of
@@ -4492,6 +5567,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     `Use these only when the target's own city is thin on genuinely comparable transactions, and only for ones a buyer would actually weigh against the target. Report each address exactly as given so the report shows the city the comp is really in; never restate it as the target's city. Set "verified": false on these, and keep the source_url. Prefer a comp in the target's own city over one of these whenever both are comparable.`,
   ].join("\n") : "";
 
+  const listedBlock = (corpusListed && corpusListed.length) ? [
+    ``,
+    `ON-MARKET LISTINGS: our prior research surfaced these asking-price listings in this market that are currently on the market, not closed sales. They are already sourced.`,
+    ...corpusListed.map((c, i) =>
+      `${i + 1}. ${c.address} | ${c.transaction || "transaction type unknown"} | ${c.deal_date || "date unknown"} | ${c.size_sqft ? c.size_sqft + " SF" : "size unknown"} | ${c.price_or_rate || "price unknown"}${c.price_per_sqft ? " | " + c.price_per_sqft + "/SF" : ""}${c.cap_rate ? " | cap " + c.cap_rate : ""}${typeSpecsOf(c)}${c.source_url ? " | " + c.source_url : ""}`),
+    `Include one only when it is genuinely comparable to the target. These are asking prices, not closed transactions: copy source_url, set source_type to "listing", keep the date string as given (Active or Listed Mon YYYY), and the notes caveat that the price is asking rather than a closed sale must fire. Do not treat an asking price as a closed sale. Set "verified": false on these unless they also appear in the verified list above.`,
+  ].join("\n") : "";
+
   return [
     // Residential is a home-buyer CMA, not a CRE analyst write-up. The CRE
     // role line sent the model hunting LoopNet-shaped deals and writing
@@ -4545,6 +5628,14 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // dressed up as comps. Those look authoritative, carry no property behind
     // them, and would land in the permanent corpus as fake transactions.
     `EVERY entry in "comps" must be ONE individual property at its own address that actually sold or is actively listed. Never enter a market median, submarket or metro average, research-report benchmark, index, or any other market-level statistic as a comp — market-level figures belong in "summary", "value_drivers", and "market_cap_rate_range" instead. A property whose address is partly withheld is still fine (e.g. "Highland Park Triplex, Pittsburgh, PA 15206"); a row named for a statistic is not. If you cannot find ${maxComps} genuine individual properties, return the smaller number you did find and say so in "summary" — a short honest list is worth more than a padded one.`,
+    // Deliberately AFTER the anti-padding rule above, and it restates that rule
+    // rather than trusting proximity: this is the one instruction in the prompt
+    // whose obvious failure mode is padding, so the sentence that asks for more
+    // comps and the sentence that forbids inventing them have to arrive
+    // together.
+    COMP_FLOOR
+      ? `COMP COUNT: aim for at least ${Math.min(COMP_FLOOR_TARGET, maxComps)} genuinely comparable individual properties, and keep searching until you have them or until you have genuinely exhausted the sources. Stopping at 4 when a 5th and 6th are findable makes the valuation thinner than the market actually supports. This does NOT relax any rule above: never pad the list with a market statistic, a submarket average, or a property you cannot tie to a real source, and a short honest list still beats a padded one. Spend the extra effort on FINDING more real transactions, not on lowering the bar for what counts as one.`
+      : "",
     // The value hero multiplies this number straight into the valuation, so
     // the lookup must not be an afterthought: on corpus-assisted searches the
     // budget is only 3 (searchBudgetFor) and an unordered "also determine..."
@@ -4584,6 +5675,7 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     verifiedBlock,
     corpusBlock,
     nearbyBlock,
+    listedBlock,
     ``,
     // LoopNet / Crexi / brokerage-listing lane copy is for commercial
     // assets. A house search that starts there comes back empty or padded
@@ -4591,30 +5683,61 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     // typeGuidance (assessor + recently-sold listing pages).
     type === "Residential" ? "" : (LANE_GUIDANCE[lane] || ""),
     compsOnly ? `` : `Then compute or estimate an average price per square foot across the comps where it makes sense.`,
-    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft", and make "price_per_sqft" exactly equal the sale price divided by the building size, rounded to the nearest dollar, so the figure is verifiable from the row itself. If a source's stated $/SF does not match its own stated price and size, recheck the figures rather than copying the inconsistency. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
+    // $/SF used to be REQUIRED on every sale comp and is arithmetic we already
+    // do: reconcilePricePerSqft derives price ÷ size server-side and has always
+    // overridden the model's figure when the two disagreed by more than 10%. So
+    // on a priced, sized sale the field was output tokens spent restating a
+    // number that could not survive contradicting its own row. Asking the model
+    // to OMIT it there (2026-08-21) buys back ~11 characters per comp on the
+    // slow write leg for no loss of information.
+    // Two things keep this from being a quality regression. The cross-check the
+    // field was really doing is retained as an instruction — verify the source's
+    // own $/SF against its own price and size — it is just no longer WRITTEN
+    // out. And the field is still asked for wherever it is not derivable: lease
+    // rates (a rent is not price ÷ size) and sales missing a price or a size,
+    // which are exactly the rows reconcilePricePerSqft skips.
+    `For every SALE comp, report BOTH "price_or_rate" (the total sale price as one number, e.g. "$6,400,000") and "size_sqft". When a sale comp carries BOTH of those, OMIT "price_per_sqft" entirely - we compute it as the sale price divided by the building size, so writing it out again only costs you tokens. Do still check the source's own stated $/SF against its own stated price and size: if they disagree, recheck the figures rather than copying the inconsistency. Report "price_per_sqft" only where we cannot derive it: on LEASE comps (the quoted rate, which is not a price divided by a size), and on a sale where the price or the size genuinely could not be found. Never put a $/SF figure or a range in "price_or_rate". If the price or the size genuinely cannot be found, leave that field "" instead of guessing.`,
     `Do not use em dashes anywhere in your output text.`,
     ``,
-    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape:`,
+    `OUTPUT FORMAT — return ONLY valid JSON, no markdown, no code fences, no preamble or explanation. Use this exact shape, and write the keys in this order:`,
     `{`,
+    // FIELD ORDER IS LOAD-BEARING, and the ordering is the OPPOSITE of what
+    // reads naturally (2026-08-21). The model writes this JSON top to bottom,
+    // one token at a time, and the write phase is the slow half of a report
+    // (measured: searches finish in ~5s, writing runs 40-70s). Two consequences
+    // decide this order:
+    //   1. "comps" is the only part of the report the browser can put on screen
+    //      while the model is still writing (makeCompExtractor -> the `comp`
+    //      progress event -> assemblyComp fills the live table). Every field
+    //      written ABOVE it is dead air the visitor stares at. The market block
+    //      that used to sit here measures ~800 chars against the eval-recorded
+    //      narrative lengths, so ~200 output tokens, so ~2.5s of empty table at
+    //      the measured 78 tokens/sec - paid before the first row and again
+    //      before the last.
+    //   2. Everything moved BELOW the comps is a market-level read OF those
+    //      comps - avg_price_per_sqft averages them, transactions_reviewed must
+    //      exceed their count, value_drivers / market_trend / price_discovery
+    //      characterize them. Writing them after the array means the model is
+    //      describing rows it has actually committed to rather than ones it
+    //      still intends to write, so this is a quality change in the same
+    //      direction as the speed one.
+    // What deliberately stays ABOVE "comps":
+    //   - "summary", because it lands in the first seconds and is the one piece
+    //     of prose the loading card can show (makeFieldExtractor). Moving it
+    //     below would trade a visible field for an invisible one. It was
+    //     already written before the comps, so its quality is unchanged.
+    //   - currency/usd_rate, which every price BELOW is quoted in - the model
+    //     has to commit to the unit before it writes figures in it.
+    //   - the subject lookups, which the SUBJECT SIZE step above already told
+    //     the model to resolve FIRST, and which are ~100 chars all told.
+    // Anything added here later belongs below "comps" unless the browser can
+    // render it mid-stream or a later figure depends on it.
+    ...(compsOnly ? [] : [`  "summary": "",`]),
     // Currency rides in BOTH lanes: a foreign-property records lane must quote
     // its comps in the same local currency, and normalizeCurrency needs the
     // code to avoid silently treating those prices as USD on merge.
-    ...(compsOnly ? [] : [`  "summary": "",`]),
-    ...(compsOnly ? [] : [`  "avg_price_per_sqft": "string or null",`]),
     `  "currency": "",`,
     `  "usd_rate": "",`,
-    ...(compsOnly ? [] : [
-      `  "subject_lat": "",`,
-      `  "subject_lng": "",`,
-      `  "market_cap_rate_range": { "low": "", "high": "" },`,
-      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
-      `  "value_drivers": ["", ""],`,
-      `  "market_trend": "",`,
-      `  "annual_price_trend_pct": "",`,
-      `  "search_radius": "",`,
-      `  "transactions_reviewed": "",`,
-      `  "price_discovery": { "direction": "", "note": "" },`,
-    ]),
     ...(wantsSize ? [`  "subject_size_sqft": "",`, `  "subject_size_source": "",`] : []),
     // Not gated on compsOnly like the other narrative fields: on a lane split
     // the records lane is the one opening assessor pages, so it is the lane
@@ -4629,11 +5752,24 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
     ] : []),
     `  "comps": [`,
     `    ${compShape}`,
-    `  ]`,
+    `  ]${compsOnly ? "" : ","}`,
+    ...(compsOnly ? [] : [
+      `  "avg_price_per_sqft": "string or null",`,
+      `  "subject_lat": "",`,
+      `  "subject_lng": "",`,
+      `  "market_cap_rate_range": { "low": "", "high": "" },`,
+      ...(!isLand ? [`  "market_opex_range": { "low": "", "high": "", "note": "" },`] : []),
+      `  "value_drivers": ["", ""],`,
+      `  "market_trend": "",`,
+      `  "annual_price_trend_pct": "",`,
+      `  "search_radius": "",`,
+      `  "transactions_reviewed": "",`,
+      `  "price_discovery": { "direction": "", "note": "" }`,
+    ]),
     `}`,
     ``,
     `COMPACT COMP KEYS: in "comps", write every field under its SHORT key exactly as the template shows: ${compKeyLegend}. The rules in this prompt refer to these fields by their FULL names - apply each rule to its short key. Also, in "comps", OMIT any field you have no value for instead of writing an empty string (top-level fields outside "comps" keep "" when unknown, exactly as stated elsewhere).`,
-    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = when the sale closed or the lease/listing was signed or posted, as a short month-year like "Mar 2025". "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
+    `Rules: "address" = the comp property's FULL street address ending in its city and two-letter state (e.g. "4521 Maple Ave, Boise, ID") — never a street alone; a bare "4521 Maple Ave" geocodes to the wrong state on the map. "date" = for a closed sale or a signed lease, the closing or signing month-year like "Mar 2025"; for an active listing, "Active" when the page has no post date, or "Listed Mar 2025" when it does. Never write a bare "Mar 2025" for an active listing. "transaction" = exactly "Sale" or "Lease". "source_url" = the URL of the specific web page where you found the comp (listing page, brokerage announcement, news article, or public record); use "" if you are not confident in the exact URL — do not invent one. "subject_lat"/"subject_lng" = the approximate decimal latitude and longitude of the TARGET property address (e.g. "32.7767", "-96.7970") — for plotting on a map, so a street-level approximation is fine; use "" if you cannot place it. If any other field is unknown, use an empty string "" (or null for avg_price_per_sqft). Do NOT wrap the JSON in backticks. Output the JSON object and nothing else.`,
     // "notes" was the single largest field in the output — measured at 18-28%
     // of a report, up to 316 characters per comp — and the report is slow
     // because of how long it takes to WRITE, not to search (see the streaming
@@ -4697,10 +5833,11 @@ function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedCom
 // tests. normalizeSourceTypes takes the corpus-audit rule as an argument
 // (the audit must apply the SAME rule to old harvested rows), so this
 // wrapper pairs them; it is the only caller.
-const normalizeSourceTypes = (parsed) => RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType);
+const normalizeSourceTypes = (parsed, propertyType) =>
+  RPARSE.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, propertyType);
 const { normalizeTrendPct, reconcilePricePerSqft, scrubUnearnedVerifiedClaims,
         normalizeSubjectAssessed, normalizeSubjectAsking, normalizeSubjectYearBuilt,
-        normalizeConditions } = RPARSE;
+        normalizeSubjectSize, normalizeConditions } = RPARSE;
 
 // The subject's own last sale is model-written free text headed for a report
 // surface, a cache entry and a share, so it is normalized to a known shape
@@ -4956,6 +6093,23 @@ const STREAM_IDLE_MS = Math.max(5_000, Number(process.env.STREAM_IDLE_MS) || 90_
 // Escape hatch. Streaming changes nothing the caller sees — same parsed report,
 // same timing log — so this exists only to rule it out if something odd shows up.
 const STREAM_ANTHROPIC = !/^(0|off|false|no)$/i.test(String(process.env.STREAM_ANTHROPIC || "on"));
+
+// Where the search actually goes. Overridable ONLY so the suite can stand a
+// stub in front of it — RESEND_API_URL's precedent, for RESEND_API_URL's
+// reason. Bulk valuation's whole point is fifty searches leaving the building,
+// and until this existed the tests could reach the provider call and then had
+// to stop and assume: everything from "a report came back" through valuing it,
+// writing the row and putting it on the member's desk was argued in comments
+// and never executed.
+//
+// Unset everywhere except in tests; production never sets it, so the
+// provider's own endpoint is the live value. It authorizes nothing (the API
+// key still does) but it decides where a billed request is posted, so it
+// belongs in the same trusted place as the key itself.
+//
+// The SEARCH call only. The extract vendor (PDF/screenshot import) keeps its
+// own endpoint deliberately: one override, one thing it can move.
+const SEARCH_API_URL = (process.env.SEARCH_API_URL || "").trim();
 
 // ---------------------------------------------------------------------------
 // Minimal SSE frame reader. Anthropic sends `event: <name>\ndata: <json>\n\n`;
@@ -5319,16 +6473,23 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // derived call deadline, so the two can never disagree.
   const searchUses = maxUses == null ? searchBudgetFor(corpus, subjectSizeSqft, maxComps) : maxUses;
   // A provider that cannot stream never honored STREAM_ANTHROPIC, so force the
-  // non-streaming path rather than ask for a mode it doesn't support.
+  // non-streaming path rather than ask for a mode it doesn't support. (Both
+  // providers stream since 2026-08-29 — Gemini's wire format was confirmed
+  // live with scripts/verify-gemini-stream.js — but the capability read stays,
+  // because a future provider earns streaming the same way: a verified reader,
+  // never a guessed one on the default path.)
   const useStream = STREAM_ANTHROPIC && PROVIDER.capabilities.streaming;
   const body = PROVIDER.buildRequestBody({
     model: MODEL,
     prompt: buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps,
                         subjectSizeSqft, corpus && corpus.comps, corpus && corpus.nearby,
-                        subjectDetails, lane),
+                        corpus && corpus.listed, subjectDetails, lane),
     maxComps,
     searchUses,
     stream: useStream,
+    // Empty unless the deployment set one; a provider that declares no
+    // thinkingLevels never receives a value, because boot refuses that pairing.
+    thinkingLevel: THINKING_LEVEL,
   });
   const say = typeof onProgress === "function" ? onProgress : () => {};
 
@@ -5337,7 +6498,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // of the call — the report itself never depends on the extractor.
   let compExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeCompExtractor((c0, n) => {
-        const c = expandComp(c0);   // comps stream short-keyed; events keep long names
+        const c = RPARSE.expandComp(c0);   // comps stream short-keyed; events keep long names
         say({
           phase: "comp", n,
           address: String((c && c.address) || ""),
@@ -5352,8 +6513,12 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
         });
       })
     : null;
-  // The prompt orders "summary" before the comps array, so this lands in the
-  // first seconds of the write phase. The records lane has no summary at all.
+  // "summary" is deliberately the ONE narrative field the prompt still writes
+  // above the comps array (see the field-order note in buildPrompt's OUTPUT
+  // FORMAT block), precisely so this lands in the first seconds of the write
+  // phase. Everything else the model has to say about the market now comes
+  // after the comps, where it costs the live table nothing. The records lane
+  // has no summary at all.
   let summaryExtractor = (typeof onProgress === "function" && lane !== "records")
     ? makeFieldExtractor("summary", (value) =>
         say({ phase: "field", key: "summary", value: stripEmDashes(value) }))
@@ -5390,8 +6555,14 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   };
   let r;
   try {
-    const init = PROVIDER.requestInit({ apiKey: providerApiKey() });
-    r = await fetch(init.url, {
+    // `stream` reaches requestInit as well as the body: Gemini selects SSE with
+    // a query parameter, so a provider that streams via its URL would otherwise
+    // ask for a stream in the body and be answered with ordinary JSON.
+    const init = PROVIDER.requestInit({ apiKey: providerApiKey(), stream: useStream });
+    // SEARCH_API_URL replaces the endpoint WHOLE, query string included — it is
+    // a test stub standing in for the vendor, so there is nothing of the real
+    // URL worth preserving. Unset in production, where init.url is the value.
+    r = await fetch(SEARCH_API_URL || init.url, {
       method: "POST",
       headers: init.headers,
       body: JSON.stringify(body),
@@ -5438,55 +6609,55 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     usage = parsed.usage;
     stopReason = parsed.stopReason;
   } else {
-    // Rebuild exactly what the non-streaming branch above produces: the text
-    // blocks, in index order, joined with "\n" and trimmed. Anything else and
-    // parseCompJson starts seeing different input.
-    const blocks = new Map();       // index -> { type, text, json }
+    // Provider-agnostic since 2026-08-21. This loop used to name eight
+    // Anthropic event types directly, which is the reason a second provider
+    // could not stream no matter what its API supported. The vendor's frames
+    // are interpreted by PROVIDER.createStreamReader() and arrive here as a
+    // small normalized vocabulary (start / text / results / search / usage /
+    // error / done); the reader also owns rebuilding the final text, so the
+    // streaming and non-streaming paths cannot drift into feeding
+    // parseCompJson different input.
+    const reader = PROVIDER.createStreamReader();
     let wroteWriting = false;
     let lastDraft = 0;
     let textChars = 0;
     try {
-      for await (const ev of sseFrames(r.body, () => controller.abort())) {
-        if (ev.type === "error") {
-          // A mid-stream error carries the same vendor-authored text as a
-          // non-2xx, just after the 200 — so it goes through the same door.
-          // `overloaded_error` is the 529 that never got a status line.
-          const e = ev.error || {};
-          throw upstreamError(e.type === "overloaded_error" ? 529 : "stream",
-                              e.message || e.type || "unknown");
-        }
-        if (ev.type === "message_start") {
-          usage = PROVIDER.normalizeUsage(ev.message && ev.message.usage);
-          say({ phase: "start" });
-        } else if (ev.type === "content_block_start") {
-          const cb = ev.content_block || {};
-          blocks.set(ev.index, { type: cb.type, text: "", json: "" });
-          if (cb.type === "web_search_tool_result") {
-            say({ phase: "results", n: searches, count: Array.isArray(cb.content) ? cb.content.length : null });
-          }
-        } else if (ev.type === "content_block_delta") {
-          const b = blocks.get(ev.index);
-          const d = ev.delta || {};
-          if (!b) continue;
-          // citations_delta also arrives on text blocks and carries no .text —
-          // never let it fall through into the text branch.
-          if (d.type === "text_delta" && typeof d.text === "string") {
-            b.text += d.text;
-            textChars += d.text.length;
+      for await (const frame of sseFrames(r.body, () => controller.abort())) {
+        for (const ev of reader.push(frame)) {
+          if (ev.kind === "error") throw upstreamError(ev.status, ev.message);
+          if (ev.kind === "start") {
+            usage = ev.usage;
+            say({ phase: "start" });
+          } else if (ev.kind === "results") {
+            say({ phase: "results", n: searches, count: ev.count });
+          } else if (ev.kind === "search") {
+            searches += 1;
+            say({ phase: "search", n: searches, query: ev.query });
+          } else if (ev.kind === "usage") {
+            // normalizeUsage always emits every key, filling absent ones with
+            // 0 (Number(undefined) || 0). A mid-stream usage frame carries
+            // only some of them, so a plain spread would zero the input and
+            // cache counts the opening frame already established. Overwrite
+            // only the keys this update actually carried.
+            for (const k of Object.keys(ev.usage)) if (ev.usage[k]) usage[k] = ev.usage[k];
+          } else if (ev.kind === "done") {
+            stopReason = ev.stopReason || stopReason;
+          } else if (ev.kind === "text") {
+            textChars += ev.text.length;
             if (compExtractor) {
-              try { compExtractor.push(d.text); } catch (_) { compExtractor = null; }
+              try { compExtractor.push(ev.text); } catch (_) { compExtractor = null; }
             }
             if (summaryExtractor) {
-              try { summaryExtractor.push(d.text); } catch (_) { summaryExtractor = null; }
+              try { summaryExtractor.push(ev.text); } catch (_) { summaryExtractor = null; }
             }
             // Writing the report is the LONG stretch — measured, searches finish
             // in ~5s and the JSON burst then runs 60-70s. It must be detected as
-            // it STARTS, not at content_block_stop (which is after the report is
+            // it STARTS, not when the block closes (which is after the report is
             // already written and useless as progress). Match the opening brace
-            // ANYWHERE in the block, not at its start: the model prefaces the
-            // JSON with narration, which is exactly why parseCompJson has to
+            // ANYWHERE in the text so far, not at its start: the model prefaces
+            // the JSON with narration, which is exactly why parseCompJson has to
             // slice to the first "{" too.
-            if (!wroteWriting && b.text.includes("{")) {
+            if (!wroteWriting && ev.text.includes("{")) {
               wroteWriting = true;
               say({ phase: "writing" });
             }
@@ -5497,29 +6668,6 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
               lastDraft = Date.now();
               say({ phase: "drafting", chars: textChars, writing: wroteWriting });
             }
-          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") b.json += d.partial_json;
-        } else if (ev.type === "content_block_stop") {
-          const b = blocks.get(ev.index);
-          if (b && b.type === "server_tool_use") {
-            searches += 1;
-            let query = "";
-            // The query only exists once the block is complete — content_block_start
-            // carries input:{}. A truncated stream would throw here, and a raw
-            // SyntaxError would make solo() think the REPORT failed to parse and
-            // silently re-bill an entire search. Swallow it.
-            try { query = String((JSON.parse(b.json || "{}") || {}).query || ""); } catch (_) {}
-            say({ phase: "search", n: searches, query });
-          }
-        } else if (ev.type === "message_delta") {
-          stopReason = (ev.delta && ev.delta.stop_reason) || stopReason;
-          // normalizeUsage always emits all four keys, filling absent ones
-          // with 0 (Number(undefined) || 0). A message_delta frame carries
-          // only output_tokens, so a plain spread would zero the input and
-          // cache counts that message_start already established. Overwrite
-          // only the keys this delta actually carried.
-          if (ev.usage) {
-            const d = PROVIDER.normalizeUsage(ev.usage);
-            for (const k of Object.keys(d)) if (d[k]) usage[k] = d[k];
           }
         }
       }
@@ -5530,13 +6678,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
     } finally {
       clearTimeout(timer);
     }
-    text = [...blocks.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([, b]) => b)
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
+    text = reader.text();
   }
 
   // Timing/usage line. Generation time scales with output_tokens, search time
@@ -5547,7 +6689,21 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // 0 write is a silent miss — the usual cause is the prompt slipping under the
   // 1,024-token cacheable minimum, which raises no error.
   console.log(`${PROVIDER.logLabel} call [${lane}]: ${((Date.now() - startedAt) / 1000).toFixed(1)}s · ${searches} search(es) · ${usage.output_tokens || 0} out / ${usage.input_tokens || 0} in tokens · cache ${usage.cache_read_tokens || 0} read / ${usage.cache_write_tokens || 0} write · stop=${stopReason}`);
-  if (stats) { stats.searches = searches; stats.out_tokens = usage.output_tokens || 0; }
+  if (stats) {
+    stats.searches = searches; stats.out_tokens = usage.output_tokens || 0;
+    // The two fields above are ASSIGNED, so on a retry or a two-lane split the
+    // last call wins and the earlier one's spend disappears from the analytics
+    // row. Left alone rather than quietly redefined - that column has years of
+    // history read as "the last call's size". The eval needs the truth about
+    // what a search COST, though, so these accumulate across every billed call
+    // instead: one report can be several of them.
+    stats.billed_calls = (stats.billed_calls || 0) + 1;
+    stats.cost_usd = (stats.cost_usd || 0) + PROVIDER.costOf(usage);
+    stats.usage = stats.usage || {};
+    for (const k of Object.keys(usage)) {
+      stats.usage[k] = (stats.usage[k] || 0) + (Number(usage[k]) || 0);
+    }
+  }
 
   if (!text) throw new Error("The model returned no text content to parse.");
 
@@ -5556,7 +6712,7 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
   // has cleared the unearned ones. Inside that call it would read the model's
   // own claims and conclude the narrative was justified.
   const finishReport = (raw) => {
-    const parsed = normalizeSubjectAssessed(
+    const parsed = normalizeSubjectSize(normalizeSubjectAssessed(
       normalizeSubjectYearBuilt(
         normalizeSubjectAsking(
           normalizeSubjectLastSale(
@@ -5565,8 +6721,8 @@ async function callAnthropicOnce(address, type, note, months, maxComps, txFocus,
                 normalizeCurrency(
                   normalizeSourceTypes(
                     normalizeConditions(
-                      expandCompKeys(parseCompJson(raw, stats), type))))))))),
-      new Date());
+                      expandCompKeys(parseCompJson(raw, stats), type)), type))))))),
+      new Date()));
     return scrubUnearnedVerifiedClaims(
       attachVerifiedAttribution(parsed, verifiedComps));
   };
@@ -5851,6 +7007,815 @@ async function solo(call, onProgress = null, stats = null) {
   }
 }
 
+// The serialization funnel for one report: radius blend, the paywall, the
+// market-page cross-link, then the private comps. Lifted out of /api/comps
+// on 2026-08-21 so bulk valuation runs the SAME one, because a portfolio
+// whose rows were assembled differently from the reports behind them would
+// disagree with every one of them and there would be no way to see it from
+// either screen. It was a closure over the handler; the variables it closed
+// over are now `ctx`, and nothing else about it changed.
+//
+// Every ordering rule in here is load-bearing and is explained where it
+// happens — above all that this runs at SERIALIZATION, downstream of the
+// cache write, harvestComps() and the market snapshot.
+async function finishReportForViewer(rep, ctx) {
+  const {
+    ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+    corpusRadiusRows = [], vaultRows = [], firmCompRows = [], callStats,
+  } = ctx || {};
+  // An internal caller (x-admin-key, i.e. the seed generator and the eval
+  // harness) gets the whole report, ungated. It also gets what the search
+  // actually cost — tokens, the thought/report split, and dollars — which is
+  // the difference between the eval being able to answer "is thinking less
+  // cheaper AND still accurate?" and only being able to answer the second half.
+  //
+  // Three rules. It is attached HERE, at serialization, so the cache,
+  // harvestComps and maybePublishMarketSnapshot (all of which run upstream of
+  // this) never see it — the same rule gateReport and the vault blend follow,
+  // and the reason a cached report can never carry another run's token counts.
+  // It SPREADS rather than mutates, because `rep` may be the memoized cache
+  // object and writing into it would stamp one call's numbers onto every later
+  // reader. And it is omitted entirely on a cache hit, where callStats is empty
+  // (runCompSearch returns the same object either way): a cached search really
+  // did cost nothing, and reporting zeros as if they were measured would
+  // quietly halve the average cost of any run that hit the cache.
+  if (internal) {
+    return callStats && callStats.billed_calls
+      ? { ...rep, _call: {
+          billed_calls: callStats.billed_calls,
+          searches: callStats.searches || 0,
+          cost_usd: callStats.cost_usd || 0,
+          usage: callStats.usage || {},
+          provider: PROVIDER.name,
+          model: MODEL,
+          thinking_level: THINKING_LEVEL,
+        } }
+      : rep;
+  }
+  // Public saved deals first, then the paywall, then the vault.
+  // Radius blend is before gateReport so extras become locked_basis
+  // for a free visitor instead of printing their addresses. Vault
+  // blend stays last: brokers are Pro, and a private row must never
+  // become a public locked_basis row.
+  let merged = rep;
+  if (CORPUS_RADIUS) {
+    const subject = RADIUSBLEND.coordsFromReport(rep)
+      || await geocodeCensus(addressOk);
+    merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
+      subject,
+      months: monthsOk,
+      now: Date.now(),
+      parseDealDate,
+      keyOf: corpusKeyOf,
+      subjectAddress: addressOk,
+      isAggregateAddress,
+      propertyType: typeOk,
+      marketNote: noteOk,
+      subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
+    });
+    if (merged && merged.corpus_count) {
+      const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
+      console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
+    }
+    merged = RADIUSBLEND.attachCompDistances(merged, subject);
+  } else {
+    merged = RADIUSBLEND.attachCompDistances(merged);
+  }
+  const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
+  const gated = GATE.gateReport(merged, ent, {
+    asOfMs: Date.now(),
+    subjectSqft,
+    propertyType: typeOk,
+    radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
+    subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
+  });
+  if (!gated || typeof gated !== "object") return gated;
+  // `ent` was resolved with THIS report's id, so it already knows a single-report
+  // unlock makes its exports unlimited — /api/config cannot, because it
+  // takes no report id and would need a purchase lookup on every page
+  // load. Without this the buyer of a report was shown the free monthly
+  // tally ("4 exports left this month") on a report they own outright.
+  // Spread rather than assign: `rep` may be the CACHED object, and the
+  // cache must never carry one visitor's entitlement to the next.
+  // Per-visitor and per-REPORT, for the same reason exports_remaining is:
+  // `ent` was resolved with this report's id, so it knows a $20
+  // single-report unlock carries branding for this property. The
+  // browser cannot work this out for itself — /api/config's canBrand
+  // takes no report id, and lockedCount() === 0 is also true for a free
+  // visitor whose thin market simply returned fewer comps than the gate.
+  // Serialization-time like everything else here, so the cached object
+  // never carries one visitor's entitlement to the next.
+  const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
+  // Cross-link to the standing /market/<slug> page for this market +
+  // type, when one exists. Serialization-time like everything else in
+  // this closure, so the cached object never carries it and a market
+  // page published later lights up older cached reports too. In-memory
+  // lookup, no I/O. It rides the report payload, so a saved or shared
+  // report keeps its door into the market page.
+  const marketPage = marketPageInfo(marketOf(addressOk), typeOk);
+  if (marketPage) withExports.market_page = marketPage;
+  // LAST, and only here. Every caller of gate() is an exit — the cache
+  // hit, the derived-window hit, the SSE result and the plain JSON
+  // result — so this is the one place a private comp can enter, and it
+  // is downstream of the cache write, harvestComps() and the market
+  // snapshot, all of which keep seeing the public report. Blending any
+  // earlier serves one broker's private book to the next visitor who
+  // searches that address, because the cache is keyed by property and
+  // not by user.
+  // The broker's own comps first, then the firm's — in that order, so
+  // dedupeFirmComps can drop a colleague's copy of a deal the broker
+  // already holds rather than the other way round. Two people at one
+  // firm were routinely on opposite sides of the same transaction, so
+  // without this the deal is counted twice in the valuation with
+  // nothing on screen explaining the shift.
+  const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
+  if (!firmCompRows.length) return withMine;
+  const firmComps = BLEND.dedupeFirmComps(
+    (withMine.comps || []).filter(BLEND.isPrivateComp),
+    firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
+  if (!firmComps.length) return withMine;
+  return {
+    ...withMine,
+    comps: [...(withMine.comps || []), ...firmComps],
+    private_count: (withMine.private_count || 0) + firmComps.length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// One search, whole: cache -> derivable window -> daily cap -> size memo ->
+// corpus retrieval -> the billed call, plus every side effect that must see
+// the UNGATED report (the cache write, harvestComps, the market snapshot).
+//
+// Lifted out of the /api/comps handler on 2026-08-21 when bulk valuation
+// needed the same sequence fifty times over. Duplicating it would have meant
+// two answers to every question this pipeline settles — whether a cache hit
+// counts, whether a corpus-strong market shrinks the budget, whether a
+// harvest happens — and the cheapest of those to get wrong (harvesting)
+// swallows its own errors, so nothing would have reported the drift.
+//
+// It returns the report and says HOW it was obtained; it does not serialize,
+// gate, or write a response. Gating is finishReportForViewer's job and stays
+// downstream of everything here, which is what keeps one cached search
+// serving free and Pro visitors alike.
+//
+// `countsDailyCap` is passed rather than derived: DAILY_SEARCH_CAP is a
+// scraper backstop, and who is exempt from it (a subscriber, an internal
+// caller) is the caller's question, not this function's.
+// ---------------------------------------------------------------------------
+async function runCompSearch({
+  address: addressOk, type: typeOk, note: noteOk = "", months: monthsOk,
+  maxComps: maxCompsOk, txFocus: txFocusOk = "both", subjectSizeSqft: sizeOk = null,
+  subjectDetails: detailsOk = {}, skipCache = false, plan = null,
+  countsDailyCap = true, onBilledStart = null, onProgress = null,
+  // The caller's OWN vault comps for this market + type — the same user-scoped
+  // rows finishReportForViewer will blend at serialization, passed in rather
+  // than re-read (both callers already hold them). They move the SEARCH BUDGET
+  // and nothing else: never the prompt, never the report this function returns.
+  // [] for everyone who is not a broker with rows here, which restores today's
+  // behaviour byte for byte.
+  vaultRows = [],
+}) {
+  // Verified comps are fetched once, both for the model and as part of the
+  // cache key — approving a new broker comp naturally invalidates any cached
+  // report for that property type.
+  // Declared up here, and RETURNED on every exit, because the serialization
+  // funnel is what hands an internal caller the call's real spend and it runs
+  // after this function is done. Empty on both cache paths, which is what makes
+  // "a cached search cost nothing" true rather than reported as zeros.
+  const callStats = {};
+
+  const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
+  const cacheKey = cacheKeyFor({
+    address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
+    subjectDetails: detailsOk,
+  });
+
+  const cached = skipCache ? null : await getCachedSearch(cacheKey);
+  if (cached) {
+    // Legacy cache entries predate $/SF reconciliation — correct them at
+    // read time (idempotent, so re-hitting the in-memory object is fine).
+    reconcilePricePerSqft(cached);
+    console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, cached);
+    harvestComps(typeOk, addressOk, cached);
+    return { report: cached, kind: "cache", callStats };
+  }
+
+  // Exact key missed — but a shorter lookback is a subset of a longer
+  // one, so a cached longer-window report for the same request can be
+  // filtered down to this window instead of paying for a fresh search
+  // (see findDerivableReport for the quality floors).
+  const dw = skipCache ? null : await findDerivableReport({
+    address: addressOk, type: typeOk, note: noteOk,
+    maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+    verifiedComps, subjectDetails: detailsOk,
+  }, monthsOk, txFocusOk, maxCompsOk);
+  if (dw) {
+    console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
+    // Side effects mirror a direct cache hit, fed the PARENT payload —
+    // the harvester dedupes, and the fuller comp list is the better feed.
+    logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan });
+    maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
+    harvestComps(typeOk, addressOk, dw.parent);
+    return { report: dw.derived, kind: "derived", callStats };
+  }
+
+  // Thrown rather than returned so no caller can mistake a refusal for a
+  // report. Who is exempt is the caller's call (see countsDailyCap);
+  // /api/comps turns this back into the 429 it always sent.
+  if (countsDailyCap && !tryConsumeDailySearch()) {
+    const capped = new Error("This site has reached its daily search limit. Please try again after midnight UTC.");
+    capped.code = "daily_cap";
+    throw capped;
+  }
+
+  // A blank SF field costs two extra searches for the size lookup — but
+  // if any previous search already looked this building up, reuse the
+  // answer and shrink the budget (see the subject-size memo). The
+  // visitor's own entry (sizeOk) always wins over the memo.
+  const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
+  if (knownSize) {
+    console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
+  }
+  const searchSize = sizeOk || (knownSize ? knownSize.size : null);
+
+  // Cache missed — see what we already hold for this market before paying
+  // for a fresh web search. Corpus-strong markets reuse known comps and
+  // run a much smaller search budget (see searchBudgetFor).
+  const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
+  // Archive first, corpus second, web last. The broker's own book being strong
+  // cuts the web budget exactly as a strong corpus does (searchBudgetFor reads
+  // the flag off this object). Their rows join the report at SERIALIZATION,
+  // same as ever — nothing here hands them to the model, because the model's
+  // output is cached and harvested, and a prompt that had seen a private row
+  // would leak it through both.
+  //
+  // Gated on the PROVIDER honoring a search budget, and that gate is
+  // load-bearing rather than tidy. Gemini's google_search takes no max_uses
+  // (capabilities.searchBudget === false), so on the default provider the
+  // floored budget is silently ignored and the billed call is byte-identical
+  // to a full-budget one. Setting the flag anyway would buy nothing and still
+  // skip the cache write below — strictly worse than not having the feature,
+  // and invisible, because the report itself looks perfectly normal. Read the
+  // capability, never the provider name (the standing rule).
+  const archiveStrong = ARCHIVE_FIRST
+    && PROVIDER.capabilities.searchBudget
+    && BLEND.archiveIsStrong(BLEND.archiveCoverage(vaultRows));
+  if (archiveStrong) {
+    corpus.archiveStrong = true;
+    console.log(`Archive-assisted search: ${BLEND.archiveCoverage(vaultRows)} usable vault comp(s) for ${marketOf(addressOk)} — ${typeOk} (web budget floored)`);
+  }
+  if (corpusIsStrong(corpus)) {
+    console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
+  }
+  if (corpus.nearbyCount) {
+    // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
+    // total, so report both rather than let the count overstate what
+    // the model was actually offered.
+    console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
+  }
+  if (corpus.listedCount) {
+    console.log(`Corpus listed: offering ${corpus.listed.length} of ${corpus.listedCount} on-market listing(s) for ${marketOf(addressOk)} (candidates only, budget unchanged)`);
+  }
+
+  // The last moment before anything is billed. /api/comps opens its SSE
+  // stream here (everything above answers in plain JSON with a real status
+  // code — the password gate, the rate limiters, validation and a 43ms
+  // cache hit); the bulk worker uses it to mark the row running.
+  if (typeof onBilledStart === "function") {
+    onBilledStart({ corpus, market: marketOf(addressOk) });
+  }
+
+  // Speed observability: time the whole billed leg (what the visitor
+  // actually waits for server-side). callStats (declared at the top) collects
+  // the call's search count, output size, rescue history and spend.
+  const billedT0 = Date.now();
+  const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
+    typeof onProgress === "function" ? onProgress : null, callStats);
+  // With the size supplied (memo hit), the prompt skips the lookup and
+  // the payload has no subject_size_sqft — carry the remembered size
+  // into the report so the client's hero math and size autofill still
+  // work for a visitor who typed nothing. Source is kept verbatim so
+  // the hero's provenance phrasing stays accurate.
+  if (knownSize && !result.subject_size_sqft) {
+    result.subject_size_sqft = String(knownSize.size);
+    if (knownSize.source) result.subject_size_source = knownSize.source;
+  }
+  // A fresh lookup (no memo, no typed size) is worth remembering for
+  // every future search of this address. Fire-and-forget.
+  if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
+  // meta feeds the instant-badge address index; the Explorer's
+  // market-level store below deliberately passes none.
+  //
+  // NOT cached when the budget was cut on the strength of the searcher's own
+  // vault and the public corpus alone would not have cut it. The cache is
+  // keyed by property, not by user, so a shared entry searched on a
+  // vault-subsidized floor would serve every LATER visitor a thinner report
+  // with none of the private rows that justified the thinness — the
+  // corpus-strong case has no such gap, because the comps that shrank ITS
+  // budget were handed to the model and are in the cached body. The cost
+  // lands where it belongs: the broker's own repeat search re-runs at the
+  // floored budget instead of hitting a cache entry, and the public cache
+  // simply gains nothing rather than gaining something worse.
+  if (!corpus.archiveStrong || corpusIsStrong(corpus)) {
+    await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
+  } else {
+    console.log(`Archive-assisted report not cached (vault-subsidized budget): ${addressOk} — ${typeOk}`);
+  }
+  logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false,
+    source: corpusIsStrong(corpus) ? "corpus" : corpus.archiveStrong ? "archive" : undefined, plan,
+    duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
+  maybePublishMarketSnapshot(typeOk, addressOk, result);
+  harvestComps(typeOk, addressOk, result);
+  return { report: result, kind: "fresh", callStats };
+}
+
+// ---------------------------------------------------------------------------
+// Bulk valuation — the job store and the worker (migration 036)
+//
+// A Pro member pastes or uploads a list of addresses and gets a value on each,
+// as one portfolio. Rules live in the pure bulk.js; the SEARCH is runCompSearch
+// and the SERIALIZATION is finishReportForViewer, both shared with /api/comps,
+// so a bulk row and the single-property report behind it can never disagree.
+//
+// Four things shape everything below.
+//
+// A JOB IS AN INVOICE. Every address that misses the cache is its own billed
+// search — ~$0.36 and 40-70 seconds, measured. Fifty of them is real money and
+// half an hour. So: one running job per member, a hard cap on addresses, and
+// the count and the cost shown before the button is pressed rather than after.
+//
+// IT OUTLIVES THE REQUEST. The POST that starts a job answers in milliseconds
+// and the worker runs for half an hour afterwards, so nothing in here may hold
+// `req` or `res`. That is why vaultCompsForReport now takes a user.
+//
+// THE PROCESS CAN DIE UNDER IT. A deploy restarts Render mid-job. There is no
+// queue to recover from and deliberately no timer or boot sweep (migration
+// 025's argument), so a job records a heartbeat and a READ decides it stalled.
+// Nothing is lost when that happens: every finished row was already written,
+// and re-running the same list serves the finished addresses from cache for
+// free.
+//
+// EVERY READ IS SCOPED BY user_id, including the deletes — the vault's rule
+// (013), which is why bulk_job_items carries a denormalized user_id rather
+// than joining to find out whose row it is.
+// ---------------------------------------------------------------------------
+
+// How many addresses are searched at once inside one job. Three, not one,
+// because the wait is upstream I/O rather than our CPU and a fifty-address
+// job at one-at-a-time is 50 minutes; and not ten, because Render's Starter
+// instance is half a core and the person running a bulk job is not the only
+// person on the site. Cache hits cost nothing and fly through regardless.
+const BULK_CONCURRENCY = 3;
+// Jobs listed on the page. A member's whole history, not a window: these are
+// receipts.
+const BULK_JOB_LIST_LIMIT = 25;
+
+// Jobs this process is working, so a second POST cannot start the same job
+// twice and a cancel can stop one between rows. Deliberately in memory: it
+// answers "is THIS process working on it", which is the only thing an
+// in-process worker can honestly know. Whether a job is running at all is
+// answered by the database's status plus the heartbeat.
+const bulkRunning = new Map(); // job id -> { cancelled: boolean }
+
+function bulkJobRow(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    property_type: job.property_type,
+    months: job.months,
+    note: job.note || "",
+    label: job.label || null,
+    total: Number(job.total) || 0,
+    done_count: Number(job.done_count) || 0,
+    created_at: job.created_at,
+    finished_at: job.finished_at || null,
+    heartbeat_at: job.heartbeat_at || null,
+  };
+}
+
+// The row shape the browser sees, as an ALLOWLIST rather than the table row —
+// vault-api.js's rule, for its reason: a column added to storage later must
+// not reach the page by default, and one dropped must fail loudly here rather
+// than render as blank. `job_id` and `user_id` are plumbing and stay behind.
+function bulkItemRow(it) {
+  if (!it) return null;
+  // Number(null) is 0 and Number("") is 0, so a nullable column read back
+  // through a bare Number() becomes a ZERO — and a zero here is a claim. An
+  // unvalued row would export as $0 rather than blank, which is precisely the
+  // "a failure is not $0" rule this feature states and summarize() enforces,
+  // broken one layer below it. The page happened to survive it (every display
+  // path tests > 0); the CSV did not.
+  const n = (v) => {
+    if (v === null || v === undefined || v === "") return null;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : null;
+  };
+  return {
+    id: it.id,
+    position: Number(it.position) || 0,
+    address: it.address,
+    label: it.label || null,
+    status: it.status,
+    error: it.error || null,
+    value_low: n(it.value_low), value_likely: n(it.value_likely), value_high: n(it.value_high),
+    psf_low: n(it.psf_low), psf_mid: n(it.psf_mid), psf_high: n(it.psf_high),
+    size_sqft: n(it.subject_size_sqft), size_source: it.size_source || null,
+    sale_comps: n(it.sale_comps), comp_count: n(it.comp_count),
+    market: it.market || null,
+    trimmed: it.trimmed === true,
+    cached: it.cached === true,
+    portfolio_item_id: it.portfolio_item_id || null,
+    finished_at: it.finished_at || null,
+  };
+}
+
+async function listBulkJobs(userId) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}` +
+    `&order=created_at.desc&limit=${BULK_JOB_LIST_LIMIT}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function getBulkJob(userId, id) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}&limit=1`);
+  return rows && rows[0] ? rows[0] : null;
+}
+
+async function listBulkItems(userId, jobId) {
+  const rows = await sbRequest("GET",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
+    `&job_id=eq.${encodeURIComponent(jobId)}&order=position.asc&limit=${BULK.MAX_ADDRESSES}`);
+  return Array.isArray(rows) ? rows : [];
+}
+
+async function patchBulkJob(userId, id, patch) {
+  await sbRequest("PATCH",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+}
+
+async function patchBulkItem(userId, id, patch) {
+  await sbRequest("PATCH",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`, patch);
+}
+
+// How many addresses this member has actually put through a search today.
+//
+// Counts rows that were ATTEMPTED (anything past `queued`), not rows that were
+// created, so cancelling a fifty-address run after two rows costs two and not
+// fifty — otherwise the honest act of stopping a run would be punished harder
+// than letting it finish.
+//
+// Windowed on `created_at` rather than `finished_at`: a job that straddles UTC
+// midnight therefore counts wholly against the day it started, which is the
+// approximation this is happy to make. It is a spend backstop, not accounting
+// — the same stance DAILY_SEARCH_CAP takes about being in-memory.
+//
+// Capped at cap+1 rows so the query cost cannot grow with a heavy user: the
+// only question is whether the number is at or over the ceiling.
+async function bulkAddressesUsedToday(userId, cap) {
+  const since = todayUTC() + "T00:00:00Z";
+  const rows = await sbRequest("GET",
+    `bulk_job_items?user_id=eq.${encodeURIComponent(userId)}` +
+    `&created_at=gte.${encodeURIComponent(since)}` +
+    `&status=neq.queued&select=id&limit=${Math.max(1, cap) + 1}`);
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+// What the workspace needs before it can draw a form: the member's runs, the
+// two caps, and the property types. ONE builder, used by both the /bulk page's
+// boot payload and the GET route the page polls — they were two copies for
+// about an hour and the page shipped without the daily allowance, which is a
+// number the form is supposed to show BEFORE somebody pastes fifty addresses.
+async function bulkListPayload(user, ent) {
+  const jobs = [];
+  for (const j of await listBulkJobs(user.id)) {
+    jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
+  }
+  // Best-effort: a failed count reports the full ceiling, matching the route's
+  // own fail-open, so the page can never be more pessimistic than the gate.
+  let leftToday = BULK_DAILY_ADDRESSES;
+  try {
+    leftToday = Math.max(0, BULK_DAILY_ADDRESSES -
+      await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES));
+  } catch (err) {
+    console.error("bulk daily count failed (reporting the full ceiling):", err.message);
+  }
+  return {
+    jobs,
+    maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
+    leftToday,
+    dailyLimit: BULK_DAILY_ADDRESSES,
+    types: VAULT.PROPERTY_TYPES,
+  };
+}
+
+// One live job per member. Read from the DATABASE rather than from
+// bulkRunning, so a job orphaned by a restart still blocks a new one until a
+// read has marked it interrupted — otherwise a deploy during a fifty-address
+// run would silently let somebody start the same list again and pay twice.
+async function activeBulkJob(userId) {
+  const rows = await sbRequest("GET",
+    `bulk_jobs?user_id=eq.${encodeURIComponent(userId)}&status=eq.running` +
+    `&order=created_at.desc&limit=1`);
+  return rows && rows[0] ? rows[0] : null;
+}
+
+// A running job whose worker is gone. Decided at READ time and written once,
+// so the page can say "this run was interrupted" instead of showing a
+// progress bar that will never move again. Idempotent: a second read finds
+// the status already changed and does nothing.
+async function reapStalledBulkJob(userId, job) {
+  if (!job || job.status !== "running") return job;
+  if (bulkRunning.has(String(job.id))) return job;   // this process is on it
+  const beat = Date.parse(job.heartbeat_at || job.created_at || "");
+  if (Number.isFinite(beat) && Date.now() - beat < BULK.STALL_MS) return job;
+  const patch = { status: "interrupted", finished_at: new Date().toISOString() };
+  try { await patchBulkJob(userId, job.id, patch); } catch (err) {
+    console.error("bulk reap failed:", err.message);
+    return job;
+  }
+  return { ...job, ...patch };
+}
+
+// ---------------------------------------------------------------------------
+// The worker
+// ---------------------------------------------------------------------------
+
+// One address: search it, value it, write the row, and put the valuation on
+// the member's desk. Returns nothing — every outcome is a row update, because
+// a bulk job's whole contract is that you can close the tab.
+async function runBulkItem(item, ctx) {
+  // `ent` was resolved when the job was STARTED and is reused for every row.
+  // A subscription that lapses mid-run therefore finishes the run it paid to
+  // start, which is the honest reading of a job somebody committed to twenty
+  // minutes ago — and the alternative, re-resolving per row, would leave a
+  // portfolio half-valued with nothing on screen explaining why.
+  const { user, ent, job, shared, priv } = ctx;
+  const address = String(item.address || "");
+  const market = marketOf(address);
+  const started = Date.now();
+
+  try {
+    await patchBulkItem(user.id, item.id, { status: "running" });
+
+    const size = Number(item.size_sqft) > 0 ? Math.round(Number(item.size_sqft)) : null;
+    const searched = await runCompSearch({
+      address, type: job.property_type, note: job.note || "",
+      months: job.months,
+      // The same 12 the single-property form asks for. A smaller ask would
+      // make a bulk row's range thinner than the report it links to — the one
+      // difference between the two screens nobody could explain.
+      maxComps: 12,
+      txFocus: "both", subjectSizeSqft: size, subjectDetails: {},
+      // The per-market vault read the worker already holds (compsForMarket):
+      // a bulk row is archive-assisted on exactly the evidence its own report
+      // will blend. Firm-shared comps deliberately do NOT count — an admin
+      // toggling share_default must not silently change what colleagues'
+      // searches cost or find.
+      vaultRows: priv.vault,
+      plan: ent.plan,
+      // Pro, so the daily cap does not apply — it is a scraper backstop, and
+      // /api/bulk has its own, tighter ceilings (one job at a time, capped
+      // addresses) which is what actually bounds the spend here.
+      countsDailyCap: false,
+    });
+
+    // The same serialization funnel /api/comps uses, fed the same private
+    // comps: a broker's own vault deals count toward their own portfolio
+    // exactly as they count toward their own report.
+    const report = await finishReportForViewer(searched.report, {
+      ent, internal: false,
+      addressOk: address, typeOk: job.property_type, noteOk: job.note || "",
+      monthsOk: job.months, sizeOk: size,
+      corpusRadiusRows: shared.corpusRadiusRows,
+      vaultRows: (priv && priv.vault) || [],
+      firmCompRows: (priv && priv.firm) || [],
+    });
+
+    const valued = BULK.valueFromReport(report, {
+      subjectSizeSqft: size,
+      asOf: Date.now(),
+      note: job.note || "",
+      propertyType: job.property_type,
+    });
+
+    if (!valued) {
+      await patchBulkItem(user.id, item.id, {
+        status: "done", finished_at: new Date().toISOString(),
+        cached: searched.kind !== "fresh", market,
+        comp_count: Array.isArray(report.comps) ? report.comps.length : 0,
+        sale_comps: 0,
+        // Customer copy, not a developer message: it is printed in the row
+        // and again in the CSV that outlives the screen.
+        error: "No priced sale comps in this window — try a longer lookback.",
+      });
+      return;
+    }
+
+    // The valuation goes on the desk too, as if the address had been searched
+    // by hand — same table, same shape, same `meta`, so the row re-renders
+    // into a whole report and every desk feature (movement, sharing, the
+    // market-page link) works on it with no bulk-specific branch anywhere.
+    let portfolioItemId = null;
+    try {
+      portfolioItemId = await saveBulkValuationToDesk(user, ent, job, item, report, valued);
+    } catch (err) {
+      // A desk write must never lose a valuation that has already been paid
+      // for. The row keeps its numbers and simply has no link.
+      console.error("bulk desk save failed:", err.message);
+    }
+
+    await patchBulkItem(user.id, item.id, {
+      status: "done",
+      finished_at: new Date().toISOString(),
+      cached: searched.kind !== "fresh",
+      market,
+      value_low: valued.value_low, value_likely: valued.value_likely, value_high: valued.value_high,
+      psf_low: round2(valued.psf_low), psf_mid: round2(valued.psf_mid), psf_high: round2(valued.psf_high),
+      subject_size_sqft: valued.size_sqft, size_source: valued.size_source,
+      sale_comps: valued.sale_comps, comp_count: valued.comp_count,
+      trimmed: valued.trimmed,
+      error: valued.sized ? null : "No building size found — showing the $/SF range only.",
+      portfolio_item_id: portfolioItemId,
+    });
+    console.log(`Bulk ${job.id}: ${address} — ${searched.kind} in ${Math.round((Date.now() - started) / 1000)}s`);
+  } catch (err) {
+    console.error(`bulk item failed (${address}):`, err.message);
+    await patchBulkItem(user.id, item.id, {
+      status: "failed", finished_at: new Date().toISOString(), market,
+      // clientErrorMessage is the one thing that decides what a customer
+      // reads about an upstream failure — the same guard /api/comps uses, so
+      // an Anthropic billing message can never surface here either.
+      error: String(clientErrorMessage(err) || "That search did not complete.").slice(0, 300),
+    }).catch(() => {});
+  }
+}
+
+function round2(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+// Write one finished bulk valuation onto My Desk. Upserts on address + type,
+// exactly as a signed-in search does, so re-running a list updates the
+// properties already there rather than duplicating them.
+async function saveBulkValuationToDesk(user, ent, job, item, report, valued) {
+  const payload = {
+    // The shape index.html saves, field for field. A desk row written here
+    // has to be indistinguishable from one written by a search, or the
+    // report it reopens will render differently from every other one.
+    meta: {
+      address: item.address,
+      type: job.property_type,
+      note: job.note || "",
+      months: job.months,
+      txFocus: "both",
+      subject: {
+        sizeMin: valued.size_sqft || null,
+        sizeMax: valued.size_sqft || null,
+        priceMin: null, priceMax: null, noi: null, capRate: null, details: {},
+      },
+      assumptions: null,
+      curation: null,
+    },
+    data: report,
+  };
+  const snapshot = {
+    low: valued.value_low, likely: valued.value_likely, high: valued.value_high,
+    median_psf: valued.psf_mid,
+  };
+  // portfolio-match.js owns "is this the same property", and the bulk worker
+  // has to route through it for the reason it exists: one building typed three
+  // ways was three desk rows with three value histories. `findPortfolioMatch`
+  // was this line until 2026-08-21 and is gone.
+  //
+  // No verified key, deliberately: that key comes from the BROWSER's geocoder
+  // confirmation, and a bulk row is never confirmed by anybody — fifty confirm
+  // dialogs is not a workflow. Passing "" falls through to the typed-address
+  // rule, which is exactly what this did before the column existed, and a later
+  // hand-run of the same address adopts the key and absorbs this row rather
+  // than duplicating it.
+  const items = await listPortfolio(user.id);
+  const existing = PFMATCH.findMatch(items, {
+    address: item.address, propertyType: job.property_type, verifiedKey: "",
+  });
+  if (existing) {
+    const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: cleanSnapshot(snapshot) });
+    logEvent("portfolio_refresh", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+    return updated ? updated.id : existing.id;
+  }
+  // The cap is the member's, read from the entitlement like every other
+  // portfolio write. A full desk stops the row landing there and nothing
+  // else: the valuation is still in the job, still exportable, and saying so
+  // is better than silently dropping the fifty-first property.
+  const cap = Number(ent.portfolioMaxItems) || ENT.FREE_PORTFOLIO_MAX_ITEMS;
+  if (items.length >= cap) return null;
+  const saved = await insertPortfolioItem(user.id, {
+    address: item.address, property_type: job.property_type,
+    payload, snapshot: cleanSnapshot(snapshot),
+  });
+  logEvent("portfolio_add", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+  return saved ? saved.id : null;
+}
+
+/**
+ * Work a whole job. Fire-and-forget from the route: it is awaited by nobody
+ * and must therefore never reject.
+ */
+async function runBulkJob(job, items, user, ent) {
+  const control = { cancelled: false };
+  bulkRunning.set(String(job.id), control);
+  const t0 = Date.now();
+
+  // Read once per JOB, not once per address. The radius-blend corpus rows are
+  // a whole-type read (2000 rows) and the vault/firm comps are per market, so
+  // fifty addresses in one metro would otherwise repeat the same three
+  // queries fifty times for identical answers.
+  //
+  // The map holds a PROMISE, not the rows. Caching the rows and filling them
+  // in later means the second and third concurrent rows in a market find the
+  // key present, read the placeholder, and value themselves with an empty
+  // vault — a broker's own comps silently missing from two rows in three,
+  // which is invisible on screen because an empty vault is a normal state.
+  const marketReads = new Map();   // market -> Promise<{ vault, firm }>
+  const compsForMarket = (market) => {
+    if (!marketReads.has(market)) {
+      marketReads.set(market, Promise.all([
+        vaultCompsForReport(user, ent, { market, type: job.property_type, months: job.months }),
+        orgCompsForReport(ent, user, { market, type: job.property_type, months: job.months }),
+      ]).then(([vault, firm]) => ({ vault, firm }))
+        // Both readers already swallow their own errors and return []; this is
+        // the belt for a rejection neither anticipated. A missing private comp
+        // must never fail a row that would otherwise value fine.
+        .catch(() => ({ vault: [], firm: [] })));
+    }
+    return marketReads.get(market);
+  };
+  const shared = { corpusRadiusRows: [] };
+
+  try {
+    if (CORPUS_RADIUS) {
+      shared.corpusRadiusRows = await corpusRowsForType(job.property_type, 2000);
+    }
+  } catch (err) {
+    console.error("bulk radius corpus read failed:", err.message);
+  }
+
+  let done = 0;
+  const queue = items.slice();
+  const worker = async () => {
+    for (;;) {
+      if (control.cancelled) return;
+      const item = queue.shift();
+      if (!item) return;
+      try {
+        const priv = await compsForMarket(marketOf(String(item.address || "")));
+        await runBulkItem(item, { user, ent, job, shared, priv });
+      } catch (err) {
+        // runBulkItem writes its own failures; this catches a failure to
+        // WRITE one. One bad row never stops the rest of the list — the same
+        // rule the watchlist digest run follows, for the same reason: the
+        // other forty-nine are still owed their answer.
+        console.error("bulk worker row error:", err.message);
+      }
+      done++;
+      try {
+        await patchBulkJob(user.id, job.id, {
+          done_count: done, heartbeat_at: new Date().toISOString(),
+        });
+      } catch (err) { console.error("bulk heartbeat failed:", err.message); }
+    }
+  };
+
+  try {
+    await Promise.all(Array.from({ length: Math.min(BULK_CONCURRENCY, queue.length || 1) }, worker));
+    const finalStatus = control.cancelled ? "cancelled" : "done";
+    await patchBulkJob(user.id, job.id, {
+      status: finalStatus, done_count: done, finished_at: new Date().toISOString(),
+      heartbeat_at: new Date().toISOString(),
+    });
+    logEvent("bulk_finish", {
+      prop_type: job.property_type, source: finalStatus,
+      duration_ms: Date.now() - t0,
+    });
+    console.log(`Bulk ${job.id}: ${finalStatus} — ${done}/${items.length} in ${Math.round((Date.now() - t0) / 1000)}s`);
+  } catch (err) {
+    console.error("bulk job failed:", err.message);
+    try {
+      await patchBulkJob(user.id, job.id, {
+        status: "failed", done_count: done, finished_at: new Date().toISOString(),
+      });
+    } catch (_) { /* the stall reaper is the backstop */ }
+  } finally {
+    bulkRunning.delete(String(job.id));
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
@@ -6049,10 +8014,14 @@ const THEME_CSS = THEME.rootCss();
 // Wrapped in try/catch because localStorage throws outright in a Safari
 // private window, and a theme preference must never be able to blank a page.
 //
-// It reads PRESENCE of an explicit choice, falling back to the OS. This is
-// also the feature's rollback lever: nothing else in the codebase ever sets
-// data-theme, so short-circuiting this one string disables dark mode on
-// every surface at once.
+// It reads only an EXPLICIT stored choice. Light is the default for every
+// first-time visitor (owner's call, 2026-08-23) — the boot script used to
+// fall back to the OS's prefers-color-scheme, so a dark-OS machine opened
+// dark; now dark happens only when somebody picks it in the settings panel,
+// and a choice already stored keeps working. This is also the feature's
+// rollback lever: nothing else in the codebase ever sets data-theme, so
+// short-circuiting this one string disables dark mode on every surface at
+// once.
 //
 // ⚠ index.html hand-copies this script into its own <head> (it is a static
 // file server.js never templates, so it cannot interpolate THEME_BOOT).
@@ -6062,9 +8031,141 @@ const THEME_CSS = THEME.rootCss();
 // move between the app and a market page.
 const THEME_BOOT =
   `<script>(function(){try{var t=localStorage.getItem("theme");` +
-  `if(!t)t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";` +
   `if(t==="dark")document.documentElement.setAttribute("data-theme","dark");` +
   `}catch(e){}})();</script>\n`;
+
+// --- "You are already in the app" (2026-08-20) -------------------------------
+// A door the visitor has already walked through is worse than no door: inside
+// the desktop app, "Download the app" offers to install what they are using.
+// Nothing here detects an app INSTALLED on the machine — browsers deliberately
+// refuse to answer that (it is a fingerprinting vector), and any attempt would
+// be a guess. What is knowable, exactly, is whether THIS page is being viewed
+// from inside the app, which is the case that matters.
+//
+// Two signals, because measurement (2026-08-20, Electron 43 via CDP) showed
+// one is not enough: an installed PWA matches `display-mode: standalone`, but
+// the Electron shell reports `display-mode: browser` and is identifiable only
+// by its user-agent token. Hence INAPP_UA_TOKEN, which desktop-app/main.js
+// appends to the UA — test/inapp-nav.test.js pins the two spellings together,
+// because a token renamed on one side alone fails silently and invisibly.
+//
+// Injected as ONE constant into every surface (marketShell, the landing
+// render, and index.html via a marker) so no page hand-copies it, and it
+// carries its own CSS rather than leaving a rule to be restated per
+// stylesheet. `!important` is load-bearing for the same reason the
+// `.hdr nav [hidden]` line above needs it: `.hdr nav .dd a` sets
+// display:block at higher specificity, and in the app menu a Tailwind
+// `block` utility does the same.
+//
+// It runs inline in <head>, before first paint, so the link is never drawn
+// and then snatched away. It is presentation only: the /download page itself
+// stays reachable and unchanged for anyone who types the URL.
+const INAPP_UA_TOKEN = "CompNinjaDesktop/";
+// The SECOND attribute below is deliberately NOT the same signal.
+// "Continue with Google" cannot work inside the Electron shell: Google
+// refuses OAuth in an embedded user agent — an anti-phishing control of
+// theirs, not a bug of ours — so in the app that button is a dead end that
+// finishes on Google's own 500 page. Hiding it leaves the password form,
+// which works there.
+//
+// It keys on the UA token ALONE, where data-inapp keys on that OR
+// display-mode. An installed PWA is ordinary Chrome and Google sign-in works
+// in it perfectly, so hiding on display-mode would take the button away from
+// people who can use it. That asymmetry is the entire reason this is its own
+// attribute rather than one more rule hung off data-inapp.
+//
+// Presentation only, like the rule above it: /auth/google stays reachable and
+// unchanged, and a browser lying about its UA buys nothing but the sight of
+// one fewer button. The real fix is a system-browser flow handing the session
+// back through a compninja:// deep link — that needs a new desktop release
+// before it helps anybody and this needs none, which is why this ships first.
+// Delete this rule when that lands.
+const INAPP_BOOT =
+  `<style>[data-inapp="1"] .nav-dl{display:none!important}` +
+  `[data-inapp-shell="1"] #acctGoogleRow{display:none!important}</style>\n` +
+  `<script>(function(){try{` +
+  `var m=function(q){return matchMedia(q).matches};` +
+  `var shell=(navigator.userAgent||"").indexOf(${JSON.stringify(INAPP_UA_TOKEN)})>-1;` +
+  `if(m("(display-mode: standalone)")||m("(display-mode: window-controls-overlay)")||` +
+  `navigator.standalone===true||shell)` +
+  `document.documentElement.setAttribute("data-inapp","1");` +
+  `if(shell)document.documentElement.setAttribute("data-inapp-shell","1");` +
+  `}catch(e){}})();</script>\n`;
+const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
+
+// Bulk valuation's run view, injected into index.html so a list pasted into
+// the main search renders its run inline. Same one-source rule as the two
+// markers above and for a sharper reason: /bulk draws the same table from the
+// same bytes, and two copies would let one page quote a portfolio value the
+// other does not. Unconditional, like NAV_LINKS — the block ships hidden and
+// /api/bulk enforces the entitlement, so what lands here is presentation only.
+const BULK_RUN_MARKER = "<!--BULK_RUN-->";
+
+// --- "We already know who this is" (2026-08-23) ------------------------------
+// index.html ships one set of bytes and then corrects them from two fetches
+// (/api/config and /api/account/me), so until those land a signed-in member is
+// looking at a signed-OUT app. Measured on a scratch server with the account
+// read delayed: at 78ms the header reads "Sign in", and at 1170ms — after
+// /api/config lands but before /api/account/me does — the search form is
+// REPLACED by the "Create a free account to run a report" card. Then it all
+// snaps back. That middle frame is the bug as reported ("for a second it has
+// the sign in thing"), and it is a race, so it is worst exactly when the
+// database is slow.
+//
+// The fix is not a faster fetch: it is that this handler ALREADY KNOWS both
+// answers and was throwing them away. `/` is templated at serve time anyway
+// (NAV_LINKS, INAPP_BOOT), so the two facts ride along as one more marker.
+//
+// Both are free — no database read on a route that runs on every page view:
+//   - the wall is a server constant;
+//   - signed-in is cookie PRESENCE, the exact rule the wall itself decides on
+//     twenty lines below. A stale or forged cookie buys the sight of an
+//     account menu and nothing behind it: every limit is still enforced
+//     server-side, which is the same presentation-here/enforcement-there split
+//     the wall already runs on.
+//
+// This is safe to key on a cookie ONLY because index.html is served no-store.
+// /how-it-works does the same swap and has to carry `vary: cookie` and drop
+// its cache to do it (see renderHowItWorksHTML); there is no cached copy of
+// this file to serve to the wrong visitor.
+//
+// It is a STAND-IN, not an answer, and index.html retires it the moment the
+// real one lands: refreshAccountUI() — which runs only after /api/account/me
+// resolves, on every path including the failure one — drops both classes and
+// writes the truth itself. That is what makes `!important` safe here; without
+// the retirement, an expired session would leave the "Sign in" button hidden
+// by CSS the JS could not reach. `test/auth-boot.test.js` pins both halves.
+const AUTH_BOOT_CSS =
+  // The header. Signed OUT is what the markup already ships, so only the
+  // signed-in correction needs stating.
+  `html.cn-in #signInLink{display:none!important}` +
+  `html.cn-in #acctMenuWrap{display:block!important}` +
+  // The search form vs the wall's signup card. Reachable anonymously only on
+  // a shared report or the ?auth= door — /desk redirects and `/` renders the
+  // landing page — so this never fights applySearchLock's own /desk branch.
+  `html.cn-locked #searchSection{display:none!important}` +
+  `html.cn-locked #searchLock{display:block!important}`;
+const AUTH_BOOT_MARKER = "<!--AUTH_BOOT-->";
+// Inline in <head>, before first paint, so nothing is drawn and then taken
+// away. The <script> hands the same two facts to the page as data as well:
+// applySearchLock() has to agree with the CSS above during the window, or the
+// card it owns would flip once on its own first call.
+function authBoot(signedIn) {
+  const locked = ACCOUNT_WALL && !signedIn;
+  // The rail, on the app's own front door. Same rule as every server-rendered
+  // page: signed-in only, and it rides a class rather than a markup branch.
+  // This is the right vehicle because it already runs inline in <head> before
+  // first paint, so the sidebar is never drawn and then taken away — and
+  // unlike cn-in / cn-locked it is NOT retired by refreshAccountUI(), because
+  // it is a layout choice about the shell rather than a stand-in for an answer
+  // the page is still waiting on.
+  const cls = (signedIn ? " cn-in" : "") + (locked ? " cn-locked" : "") +
+    (signedIn && NAV_SHELL_CLASS ? ` ${NAV_SHELL_CLASS}` : "");
+  return `<style>${AUTH_BOOT_CSS}</style>\n` +
+    `<script>window.CN_AUTH_BOOT=${JSON.stringify({ signedIn, wall: ACCOUNT_WALL })};` +
+    (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
+    `</script>\n`;
+}
 
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =
@@ -6124,25 +8225,49 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
     `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
     (desk
-    ? `<a id="navDesk" href="/desk" hidden>My Desk</a>` +
+    ? `<a id="navDesk" href="/desk" hidden>Workspace</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
     `<details id="navAcct" class="acct" hidden>` +
     `<summary aria-label="Account menu"><span class="ini" id="navAcctInitial"></span></summary>` +
     `<div class="dd">` +
     `<div class="em" id="navAcctEmail"></div>` +
-    `<a id="navVault" class="vault" href="/vault" hidden>Your vault</a>` +
+    // No #navVault here any more (2026-08-28). It moved up into marketBar's
+    // nav, beside the new Bulk link, so both Pro tools are destinations rather
+    // than items buried one click inside an account menu — which is what the
+    // rail draws as rows. Ids are unique, so it can only live in one place:
+    // ACCOUNT_NAV_JS still finds it by the same id wherever it renders.
+    //
+    // Consequence worth knowing: hub-page.js builds its header from this
+    // helper and NOT from marketBar, so a hub no longer shows a vault link.
+    // That is correct for a client-facing page whose spec asks for minimal
+    // chrome, and the broker viewing their own hub navigates away for it.
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
     `</div></details>`;
 }
 
-// Pricing lives in a modal that exists only in index.html, so from here it is
-// the /?pricing=1 door — the same shape as /?submit=comp, needed for
-// /#submit-comp, not a new pattern. index.html opens the modal and clears the
-// hash. Rendered inside the Explore dropdown, last, matching index.html.
-const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>`;
+// Pricing has two homes, and this link picks by visitor.
+//
+// A SIGNED-OUT reader gets /pricing, the standalone rate card, because the
+// modal door stranded them: the pricing modal exists only in index.html, so
+// /?pricing=1 is a full navigation OFF whatever page they were reading, onto
+// the app; index.html then strips the param, and closing the modal only hides
+// it. "Not now" therefore left somebody who had never asked to see the app
+// standing on it, behind the account wall's lock card, with nothing pointing
+// back. /pricing is a real page with a real URL and the same figures (both
+// read PRICING), so nothing is lost by sending them there.
+//
+// A SIGNED-IN member keeps the /?pricing=1 door, rewritten onto this element
+// by ACCOUNT_NAV_JS below. For them the modal is the checkout control, not a
+// rate card, and index.html is already their home page — closing it strands
+// nobody.
+//
+// The signed-out href is the one written into the markup on purpose: it is the
+// common case, it is what a crawler follows, and it is what survives if the
+// hydration script never runs. The rewrite is the exception, not the rule.
+const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>Pricing</a>`;
 
 const ACCOUNT_NAV_JS =
   `<script>(function(){` +
@@ -6163,6 +8288,11 @@ const ACCOUNT_NAV_JS =
   `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   `if(!me)return;` +
+  // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
+  // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
+  // it impossible to hand a signed-out visitor the door that strands them, so
+  // do not move this call above it for tidiness.
+  `var np=$("navPricing");if(np)np.setAttribute("href","/?pricing=1");` +
   `var lab=String(me.name||me.email||"").trim();` +
   `var ini=$("navAcctInitial");if(ini){` +
   `if(me.avatarRev){ini.className="ini photo";ini.style.backgroundImage="url(/api/account/avatar?v="+encodeURIComponent(me.avatarRev)+")";ini.textContent="";}` +
@@ -6170,8 +8300,21 @@ const ACCOUNT_NAV_JS =
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
   `show($("navVault"),Boolean(pro.canUseVault));` +
+  // Same shape as the vault's rule, against the entitlement /api/config
+  // already carries. Both links ship hidden and appear together once the
+  // account resolves, which is why the rail is a fixed width — an item
+  // arriving after paint must not reflow the page around it.
+  `show($("navBulk"),Boolean(pro.canBulkValue));` +
   `show($("navUpgrade"),live&&!isPro);` +
-  `show($("navBilling"),Boolean(pro.status)&&pro.status!=="none"&&!pro.admin&&!pro.tester);` +
+    // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
+  // step: the app hid this button for a colleague on a FIRM seat and this
+  // copy did not, so every server-rendered page offered them a portal that
+  // belongs to their firm's customer record — it opens their firm's card or,
+  // having no customer of their own, 400s. `live` is the same reason: a
+  // deployment with no Stripe keys 503s the portal, and a button that can
+  // only fail is worse than no button. test/routes.test.js pins both.
+  `show($("navBilling"),live&&Boolean(pro.status)&&pro.status!=="none"` +
+  `&&!pro.admin&&!pro.tester&&!(pro.viaFirm&&pro.viaFirm.id));` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -6203,6 +8346,63 @@ const ACCOUNT_NAV_JS =
 // /how-it-works, so a visitor arriving from search lands on something that
 // looks like the app they are being sent to. Self-contained by design: no
 // dependency on the purged tailwind.css.
+// The footer is the one surface that is DARK IN BOTH THEMES (--slab is
+// #1A2433 light, #243044 dark), so every ink token runs backwards on it: the
+// ramp is built to lighten as the page darkens, and here the page never
+// lightened. Measured on /brokers before this existed, in dark:
+//   footer a / footer li a   --ink-4      1.75:1   (light: 9.60:1)
+//   footer p                 --ink-faint  2.38:1   (light: 6.06:1)
+//   footer .cols .ch         --ink-faint  2.38:1   (light: 6.06:1)
+// Nine footer links and the contact address, effectively invisible, on every
+// server-rendered page. theme.js's header already documents this trap for
+// --ink-4 and index.html's bridge already fixes it there (.text-[#B8C0CC] and
+// .text-[#D5DAE2] both redirect to --ink-3); the server-rendered footers use
+// var(--ink-4) DIRECTLY, so no class bridge could ever have reached them.
+//
+// Dark keeps light's own relationship rather than flattening it: links are the
+// loud thing (7.28:1 vs light's 9.60:1) and the small print is about 1.6x
+// quieter (4.52:1 vs light's 6.06:1), which is the same gap light has.
+// --ink-faint is deliberately NOT used here at all any more -- it is a whisper
+// token, below AA by design in both themes now (see theme.js), and this
+// footer's small print is a legal disclaimer that has to be readable.
+//
+// ONE copy, interpolated into MARKET_CSS and HOW_CSS and handed to
+// vault-page.js through the chrome object. The footer block is already
+// duplicated three times with a "keep the three in step" comment on it, and
+// three copies of a fix is three chances to fix two of them.
+// Leaflet's own chrome, dark. index.html carries the same block for the report
+// map; the market pages have their OWN comp map (#mktMap, MARKET_MAP_JS) and
+// had none of it, so in dark the container showed leaflet.css's #ddd -- a
+// light grey slab the size of the map, through every tile gap and for the
+// whole of a slow tile load -- with white zoom controls and a white popup on
+// top. Found by a leak scan across all nine pages, not by reading the diff.
+//
+// This is a HAND-COPY of index.html's block, like DARK_CHROME is: index.html
+// is static and never templates this file, so the two cannot share a constant
+// and can only be kept in step deliberately. A test pins that they agree.
+const LEAFLET_DARK_CSS = `
+[data-theme="dark"] .leaflet-container{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution,
+[data-theme="dark"] .leaflet-bar a{background:var(--card);color:var(--ink-3);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-bar a:hover{background:var(--wash)}
+[data-theme="dark"] .leaflet-control-attribution a{color:var(--ink-2)}
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip{background:var(--card);color:var(--ink)}
+[data-theme="dark"] .leaflet-tile-pane{filter:brightness(1.22) contrast(0.92) saturate(0.85)}
+[data-theme="dark"] .leaflet-popup-content a{color:var(--ink-2)}
+[data-theme="dark"] .leaflet-tooltip{background:var(--card);color:var(--ink);border-color:var(--edge)}
+[data-theme="dark"] .leaflet-tooltip-top:before{border-top-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-bottom:before{border-bottom-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-left:before{border-left-color:var(--card)}
+[data-theme="dark"] .leaflet-tooltip-right:before{border-right-color:var(--card)}
+`;
+
+const FOOTER_DARK_CSS = `
+[data-theme="dark"] footer{color:var(--ink-body)}
+[data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
+[data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
+`;
+
 const MARKET_CSS = `
 ${THEME_CSS}
 /* Broker directory list on a market page. Plain list, no cards: this is a
@@ -6219,7 +8419,14 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-heigh
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px;width:100%}
+/* 1120px, not a new number: /vault has run at 1120 since it was built, so the
+   widest surface in the product already answered this question. 1024 dates
+   from before the market pages carried 3840px photographs and before the comp
+   tables grew their per-type columns, and it is narrow enough on a modern
+   laptop to read as a site that has not been touched in a while. Kept in step
+   with HOW_CSS's copy below; the four dashboards and /bulk keep their own
+   widths deliberately. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 /* Header — mirrors index.html's bar so arriving from search feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
@@ -6250,6 +8457,88 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
 .hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd a.on{color:var(--ink);font-weight:500}
+/* Touch targets. A bare 13.5px nav link measures ~20px tall, under the 24px
+   minimum. The hit area is extended by an absolutely-positioned overlay
+   rather than by padding: padding grew the header 5px (measured — the
+   negative margin meant to cancel it collapses through <details> instead),
+   while a pseudo-element has no layout effect whatever, so the header's
+   geometry is provably untouched. Events on it belong to the originating
+   element, so nothing needs rewiring. 5px a side and no more: the nav's
+   row-gap is 10px, so this exactly meets a wrapped row without overlapping
+   the control above it. Child combinators keep it off .dd a, which already
+   has a 36px box of its own. */
+.hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
+.hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
+  content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
+/* Phones: anchor the menu to the HEADER rather than to its own trigger. The
+   nav wraps to its own row below ~450px, which puts the Explore <details> at
+   the left edge — where right:0 sent 105px of a 176px menu off-screen, every
+   label clipped to its last few letters, on every marketShell page
+   (measured 2026-08-23). Re-anchoring rather than flipping to left:0,
+   because the wrap point moves with what the nav holds (signed in vs out,
+   and a hub drops Pricing entirely), so a trigger-anchored menu is
+   off-screen on one page and correct on the next with no way to tell from
+   the CSS. Against .wrap it is right wherever the trigger landed, and the
+   account menu becomes a full-width sheet for free. Only ever one is open —
+   the outside-click handler in marketBar closes the other. */
+@media (max-width:639.98px){
+  .hdr .wrap{position:relative}
+  .hdr nav details{position:static}
+  .hdr nav .dd{left:16px;right:16px;min-width:0}
+  .hdr nav .dd .em{max-width:none}
+}
 /* Type */
 h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;line-height:1.15;
   letter-spacing:-.005em;color:var(--ink);margin:10px 0 6px}
@@ -6277,6 +8566,17 @@ h1{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;li
 .lcell.mid{background:var(--wash-2)}
 .lcell .k{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .lcell.mid .k{color:var(--red)}
+/* Text inside a --wash-2 cell steps up one rung, dark only. --wash-2 is the
+   only dark surface that lifts ABOVE the card, so a ramp step chosen against
+   the card lands too dim on it: --ink-3 measures 5.32:1 on --card and 3.53:1
+   here, and the red LIKELY label 3.74:1. Mirrors the same fix on
+   index.html's .rd-lcell (2026-08-21); the two ledgers are separate class
+   vocabularies, so neither rule reaches the other's markup. In light
+   --wash-2 is identical to --wash and none of this applies. */
+[data-theme="dark"] .lcell.mid .k,[data-theme="dark"] .lcell.mid .lab,
+[data-theme="dark"] .lcell.mid .n{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .k{color:var(--red-deep)}
+
 .lcell .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:24px;line-height:1.2;margin-top:4px;
   color:var(--ink);font-variant-numeric:tabular-nums}
 .lcell.mid .v{font-size:29px}
@@ -6298,12 +8598,29 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .card h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:16px 0 4px}
 .card p{margin:0 0 10px;color:var(--ink-body);font-size:14.5px}
 .card ul{margin:8px 0 0;padding-left:20px}.card li{margin:6px 0;color:var(--ink-body);font-size:14.5px}
+/* Market momentum, on the comp map card's heading row. Same read, same three
+   words and the same three theme tokens the Explorer dropdown badges with:
+   --green expanding, --ink-mute flat, --red contracting. The dropdown carries
+   its colour in a style attribute only because the vendored tailwind.css has no
+   green utility to name; this stylesheet is ours, so the colours are classes
+   here, like .mkt-trend-* below.
+   .mhead h2 must stay AFTER .card h2 above -- equal specificity, so source
+   order is the only thing zeroing the heading's own bottom margin. */
+.mhead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 12px}
+.mhead h2{margin:0}
+.mdir{font-size:12px;white-space:nowrap;color:var(--ink-3)}
+/* The WORD is the claim and the colour only reinforces it, so the row still
+   reads in a print, on a monochrome screen, and for a colour-blind visitor. */
+.mdirv{font-weight:600}
+.mdirv-expanding{color:var(--green)}
+.mdirv-flat{color:var(--ink-mute)}
+.mdirv-contracting{color:var(--red)}
 /* /brokers offer — two stacked ledgers. Do not reuse .steps (sequence) or
    .grid (the old two-card band). /markets still uses .grid; this page does
    not. Rows are visible on first paint: this sheet has no html.anim. */
 .bkhead{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
   margin:28px 0 0;letter-spacing:normal;text-transform:none}
-.sub + .bkhead{margin-top:8px}
+.sub + .bkhead,.kicker + .bkhead{margin-top:8px}
 .bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:12px;box-shadow:var(--lift)}
 .bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
 .bkrow:last-child{border-bottom:0}
@@ -6311,7 +8628,89 @@ table.stmt tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:upperc
 .bk h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
 .bk p{font-size:13.5px;color:var(--ink-mute);margin:0}
 .bk .badge{margin:0 0 8px}
-.bklinks{margin:14px 0 0}
+.bklinks{margin:14px 0 28px}
+.bklinks + .kicker{margin-top:20px}
+/* /brokers page chrome beyond the two ledgers (hero split, submission path,
+   FAQ). /markets does not use these; do not invent a third stylesheet.
+   .bkex is a DIV list, never a <table>: MARKET_CSS tables carry min-width
+   640px so a real table would overflow the hero column on a laptop. */
+.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
+.bkhero{display:grid;grid-template-columns:1fr;gap:28px;margin:4px 0 12px}
+.bkhero .sub{margin-bottom:0;max-width:48ch}
+.bkex{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden}
+.bkexcap{padding:12px 16px;border-bottom:1px solid var(--hair);font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.bkexbody{padding:16px}
+.bkexaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:16px;color:var(--ink);
+  letter-spacing:-.005em}
+.bkexmeta{font-size:11px;color:var(--ink-mute);margin:6px 0 12px}
+.bkexlab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink);
+  border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:4px}
+.bkexrow{padding:8px 0;border-bottom:1px solid var(--hair)}
+.bkexrow:last-child{border-bottom:0}
+.bkexrow.on{background:var(--wash);margin:0 -8px;padding:8px;border-radius:4px;border-bottom:0}
+.bkexline{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink);font-weight:500}
+.bkexrow.on .badge{margin:6px 0 0}
+.bkpath{display:grid;grid-template-columns:1fr;border:1px solid var(--edge);border-radius:6px;
+  overflow:hidden;background:var(--card);margin:12px 0 0}
+.bk + .kicker,.disc + .kicker{margin-top:36px}
+.bkbeat{padding:22px;border-bottom:1px solid var(--hair)}
+.bkbeat:last-child{border-bottom:0}
+.bknum{font-family:Georgia,'Times New Roman',serif;font-size:13px;color:var(--red);margin-bottom:8px}
+.bkbeat h3{font-size:14.5px;font-weight:600;color:var(--ink);margin:0 0 8px}
+.bkbeat p{font-size:13.5px;color:var(--ink-mute);margin:0}
+details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px}
+details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  cursor:pointer;font-weight:600;color:var(--ink)}
+details.q summary::-webkit-details-marker{display:none}
+/* /brokers FAQ chevron. Stroke is %2394a3b8 (#94A3B8 URL-encoded) -- the same
+   marker HOW_CSS uses. var() cannot reach a data URI; this is --ink-3's dark
+   value and happens to read in both themes. Keep the two in step. */
+details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
+details.q[open] summary::after{transform:rotate(180deg)}
+details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
+.faqhead{margin-bottom:20px}
+/* Last FAQ row used to sit 12px+26px above the Submit card and read as
+   part of it. This junction is the only #faq in MARKET_CSS. */
+#faq + .cta{margin-top:56px}
+/* --- /leadership -----------------------------------------------------------
+   Deliberately built from the /brokers vocabulary above rather than a new one:
+   the hero is .bkhero's two-column split (claim left, exhibit right) and the
+   exhibit frame is .bkex with the caption moved BELOW the image, because here
+   the picture is the content and the caption labels it rather than introducing
+   it. The three portraits are the only genuinely new shape on the site, and
+   they are cards rather than ledger rows for one reason: a ledger row's left
+   column is a label, and a face is not a label.
+   Photos are fixed 4:5 and object-fit:cover, so a replacement headshot at any
+   aspect ratio cannot change the row's geometry -- the one failure that would
+   otherwise need a re-crop rather than a file swap. */
+.ldhero{display:grid;grid-template-columns:1fr;gap:28px;margin:4px 0 12px}
+.ldhero .sub{margin-bottom:0;max-width:48ch}
+.ldex{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
+.ldex img{display:block;width:100%;height:auto}
+.ldexcap{padding:12px 16px;border-top:1px solid var(--hair);font-size:10.5px;color:var(--ink-3);
+  letter-spacing:.08em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
+.people{display:grid;grid-template-columns:1fr;gap:18px;margin-top:12px}
+.person{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);box-shadow:var(--lift)}
+.person img{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;background:var(--wash)}
+.pbody{padding:18px 20px 20px;border-top:1px solid var(--hair)}
+/* Same micro-label as .bklag, and the same red: on both pages it names the
+   ROLE a row is playing, so it should read identically. */
+.prole{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red)}
+.person h3{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);
+  margin:6px 0 8px;line-height:1.2}
+.person p{font-size:13.5px;color:var(--ink-mute);margin:0}
+@media(min-width:900px){
+  .bkhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}
+  .bkpath{grid-template-columns:1fr 1fr 1fr}
+  .bkbeat{border-bottom:0;border-right:1px solid var(--hair)}
+  .bkbeat:last-child{border-right:0}
+  .ldhero{grid-template-columns:1.05fr .95fr;gap:36px;align-items:center}
+  /* Three fixed columns, never auto-fit: the team is three people and a
+     wrapped fourth-column layout would leave one portrait alone on a row. */
+  .people{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
 /* Market page's median-$/SF-by-half-year trend chart (renderMarketPageHTML's
    trendSvg). Dark-mode fix (2026-08-10, fix round 1) -- the same class-based
    approach as .cn-logo above, and for the same reason: colours in generated
@@ -6331,7 +8730,28 @@ td:first-child,th:first-child{min-width:180px}
 th{background:var(--wash);color:var(--ink-3);text-align:left;padding:9px 10px;font-weight:600;font-size:10.5px;
   text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid var(--edge)}
 td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-align:top}
-.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift)}
+/* Scrolling shadows. The comps table is ~640px wide inside a ~295px window
+   on a phone, and nothing said so — it read as a table with its right-hand
+   columns simply missing (2026-08-23). The two attachment:local layers are opaque
+   card-coloured patches pinned to the content, so each edge shadow is
+   covered exactly while that end is in view and uncovered as it scrolls
+   away: the hint appears only when there is really more to see, with no
+   script and no scroll listener.
+
+   The shade is --edge rather than a 13%-black literal: 13% black over a
+   #1A2433 card is invisible, so in dark mode the table went back to reading
+   as one with its right-hand columns missing (2026-08-25). --edge is right in
+   both directions by construction — it is the colour a border of this card
+   already is, darker than the card in light and lighter in dark — and in
+   light mode it lands within a hair of the literal it replaces. Kept in step
+   with vault-page.js's .tw, which carries the same pair. */
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:6px;margin:18px 0;background:var(--card);box-shadow:var(--lift);
+  background-image:linear-gradient(to right,var(--card),rgba(0,0,0,0)),linear-gradient(to left,var(--card),rgba(0,0,0,0)),
+    radial-gradient(farthest-side at 0 50%,var(--edge),rgba(0,0,0,0)),radial-gradient(farthest-side at 100% 50%,var(--edge),rgba(0,0,0,0));
+  background-position:left center,right center,left center,right center;
+  background-repeat:no-repeat;
+  background-size:28px 100%,28px 100%,13px 100%,13px 100%;
+  background-attachment:local,local,scroll,scroll}
 /* Source badges use the report's own colour language: green Verified, amber
    Listing, neutral for public record / news / estimate. */
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;
@@ -6351,6 +8771,16 @@ td{padding:10px;border-top:1px solid var(--hair);color:var(--ink-body);vertical-
 .btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
 .btn:hover{background:var(--red-fill-hover);color:#fff}
 button.btn{border:0;cursor:pointer;font-family:inherit}
+/* "Value a property here" mini-form in the market-page CTA — the door back
+   into a pre-filled search on /. 16px input, or iOS Safari zooms on focus and
+   stays zoomed (the .mfilter rule, restated because the two are unrelated
+   selectors). */
+.vform{display:flex;gap:8px;max-width:480px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+.vform input{flex:1;min-width:220px;font-size:16px;padding:9px 12px;border:1px solid var(--edge);
+  border-radius:6px;background:var(--card);color:var(--ink)}
+.vform input::placeholder{color:var(--ink-3)}
+.vform input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.cta p.vform-lead{margin:18px auto 10px}
 .cta button.alt{background:none;border:0;padding:0;cursor:pointer;font-family:inherit;font-size:13.5px;color:var(--ink-mute);
   text-decoration:underline;text-decoration-color:var(--edge)}
 .cta button.alt:hover{color:var(--ink)}
@@ -6374,6 +8804,13 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-top:20px}
 .mcard{display:block;background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:18px 20px;color:inherit;box-shadow:var(--lift)}
 .mcard:hover{border-color:var(--ink-3)}
+/* A card with a picture puts the photograph above the words, edge to edge, so
+   the padding moves off the card and onto the body. The image keeps the
+   header's 4.8:1 crop and its own width/height attributes, so the grid does
+   not reflow as the lazy images arrive. */
+.mcard.haspic{padding:0;overflow:hidden}
+.mcard .mthumb{display:block;width:100%;height:auto;aspect-ratio:${MARKETHERO.HERO_THUMB_WIDTH} / ${MARKETHERO.HERO_THUMB_HEIGHT};object-fit:cover;background:var(--wash);border-bottom:1px solid var(--hair)}
+.mcard .mbody{padding:14px 18px 16px}
 .mcard .t{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:17px;color:var(--ink)}
 .mcard .s{color:var(--ink-mute);font-size:13px;margin-top:6px;font-variant-numeric:tabular-nums}
 /* /markets directory filter. .vh hides the label from sight but not from a
@@ -6391,6 +8828,47 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mfilter input::placeholder{color:var(--ink-3)}
 .mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+/* /markets momentum map. Pin fill is the market's stored direction through
+   freshDirection, on the same tokens as the .mdirv-* badge words. The hollow
+   pin is an ABSENCE of claim ("no recent read"): it must never share flat's
+   grey fill — only its outline says a market is there at all. */
+.mmap-card{margin-top:20px}
+/* Tall enough for the country to read as one. At 320px the continental US
+   was a squat band with its own coastline cramped against the frame, which
+   made a national picture look like a detail crop of one. */
+.mmap{height:460px;border:1px solid var(--edge);border-radius:6px;background:var(--wash)}
+@media (max-width:640px){.mmap{height:300px}}
+/* Esri's Light Gray Canvas is built to disappear under data, which at
+   national zoom leaves land and sea nearly the same tone and the country
+   with no shape at all. A little contrast gives the coastline back without
+   turning the basemap into something that competes with the pins. Scoped to
+   this map's tile pane, so the market pages' comp map (read at street zoom,
+   where the flat canvas is correct) is untouched. */
+.mmap .leaflet-tile-pane{filter:contrast(1.08) brightness(0.99)}
+/* The pin is the only saturated thing on a deliberately grey map, so it can
+   be small — but it needs a real shadow to sit ON the map rather than in it,
+   and a white collar to survive a dark tile behind it. */
+.mmap-pin{display:block;width:15px;height:15px;border-radius:50%;box-sizing:border-box;cursor:pointer;
+  border:2px solid var(--card);box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.mmap-pin-expanding{background:var(--green)}
+.mmap-pin-flat{background:var(--ink-mute)}
+.mmap-pin-contracting{background:var(--red-fill)}
+.mmap-pin-none{background:transparent;border-color:var(--ink-3)}
+/* Mixed exists only for the carved city areas: one shape can hold markets
+   moving opposite ways (Phoenix industrial expands while its multifamily
+   contracts), and no single color would be honest about that. The swatch
+   MATCHES what areaStyle actually draws — a grey wash inside an ink ring —
+   because a legend key that appears nowhere on the map is worse than none
+   (the first version was a green/red split gradient, which no drawn shape
+   ever wore). The ink ring is what separates it from Flat's plain grey. */
+.mmap-pin-mixed{background:var(--ink-mute);border-color:var(--ink)}
+.mmap-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-3)}
+.mml{display:inline-flex;align-items:center;gap:6px}
+.mml-s{width:10px;height:10px}
+/* The click hint can be a plain server-rendered line because a pin click is
+   never a dead end: with the boundary file unreachable the same card still
+   opens, just without the shape, so the hint's promise holds either way. */
+.mmap-hint{font-style:italic}
 /* Market page city hero. The photograph does not theme (same rule as Street
    View and aerial thumbs): it is a picture of a place. Overlay and caption
    stay literal dark/white so the title reads on any photo, in either theme. */
@@ -6436,6 +8914,8 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
+${LEAFLET_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   h1{font-size:34px}
@@ -6445,9 +8925,102 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 }
 ${ACCOUNT_NAV_CSS}`;
 
-// The shared header for every server-rendered page. Takes `signedIn` for the
-// same reason renderHowItWorksHTML does, and the rule recorded there governs
-// here too: these pages are the site's entry points from Google, so an
+// The Explore menu's browse links — ONE list for every header on the site
+// (2026-08-20; this menu used to live as three hand-copied lists that CLAUDE.md
+// told editors to "keep in step", and they drifted more than once). Consumers:
+//   - marketBar() below, the header of every server-rendered page — including
+//     /how-it-works, whose own hand-copied header was retired for marketBar.
+//   - index.html's #exploreMenu, which carries a NAV_LINKS_MARKER comment that
+//     the `/` handler replaces with APP_NAV_LINKS_HTML at serve time. The app
+//     file holds no copy of the list any more.
+// Order is the owner's (2026-08-09): Pricing first (rendered separately —
+// it is a door to index.html's pricing modal, not a page), then these.
+// "Markets" left this list 2026-08-21 (owner's call): the app page links
+// /markets from an "Our markets" line under the Market Explorer's own input
+// instead, and every server-rendered page keeps its footer /markets link.
+// "How it works" left it 2026-08-25 (owner's call): the page keeps its footer
+// link on every surface (MARKET_FOOTER and index.html's footer), and
+// index.html's landing header still links it directly, so nothing became
+// unreachable -- the menu just stopped carrying it. Adding or removing a link
+// HERE is the whole edit: the app menu and every server-rendered header are
+// rendered from this list.
+// "Brokers" left with it and came BACK 2026-08-29 (owner's call), now joined
+// by "For firms": the two audience pages are what a stranger is browsing for,
+// and a footer link is not where they look. They lead the list; the 1031 guide
+// and the download keep their order behind them.
+const NAV_LINKS = [
+  ["/brokers", "Brokers"],
+  ["/firms", "For firms"],
+  ["/1031-exchange", "1031 Guide"],
+  // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
+  // the desktop app's download page has to be findable from every surface,
+  // or "where do I download it" gets answered by a support email.
+  // The third element is a class, and only this entry has one: `nav-dl` is
+  // what INAPP_BOOT's rule hides when the page is already being viewed
+  // inside the app. Keep it in step with that rule.
+  ["/download", "Download the app", "nav-dl"],
+];
+// `current` is the path of the page being rendered: its own link gets the
+// `.on` style and aria-current so the menu shows where the reader already is.
+const navLinksHtml = (current = "") =>
+  NAV_LINKS.map(([href, label, cls]) => {
+    const classes = [cls, href === current ? "on" : ""].filter(Boolean).join(" ");
+    return `<a href="${href}"${classes ? ` class="${classes}"` : ""}` +
+      `${href === current ? ' aria-current="page"' : ""}>${label}</a>`;
+  }).join("");
+// index.html's rendering of the same list. The class string must be made of
+// classes index.html ALREADY uses (#pricingLink, one line above the marker,
+// carries this identical set): tailwind.css is purged against index.html
+// alone, so a utility that existed only in this server-side string would
+// silently stop styling on the next regen. The dark-mode literal-hex bridge
+// in index.html's <style> covers these classes for the same reason.
+const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
+const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls]) =>
+  `<a href="${href}" class="${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}">${label}</a>`).join("");
+
+// --- The Market Explorer's example, rotated per page load (2026-08-24) ------
+//
+// The box carried one hardcoded example forever. It stopped being decoration
+// when Tab began typing it in, and rotating it shows that the Explorer covers
+// four types and 27 markets rather than reading as a Boise tool.
+//
+// TWO rules hold this up, and both are about what the example COSTS.
+//
+// It comes from MARKET_PAGES — the committed seed — and never from
+// allMarketPages(). A market with no standing page turns the dropdown's top
+// row into "Explore this market, build the … page →", so Tab then Enter
+// spends a billed search and 30-60 seconds. The seed is read from disk at
+// boot and getMarketPage() always resolves a seeded slug, so every example
+// here is guaranteed free navigation with no database read. (The example this
+// replaced, "industrial Boise, ID", was NOT seeded — it survived only because
+// somebody explored that market once.)
+//
+// And it advances a COUNTER rather than picking at random, so a fresh process
+// always serves entry 0. That is what keeps scripts/shot.js's byte-identical
+// PNG property true; MARKET_EXAMPLE pins it outright, which is what shot.js
+// actually sets. Never reach for Math.random() here.
+//
+// Unlike the three markers below it this one replaces a whole ATTRIBUTE, so
+// the constant spells it out and the substitution fails safe: if index.html's
+// copy ever drifts, replace() no-ops and the static example stays. A test
+// pins the two together.
+const MARKET_EXAMPLE_MARKER = 'placeholder="e.g. industrial Ontario, CA"';
+const MARKET_EXAMPLE_ORDER = exampleMarketOrder(MARKET_PAGES);
+let marketExampleAt = 0;
+function nextMarketExample() {
+  if (process.env.MARKET_EXAMPLE) return process.env.MARKET_EXAMPLE;
+  if (!MARKET_EXAMPLE_ORDER.length) return null; // no seed file — leave the markup alone
+  const pick = MARKET_EXAMPLE_ORDER[marketExampleAt % MARKET_EXAMPLE_ORDER.length];
+  marketExampleAt = (marketExampleAt + 1) % MARKET_EXAMPLE_ORDER.length;
+  return `e.g. ${pick}`;
+}
+
+// The shared header for every server-rendered page — since 2026-08-20 that
+// includes /how-it-works, which used to render its own hand-kept copy of this
+// exact markup (the two drifted by an `aria-current` and nothing else, which
+// is how close they were to being one function). Takes `signedIn` because
+// these pages are the site's entry points from Google, so an
 // anonymous visitor needs both auth doors (before 2026-08-08 there were none
 // at all, and a returning customer landing on a market page had nowhere to
 // click), while a member must not be told to create an account they have.
@@ -6456,20 +9029,80 @@ ${ACCOUNT_NAV_CSS}`;
 // a forged cookie changes which buttons are drawn and nothing else.
 // Callers must pair this with sendShellPage()'s headers, or the cached
 // anonymous copy is re-served to someone who has just signed in.
-const marketBar = (signedIn = false) =>
+const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
   `<a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>` +
   `</div>` +
-  // Owner's order (2026-08-09): Pricing, Brokers, Markets, How it works, 1031
-  // Guide — mirrored in index.html's menu and /how-it-works'; keep the three
-  // in step.
-  `<nav><details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${ACCOUNT_NAV_PRICING}<a href="/brokers">Brokers</a>` +
-  `<a href="/markets">Markets</a><a href="/how-it-works">How it works</a>` +
-  `<a href="/1031-exchange">1031 Guide</a></div></details>` +
+  // Home leads the nav (owner's placement, 2026-08-28): a visitor who opened
+  // Explore and landed on one of these pages had no visible way back. The
+  // wordmark has always linked `/`, but a wordmark is branding rather than a
+  // button, and Escape (bound below) is invisible.
+  //
+  // It renders for EVERY visitor, and it shipped signed-out-only for half a
+  // day on the theory that the signed-in bar's "Run a report" already points
+  // at `/`. That was the reported bug restated one layer down: "Run a report"
+  // reads as starting a task, not as going home, so a signed-in member
+  // browsing market pages was left with the wordmark and a call to action —
+  // exactly the two things that failed the logged-out visitor. Navigation and
+  // a CTA are different affordances even when they share a destination, and
+  // one nav that does not change shape with auth state beats saving a link.
+  //
+  // The suppression is only ever "this page IS your home page", and whose
+  // home page `/` is depends on the visitor: under ACCOUNT_WALL an anonymous
+  // visitor's `/` is this very render, while a signed-in member's `/` is the
+  // app. So renderHowItWorksHTML passes `current` as "/" for the home flavor
+  // ONLY when signed out — a member reading /how-it-works is not at home and
+  // is owed the link.
+  `<nav>` +
+  // OPEN QUESTION for the owner (2026-08-28), deliberately NOT decided here.
+  //
+  // For a signed-in member, Home and the new "Workspace" link below are now
+  // the same destination: "/" opens the workspace. Two nav rows to one place
+  // is the drift this reorganization exists to remove, and it is sharper in
+  // the rail, where they stack one above the other.
+  //
+  // Suppressing Home for members was tried and REVERTED, because two tests
+  // named "…gives a signed-in member the Home link it withholds from a
+  // visitor" and "a signed-in member gets the same Home link" defend that
+  // behaviour on purpose — the same-day decision above records that
+  // signed-out-only was already tried once and judged wrong.
+  //
+  // The objection it was judged wrong for ("a member is left with the
+  // wordmark and a call to action") is arguably answered now by Workspace,
+  // which is a destination rather than a CTA. But that is a product call
+  // about a decision made hours earlier, not a refactor, so it stays as-is
+  // until somebody chooses. Whoever does: change this line and those two
+  // tests together, or leave both.
+  (current !== "/" ? `<a href="/">Home</a>` : "") +
+  `<details><summary>Explore<span class="car">▾</span></summary>` +
+  `<div class="dd">${navLinksHtml(current)}</div></details>` +
+  // Pricing sits in the bar itself rather than one click inside Explore. It is
+  // the question a prospect arrives with, and a B2B site that hides its price
+  // behind a browse menu reads as one that would rather not say. The
+  // visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
+  // (`live && !isPro`), so it still hides for a Pro member and on a deployment
+  // with no billing configured; only the position moved.
+  ACCOUNT_NAV_PRICING +
+  // Markets is a public page with 27-odd standing snapshots and, until now, no
+  // header link on any surface — it was reachable from the footers and from
+  // one line inside the app. It renders for every visitor because it is the
+  // cheapest thing a stranger can be shown that is actually the product.
+  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Markets</a>` +
   (signedIn
-    ? `<a href="/desk">My Desk</a><a class="btn sm" href="/">Run a report</a>`
+    ? `<a href="/desk">Workspace</a>` +
+      // The two Pro tools, hydrated after paint by ACCOUNT_NAV_JS exactly as
+      // the account slots are — their entitlements are database reads this
+      // synchronous render must never make, so both ship hidden.
+      //
+      // /bulk had NO link anywhere on the site before this: not in a menu, not
+      // in a footer, not in a header. Its only inbound link was from inside
+      // itself, so a Pro member could only reach it by typing the URL or by
+      // pasting a multi-line list into the main search and discovering the
+      // mode by accident. A billed feature nobody can find is one nobody buys.
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
+      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk</a>` +
+      `<a class="btn sm" href="/">Run a report</a>`
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must
@@ -6580,7 +9213,10 @@ async function findBrokerProfile(email, userId) {
   // unknown SELECTed columns, which would take the email fallback down too);
   // the user_id=eq. filter read is individually caught, so it alone may
   // reference the column.
-  const SELECT = "select=email,slug,display_name,company,public";
+  const SELECT = "select=email,slug,display_name,company,public,license_number";
+  // license_number rides along because VAULT.canPublishAs reads it off this
+  // row. Omit it and the gate sees undefined on every profile and refuses
+  // every publish, with a message about a field the broker already filled.
   if (userId) {
     try {
       const rows = await sbRequest("GET",
@@ -6699,29 +9335,6 @@ function renderBrokerProfileHTML(profile, subs, signedIn) {
 // unparseable dates drop out of trends but stay in counts. Cached in-process
 // like MARKET_CREDIT: one corpus query per TTL, no per-request DB reads.
 // ---------------------------------------------------------------------------
-const MONTHS_IDX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
-// "2025" | "Q1 2025" | "Apr 2026" | "April 2026" | "04/2026" | "2026-04(-15)"
-// -> fractional year (mid-period), else null.
-function parseDealDate(s) {
-  const t = String(s || "").trim().toLowerCase();
-  if (!t) return null;
-  let m;
-  if ((m = t.match(/^(19|20)\d{2}$/))) return Number(t) + 0.5;
-  if ((m = t.match(/^q([1-4])\s*((19|20)\d{2})$/))) return Number(m[2]) + (Number(m[1]) * 3 - 1.5) / 12;
-  if ((m = t.match(/^([a-z]{3,9})\.?\s+((19|20)\d{2})$/))) {
-    const mo = MONTHS_IDX[m[1].slice(0, 3)];
-    return mo ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^(\d{1,2})\/((19|20)\d{2})$/))) {
-    const mo = Number(m[1]);
-    return mo >= 1 && mo <= 12 ? Number(m[2]) + (mo - 0.5) / 12 : null;
-  }
-  if ((m = t.match(/^((19|20)\d{2})-(\d{2})(-\d{2})?$/))) {
-    const mo = Number(m[3]);
-    return mo >= 1 && mo <= 12 ? Number(m[1]) + (mo - 0.5) / 12 : null;
-  }
-  return null;
-}
 // Sale rows with a parseable date and numeric $/SF — the trendable subset.
 function saleRowsWithDates(rows) {
   return (rows || [])
@@ -6855,26 +9468,135 @@ const MARKET_FOOTER =
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
   `<li><a href="/brokers">Brokers</a></li>` +
+  // /firms sits beside /brokers: the two are the same kind of page (a pitch to
+  // a professional audience) and the footer is the only surface every public
+  // page shares, so a page missing from it is a page nothing links to.
+  `<li><a href="/firms">For firms</a></li>` +
+  // Pricing had no URL at all until 2026-08-28 — only a modal inside
+  // index.html, which cannot be linked, indexed, or sent in an email.
+  `<li><a href="/pricing">Pricing</a></li>` +
   `<li><a href="/how-it-works">How it works</a></li>` +
   `<li><a href="/how-it-works#faq">FAQ</a></li>` +
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
-  `<ul aria-label="Company"><li><a href="/terms">Terms</a></li>` +
-  `<li><a href="/privacy">Privacy</a></li></ul></div>` +
+  `<ul aria-label="Company"><li><a href="/leadership">Leadership</a></li><li><a href="/terms">Terms</a></li>` +
+  `<li><a href="/privacy">Privacy</a></li>` +
+  // Download was reachable ONLY through the Explore dropdown, which the rail
+  // hides (it has nowhere to open in a 224px column). It belonged here anyway:
+  // it was in the Explore menu and in NEITHER footer, so the page answering
+  // "where do I download it" was the hardest one on the site to find. The
+  // nav-dl class travels with the link so INAPP_BOOT still hides it when the
+  // page is already being read inside the app.
+  `<li><a class="nav-dl" href="/download">Download the app</a></li></ul></div>` +
+  // Follow was in index.html's footer and NOWHERE ELSE, which put the only
+  // links to the company's own accounts BEHIND the login. Every indexable
+  // page -- the landing a stranger actually arrives on, every market page,
+  // /brokers -- ended in a footer that named no accounts at all, which reads
+  // as a site nobody is behind. rel="noopener noreferrer" and target=_blank
+  // match index.html's copies exactly.
+  `<div><div class="ch">Follow</div>` +
+  `<ul aria-label="Follow">` +
+  `<li><a href="https://www.instagram.com/comp.ninja/" target="_blank" rel="noopener noreferrer">Instagram</a></li>` +
+  `<li><a href="https://www.linkedin.com/company/compninja/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>` +
+  `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
+  `</ul></div>` +
   `</div></div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first — a POST since 2026-08-17, so the address stays out
 // of the URL — Nominatim fallback with 1.1s spacing, hits AND misses cached in
-// localStorage geoCache.v1 — same key shape, so the app and these pages share a
-// cache). Comps geocode sequentially, not in a burst, to stay friendly to
-// /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
+// localStorage). Comps geocode sequentially, not in a burst, to stay friendly
+// to /api/geocode's per-IP rate limit. If not a single pin resolves, the whole
 // card hides rather than showing an empty map — which is also what a market
 // page cached from before that deploy does for its last hour of life.
+//
+// --- This cache is DELIBERATELY NOT the app's, and must not be re-joined to
+// it. The two stores held the same key until 2026-08-04, when index.html went
+// to geoCache.v2 so every entry carries the geocoder's echoed label; photos
+// and footprint sizing gate on that label through geoLabelMatches, which
+// returns false when it is missing. This script has no use for labels — it
+// draws pins and nothing else — so it stores {lat, lng} alone. Sharing one
+// key again would let a market-page visit write a label-less entry that the
+// app then reads for the same address, silently costing that property its
+// subject photo and its footprint size estimate, and costing it persistently,
+// because the miss is what got cached. A separate NAME rather than a lower
+// version number: version numbers invite being re-synced by anyone who reads
+// the two as having drifted apart, which is exactly how this comes back. ---
+// THE BASEMAP, shared by both server-rendered maps (2026-08-26).
+//
+// It was CARTO's keyless raster tiles until CARTO began requiring an API key
+// for them and stamping "API KEY REQUIRED" across every unauthenticated
+// tile — which put that watermark on the market pages' comp maps, the
+// /markets momentum map, the report map and, worst of all, the printed and
+// PNG exports a broker hands a client. CARTO also says its raster endpoints
+// are being retired, so buying a key would only have bought time.
+//
+// Esri instead: keyless, no account, no secret to rotate, and already what
+// this codebase serves for satellite aerials and imagery, so it is one
+// vendor rather than two. Light/Dark Gray Canvas is the same muted grey
+// Positron was, which is what lets the pins and washes carry the colour.
+//
+// Two traps live in these few lines. Esri numbers tiles {z}/{y}/{x} — ROW
+// before column, the opposite of the XYZ order every other tile URL in this
+// repo uses — and swapping them mirrors the world silently. And the Canvas
+// base carries NO labels: they are a second "Reference" layer drawn over it,
+// which is exactly how index.html has always paired satellite imagery with
+// its label overlay.
+//
+// Emitted as its OWN <script> before each map script rather than spliced
+// into them: those strings must stay free of ${} (they are template
+// literals emitted into <script>, and a test pins that), and one namespace
+// object is the whole surface either map needs. index.html holds the third
+// copy by hand — the LEAFLET_DARK_CSS arrangement — and test/theme.test.js
+// pins the two together.
+const BASEMAP_JS = `var CNBASE = (function () {
+  var ROOT = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+  var ATTRIB = 'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+  function isDark() {
+    var el = document.documentElement;
+    return !!(el && el.getAttribute && el.getAttribute("data-theme") === "dark");
+  }
+  function baseUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Base" : "World_Light_Gray_Base") + "/MapServer/tile/{z}/{y}/{x}"; }
+  function labelUrl(dark) { return ROOT + (dark ? "World_Dark_Gray_Reference" : "World_Light_Gray_Reference") + "/MapServer/tile/{z}/{y}/{x}"; }
+  // Place labels are a separate layer, and below LABEL_MIN_ZOOM they are
+  // taken off. At national zoom Esri's Reference layer writes UNITED STATES
+  // in tracked capitals across the middle of the country and labels Toronto,
+  // Monterrey and Havana — none of which is what this map is about, all of
+  // it competing with the pins for the same few pixels. Zoomed into a city
+  // the labels become the whole point (which street, which suburb), and by
+  // then the tracked country name is long gone. Clicking a pin flies to
+  // zoom 11, so the labels arrive exactly when they start being useful.
+  var LABEL_MIN_ZOOM = 6;
+  // Returns { setTheme } — the layers are swapped by setUrl rather than
+  // rebuilt, because the theme toggle lives in the shared header and can fire
+  // long after the pins are placed; re-adding a layer would drop them.
+  function add(map) {
+    var dark = isDark();
+    var base = L.tileLayer(baseUrl(dark), { maxZoom: 19, crossOrigin: "anonymous", attribution: ATTRIB });
+    var labels = L.tileLayer(labelUrl(dark), { maxZoom: 19, crossOrigin: "anonymous" });
+    base.addTo(map);
+    function syncLabels() {
+      var want = map.getZoom() >= LABEL_MIN_ZOOM;
+      if (want && !map.hasLayer(labels)) labels.addTo(map);
+      if (!want && map.hasLayer(labels)) map.removeLayer(labels);
+    }
+    map.on("zoomend", syncLabels);
+    syncLabels();
+    return { setTheme: function () { var d = isDark(); base.setUrl(baseUrl(d)); labels.setUrl(labelUrl(d)); } };
+  }
+  return { add: add, isDark: isDark };
+})();`;
+
 const MARKET_MAP_JS = `(function(){
+  // Progressive enhancement, same guard as the /markets momentum map: with
+  // the Leaflet CDN blocked the page's numbers are the content, and an empty
+  // 340px rectangle helps nobody — this matters MORE now that a boundary-only
+  // page renders the card with zero comps to hide it later.
+  var mapCardEl = document.getElementById("mktMapCard");
+  if (!window.L) { if (mapCardEl) mapCardEl.style.display = "none"; return; }
   var data = JSON.parse(document.getElementById("mktMapData").textContent);
-  var CACHE_KEY = "geoCache.v1";
+  var CACHE_KEY = "mktGeoCache.v1";
   var cache = {}; try { cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {}; } catch (e) {}
   function save(k, v) {
     cache[k] = v;
@@ -6920,17 +9642,78 @@ const MARKET_MAP_JS = `(function(){
       .then(function (f) { return f || nominatim(a); })
       .then(function (f) { save(k, f); return f; });
   }
-  var map = null, pts = [];
+  var map = null, pts = [], tiles = null, shape = null;
+  // The basemap (CNBASE, the script before this one) follows the theme: it
+  // was pinned light once, so a dark market page rendered a white rectangle
+  // in the middle of it.
   function ensureMap(center) {
     if (map) return map;
     map = L.map("mktMap", { scrollWheelZoom: false }).setView(center, 12);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(map);
+    // Held rather than discarded: the theme swap below depends on it.
+    tiles = CNBASE.add(map);
+    try {
+      new MutationObserver(function () {
+        if (tiles) tiles.setTheme();
+        // The boundary holds computed colours rather than a CSS class (an SVG
+        // path cannot wear one), so nothing else would repaint it.
+        if (shape) shape.setStyle(boundaryStyle(data.dir));
+      }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    } catch (e) {}
     return map;
   }
   function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // The city's carved boundary, washed in this market's momentum. An unread
+  // market is OUTLINED, never shaded: the wash is a claim, and there is
+  // nothing to claim.
+  // ⚠ MIRROR of areaStyle in MARKETS_DIR_MAP_JS (this same file): a city
+  // must look the same on /markets and on its own market page, and browser
+  // strings cannot share code, so every number and token here is a
+  // deliberate copy. test/markets-map-script.test.js pins the two together —
+  // change one, change both. The one branch missing here is "mixed", which
+  // a single-market page can never be.
+  function tok(name, fallback) {
+    var v = "";
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
+    v = String(v || "").trim();
+    return v || fallback;
+  }
+  function boundaryStyle(dir) {
+    var fills = { expanding: tok("--green", "#15803D"), flat: tok("--ink-mute", "#5B6472"), contracting: tok("--red-fill", "#B91C1C") };
+    if (fills[dir]) {
+      return { color: fills[dir], weight: 1.5, opacity: 0.8, fillColor: fills[dir], fillOpacity: 0.3 };
+    }
+    var n = tok("--ink-3", "#64748B");
+    return { color: n, weight: 1.5, opacity: 0.8, dashArray: "4 4", fillColor: n, fillOpacity: 0.06 };
+  }
+  // The boundary is drawn FIRST and needs no geocoding: it is real geometry
+  // that came down with the page, so the map has something on it immediately
+  // rather than after a round trip per comp. Leaflet's pane order puts paths
+  // under markers, so the comp pins land on top of the wash as they arrive.
+  // The try/catch is load-bearing: a degenerate stored geometry (empty
+  // coordinates make getBounds().getCenter() throw) must cost the SHAPE,
+  // never the pins — pins always drew before boundaries existed, and this
+  // synchronous prelude sits upstream of the whole geocode chain.
+  var fit = null;
+  if (data.boundary) {
+    try {
+      shape = L.geoJSON(data.boundary, { style: boundaryStyle(data.dir) });
+      var b = shape.getBounds();
+      shape.addTo(ensureMap(b.getCenter()));
+      fit = b;
+      map.fitBounds(b, { padding: [20, 20] });
+    } catch (e) {
+      shape = null;
+      fit = null;
+    }
+  }
+  // A page with no mappable comps skips geocoding outright: the city sanity
+  // point exists only to gate comp pins, and a boundary-only page paying a
+  // Census round trip (and, on a miss, a browser-direct Nominatim call that
+  // carries the visitor's IP) to gate zero pins would be spend for nothing.
+  if (!data.comps.length) {
+    if (!shape && mapCardEl) mapCardEl.style.display = "none";
+    return;
+  }
   // ", USA" disambiguates the sanity point: bare "Ontario, CA" reads as the
   // Canadian province to Nominatim (CA = Canada), which put the city point
   // 1,900 miles out and gated every correct pin off the map.
@@ -6946,12 +9729,283 @@ const MARKET_MAP_JS = `(function(){
           var lines = [c.a.split(",")[0], [c.d, c.t].filter(Boolean).join(" \\u00b7 "), c.pr].filter(Boolean);
           m.bindPopup(lines.map(function (s) { return "<div>" + esc(s) + "</div>"; }).join(""));
           pts.push([pt.lat, pt.lng]);
-          if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30] });
+          // With a boundary the view must hold BOTH — a comp just outside the
+          // city limit is common, and fitting the pins alone would crop the
+          // shape the card is describing.
+          if (fit) {
+            fit = fit.extend([pt.lat, pt.lng]);
+            map.fitBounds(fit, { padding: [20, 20] });
+          } else if (pts.length > 1) {
+            map.fitBounds(pts, { padding: [30, 30] });
+          }
         });
       });
     });
     chain.then(function () {
-      if (!pts.length) document.getElementById("mktMapCard").style.display = "none";
+      // A boundary is enough to keep the card: it still answers where this
+      // market is, which is more than the hidden card ever did.
+      if (!pts.length && !shape) {
+        if (mapCardEl) mapCardEl.style.display = "none";
+        return;
+      }
+      // The server wrote the heading and the pins sentence believing comps
+      // would pin. If none survived geocoding and the card is standing on
+      // its boundary, retract both — copy asserting pins over a map that
+      // has none is a false statement.
+      if (!pts.length && shape) {
+        var h = document.getElementById("mktMapHead");
+        if (h) h.textContent = "Where this market is";
+        var pd = document.getElementById("mktMapPinsDisc");
+        if (pd) pd.style.display = "none";
+      }
+    });
+  });
+})();`;
+
+// Leaflet, injected only into the pages that actually draw a map (the market
+// page's comp map and the /markets momentum map) — the shared const so the
+// two can never load different versions.
+const LEAFLET_HEAD =
+  `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
+  `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`;
+
+// The /markets directory's momentum map: one pin per covered market, colored
+// by the same freshDirection read the Explorer dropdown and the market page's
+// map-card badge use — green expanding, grey flat, red contracting, and a
+// hollow outline for a market with no current read. Hollow is deliberately
+// not flat's grey: "we don't know" must never render as "the market is flat".
+// Unlike MARKET_MAP_JS there is NO geocoding here — every pin's point rides
+// in the page's own JSON blob (the committed CITY_COORDS chain, resolved
+// server-side), so the map costs nothing beyond the tiles and a market with
+// no stored point simply stays a card. Inlined like MARKET_MAP_JS so the page
+// stays self-contained. No dollar-brace interpolation and no backticks — this
+// string is itself a template literal emitted into a <script>.
+const MARKETS_DIR_MAP_JS = `(function(){
+  var card = document.getElementById("mktsMapCard");
+  // Progressive enhancement: with the CDN blocked the cards below are still
+  // the whole directory, and the empty rectangle just goes away.
+  if (!card) return;
+  if (!window.L) { card.style.display = "none"; return; }
+  var data = null;
+  try { data = JSON.parse(document.getElementById("mktsMapData").textContent); } catch (e) {}
+  var pins = (data && data.pins) || [];
+  if (pins.length < 2) { card.style.display = "none"; return; }
+  // Whole-number zoom, deliberately. Fractional zoom (zoomSnap 0) frames the
+  // pins beautifully tight and then scales every tile off the pixel grid,
+  // which leaves hairline seams across the map — plainly visible in a
+  // screenshot, and worst on the wide flat greys this basemap is made of.
+  // The framing is solved by the FRAME instead: .mmap is tall enough that
+  // the fit below lands a level up rather than falling back a whole level.
+  var map = L.map("mktsMap", { scrollWheelZoom: false }).setView([39.8, -98.6], 4);
+  var tiles = CNBASE.add(map);
+  // The theme flip restyles the carved areas alongside the tile swap — their
+  // colors are computed tokens, not CSS classes (an SVG path cannot wear
+  // .mmap-pin-expanding). Pins need nothing here: they are CSS all the way.
+  var restyle = null;
+  try {
+    new MutationObserver(function () {
+      if (tiles) tiles.setTheme();
+      if (restyle) restyle();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  } catch (e) {}
+  function esc(s) { return String(s).replace(/[&<>]/g, function (ch) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]; }); }
+  // Two markets in one city would stack on top of each other — and a
+  // geographic offset cannot fix that: any spread small enough to stay
+  // honest at city zoom is sub-pixel at the national zoom this map opens at,
+  // so a green pin would still hide a red one. The spread is in PIXELS, on
+  // the icon anchor: constant on screen at every zoom, and the marker's
+  // point never lies about where the city is. Grouped by the CITY KEY, never
+  // by coordinates: two markets of one Explorer-published city can store
+  // slightly different points (Wikipedia's vs Zippopotam's), and a
+  // coordinate key would silently skip the spread for exactly the stacked
+  // pair it exists to separate. Members sorted by type then slug so the
+  // ring holds still between visits.
+  var groups = {};
+  pins.forEach(function (p) {
+    (groups[p.key] = groups[p.key] || []).push(p);
+  });
+  Object.keys(groups).forEach(function (k) {
+    var g = groups[k];
+    if (g.length < 2) return;
+    g.sort(function (a, b) { return (a.type + a.slug) < (b.type + b.slug) ? -1 : 1; });
+    g.forEach(function (p, i) {
+      var ang = (2 * Math.PI * i) / g.length;
+      p.dx = Math.round(9 * Math.cos(ang));
+      p.dy = Math.round(9 * Math.sin(ang));
+    });
+  });
+  // The class comes from this lookup, never concatenated from the data: the
+  // server only writes the three freshDirection words, but markup built from
+  // a whitelist stays inert even if that ever stops being true.
+  var DIR_CLASS = { expanding: "mmap-pin-expanding", flat: "mmap-pin-flat", contracting: "mmap-pin-contracting" };
+  var DIR_WORD = { expanding: "Expanding", flat: "Flat", contracting: "Contracting" };
+  var bounds = [];
+  pins.forEach(function (p) {
+    var cls = DIR_CLASS[p.dir] || "mmap-pin-none";
+    var label = p.type + " \\u00b7 " + p.city + ", " + p.state;
+    // The label rides INSIDE the icon as visually-hidden text (MARKET_CSS's
+    // .vh class): Leaflet's alt option only ever lands on img markers, so a
+    // divIcon pin would otherwise be a focusable element with no name.
+    var m = L.marker([p.lat, p.lng], {
+      icon: L.divIcon({
+        className: "",
+        html: '<span class="mmap-pin ' + cls + '"><span class="vh">' + esc(label) + '</span></span>',
+        iconSize: [14, 14],
+        iconAnchor: [7 - (p.dx || 0), 7 - (p.dy || 0)],
+      }),
+      keyboard: true,
+    }).addTo(map);
+    m.bindTooltip(esc(label) + " \\u2014 Median $" + Number(p.median).toLocaleString() + "/SF" +
+      (DIR_WORD[p.dir] ? " \\u00b7 " + DIR_WORD[p.dir] : ""));
+    // Leaflet fires click on Enter for a keyboard-focused marker, so this one
+    // handler covers both mouse and keyboard. The click OPENS the city —
+    // carved boundary plus a card of market links — rather than navigating:
+    // the market page is one more click away, inside that card.
+    m.on("click", function () { openCity(p.key, [p.lat, p.lng]); });
+    bounds.push([p.lat, p.lng]);
+  });
+  // Padding, because the pins ARE the content: at [30,30] the outermost
+  // markets sat against the frame and the map read as a crop of a bigger
+  // one. maxZoom caps the fit so a two-market deployment doesn't open at
+  // street level.
+  map.fitBounds(bounds, { padding: [36, 36], maxZoom: 6 });
+
+  // CLICK A PIN, SEE THE CITY. A pin click flies to the city, reveals its
+  // real municipal boundary colored by the one claim that shape may make
+  // (momentum, market-area.js — solid for agreement, the Mixed style where
+  // its markets disagree, a dashed outline for a city with no current read),
+  // and opens a card listing every market there, each a link to its market
+  // page. The pins stay at every zoom: they are the navigation and the
+  // keyboard/screen-reader surface, and the boundary is the click's ANSWER,
+  // never a zoom threshold's side effect. Revealed cities stay revealed —
+  // clicking around the map builds up the momentum picture.
+  //
+  // The ~110KB of geometry is bought on the FIRST CLICK, not on page load
+  // (most visitors never ask for a boundary), and every failure path — no
+  // fetch, no entry for this city, bad JSON — degrades to the same card
+  // without a shape. A click is never a dead end.
+  // areas carries only what the browser cannot derive: the per-city momentum
+  // (market-area.js is deliberately server-side). Everything a city card
+  // shows — slug, type, median, dir — already rides every pin, so shipping a
+  // second copy in areas would double the blob and open a drift surface
+  // between two serializations of the same market.
+  var areas = (data && data.areas) || [];
+  var areasByKey = {};
+  areas.forEach(function (a) { areasByKey[a.key] = a; });
+  var pinsByKey = {};
+  pins.forEach(function (p) { (pinsByKey[p.key] = pinsByKey[p.key] || []).push(p); });
+  // One collection for the revealed shapes: key -> { layer, momentum }. The
+  // reveal gate, the fit target and the theme restyle all read it.
+  var revealed = {}, boundsPromise = null;
+  restyle = function () {
+    Object.keys(revealed).forEach(function (k) {
+      revealed[k].layer.setStyle(areaStyle(revealed[k].momentum));
+    });
+  };
+  function tok(name, fallback) {
+    var v = "";
+    try { v = getComputedStyle(document.documentElement).getPropertyValue(name); } catch (e) {}
+    v = String(v || "").trim();
+    return v || fallback;
+  }
+  // ⚠ MIRROR of boundaryStyle in MARKET_MAP_JS (this same file): a city must
+  // look the same on /markets and on its own market page, and browser
+  // strings cannot share code, so every number and token here is a
+  // deliberate copy. test/markets-map-script.test.js pins the two together —
+  // change one, change both. The extra branch here is "mixed", which a
+  // single-market page can never be.
+  function areaStyle(momentum) {
+    var fills = { expanding: tok("--green", "#15803D"), flat: tok("--ink-mute", "#5B6472"), contracting: tok("--red-fill", "#B91C1C") };
+    if (fills[momentum]) {
+      return { color: fills[momentum], weight: 1.5, opacity: 0.8, fillColor: fills[momentum], fillOpacity: 0.3 };
+    }
+    if (momentum === "mixed") {
+      return { color: tok("--ink", "#1F2937"), weight: 1.5, opacity: 0.8, fillColor: tok("--ink-mute", "#5B6472"), fillOpacity: 0.18 };
+    }
+    var n = tok("--ink-3", "#64748B");
+    return { color: n, weight: 1.5, opacity: 0.8, dashArray: "4 4", fillColor: n, fillOpacity: 0.06 };
+  }
+  function loadBounds() {
+    if (!boundsPromise) {
+      boundsPromise = fetch("/city-bounds.json")
+        .then(function (r) { return r.json(); })
+        .catch(function () {
+          // An outage never memoizes (city-check's rule, map-shaped):
+          // clearing the promise lets the NEXT click retry, so one blip on
+          // flaky wifi does not strip boundaries for the rest of the visit.
+          boundsPromise = null;
+          return null;
+        });
+    }
+    return boundsPromise;
+  }
+  // The card a click opens: the city, then one line per market — the TYPE is
+  // the link (that is the market page's identity), the direction word and
+  // median beside it. An unread market says so in words rather than being
+  // silently undecorated. Built from the pins themselves (pinsByKey), the
+  // single copy of each market's facts.
+  function cityCard(key) {
+    var ms = pinsByKey[key] || [];
+    var lines = [ms.length ? "<b>" + esc(ms[0].city + ", " + ms[0].state) + "</b>" : ""];
+    ms.forEach(function (m) {
+      lines.push('<div><a href="/market/' + esc(m.slug) + '">' + esc(m.type) + "</a> \\u2014 " +
+        (DIR_WORD[m.dir] || "no recent read") + " \\u00b7 $" + Number(m.median).toLocaleString() + "/SF</div>");
+    });
+    return lines.join("");
+  }
+  function openCity(key, latlng) {
+    if (!(pinsByKey[key] || []).length) return;
+    loadBounds().then(function (cityBounds) {
+      // "A click is never a dead end" includes a PRESENT but undrawable
+      // entry: a degenerate geometry must fall through to the anchored card
+      // exactly like a missing one. getBounds() is the canary — an empty
+      // coordinates array parses, even adds, and then throws "Bounds are not
+      // valid" the first time anything asks where the shape is — so it is
+      // asked BEFORE the layer touches the map or revealed{}, and a broken
+      // shape never becomes state a later click would trip over again.
+      try {
+        var a = areasByKey[key];
+        var b = cityBounds && cityBounds[key];
+        if (a && b && b.geometry && !revealed[key]) {
+          var layer = L.geoJSON(b.geometry, { style: areaStyle(a.momentum) });
+          layer.getBounds();
+          layer.addTo(map);
+          layer.bindPopup(cityCard(key));
+          revealed[key] = { layer: layer, momentum: a.momentum };
+        }
+        var got = revealed[key];
+        if (got) {
+          // maxZoom 11, not tighter: the point is the whole boundary, and a
+          // two-market city's shape should not fill past the screen.
+          map.fitBounds(got.layer.getBounds(), { padding: [40, 40], maxZoom: 11 });
+          got.layer.openPopup();
+          return;
+        }
+      } catch (e) {}
+      // No boundary for this city (missing entry, failed fetch, or a shape
+      // that would not draw): the card still opens, anchored to the pin,
+      // and the view still comes in close.
+      map.setView(latlng, 10);
+      L.popup().setLatLng(latlng).setContent(cityCard(key)).openOn(map);
+    }).catch(function () {});
+  }
+})();`;
+
+// The market-page CTA's "value a property here" form(s): store the typed
+// address under the key index.html's startup already consumes (the
+// /how-it-works landing form's exact mechanism), then navigate to the
+// form's data-dest — /?type=<type> for a member, the signup door otherwise.
+// Inlined like MARKET_MAP_JS so the page stays self-contained. No ${} — this
+// string is interpolated into a <script>.
+const MARKET_VALUE_FORM_JS = `(function(){
+  [].forEach.call(document.querySelectorAll("form.vform"), function (f) {
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var input = f.querySelector("input");
+      var addr = ((input && input.value) || "").trim();
+      if (!addr) return;
+      try { sessionStorage.setItem("pendingLandingAddress.v1", addr); } catch (err) {}
+      location.href = f.getAttribute("data-dest") || "/";
     });
   });
 })();`;
@@ -7042,7 +10096,7 @@ const MARKET_RESEARCH_JS = `(function(){
     var type = watch.getAttribute("data-type") || "";
     function setWatching() {
       watch.disabled = true;
-      watch.textContent = "Watching — see My Desk";
+      watch.textContent = "Watching — see your workspace";
     }
     fetch("/api/watchlist", { cache: "no-store" }).then(function (r) {
       return r.ok ? r.json() : null;
@@ -7138,9 +10192,20 @@ function brandGraph() {
   ];
 }
 
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage }) {
+// The rail rides on ONE class and nothing else - see NAV_SHELL. It is written
+// on <html> rather than <body> so the stylesheet can reach the body's own
+// padding, and it is gated on signedIn (cookie presence, the same cheap rule
+// the rest of this render uses) because a marketing page read by a stranger
+// must not wear the product's sidebar. These routes already send
+// "vary: cookie", so the two variants cannot reach the wrong visitor.
+//
+// Keep this note OUT of the function body: theme.test.js reads only
+// marketShell's first 2000 characters looking for THEME_BOOT, and six lines of
+// comment in there is enough to push the boot script out of that window.
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
+  return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)}</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
@@ -7156,12 +10221,19 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // The install identity rides on every public page, not just the app:
+    // under the wall an anonymous visitor at / gets the landing render, and
+    // without this link Chrome/Edge never offer "Install CompNinja" to the
+    // people who haven't signed up yet — the exact audience a download door
+    // exists for.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     (jsonLd ? `<script type="application/ld+json">${jsonLd}</script>\n` : "") +
     (head || "") +
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
-    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn)}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    INAPP_BOOT +
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -7200,6 +10272,18 @@ function sendNotFound(req, res, message) {
   }));
 }
 
+// Coarse on purpose: this only keeps the obvious non-humans (search
+// crawlers, link previewers, monitoring curls, the test suite's bare
+// fetches) out of a human-traffic count — it is not bot defense, and a
+// count it feeds should be read as "roughly people". An empty UA counts as
+// a bot: every real browser sends one, and undici/curl by default do not
+// send a browser-shaped one.
+function isCrawlerUA(ua) {
+  const s = String(ua || "");
+  if (!s) return true;
+  return /bot|crawl|spider|slurp|preview|headless|curl|wget|python|monitor|undici|node/i.test(s);
+}
+
 function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
   const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
   res.writeHead(200, {
@@ -7212,8 +10296,17 @@ function sendShellPage(req, res, render, { maxAge = 3600, headers } = {}) {
 }
 
 function marketHeroBanner(p, title) {
-  const skipKeys = HEROQUALITY.skipKeysFromRows(cachedHeroInspect().rows);
-  const hero = MARKETHERO.heroFor(p.city, p.state, { skipKeys });
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
+  // A page published since the last run of scripts/auto-market-heroes.js has
+  // no curated photo, no generated photo and no entry in either committed
+  // coordinate table — but it does carry the city coordinates its own publish
+  // resolved (`attachCityCoords`), which is enough for the satellite aerial.
+  // That is what makes "every market page opens with a picture" true on the
+  // day a market is created rather than after the next generator run.
+  const coords = (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    ? { lat: Number(p.lat), lng: Number(p.lng) }
+    : null;
+  const hero = MARKETHERO.heroFor(p.city, p.state, { skipFiles, coords });
   const crumb = `<p class="sub"><a href="/markets">Markets</a> &rsaquo; ${escHtml(p.city)}, ${escHtml(p.state)}</p>`;
   const heading = `<h1>${escHtml(title)}</h1>`;
   const blurb = `<p class="sub">Automated market snapshot from recent comparable sales${p.date_range ? " · " + escHtml(p.date_range) : ""}. Updated ${escHtml(p.generatedAt)}.</p>`;
@@ -7259,10 +10352,28 @@ function sampleMarketPathForHero(key) {
   return null;
 }
 
+// Both photo layers, curated first — the same order heroFor resolves them in,
+// so /admin/heroes shows exactly what the live pages show. A generated entry
+// carries the reviewer's verdict with it: the file checks below say whether
+// the JPEG is sharp, and only the model (or a person here) can say whether it
+// is the right picture.
+function allHeroRows() {
+  const rows = [];
+  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) rows.push({ key, row, auto: null });
+  // A generated photograph for a city that IS curated is not a duplicate: it
+  // is the understudy for a curated file that fails the grade (Ontario, CA).
+  // Both are listed so both are graded, and heroFor picks between them.
+  for (const [key, city] of Object.entries(MARKETHERO.autoCities())) {
+    const hero = MARKETHERO.autoHeroFor(key);
+    if (hero) rows.push({ key, row: hero, auto: city });
+  }
+  return rows;
+}
+
 function inspectMarketHeroes() {
   const dir = path.join(__dirname, "market-heroes");
   const rows = [];
-  for (const [key, row] of Object.entries(MARKETHERO.HEROES)) {
+  for (const { key, row, auto } of allHeroRows()) {
     const main = readJpegHead(path.join(dir, row.file));
     const sib = readJpegHead(path.join(dir, MARKETHERO.srcsetName(row.file)));
     const g = HEROQUALITY.gradeHero({
@@ -7282,6 +10393,9 @@ function inspectMarketHeroes() {
       license: row.license,
       commonsUrl: MARKETHERO.commonsFileUrl(row.commons),
       samplePath: sampleMarketPathForHero(key),
+      file: row.file,
+      picked: auto ? "auto" : "curated",
+      judge: (auto && row.judge) || null,
       ok: g.ok,
       grade: g.grade,
       reasons: g.reasons,
@@ -7289,8 +10403,17 @@ function inspectMarketHeroes() {
       width: g.width,
       height: g.height,
       bytes: g.bytes,
-      liveKind: !g.ok ? "satellite" : "photo",
     });
+  }
+  // What each city ACTUALLY shows, asked of heroFor rather than inferred: a
+  // failing file no longer implies a satellite aerial, because the generated
+  // photograph behind a failing curated one can take over.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(rows);
+  for (const r of rows) {
+    const parts = String(r.key).split(",");
+    const live = MARKETHERO.heroFor((parts[0] || "").trim(), (parts[1] || "").trim(), { skipFiles });
+    r.liveKind = live ? live.kind : "none";
+    r.live = Boolean(live && live.src === r.src);
   }
   return { rows, look: rows.filter((r) => !r.ok).length, total: rows.length };
 }
@@ -7306,6 +10429,14 @@ function cachedHeroInspect() {
   }
   return HERO_INSPECT_MEM;
 }
+
+// The CSS class for each momentum word, shared by every server-rendered
+// surface that colours one: the market page's badge and the directory cards'
+// word. freshDirection is the whitelist feeding it — one of these three keys
+// or null — so no consumer needs a guard against an unrecognized word.
+const DIR_CSS_CLASS = {
+  expanding: "mdirv-expanding", flat: "mdirv-flat", contracting: "mdirv-contracting",
+};
 
 function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
   const title = marketTitle(p);
@@ -7548,8 +10679,9 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
 
   // Comp map — same idea as the report's map, pins placed ENTIRELY from real
   // geocoding in the visitor's browser (Census proxy, then Nominatim), cached
-  // under the same localStorage geoCache.v1 the app uses so the two share
-  // hits. Only street-numbered addresses get pins: submarket/aggregate rows
+  // in localStorage under this page's own key, never the app's (see
+  // MARKET_MAP_JS for why the two must stay apart). Only street-numbered
+  // addresses get pins: submarket/aggregate rows
   // geocode to a district point, which reads as a wrong pin (same rule as the
   // report's street-view gate). A rough city-distance gate drops geocoder
   // mismatches that would land a pin in another state. The leading number
@@ -7567,18 +10699,73 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       d: String(c.date || ""), t: String(c.transaction || ""), pr: String(c.price_or_rate || ""),
     };
   });
-  const mapCard = mapData.length
-    ? `<div class="card" id="mktMapCard"><h2>Where these comps are</h2>` +
+  // Market momentum in the map card's heading row, the same read the Explorer
+  // dropdown badges on the way to this page. Nothing is computed here:
+  // freshDirection is the ONE home for both the three-word vocabulary and the
+  // 90-day expiry (market-snapshot.js), and /api/markets calls the same
+  // function, so a market that has gone quiet in the dropdown is quiet here
+  // too. Two surfaces disagreeing about which way a market is moving would be
+  // worse than neither showing it.
+  //
+  // No stored (or no longer current) direction renders NOTHING, never a fourth
+  // "unknown" state: 5 of the 27 seeded pages carry no read at all, and a page
+  // with no badge is exactly what all 27 looked like yesterday.
+  //
+  // "Momentum" labels the word because this badge is not sitting in a list of
+  // markets the way the dropdown's is -- a bare "Expanding" beside "Where these
+  // comps are" would leave the reader to guess what is expanding.
+  //
+  // freshDirection is the whitelist: it returns one of the three DIR_CSS_CLASS
+  // keys or null, so no guard against an unrecognized word is needed here.
+  const mapDir = freshDirection(p, Date.now());
+  const mapDirBadge = mapDir
+    ? `<span class="mdir">Momentum <span class="mdirv ${DIR_CSS_CLASS[mapDir]}">` +
+      `${escHtml(mapDir.charAt(0).toUpperCase() + mapDir.slice(1))}</span></span>`
+    : "";
+  // The city's real carved boundary, washed in the momentum read the badge
+  // above already states — the same freshDirection value, so the shape and
+  // the word can never disagree. Unlike the /markets map there is no Mixed
+  // state to decide here: one market page is one (type, city) market, so it
+  // has exactly one direction or none.
+  //
+  // The geometry is INLINED in this page's blob rather than fetched from
+  // /city-bounds.json: a market page needs one city's shape (~6KB average,
+  // 314B for Ontario), where the file is 107KB of all of them, and this page
+  // already caches for an hour. The /markets map makes the opposite trade for
+  // the opposite reason — it may eventually need every city's shape.
+  const boundary = cityBoundary(MARKETHERO.cityKey(p.city, p.state));
+  // A boundary alone is reason enough for a map. Until now a market whose
+  // comps are all quoted at the submarket level got no map at all, which said
+  // nothing about where the market even is.
+  const showMap = mapData.length || boundary;
+  const mapCard = showMap
+    ? `<div class="card" id="mktMapCard"><div class="mhead"><h2 id="mktMapHead">${mapData.length ? "Where these comps are" : "Where this market is"}</h2>${mapDirBadge}</div>` +
       `<div id="mktMap" style="height:340px;border-radius:6px"></div>` +
-      `<p class="disc" style="margin-top:8px">Pins are geocoded from each comp's public address, so positions are approximate. ` +
-      `Comps quoted at the submarket level aren't pinned.</p></div>` +
-      `<script id="mktMapData" type="application/json">${JSON.stringify({ city: `${p.city}, ${p.state}`, comps: mapData }).replace(/</g, "\\u003c")}</script>` +
+      `<p class="disc" style="margin-top:8px">` +
+      (mapData.length
+        // The pins sentence rides in its own span so the browser script can
+        // retract it (with the heading) if every comp fails to geocode: the
+        // card survives on the boundary now, and copy asserting pins over a
+        // map that has none would be a false statement.
+        ? `<span id="mktMapPinsDisc">Pins are geocoded from each comp's public address, so positions are approximate. ` +
+          `Comps quoted at the submarket level aren't pinned. </span>`
+        : "") +
+      (boundary
+        ? (mapDir
+          ? `The shaded area is ${escHtml(p.city)}'s municipal boundary, coloured to match the momentum read above.`
+          : `The outlined area is ${escHtml(p.city)}'s municipal boundary. It carries no colour because this market has no current momentum read.`)
+        : "") +
+      `</p></div>` +
+      `<script id="mktMapData" type="application/json">${JSON.stringify({
+        city: `${p.city}, ${p.state}`,
+        comps: mapData,
+        ...(mapDir ? { dir: mapDir } : {}),
+        ...(boundary ? { boundary } : {}),
+      }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${BASEMAP_JS}</script>` +
       `<script>${MARKET_MAP_JS}</script>`
     : "";
-  const mapHead = mapData.length
-    ? `<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>\n` +
-      `<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>\n`
-    : "";
+  const mapHead = showMap ? LEAFLET_HEAD : "";
 
   // Quiet contributor credit — the public half of the broker loop.
   const creditNames = (MARKET_CREDIT.byMarket[`${p.city}, ${p.state}`.toLowerCase()] || []).slice(0, 6);
@@ -7706,13 +10893,34 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     + "&type=" + encodeURIComponent(p.type);
   const exploreLink =
     `<p style="margin:10px 0 0"><a class="alt" href="${escHtml(exploreHref)}">No specific address? Explore ${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} properties &rarr;</a></p>`;
+  // "Value a property here" — the door back into a pre-filled search
+  // (2026-08-20). The address rides sessionStorage's pendingLandingAddress.v1
+  // (the /how-it-works landing form's exact mechanism, so index.html already
+  // consumes it) and the type rides ?type=, which startup marks as an
+  // explicit resolution. Anonymous visitors go through the signup door —
+  // auth=signup is the one query form ACCOUNT_WALL never 302s — and members
+  // land straight on the form. The script is MARKET_VALUE_FORM_JS, emitted
+  // with the body below; it degrades to a plain navigation with the type
+  // still prefilled if JS never runs (the submit falls through to data-dest
+  // only via JS, so the no-JS fallback is the required-input form simply not
+  // submitting — same as the /how-it-works landing form).
+  const valDest = signedIn
+    ? "/?type=" + encodeURIComponent(p.type)
+    : "/?auth=signup&type=" + encodeURIComponent(p.type);
+  const valForm = (btnLabel) =>
+    `<form class="vform" data-dest="${escHtml(valDest)}">` +
+    `<input type="text" required autocomplete="street-address" aria-label="Property address" ` +
+    `placeholder="e.g. 1200 W Main St, ${escHtml(p.city)}, ${escHtml(p.state)}"/>` +
+    `<button class="btn" type="submit">${btnLabel}</button></form>`;
   const cta = signedIn
     ? `<div class="cta"><h2>Use this ${escHtml(p.type.toLowerCase())} market in your work</h2>` +
-      `<p>Watch it on My Desk, or take these comps with you. Automated estimates, not an appraisal.</p>` +
+      `<p>Watch it on your workspace, or take these comps with you. Automated estimates, not an appraisal.</p>` +
       `<button type="button" class="btn" id="mktWatch" data-market="${escHtml(p.city + ", " + p.state)}" data-type="${escHtml(p.type)}">Watch this market</button>` +
       (compRows
         ? `<p style="margin:14px 0 0"><button type="button" class="alt" id="mktCsv" data-slug="${escHtml(slug)}">Download these comps as CSV</button></p>`
         : "") +
+      `<p class="vform-lead">Or value a property in ${escHtml(p.city)} — comps found live, in about a minute:</p>` +
+      valForm("Value it &rarr;") +
       exploreLink + `</div>`
     : `<div class="cta"><h2>What's your ${escHtml(p.type.toLowerCase())} property worth?</h2>` +
       // The BOV half of this promise is made ONLY where a broker actually
@@ -7723,10 +10931,18 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
         ? `Get a free, instant estimate from recent comps, then a no-cost Broker Opinion of Value ` +
           `from a licensed local broker who covers ${escHtml(p.city)}.`
         : `Get a free, instant estimate from recent comps, with the source cited on every one.`}</p>` +
-      `<a class="btn" href="${escHtml("/?auth=signup&type=" + encodeURIComponent(p.type))}">Get my free valuation &rarr;</a>` +
+      valForm("Get my free valuation &rarr;") +
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
+  // Contextual door into the 1031 guide: someone reading a replacement
+  // market's numbers mid-exchange is exactly who that page serves, and the
+  // footer link alone is invisible at the moment it matters. One line, after
+  // the CTA so it never competes with the conversion ask above it.
+  const guide1031 =
+    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
+    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
+    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
     cityHero.intro +
     bovLead +
@@ -7741,6 +10957,8 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     creditLine +
     brokersCard +
     cta +
+    `<script>${MARKET_VALUE_FORM_JS}</script>` +
+    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -7769,19 +10987,123 @@ function renderMarketDirectoryHTML(signedIn) {
   // Trimmed to the ~160 characters Google renders; it was 169.
   const description =
     "Price-per-square-foot and cap-rate snapshots by city and property type — industrial, office, retail, and multifamily — built from real comparable sales.";
+  // One grade read for the whole page: cachedHeroInspect memoizes, but the
+  // list is walked per card and this keeps that explicit.
+  const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
+  // One clock and one freshDirection read per market, shared by the card's
+  // filter haystack, the map pin and the area momentum — so nothing rendered
+  // on this page can disagree with itself. One clock matters more than it
+  // looks: the whole seeded set expires at a single midnight, and two
+  // Date.now() reads could straddle it.
+  const nowMs = Date.now();
+  const dirBySlug = new Map(slugs.map((s) => [s, freshDirection(merged[s], nowMs)]));
   const cards = slugs.map((s) => {
     const p = merged[s];
+    const dir = dirBySlug.get(s);
     // Everything a visitor might reasonably type for this card, flattened into
-    // one lowercase haystack: the words on the card, the full state name, and
-    // that type's synonyms. Baking it here is what keeps the filter script
-    // free of any vocabulary of its own.
+    // one lowercase haystack: the words on the card, the full state name, that
+    // type's synonyms, and the momentum word — so typing "expanding" filters
+    // to expanding markets. The word is no longer PRINTED on the card, but the
+    // map's legend right above the grid still names all three, so it is a word
+    // the reader has just been shown rather than one they have to guess at.
+    // Baking it here is what keeps the filter script free of any vocabulary of
+    // its own.
     const haystack = [
-      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "",
+      p.type, p.city, p.state, STATE_NAMES[p.state] || "", TYPE_SYNONYMS[p.type] || "", dir || "",
     ].join(" ").toLowerCase();
-    return `<a class="mcard" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+    // The same picture that heads the market's own page, drawn small. It is
+    // decorative here — the card already names the city in text — so the alt
+    // is empty rather than a repeat for a screen reader to read twice.
+    const thumb = MARKETHERO.thumbFor(p.city, p.state, {
+      skipFiles,
+      coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+    });
+    // loading="lazy" matters more here than anywhere else on the site: this is
+    // the one page that carries every market at once.
+    const pic = thumb
+      ? `<img class="mthumb" src="${escHtml(thumb.src)}" alt="" width="${MARKETHERO.HERO_THUMB_WIDTH}" ` +
+        `height="${MARKETHERO.HERO_THUMB_HEIGHT}" loading="lazy" decoding="async"/>`
+      : "";
+    return `<a class="mcard${thumb ? " haspic" : ""}" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+      pic +
+      `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
-      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div></a>`;
+      // The subtitle carries the figures only. It briefly ended in a coloured
+      // momentum word (2026-08-25); the owner had it off the next day, because
+      // a grid where some cards end in a red or green word and others just stop
+      // reads as ragged rather than as informative. The READ is untouched and
+      // still on this page — it is what colours every pin on the map above, and
+      // the legend there names the same three words. It also stays in the
+      // haystack below, so typing "expanding" still narrows the grid.
+      `<div class="s">Median ${usd0(p.ppsf.median)}/SF · ${p.ppsf.count} recent comps</div>` +
+      `</div></a>`;
   }).join("");
+  // The momentum map's pin rows. Coordinates come only from what is already
+  // stored or committed (MARKETHERO.coordsFor — the same chain the card
+  // thumbnails resolve), never a geocoder: a market with no point simply
+  // stays a card. Direction comes only through freshDirection, the ONE home
+  // for the three-word vocabulary and the 90-day expiry, so a pin can never
+  // disagree with the Explorer dropdown or the market page's own badge.
+  // `dir` is omitted rather than empty when there is no current read (the
+  // /api/markets convention); the map draws those as a hollow outline pin —
+  // the map's translation of "no badge". A pin cannot render NOTHING the way
+  // the badge does (the pin is also the navigation), so the hollow ring makes
+  // no color claim, and it is deliberately not flat's grey: "no recent read"
+  // must never look like "the market is flat".
+  const pins = [];
+  for (const s of slugs) {
+    const p = merged[s];
+    const ll = MARKETHERO.coordsFor(p.city, p.state, {
+      coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+        ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+    });
+    if (!ll) continue;
+    const dir = dirBySlug.get(s);
+    pins.push({
+      slug: s, type: p.type, city: p.city, state: p.state,
+      key: MARKETHERO.cityKey(p.city, p.state),
+      lat: ll.lat, lng: ll.lng, median: p.ppsf.median,
+      ...(dir ? { dir } : {}),
+    });
+  }
+  // The carved layer's rows: one AREA per city, carrying ONLY the color claim
+  // that city's shape may make (momentum, decided by market-area.js — the
+  // single home of the agreement rule; the browser only ever styles what it
+  // is handed). Two things deliberately do NOT ride here: the geometry
+  // (~110KB of static polygon at /city-bounds.json, lazy-loaded by the map
+  // script — a city the file does not carve simply stays a pin), and the
+  // per-market rows, because slug/type/median/dir already ride every pin and
+  // a second serialization of the same market is a copy that can disagree.
+  const areasByKey = new Map();
+  for (const p of pins) {
+    if (!areasByKey.has(p.key)) areasByKey.set(p.key, { key: p.key, city: p.city, state: p.state, markets: [] });
+    areasByKey.get(p.key).markets.push({ ...(p.dir ? { dir: p.dir } : {}) });
+  }
+  const areas = [...areasByKey.values()].map((a) => ({
+    key: a.key, city: a.city, state: a.state, momentum: MARKETAREA.cityAreaState(a.markets),
+  }));
+  // Two pins is the floor for a map that reads as a map (mirrors the market
+  // page's "no pins, no card" rule); below it the grid is the whole page.
+  const mapUi = pins.length >= 2
+    ? `<div class="mmap-card" id="mktsMapCard">` +
+      `<div id="mktsMap" class="mmap" aria-label="Map of covered markets, colored by market momentum"></div>` +
+      `<div class="mmap-legend">` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-expanding mml-s"></span>Expanding</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-flat mml-s"></span>Flat</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-contracting mml-s"></span>Contracting</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-mixed mml-s"></span>Mixed</span>` +
+      `<span class="mml"><span class="mmap-pin mmap-pin-none mml-s"></span>No recent read</span>` +
+      `<span class="mml mmap-hint">Click a pin to see that city's area and markets</span>` +
+      `</div>` +
+      (pins.length < slugs.length
+        ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`
+        : "") +
+      `</div>` +
+      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins, areas }).replace(/</g, "\\u003c")}</script>` +
+      `<script>${BASEMAP_JS}</script>` +
+      `<script>${MARKETS_DIR_MAP_JS}</script>`
+    : "";
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
     "@graph": [
@@ -7834,11 +11156,15 @@ function renderMarketDirectoryHTML(signedIn) {
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
     filterUi +
+    mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
     filterJs +
     `<div class="cta"><h2>Have a specific property?</h2><p>Skip the averages, get an instant estimate for your exact building.</p>` +
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
-  return marketShell({ title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn });
+  return marketShell({
+    title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn,
+    head: mapUi ? LEAFLET_HEAD : "", current: "/markets",
+  });
 }
 
 
@@ -7861,7 +11187,8 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-.wrap{max-width:1024px;margin:0 auto;padding:0 16px}
+/* Matches MARKET_CSS's .wrap exactly; the reasoning is on that copy. */
+.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
 /* Header — mirrors index.html's bar so navigating here feels continuous. */
 .hdr{border-bottom:1px solid var(--line);background:var(--paper)}
 /* Wraps on narrow screens: the nav drops to its own row rather than squeezing
@@ -7895,6 +11222,69 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
 .hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
 .hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd a.on{color:var(--ink);font-weight:500}
+/* Touch targets and the phone menu anchor — see the matching block in
+   MARKET_CSS for why each line is the way it is; keep the two in step. */
+.hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
+.hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
+  content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
+/* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
+   The header, stood on its end. Not a new component: the same element, the
+   same markup, re-laid-out by one class on <html> that only a SIGNED-IN
+   render stamps. Everything here is inside a min-width guard, so below 900px
+   the bar above is untouched -- which is the entire mobile answer, and why
+   there is no drawer, no focus trap and no scroll lock anywhere in this file.
+   The content never moves: .wrap keeps its margin:0 auto, so every centered
+   band re-centres inside the body's new left padding by itself.
+   224px is a literal on purpose. A rail-width custom property would fail
+   theme.test.js's rule that every custom property in these stylesheets names a
+   theme.js token, and a width is not a colour anyway.
+   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   design; edit them together or the two front doors drift. */
+@media (min-width:900px){
+  html.nav-rail body{padding-left:224px}
+  html.nav-rail .hdr{position:fixed;top:0;left:0;bottom:0;width:224px;
+    border-bottom:0;border-right:1px solid var(--line);overflow-y:auto;
+    /* Below the dropdowns (1100) and far below the modals, so an opened
+       account menu and any overlay still cover the rail. */
+    z-index:30}
+  html.nav-rail .hdr .wrap{flex-direction:column;align-items:stretch;
+    justify-content:flex-start;flex-wrap:nowrap;max-width:none;height:100%;
+    row-gap:0;padding:22px 0 18px}
+  html.nav-rail .hleft{padding:0 20px 16px}
+  html.nav-rail .hdr nav{flex:1;flex-direction:column;align-items:stretch;
+    flex-wrap:nowrap;gap:0}
+  html.nav-rail .hdr nav>a,html.nav-rail .hdr nav>button{
+    padding:7px 20px;border-left:3px solid transparent;text-align:left}
+  html.nav-rail .hdr nav>a:hover{background:var(--wash)}
+  /* Where the reader already is. marketBar passes its current argument, which is what
+     puts aria-current on the matching link, so this needs no new markup. */
+  html.nav-rail .hdr nav>a[aria-current="page"]{color:var(--ink);font-weight:500;
+    border-left-color:var(--red-fill);background:var(--wash)}
+  /* The call to action is a button, not a nav row. */
+  html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* Explore has nowhere to open in a 224px column, and its two links belong
+     in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
+     rather than removed so the markup stays identical in both modes. */
+  html.nav-rail .hdr nav>details{display:none}
+  /* The account cluster sits at the foot, and its menu opens UPWARD -- the
+     dropdown's default top:calc(100% + 10px) would run off the bottom of
+     the viewport from there. */
+  html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
+  html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
+  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
+}
+/* Paper has no sidebar. Without this the printed page carries a 224px empty
+   column down its left edge on every server-rendered surface. */
+@media print{
+  html.nav-rail body{padding-left:0}
+  html.nav-rail .hdr{position:static;width:auto;border-right:0}
+}
+@media (max-width:639.98px){
+  .hdr .wrap{position:relative}
+  .hdr nav details{position:static}
+  .hdr nav .dd{left:16px;right:16px;min-width:0}
+  .hdr nav .dd .em{max-width:none}
+}
 /* Type + section furniture */
 .kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
 .h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
@@ -7916,6 +11306,38 @@ section{padding:48px 0}
 .exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
 .cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
 .exbody{padding:20px}
+/* The vault sheet: the hero's exhibit since 2026-08-29. Same shell recipe as
+   .exhibit deliberately — a broker should read them as two views of one
+   product — but a DIFFERENT class, because the landing page is allowed
+   exactly one .exhibit (a test counts them; the mini-plus-full pair was a
+   real bug) and because this one is a book, not a report.
+   It is NOT animated and carries no data-rv: it is above the fold, where a
+   reveal costs LCP and buys nothing, and where a missing reduced-motion
+   reset would photograph as a blank band. */
+.vault{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
+.vrow{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:11px 0;border-top:1px solid var(--hair);align-items:baseline}
+.vrow:first-child{border-top:0}
+.vaddr{font-size:13.5px;color:var(--ink)}
+.vsub{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;grid-column:1}
+.vpsf{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;grid-column:2;grid-row:1/3}
+/* Below 480px the rate drops under the address rather than squeezing it. */
+@media(max-width:479.98px){
+  .vrow{grid-template-columns:1fr}
+  .vpsf{grid-column:1;grid-row:auto;text-align:left}
+}
+/* "What leaves it" — the one thing about a private vault a broker actually
+   wants answered, drawn as a foot strip rather than said in prose. */
+.vout{margin-top:14px;padding:12px 14px;background:var(--wash-2);border-radius:5px;border-top:1.5px solid var(--ink)}
+.vout p{font-size:12.5px;color:var(--ink-body);margin:6px 0 0;font-variant-numeric:tabular-nums;line-height:1.55}
+/* Three panes: one comp, redacted by who is looking. */
+.three{display:grid;grid-template-columns:1fr;gap:14px;margin-top:20px}
+@media(min-width:760px){.three{grid-template-columns:repeat(3,1fr)}}
+.pane{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:16px 18px;box-shadow:var(--lift)}
+/* The redacted pane sits on --wash-2, the one token that darkens in light and
+   lightens in dark, so "less is shown here" reads at a glance in both themes. */
+.pane.r{background:var(--wash-2)}
+.pnl{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:6px}
+.pnn{font-size:12.5px;color:var(--ink-3);margin:8px 0 0;line-height:1.55}
 .exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
 .exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:var(--ink-mute);margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
 .exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid var(--hair)}
@@ -7928,11 +11350,40 @@ section{padding:48px 0}
 .ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
 .lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
 .lcell:last-child{border-right:0}
-.lcell.mid{background:var(--wash-2)}
+/* LIKELY sets its figure at 22px against its neighbours' 18px, so it is the
+   cell that runs out of room first: eight digits measure 115px inside the
+   108px an even three-way split leaves at 1280px. Widen the cell rather than
+   shrink the type -- the size difference IS the emphasis this ledger exists
+   to give the middle number. */
+.lcell.mid{background:var(--wash-2);flex:1.15}
 .lcell.mid .lab{color:var(--red)}
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums}
+/* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
+   exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
+   and .n, which is why the rule cannot be shared. Dark only. */
+[data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
+[data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
+/* white-space:nowrap here is load-bearing, not cosmetic. The scroll
+   choreography below splits "$4,730,000" into a "$" text node plus an
+   inline-block .cu span, so the numeral can tick without shoving its cell
+   around on every frame -- and that split MANUFACTURES a line-break
+   opportunity the plain string never had. The HTML as served wraps nowhere;
+   the scripted DOM broke the LIKELY figure across two lines with the "$"
+   stranded alone above it, on the one number a visitor came to see. The rule
+   belongs on .fig rather than on .cu because the break is BETWEEN the two
+   boxes, not inside either one. */
+.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lcell.mid .fig{font-size:22px}
 .psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
+/* Three cells side by side need ~430px before the figures stop fitting, and
+   this sheet had no rule to stack them, so every phone drew all three values
+   broken across three lines each. Matches index.html's .rd-ledger breakpoint
+   (639.98px) rather than MARKET_CSS's 700px on purpose: this exhibit is a
+   miniature of the REPORT, so it should fold where the report folds. */
+@media (max-width:639.98px){
+  .ledger{flex-direction:column}
+  .lcell{border-right:0;border-bottom:1px solid var(--hair)}
+  .lcell:last-child{border-bottom:0}
+}
 .drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
 .drv:first-of-type{border-top:0}
 .drv b{color:var(--red);font-weight:700}
@@ -7943,18 +11394,42 @@ table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid var(--hair);white-s
 table.comps th.n,table.comps td.n{text-align:right}
 table.comps tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600}
 table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute)}
-/* Hero (Direction E): the claim on the left, the product itself on the right —
-   the exhibit used to sit below the fold while half this row was empty.
+/* The two-column band: a claim on the left, an exhibit on the right.
+   Used TWICE since 2026-08-29 — the hero, and the proof section the address
+   search moved down into — which is why it is no longer called .hero2. One
+   grid, one name: two names for one grid is how .bk came to be declared in
+   both MARKET_CSS and here.
    Stacks claim-first below 900px, so a phone loses nothing but the order. */
-.hero2{display:grid;grid-template-columns:1fr;gap:28px}
-.hero2 h1.h{max-width:none}
-.hero2 .lead{max-width:48ch}
-@media(min-width:900px){.hero2{grid-template-columns:1.05fr .95fr;gap:36px;align-items:start}}
+.split{display:grid;grid-template-columns:1fr;gap:28px}
+.split h1.h{max-width:none}
+.split .lead{max-width:48ch}
+/* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
+   is four short lines and a search row; the exhibit is a five-comp table that
+   was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
+   mid-word, next to a left column sitting on 300px of dead air. Handing the
+   26px across costs the headline nothing and buys the table its last column. */
+@media(min-width:900px){.split{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
+/* The hero's action row. The address field used to BE the hero CTA; the hero
+   now sells the vault, so the primary action is an account and this is a
+   button beside a text link rather than a form. */
+.hcta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-top:24px}
+.hcta .lnk{font-size:13.5px;color:var(--red);text-decoration:none;border-bottom:1px solid transparent}
+.hcta .lnk:hover{border-bottom-color:var(--red)}
 .badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
 .badge.v{color:var(--ok-text);background:var(--ok-bg)}
 .badge.p{color:var(--ink-body);background:var(--wash)}
 .badge.li{color:var(--warn-text);background:var(--warn-bg)}
+/* "From your vault" — an OWNERSHIP statement, never provenance. It must never
+   be .badge.v: green Verified is a public claim the server awards when a named
+   broker vouches, and a private row has not earned it. Same tokens the app's
+   own vault chip uses (index.html), so the landing page and the product agree. */
+.badge.bv{color:var(--bv-text);background:var(--bv-bg)}
 .legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
+/* The badge key sits under the exhibit it decodes, in the proof section. It
+   spent 2026-08-21 to 08-29 stacked vertically inside the hero's claim column,
+   filling dead air beside the exhibit; the hero no longer has that column and
+   the key no longer has that job, so the vertical variant is gone and a
+   wrapping row is the shape at every width. */
 .legend span.i{display:flex;align-items:center;gap:8px}
 /* Method steps */
 .steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
@@ -7998,13 +11473,23 @@ details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
 .band section{padding:72px 0}
 .landForm{margin-top:0}
 .landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden;box-shadow:var(--lift)}
-.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:14.5px;color:var(--ink);outline:none}
+/* 16px, not 14.5: iOS Safari zooms the page when a field smaller than that
+   takes focus, and this is the one field the landing page exists to get
+   typed into — so the reward for tapping it was a zoomed, sideways-scrolled
+   page (2026-08-23). The .vform input on the market pages is already 16px
+   for the same reason; keep any new public field at or above it. */
+.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:16px;color:var(--ink);outline:none}
 .landRow input::placeholder{color:var(--ink-3)}
 button.btn{border:0;cursor:pointer;font-family:inherit}
 .landRow .btn{border-radius:0;flex-shrink:0}
 .landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
 .landProof{color:var(--ink-2)}
 .heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
+/* align-items:flex-start shrink-wraps every child, which left the search row
+   at 326px of a 502px column and the field at 187px -- narrow enough that its
+   own placeholder truncated to "e.g. 1200 W Industrial B". The row is the
+   page's primary action; it gets the column. */
+.heroCta .landForm{align-self:stretch;width:100%}
 .heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
 /* Footer — the navy ink footer from the home page */
 footer{background:var(--slab);color:var(--ink-4);font-size:13px}
@@ -8022,6 +11507,7 @@ footer li a{text-decoration:none;color:var(--ink-4)}
    footer; keep the three in step. */
 footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
 footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
   .steps{grid-template-columns:repeat(3,1fr)}
@@ -8093,23 +11579,23 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 .anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
 .anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
 /* Method steps arrive one after another. */
-.anim .steps .step,.anim .bk .bkrow{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .steps.on .step,.anim .bk.on .bkrow{opacity:1;transform:none}
-.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2){transition-delay:.07s}
-.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3){transition-delay:.14s}
+.anim .steps .step,.anim .bk .bkrow,.anim .three .pane{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
+.anim .steps.on .step,.anim .bk.on .bkrow,.anim .three.on .pane{opacity:1;transform:none}
+.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2),.anim .three .pane:nth-child(2){transition-delay:.07s}
+.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3),.anim .three .pane:nth-child(3){transition-delay:.14s}
 /* A counting figure reserves its finished width before the first tick (the
    script measures it and sets min-width), so a number growing from 0 to
    $4,580,000 never reflows the cell it sits in. */
 .cu{display:inline-block}
 /* Motion is decoration. These two contexts get the finished page instead. */
 @media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
   .anim .exhibit .secrule{clip-path:none;transition:none}
   .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
   .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
 }
 @media print{
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
+  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
   .anim .exhibit .secrule{clip-path:none!important}
   .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
   .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
@@ -8122,16 +11608,37 @@ ${ACCOUNT_NAV_CSS}`;
 const HOW_FAQ = [
   ["What is a comp in commercial real estate?",
    "A comp (short for comparable) is a recent sale or lease of a property similar to yours. Brokers, lenders, and appraisers use comps to estimate what a property is worth or what rent it can command."],
+  // The three broker entries sit at 2-4 as of 2026-08-29, when the landing
+  // page began leading with the vault. mainEntity order is read order, and
+  // the vault should not be the eighth thing a broker-led page answers.
+  // Answers are escHtml'd like every entry here, so no links — name the
+  // pages instead.
+  ["I'm a broker. What do I get for submitting comps?",
+   "Credit, visibly: an approved comp carries a green Verified badge and your firm's name on every report that uses it. Contributing brokers are also first in line when an owner in their market requests a Broker Opinion of Value — we make the introduction. Details on the Brokers page."],
+  // Rewritten 2026-08-29. The old answer said the vault was "benchmarked
+  // against the market" (vague) and that nothing left it "unless you
+  // explicitly share yours" (under-specified: publishing and firm sharing are
+  // two different doors and both exist). BROKERS_FAQ's own privacy answer is
+  // already test-pinned to name firm sharing; this one now matches it.
+  ["What is the Broker Vault?",
+   "A private comp database for Pro members. Upload your comp book and your own deals appear inside your own reports, badged From your vault, visible to you and to nobody else. There are exactly two ways a comp leaves it: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are deliberate, and you can withdraw either."],
+  ["What do my clients see when I share a report?",
+   "On a public link your vault comps are removed entirely. On a share with a named client, or with your firm, they appear as anonymized rows — price per square foot, size and date, with no address, no total price and no notes — unless you deliberately choose to send a named client the full comp. Either way the value range your client sees matches yours to the dollar."],
   // This answer reaches Google twice: as the visible accordion and inside the
-  // FAQPage JSON-LD below. It claimed "there is no subscription" for months
-  // after Pro went on sale, so the search result was actively denying the
-  // product. Keep it true to entitlements.js (10 comps, 36 months free) and to
-  // the pricing modal in index.html, which are the numbers being charged.
-  // (Both sides of the 2026-08-08 merge rewrote this entry; this is the
-  // upstream version, kept because naming the real numbers beat vagueness —
-  // it now owes an update whenever the prices move.)
+  // FAQPage JSON-LD below. It has now been caught stale TWICE — it claimed
+  // "there is no subscription" for months after Pro went on sale, and then
+  // spent 2026-08-21 promising a ten-comp free limit and a $20 one-off after
+  // the free tier went to every-comp and the one-off was retired, both the
+  // same day this page kept selling them. Keep it true to entitlements.js
+  // ("all" comps, 36 months free) and the pricing modal in index.html, which
+  // are the numbers being charged; a test in public-pages.test.js now pins
+  // the two retired claims out.
+  // The figures come from PRICING, not from prose typed here — this answer and
+  // /pricing are the two public statements of the price and they must agree.
   ["How much does a comp report cost?",
-   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. The free report itemizes ten comps and looks back three years. Pro, at $129 a month, removes both limits and adds unlimited exports and your own branding on the report. If you only need one building, a single report unlocks on its own for $20."],
+   "A free account runs a full report on any property, with no card: recent comps, an estimated value range, and a cited source on every line. Free reports itemize every comparable we find and look back three years. " +
+   `Pro, at $${PRICING.monthly} a month, widens the search to ten years and adds unlimited exports, a private comp vault, the Address Explorer, and your own branding on the report. ` +
+   `Firms can put a whole office on one plan at $${PRICING.firmSeat} a seat, minimum ${PRICING.minSeats === 2 ? "two" : PRICING.minSeats} seats. See the full rate card at /pricing.`],
   ["Where does the data come from?",
    "Every search runs live against public listings, property records, and brokerage announcements, and every comp is labeled by source: Verified (submitted by a local broker and reviewed by our team), Public record, Listing, News, or Estimate, so you always know how much weight to give it."],
   ["Can I find out what my building is worth?",
@@ -8140,13 +11647,89 @@ const HOW_FAQ = [
    "Industrial, office, retail, multifamily, land, and residential. Each type reports the specifics its buyers price on: clear height and dock doors for industrial, building class for office, center type and anchor tenant for retail, unit count and price per unit for multifamily, acreage and zoning for land, and bedroom and bathroom counts for residential."],
   ["How accurate are the reports?",
    "Comps are a starting point, not an appraisal. The data comes from public sources and can contain errors, so verify anything important before relying on it. For a true opinion of value, talk to a licensed local broker. Reach out and we can connect you with one."],
-  // The two broker entries (owner's notes, 2026-08-08). Answers are escHtml'd
-  // like every entry here, so no links — name the pages instead.
-  ["I'm a broker. What do I get for submitting comps?",
-   "Credit, visibly: an approved comp carries a green Verified badge and your firm's name on every report that uses it. Contributing brokers are also first in line when an owner in their market requests a Broker Opinion of Value — we make the introduction. Details on the Brokers page."],
-  ["What is the Broker Vault?",
-   "A private comp database for Pro members. Upload your own comp book and it folds into your reports, benchmarked against the market, visible to you and no one else. It never appears in anyone else's report unless you explicitly share yours."],
 ];
+
+// One Q/A array feeds both the /brokers FAQ block and its FAQPage JSON-LD, so
+// the two can never drift. Broker-specific: do not copy HOW_FAQ, which answers
+// owners. No em dashes. Never "appraisal". Never claim CompNinja is a broker.
+const BROKERS_FAQ = [
+  ["Do I have to pay to submit a comp?",
+   "No. Submitting is free. Pro is the private vault, the pipeline, and the rest of the paid product."],
+  ["Who sees an owner's contact details?",
+   "Nobody but our team. Introductions are made by hand. We never pass your details to an owner, or theirs to you, without asking first."],
+  ["What does the Verified badge mean?",
+   "A named broker vouched for this deal and our team reviewed it. It is the strongest provenance a report shows."],
+  ["Is my vault private?",
+   "Yes. Uploaded comps are visible only to you until you choose otherwise, and there are exactly two ways to choose: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are explicit, and both are reversible. Nothing else is ever read out of your vault."],
+  ["How long does review take?",
+   "We review every submission by hand. Approved comps start appearing on matching reports after that."],
+];
+
+// ---------------------------------------------------------------------------
+// /download — where users get the standalone desktop app (desktop-app/, an
+// Electron shell around this site with its own installer and no visible
+// browser). The installers live on this repo's GitHub Releases; the
+// version-less filenames below are set by artifactName in
+// desktop-app/package.json and referenced again in
+// .github/workflows/desktop-release.yml — test/download-page.test.js holds
+// the three in step, because a renamed artifact would leave this page
+// serving 404 links with nothing else failing. The unsigned-installer note
+// is honesty, not boilerplate: until a code-signing cert (Windows) and
+// notarization (macOS) are bought, first launch shows an unknown-publisher
+// prompt, and a page that hides that turns an expected prompt into a
+// support ticket about a "virus warning".
+// ---------------------------------------------------------------------------
+const DOWNLOAD_BASE = "https://github.com/agouraninja-cmd/market-comp-puller/releases/latest/download";
+const DOWNLOAD_FILES = {
+  windows: "CompNinja-Setup.exe",
+  mac: "CompNinja.dmg",
+  linux: "CompNinja.AppImage",
+};
+function renderDownloadPageHTML(signedIn) {
+  const title = "Download the CompNinja Desktop App";
+  const canonical = `${SITE_URL}/download`;
+  const description = "Get CompNinja as a desktop app for Windows, Mac, or Linux — " +
+    "its own window, its own icon, always up to date. Or install straight from your browser.";
+  // MARKET_CSS's own .btn — no colours restated here, so the theme test's
+  // no-raw-literal rule holds and dark mode themes these for free.
+  const card = (name, file, note) =>
+    `<div class="dl-card"><h2>${name}</h2><p class="dl-note">${note}</p>` +
+    `<a class="btn" href="${DOWNLOAD_BASE}/${file}">Download ${file}</a></div>`;
+  const body =
+    `<h1>Download the desktop app</h1>` +
+    `<p class="dl-lede">CompNinja in its own window, with its own icon on your desktop and taskbar — ` +
+    `no browser tabs, nothing else to manage. The app stays current automatically: ` +
+    `it is the live CompNinja, so there is never an update to install.</p>` +
+    `<div class="dl-grid">` +
+    card("Windows", DOWNLOAD_FILES.windows, "Windows 10 or newer.") +
+    card("Mac", DOWNLOAD_FILES.mac, "Intel and Apple Silicon, one download.") +
+    card("Linux", DOWNLOAD_FILES.linux, "AppImage — make it executable and run it.") +
+    `</div>` +
+    `<div class="dl-fine"><strong>First launch:</strong> Windows may show a SmartScreen prompt and ` +
+    `Mac may say the developer is unverified — that is the standard notice for a new, ` +
+    `not-yet-registered publisher, not a fault. On Windows choose <em>More info → Run anyway</em>; ` +
+    `on Mac right-click the app and choose <em>Open</em> the first time.</div>` +
+    `<p class="dl-alt">Prefer nothing to download? Open <a href="/">compninja.co</a> in Chrome or Edge ` +
+    `and click the install icon in the address bar — same app, straight from your browser.</p>`;
+  return marketShell({
+    title,
+    description,
+    canonical,
+    signedIn,
+    current: "/download",
+    head: `<style>
+.dl-lede{max-width:62ch;color:var(--ink-2)}
+.dl-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin:22px 0}
+.dl-card{border:1px solid var(--edge);border-radius:10px;padding:18px;background:var(--card);box-shadow:var(--lift)}
+.dl-card h2{margin:0 0 4px;font-size:17px}
+.dl-note{margin:0 0 14px;color:var(--ink-2);font-size:13px}
+.dl-fine{border:1px solid var(--edge);border-radius:10px;padding:12px 16px;font-size:13px;color:var(--ink-mute);max-width:72ch}
+.dl-alt{margin-top:18px;font-size:14px}
+</style>`,
+    jsonLd: JSON.stringify({ "@context": "https://schema.org", "@graph": [...brandGraph()] }),
+    body,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // /brokers — the broker side of the product on its own indexable URL. This
@@ -8189,16 +11772,27 @@ function renderBrokersPageHTML(signedIn) {
           ],
         },
       },
+      {
+        "@type": "FAQPage",
+        mainEntity: BROKERS_FAQ.map(([q, a]) => ({
+          "@type": "Question",
+          name: q,
+          acceptedAnswer: { "@type": "Answer", text: a },
+        })),
+      },
     ],
   });
 
-  // Reworked 2026-08-13 (two stacked ledgers). Standing rules:
+  // Reworked 2026-08-14 (hero exhibit + path + FAQ around the two ledgers).
+  // Standing rules:
   //   - ONE submit door: the bottom CTA. Nothing above it links to the form.
   //   - Compliance line stays: we connect, we never broker.
   //   - The Verified chip is SHOWN (inline green on span.badge — NOT
   //     class="badge v", whose .v collides with .tile .v in MARKET_CSS).
   //   - Contribute and Pro are two ledgers, not one list, so the vault does
   //     not read as free. Proof line is real MARKET_CREDIT or nothing.
+  //   - The path is .bkpath/.bkbeat, never .steps (Method's sequence).
+  //   - BROKERS_FAQ feeds both the accordions and the FAQPage JSON-LD.
 
   // Proof: up to four real firm · market credits. byMarket keys are
   // lowercased "city, st"; re-case for display (title-case city, upper state).
@@ -8238,20 +11832,51 @@ function renderBrokersPageHTML(signedIn) {
     (chip ? chip : "") +
     `<p>${escHtml(p)}</p></div></div>`).join("");
 
+  const faqBlock = BROKERS_FAQ.map(([q, a]) =>
+    `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
+
   const body =
+    `<div class="bkhero">` +
+    `<div><div class="kicker">For brokers</div>` +
     `<h1>Your comps, your name, on every report that uses them.</h1>` +
     `<p class="sub">We build valuation reports from public data. Comps confirmed by a local ` +
-    `broker rank highest, and they carry that broker's name.</p>` +
+    `broker rank highest, and they carry that broker's name.</p></div>` +
+    `<div class="bkex">` +
+    `<div class="bkexcap"><span>On a live report</span><span>Illustrative</span></div>` +
+    `<div class="bkexbody">` +
+    `<div class="bkexaddr">9020 Center Ave, Rancho Cucamonga, CA</div>` +
+    `<div class="bkexmeta">Industrial &middot; 21,600 SF &middot; 5 comparables</div>` +
+    `<div class="bkexlab">Comparable properties</div>` +
+    `<div class="bkexrow on"><div class="bkexline"><span>9020 Center Ave</span><span>$238</span></div>` +
+    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></div>` +
+    `<div class="bkexrow"><div class="bkexline"><span>11215 4th St</span><span>$226</span></div></div>` +
+    `<div class="bkexrow"><div class="bkexline"><span>8933 Utica Ave</span><span>$219</span></div></div>` +
+    `</div></div></div>` +
 
     `<h2 class="bkhead">For submitting a comp.</h2>` +
     `<div class="bk">${ledgerHtml(contributeRows)}</div>` +
     proof +
+
+    `<div class="kicker">How a submission works</div>` +
+    `<h2 class="bkhead">Four facts. We review. Your name stays on it.</h2>` +
+    `<div class="bkpath">` +
+    `<div class="bkbeat"><div class="bknum">I.</div><h3>Four facts</h3>` +
+    `<p>Address, date, price, and size. About a minute.</p></div>` +
+    `<div class="bkbeat"><div class="bknum">II.</div><h3>We review</h3>` +
+    `<p>Our team checks the deal before it can carry the Verified badge.</p></div>` +
+    `<div class="bkbeat"><div class="bknum">III.</div><h3>Your name</h3>` +
+    `<p>Every report that uses it shows Verified &middot; via your firm.</p></div>` +
+    `</div>` +
 
     `<h2 class="bkhead">With Pro.</h2>` +
     `<div class="bk">${ledgerHtml(proRows)}</div>` +
     `<p class="bklinks"><a href="/vault">Open your vault &rarr;</a>` +
     `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
     `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p>` +
+
+    `<div class="kicker">Questions</div>` +
+    `<h2 class="bkhead faqhead">FAQ</h2>` +
+    `<div id="faq">${faqBlock}</div>` +
 
     `<div class="cta"><h2>Have a comp we should know about?</h2>` +
     `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
@@ -8262,14 +11887,243 @@ function renderBrokersPageHTML(signedIn) {
     // holding a comp. Bordered button, not .btn: the red button stays the
     // submit door's alone.
     `<div class="card"><h2>Working a 1031 exchange?</h2>` +
-    `<p>A plain guide to the 45 and 180 day deadlines. Send it to your client.</p>` +
+    `<p>An identification worksheet for the 45 and 180 day deadlines. Send it to your client.</p>` +
     `<a href="/1031-exchange" style="display:inline-block;background:var(--paper);border:1px solid var(--edge);` +
     `color:var(--ink);font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
-    `Open the 1031 guide</a></div>` +
+    `Open the worksheet</a></div>` +
     `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
     `broker contact details are never passed on without asking first.</p>`;
 
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn });
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
+}
+
+// ---------------------------------------------------------------------------
+// /leadership — who is behind the product. Rendered through marketShell like
+// /brokers, so it carries no CSS of its own and does NOT depend on the purged
+// tailwind.css; its classes live in MARKET_CSS beside the .bk* rules it was
+// built from.
+//
+// Two standing rules, both inherited from the compliance line the rest of the
+// site is written to:
+//   - A leadership page is the easiest place on a site to accidentally imply a
+//     brokerage. No title here may name one, and the page closes with the same
+//     not-a-brokerage disclosure every other public surface carries.
+//   - Nothing biographical is asserted that we cannot stand behind. Each line
+//     describes what the ROLE covers at CompNinja, which is a fact about the
+//     company; claims about a person's history belong to that person to write.
+//
+// TEAM is the only thing to edit when someone joins, leaves, or takes a new
+// title — the markup below reads it and the JSON-LD is generated from it, so
+// the page and what search engines are told can never disagree.
+// ---------------------------------------------------------------------------
+const TEAM = [
+  {
+    photo: "/team-photos/jacob.jpg",
+    name: "Jacob Adler",
+    role: "Founder & CEO",
+    line: "Sets the product direction and works directly with the owners and brokers who use CompNinja.",
+  },
+  {
+    photo: "/team-photos/owen.jpg",
+    name: "Owen Barnes",
+    role: "Head of Development & Marketing",
+    line: "Builds the product and runs how it reaches the people who need it.",
+  },
+  {
+    photo: "/team-photos/chuck.jpg",
+    name: "Chuck Dickinson",
+    role: "Head of Strategy & Finance",
+    line: "Owns pricing, planning and the numbers behind the business.",
+  },
+];
+
+// ---------------------------------------------------------------------------
+// /firms — the public front door for firm accounts.
+//
+// Rendered through marketShell like /brokers and /leadership, so it carries no
+// CSS of its own and does NOT depend on the purged tailwind.css. The body
+// lives in firms-page.js; this function owns only the SEO metadata and the
+// shell, which is where every other page's metadata lives too.
+//
+// ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
+// page module, which keeps that module pure and — more to the point — keeps
+// the three shop sentences single-sourced. They are read here by the invite
+// email, the create box in index.html and now this page; a fourth hand-typed
+// copy is the one that goes stale, so test/firms-page.test.js fails the build
+// if any of them appears as a literal in firms-page.js.
+// ---------------------------------------------------------------------------
+function renderFirmsPageHTML(signedIn) {
+  const title = "Firm Accounts for Brokerages, Developers & Tenant Reps | CompNinja";
+  const canonical = `${SITE_URL}/firms`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "One shared shelf for your whole shop. Every valuation anyone runs lands on " +
+    "every colleague's workspace, attributed and searchable.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Firm accounts",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Firms", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderFirmsPageBody({
+    signedIn,
+    shopKinds: ORG.SHOP_KINDS,
+    shopCopy: ORG.SHOP_COPY,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/firms" });
+}
+
+// ---------------------------------------------------------------------------
+// /pricing — the rate card, at a URL for the first time.
+//
+// marketShell like the other public pages. The body is in pricing-page.js; the
+// FIGURES come from PRICING, which the /how-it-works FAQ answer also reads, so
+// the two public statements of the price cannot drift apart. index.html's
+// modal keeps its own hardcoded copies and is pinned to PRICING by
+// test/pricing-page.test.js.
+//
+// `billingLive` is STRIPE_CONFIGURED, not PRO_ENABLED: this page describes the
+// product's prices to the whole internet, which stays true on a deployment
+// that has not switched the tier on. It only decides whether the Pro tile
+// renders a control at all — the Buy-button rule, one page further out.
+// ---------------------------------------------------------------------------
+function renderPricingPageHTML(signedIn) {
+  const title = "Pricing | CompNinja";
+  const canonical = `${SITE_URL}/pricing`;
+  const description =
+    `Free comp reports with every comparable cited. Pro at $${PRICING.monthly} a month, ` +
+    `firm accounts at $${PRICING.firmSeat} a seat.`;
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "WebPage",
+        name: "Pricing",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Pricing", item: canonical },
+          ],
+        },
+      },
+    ],
+  });
+
+  const body = renderPricingPageBody({
+    signedIn,
+    pricing: PRICING,
+    billingLive: STRIPE_CONFIGURED,
+  });
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/pricing" });
+}
+
+function renderLeadershipPageHTML(signedIn) {
+  const title = "Leadership | CompNinja";
+  const canonical = `${SITE_URL}/leadership`;
+  // Kept under the ~160 characters Google renders.
+  const description =
+    "The three people who build CompNinja, based in Boise, Idaho. Who sets the " +
+    "product direction, who writes it, and who owns the numbers.";
+
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@graph": [
+      ...brandGraph(),
+      {
+        "@type": "AboutPage",
+        name: "Leadership",
+        description,
+        url: canonical,
+        isPartOf: { "@id": WEBSITE_ID },
+        publisher: { "@id": ORG_ID },
+        breadcrumb: {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Leadership", item: canonical },
+          ],
+        },
+      },
+      // One Person node each, pointed at the canonical Organization rather than
+      // restating it — the same rule brandGraph() carries for every other
+      // server-rendered page. No email, no phone, no sameAs: a sameAs means a
+      // profile the person actually controls, and inventing one is how a
+      // knowledge panel ends up pointing at a stranger.
+      ...TEAM.map((p) => ({
+        "@type": "Person",
+        name: p.name,
+        jobTitle: p.role,
+        image: `${SITE_URL}${p.photo}`,
+        worksFor: { "@id": ORG_ID },
+      })),
+    ],
+  });
+
+  const people = TEAM.map((p) =>
+    `<div class="person">` +
+      `<img src="${escHtml(p.photo)}" alt="${escHtml(p.name)}" width="800" height="1000" ` +
+      `loading="lazy" decoding="async"/>` +
+      `<div class="pbody">` +
+        `<div class="prole">${escHtml(p.role)}</div>` +
+        `<h3>${escHtml(p.name)}</h3>` +
+        `<p>${escHtml(p.line)}</p>` +
+      `</div>` +
+    `</div>`).join("");
+
+  const body =
+    `<div class="ldhero">` +
+      `<div>` +
+        `<div class="kicker">Leadership</div>` +
+        `<h1>The people behind the numbers.</h1>` +
+        `<p class="sub">CompNinja is built in Boise by a team of three. We publish who we are ` +
+        `because a valuation is only worth as much as the people willing to put their name on it.</p>` +
+      `</div>` +
+      // fetchpriority=high and no lazy: this is the page's largest paint.
+      `<div class="ldex">` +
+        `<img src="/team-photos/team.jpg" width="1400" height="933" decoding="async" fetchpriority="high" ` +
+        `alt="Owen Barnes, Jacob Adler and Chuck Dickinson on the Capitol steps in Boise, Idaho"/>` +
+        `<div class="ldexcap"><span>Owen, Jacob and Chuck</span><span>Boise, Idaho</span></div>` +
+      `</div>` +
+    `</div>` +
+
+    `<div class="people">${people}</div>` +
+
+    `<div class="cta"><h2>Want a number on a building?</h2>` +
+    `<p>Enter an address and we'll pull the recent comparable sales behind it, free.</p>` +
+    `<a class="btn" href="/">Run a free valuation &rarr;</a></div>` +
+
+    `<p class="disc">CompNinja LLC is an Idaho company based in Boise. We are not a licensed ` +
+    `brokerage &mdash; every valuation the product produces is an automated estimate, not an ` +
+    `appraisal, and broker opinions of value come from independent local brokers we introduce ` +
+    `you to. Questions: <a href="mailto:info@compninja.co">info@compninja.co</a>.</p>`;
+
+  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/leadership" });
 }
 
 // ---------------------------------------------------------------------------
@@ -8432,11 +12286,13 @@ function renderPrivacyPageHTML(signedIn) {
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
-    `<p>The Service sets three essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
+    `<p>The Service sets a small number of essential cookies: <code>cn_session</code>, an httpOnly cookie that keeps ` +
     `you signed in; <code>cn_guest</code>, an httpOnly cookie used solely to enforce the free-search ` +
     `allowance for visitors without an account; and <code>cn_vid</code>, an httpOnly cookie holding a ` +
-    `random identifier so that our own usage statistics can tell one visit apart from another. That ` +
-    `identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
+    `random identifier so that our own usage statistics can tell one visit apart from another; and, only ` +
+    `for the duration of a sign-in with Google, <code>cn_gstate</code>, a short-lived httpOnly cookie that ` +
+    `protects that sign-in against forgery and expires within minutes. The ` +
+    `<code>cn_vid</code> identifier is a random number: it is not derived from your IP address, your device, or anything else ` +
     `about you, and it is never combined with data from other sites. For the free-search allowance the ` +
     `Service also stores a one-way hashed form of your IP address; the address itself is not retained. ` +
     `None of these cookies is used for advertising ` +
@@ -8450,7 +12306,7 @@ function renderPrivacyPageHTML(signedIn) {
 
     `<h2>7. Data Retention and Deletion</h2>` +
     `<p>We retain information for as long as it is needed to provide the Service. You may delete your ` +
-    `account at any time from within the application (My Desk, Delete account); doing so removes the ` +
+    `account at any time from within the application (Workspace, Delete account); doing so removes the ` +
     `account and its saved data. To request deletion of lead or submission data, contact us at ` +
     `<a href="mailto:info@compninja.co">info@compninja.co</a>.</p>` +
 
@@ -8493,9 +12349,17 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // No brand suffix here — this page's own shell appends " | CompNinja".
   const title = home ? "Commercial Real Estate Comps & Valuations" : "How Commercial Property Valuation Works";
   const canonical = home ? `${SITE_URL}/` : `${SITE_URL}/how-it-works`;
-  const description =
-    "How a CompNinja report is built: live searches of public records and listings, " +
-    "a source badge on every comp, and a value range for your building.";
+  // Split by `home` for the same reason the title is (2026-08-29). The two
+  // URLs answer different questions now that `/` leads with the vault: the
+  // root is the product description Google renders as the snippet, and
+  // /how-it-works is still the methodology page. The home variant keeps the
+  // head terms — a crawler that stops reading after the description must
+  // still learn this is about commercial real estate comps.
+  const description = home
+    ? "Commercial real estate comps with a private vault behind them. Your own closed " +
+      "deals sit inside your reports, with a cited source on every comp."
+    : "How a CompNinja report is built: live searches of public records and listings, " +
+      "a source badge on every comp, and a value range for your building.";
 
   // Illustrative sample, clearly captioned as such — the same exhibit that
   // used to sit on the home page. Figures are representative, not a live pull.
@@ -8544,8 +12408,18 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
 
   const steps = [
+    // "not read from a stale database" was cut 2026-08-21. It was written when
+    // a live web search was the whole product, and it had become false: the
+    // corpus layer means every search DOES read what we already hold first
+    // (retrieveCorpusComps runs on a cache miss, before anything is billed,
+    // and its rows are offered to the model), and archive-first retrieval
+    // landed the same day. The line was telling visitors that reading stored
+    // comps is the shoddy way to do this, on a page selling a product whose
+    // stored comps are the asset. The heading stays "Search live" on the
+    // owner's call: the live search is still the front door and this is a
+    // correction, not a repositioning.
     ["I.", "Search live",
-     "Public records, listings, and news are searched at request time, not read from a stale database."],
+     "We check what we already hold, then search public records, listings and news for anything missing."],
     ["II.", "Cite everything",
      "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
     ["III.", "Value the subject",
@@ -8615,8 +12489,23 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
         url: `${SITE_URL}/`,
         applicationCategory: "BusinessApplication",
         operatingSystem: "Web",
+        // Every head term this node already carried is kept verbatim; the
+        // vault clause is added, not substituted. This is the structured
+        // description of the PRODUCT, and it is what a crawler reads when the
+        // page's own prose leads with the archive.
         description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
-          "with maps, price per square foot, and PDF export.",
+          "with maps, price per square foot, and PDF export. Members can keep a private vault of their own " +
+          "closed deals, which appears only in their own reports.",
+        featureList: [
+          "Comparable sales and lease comps",
+          "Estimated value range",
+          "Source badge on every comp",
+          "Private comp vault",
+          "CSV and XLSX export",
+          "PDF report export",
+        ],
+        // Stays a free Offer: a free tier genuinely exists, and turning this
+        // into an AggregateOffer invites rich-result revalidation for no gain.
         offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
         provider: { "@id": ORG_ID },
         publisher: { "@id": ORG_ID },
@@ -8624,77 +12513,171 @@ function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
     ],
   });
 
+  // The header IS marketBar since 2026-08-20 — this page carried a hand-kept
+  // copy of the identical markup (the diff was one aria-current, now
+  // marketBar's `current` argument), and two copies of a nav drift.
+  // Everything recorded on marketBar holds here: auth chrome on cookie
+  // presence, desk:false slots so My Desk renders exactly once, and the
+  // caching split (no-store + vary: cookie) that keeps the signed-in
+  // variant honest.
+  // The hero exhibit is the broker's OWN book, not a report. Four rows is
+  // enough to read as a list and short enough to sit beside the claim; the
+  // count in the caption is what makes it a book rather than four comps.
+  const VAULT_ROWS = [
+    ["4130 E Airport Dr", "Closed Mar 26 &middot; 19,400 SF", "$218/SF"],
+    ["2255 S Vineyard Ave", "Closed Jan 26 &middot; 31,200 SF", "$204/SF"],
+    ["1044 W Foothill Blvd", "Closed Nov 25 &middot; 12,800 SF", "$241/SF"],
+    ["8710 Rochester Ave", "Closed Sep 25 &middot; 44,600 SF", "$186/SF"],
+    // The chip rides the FIRST row only. It is here to teach the badge a
+    // broker will meet inside their own report; on all four rows it just
+    // restates the caption above it four times.
+  ].map(([addr, sub, psf], i) =>
+    `<div class="vrow"><div class="vaddr">${escHtml(addr)}` +
+    (i === 0 ? ` <span class="badge bv">From your vault</span>` : "") + `</div>` +
+    `<div class="vpsf">${escHtml(psf)}</div><div class="vsub">${sub}</div></div>`).join("");
+
+  // The firm layer, drawn as the same hairline ledger the broker trades use.
+  // BOARD names what the deal board does NOT do, on purpose: it counts what a
+  // member contributed to the firm, and deal-board.js is explicit that this is
+  // not a record of who is closing what. Saying so here pre-empts the first
+  // objection a broker has to a leaderboard.
+  const firmLedger = [
+    ["Shelf", "Reports your colleagues can open",
+     "Put a report on the firm's shelf and every member can open it. Your vault is not on the shelf."],
+    ["Opt in", "Comps you choose, with your name on them",
+     "Share a comp to the firm one at a time and it carries your name. Auto-share is off by default, and a member can decline it."],
+    ["Board", "Who is filling the shelf",
+     "A deal board counts what each member has contributed to the firm. It does not report who is closing what."],
+  ].map(([lab, h, para]) =>
+    `<div class="bkrow"><div class="bklag">${escHtml(lab)}</div><div>` +
+    `<h3>${escHtml(h)}</h3><p>${escHtml(para)}</p></div></div>`).join("");
+
   const body = `
-<header class="hdr">
-  <div class="wrap">
-    <div class="hleft">
-      <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
-    </div>
-    <nav>
-      <details>
-        <summary>Explore<span class="car">▾</span></summary>
-        <div class="dd">
-          ${ACCOUNT_NAV_PRICING}
-          <a href="/brokers">Brokers</a>
-          <a href="/markets">Markets</a>
-          <a href="/how-it-works" class="on" aria-current="page">How it works</a>
-          <a href="/1031-exchange">1031 Guide</a>
-        </div>
-      </details>
-      ${signedIn
-        ? `<a href="/desk">My Desk</a>
-      <a class="btn sm" href="/">Run a report</a>`
-        : `<a href="/?auth=signin">Log in</a>
-      <a class="btn sm" href="/?auth=signup">Create account</a>`}
-      ${/* This page renders My Desk / Log in server-side already (2026-08-08),
-            so it takes the circle and Pricing only — desk:false, or a member
-            would see My Desk twice. */ ""}
-      ${accountNavSlots({ desk: false })}
-    </nav>
-  </div>
-</header>
-<script>document.addEventListener("click",function(e){
-  document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-    if(!d.contains(e.target))d.open=false;});});
-(function(){
-  // Escape = the page you came from when that was CompNinja; otherwise home.
-  // The visible back button was removed 2026-08-03 at the owner's request;
-  // the key stayed. Same logic as MARKET_BAR — keep the two in step.
-  function goBack(){
-    try{
-      if(document.referrer&&new URL(document.referrer).origin===location.origin&&history.length>1){history.back();return;}
-    }catch(err){}
-    location.href="/";
-  }
-  document.addEventListener("keydown",function(e){
-    if(e.key!=="Escape")return;
-    var dd=document.querySelector(".hdr nav details[open]");
-    if(dd){dd.open=false;return;}
-    goBack();
-  });
-})();</script>
-${ACCOUNT_NAV_JS}
+${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
 
 <main>
   <div class="wrap">
     <section style="padding-bottom:32px">
-      <div class="hero2">
+      <div class="split">
         <div>
-          <h1 class="h">A report you can hand to someone who will argue with it.</h1>
-          <p class="lead">Every report answers the question and then shows its work: a value
-            range, the comps behind it, and where each one came from.</p>
+          <div class="kicker">For brokers</div>
+          <h1 class="h">Your closed deals, in every comp report you run.</h1>
+          <p class="lead">Upload your comp book once. Your own deals then sit inside your
+            commercial real estate reports, badged as yours, beside public records and
+            verified broker submissions. Nobody else sees them.</p>
+          <p class="sub">Upload a CSV, map the columns from your own export, or drop in a
+            comp sheet as a PDF or a screenshot.</p>
+          <!-- .heroCta is load-bearing beyond layout: three suites use its
+               presence to decide WHICH page answered a URL (it is how the
+               account-wall tests tell the landing page from the app). It used
+               to wrap the address form; it now wraps the account CTA. Keep the
+               class name even when the contents change again. -->
           <div class="heroCta">
-            <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
-              <label class="lab" for="landingAddress">Address</label>
-              <div class="landRow">
-                <input id="landingAddress" type="text" required autocomplete="street-address"
-                  placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
-                <button class="btn" type="submit">Run a report</button>
-              </div>
-            </form>
-            <p class="landFine">Free account. Automated estimate, not an appraisal.</p>
-            <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
+            <div class="hcta">
+              <a class="btn" href="${signedIn ? "/vault" : "/?auth=signup"}">${signedIn ? "Open your vault" : "Create a free account"} &rarr;</a>
+              <a class="lnk" href="/brokers">See the broker side &rarr;</a>
+            </div>
+            <p class="landFine">Free account to run reports. The vault is part of Pro, $${PRICING.monthly} a month.</p>
             ${signedIn ? "" : `<p class="alt">Already have an account? <a href="/?auth=signin">Log in</a></p>`}
+          </div>
+        </div>
+        <!-- No data-rv: this sits above the fold, where a reveal costs LCP and
+             a missing reduced-motion reset photographs as a blank band. -->
+        <div class="vault">
+          <div class="cap"><span>Your vault &middot; 214 deals &middot; visible only to you</span><span>Illustrative</span></div>
+          <div class="exbody">
+            ${VAULT_ROWS}
+            <div class="vout">
+              <span class="seclab">What leaves it</span>
+              <p>On a report you share: $218/SF &middot; 19,400 SF &middot; Mar 26. No address,
+                no total price, no notes &mdash; and your client&#39;s value range still matches
+                yours to the dollar.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="band"><div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Your firm</div>
+      <h2 class="h">A shelf your colleagues can read, and nothing more.</h2>
+      <p class="sub">Sharing to the firm is per report and per comp, and it is off until
+        someone turns it on. What you do not share stays in your own vault.</p>
+      <div class="bk" data-rv>${firmLedger}</div>
+    </section>
+  </div></div>
+
+  <div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Sharing</div>
+      <h2 class="h">One comp, three audiences.</h2>
+      <p class="sub">The same deal, redacted by who is looking. It is how the vault is
+        built, not a setting you have to remember.</p>
+      <div class="three" data-rv>
+        <div class="pane">
+          <span class="lab">You</span>
+          <div class="pnl">4130 E Airport Dr</div>
+          <div class="pnl">$4,229,200 &middot; 19,400 SF</div>
+          <p class="pnn">Address, price and your own notes. Your file, unchanged.</p>
+        </div>
+        <div class="pane">
+          <span class="lab">Your firm, if you opt in</span>
+          <div class="pnl">4130 E Airport Dr</div>
+          <div class="pnl">$4,229,200 &middot; 19,400 SF</div>
+          <p class="pnn">Only the comps you shared, one at a time, each carrying your name.</p>
+        </div>
+        <div class="pane r">
+          <span class="lab">Your client</span>
+          <div class="pnl">Industrial comparable</div>
+          <div class="pnl">$218/SF &middot; 19,400 SF</div>
+          <p class="pnn">No address, no total price, no notes &mdash; and the value range still
+            matches yours to the dollar.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="band"><div class="wrap">
+    <section class="rv" data-rv>
+      <div class="kicker">Method</div>
+      <h2 class="h">How a report comes together.</h2>
+      <div class="steps" data-rv>${steps}</div>
+    </section>
+  </div></div>
+
+  <div class="wrap">
+    <section class="rv" data-rv>
+      <div class="split">
+        <div>
+          <div class="kicker">Proof</div>
+          <h2 class="h">See it on a building you know.</h2>
+          <p class="sub">Type any commercial address and we run the comps: an estimated value
+            range, the comparable sales behind it, and a source badge on every line. Your
+            price and NOI never leave your browser.</p>
+          <!-- Moved down out of the hero on 2026-08-29, markup intact. The input
+               still carries NO name attribute on purpose: a named field would put
+               a street address on GET /?auth=signup. The handoff is sessionStorage. -->
+          <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
+            <label class="lab" for="landingAddress">Address</label>
+            <div class="landRow">
+              <input id="landingAddress" type="text" required autocomplete="street-address"
+                placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
+              <button class="btn" type="submit">Run a report</button>
+            </div>
+          </form>
+          <p class="landFine">Free account. An automated estimate, not an appraisal.</p>
+          <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
+          <div class="legend">
+            <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
+            <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
+            <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
+            <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
+                 match to the literal this used to carry -- a plain span's
+                 style="" attribute resolves var() reliably, unlike an SVG
+                 presentation attribute, so no class is needed. -->
+            <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
           </div>
         </div>
         <div class="exhibit" data-rv>
@@ -8707,7 +12690,7 @@ ${ACCOUNT_NAV_JS}
               <div class="ledger">${ledgerCells(true)}</div>
             </div>
             <div class="exsec">
-              <div class="secrule"><span class="seclab">What's Driving Prices Here</span></div>
+              <div class="secrule"><span class="seclab">What&#39;s Driving Prices Here</span></div>
               <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
               <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
               <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
@@ -8725,28 +12708,8 @@ ${ACCOUNT_NAV_JS}
           </div>
         </div>
       </div>
-      <div class="legend">
-        <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
-        <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
-        <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-        <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
-             match to the literal this used to carry -- a plain span's
-             style="" attribute resolves var() reliably, unlike an SVG
-             presentation attribute, so no class is needed. -->
-        <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
-      </div>
     </section>
-  </div>
 
-  <div class="band"><div class="wrap">
-    <section class="rv" data-rv>
-      <div class="kicker">Method</div>
-      <h2 class="h">How a report comes together.</h2>
-      <div class="steps" data-rv>${steps}</div>
-    </section>
-  </div></div>
-
-  <div class="wrap">
     <section id="faq" class="rv" data-rv>
       <div class="kicker">Questions</div>
       <h2 class="h" style="margin-bottom:20px">FAQ</h2>
@@ -8755,56 +12718,30 @@ ${ACCOUNT_NAV_JS}
 
     <section class="rv" data-rv>
       <div class="kicker">Brokers</div>
-      <h2 class="h">What brokers get.</h2>
+      <h2 class="h">Where a comp can go.</h2>
       <div class="bk" data-rv>${brokerLedger}</div>
       <p class="bkmore"><a href="/brokers">See the broker side &rarr;</a></p>
     </section>
 
     <div class="cta rv" data-rv>
-      <h2 class="h" style="font-size:22px">See it on your own building.</h2>
-      ${signedIn
-        ? `<p>Reports are free and take about a minute. Run one on your own building.</p>
-      <a class="btn" href="/">Run a report &rarr;</a>`
-        : `<p>Reports are free and take about a minute. Create an account and run one on your own building.</p>
-      <a class="btn" href="/?auth=signup">Run a report &rarr;</a>`}
+      <h2 class="h" style="font-size:22px">Start with a free account.</h2>
+      <!-- The price comes from PRICING, never typed here. This page and
+           /pricing are two public statements of the same number, and the FAQ
+           answer above has already been caught stale twice. -->
+      <p>Reports are free and take about a minute. Pro, at $${PRICING.monthly} a month, adds the
+        vault, a ten-year lookback, unlimited exports and your branding on the report.</p>
+      <a class="btn" href="${signedIn ? "/vault" : "/?auth=signup"}">${signedIn ? "Open your vault" : "Create a free account"} &rarr;</a>
     </div>
   </div>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div>
-      <div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>
-      <p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we
-        connect you with local brokers for opinions of value. Comparables derive from publicly available data;
-        verify independently before underwriting.</p>
-      <p><a href="mailto:info@compninja.co">info@compninja.co</a></p>
-      <p>&copy; 2026 CompNinja LLC</p>
-    </div>
-    <div class="right">
-      <div class="cols">
-        <div>
-          <div class="ch">Explore</div>
-          <ul aria-label="Explore">
-            <li><a href="/markets">Markets</a></li>
-            <li><a href="/brokers">Brokers</a></li>
-            <li><a href="/how-it-works">How it works</a></li>
-            <li><a href="/how-it-works#faq">FAQ</a></li>
-            <li><a href="/1031-exchange">1031 exchange guide</a></li>
-            <li><a href="/">Run a report</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="ch">Company</div>
-          <ul aria-label="Company">
-            <li><a href="/terms">Terms</a></li>
-            <li><a href="/privacy">Privacy</a></li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-</footer>
+<!-- MARKET_FOOTER, not a copy of it. This page hand-kept markup that was
+     byte-identical to that constant once whitespace was normalised, which is
+     the third time this file has grown a second copy of the same footer and
+     the second time the copies drifted (see theme.test.js on the dark-ink
+     fix). One constant means the landing page cannot fall behind /brokers
+     again. -->
+${MARKET_FOOTER}
 <script>
 (function(){
   var f=document.getElementById("landingSearch");
@@ -8891,7 +12828,10 @@ ${ACCOUNT_NAV_JS}
 })();
 </script>`;
 
-  return `<!DOCTYPE html>\n<html lang="en">\n<head>\n` +
+  // Same rail stamp as marketShell. This page builds its own document rather
+  // than going through that helper, so it is the one most easily forgotten
+  // when the shell changes — test/nav-shell.test.js checks it by name.
+  return `<!DOCTYPE html>\n<html lang="en"${signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : ""}>\n<head>\n` +
     `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
     `<title>${escHtml(title)} | CompNinja</title>\n` +
     `<meta name="description" content="${escHtml(description)}"/>\n` +
@@ -8905,10 +12845,15 @@ ${ACCOUNT_NAV_JS}
     `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
     `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
     `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
+    // Same manifest link as marketShell, same reason: this is the landing
+    // page anonymous visitors get at / under the wall, so it is where the
+    // browser must learn the site is installable.
+    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
     `${THEME_META}` +
     `<script type="application/ld+json">${jsonLd}</script>\n` +
     `<style>${HOW_CSS}</style>\n` +
     THEME_BOOT +
+    INAPP_BOOT +
     // The ONE thing that arms the scroll choreography. Every rule that hides
     // anything is scoped under html.anim, so a visitor with JS off — or a
     // crawler, or anyone whose network drops this byte — gets the finished
@@ -9210,6 +13155,27 @@ function aggregateStats(rows) {
         templates: rows.filter((r) => r.kind === "vault_template").length,
         imports: imports.length,
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
+      };
+    })(),
+    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
+    // skipped at the route, so this is roughly people) against the BOV leads
+    // the guide produced (source "1031" — the localStorage marker the
+    // widget stamps). The split by `source` says which audience is reading:
+    // "visitor" is the SEO traffic the page exists for, "member" is people
+    // already here. Conversion is left for the card to phrase, because the
+    // two counts age out of the 10k-row window at different rates and a
+    // hard percentage would look more solid than it is.
+    guide1031: (() => {
+      const views = rows.filter((r) => r.kind === "guide_1031");
+      const day30 = Date.now() - 30 * 86400000;
+      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
+      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
+      return {
+        views: views.length,
+        views30d: in30(views),
+        members: views.filter((r) => (r.source || "") === "member").length,
+        leads: leads1031.length,
+        leads30d: in30(leads1031),
       };
     })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
@@ -9649,6 +13615,22 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
+  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
+  // before this shipped. No computed conversion percentage on purpose: the
+  // counts are small and age out of the event window at different rates, so
+  // the honest read is both numbers side by side.
+  var g31=d.guide1031;
+  var guideCard=(g31===undefined)?"":
+    "<div class=card><h2>1031 guide funnel</h2>"+
+    (!g31.views&&!g31.leads
+      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
+        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
+      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
+        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
+        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
+        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
+        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
+    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -9739,6 +13721,7 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
+    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -11391,10 +15374,73 @@ async function linkVaultProperties(userId, comps) {
         { lat: coord.lat, lng: coord.lng, geo_source: coord.geo_source },
         { prefer: "return=minimal" });
     }
+
+    // The buildings this import left unlocated get the import-time geocode
+    // (spec §3 step 2). Scheduled AFTER the broker-coordinate PATCHes above,
+    // so the lat=is.null read already excludes every building the broker
+    // located themselves.
+    scheduleVaultGeocode(userId, [...index.keys()]);
   } catch (err) {
     // Loud in the log, invisible to the broker.
     console.error("vault property link failed (comps are stored; link deferred):", err.message);
   }
+}
+
+// Import-time geocoding for a broker's unlocated buildings (spec
+// docs/superpowers/specs/2026-08-06-private-comp-geocoding.md §3 step 2 —
+// deferred by the owner's §7 decision on 2026-08-06, built 2026-08-29).
+//
+// THE PRIVACY WALL HOLDS: the address goes to geocodeCensus — our own
+// in-process Census call, the same one POST /api/geocode fronts — and nowhere
+// else. Never Nominatim, never the browser, never a third party the spec did
+// not name. A miss is a skip, never a guess: an unlocated building costs a
+// map pin, while a wrong coordinate puts the building on the wrong continent
+// and nobody would recognize it as wrong.
+//
+// FIRE-AND-FORGET, scheduleCorpusLocate's contract: never awaited on the
+// request path, never throws, no-op without a database. The upload response
+// is already decided by the time this runs; a Census outage leaves lat null
+// and the next upload or vault read retries (outages are not cached in
+// GEO_MEM; real misses are, so a bad address is not re-hammered).
+//
+// `lat=is.null` rides BOTH the read and the PATCH, and that pair is what
+// keeps broker-supplied coordinates authoritative: linkVaultProperties writes
+// the broker's own coordinates first, so this never even reads those
+// buildings — and if a broker write lands between our read and our PATCH,
+// the PATCH matches zero rows. geo_source is 'census' here and only here;
+// the spreadsheet path (broker-properties.js) writes 'broker' and wins.
+const VAULT_GEOCODE_CAP = 25;          // per import — a first real upload should locate in one pass
+const VAULT_GEOCODE_BACKFILL_CAP = 8;  // per vault read, mirroring scheduleCorpusLocate's 8
+
+async function geocodeVaultPropertyRows(userId, rows) {
+  for (const row of rows) {
+    const ll = await geocodeCensus(row.address);
+    if (!ll) continue; // miss or outage: skip, never guess
+    try {
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&id=eq.${encodeURIComponent(row.id)}&lat=is.null`,
+        { lat: ll.lat, lng: ll.lng, geo_source: "census",
+          geocoded_at: new Date().toISOString() },
+        { prefer: "return=minimal" });
+    } catch (_) { /* best-effort, the corpus backfill's stance */ }
+  }
+}
+
+function scheduleVaultGeocode(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = [...new Set((Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean))];
+  if (!keys.length) return;
+  Promise.resolve().then(async () => {
+    const quoted = keys
+      .map((k) => `"${String(k).replace(/"/g, '""')}"`).join(",");
+    const props = await sbRequest("GET",
+      `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+      `&address_key=in.(${encodeURIComponent(quoted)})&lat=is.null` +
+      `&select=id,address_key,address`);
+    await geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_CAP));
+  }).catch(() => {});
 }
 
 // How often each published comp has been cited in a report, read from the
@@ -11523,10 +15569,17 @@ async function vaultReadPayload(req, params) {
     // and `email` are no business of this page.
     identity: (() => {
       const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      // license_number is sent back to its OWNER's own vault page, which is
+      // the one place it belongs: the page has to refill the field on edit,
+      // and has to be able to say publishing is blocked before the broker
+      // clicks Publish and is refused. It is never rendered publicly and is
+      // deliberately absent from publicBrokerRow.
       return {
         display_name: (p && p.display_name) || "",
         company: (p && p.company) || "",
+        license_number: (p && p.license_number) || "",
         creditedTo: VAULT.creditName(p),
+        canPublish: VAULT.canPublishAs(p).ok,
       };
     })(),
     // The firm's half of the header, and the per-comp control. `firm: null`
@@ -11568,12 +15621,16 @@ async function vaultReadPayload(req, params) {
 // The lookback filter matters for honesty as much as relevance: a report says
 // it covers N months, so a private comp older than that would quietly widen
 // the window the valuation is drawn from.
-async function vaultCompsForReport(req, ent, { market, type, months }) {
+// Takes the USER, not the request (changed 2026-08-21). It only ever wanted
+// getSessionUser(req), and the bulk worker outlives the request that started
+// it — there is no `req` to hand it half an hour later. orgCompsForReport
+// already took a user beside its unused `req`; both now take one and nothing
+// else about either changed.
+async function vaultCompsForReport(user, ent, { market, type, months }) {
   try {
     if (!DB_CONFIGURED) return [];
     if (!ent || !ent.canUseVault) return [];
     if (!market || !type) return [];
-    const user = await getSessionUser(req);
     if (!user) return [];
 
     const cutoff = new Date(Date.now() - Math.max(1, Number(months) || 12) * 31 * 24 * 3600 * 1000)
@@ -11710,7 +15767,7 @@ async function refreshSharedComp(user, compId) {
 //     covers N months, so an older comp would quietly widen the window the
 //     valuation is drawn from.
 //   - [] on any failure.
-async function orgCompsForReport(req, ent, user, { market, type, months }) {
+async function orgCompsForReport(ent, user, { market, type, months }) {
   try {
     if (!DB_CONFIGURED) return [];
     if (!ent || !ent.canUseVault) return [];
@@ -11773,7 +15830,16 @@ async function attachPropertyCoords(userId, comps) {
       // vault read in this file is user-scoped and an unscoped one is the
       // shape of the next mistake.
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source`);
+      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source,address`);
+
+    // Books uploaded before import-time geocoding shipped (2026-08-29) would
+    // otherwise stay unlocated forever unless re-uploaded. This read already
+    // holds the rows, so the backfill rides it — scheduleCorpusLocate's
+    // pattern with scheduleCorpusLocate's cap, fire-and-forget so the blend
+    // never waits a millisecond on a geocoder.
+    Promise.resolve().then(() => geocodeVaultPropertyRows(
+      userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_BACKFILL_CAP)
+    )).catch(() => {});
 
     // Both or neither, and null is not a coordinate — the rule lives in the
     // pure, tested BLEND.propertyCoordsById. The bare Number() guard that
@@ -12284,16 +16350,6 @@ const server = http.createServer((req, res) =>
         const noteOk = note ? String(note).trim() : "";
         const detailsOk = sanitizeSubjectDetails(typeOk, subjectDetails);
 
-        // Verified comps are fetched once, both for the model and as part of
-        // the cache key — approving a new broker comp naturally invalidates
-        // any cached report for that property type.
-        const verifiedComps = await fetchVerifiedComps(typeOk, txFocusOk);
-        const cacheKey = cacheKeyFor({
-          address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk, verifiedComps,
-          subjectDetails: detailsOk,
-        });
-
         // Gating happens at SERIALIZATION, never at generation: the cache, the
         // corpus harvest, and the market-snapshot publisher all keep seeing
         // whole reports, so one cached search serves free and Pro visitors
@@ -12306,7 +16362,7 @@ const server = http.createServer((req, res) =>
         // response is byte-identical to what it was before this feature.
         const vaultRows = internal
           ? []
-          : await vaultCompsForReport(req, ent, {
+          : await vaultCompsForReport(await getSessionUser(req), ent, {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
         // A colleague's comps, opted in to the firm (migration 032). Read
@@ -12316,7 +16372,7 @@ const server = http.createServer((req, res) =>
         // one of them upstream of the cache.
         const firmCompRows = internal
           ? []
-          : await orgCompsForReport(req, ent, await getSessionUser(req), {
+          : await orgCompsForReport(ent, await getSessionUser(req), {
               market: marketOf(addressOk), type: typeOk, months: monthsOk,
             });
         // Filled after the guest gate so a blocked anonymous visitor does not
@@ -12324,88 +16380,16 @@ const server = http.createServer((req, res) =>
         // binding; cache-hit and billed exits both run after it is assigned.
         let corpusRadiusRows = [];
 
-        const gate = async (rep) => {
-          if (internal) return rep;
-          // Public saved deals first, then the paywall, then the vault.
-          // Radius blend is before gateReport so extras become locked_basis
-          // for a free visitor instead of printing their addresses. Vault
-          // blend stays last: brokers are Pro, and a private row must never
-          // become a public locked_basis row.
-          let merged = rep;
-          if (CORPUS_RADIUS) {
-            const subject = RADIUSBLEND.coordsFromReport(rep)
-              || await geocodeCensus(addressOk);
-            merged = RADIUSBLEND.blendNearbyComps(rep, corpusRadiusRows, {
-              subject,
-              months: monthsOk,
-              now: Date.now(),
-              parseDealDate,
-              keyOf: corpusKeyOf,
-              subjectAddress: addressOk,
-              isAggregateAddress,
-              propertyType: typeOk,
-              marketNote: noteOk,
-              subjectSize: sizeOk || GATE.numericValue(rep && rep.subject_size_sqft) || 0,
-            });
-            if (merged && merged.corpus_count) {
-              const radiusMi = RADIUSBLEND.radiusMilesFor(typeOk, noteOk);
-              console.log(`Corpus radius: +${merged.corpus_count} saved deal(s) within ${radiusMi} mi of ${addressOk}`);
-            }
-            merged = RADIUSBLEND.attachCompDistances(merged, subject);
-          } else {
-            merged = RADIUSBLEND.attachCompDistances(merged);
-          }
-          const subjectSqft = sizeOk || GATE.numericValue(merged && merged.subject_size_sqft) || 0;
-          const gated = GATE.gateReport(merged, ent, {
-            asOfMs: Date.now(),
-            subjectSqft,
-            propertyType: typeOk,
-            radiusMiles: RADIUSBLEND.parseRadiusMiles(noteOk),
-            subjectPsf: RADIUSBLEND.impliedSubjectPsf(merged, { subjectSize: subjectSqft }),
-          });
-          if (!gated || typeof gated !== "object") return gated;
-          // `ent` was resolved with THIS report's id, so it already knows a single-report
-          // unlock makes its exports unlimited — /api/config cannot, because it
-          // takes no report id and would need a purchase lookup on every page
-          // load. Without this the buyer of a report was shown the free monthly
-          // tally ("4 exports left this month") on a report they own outright.
-          // Spread rather than assign: `rep` may be the CACHED object, and the
-          // cache must never carry one visitor's entitlement to the next.
-          // Per-visitor and per-REPORT, for the same reason exports_remaining is:
-          // `ent` was resolved with this report's id, so it knows a $20
-          // single-report unlock carries branding for this property. The
-          // browser cannot work this out for itself — /api/config's canBrand
-          // takes no report id, and lockedCount() === 0 is also true for a free
-          // visitor whose thin market simply returned fewer comps than the gate.
-          // Serialization-time like everything else here, so the cached object
-          // never carries one visitor's entitlement to the next.
-          const withExports = { ...gated, exports_remaining: ent.exportsRemaining, branding_allowed: ent.canBrand === true };
-          // LAST, and only here. Every caller of gate() is an exit — the cache
-          // hit, the derived-window hit, the SSE result and the plain JSON
-          // result — so this is the one place a private comp can enter, and it
-          // is downstream of the cache write, harvestComps() and the market
-          // snapshot, all of which keep seeing the public report. Blending any
-          // earlier serves one broker's private book to the next visitor who
-          // searches that address, because the cache is keyed by property and
-          // not by user.
-          // The broker's own comps first, then the firm's — in that order, so
-          // dedupeFirmComps can drop a colleague's copy of a deal the broker
-          // already holds rather than the other way round. Two people at one
-          // firm were routinely on opposite sides of the same transaction, so
-          // without this the deal is counted twice in the valuation with
-          // nothing on screen explaining the shift.
-          const withMine = BLEND.blendPrivateComps(withExports, vaultRows);
-          if (!firmCompRows.length) return withMine;
-          const firmComps = BLEND.dedupeFirmComps(
-            (withMine.comps || []).filter(BLEND.isPrivateComp),
-            firmCompRows.map(BLEND.toFirmReportComp).filter(Boolean));
-          if (!firmComps.length) return withMine;
-          return {
-            ...withMine,
-            comps: [...(withMine.comps || []), ...firmComps],
-            private_count: (withMine.private_count || 0) + firmComps.length,
-          };
-        };
+        // One serialization funnel, shared with the bulk worker (see
+        // finishReportForViewer). The arrow is evaluated per call, so both
+        // bindings below are read at EXIT time: corpusRadiusRows is filled
+        // after the guest gate, and `searched` carries the call's real spend,
+        // which only exists once the search has run.
+        const gate = (rep) => finishReportForViewer(rep, {
+          ent, internal, addressOk, typeOk, noteOk, monthsOk, sizeOk,
+          corpusRadiusRows, vaultRows, firmCompRows,
+          callStats: searched ? searched.callStats : null,
+        });
 
         // The gate's principle applied to live progress: a limited visitor
         // never receives more identified comps than the report itself will
@@ -12450,112 +16434,52 @@ const server = http.createServer((req, res) =>
           corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
         }
 
-        const cached = skipCache ? null : await getCachedSearch(cacheKey);
-        if (cached) {
-          // Legacy cache entries predate $/SF reconciliation — correct them at
-          // read time (idempotent, so re-hitting the in-memory object is fine).
-          reconcilePricePerSqft(cached);
-          console.log(`Cache hit (no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk}`);
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, cached);
-          harvestComps(typeOk, addressOk, cached);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(cached));
-        }
-
-        // Exact key missed — but a shorter lookback is a subset of a longer
-        // one, so a cached longer-window report for the same request can be
-        // filtered down to this window instead of paying for a fresh search
-        // (see findDerivableReport for the quality floors).
-        const dw = skipCache ? null : await findDerivableReport({
-          address: addressOk, type: typeOk, note: noteOk,
-          maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
-          verifiedComps, subjectDetails: detailsOk,
-        }, monthsOk, txFocusOk, maxCompsOk);
-        if (dw) {
-          console.log(`Cache hit (derived from ${dw.parentMonths}-month entry, no ${PROVIDER.logLabel} call): ${addressOk} — ${typeOk} at ${monthsOk} months`);
-          // Side effects mirror a direct cache hit, fed the PARENT payload —
-          // the harvester dedupes, and the fuller comp list is the better feed.
-          logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: true, source: "derived", plan: ent.plan });
-          maybePublishMarketSnapshot(typeOk, addressOk, dw.parent);
-          harvestComps(typeOk, addressOk, dw.parent);
-          consumeGuestSearch(false);
-          return sendJson(res, 200, await gate(dw.derived));
-        }
-
-        // A paying subscriber must never be told the site is out of searches
-        // for the day — the cap is a scraper backstop, not a product limit.
-        if (!ent.pro && !internal && !tryConsumeDailySearch()) {
-          return sendJson(res, 429, {
-            error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+        // One search pipeline, shared with the bulk worker: cache, derivable
+        // window, daily cap, size memo, corpus retrieval, the billed call and
+        // every side effect that must see the WHOLE report. See runCompSearch.
+        let searched;
+        try {
+          searched = await runCompSearch({
+            address: addressOk, type: typeOk, note: noteOk, months: monthsOk,
+            maxComps: maxCompsOk, txFocus: txFocusOk, subjectSizeSqft: sizeOk,
+            subjectDetails: detailsOk, skipCache, plan: ent.plan,
+            // The rows read above the gate closure — the search budget and the
+            // serialization blend see the SAME list, so the report the floored
+            // budget produces always carries the comps that justified it.
+            vaultRows,
+            // The cap is a scraper backstop, not a product limit: a paying
+            // subscriber must never be told the site is out of searches for
+            // the day, and neither must an internal caller.
+            countsDailyCap: !ent.pro && !internal,
+            // The stream opens HERE and nowhere earlier. Everything the
+            // pipeline answers before this point — the cache hit that matters
+            // most, at 43ms — is plain JSON with a real status code, and the
+            // client picks how to read the body off its content-type, never
+            // off the fact that it asked to stream.
+            onBilledStart: ({ corpus, market }) => {
+              if (!wantsStream) return;
+              sse = openSse(res);
+              if (corpusIsStrong(corpus)) {
+                sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market });
+              }
+            },
+            // null when not streaming, exactly as before: getComps skips its
+            // per-attempt event wrapper entirely on a non-streaming call.
+            onProgress: wantsStream
+              ? (evt) => { if (sse) sse.send("progress", guardComp(evt)); }
+              : null,
           });
-        }
-
-        // A blank SF field costs two extra searches for the size lookup — but
-        // if any previous search already looked this building up, reuse the
-        // answer and shrink the budget (see the subject-size memo). The
-        // visitor's own entry (sizeOk) always wins over the memo.
-        const knownSize = sizeOk ? null : await findKnownSubjectSize(addressOk);
-        if (knownSize) {
-          console.log(`Subject size remembered from a previous search: ${knownSize.size.toLocaleString("en-US")} SF — ${addressOk}`);
-        }
-        const searchSize = sizeOk || (knownSize ? knownSize.size : null);
-
-        // Cache missed — see what we already hold for this market before paying
-        // for a fresh web search. Corpus-strong markets reuse known comps and
-        // run a much smaller search budget (see searchBudgetFor).
-        const corpus = await retrieveCorpusComps(marketOf(addressOk), typeOk, monthsOk, maxCompsOk);
-        if (corpusIsStrong(corpus)) {
-          console.log(`Corpus-assisted search: ${corpus.coverage} known comp(s) for ${marketOf(addressOk)} — ${typeOk}`);
-        }
-        if (corpus.nearbyCount) {
-          // nearby is sliced to maxComps; nearbyCount is the pre-slice usable
-          // total, so report both rather than let the count overstate what
-          // the model was actually offered.
-          console.log(`Corpus metro: offering ${corpus.nearby.length} of ${corpus.nearbyCount} usable nearby comp(s) from ${[...new Set(corpus.nearby.map((r) => r.market))].join(" | ")} (candidates only, budget unchanged)`);
-        }
-
-        // Everything above this line answers in plain JSON — the password gate,
-        // the rate limiters, validation, and (the fast path that matters) a
-        // 43ms cache hit. Only the genuinely slow leg streams. The client picks
-        // how to read the response off its content-type, never off what it asked
-        // for, so all of those keep working untouched.
-        if (wantsStream) {
-          sse = openSse(res);
-          if (corpusIsStrong(corpus)) {
-            sse.send("progress", { phase: "corpus", coverage: corpus.coverage, market: marketOf(addressOk) });
+        } catch (err) {
+          if (err && err.code === "daily_cap") {
+            return sendJson(res, 429, {
+              error: "This site has reached its daily search limit. Please try again after midnight UTC.",
+            });
           }
+          throw err;
         }
-
-        // Speed observability: time the whole billed leg (what the visitor
-        // actually waits for server-side) and collect the call's search
-        // count, output size, and rescue history for the analytics event.
-        const callStats = {};
-        const billedT0 = Date.now();
-        const result = await getComps(addressOk, typeOk, noteOk, monthsOk, maxCompsOk, txFocusOk, searchSize, verifiedComps, corpus, detailsOk,
-          sse ? (evt) => sse.send("progress", guardComp(evt)) : null, callStats);
-        // With the size supplied (memo hit), the prompt skips the lookup and
-        // the payload has no subject_size_sqft — carry the remembered size
-        // into the report so the client's hero math and size autofill still
-        // work for a visitor who typed nothing. Source is kept verbatim so
-        // the hero's provenance phrasing stays accurate.
-        if (knownSize && !result.subject_size_sqft) {
-          result.subject_size_sqft = String(knownSize.size);
-          if (knownSize.source) result.subject_size_source = knownSize.source;
-        }
-        // A fresh lookup (no memo, no typed size) is worth remembering for
-        // every future search of this address. Fire-and-forget.
-        if (!sizeOk && !knownSize) rememberSubjectSize(addressOk, result);
-        // meta feeds the instant-badge address index; the Explorer's
-        // market-level store below deliberately passes none.
-        await storeCachedSearch(cacheKey, result, { address: addressOk, type: typeOk });
-        logEvent("search", { prop_type: typeOk, market: marketOf(addressOk), cached: false, source: corpusIsStrong(corpus) ? "corpus" : undefined, plan: ent.plan,
-          duration_ms: Date.now() - billedT0, searches: callStats.searches, out_tokens: callStats.out_tokens, rescue: callStats.rescue });
-        maybePublishMarketSnapshot(typeOk, addressOk, result);
-        harvestComps(typeOk, addressOk, result);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", await gate(result));
-        return sendJson(res, 200, await gate(result));
+        if (sse) return sse.finish("result", await gate(searched.report));
+        return sendJson(res, 200, await gate(searched.report));
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success
@@ -12713,6 +16637,9 @@ const server = http.createServer((req, res) =>
             if (!snapshot) {
               return { status: 422, body: { error: `We couldn't find enough recent priced ${typeOk.toLowerCase()} sales in ${address} to build a market snapshot. Try a valuation for a specific property instead.` } };
             }
+            // Before either exit, so a thin-market preview opens with the
+            // same aerial the published page would have.
+            await attachCityCoords(snapshot);
             if (pricedSaleCount >= MIN_PRICED_SALE_COMPS) {
               await storeDynamicMarketPage(slug, snapshot);
               notifyByEmail(`New market page published via Explorer: ${typeOk} — ${address}`, [
@@ -12820,10 +16747,17 @@ const server = http.createServer((req, res) =>
           // this way only sized leads are exposed to that risk, and
           // migrations/verify.js checks the column exists.
           ...(sizeClean ? { size_sqft: sizeClean } : {}),
-          // "bov" = the owner-mode Broker Opinion of Value request; anything
-          // else is the export-unlock form.
-          source: ["export", "bov"].includes(source) ? source : "export",
+          // "bov" = the owner-mode Broker Opinion of Value request; "1031" =
+          // the same request from a browser that recently read the
+          // /1031-exchange guide (index.html tags it — a bov-class lead on
+          // the 45/180-day clock, the highest-intent source the site has);
+          // anything else is the export-unlock form.
+          source: ["export", "bov", "1031"].includes(source) ? source : "export",
         };
+        // Everything BOV-shaped (broker matching, alerts, the follow-up
+        // email) treats "1031" as a bov: the tag is attribution and urgency,
+        // never a different funnel.
+        const bovClass = lead.source === "bov" || lead.source === "1031";
         // Share link for the lead's report. Validated hard against our own
         // /r/<id> shape so this endpoint can't be abused to email arbitrary
         // attacker-supplied links. NOT stored in the lead row (the Supabase
@@ -12846,7 +16780,7 @@ const server = http.createServer((req, res) =>
         // this market so the owner can connect them — the loop's payoff for the
         // broker. Owner-mediated: the broker isn't contacted automatically.
         let brokerField = [];
-        if (lead.source === "bov") {
+        if (bovClass) {
           const brokers = await findBrokersForMarket(market);
           if (brokers.length) {
             brokerField = [["Brokers active in this market", brokers.map((b) =>
@@ -12854,7 +16788,7 @@ const server = http.createServer((req, res) =>
           }
         }
         notifyByEmail(
-          `${lead.source === "bov" ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
+          `${lead.source === "1031" ? "New BOV request (1031 exchange)" : bovClass ? "New BOV request" : "New export lead"}: ${lead.name}${lead.address ? " — " + lead.address : ""}`,
           [
             ["Name", lead.name],
             ["Email", lead.email],
@@ -12862,7 +16796,9 @@ const server = http.createServer((req, res) =>
             ["Company", lead.company],
             ["Property", lead.address],
             ["Property type", lead.type],
-            ["Came from", lead.source === "bov" ? "Broker Opinion of Value request" : "Export unlock form"],
+            ["Came from", lead.source === "1031"
+              ? "Broker Opinion of Value request (read the 1031 guide — likely on the 45/180-day clock)"
+              : bovClass ? "Broker Opinion of Value request" : "Export unlock form"],
             ["Report link", reportUrl],
             ...brokerField,
             ["Stored in", dest],
@@ -12876,7 +16812,7 @@ const server = http.createServer((req, res) =>
         // Gated on dest === "db": the inbox is DB-only, so a lead that fell
         // back to the local file is invisible there, and mailing brokers
         // about a lead they can never see would be worse than saying nothing.
-        if (lead.source === "bov" && DB_CONFIGURED && dest === "db") {
+        if (bovClass && DB_CONFIGURED && dest === "db") {
           (async () => {
             // A non-canonical market (marketOf's no-state fallback) can never
             // match a coverage row, so skip the round trip entirely.
@@ -12900,7 +16836,10 @@ const server = http.createServer((req, res) =>
             const users = await sbRequest("GET",
               `users?id=in.(${ids.join(",")})&select=id,email`);
             const line = [lead.type, market,
-              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null]
+              lead.size_sqft ? `${Number(lead.size_sqft).toLocaleString("en-US")} SF` : null,
+              // The one extra fact a broker acts on immediately: this seller
+              // is inside a 1031 window and must transact.
+              lead.source === "1031" ? "1031 exchange" : null]
               .filter(Boolean).join(" · ");
             const now = Date.now();
             for (const u of users || []) {
@@ -12929,7 +16868,7 @@ const server = http.createServer((req, res) =>
         }
         // Follow-up to the lead: their report link + what happens next.
         // Dormant until EMAIL_FROM is set (custom domain verified in Resend).
-        if (lead.source === "bov") {
+        if (bovClass) {
           sendOutboundEmail(
             lead.email,
             "Your CompNinja report + what happens next",
@@ -13032,6 +16971,123 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- "Continue with Google" — the OAuth door -----------------------------
+  // GET /auth/google hands the visitor to Google's consent screen with a
+  // one-shot state nonce; the callback exchanges the code for an id_token,
+  // validates its claims (google-auth.js owns what a token must prove), and
+  // signs the visitor in — finding the account by VERIFIED email, or creating
+  // one. Identity is the email (018's decision), so there is no migration
+  // behind this: a Google sign-in lands on the same users row a password
+  // sign-in does, and every later read (desk, vault, entitlements) is
+  // unchanged by how the session was minted.
+  //
+  // A Google-created account gets a RANDOM password hash, never an empty one:
+  // POST /api/account/login answers it "Incorrect email or password" like any
+  // wrong guess, and the existing forgot-password flow is how such an account
+  // gains a password later — the reset email goes to the address Google
+  // verified, so the inbox's owner is always senior. That is also the honest
+  // answer to the classic pre-hijack worry (signup does not verify email, so
+  // a stranger could park a password account on someone else's address before
+  // they first arrive via Google): the true owner can always take the account
+  // over through reset, and the stranger never reads anything sent to it.
+  //
+  // Every failure exits to /?auth=signin&gerr=1 — the account modal opens
+  // with a one-line explanation and the password door is right there. No
+  // Google error text ever reaches the visitor (upstreamError's rule: a
+  // vendor's errors are written for us, never for a customer).
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) {
+      return sendJson(res, 429, { error: "Too many attempts. Please wait a few minutes and try again." });
+    }
+    const state = crypto.randomBytes(16).toString("hex");
+    res.setHeader("set-cookie", gstateCookie(req, state, 600));
+    res.writeHead(302, {
+      location: GAUTH.authUrl({ clientId: GOOGLE_OAUTH_CLIENT_ID, redirectUri: oauthRedirectUri(req), state }),
+      "cache-control": "no-store",
+    });
+    return res.end();
+  }
+
+  if (req.method === "GET" && req.url.split("?")[0] === "/auth/google/callback") {
+    if (!GOOGLE_OAUTH_CONFIGURED) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      return res.end("Not found");
+    }
+    // The one-shot nonce is cleared on every exit, success included.
+    const clearState = gstateCookie(req, "", 0);
+    const fail = () => {
+      res.setHeader("set-cookie", clearState);
+      res.writeHead(302, { location: "/?auth=signin&gerr=1", "cache-control": "no-store" });
+      res.end();
+    };
+    (async () => {
+      if (rateLimited("gauth:" + clientIp(req), 20, 15 * 60 * 1000)) return fail();
+      const q = new URLSearchParams(req.url.split("?")[1] || "");
+      const code = q.get("code") || "";
+      const state = q.get("state") || "";
+      const cookieState = parseCookies(req)[GSTATE_COOKIE] || "";
+      // The CSRF check: proceed only when Google echoes the nonce THIS
+      // browser was handed. A missing cookie is a stale or forged link.
+      if (!code || !state || !cookieState || state !== cookieState) return fail();
+      // The code exchange — server-to-server, authenticated with the client
+      // secret, which is why the id_token's claims are trusted without a
+      // signature check (google-auth.js's header carries the full argument).
+      let idToken = "";
+      try {
+        const r = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+          method: "POST",
+          headers: { "content-type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_OAUTH_CLIENT_ID,
+            client_secret: GOOGLE_OAUTH_CLIENT_SECRET,
+            redirect_uri: oauthRedirectUri(req),
+            grant_type: "authorization_code",
+          }).toString(),
+          signal: AbortSignal.timeout(10000),
+        });
+        if (r.ok) idToken = String(((await r.json()) || {}).id_token || "");
+        else console.warn("Google token exchange refused (" + r.status + ")");
+      } catch (err) { console.warn("Google token exchange failed:", err && err.message); }
+      const checked = GAUTH.validateGoogleClaims(
+        GAUTH.parseIdTokenClaims(idToken), { clientId: GOOGLE_OAUTH_CLIENT_ID, now: Date.now() });
+      if (!checked.ok) {
+        if (idToken) console.warn("Google sign-in refused:", checked.reason);
+        return fail();
+      }
+      let user = await findUserByEmail(checked.email);
+      if (!user) {
+        user = await createUser({
+          email: checked.email,
+          // Random, never empty — see the header comment above.
+          password_hash: await hashPassword(crypto.randomBytes(32).toString("base64url")),
+          name: checked.name,
+        });
+        // The same PII-free event kinds the password doors log, so the
+        // /admin visitor funnel counts a Google signup as a signup; source
+        // is a real analytics column and records which door it was.
+        logEvent("signup", { source: "google" });
+        console.log("Account created via Google: " + checked.email);
+      } else {
+        logEvent("login", { source: "google" });
+      }
+      const token = await createSession(user.id);
+      // Two cookies in one response — setSessionCookie would REPLACE the
+      // state clear, so the two strings ride together as an array.
+      res.setHeader("set-cookie", [clearState, sessionCookie(req, token, Math.floor(SESSION_TTL_MS / 1000))]);
+      res.writeHead(302, { location: "/", "cache-control": "no-store" });
+      res.end();
+    })().catch((err) => {
+      console.error("Google callback failed:", err);
+      fail();
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/account/me") {
     getSessionUser(req).then((user) => {
       if (!user) return sendJson(res, 401, { error: "Not signed in." });
@@ -13117,6 +17173,36 @@ const server = http.createServer((req, res) =>
       });
       return;
     }
+  }
+
+  // The settings panel's watchlist-digest toggle. `enabled` speaks the
+  // visitor's language (true = send me the digest) and is inverted into the
+  // stored users.digest_optout; state reads ride /api/account/me, so there is
+  // no GET here. Session-authenticated on purpose — the email unsubscribe
+  // link stays MAC-authenticated (`/watchlist/unsubscribe`) because it must
+  // work signed-out months later; this route is the signed-in door to the
+  // same column. Same analytics event as that link, distinguishable source.
+  if (req.method === "POST" && req.url === "/api/account/digest") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const enabled = JSON.parse(body || "{}").enabled;
+        if (typeof enabled !== "boolean") {
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        await setDigestOptout(user.id, !enabled);
+        logEvent("watchlist_digest_optout", { source: enabled ? "settings-on" : "settings-off" });
+        return sendJson(res, 200, publicAccount({ ...user, digest_optout: !enabled }));
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Digest preference save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that preference. Please try again in a minute." });
+      }
+    });
+    return;
   }
 
   if (req.method === "DELETE" && req.url === "/api/account") {
@@ -13300,7 +17386,16 @@ const server = http.createServer((req, res) =>
           if (!item) return sendJson(res, 404, { error: "Not found." });
           return sendJson(res, 200, item);
         }
-        return sendJson(res, 200, { items: await withMarketMovement(await listPortfolio(user.id)) });
+        // Each saved property carries its door into the standing market page,
+        // when one exists — the desk is the hub, so a portfolio row links out
+        // to /market/<slug> as well as back into its report. Pure in-memory
+        // decoration (marketPageInfo reads the loaded page stores), applied
+        // after withMarketMovement so its fail-safe copy is what gets marked.
+        const items = (await withMarketMovement(await listPortfolio(user.id))).map((item) => {
+          const mp = marketPageInfo(marketOf(item.address), item.property_type);
+          return mp ? { ...item, market_page: mp } : item;
+        });
+        return sendJson(res, 200, { items });
       })().catch((err) => { console.error("portfolio GET error:", err); sendJson(res, 500, { error: "Portfolio read failed." }); });
       return;
     }
@@ -13317,7 +17412,7 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireUser(req, res);
           if (!user) return;
-          const { id, payload, snapshot } = JSON.parse(body || "{}");
+          const { id, payload, snapshot, verifiedKey } = JSON.parse(body || "{}");
           if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
@@ -13327,15 +17422,30 @@ const server = http.createServer((req, res) =>
           const snap = cleanSnapshot(snapshot);
           if (id) {
             if (!isUuidish(String(id))) return sendJson(res, 404, { error: "Not found." });
-            const updated = await updatePortfolioItem(user.id, String(id), { payload, snapshot: snap });
+            const updated = await updatePortfolioItem(user.id, String(id), {
+              payload, snapshot: snap, verifiedKey: PFMATCH.verifiedKeyFor(verifiedKey),
+            });
             if (!updated) return sendJson(res, 404, { error: "Not found." });
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
           }
           const items = await listPortfolio(user.id);
-          const existing = items.find((x) => x.address === address && x.property_type === property_type);
+          // Verified location first, typed address second — portfolio-match.js
+          // owns both rules and the reasons. The key is normalized there; a
+          // useless one (empty, no street number, absurdly long) returns "" and
+          // simply falls through to the address rule this line used to be.
+          const vkey = PFMATCH.verifiedKeyFor(verifiedKey);
+          const existing = PFMATCH.findMatch(items, {
+            address, propertyType: property_type, verifiedKey: vkey,
+          });
           if (existing) {
-            const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: snap });
+            // Backfill: a row saved before this column existed, or before the
+            // browser could verify this address, adopts the key on its next
+            // save — so the duplicate stops being created from then on without
+            // anything having to sweep the table.
+            const updated = await updatePortfolioItem(user.id, existing.id, {
+              payload, snapshot: snap, verifiedKey: vkey,
+            });
             if (!updated) return sendJson(res, 404, { error: "Not found." });
             logEvent("portfolio_refresh", { prop_type: property_type, market: marketOf(address) });
             return sendJson(res, 200, { id: updated.id, snapshots: updated.snapshots });
@@ -13345,7 +17455,9 @@ const server = http.createServer((req, res) =>
           if (items.length >= cap) {
             return sendJson(res, 400, { error: `Portfolio is full (${cap} properties).` });
           }
-          const item = await insertPortfolioItem(user.id, { address, property_type, payload, snapshot: snap });
+          const item = await insertPortfolioItem(user.id, {
+            address, property_type, payload, snapshot: snap, verifiedKey: vkey,
+          });
           logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
           return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
         } catch (err) {
@@ -13439,7 +17551,8 @@ const server = http.createServer((req, res) =>
       // most of why the feed is useful. Only the itemized rows are gated,
       // the same rule the report itself follows.
       const ent = await getEntitlements(user, undefined, isAdminRequest(req));
-      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at);
+      const { unseen, items: out } = await buildWatchlistFeed(user, ent, (w) => w.last_seen_at,
+        { withDemand: true });
       logEvent("feed_view", {});
       return sendJson(res, 200, { unseen, items: out });
     })().catch((err) => { console.error("feed error:", err); sendJson(res, 500, { error: "Feed read failed." }); });
@@ -13544,9 +17657,100 @@ const server = http.createServer((req, res) =>
             summary.failed += 1;
           }
         }
+        // --- the renewal watch rides this same run (038) -------------------
+        //
+        // ONE trigger, not two. The plan's words are that it "rides the
+        // watchlist digest, not a second mailer", and the operational reason
+        // is stronger than the tidiness one: whatever cron, Action or person
+        // drives this route already drives the renewal watch, so it cannot be
+        // the feature somebody forgets to schedule. It inherits every refusal
+        // above it — no database, no outbound mail, dry-run — because it sits
+        // below them in the same handler.
+        //
+        // A SEPARATE LOOP over a different population, deliberately. The
+        // digest iterates watchers (people with watchlist markets); this
+        // iterates brokers with a lease deadline coming up, and those two sets
+        // barely overlap. Folding the leases into the digest email would mean
+        // a broker who watches no markets is never told about their own
+        // deadline, because `buildDigest` returns null with no market news.
+        summary.renewals = { brokers: 0, sent: 0, leases: 0, failed: 0 };
+        try {
+          const due = await leasesDueForRenewal(Date.now());
+          const byBroker = new Map();
+          for (const row of due) {
+            if (!row || !row.user_id) continue;
+            if (!byBroker.has(row.user_id)) byBroker.set(row.user_id, []);
+            byBroker.get(row.user_id).push(row);
+          }
+          summary.renewals.brokers = byBroker.size;
+          const brokers = await findUsersByIds([...byBroker.keys()]);
+          for (const account of brokers) {
+            // The same opt-out governs both. Somebody who turned these emails
+            // off turned OFF EMAILS, and honouring that for one self-initiated
+            // message and not the other is how an unsubscribe stops meaning
+            // anything.
+            if (account.digest_optout) continue;
+            try {
+              const leases = (byBroker.get(account.id) || []).map((row) => {
+                const market = marketRentFor(row.market, row.property_type);
+                return {
+                  id: row.id,
+                  address: row.address,
+                  market: row.market,
+                  lease_expiry: row.lease_expiry,
+                  option_notice_date: row.option_notice_date,
+                  renewal_notified_at: row.renewal_notified_at,
+                  rent_psf_yr: row.rent_psf_yr,
+                  // The broker's OWN basis decides how both figures read. They
+                  // recorded this lease monthly or annually, and quoting the
+                  // market back at them in the other unit is the 12x confusion
+                  // 029 exists to prevent.
+                  quote_basis: row.rent_basis === "monthly" ? "monthly" : "annual",
+                  market_rent_psf_yr: market ? market.median : null,
+                  market_rent_comps: market ? market.count : 0,
+                };
+              });
+              const now = Date.now();
+              const mail = RENEWAL.buildRenewalNotice({
+                leases, now,
+                deskUrl: `${SITE_URL}/vault`,
+                unsubscribeUrl: unsubscribeUrlFor(account.id),
+              });
+              if (!mail) continue;
+              if (dryRun) {
+                summary.previews.push({ to: account.email, subject: mail.subject, text: mail.text });
+                continue;
+              }
+              sendOutboundEmail(account.email, mail.subject, mail.text);
+              // Marked AFTER the send is handed off, and only the leases that
+              // were actually in it — markWatchlistDigested's rule and its
+              // reason. A failed mark costs one duplicate next run; marking
+              // first would lose the reminder outright, and a lost reminder is
+              // invisible where a duplicate is merely annoying.
+              const mailed = RENEWAL.dueLeases(leases, now).map((l) => l.id).filter(Boolean);
+              await markLeasesNotified(account.id, mailed);
+              summary.renewals.sent += 1;
+              summary.renewals.leases += mailed.length;
+            } catch (err) {
+              // One bad broker never stops the run, and never stops the
+              // DIGEST either — this whole block is downstream of it.
+              console.error(`Renewal watch failed for ${account.id}:`, err.message);
+              summary.renewals.failed += 1;
+            }
+          }
+        } catch (err) {
+          // The renewal watch failing must not fail the digest that already
+          // sent. Counted and logged, never thrown.
+          console.error("Renewal watch read failed:", err.message);
+          summary.renewals.failed += 1;
+        }
+
         logEvent("watchlist_digest", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent}` });
         console.log(`📬 Watchlist digest${dryRun ? " (dry run)" : ""}: ${summary.sent} sent, ` +
-          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed`);
+          `${summary.nothingNew} had nothing new, ${summary.optedOut} opted out, ${summary.failed} failed` +
+          ` · renewal watch: ${summary.renewals.sent} sent covering ` +
+          `${summary.renewals.leases} ${summary.renewals.leases === 1 ? "lease" : "leases"}` +
+          `${summary.renewals.failed ? `, ${summary.renewals.failed} failed` : ""}`);
         return sendJson(res, 200, summary);
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -13578,7 +17782,7 @@ const server = http.createServer((req, res) =>
           noindex: true,
           body: `<div class="wrap"><h1>This link is not recognized</h1>` +
             `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
-            `You can turn the emails off from My Desk, or reply to any CompNinja email and we will do it for you.</p></div>`,
+            `You can turn the emails off from your workspace, or reply to any CompNinja email and we will do it for you.</p></div>`,
         }));
       }
       if (req.method === "POST") {
@@ -13594,7 +17798,7 @@ const server = http.createServer((req, res) =>
               ? "You will get a digest again when a market you watch has new comps."
               : "You will not get another watchlist digest. Your watchlist itself is untouched, and the same markets are still on your desk."}</p>` +
             `<p><a href="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "" : "&amp;on=1"}">` +
-            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to My Desk</a></p></div>`,
+            `${resubscribe ? "Turn them off again" : "Turn them back on"}</a> &middot; <a href="/desk">Go to your workspace</a></p></div>`,
         }));
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
@@ -13605,13 +17809,107 @@ const server = http.createServer((req, res) =>
         body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off watchlist emails?"}</h1>` +
           `<p>${resubscribe
             ? "You will get an email when a market you watch has new comps."
-            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on My Desk."}</p>` +
+            : "You will stop getting the digest when markets you watch have new comps. Your watchlist stays exactly as it is, and you can still see it on your workspace."}</p>` +
           `<form method="POST" action="/watchlist/unsubscribe?u=${encodeURIComponent(userId)}&amp;t=${digestMac(userId)}${resubscribe ? "&amp;on=1" : ""}">` +
           `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
           `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
       }));
     })().catch((err) => {
       console.error("unsubscribe error:", err);
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
+    return;
+  }
+
+  // --- Turn hub note emails off (migration 040) -----------------------------
+  //
+  // The same shape as /watchlist/unsubscribe above, and the same two-click
+  // rule for the same reason: corporate mail scanners and link-preview bots
+  // fetch every URL in an email, so a GET that unsubscribed would opt people
+  // out of mail they never opened. The token makes the link unguessable;
+  // nothing makes it un-prefetchable.
+  //
+  // Keyed on the ADDRESS rather than a user id, which is the one real
+  // difference from the watchlist version. A tenant reads a hub on an invite
+  // token and may have no account at all, and that is exactly the person most
+  // likely to want out. An unsubscribe that required signing in would be
+  // offering the off switch to everybody except the people who need it.
+  // The path has THREE segments on purpose. The hub page route matches
+  // /hub/<id> where an id is 6 to 32 characters of [A-Za-z0-9_-], and
+  // "unsubscribe" is eleven of them — so /hub/unsubscribe would be shadowed by
+  // whichever route the handler reached first, and a hub that happened to be
+  // given that id would become unreachable. A slash the id pattern cannot
+  // contain settles it without depending on the order of two ifs.
+  if (req.url.split("?")[0] === "/hub/notes/unsubscribe" && (req.method === "GET" || req.method === "POST")) {
+    (async () => {
+      const q = new URL(req.url, "http://localhost").searchParams;
+      const email = HUB.normalizeEmail(q.get("e") || "");
+      const resubscribe = q.get("on") === "1";
+      const link = (on) => `/hub/notes/unsubscribe?e=${encodeURIComponent(email)}&amp;t=${hubNotifyMac(email)}${on ? "&amp;on=1" : ""}`;
+      if (!hubNotifyTokenValid(email, q.get("t"))) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: "Link not recognized | CompNinja",
+          description: "This unsubscribe link could not be verified.",
+          noindex: true,
+          body: `<div class="wrap"><h1>This link is not recognized</h1>` +
+            `<p>It may have been truncated by an email client, or the site's keys may have been rotated since it was sent. ` +
+            `Reply to any CompNinja email and we will turn these off for you.</p></div>`,
+        }));
+      }
+      if (req.method === "POST") {
+        // No database, no preference to write, and it says so. A cheerful
+        // "that's done" over a write that never happened is the exact shape
+        // of the lie #174 was about, and it is worse here: somebody who
+        // believes they unsubscribed and keeps getting mail has no reason to
+        // try the link a second time.
+        //
+        // Checked on the POST and not on the GET, so the confirmation page
+        // still renders (and stays testable) on a server with no database.
+        if (!DB_CONFIGURED) {
+          res.writeHead(503, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+          return res.end(marketShell({
+            title: "Could not save that | CompNinja",
+            description: "Hub email preference could not be saved.",
+            noindex: true,
+            body: `<div class="wrap"><h1>We could not save that just now</h1>` +
+              `<p>Please try the link again in a minute. If it still will not save, reply to any CompNinja email ` +
+              `and we will turn these off for you.</p></div>`,
+          }));
+        }
+        await setHubNotifyPref(email, resubscribe);
+        logEvent("hub_note_email_optout", { source: resubscribe ? "on" : "off" });
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+        return res.end(marketShell({
+          title: (resubscribe ? "Note emails turned back on" : "Note emails turned off") + " | CompNinja",
+          description: "Hub email preference updated.",
+          noindex: true,
+          body: `<div class="wrap"><h1>${resubscribe ? "These emails are back on" : "That&rsquo;s done"}</h1>` +
+            `<p>${resubscribe
+              ? "You will get an email when somebody leaves a note on comps that were shared with you."
+              : "You will not get another email about notes. Nothing else changes: every hub you were invited to is still open to you, " +
+                "the notes are all still there, and you can read and reply any time."}</p>` +
+            `<p><a href="${link(!resubscribe)}">${resubscribe ? "Turn them off again" : "Turn them back on"}</a>` +
+            ` &middot; <a href="/desk">Go to your workspace</a></p></div>`,
+        }));
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "x-robots-tag": "noindex" });
+      return res.end(marketShell({
+        title: (resubscribe ? "Turn note emails back on?" : "Turn off note emails?") + " | CompNinja",
+        description: "Confirm your hub email preference.",
+        noindex: true,
+        body: `<div class="wrap"><h1>${resubscribe ? "Turn these emails back on?" : "Turn off note emails?"}</h1>` +
+          `<p>${resubscribe
+            ? "You will get an email when somebody leaves a note on comps that were shared with you."
+            : "You will stop getting an email when somebody leaves a note on comps that were shared with you. " +
+              "Nothing else changes: every hub you were invited to stays open to you, and the notes stay where they are."}</p>` +
+          `<form method="POST" action="${link(resubscribe)}">` +
+          `<button type="submit" style="background:#1A2433;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:600;cursor:pointer">` +
+          `${resubscribe ? "Yes, turn them on" : "Yes, turn them off"}</button></form></div>`,
+      }));
+    })().catch((err) => {
+      console.error("hub unsubscribe error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
       res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
     });
@@ -13659,10 +17957,20 @@ const server = http.createServer((req, res) =>
         const rows = await sbRequest("GET",
           `branding_profiles?user_id=eq.${encodeURIComponent(user.id)}&limit=1`);
         const row = (rows && rows[0]) || null;
+        // The firm fallback rides along (041) so the browser needs no second
+        // round trip to know what a report will carry. Fail-open on purpose,
+        // unlike the own-profile read above: this value is never upserted
+        // back, so a swallowed error costs one render's fallback, not data.
+        const firmRow = await findOrgBrandingFor(user);
         // Answer the API shape, not the table shape, so the column names stay
         // ours to change. An absent profile is {}, not 404: "you have no
-        // branding yet" is a normal state, not an error.
-        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(row) || {} });
+        // branding yet" is a normal state, not an error. `firm` is null when
+        // there is nothing — the browser branches on it, and {} would read as
+        // a brand that normalizes to nothing.
+        return sendJson(res, 200, {
+          branding: BRANDING.normalizeBrand(row) || {},
+          firm: BRANDING.normalizeBrand(firmRow),
+        });
       })().catch((err) => {
         console.error("Branding read failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't load your branding. Please try again in a minute." });
@@ -14021,9 +18329,11 @@ const server = http.createServer((req, res) =>
         if (!cov || !cov.length) return sendJson(res, 200, { leads: [], coverage: [] });
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const [leads, intros] = await Promise.all([
+          // in.(bov,1031): a 1031-tagged lead is a BOV request with a clock
+          // on it — it must be at least as visible as an ordinary one.
           sbRequest("GET",
-            `leads?source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-            `&select=id,ts,address,type,size_sqft&order=ts.desc&limit=200`),
+            `leads?source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+            `&select=id,ts,address,type,size_sqft,source&order=ts.desc&limit=200`),
           sbRequest("GET",
             `lead_intro_requests?user_id=eq.${encodeURIComponent(user.id)}` +
             `&created_at=gte.${encodeURIComponent(since)}&select=lead_id&order=created_at.desc&limit=1000`),
@@ -14275,8 +18585,8 @@ const server = http.createServer((req, res) =>
         // leads outside the product's own contract.
         const since = new Date(Date.now() - LEADSVC.LEAD_WINDOW_DAYS * 24 * 3600 * 1000).toISOString();
         const lead = ((await sbRequest("GET",
-          `leads?id=eq.${encodeURIComponent(leadId)}&source=eq.bov&ts=gte.${encodeURIComponent(since)}` +
-          `&select=id,ts,name,email,phone,company,address,type,size_sqft&limit=1`)) || [])[0];
+          `leads?id=eq.${encodeURIComponent(leadId)}&source=in.(bov,1031)&ts=gte.${encodeURIComponent(since)}` +
+          `&select=id,ts,name,email,phone,company,address,type,size_sqft,source&limit=1`)) || [])[0];
         if (!lead) return sendJson(res, 404, { error: "That lead no longer exists." });
         // No requesting introductions to leads outside your coverage — the
         // same rule that decides what the inbox shows decides what you can
@@ -14339,6 +18649,7 @@ const server = http.createServer((req, res) =>
           ["Property", lead.address],
           ["Property type", lead.type],
           ["Size (SF)", lead.size_sqft ? Number(lead.size_sqft).toLocaleString("en-US") : ""],
+          ["1031 exchange", lead.source === "1031" ? "Yes — read the 1031 guide, likely on the 45/180-day clock" : ""],
           ["Lead received", lead.ts],
         ]);
         logEvent("lead_intro", { prop_type: lead.type, market: marketOf(lead.address) });
@@ -14402,6 +18713,419 @@ const server = http.createServer((req, res) =>
   //
   // Publishing (step 2) is what will eventually move a comp across, one comp at
   // a time by explicit broker action. Nothing here writes `published`.
+  // --- Bulk valuation (Pro) ------------------------------------------------
+  //
+  // Paste or upload a list of addresses, get a value on each, as one
+  // portfolio. Rules in bulk.js; storage and worker above; migration 036.
+  if (req.url.split("?")[0].startsWith("/api/bulk")) {
+    const path = req.url.split("?")[0];
+
+    // Every bulk route answers through this. THREE REFUSALS IN ORDER — 401
+    // not signed in, 403 not entitled, 503 no database — which is a
+    // deliberate third copy of the vault's openVault() and the lead inbox's
+    // requireBroker(). test/routes.test.js exists to catch the three drifting
+    // apart; a shared helper was rejected there because each one's 403 copy
+    // is different product text and the ladder is what has to match.
+    //
+    // The 503 is the vault's rule reached by another road: there is no file
+    // fallback (see migration 036), because a bulk job is a receipt for real
+    // spend and Render erases its disk on every deploy.
+    const openBulk = async () => {
+      const user = await requireUser(req, res);
+      if (!user) return null;
+      const ent = await entitlementsFor(req);
+      if (!ent.canBulkValue) {
+        // Reaches the screen verbatim.
+        sendJson(res, 403, { error: "Bulk valuation is part of Pro.", code: "pro_required" });
+        return null;
+      }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, {
+          error: "Bulk valuation is unavailable right now — nothing was started. Please try again in a minute.",
+        });
+        return null;
+      }
+      return { user, ent };
+    };
+
+    // Start a run. Answers immediately with the job; the worker runs on
+    // behind it for as long as it takes.
+    if (req.method === "POST" && path === "/api/bulk") {
+      let body = "";
+      let tooBig = false;
+      // A list of 50 addresses is a few KB; 256KB leaves room for somebody
+      // pasting a whole spreadsheet we are about to refuse most of anyway.
+      req.on("data", (c) => { body += c; if (body.length > 2.6e5 && !tooBig) { tooBig = true; req.destroy(); } });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user, ent } = opened;
+          // Its own limiter, tighter than a search's: starting a run is one
+          // deliberate act that commits up to fifty billed searches.
+          if (rateLimited("bulk:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+
+          const { text, type, months, note, label } = JSON.parse(body || "{}");
+          const typeOk = VAULT.PROPERTY_TYPES.find((t) => t === String(type));
+          if (!typeOk) {
+            return sendJson(res, 400, { error: `Pick a property type: ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+          }
+          const monthsOk = ENT.clampLookback(months, ent);
+          const noteOk = String(note || "").trim().slice(0, 200);
+          const labelOk = String(label || "").trim().slice(0, 120);
+
+          const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses });
+          if (!parsed.rows.length) {
+            return sendJson(res, 400, {
+              error: "No usable addresses in that list.",
+              skipped: parsed.skipped, warnings: parsed.warnings,
+            });
+          }
+
+          // One live job per member. Checked against the DATABASE, and a
+          // stalled one is reaped first so a deploy mid-run cannot lock
+          // somebody out of their own tool until the stall window expires.
+          const live = await reapStalledBulkJob(user.id, await activeBulkJob(user.id));
+          if (live && live.status === "running") {
+            return sendJson(res, 409, {
+              error: "A bulk run is already going. Wait for it to finish, or cancel it first.",
+              code: "job_running", job: bulkJobRow(live),
+            });
+          }
+
+          // The per-member daily ceiling. Checked BEFORE the job is created,
+          // so a refusal costs nothing and leaves nothing to clean up — and
+          // refusing the whole list rather than quietly running the part that
+          // fits, because a list silently shortened reads as a list fully
+          // valued. It says how many are left and when it resets, which is
+          // what makes it actionable rather than merely a wall.
+          //
+          // Fails OPEN on a read error: a member must not be locked out of a
+          // tool they pay for because one count query failed, and
+          // one-job-at-a-time plus the 50-address cap still bound the damage.
+          let usedToday = 0;
+          try {
+            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
+          } catch (err) {
+            console.error("bulk daily count failed (allowing the run):", err.message);
+          }
+          const leftToday = Math.max(0, BULK_DAILY_ADDRESSES - usedToday);
+          if (parsed.rows.length > leftToday) {
+            return sendJson(res, 429, {
+              error: leftToday === 0
+                ? `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`
+                : `That list is ${parsed.rows.length} addresses and you have ${leftToday} left today (the daily limit is ${BULK_DAILY_ADDRESSES}). Trim the list, or come back after midnight UTC.`,
+              code: "daily_limit",
+              left_today: leftToday,
+              daily_limit: BULK_DAILY_ADDRESSES,
+            });
+          }
+
+          // Checked HERE, before a job exists, because callAnthropicOnce has
+          // no key guard of its own — /api/comps guards at the route and this
+          // is the second route that reaches it. Without this a keyless
+          // deployment would create a job and then fire fifty outbound
+          // requests carrying an empty key, one per address.
+          if (!providerApiKey()) {
+            return sendJson(res, 503, {
+              error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.`,
+            });
+          }
+
+          const now = new Date().toISOString();
+          const jobRows = await sbRequest("POST", "bulk_jobs", {
+            user_id: user.id, property_type: typeOk, months: monthsOk,
+            note: noteOk, label: labelOk || null,
+            status: "running", total: parsed.rows.length, done_count: 0,
+            heartbeat_at: now, created_at: now,
+          }, { prefer: "return=representation" });
+          const job = jobRows && jobRows[0];
+          if (!job) return sendJson(res, 503, { error: "Could not start that run. Please try again." });
+
+          const itemRows = await sbRequest("POST", "bulk_job_items",
+            parsed.rows.map((r, i) => ({
+              job_id: job.id, user_id: user.id, position: i,
+              address: r.address, label: r.label, size_sqft: r.size_sqft,
+              status: "queued", created_at: now,
+            })), { prefer: "return=representation" });
+          if (!Array.isArray(itemRows) || !itemRows.length) {
+            await patchBulkJob(user.id, job.id, { status: "failed", finished_at: new Date().toISOString() });
+            return sendJson(res, 503, { error: "Could not start that run. Please try again." });
+          }
+
+          // Sorted once, for both consumers: the worker needs a defined order
+          // and the page needs the rows in the order they were pasted.
+          // PostgREST returns an insert's rows in insertion order today; that
+          // is not something to depend on for a list somebody is reading.
+          const ordered = itemRows.slice().sort((a, b) => a.position - b.position);
+
+          logEvent("bulk_start", { prop_type: typeOk, source: parsed.header ? "upload" : "paste" });
+          // Fire and forget, deliberately: the run outlives this request by
+          // half an hour, so awaiting it would hold a socket open for the
+          // whole job and time out long before it finished. The member closes
+          // the tab; the rows land anyway.
+          runBulkJob(job, ordered, user, ent)
+            .catch((err) => console.error("bulk job crashed:", err.message));
+
+          return sendJson(res, 200, {
+            job: bulkJobRow(job),
+            items: ordered.map(bulkItemRow),
+            skipped: parsed.skipped, warnings: parsed.warnings,
+            duplicates: parsed.duplicates, truncated: parsed.truncated,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk POST error:", err.message);
+          return sendJson(res, 500, { error: "Could not start that run." });
+        }
+      });
+      return;
+    }
+
+    // Re-value ONE finished row against a size the member supplies.
+    //
+    // This costs NOTHING and must stay that way. A bulk run's usual failure is
+    // not missing comps — the first real run found 24-27 sale comps on every
+    // address — it is a missing building size, because the single-property
+    // flow estimates one from the OSM footprint in the BROWSER during the
+    // confirm dialog and bulk has no browser step to do it in. So two rows in
+    // three came back with a $/SF band and no dollars, and no way to fix it
+    // short of paying for the whole list again.
+    //
+    // The report is already stored, so this is pure arithmetic over comps we
+    // hold: type a size, get a value. Three rules hold it up.
+    //
+    // IT READS THE STORED REPORT, NEVER runCompSearch. Going back through the
+    // search pipeline would hit the cache and be free TODAY, and would quietly
+    // become a billed search the moment that entry aged out — a button
+    // labelled as costless that sometimes charges $0.36 is worse than no
+    // button. The desk row is the copy that cannot expire.
+    //
+    // IT IS THE SAME ARITHMETIC. BULK.valueFromReport, the same call the
+    // worker makes, so a re-valued row and a first-pass row are computed
+    // identically and the portfolio still reconciles.
+    //
+    // IT UPDATES BOTH PLACES. The bulk row and the desk property disagreeing
+    // about what a building is worth is worse than either being wrong alone.
+    if (req.method === "POST" && path === "/api/bulk/item/size") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id, size_sqft } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+
+          // parseNumber accepts what a person actually types — "12,500",
+          // "12500 SF" — and refuses what is not a number rather than storing
+          // a best effort, which is broker-vault.js's rule and the reason a
+          // wrong size is the most expensive figure in the report.
+          const parsed = VAULT.parseNumber(size_sqft);
+          if (!parsed.ok || !(parsed.value > 0)) {
+            return sendJson(res, 400, { error: `"${String(size_sqft).slice(0, 40)}" is not a building size.` });
+          }
+          const size = Math.min(20_000_000, Math.round(parsed.value));
+
+          const rows = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=eq.${encodeURIComponent(String(id))}&limit=1`);
+          const item = rows && rows[0];
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          if (item.status !== "done") {
+            return sendJson(res, 409, { error: "That address has no report to re-value. Run the list again." });
+          }
+          const job = await getBulkJob(user.id, item.job_id);
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+
+          // The stored report. Absent only when the desk write failed or the
+          // portfolio was full — in which case there is genuinely nothing to
+          // re-value, and saying so beats a silent no-op.
+          const saved = item.portfolio_item_id
+            ? await getPortfolioItem(user.id, item.portfolio_item_id)
+            : null;
+          const report = saved && saved.payload && saved.payload.data;
+          if (!report || !Array.isArray(report.comps)) {
+            return sendJson(res, 409, {
+              error: "This row's report was not saved, so it cannot be re-valued. Run that address again.",
+            });
+          }
+
+          const valued = BULK.valueFromReport(report, {
+            subjectSizeSqft: size,
+            // The report's own date, not now: a saved report's numbers must
+            // not drift as it ages, which is what asOfOf() protects in the
+            // browser. updated_at is when this report was written.
+            asOf: Date.parse(saved.updated_at || saved.created_at || "") || Date.now(),
+            note: job.note || "",
+            propertyType: job.property_type,
+          });
+          if (!valued) {
+            return sendJson(res, 409, { error: "That report has no priced sale comps to value against." });
+          }
+
+          const patch = {
+            value_low: valued.value_low, value_likely: valued.value_likely, value_high: valued.value_high,
+            psf_low: round2(valued.psf_low), psf_mid: round2(valued.psf_mid), psf_high: round2(valued.psf_high),
+            subject_size_sqft: valued.size_sqft,
+            // Null, the same as any typed size: "you" is what the page renders
+            // for it, and claiming a public-record source for a number a
+            // person typed would be the one lie this column can tell.
+            size_source: null,
+            sale_comps: valued.sale_comps, comp_count: valued.comp_count,
+            trimmed: valued.trimmed,
+            error: null,
+          };
+          await patchBulkItem(user.id, item.id, patch);
+
+          // The desk copy moves with it, payload included, so reopening the
+          // property shows the size that produced the figure beside it.
+          try {
+            const payload = {
+              ...saved.payload,
+              meta: {
+                ...saved.payload.meta,
+                subject: { ...(saved.payload.meta.subject || {}), sizeMin: size, sizeMax: size },
+              },
+            };
+            await updatePortfolioItem(user.id, saved.id, {
+              payload,
+              snapshot: cleanSnapshot({
+                low: valued.value_low, likely: valued.value_likely,
+                high: valued.value_high, median_psf: valued.psf_mid,
+              }),
+            });
+          } catch (err) {
+            // The row is already right; the desk catching up is not worth
+            // failing the request the member just watched succeed.
+            console.error("bulk size re-value: desk update failed:", err.message);
+          }
+
+          logEvent("bulk_resize", { prop_type: job.property_type });
+          return sendJson(res, 200, { item: bulkItemRow({ ...item, ...patch }) });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk size re-value error:", err.message);
+          return sendJson(res, 500, { error: "Could not re-value that address." });
+        }
+      });
+      return;
+    }
+
+    // Stop one between rows. There is no way to abort a search already in
+    // flight — it is billed the moment it starts — so a cancel stops the
+    // QUEUE, and the rows already running finish and are kept. Saying that
+    // plainly beats pretending the money comes back.
+    if (req.method === "POST" && path === "/api/bulk/cancel") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const job = await getBulkJob(user.id, String(id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const control = bulkRunning.get(String(job.id));
+          if (control) control.cancelled = true;
+          // Written here as well as by the worker: a job this process is not
+          // working (a restart orphaned it) has nobody left to write it.
+          if (job.status === "running" && !control) {
+            await patchBulkJob(user.id, job.id, { status: "cancelled", finished_at: new Date().toISOString() });
+          }
+          return sendJson(res, 200, { ok: true });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("bulk cancel error:", err.message);
+          return sendJson(res, 500, { error: "Could not cancel that run." });
+        }
+      });
+      return;
+    }
+
+    // The whole job as a spreadsheet. Same shape as the page, plus the totals
+    // and the automated-estimate line, because the file outlives the screen
+    // that explained it.
+    if (req.method === "GET" && path === "/api/bulk/export.csv") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+        const job = await getBulkJob(user.id, id);
+        if (!job) return sendJson(res, 404, { error: "Not found." });
+        const items = await listBulkItems(user.id, id);
+        const stamp = String(job.created_at || "").slice(0, 10);
+        res.writeHead(200, {
+          "content-type": "text/csv; charset=utf-8",
+          "content-disposition": `attachment; filename="compninja-bulk-${stamp}.csv"`,
+          "cache-control": "no-store",
+          "x-robots-tag": "noindex, nofollow",
+        });
+        res.end(BULK.exportCsv(job, items.map(bulkItemRow)));
+      })().catch((err) => {
+        console.error("bulk export error:", err.message);
+        sendJson(res, 500, { error: "Could not build that file." });
+      });
+      return;
+    }
+
+    // Delete a run. The VALUATIONS are not deleted with it — they are on the
+    // desk, where they belong to the property rather than to the run that
+    // produced them. Deleting a receipt must not delete the work.
+    if (req.method === "DELETE" && path === "/api/bulk") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (!isUuidish(id)) return sendJson(res, 200, { ok: true }); // same no-op as deleting a nonexistent scoped row
+        const control = bulkRunning.get(id);
+        if (control) control.cancelled = true;
+        // Scoped by user_id, like every other delete in this app: without it,
+        // knowing another member's job id would be enough to delete it.
+        await sbRequest("DELETE",
+          `bulk_jobs?user_id=eq.${encodeURIComponent(user.id)}&id=eq.${encodeURIComponent(id)}`);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("bulk DELETE error:", err.message);
+        sendJson(res, 500, { error: "Could not delete that run." });
+      });
+      return;
+    }
+
+    // `?id=` is one job with its rows (what the page polls); bare is the list.
+    if (req.method === "GET" && path === "/api/bulk") {
+      (async () => {
+        const opened = await openBulk();
+        if (!opened) return;
+        const { user, ent } = opened;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id") || "";
+        if (id) {
+          if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+          const job = await reapStalledBulkJob(user.id, await getBulkJob(user.id, id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const items = (await listBulkItems(user.id, id)).map(bulkItemRow);
+          return sendJson(res, 200, {
+            job: bulkJobRow(job), items, summary: BULK.summarize(items),
+          });
+        }
+        return sendJson(res, 200, await bulkListPayload(user, ent));
+      })().catch((err) => {
+        console.error("bulk GET error:", err.message);
+        sendJson(res, 500, { error: "Could not read your runs." });
+      });
+      return;
+    }
+  }
+
   if (req.url.split("?")[0].startsWith("/api/vault")) {
     const path = req.url.split("?")[0];
 
@@ -14910,13 +19634,14 @@ const server = http.createServer((req, res) =>
           // their signup name and copied it into broker_company, which is
           // published as their firm. Unset now means the refusal below,
           // which the vault turns into a one-time question.
-          const by = VAULT.creditName(profile);
-          if (!by) {
-            return sendJson(res, 400, {
-              error: "Add your firm or display name before publishing — published comps are credited to it.",
-              code: "needs_credit_name",
-            });
+          //
+          // canPublishAs answers BOTH requirements (credit name, then license
+          // number) so this route and publish-many cannot drift apart.
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
           }
+          const by = gateBy.by;
 
           const inserted = await sbRequest("POST", "comp_submissions",
             [VAULT.submissionRowFrom(comp, { creditName: by, email: user.email })],
@@ -14993,13 +19718,11 @@ const server = http.createServer((req, res) =>
           // comps published under no credit is fifty rows given away, and the
           // page turns this exact code into the form that fixes it.
           const profile = await findBrokerProfile(user.email, user.id);
-          const by = VAULT.creditName(profile);
-          if (!by) {
-            return sendJson(res, 400, {
-              error: "Add your firm or display name before publishing — published comps are credited to it.",
-              code: "needs_credit_name",
-            });
+          const gateBy = VAULT.canPublishAs(profile);
+          if (!gateBy.ok) {
+            return sendJson(res, 400, { error: gateBy.error, code: gateBy.code });
           }
+          const by = gateBy.by;
 
           // user_id in the filter, always. Without it, knowing another broker's
           // comp ids would be enough to publish their private data.
@@ -15103,7 +19826,7 @@ const server = http.createServer((req, res) =>
           }
           const parsed = VAULT.validateIdentity(JSON.parse(body || "{}"));
           if (!parsed.ok) return sendJson(res, 400, { error: parsed.error });
-          const { display_name, company } = parsed.identity;
+          const { display_name, company, license_number } = parsed.identity;
 
           const existing = await findBrokerProfile(user.email, user.id);
           if (existing) {
@@ -15117,7 +19840,7 @@ const server = http.createServer((req, res) =>
             // user_id rides along to finish adopting that legacy row.
             await sbRequest("PATCH",
               `broker_profiles?email=eq.${encodeURIComponent(String(existing.email || user.email).toLowerCase())}`,
-              { display_name, company, user_id: user.id, updated_at: new Date().toISOString() },
+              { display_name, company, license_number, user_id: user.id, updated_at: new Date().toISOString() },
               { prefer: "return=minimal" });
           } else {
             // First statement creates the row. `public` is NOT passed: the
@@ -15131,7 +19854,7 @@ const server = http.createServer((req, res) =>
                 const ins = await sbRequest("POST", "broker_profiles", {
                   email: String(user.email).toLowerCase(),
                   user_id: user.id,
-                  display_name, company, slug,
+                  display_name, company, license_number, slug,
                 }, { prefer: "return=representation" });
                 created = ins && ins[0];
               } catch (err) {
@@ -15146,7 +19869,7 @@ const server = http.createServer((req, res) =>
               await sbRequest("POST", "broker_profiles", {
                 email: String(user.email).toLowerCase(),
                 user_id: user.id,
-                display_name, company, slug,
+                display_name, company, license_number, slug,
               }, { prefer: "return=minimal" });
             }
           }
@@ -15155,8 +19878,12 @@ const server = http.createServer((req, res) =>
           refreshBrokerProfiles();
           return sendJson(res, 200, {
             ok: true,
-            identity: { display_name, company },
+            identity: { display_name, company, license_number },
             creditedTo: VAULT.creditName({ display_name, company }),
+            // So the page can say whether publishing is unlocked without a
+            // second round trip, and without ever echoing the number back
+            // into anything public.
+            canPublish: VAULT.canPublishAs({ display_name, company, license_number }).ok,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -16097,7 +20824,13 @@ const server = http.createServer((req, res) =>
         const PLANS = {
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
           pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
-          single_report:       { price: STRIPE_PRICES.singleReport,   mode: "payment" },
+          // NO single_report plan. RETIRED 2026-08-21: once the free tier
+          // itemized every comp, the one-off was left selling only the
+          // ten-year window and rarely surfaced. Buying it now answers the
+          // same 400 as any unknown plan — which is the correct retirement
+          // shape, because this map's whole design is that an absent plan can
+          // never quietly become a charge for a different one. Purchases
+          // already made stay honored (see the webhook and /api/report-access).
           // Per-seat, and the ONLY plan whose quantity is not 1. It buys a
           // FIRM's subscription, so it needs an orgId and the caller must own
           // that firm — both checked below, before Stripe is ever called.
@@ -16112,33 +20845,6 @@ const server = http.createServer((req, res) =>
         if (!chosen.price) return sendJson(res, 503, { error: "That plan isn't configured." });
         const wantsFounding = plan === "pro_annual_founding";
         const priceId = chosen.price;
-
-        // --- single-report specifics ---------------------------------------
-        // The id is derived from the search the buyer names, never accepted as
-        // an id — see reportIdFor(). Both checks below are courtesy, not
-        // security: they stop a pointless charge rather than protect anything.
-        let reportId = "";
-        if (plan === "single_report") {
-          // Address + type only: the buyer is purchasing the PROPERTY, at every
-          // lookback, so the lookback must not enter the id (see reportIdFor).
-          reportId = reportIdFor({ address, type });
-          if (!reportId) {
-            return sendJson(res, 400, { error: "Tell us which report you want to unlock." });
-          }
-          const ent = await getEntitlements(user, reportId, isAdminRequest(req));
-          if (ent.pro) {
-            return sendJson(res, 409, {
-              error: "Your Pro plan already includes this report in full.",
-              code: "already_pro",
-            });
-          }
-          if (ent.reportUnlocked) {
-            return sendJson(res, 409, {
-              error: "You've already unlocked this report.",
-              code: "already_owned",
-            });
-          }
-        }
 
         // --- firm specifics -------------------------------------------------
         // The firm is the customer, so everything here is about proving the
@@ -16160,8 +20866,20 @@ const server = http.createServer((req, res) =>
           }
           const roster = (await orgMemberRows(String(orgId))).filter((r) => !r.removed_at);
           const asked = Math.floor(Number(seats) || 0);
-          if (!Number.isFinite(asked) || asked < 1 || asked > ORG.MAX_MEMBERS) {
-            return sendJson(res, 400, { error: `Choose between 1 and ${ORG.MAX_MEMBERS} seats.` });
+          if (!Number.isFinite(asked) || asked < ORG.MIN_SEATS || asked > ORG.MAX_MEMBERS) {
+            return sendJson(res, 400, {
+              error: `Choose between ${ORG.MIN_SEATS} and ${ORG.MAX_MEMBERS} seats.`,
+              // Named separately from the range failure it shares a branch
+              // with, because only one of the two is a rule somebody can
+              // disagree with: a firm plan starts at ORG.MIN_SEATS seats, and
+              // the reason is in that constant's comment (a one-seat firm
+              // plan is a cheaper Pro, not a firm). A caller that asked for
+              // zero or nonsense gets the same sentence and does not need the
+              // distinction.
+              ...(asked >= 1 && asked < ORG.MIN_SEATS
+                ? { code: "seats_below_minimum", minimum: ORG.MIN_SEATS }
+                : {}),
+            });
           }
           // Refused rather than silently accepted, because the consequence of
           // buying too few is that named colleagues lose Pro the moment the
@@ -16196,16 +20914,16 @@ const server = http.createServer((req, res) =>
         }
 
         const existing = await findSubscription(user.id);
-        // A one-off unlock returns to the REPORT, not to the desk: the desk
-        // has no idea which building was bought. The client stashed the search
-        // before redirecting and re-runs it on the way back (a cache hit, so
-        // no billed search), which is why no address rides in this URL.
-        const returnPath = plan === "single_report" ? "/?purchase" : "/desk?checkout";
+        // Every remaining plan is a subscription and returns to the desk.
+        // (The retired one-off returned to "/?purchase" instead — the client
+        // still handles that return, because an in-flight checkout may
+        // complete after this deploys and old purchases are honored.)
+        const returnPath = "/desk?checkout";
         // Return them to the origin they are BUYING FROM, not to the canonical
         // one — pendingUnlock.v1 lives in that origin's localStorage and is
         // what re-renders the purchased report. See returnOriginFor().
         const returnOrigin = returnOriginFor(req);
-        const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST", "checkout/sessions", {
+        const sessionParams = {
           mode: chosen.mode,
           line_items: [{ price: priceId, quantity: chosen.firm ? firmSeats : 1 }],
           success_url: `${returnOrigin}${returnPath}=success`,
@@ -16221,13 +20939,12 @@ const server = http.createServer((req, res) =>
           metadata: {
             user_id: user.id,
             ...(chosen.firm ? { org_id: String(orgId) } : {}),
-            ...(reportId ? { report_id: reportId } : {}),
           },
           ...(chosen.mode === "subscription"
             ? { subscription_data: { metadata: {
                 user_id: user.id, ...(chosen.firm ? { org_id: String(orgId) } : {}),
               } } }
-            : { payment_intent_data: { metadata: { user_id: user.id, report_id: reportId } } }),
+            : { payment_intent_data: { metadata: { user_id: user.id } } }),
           // A firm's own customer record, never the buyer's: the card belongs
           // to the firm, and reusing the owner's personal customer would put
           // both subscriptions on one invoice and one payment method.
@@ -16236,13 +20953,27 @@ const server = http.createServer((req, res) =>
             : (existing && existing.stripe_customer_id
               ? { customer: existing.stripe_customer_id }
               : { customer_email: user.email })),
-        },
-        // Idempotent per user+report, so a double-click cannot become two
-        // sessions and two charges for the same report. Stripe returns the
-        // original session instead. Keys and Checkout sessions both lapse 24h
-        // after creation, so the key can never outlive the session it returns.
-        // Subscriptions pass undefined and keep their previous behaviour.
-        reportId ? `single:${user.id}:${reportId}` : undefined);
+        };
+        // Same request -> same key -> Stripe hands back the session it already
+        // made, so a double-click cannot become two subscriptions and two
+        // charges. Derived from the encoded body rather than hand-assembled,
+        // for the reasons in idempotencyKeyFor's own comment.
+        //
+        // This argument used to read `reportId ? `single:${user.id}:${reportId}`
+        // : undefined`, keyed for the $20 single-report unlock. That plan was
+        // retired on 2026-08-21 and its `reportId` variable went with it -- but
+        // this reference did not, and a bare undeclared identifier is a
+        // ReferenceError, not undefined. So from that day every checkout that
+        // got as far as calling Stripe threw, and /api/checkout answered 502
+        // "Could not start checkout" to every would-be subscriber. It was found
+        // on 2026-08-26 by trying to buy something, which is the only thing
+        // that could have found it: every checkout test in the suite was a
+        // refusal that returned before this line. See STRIPE_API_URL in
+        // stripe.js for the override that now lets a test reach it, and
+        // test/checkout-run.test.js for the test that would have caught it.
+        const session = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "POST",
+          "checkout/sessions", sessionParams, STRIPE.idempotencyKeyFor(sessionParams));
+
         return sendJson(res, 200, { url: session.url, id: session.id });
       } catch (err) {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -16415,6 +21146,10 @@ const server = http.createServer((req, res) =>
         guestSearch,
         leadCapture: LEAD_CAPTURE,
         streetview: Boolean(GOOGLE_MAPS_API_KEY),
+        // Whether "Continue with Google" can work here, so the account
+        // modal offers the button only where clicking it can succeed (the
+        // Buy-button rule). Presentation only — the routes 404 on their own.
+        googleAuth: GOOGLE_OAUTH_CONFIGURED,
         pro: {
           enabled: on,
           // Checkout and the portal both 503 unless Stripe is configured too,
@@ -16462,6 +21197,11 @@ const server = http.createServer((req, res) =>
           // so editing this response reveals a nav link and nothing behind it.
           broker: ent.broker === true,
           canUseVault: ent.canUseVault === true,
+          // Bulk valuation. Presentation only, like everything else in this
+          // block: /api/bulk re-resolves entitlements, so editing this
+          // response reveals a nav link and a paste box that answers 403.
+          canBulkValue: ent.canBulkValue === true,
+          bulkMaxAddresses: ent.bulkMaxAddresses,
           // Presentation only, like canUseVault: the POST /api/portfolio
           // route re-resolves entitlements, so editing this response
           // relabels the desk and unlocks nothing.
@@ -16748,7 +21488,14 @@ const server = http.createServer((req, res) =>
         delete safeMeta.branding;
         if (user && ent.canBrand) {
           const brandRow = await findBrandingProfile(user.id);
-          const brand = BRANDING.normalizeBrand(brandRow);
+          // The firm profile is the fallback, never the override (041) —
+          // brandForRender's own ordering, restated here because this path
+          // snapshots a row rather than rendering one. Only consulted when
+          // the member's own profile normalizes to nothing, so a member with
+          // their own mark costs no org read. Covers auto-share too, which
+          // reaches this route like any other share.
+          const brand = BRANDING.normalizeBrand(brandRow)
+            || BRANDING.normalizeBrand(await findOrgBrandingFor(user));
           if (brand) safeMeta.branding = brand;
         }
 
@@ -16789,7 +21536,7 @@ const server = http.createServer((req, res) =>
           });
         }
 
-        // The firm audience (migration 032). Same three refusals as the
+        // The firm audience (migration 030). Same three refusals as the
         // invited path — signed in, a database, and the audience proven
         // server-side — with the membership taking the place of the email
         // list. Two differences worth naming:
@@ -16881,6 +21628,7 @@ const server = http.createServer((req, res) =>
         const id = newShareId();
         await storeSharedReport(id, { data: safeReport, meta: safeMeta }, {
           userId: user ? user.id : null, visibility, includePrivate: canPrivate, viewers, orgId,
+          sharedByName: user ? (user.name || "") : "",
         });
         logEvent("share", { prop_type: safeMeta.type, market: marketOf(safeMeta.address), source: visibility });
         // The share row is already written. A mail send must never turn this
@@ -17236,6 +21984,10 @@ const server = http.createServer((req, res) =>
         autoShare: row.auto_share === true ? "always"
           : row.auto_share === false ? "never" : "follow",
         autoShareOn: ORG.autoShareFor({ org, membership: row }),
+        // Which vocabulary this firm reads (036). Sent as the kind rather than
+        // as the words: index.html holds the nouns, pinned to SHOP_COPY by
+        // test/index-html.test.js, so the wire stays a two-value enum.
+        kind: ORG.kindOf(org),
       };
     };
 
@@ -17315,6 +22067,12 @@ const server = http.createServer((req, res) =>
         const body = await readOrgBody();
         const check = ORG.validateOrgName(body && body.name);
         if (!check.ok) return sendJson(res, 400, { error: check.error });
+        // Required, not defaulted (org-access.js validateShopKind says why).
+        // Checked before the one-firm-per-person read below so a creator who
+        // skipped the question is told what is missing rather than told they
+        // are already in a firm.
+        const shop = ORG.validateShopKind(body && body.kind);
+        if (!shop.ok) return sendJson(res, 400, { error: shop.error });
         // One firm per person, for now. Not a technical limit — the schema is
         // many-to-many and activeOrgIds already returns a set — but a member of
         // two firms raises "which firm did I just share that with", and slice 1
@@ -17323,9 +22081,11 @@ const server = http.createServer((req, res) =>
         if (existing.some((r) => ORG.isActive(r))) {
           return sendJson(res, 409, { error: "You are already part of a firm." });
         }
-        const org = await createOrgWithOwner(check.name, user);
-        logEvent("org_create", {});
-        return sendJson(res, 200, { id: org.id, name: org.name, role: "owner", canManage: true });
+        const org = await createOrgWithOwner(check.name, shop.kind, user);
+        logEvent("org_create", { kind: shop.kind });
+        return sendJson(res, 200, {
+          id: org.id, name: org.name, kind: ORG.kindOf(org), role: "owner", canManage: true,
+        });
       })().catch((err) => {
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm create failed:", err.message);
@@ -17412,7 +22172,16 @@ const server = http.createServer((req, res) =>
               // never an id. Both are already on the roster this member can
               // read, and an unattributed shelf row is one nobody can follow
               // up on, which is most of what a shelf is for.
-              sharedBy: (who && (who.name || who.email)) || "a colleague",
+              //
+              // The LIVE row wins and the snapshot (038) is the fallback, which
+              // is the opposite ordering to report branding's and deliberately
+              // so: branding must look the way it looked when it was sent, while
+              // an attribution should show what a colleague is called TODAY —
+              // somebody who fixes a typo in their profile should not read a
+              // stale name on their own shelf row. The snapshot only speaks
+              // once the account is gone, which is exactly the case that used
+              // to lose the name altogether.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "a colleague",
               mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
             };
           }),
@@ -17422,6 +22191,270 @@ const server = http.createServer((req, res) =>
         return sendJson(res, 503, { error: "Couldn't load your firm's reports. Please try again in a minute." });
       });
       return;
+    }
+
+    // --- GET /api/org/board?id= — the deal board ---------------------------
+    //
+    // Who shared what to the firm, by member, by market, by month, with a
+    // leaderboard of contribution this month and this quarter.
+    //
+    // AGGREGATED SERVER-SIDE, which is the opposite of the shelf directly
+    // above it, and the two reasons are the shelf's own reasons read backwards.
+    // The shelf ships whole because its filters are interactive and its counts
+    // describe the whole list; the board ships counted because a firm with a
+    // thousand shares needs about forty numbers to draw it, and because every
+    // judgment in that counting — who is one person, which month a share falls
+    // in, what an undated row does to a total — is a rule worth a test, and
+    // `deal-board.js` is where `npm test` can reach it. index.html cannot
+    // require a module, so a browser-side board would be a second copy of
+    // those rules, which is the drift `test/index-html.test.js` exists to
+    // catch elsewhere and would be better off not creating here.
+    //
+    // NO NEW TABLES AND NO WIDENED READ. Both sources are already attributed
+    // at write time (018's `user_id`, 032's `shared_by_user_id` +
+    // `shared_by_name`), so this is presentation over reads that exist. In
+    // particular it does not touch `broker_comps` or `broker_bovs` — a
+    // member's own book and their won/lost record are private to the USER, not
+    // to the firm, and the leaderboard's honest limit follows from that rather
+    // than from a query nobody has written yet. See deal-board.js's header.
+    if (req.method === "GET" && orgPath === "/api/org/board") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        // Rate-limited like the shelf, and for the same reason: this pays for
+        // two thousand-row reads. Same generosity, since the desk fetches it
+        // on every render.
+        if (rateLimited("orgboard:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+        }
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+
+        const [shelf, comps] = await Promise.all([
+          orgShelfRows(orgId),
+          orgCompRowsForBoard(orgId),
+        ]);
+        // Only the shelf needs the attribution stitch — `org_comps` carries the
+        // name already. Same failure-safe read the shelf uses: losing a name
+        // must not cost the row it belongs to.
+        const people = await usersByIds(shelf.map((r) => r.user_id));
+
+        const board = BOARD.build({
+          reports: shelf.map((r) => {
+            const meta = (r.payload && r.payload.meta) || {};
+            const who = r.user_id ? people.get(String(r.user_id)) : null;
+            return {
+              id: r.id,
+              // marketOf here, not the stored address, so the board's markets
+              // are the SAME canonical strings the shelf filter, the corpus and
+              // the vault use. A second parse would give one firm two spellings
+              // of one city and split its own board in half.
+              market: marketOf(meta.address || ""),
+              at: r.created_at,
+              // "" rather than the shelf's "a colleague" fallback: the board
+              // groups on this, and a literal fallback string would merge every
+              // unreadable row into one plausible-looking person. An empty name
+              // goes to deal-board.js's declared unattributed bucket instead.
+              // Live first, snapshot second, then the declared unattributed
+              // bucket (038). This is the line that closed the departed-member
+              // split: `org_comps` has carried a snapshotted name since 032,
+              // so a member who deleted their account kept their attribution
+              // on their COMPS and lost it on their REPORTS, and the board
+              // showed one person as two rows — once by name, once as "a
+              // former colleague". Both sources snapshot now.
+              sharedBy: (who && (who.name || who.email)) || r.shared_by_name || "",
+              sharedById: r.user_id || "",
+              mine: Boolean(r.user_id && String(r.user_id) === String(user.id)),
+            };
+          }),
+          comps: comps.map((r) => ({
+            id: r.id,
+            market: r.market || "",
+            at: r.created_at,
+            sharedBy: r.shared_by_name || "",
+            sharedById: r.shared_by_user_id || "",
+            mine: Boolean(r.shared_by_user_id && String(r.shared_by_user_id) === String(user.id)),
+          })),
+          now: Date.now(),
+          truncated: shelf.length >= 1000 || comps.length >= 1000,
+        });
+
+        // null when the firm has shared nothing — the desk's existing empty
+        // state says it better, so the panel simply does not render.
+        return sendJson(res, 200, { id: orgId, board });
+      })().catch((err) => {
+        console.error("Firm deal board read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your firm's deal board. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- /api/org/contacts — the firm's own tenant list (039) --------------
+    //
+    // FIRM-WIDE and membership-gated, exactly like the shelf: every member
+    // reads and writes the whole list. Owen's call 2026-08-22, weighed against
+    // the shared-vault shape (private, opt in one at a time) that comps use —
+    // the migration records the argument. `added_by` is stored so that
+    // decision stays reversible without a data cleanup.
+    //
+    // NOTHING HERE IS EVER POPULATED FROM A LEAD OR A HUB. The plan makes it a
+    // condition of the feature existing: lead routing is owner-mediated and
+    // anonymized by standing rule, and hub participants are tenants who agreed
+    // to talk to one broker about one deal. A firm's contact list is data the
+    // firm typed or imported. There is no code path from either here, and
+    // org-contacts.js deliberately exports no function that could become one.
+    if (orgPath === "/api/org/contacts") {
+      const contactsFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const rows = await orgContactRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            // The vault's rule: say so rather than under-report silently.
+            truncated: rows.length >= 2000,
+            contacts: rows.map((r) => ({
+              id: r.id,
+              name: r.name,
+              email: r.email || "",
+              company: r.company || "",
+              notes: r.notes || "",
+              // Live name first, stored snapshot second — 038's ordering, and
+              // its reason: an attribution should say what a colleague is
+              // called today, and the snapshot only speaks once they are gone.
+              addedBy: r.added_by_name || "",
+              mine: Boolean(r.added_by_user_id && String(r.added_by_user_id) === String(ctx.user.id)),
+              createdAt: r.created_at,
+            })),
+          });
+        })().catch((err) => {
+          console.error("Firm contacts read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's contacts. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // POST adds ONE contact, or imports a CSV when the body carries `csv`.
+      // One route for both because they are the same write with the same gate
+      // and the same validation; splitting them would be two places to keep
+      // the org scoping right.
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          let body;
+          try { body = await readOrgBody(2e6); } catch (err) {
+            if (err.message === "too_big") return sendJson(res, 413, { error: "That file is too large to import in one go." });
+            return sendJson(res, 400, { error: "Bad request." });
+          }
+
+          const addedBy = {
+            added_by_user_id: ctx.user.id,
+            // Snapshotted for 032's and 038's reason: `on delete set null`
+            // means the join disappears with the account, and a contact
+            // nobody can attribute is one nobody can ask about. Name only.
+            added_by_name: String(ctx.user.name || "").trim().slice(0, 120),
+          };
+
+          let rows = [];
+          let errors = [];
+          let commented = 0;
+          let total = 0;
+
+          if (typeof body.csv === "string") {
+            const parsed = CONTACTS.parseContactsCsv(body.csv, {
+              parseCsv: VAULT.parseCsv,
+              isCommentRow: VAULT.isCommentRow,
+              normalizeHeader: VAULT.normalizeHeader,
+            });
+            rows = parsed.rows; errors = parsed.errors;
+            commented = parsed.commented; total = parsed.total;
+          } else {
+            const one = CONTACTS.normalizeContact(body);
+            total = 1;
+            if (one.errors.length) errors = one.errors; else rows = [one.row];
+          }
+
+          // Dedupe against what the firm already holds. Reported, never
+          // silent — parseUpload's "imported N of M" rule.
+          const existing = rows.length ? await orgContactEmails(ctx.orgId) : [];
+          const deduped = CONTACTS.dropExisting(rows, existing);
+
+          let imported = 0;
+          if (deduped.rows.length) {
+            const payload = deduped.rows.map((r) => ({ org_id: ctx.orgId, ...addedBy, ...r }));
+            // on_conflict so a race with another member adding the same email
+            // is a no-op rather than a 409 the importer cannot act on. The
+            // unique index is partial (email only), so unemailed contacts are
+            // unaffected and are never merged.
+            await sbRequest("POST", "org_contacts?on_conflict=org_id,email", payload,
+              { prefer: "resolution=ignore-duplicates,return=minimal" });
+            imported = deduped.rows.length;
+          }
+
+          logEvent("org_contacts", { source: `add:${imported}` });
+          return sendJson(res, errors.length && !imported ? 400 : 200, {
+            imported, total, commented,
+            duplicates: deduped.duplicates,
+            errors,
+          });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that contact. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "PATCH" || req.method === "DELETE") {
+        (async () => {
+          const ctx = await contactsFor();
+          if (!ctx) return;
+          const contactId = (ctx.url.searchParams.get("contact") || "").trim();
+          if (!contactId) return sendJson(res, 400, { error: "Which contact?" });
+
+          // Scoped by org_id as well as id on EVERY call, including the
+          // DELETE — the vault's rule. Without it, knowing a contact's id
+          // would be enough to edit or delete another firm's row.
+          const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}` +
+            `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const found = await sbRequest("GET", `${scope}&select=id,name,email,company,notes&limit=1`);
+          const existing = (found || [])[0];
+          if (!existing) return sendJson(res, 404, { error: "That contact is not in this firm." });
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+            return sendJson(res, 200, { ok: true, deleted: contactId });
+          }
+
+          let patch;
+          try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          // Validated as the WHOLE row it would become — broker-vault.js's
+          // validateEdit rule, so an edit cannot accept what an import refuses.
+          const { row, errors } = CONTACTS.validateContactEdit(existing, patch);
+          if (errors.length) return sendJson(res, 400, { error: errors.join("; ") });
+
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() },
+            { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, contact: { id: contactId, ...row } });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm contact edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
     }
 
     // --- POST /api/org/invite ----------------------------------------------
@@ -17487,7 +22520,8 @@ const server = http.createServer((req, res) =>
         // into an error the inviter has to interpret.
         try {
           sendOrgInvites(clean.emails, {
-            firm: (org && org.name) || "", fromName: user.name || "", fromEmail: user.email,
+            firm: (org && org.name) || "", kind: ORG.kindOf(org),
+            fromName: user.name || "", fromEmail: user.email,
           });
         } catch (err) {
           console.error("Firm invite send failed:", err.message);
@@ -17538,6 +22572,17 @@ const server = http.createServer((req, res) =>
           await setOrgShareDefault(orgId, body.shareDefault);
           changed = true;
         }
+        if (body.kind !== undefined) {
+          // Owner/admin, the same authority as the firm default: this changes
+          // what every colleague reads, not what one member's own work does.
+          if (!ORG.canManageMembers(membership)) {
+            return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+          }
+          const shop = ORG.validateShopKind(body.kind);
+          if (!shop.ok) return sendJson(res, 400, { error: "Unrecognized setting." });
+          await setOrgKind(orgId, shop.kind);
+          changed = true;
+        }
         if (body.autoShare !== undefined) {
           const value = ORG.autoShareValue(body.autoShare);
           // `undefined` is the refusal and `null` is a real value ("follow"),
@@ -17558,6 +22603,7 @@ const server = http.createServer((req, res) =>
         const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
         return sendJson(res, 200, {
           ok: true,
+          kind: ORG.kindOf(org),
           shareDefault: ORG.shareDefaultOf(org),
           autoShare: mine && mine.auto_share === true ? "always"
             : mine && mine.auto_share === false ? "never" : "follow",
@@ -17567,6 +22613,92 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Firm settings update failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't save that setting. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET|PUT|DELETE /api/org/branding — the firm's letterhead (041) -----
+    //
+    // One profile per firm, the fallback a member's report carries when they
+    // have no personal one (brandForRender owns that ordering). Reading is
+    // any active member's — it is about to appear on their own documents, so
+    // they are owed the disclosure. Writing is owner/admin, the same
+    // authority as shareDefault/kind on /api/org/settings and for the same
+    // reason: it changes what every colleague's reports carry, not one
+    // person's own work. Validation is BRANDING.validateForSave, byte for
+    // byte the personal editor's rules — one decision table, two tables.
+    if (orgPath === "/api/org/branding" && req.method === "GET") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const rows = await sbRequest("GET",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+        // API shape, not table shape, and {} for "none yet" — GET
+        // /api/branding's contract, kept identical so the browser's one form
+        // can edit either profile.
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand((rows && rows[0]) || null) || {} });
+      })().catch((err) => {
+        console.error("Firm branding read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "PUT") {
+      (async () => {
+        if (rateLimited("orgbrand:" + clientIp(req), 60)) {
+          return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+        }
+        const user = await openOrg();
+        if (!user) return;
+        // 300KB, /api/branding's own cap: a 150KB logo is ~200KB as base64
+        // inside JSON, plus the fields. readOrgBody's 10KB default was sized
+        // for names and emails, not letterheads.
+        const body = await readOrgBody(3e5);
+        const orgId = String((body && body.orgId) || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        const checked = BRANDING.validateForSave(body);
+        if (checked.error) return sendJson(res, 400, { error: checked.error });
+        await sbRequest("POST", "org_branding?on_conflict=org_id",
+          [{ ...checked.row, org_id: orgId, updated_at: new Date().toISOString() }],
+          { prefer: "resolution=merge-duplicates,return=minimal" });
+        return sendJson(res, 200, { branding: BRANDING.normalizeBrand(checked.row) || {} });
+      })().catch((err) => {
+        if (err instanceof SyntaxError || (err && err.message === "too_big")) {
+          return sendJson(res, 400, { error: "Bad request." });
+        }
+        console.error("Firm branding save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save the firm's branding. Please try again in a minute." });
+      });
+      return;
+    }
+
+    if (orgPath === "/api/org/branding" && req.method === "DELETE") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        if (!ORG.canManageMembers(membership)) {
+          return sendJson(res, 403, { error: "Only a firm's owner or an admin can change this." });
+        }
+        // Scoped by org_id in the QUERY, membership proven above — the
+        // personal DELETE's rule, one level up.
+        await sbRequest("DELETE",
+          `org_branding?org_id=eq.${encodeURIComponent(orgId)}`, undefined,
+          { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        console.error("Firm branding delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't remove the firm's branding. Please try again in a minute." });
       });
       return;
     }
@@ -17793,21 +22925,27 @@ const server = http.createServer((req, res) =>
 
           logEvent("hub_created", { market: meta.address || b.subjectAddress || "", source: seed ? "share" : "new" });
           const inviteLinks = invites.map((i) => ({ email: i.email, url: `${SITE_URL}/hub/${id}#k=${i.token}` }));
-          // Fire and forget, AFTER the rows are written. A mail provider having
-          // a bad afternoon must never turn a created hub into an error.
+          // AFTER the rows are written, and awaited rather than abandoned. A
+          // mail provider having a bad afternoon still must not turn a created
+          // hub into an error — it turns into `emailFailed`, which costs the
+          // broker a copy-paste instead of costing them the invitation.
+          let emailFailed = [];
           try {
-            sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
+            emailFailed = await sendHubInvites(inviteLinks, { hubTitle: b.title || meta.address || "", fromName: user.name || "" });
           } catch (err) {
             console.error("Hub invite send failed:", err.message);
+            emailFailed = inviteLinks.map((i) => i.email);
           }
           return sendJson(res, 201, {
             ok: true,
             id,
             url: `${SITE_URL}/hub/${id}`,
             invites: inviteLinks,
-            // Whether the invitations actually LEFT. The panel says something
-            // different depending on the answer, and it must not guess.
-            emailed: OUTBOUND_EMAIL_LIVE(),
+            // Whether the invitations actually LEFT — the send's own answer,
+            // not a restatement of the configuration. The panel says something
+            // different depending on it, and it must not guess.
+            emailed: OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0,
+            emailFailed,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -17945,6 +23083,14 @@ const server = http.createServer((req, res) =>
             getHubMessages(id, since),
           ]);
           if (g.participant) stampHubView(g.participant.id);
+          // The notifier's own presence stamp (040). Separate from
+          // stampHubView above because that one is keyed on a participant row,
+          // and the hub OWNER does not have one — the broker would otherwise
+          // be the only person whose reading never re-armed their nudge.
+          //
+          // A poll counts, deliberately: a poll only fires from a tab that is
+          // open and visible, which is the definition of being here.
+          stampHubSeen(id, (g.user && g.user.email) || (g.participant && g.participant.email));
 
           return sendJson(res, 200, {
             hub: {
@@ -18256,11 +23402,17 @@ const server = http.createServer((req, res) =>
           // rather than trusted, or a message could be filed against an item
           // in a hub the author cannot read.
           let itemId = null;
+          // The snapshot rides along only so the notification can name the
+          // building. "Someone left a note" with no address attached is the
+          // version of this email that gets ignored, and the address is
+          // already in the row being read to authorize the write.
+          let itemAddress = "";
           if (b.itemId) {
             const owned = await sbRequest("GET",
-              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id&limit=1`);
+              `hub_items?id=eq.${encodeURIComponent(String(b.itemId))}&hub_id=eq.${encodeURIComponent(id)}&select=id,snapshot&limit=1`);
             if (!owned || !owned[0]) return sendJson(res, 400, { error: "That comp is not in this hub." });
             itemId = owned[0].id;
+            itemAddress = String((owned[0].snapshot && owned[0].snapshot.address) || "").trim();
           }
 
           const saved = await sbRequest("POST", "hub_messages?select=id,created_at", [{
@@ -18274,7 +23426,26 @@ const server = http.createServer((req, res) =>
           }], { prefer: "return=representation" });
           touchHub(id);
           if (g.participant) stampHubView(g.participant.id);
+          // Posting is being here, so the author re-arms too. Without this a
+          // broker who only ever writes would stay permanently "away" and
+          // collect a mail for every reply, which is the one pattern
+          // guaranteed to make somebody switch this off.
+          stampHubSeen(id, g.user.email);
           logEvent("hub_message", { market: g.hub.market || "", source: g.decision.role });
+
+          // Tell the others. NOT awaited and deliberately so: the note is
+          // already saved, the author is about to be told it saved, and a mail
+          // provider having a bad afternoon must never turn a posted note into
+          // an error. It swallows its own failures for the same reason.
+          sendHubNoteEmails({
+            hub: g.hub,
+            participants: g.participants,
+            authorEmail: HUB.normalizeEmail(g.user.email),
+            authorName: g.user.name || "",
+            body,
+            itemAddress,
+          }).catch((err) => console.error("Hub note email failed:", err.message));
+
           return sendJson(res, 201, {
             ok: true,
             message: {
@@ -18348,18 +23519,24 @@ const server = http.createServer((req, res) =>
           // Only the NEWLY invited are mailed — re-saving an unchanged list, or
           // only removing people, must email nobody. Same rule as
           // PUT /api/shares/viewers.
+          let emailFailed = [];
           if (newLinks.length) {
             try {
-              sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
+              emailFailed = await sendHubInvites(newLinks, { hubTitle: g.hub.title || "", fromName: g.user.name || "" });
             } catch (err) {
               console.error("Hub invite send failed:", err.message);
+              emailFailed = newLinks.map((i) => i.email);
             }
           }
           return sendJson(res, 200, {
             ok: true,
             participants: wanted,
             invites: newLinks,
-            emailed: OUTBOUND_EMAIL_LIVE(),
+            // This panel HIDES the links when it believes they were mailed, and
+            // a token cannot be shown twice. Guessing here loses the invitation
+            // outright, so the flag is the send's answer.
+            emailed: OUTBOUND_EMAIL_LIVE() && emailFailed.length === 0,
+            emailFailed,
           });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
@@ -18410,6 +23587,15 @@ const server = http.createServer((req, res) =>
   // page someone lands on straight after paying. Same fix covers a campaign
   // link to /?utm_source=…, which used to 404 for the same reason.
   const staticPath = req.url.split("?")[0];
+  // The same rule, for the PAGE routes further down. They used to match on the
+  // raw `req.url`, which meant a tag on the end of the link made the address
+  // stop matching its own route and fall through to Not Found: /markets served,
+  // /markets?utm_source=newsletter 404'd. That is not a rare shape. Facebook
+  // appends ?fbclid=... to outbound links on its own, so every market page
+  // shared there was a dead link, and any campaign or email tag did the same.
+  // A fragment can never reach a server, but /brokers has always stripped one
+  // defensively and this keeps that behavior when those routes moved here.
+  const pagePath = staticPath.split("#")[0];
   if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
     // Account wall: an anonymous visitor meets the landing page, not the app.
     //
@@ -18499,9 +23685,37 @@ const server = http.createServer((req, res) =>
         "cache-control": "no-store",
         ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
-      // Canonical/og/JSON-LD URLs in index.html are written against the default
-      // origin; rewrite them when SITE_URL is overridden (custom domain).
-      res.end(SITE_URL === DEFAULT_SITE_URL ? data : data.toString("utf8").split(DEFAULT_SITE_URL).join(SITE_URL));
+      // Two serve-time rewrites. The Explore menu's browse links are injected
+      // from NAV_LINKS (declared above marketBar) in place of the marker
+      // comment index.html authors — the app header reads from the same list
+      // as every server-rendered header, so the menus cannot drift. Then
+      // canonical/og/JSON-LD URLs, written against the default origin, are
+      // rewritten when SITE_URL is overridden (custom domain).
+      let html = data.toString("utf8")
+        .replace(NAV_LINKS_MARKER, APP_NAV_LINKS_HTML)
+        // Same one-source rule as the nav list: index.html carries a marker,
+        // never a hand-copy of the in-app detection (THEME_BOOT is the
+        // cautionary tale — a copy that has to be kept in step by comment).
+        .replace(INAPP_BOOT_MARKER, INAPP_BOOT)
+        // The third rewrite, and the only one that varies by visitor: what
+        // this handler already knows about them, so the first paint is not a
+        // signed-out app that corrects itself a beat later. Cookie presence
+        // only — see authBoot above for why that is safe and why index.html
+        // being no-store is what makes it safe.
+        .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
+        // Fourth: the bulk run view (markup + its own CSS + BULKRUN), so a
+        // pasted list can render its run where a report would go. It carries
+        // its own <style> because index.html never receives MARKET_CSS.
+        .replace(BULK_RUN_MARKER, renderBulkInlineBlock());
+      // Fifth rewrite: the Explorer's example query, rotated per load. An
+      // attribute rather than a marker comment, so a null (no seed file)
+      // leaves index.html's own example standing — see nextMarketExample.
+      const example = nextMarketExample();
+      if (example) {
+        html = html.replace(MARKET_EXAMPLE_MARKER, `placeholder="${escHtml(example)}"`);
+      }
+      if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
+      res.end(html);
     });
     return;
   }
@@ -18511,6 +23725,13 @@ const server = http.createServer((req, res) =>
   // images are stable and can cache for a day.
   const STATIC_FILES = {
     "/tailwind.css": { file: "tailwind.css", type: "text/css; charset=utf-8", maxAge: 300 },
+    // The /markets momentum map's carved city boundaries (committed, fetched
+    // deliberately by scripts/fetch-city-bounds.js — never at runtime). Loaded
+    // lazily by the map script rather than embedded in the page: ~200KB of
+    // geometry has no business riding every directory view's HTML. Short
+    // max-age like the CSS; a stale copy costs a slightly old shoreline, and
+    // the map treats a missing city as "stay a pin", so nothing breaks.
+    "/city-bounds.json": { file: "city-bounds.json", type: "application/json; charset=utf-8", maxAge: 300 },
     // maxAge: 0, unlike everything else here. index.html is served no-store,
     // and its one inline <script> destructures VALUATION as its very first
     // statement — if this file is ever stale relative to that HTML (a
@@ -18520,6 +23741,10 @@ const server = http.createServer((req, res) =>
     // renders its HTML/CSS and looks fine. Nothing else on this allowlist
     // has that single-point-of-failure shape, so nothing else needs this.
     "/valuation.js": { file: "valuation.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Development returns (C6). maxAge 0 for /valuation.js's exact reason:
+    // index.html's inline script calls DEVRETURNS, so a copy cached stale
+    // against the HTML would throw where the card renders.
+    "/dev-returns.js": { file: "dev-returns.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule as /valuation.js, same reason: /vault's inline
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.
@@ -18527,11 +23752,32 @@ const server = http.createServer((req, res) =>
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // And again: a leases-only report headlines MARKETSNAP.rentFromComps, the
+    // same function the market pages read, so the browser copy must never be
+    // stale relative to the page that calls it.
+    "/market-snapshot.js": { file: "market-snapshot.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // The desktop/mobile install identity (PWA). Users "download" the app
+    // from the site itself — Chrome/Edge offer Install once this manifest is
+    // reachable — so there is no installer to host or code-sign anywhere.
+    // Short max-age like the CSS: a renamed app or swapped icon should reach
+    // installed copies on their next launch, not a day later.
+    "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json", maxAge: 300 },
+    "/icon-192.png": { file: "icon-192.png", type: "image/png", maxAge: 86400 },
+    "/icon-512.png": { file: "icon-512.png", type: "image/png", maxAge: 86400 },
+    "/icon-maskable-512.png": { file: "icon-maskable-512.png", type: "image/png", maxAge: 86400 },
     "/og-image.png": { file: "og-image.png", type: "image/png", maxAge: 86400 },
     "/apple-touch-icon.png": { file: "apple-touch-icon.png", type: "image/png", maxAge: 86400 },
     "/favicon.ico": { file: "favicon.ico", type: "image/x-icon", maxAge: 86400 },
     "/favicon.svg": { file: "favicon.svg", type: "image/svg+xml", maxAge: 86400 },
     "/favicon.png": { file: "favicon.png", type: "image/png", maxAge: 86400 },
+    // /leadership portraits. Exact keys rather than a "/team-photos/" prefix
+    // handler: there are four fixed files and an allowlist of literal paths
+    // cannot be walked out of, where a prefix match needs its own filename
+    // regex to be safe (the rule /market-heroes/ carries).
+    "/team-photos/team.jpg": { file: "team-photos/team.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/jacob.jpg": { file: "team-photos/jacob.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/owen.jpg": { file: "team-photos/owen.jpg", type: "image/jpeg", maxAge: 86400 },
+    "/team-photos/chuck.jpg": { file: "team-photos/chuck.jpg", type: "image/jpeg", maxAge: 86400 },
   };
   // Query-string tolerant (reuses `staticPath`, already split above) so the
   // obvious cache-bust "/valuation.js?v=…" resolves instead of 404ing — an
@@ -18589,8 +23835,27 @@ const server = http.createServer((req, res) =>
     // and the only honest answer was a git argument. It is the same class of
     // fact as `provider`, which is already here, and it names a model — not
     // a credential.
+    // thinking_level rides here for the same reason `model` does: it is a
+    // startup constant set by an env var nobody can read from outside the box,
+    // it moves the wall clock more than anything in the report JSON, and
+    // "which setting produced this report?" has to be answerable from the
+    // deployment rather than from the repo. "" means the vendor default.
+    // `commit` and `started` answer the one question a deploy could not be
+    // checked against from outside: IS THIS THE BUILD I PUSHED? Render
+    // auto-deploys main, and a blocked deploy looks exactly like a slow one
+    // from the outside — on 2026-08-09 two deploys failed back to back and
+    // production served the old build for an hour with every page answering
+    // 200. The workaround was grepping a served page for a string the change
+    // introduced, which fails for any change with no anonymous-visible byte
+    // (a server-side rule, a budget, a cache decision) and reports a healthy
+    // deploy as failed when the grep hits the wrong page. A commit answers it
+    // for every change, and `started` separates "deployed" from "restarted".
+    // Neither is a credential: the repo is the owner's and the SHA is already
+    // public on GitHub.
     return sendJson(res, 200, { ok: true, hasKey: Boolean(providerApiKey()),
-      provider: PROVIDER.name, model: MODEL, search_budget: PROVIDER.capabilities.searchBudget,
+      provider: PROVIDER.name, model: MODEL, thinking_level: THINKING_LEVEL,
+      search_budget: PROVIDER.capabilities.searchBudget,
+      commit: BUILD_COMMIT, started: BOOT_AT,
       ...(process.env.TEST_BOOT_ID ? { boot_id: process.env.TEST_BOOT_ID } : {}) });
   }
 
@@ -18601,7 +23866,16 @@ const server = http.createServer((req, res) =>
     const merged = allMarketPages();
     const list = Object.keys(merged).map((slug) => {
       const p = merged[slug];
-      return { slug, type: p.type, city: p.city, state: p.state };
+      // `direction` is omitted, never "", when the snapshot has none or its
+      // read has aged out — the Explorer dropdown keys the badge off its
+      // presence, so an expired market simply renders no badge. The gate lives
+      // HERE rather than in the browser so the age rule has one home and the
+      // dropdown stays a renderer; see freshDirection in market-snapshot.js for
+      // why a momentum call expires when a median $/SF does not.
+      const row = { slug, type: p.type, city: p.city, state: p.state };
+      const direction = freshDirection(p, Date.now());
+      if (direction) row.direction = direction;
+      return row;
     });
     res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300" });
     return res.end(JSON.stringify(list));
@@ -18613,7 +23887,7 @@ const server = http.createServer((req, res) =>
   // visitors, so this URL canonicalizes to `/` (home: true) rather than
   // splitting one page's signals across two indexed URLs; wall off, `/` is
   // the app again and this page canonicalizes itself. ---
-  if (req.method === "GET" && req.url.split("#")[0] === "/how-it-works") {
+  if (req.method === "GET" && pagePath === "/how-it-works") {
     // Cookie PRESENCE only, same rule as the wall at `/`: this runs on every
     // view and getSessionUser() reads the database. A signed-in visitor gets
     // app chrome (My Desk / Run a report) instead of the signup buttons —
@@ -18633,23 +23907,38 @@ const server = http.createServer((req, res) =>
     return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL, signedIn }));
   }
 
-  // --- 1031 exchange guide — public education page (v4 slice 3). Content
-  // lives in guide-1031.js (a web page, so it is not server code — the
-  // vault-page.js precedent); this route only dresses it in the shared
-  // shell. Education, never advice: the compliance strings are pinned by
-  // test/guide-1031.test.js. ---
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/1031-exchange") {
+  // --- 1031 identification worksheet. Content lives in guide-1031.js (a
+  // web page, so it is not server code — the vault-page.js precedent);
+  // this route only dresses it in the shared shell. Worksheet on top,
+  // explainer below; education, never advice. signedIn chooses the Value
+  // handoff (`/` vs `/?auth=signup`) so a member is not sent through the
+  // signup door. Compliance strings are pinned by test/guide-1031.test.js. ---
+  if (req.method === "GET" && pagePath === "/1031-exchange") {
+    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
+    // funnel's exit, and until this event nothing counted anyone ENTERING —
+    // "does the guide produce leads" had a numerator with no denominator.
+    // PII-free like every event. Crawler UAs are skipped because this page
+    // is public and sitemapped, so bots would otherwise be most of the
+    // count (vault_visit never needed this — that page is auth-shaped).
+    // `source` = which audience is reading, on cookie PRESENCE (the wall's
+    // cheap rule; getSessionUser is a DB read and this renders per request).
+    if (!isCrawlerUA(req.headers["user-agent"])) {
+      logEvent("guide_1031", {
+        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
+      });
+    }
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: G1031.TITLE,
       description: G1031.DESCRIPTION,
       canonical: `${SITE_URL}/1031-exchange`,
-      body: G1031.renderGuide1031Body(),
+      body: G1031.renderGuide1031Body(signedIn),
       head: `<style>${G1031.GUIDE_CSS}</style>`,
       jsonLd: JSON.stringify({
         "@context": "https://schema.org",
         "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
       }),
       signedIn,
+      current: "/1031-exchange",
     }));
   }
 
@@ -18658,7 +23947,13 @@ const server = http.createServer((req, res) =>
   // matcher below so the two stay adjacent. ---
   // Path-only match (split at "?" like /terms), or /brokers?utm_source=x
   // 404s — found 2026-08-10 when a cache-busting query string hit a 404.
-  if (req.method === "GET" && req.url.split("?")[0].split("#")[0] === "/brokers") {
+  // --- Download the desktop app. Path-only match like /brokers below, so a
+  // campaign link's query string can't 404 it. ---
+  if (req.method === "GET" && pagePath === "/download") {
+    return sendShellPage(req, res, (signedIn) => renderDownloadPageHTML(signedIn));
+  }
+
+  if (req.method === "GET" && pagePath === "/brokers") {
     // The proof line reads MARKET_CREDIT; same stale-while-revalidate kick
     // as the market pages, so the render never waits on the DB and the line
     // simply doesn't appear until the cache has filled once.
@@ -18666,21 +23961,33 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
   }
 
+  if (req.method === "GET" && pagePath === "/leadership") {
+    return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
+  }
+
+  if (req.method === "GET" && pagePath === "/firms") {
+    return sendShellPage(req, res, (signedIn) => renderFirmsPageHTML(signedIn));
+  }
+
+  if (req.method === "GET" && pagePath === "/pricing") {
+    return sendShellPage(req, res, (signedIn) => renderPricingPageHTML(signedIn));
+  }
+
   // --- Legal pages. Path-only match (split at "?") so /terms?utm_source=x
   // resolves; Stripe checkout settings and campaign links both send query
   // strings. Same hour cache as the other static pages. ---
-  if (req.method === "GET" && req.url.split("?")[0] === "/terms") {
+  if (req.method === "GET" && pagePath === "/terms") {
     return sendShellPage(req, res, (signedIn) => renderTermsPageHTML(signedIn));
   }
-  if (req.method === "GET" && req.url.split("?")[0] === "/privacy") {
+  if (req.method === "GET" && pagePath === "/privacy") {
     return sendShellPage(req, res, (signedIn) => renderPrivacyPageHTML(signedIn));
   }
 
   // --- Market landing pages (programmatic SEO) ---
-  if (req.method === "GET" && req.url === "/markets") {
+  if (req.method === "GET" && pagePath === "/markets") {
     return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
   }
-  const marketMatch = req.method === "GET" && req.url.match(/^\/market\/([a-z0-9-]{3,80})$/);
+  const marketMatch = req.method === "GET" && pagePath.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {
     const page = getMarketPage(marketMatch[1]);
     if (!page) return sendNotFound(req, res, "That market page isn't here anymore.");
@@ -18697,7 +24004,7 @@ const server = http.createServer((req, res) =>
   }
 
   // --- Public broker profiles — opt-in pages for verified contributors ---
-  const brokerMatch = req.method === "GET" && req.url.match(/^\/broker\/([a-z0-9-]{3,80})$/);
+  const brokerMatch = req.method === "GET" && pagePath.match(/^\/broker\/([a-z0-9-]{3,80})$/);
   if (brokerMatch) {
     (async () => {
       if (rateLimited("bpage:" + clientIp(req), 60)) {
@@ -18726,7 +24033,7 @@ const server = http.createServer((req, res) =>
   // --- Explorer previews: thin-data market snapshots, visible only to whoever
   // generated them. In-memory with a short TTL, noindexed at every layer
   // (meta tag, X-Robots-Tag, robots.txt) and never linked from indexed pages.
-  const previewMatch = req.method === "GET" && req.url.match(/^\/market-preview\/([a-z0-9-]{3,80})$/);
+  const previewMatch = req.method === "GET" && pagePath.match(/^\/market-preview\/([a-z0-9-]{3,80})$/);
   if (previewMatch) {
     const entry = previewPagesMem.get(previewMatch[1]);
     if (!entry || Date.now() - entry.ts > PREVIEW_TTL_MS) {
@@ -19004,6 +24311,56 @@ const server = http.createServer((req, res) =>
   // the page now carries the signed-in viewer's own rows. If the payload
   // can't be built, the page ships without one and falls back to fetching
   // /api/vault exactly as it did before.
+  // The bulk valuation workspace. Its own route rather than another
+  // index.html path, which is what makes it exempt from ACCOUNT_WALL — the
+  // wall lives inside the static handler, and this page renders its own
+  // refusals from the boot payload anyway (401 sign in, 403 Pro, 503 no
+  // database), so an anonymous visitor is told which door to use rather than
+  // being bounced to the landing page.
+  if (req.method === "GET" && req.url.split("?")[0] === "/bulk") {
+    (async () => {
+      // Resolved HERE, through the same gate the routes use, so the page can
+      // never paint a working paste box at somebody it would then refuse.
+      // vault-page.js's boot pattern, for its reason.
+      let boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Not signed in." } };
+        else {
+          const ent = await entitlementsFor(req);
+          if (!ent.canBulkValue) boot = { s: 403, j: { error: "Bulk valuation is part of Pro.", code: "pro_required" } };
+          else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+          else boot = { s: 200, j: await bulkListPayload(user, ent) };
+        }
+      } catch (err) {
+        console.error("bulk boot failed:", err.message);
+      }
+      // PII-free and market-free, like vault_visit and for the same reason: a
+      // member's own address list is their business. `source` is the boot
+      // outcome, which is the only way to see whether people reach this page
+      // and what stops them.
+      logEvent("bulk_visit", { source:
+        boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Bulk valuation \u00b7 CompNinja",
+        description: "Value a whole list of addresses at once.",
+        canonical: `${SITE_URL}/bulk`,
+        noindex: true,
+        // Cookie PRESENCE, the wall's own cheap rule and what every other
+        // marketShell page uses — the real gate is the boot payload above.
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/bulk",
+        body: renderBulkPageBody(boot),
+      }));
+    })();
+    return;
+  }
+
   if (req.method === "GET" && req.url.split("?")[0] === "/vault") {
     (async () => {
       let boot = null;
@@ -19032,6 +24389,7 @@ const server = http.createServer((req, res) =>
       res.end(renderVaultHTML(boot, {
         CN_LOGO,
         MARKET_CSS,
+        FOOTER_DARK_CSS,
         THEME_CSS,
         THEME_BOOT,
         ACCOUNT_NAV_CSS,
@@ -19107,11 +24465,11 @@ const server = http.createServer((req, res) =>
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
     return res.end(`google-site-verification: google${GOOGLE_VERIFY_TOKEN}.html\n`);
   }
-  if (req.method === "GET" && req.url === "/robots.txt") {
+  if (req.method === "GET" && pagePath === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
     return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
-  if (req.method === "GET" && req.url === "/sitemap.xml") {
+  if (req.method === "GET" && pagePath === "/sitemap.xml") {
     const merged = allMarketPages();
     const marketUrls = Object.keys(merged).map((slug) => {
       const lastmod = merged[slug].generatedAt;
@@ -19133,7 +24491,11 @@ const server = http.createServer((req, res) =>
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       (ACCOUNT_WALL ? "" : `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n`) +
       `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/firms</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/download</loc></url>\n` +
+      `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/privacy</loc></url>\n` +
       `  <url><loc>${SITE_URL}/markets</loc></url>\n` +
@@ -19150,6 +24512,10 @@ server.listen(PORT, () => {
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
+  // Said out loud because it is the largest wall-clock setting on this box and
+  // the least visible: unset it looks identical to set-to-the-default in every
+  // report, and only the token counts in the per-call log would ever differ.
+  if (THINKING_LEVEL) console.log(`🧠 Thinking level: ${THINKING_LEVEL} (overrides the ${PROVIDER.name} default; watch the out-token count in the per-call log)`);
   refreshMarketCredit();   // warm the broker-credit cache for market pages
   refreshBrokerProfiles(); // warm the public-profile cache (badge links + sitemap)
   refreshMarketIntel();    // warm the corpus-intelligence cache (market pages + feed)
@@ -19194,7 +24560,7 @@ server.listen(PORT, () => {
       ? "⚠  GOOGLE_SITE_VERIFICATION is set but unusable — expected google<token>.html or the bare token."
       : "🔎 Search Console not verified by file — set GOOGLE_SITE_VERIFICATION to see indexing data (or use a DNS TXT record).");
   if (PRO_ENABLED) {
-    console.log(`⭐ Pro tier ENABLED — free reports show ${ENT.FREE_MAX_COMPS} comps, ` +
+    console.log(`⭐ Pro tier ENABLED — free reports itemize ${ENT.FREE_MAX_COMPS === "all" ? "every comp found" : ENT.FREE_MAX_COMPS + " comps"}, ` +
       `${ENT.FREE_MAX_LOOKBACK_MONTHS}-month lookback, ${ENT.FREE_EXPORTS_PER_MONTH} exports/month.`);
     // Loud on purpose: an audience left set is a launch that silently reaches
     // nobody, and it looks exactly like a working deployment.

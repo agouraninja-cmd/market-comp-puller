@@ -10,6 +10,21 @@
 // Photos are downloaded, cropped, and served from /market-heroes/ rather than
 // hotlinked: Wikimedia asks not to be used as a CDN. Credits render on the
 // photograph. Pure, no I/O, so npm test can pin the lookup.
+//
+// Since 2026-08-21 the curated table is no longer the only photo layer.
+// `market-heroes-auto.json` holds the same shape for cities nobody curated by
+// hand — found, graded, looked at by a model and encoded by
+// `node scripts/auto-market-heroes.js`, then committed like any other hero.
+// It exists because the Explorer publishes market pages faster than a person
+// can pick photographs for them: on the day it shipped, 21 cities were
+// curated and 13 live Explorer markets had no picture at all.
+//
+// The resolution order is curated photo, then automatic photo, then a
+// satellite aerial of the city's own coordinates, then nothing. Curated wins
+// on purpose — a person looked at those — and the auto file also carries
+// COORDINATES for every market city it has ever seen, which is what turns the
+// last-resort satellite branch from a hardcoded list of 22 cities into
+// something every market page can reach.
 
 "use strict";
 
@@ -51,6 +66,14 @@ const HERO_WIDTH = 3840;
 const HERO_HEIGHT = 800;
 const HERO_SRCSET_WIDTH = 1920;
 const HERO_SRCSET_HEIGHT = 400;
+// The /markets directory draws the same photograph small, one per card. It is
+// a THIRD stored size rather than the 1920w file scaled down in the browser,
+// because that page carries every market at once: at ~300 KB each the 1920w
+// files would make the directory a 10 MB page. 768x160 keeps the 4.8:1 crop
+// exactly and costs ~40 KB. Made by downscaling the stored 3840w hero, so it
+// is the same framing a reader sees on the market page itself.
+const HERO_THUMB_WIDTH = 768;
+const HERO_THUMB_HEIGHT = 160;
 
 // Commons file titles (unprefixed) are the audit trail; `file` is the
 // 3840w JPEG we serve. The 1920w sibling is `srcsetName(file)`.
@@ -207,6 +230,45 @@ const HEROES = {
 
 const FILE_RE = /^[a-z0-9-]+\.jpg$/;
 
+// The generated companion table. A static require of committed JSON, the same
+// deterministic read market-seed.json gets, so this module stays testable with
+// no network and no filesystem of its own — but it is GENERATED, so nothing
+// here may assume it is well formed. A missing or unreadable file must leave
+// the curated markets exactly as they were rather than take the server down at
+// boot.
+let AUTO_FILE;
+try {
+  AUTO_FILE = require("./market-heroes-auto.json");
+} catch (_) {
+  AUTO_FILE = null;
+}
+
+function autoCities(table) {
+  const src = table === undefined ? AUTO_FILE : table;
+  return (src && typeof src === "object" && src.cities && typeof src.cities === "object")
+    ? src.cities
+    : {};
+}
+
+// One generated entry, checked before it is believed. The file name is the
+// part that matters: it becomes a URL under /market-heroes/, so it goes
+// through the same FILE_RE the curated files do — a generated path is still a
+// path, and this is the one place a bad one could enter.
+function autoHeroFor(key, table) {
+  const row = autoCities(table)[key];
+  const hero = row && row.hero;
+  if (!hero || !isHeroFilename(hero.file)) return null;
+  if (!hero.credit || !hero.commons) return null;
+  return hero;
+}
+
+function autoCoordsFor(key, table) {
+  const row = autoCities(table)[key];
+  const ll = row && row.coords;
+  if (!ll || !Number.isFinite(Number(ll.lat)) || !Number.isFinite(Number(ll.lng))) return null;
+  return { lat: Number(ll.lat), lng: Number(ll.lng) };
+}
+
 function cityKey(city, state) {
   return `${String(city || "").trim().toLowerCase()}, ${String(state || "").trim().toLowerCase()}`;
 }
@@ -218,6 +280,10 @@ function commonsFileUrl(commons) {
 
 function srcsetName(file) {
   return String(file || "").replace(/\.jpg$/, "-" + HERO_SRCSET_WIDTH + ".jpg");
+}
+
+function thumbName(file) {
+  return String(file || "").replace(/\.jpg$/, "-" + HERO_THUMB_WIDTH + ".jpg");
 }
 
 function photoSrcset(file) {
@@ -243,10 +309,16 @@ function esriAerialUrl(lat, lng, w = HERO_WIDTH, h = HERO_HEIGHT) {
     + `?bbox=${bbox}&bboxSR=4326&imageSR=3857&size=${w},${h}&format=jpg&f=image`;
 }
 
-function skippedKey(skipKeys, key) {
-  if (!skipKeys) return false;
-  if (typeof skipKeys.has === "function") return skipKeys.has(key);
-  if (Array.isArray(skipKeys)) return skipKeys.indexOf(key) !== -1;
+// The quality grade is a fact about a FILE, not about a city. It was keyed on
+// the city while a city could only have one photograph; now that a curated
+// pick and a generated one can both exist for one city (which is the whole
+// point — see heroFor), a city key would skip both because one of them failed.
+// Ontario, CA is the live case: its curated JPEG is an upscale, and the
+// generated one behind it is fine.
+function skippedFile(skipFiles, file) {
+  if (!skipFiles || !file) return false;
+  if (typeof skipFiles.has === "function") return skipFiles.has(file);
+  if (Array.isArray(skipFiles)) return skipFiles.indexOf(file) !== -1;
   return false;
 }
 
@@ -264,28 +336,78 @@ function satelliteHero(city, state, ll) {
   };
 }
 
-function heroFor(city, state, opts) {
+function photoHero(row, kind) {
+  return {
+    src: "/market-heroes/" + row.file,
+    srcset: photoSrcset(row.file),
+    alt: row.alt,
+    credit: row.credit,
+    license: row.license,
+    commonsUrl: commonsFileUrl(row.commons),
+    kind,
+  };
+}
+
+// The coordinate chain on its own, for callers that need a POINT rather than
+// a picture (the /markets momentum map). In order of how much each source has
+// been checked: the curated downtown points, then the geocoded ones the
+// generator stored, then whatever the caller was handed (a market payload's
+// own lat/lng). Returns { lat, lng } as numbers, or null — the heroes' rule
+// holds for pins too: a wrong point is worse than none.
+function coordsFor(city, state, opts) {
   const key = cityKey(city, state);
-  const curated = HEROES[key];
-  // skipKeys is the quality grade: a curated file that is the wrong size or
-  // too small to be sharp must not head the live page. Fall through to Esri
-  // of THIS city's coordinates — Ontario, CA is still not Ontario, Canada.
-  if (curated && !skippedKey(opts && opts.skipKeys, key)) {
-    return {
-      src: "/market-heroes/" + curated.file,
-      srcset: photoSrcset(curated.file),
-      alt: curated.alt,
-      credit: curated.credit,
-      license: curated.license,
-      commonsUrl: commonsFileUrl(curated.commons),
-      kind: "photo",
-    };
-  }
-  const ll = CITY_COORDS[key];
-  if (ll && Number.isFinite(ll.lat) && Number.isFinite(ll.lng)) {
-    return satelliteHero(city, state, ll);
+  const ll = CITY_COORDS[key] || autoCoordsFor(key, opts && opts.auto) || (opts && opts.coords);
+  if (ll && Number.isFinite(Number(ll.lat)) && Number.isFinite(Number(ll.lng))) {
+    return { lat: Number(ll.lat), lng: Number(ll.lng) };
   }
   return null;
+}
+
+// opts:
+//   skipFiles — stored JPEGs that failed the quality grade
+//   coords    — {lat,lng} the caller already knows (a market page payload),
+//               used only after the two committed coordinate sources
+//   auto      — the generated table, injected by tests
+function heroFor(city, state, opts) {
+  const key = cityKey(city, state);
+  const skip = opts && opts.skipFiles;
+  const auto = opts && opts.auto;
+  const curated = HEROES[key];
+  // The grade is why this is not simply "curated wins": a curated file that is
+  // the wrong size or too small to be sharp must not head the live page.
+  if (curated && !skippedFile(skip, curated.file)) return photoHero(curated, "photo");
+
+  // The automatic layer sits below the curated one and above the satellite: a
+  // real photograph a model looked at beats an aerial tile, and a person's
+  // pick beats both. It is also the rung a FAILED curated pick lands on, which
+  // is why the two are graded separately.
+  const generated = autoHeroFor(key, auto);
+  if (generated && !skippedFile(skip, generated.file)) return photoHero(generated, "photo");
+
+  const ll = coordsFor(city, state, opts);
+  if (ll) return satelliteHero(city, state, ll);
+  return null;
+}
+
+// The same decision as heroFor, drawn small for the /markets directory: the
+// stored 768w thumbnail of whichever photograph heads that market's page, or a
+// small satellite aerial of the same point, or nothing. It deliberately shares
+// heroFor rather than re-deciding, so a card can never show one city's picture
+// over another city's page.
+function thumbFor(city, state, opts) {
+  const hero = heroFor(city, state, opts);
+  if (!hero) return null;
+  if (hero.kind === "photo") {
+    const file = String(hero.src).replace("/market-heroes/", "");
+    return { src: "/market-heroes/" + thumbName(file), alt: hero.alt, kind: "photo" };
+  }
+  const ll = coordsFor(city, state, opts);
+  if (!ll) return null;
+  return {
+    src: esriAerialUrl(ll.lat, ll.lng, HERO_THUMB_WIDTH, HERO_THUMB_HEIGHT),
+    alt: hero.alt,
+    kind: "satellite",
+  };
 }
 
 function isHeroFilename(name) {
@@ -295,14 +417,23 @@ function isHeroFilename(name) {
 module.exports = {
   HEROES,
   CITY_COORDS,
+  autoCities,
+  autoHeroFor,
+  autoCoordsFor,
   FILE_RE,
   HERO_WIDTH,
   HERO_HEIGHT,
   HERO_SRCSET_WIDTH,
   HERO_SRCSET_HEIGHT,
+  HERO_THUMB_WIDTH,
+  HERO_THUMB_HEIGHT,
   cityKey,
+  coordsFor,
   heroFor,
+  thumbFor,
   srcsetName,
+  thumbName,
+  skippedFile,
   photoSrcset,
   esriAerialUrl,
   commonsFileUrl,

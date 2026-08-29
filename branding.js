@@ -77,15 +77,22 @@ function normalizeBrand(raw) {
  * @param {boolean}     canBrand       report-scoped entitlement (never a plan test)
  * @param {object|null} sharedBranding meta.branding from a shared report
  * @param {boolean}     isShared       is the thing on screen someone else's share?
+ * @param {object|null} firmProfile    the member's FIRM's profile (org_branding),
+ *                                     a fallback only — the member's own always wins
  */
-function brandForRender({ profile, canBrand, sharedBranding, isShared } = {}) {
+// ⚠ MIRROR: index.html's activeBrand() restates this decision (shared
+// snapshot first, then own-or-firm behind branding_allowed). Keep both in step.
+function brandForRender({ profile, canBrand, sharedBranding, isShared, firmProfile } = {}) {
   // A shared report is decided ENTIRELY by its own snapshot, and returns here
   // whatever the answer is. Never fall through to the viewer's profile: a Pro
   // member opening a report their broker sent them must not see their own logo
   // on it. The sender's entitlement was checked when the share was created.
   if (isShared) return normalizeBrand(sharedBranding);
   if (!canBrand) return null;
-  return normalizeBrand(profile);
+  // The firm's profile is a FALLBACK, never an override: an admin saving a
+  // firm mark must not restamp a colleague's own letterhead (the auto-share
+  // member veto's philosophy, applied to branding).
+  return normalizeBrand(profile) || normalizeBrand(firmProfile);
 }
 
 /**

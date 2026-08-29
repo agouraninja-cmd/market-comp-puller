@@ -16,11 +16,31 @@
 // date, or a missing row all resolve to the free tier rather than to Pro.
 // ---------------------------------------------------------------------------
 
-// Free tier. 10 comps is the conversion driver — a free report is still a real
-// report (the valuation is computed from the FULL comp set; see the
-// locked-basis rows in server.js), but the itemized list is short enough that
-// a professional wants the rest.
-const FREE_MAX_COMPS = 10;
+// Free tier. The itemized LIST stopped being the conversion driver on
+// 2026-08-21: a free account now sees every comparable the search found,
+// addresses and sources included. What Pro sells is the ten-year window (this
+// tier stops at 36 months), unlimited exports, the vault, Address Explorer and
+// branding.
+//
+// The reasoning, so it is not re-litigated from the number alone: the headline
+// value range was ALREADY computed from the full comp set (comp-gate.js's
+// locked_basis rows), because an inaccurate free number costs more in
+// credibility than the tier earns. So the gate withheld the evidence for a
+// figure it had already published — which reads as withholding proof rather
+// than withholding product. The same argument widened the free lookback from
+// 12 to 36 months on 2026-08-04: a crippled free report is not a demo of the
+// paid one.
+//
+// "all" is not a new code path. Pro, the $20 single-report unlock and the
+// PRO_ENABLED=off branch already resolve to it, and gateReport() still runs
+// for any numeric cap — this tier simply stops supplying one.
+//
+// The consequence this had for the $20 single-report unlock resolved the same
+// day: with nothing locked its tile almost never surfaced, and the owner chose
+// to RETIRE the sale (2026-08-21) rather than re-trigger it. Purchases already
+// made are honored forever — reportUnlocked below still grants per-property
+// Pro — but /api/checkout no longer accepts the plan.
+const FREE_MAX_COMPS = "all";
 // Free lookback stops at 36 months — WIDENED from 12 on 2026-08-04, and the
 // reason matters more than the number.
 //
@@ -31,10 +51,10 @@ const FREE_MAX_COMPS = 10;
 // "-" "-" "-". A free tier that cannot answer its own headline question
 // converts nobody, because a broken demo is no evidence the paid version works.
 //
-// It also disarmed the OTHER gate. A 12-month search often returned four or
-// fewer comps, so the 4-comp limit withheld nothing and the single-report tile — which
-// only appears when something is actually locked — never rendered. Widening the
-// window is what gives the comp gate something to hold back.
+// It also used to disarm the OTHER gate: a 12-month search often returned four
+// or fewer comps, so a shortened itemized list withheld nothing. That gate is
+// gone as of 2026-08-21 (see FREE_MAX_COMPS). 36 months stays because it is
+// what makes a valuation possible at all, not because it feeds a paywall.
 //
 // Not unlimited, deliberately: the window is clamped BEFORE the search, and the
 // model is asked for up to 12 comps regardless of plan, so a 120-month free
@@ -66,6 +86,17 @@ const ANON_EXPORTS_PER_MONTH = 0;
 const PRO_MAX_LOOKBACK_MONTHS = 120;
 const FREE_PORTFOLIO_MAX_ITEMS = 100;
 const PRO_PORTFOLIO_MAX_ITEMS = 500;
+
+// Bulk valuation — how many addresses one job may hold.
+//
+// Zero is the default answer everywhere it is not granted, and the reason is
+// spend rather than product tiering: every address that misses the cache is
+// its own billed search, so a bulk job is the one control in this app where a
+// single click can commit ~$18 of somebody else's API credit. bulk.js carries
+// the same number as a hard ceiling; this is the per-visitor half of it, so
+// the two must move together (bulk.js clamps to its own MAX_ADDRESSES, so a
+// larger number here can never widen a job).
+const PRO_BULK_MAX_ADDRESSES = 50;
 
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
@@ -250,6 +281,12 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // i.e. locked — which would leave the team staring at the paywall the
       // branch above exists to lift.
       canExploreAddresses: true,
+      canBulkValue: true,
+      bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
+      // Search demand rides with it: the team has to be able to see the number
+      // a subscriber sees, or the one figure nobody can sanity-check is the
+      // one being sold.
+      canSeeSearchDemand: true,
       // The broker vault included, for the same reason: the team is permanently
       // on the far side of every paywall, so this is the only way anyone
       // internal ever renders the broker workspace at all. `admin: true` below
@@ -281,6 +318,21 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
+      // FALSE on this branch, for the vault's reason stated below and one of
+      // its own. Bulk valuation did not exist before the tier either, so
+      // "pre-Pro behavior" does not include it — and unlike the vault it is
+      // not merely an access surface, it is a SPEND surface: one POST fans
+      // out into fifty billed searches. Granting that on any deployment that
+      // simply has not switched Pro on yet — the default state — would hand
+      // an unmetered invoice to whoever finds the endpoint.
+      canBulkValue: false,
+      bulkMaxAddresses: 0,
+      // FALSE, for the vault's reason rather than the Explorer's: "pre-Pro
+      // behavior" means giving back what a visitor USED TO HAVE, and search
+      // demand was never free because it did not exist. It also reports this
+      // site's own traffic, so granting it on a dark deployment would publish
+      // that to every anonymous visitor.
+      canSeeSearchDemand: false,
       // FALSE here, unlike every other capability on this branch — and the
       // asymmetry is deliberate, not an oversight.
       //
@@ -351,6 +403,19 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
+      // The SECOND place a tester is deliberately not equal to Pro, and for a
+      // sharper version of the vault's argument below. TESTER_PASSKEY is one
+      // string handed to a group; bulk valuation turns one holder of it into
+      // fifty billed searches per click, with no upper bound on how often.
+      // "Try Pro's reports" is what the code is for, and a report at a time
+      // is what it grants. A tester who should have this is a tester who
+      // should have a subscription.
+      canBulkValue: false,
+      bulkMaxAddresses: 0,
+      // A tester gets this one: it is a read of aggregate counts, not a
+      // private data store with an upload endpoint, so the argument that
+      // holds the vault back does not reach it.
+      canSeeSearchDemand: true,
       // The ONE place a tester is deliberately not equal to Pro. The vault is
       // a private-data workspace with an upload endpoint; a passkey shared
       // with a wider group is a bigger surface than "try Pro's reports", so
@@ -442,6 +507,20 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // that is not scoped to a report and cannot be sold per-report without
     // simply being Pro at a one-off price.
     canExploreAddresses: pro,
+    // Bulk valuation is Pro-only and, unlike almost everything else a
+    // purchase now grants, is NOT reachable through the single-report unlock.
+    // Same argument the Address Explorer's line above makes and then some: a
+    // one-off unlock is scoped to one address+type, and a tool whose whole
+    // purpose is running fifty OTHER addresses cannot be scoped to one of
+    // them. Selling it per-report would just be selling Pro once.
+    canBulkValue: pro,
+    bulkMaxAddresses: pro ? PRO_BULK_MAX_ADDRESSES : 0,
+    // Pro, and deliberately NOT `reportUnlocked`. The same rule that keeps the
+    // Address Explorer out of a single-report purchase decides this: a $39
+    // unlock buys one property's history, and a market's search demand is not
+    // scoped to a property. Selling it per-report would be selling Pro at a
+    // one-off price.
+    canSeeSearchDemand: pro,
     broker,
     // Now simply Pro. Under one subscription the vault is a Pro capability,
     // not a second tier's, so this tracks `pro` exactly.
@@ -530,4 +609,5 @@ module.exports = {
   PAID_PLANS,
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
+  PRO_BULK_MAX_ADDRESSES,
 };

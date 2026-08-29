@@ -270,7 +270,21 @@ test("reconcile fills a missing $/SF from the comp's own price and size", () => 
     transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "" }] };
   RP.reconcilePricePerSqft(parsed);
   assert.equal(parsed.comps[0].price_per_sqft, "$133");
-  assert.equal(parsed.comps[0].psf_reconciled, true);
+});
+
+// The prompt asks the model to OMIT $/SF on a priced, sized sale, so a fill is
+// the normal path and must NOT raise the "calc" mark - that mark means "we did
+// not trust the figure we were handed", and firing it on every row would empty
+// it of meaning. Pinned in both directions, here and in the test below.
+test("a filled $/SF is not flagged as reconciled - only a correction is", () => {
+  const parsed = { currency: "USD", comps: [
+    { transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000" },
+    { transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "" },
+  ] };
+  RP.reconcilePricePerSqft(parsed);
+  assert.equal(parsed.comps[0].price_per_sqft, "$133");
+  assert.ok(!("psf_reconciled" in parsed.comps[0]), "an omitted $/SF is a fill, not a correction");
+  assert.ok(!("psf_reconciled" in parsed.comps[1]), 'an empty-string $/SF is a fill too');
 });
 
 test("reconcile replaces a stated $/SF that disagrees by more than 10%", () => {
@@ -278,6 +292,7 @@ test("reconcile replaces a stated $/SF that disagrees by more than 10%", () => {
     transaction: "Sale", price_or_rate: "$6,400,000", size_sqft: "48,000", price_per_sqft: "$100" }] };
   RP.reconcilePricePerSqft(parsed);
   assert.equal(parsed.comps[0].price_per_sqft, "$133");
+  assert.equal(parsed.comps[0].psf_reconciled, true, "a corrected figure still earns the mark");
 });
 
 test("reconcile leaves a stated $/SF within 10% untouched", () => {
@@ -616,4 +631,88 @@ test("condition has a short key that collides with nothing", () => {
   assert.equal(new Set(shorts).size, shorts.length, "short keys must be unique");
   const longs = Object.keys(RP.SHORT_COMP_KEYS);
   shorts.forEach((s) => assert.equal(longs.includes(s), false, `short ${s} shadows a long key`));
+});
+
+// --- normalizeSubjectSize (2026-08-19) --------------------------------------
+// The 2026-08-19 eval's Atlanta multifamily report came back with
+// subject_size_sqft "" and subject_size_source "public_record": a provenance
+// claim attached to no value, written into the cache, the harvest and shares.
+
+test("normalizeSubjectSize drops a source that has no size to source", () => {
+  const p = { subject_size_sqft: "", subject_size_source: "public_record" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_sqft, "");
+  assert.ok(!("subject_size_source" in p), "an orphaned source must be removed, not blanked");
+});
+
+test("normalizeSubjectSize keeps a real size and its source together", () => {
+  const p = { subject_size_sqft: "25000", subject_size_source: "listing" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_sqft, "25000");
+  assert.equal(p.subject_size_source, "listing");
+});
+
+test("normalizeSubjectSize treats a zero, a non-number and a missing size alike", () => {
+  for (const v of ["0", "0 SF", "not known", null, undefined]) {
+    const p = { subject_size_sqft: v, subject_size_source: "public_record" };
+    RP.normalizeSubjectSize(p);
+    assert.ok(!("subject_size_source" in p), `source must be dropped for ${JSON.stringify(v)}`);
+  }
+});
+
+test("normalizeSubjectSize tolerates a formatted size", () => {
+  const p = { subject_size_sqft: "25,000 SF", subject_size_source: "public_record" };
+  RP.normalizeSubjectSize(p);
+  assert.equal(p.subject_size_source, "public_record");
+});
+
+test("normalizeSubjectSize leaves a report that never mentioned size alone", () => {
+  const p = { comps: [] };
+  RP.normalizeSubjectSize(p);
+  assert.ok(!("subject_size_sqft" in p), "must not invent the key on a report that lacks it");
+  assert.deepEqual(p, { comps: [] });
+});
+
+test("normalizeSubjectSize is safe on junk input", () => {
+  assert.equal(RP.normalizeSubjectSize(null), null);
+  const p = {};
+  assert.equal(RP.normalizeSubjectSize(p), p);
+});
+
+test("normalizeSourceTypes threads the property type through to the rule", () => {
+  const parsed = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed, AUDIT.enforcedSourceType, "Land");
+  assert.equal(parsed.comps[0].source_type, "listing");
+  const parsed2 = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed2, AUDIT.enforcedSourceType, "Office");
+  assert.equal(parsed2.comps[0].source_type, "estimate");
+  // Omitting the type must behave exactly as before it was threaded.
+  const parsed3 = { comps: [{ address: "129th & Somerset Ter, Olathe, KS", source_type: "listing" }] };
+  RP.normalizeSourceTypes(parsed3, AUDIT.enforcedSourceType);
+  assert.equal(parsed3.comps[0].source_type, "estimate");
+});
+
+// --- expandComp (the single-comp expander the live comp extractor uses) -----
+// It went unexported when the pipeline moved into this module (2026-08-08)
+// while server.js's streamed-comp callback kept calling it bare, and the
+// ReferenceError was swallowed per comp by makeCompExtractor's catch — every
+// live `comp` event silently died. Found 2026-08-29, the day Gemini streaming
+// lit the path up. These pin the export and its tolerance rules.
+
+test("expandComp is exported and expands one short-keyed streamed comp", () => {
+  const c = RP.expandComp({ a: "1 Main St, Boise, ID", d: "Jun 2026", t: "Sale", p: "$1,200,000", sf: "4000" });
+  assert.equal(c.address, "1 Main St, Boise, ID");
+  assert.equal(c.date, "Jun 2026");
+  assert.equal(c.transaction, "Sale");
+  assert.equal(c.price_or_rate, "$1,200,000");
+  assert.equal(c.size_sqft, "4000");
+});
+
+test("expandComp lets long keys win and passes junk through unchanged", () => {
+  const both = RP.expandComp({ a: "short", address: "long" });
+  assert.equal(both.address, "long", "a long key wins over its short twin");
+  assert.equal(RP.expandComp(null), null);
+  assert.equal(RP.expandComp("junk"), "junk");
+  const arr = [1];
+  assert.equal(RP.expandComp(arr), arr, "never throws on junk — returns it unchanged");
 });

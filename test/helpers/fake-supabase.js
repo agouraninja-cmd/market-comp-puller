@@ -24,6 +24,7 @@
 // "test/*.test.js"`, so this is a helper, not a suite.
 
 const http = require("node:http");
+const crypto = require("node:crypto");
 
 // PostgREST filter values arrive percent-encoded and, for in.(), quoted.
 function decodeValue(raw) {
@@ -51,11 +52,82 @@ function matches(row, key, expr) {
   // value so it matches, which is the one place this could have been wrong.
   if (expr.startsWith("neq.")) return String(val) !== decodeValue(expr.slice(4));
   if (expr.startsWith("in.(")) return parseInList(expr).some((v) => String(val) === v);
+  // `gte.` is taught deliberately, like `neq.` above and for the same reason:
+  // server.js sends it (every date-windowed read — the vault blend, the firm
+  // blend, bulk's daily ceiling), and a fake that 400s on it cannot exercise
+  // those paths at all.
+  //
+  // STRING comparison, which is correct for exactly the values this app sends
+  // through it: ISO-8601 UTC timestamps and yyyy-mm-dd dates both sort
+  // lexicographically in the same order they sort chronologically. It is NOT
+  // Postgres's comparison — a mixed-offset timestamp or a numeric column would
+  // be wrong here — so a new `gte.` on anything but an ISO date or timestamp
+  // needs this taught properly rather than reused.
+  if (expr.startsWith("gte.")) return String(val) >= decodeValue(expr.slice(4));
+  // `gt.` is taught deliberately, like `gte.` above and with the same caveat.
+  // The hub's message poll is the caller: GET /api/hub?since=<cursor> asks for
+  // messages STRICTLY after the last one the browser already holds, and
+  // strictly is the point — `gte.` there would replay the previous message on
+  // every poll, so the hub would appear to repeat what people say. STRING
+  // comparison again, correct only for the ISO timestamps this app sends.
+  if (expr.startsWith("gt.")) return String(val) > decodeValue(expr.slice(3));
+  // `lte.` is `gte.`'s mirror and is taught for the same reason and with the
+  // same caveat: server.js sends it (the renewal watch windows a lease
+  // deadline BETWEEN two dates, so it sends both on one column), and the
+  // comparison is a STRING one, correct only for the ISO dates and timestamps
+  // this app puts through it. A numeric column would be wrong here.
+  //
+  // Note the two arrive as separate entries under one key and applyFilters
+  // ANDs every entry, which is PostgREST's own semantics — a fake that read
+  // params into an object would keep only the last and silently widen the
+  // window to everything before the horizon.
+  if (expr.startsWith("lte.")) return String(val) <= decodeValue(expr.slice(4));
   if (expr === "is.null") return val === null || val === undefined;
   if (expr === "not.is.null") return !(val === null || val === undefined);
+  // `is.true` / `is.false` are taught deliberately, like `neq.` and `gte.`
+  // above: server.js sends `notify=is.false` reading the hub note-email
+  // opt-out (040), and `is.` rather than `eq.` is the correct PostgREST
+  // operator for a boolean.
+  //
+  // The subtlety is that this must NOT match a null. PostgREST's `is.false`
+  // is SQL `IS FALSE`, which a null column fails — and an absent
+  // hub_email_prefs row is precisely how "has not opted out" is stored, so a
+  // fake that let null match `is.false` would report everybody as muted and
+  // prove the notifier mails nobody. Hence the strict === rather than a
+  // truthiness test.
+  if (expr === "is.true") return val === true;
+  if (expr === "is.false") return val === false;
   const err = new Error(`fake-supabase cannot parse filter ${key}=${expr}`);
   err.unparsed = true;
   throw err;
+}
+
+// Columns these tables declare as `not null default now()`, filled here when
+// an insert omits them — which every insert in server.js does, because that is
+// what a default is for.
+//
+// Taught deliberately rather than guessed at, like the filters above: without
+// it a posted hub message is stored with NO created_at, and the two things
+// built on that column become unprovable. GET /api/hub returns the last
+// message's created_at as the browser's next cursor, and every hub read orders
+// by it — so a fake that stores nothing reports an unordered thread and a
+// cursor of undefined as working, while production has neither.
+//
+// The clock never repeats a value. Postgres's now() is free to hand two
+// same-transaction inserts one timestamp, but a tie here would make an
+// ordered read and a strictly-after poll ambiguous in the fake and only in the
+// fake — the app never writes two messages in one statement.
+const DEFAULT_NOW = { hub_messages: "created_at", hub_items: "added_at" };
+let lastStamp = 0;
+function nowIso() {
+  const t = Math.max(Date.now(), lastStamp + 1);
+  lastStamp = t;
+  return new Date(t).toISOString();
+}
+function stamp(table, row) {
+  const col = DEFAULT_NOW[table];
+  if (!col || row[col] !== undefined) return row;
+  return { ...row, [col]: nowIso() };
 }
 
 const NON_FILTERS = new Set(["select", "order", "limit", "offset", "on_conflict"]);
@@ -81,7 +153,16 @@ function applyOrder(rows, order) {
 
 // `tables` is a plain object of arrays and is MUTATED in place, so a test can
 // read it back after a run and see what the server actually wrote.
-function start({ tables = {}, resendStatus = 200 } = {}) {
+// `missingTables` makes named tables answer the way PostgREST answers for a
+// table that does not exist. It is not a fault-injection toy: an UNRUN
+// MIGRATION is a real production state — the deploy order this repo documents
+// over and over is migrate-then-deploy precisely because the reverse happens —
+// and a feature that claims to degrade rather than break has no other way to
+// prove it. 040's hub_notify is the first user: it is wrapped so that a
+// missing table costs the notification email and never the note itself, which
+// is a promise in a comment until something executes it.
+function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
+  const missing = new Set(missingTables);
   const sent = [];        // every email posted to the Resend stand-in
   const requests = [];    // every PostgREST call, for asserting what was asked
   const unparsed = [];    // filters this fake refused, so a test can fail loudly
@@ -106,6 +187,15 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
       const m = url.pathname.match(/^\/rest\/v1\/([a-z_]+)$/);
       if (!m) return json(404, { message: "no such route: " + url.pathname });
       const table = m[1];
+      // PGRST205 is what a real PostgREST answers here, and the shape matters:
+      // server.js's schemaMismatch detection reads the message, and a plain
+      // 404 would look like a routing bug instead of an unrun migration.
+      if (missing.has(table)) {
+        return json(404, {
+          code: "PGRST205",
+          message: `Could not find the table 'public.${table}' in the schema cache`,
+        });
+      }
       tables[table] = tables[table] || [];
       const params = [...url.searchParams.entries()];
       requests.push({ method: req.method, table, query: url.search, body: body || null });
@@ -139,11 +229,24 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
           // else is left to the plain-insert path rather than guessed at.
           const conflict = (url.searchParams.get("on_conflict") || "")
             .split(",").map((s) => s.trim()).filter(Boolean);
+          // A NULL in any part of the key means the row can never conflict,
+          // which is Postgres's own rule for a unique index and NOT what a
+          // naive String(r[c]) does — that turns two nulls into "null" and
+          // "null" and silently drops the second row.
+          //
+          // Taught 2026-08-22, found while building `org_contacts` (039),
+          // where a contact with no email is an ordinary and explicitly
+          // allowed row: two of them upserted here and only the first was
+          // stored, so a test would have proved the second was rejected while
+          // production accepted it. The divergence ran the WRONG way round
+          // for once — the fake was stricter than the database — which is
+          // exactly the shape that makes a green suite untrustworthy.
+          const nullKey = (r) => conflict.some((c) => r[c] === null || r[c] === undefined);
           const keyOf = (r) => conflict.map((c) => String(r[c])).join("\u0000");
           const stored = [];
           for (const r of rows) {
-            const existing = conflict.length
-              ? tables[table].find((t) => keyOf(t) === keyOf(r))
+            const existing = (conflict.length && !nullKey(r))
+              ? tables[table].find((t) => !nullKey(t) && keyOf(t) === keyOf(r))
               : null;
             if (existing) {
               if (prefer.includes("resolution=merge-duplicates")) {
@@ -154,7 +257,14 @@ function start({ tables = {}, resendStatus = 200 } = {}) {
               // not returned as inserted.
               continue;
             }
-            const row = { id: `${table}-${tables[table].length + 1}`, ...r };
+            // A UUID, because every table server.js inserts into declares
+            // `id uuid primary key default gen_random_uuid()` — and because
+            // several routes guard an id with isUuidish() before it reaches a
+            // Postgres uuid cast. A `${table}-1` id sails through the insert
+            // and is then 404'd by the caller's own guard on the very next
+            // read, which looks like a broken feature and is only a broken
+            // fake. Seeded rows keep whatever id the test gave them.
+            const row = { id: crypto.randomUUID(), ...stamp(table, r) };
             tables[table].push(row);
             stored.push(row);
           }

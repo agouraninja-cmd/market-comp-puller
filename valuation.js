@@ -152,7 +152,8 @@
   //                then halving per further 15 years (a 1994 house should not
   //                be priced by 2024 new construction: they are different
   //                products even on the same block)
-  //   distance     free pass within 1 mile, then a half-life (4 miles for
+  //   distance     free pass out to the search radius (10 miles for CRE,
+  //                1 for Residential), then a half-life (4 miles for
   //                CRE, 2 miles for Residential — a sale five miles away is
   //                a different pocket; the 4-mile CRE half-life still let
   //                cheaper houses a few miles over pull a $2M home to $1M)
@@ -170,16 +171,60 @@
     return propType === "Residential" ? 2 : 4;
   }
 
+  // How far a comp may sit before distance starts costing it weight, when the
+  // caller names no radius. ⚠ MIRRORS blend-corpus.js radiusMilesFor, which is
+  // the module that already decides what "in this market" means: RADIUS_MILES
+  // 10 for CRE, RESIDENTIAL_RADIUS_MILES 1 for houses. That file's own header
+  // says the blend radius and this free pass must agree; they did not. This
+  // fell back to a bare 1 mile for every type, so a warehouse comp 13 miles
+  // out — an ordinary distance in a secondary market, and one the corpus blend
+  // was already treating as in-market — took 0.5^((13-1)/4) = 0.125 and floored
+  // to Weak. Whole comp tables read Weak under a confident range because of it.
+  // Houses are unchanged at 1: they trade by neighborhood, and the search
+  // prompt asks for a mile.
+  function defaultFreePassMiles(propType) {
+    return propType === "Residential" ? 1 : 10;
+  }
+
   // "2.5 miles", "within 2.5 mi", "2.5 mile radius". Null when the note does
-  // not name a distance: the type default (1 mile for houses, 1-mile free
-  // pass for CRE) stands. Capped at 50 so a stray "1000 miles" cannot
-  // become the blend radius.
+  // not name a distance: the type default above stands. Capped at 50 so a
+  // stray "1000 miles" cannot become the blend radius.
   function parseRadiusMiles(note) {
     if (note == null || note === "") return null;
     const m = String(note).match(/(\d+(?:\.\d+)?)\s*(?:miles?|mi)\b/i);
     if (!m) return null;
     const n = Number(m[1]);
     return n > 0 && n <= 50 ? n : null;
+  }
+
+  // A stated radius is only a CLAIM. The report prints it above the comp
+  // table ("Search radius: Immediate submarket, ~5 miles") and then prints
+  // the measured spread two lines below it ("Located comps sit 13 mi to
+  // 20 mi from your property"), and nothing ever reconciled the two — the
+  // first comes from the search model, the second from real geocodes. A
+  // reader met both and had no way to know which to believe.
+  //
+  // Measurement wins. This says whether the claim survives contact with it,
+  // so the caller can drop a sentence rather than print a contradiction.
+  //
+  // The 25% slack is the same "close enough not to be worth flagging" bar
+  // outlierOf and askFit already use, and it matters here because a radius
+  // is approximate by nature: a model that says "about 5 miles" and returns
+  // a comp at 5.8 was describing the search honestly, and blanking its line
+  // would cost the reader real context ("Immediate submarket") to fix
+  // nothing. A comp at 13 against a claimed 5 is a different statement.
+  //
+  // Returns false whenever there is nothing to compare — no claim, no
+  // parseable mileage in the claim (it is free-form model prose), or no
+  // measured distance. Missing data is never treated as a contradiction,
+  // the same rule compWeight follows.
+  var RADIUS_CLAIM_SLACK = 1.25;
+  function radiusClaimContradicted(radiusText, farthestMiles) {
+    const claimed = parseRadiusMiles(radiusText);
+    if (claimed == null) return false;
+    const far = Number(farthestMiles);
+    if (!isFinite(far) || far <= 0) return false;
+    return far > claimed * RADIUS_CLAIM_SLACK;
   }
 
   // A house more than 1.5× the subject's implied $/SF is a different
@@ -213,7 +258,7 @@
     }
     const mi = distanceMiles(c);
     const halfLife = distanceHalfLifeMiles(propType);
-    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+    const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : defaultFreePassMiles(propType);
     if (mi !== null && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
     if (propType === "Residential") w *= priceTierFactor(salePsfOf(c), o.subjectPsf);
     const tier = tierOf(c);
@@ -560,7 +605,9 @@
   return {
     numericValue, salePsfOf, robustPpsfRange, heroRound,
     TIER_WEIGHT, tierOf, compAgeYears, yearOf, distanceMiles, distanceHalfLifeMiles,
-    parseRadiusMiles, priceTierFactor, PRICE_TIER_RATIO,
+    defaultFreePassMiles,
+    parseRadiusMiles, radiusClaimContradicted, RADIUS_CLAIM_SLACK,
+    priceTierFactor, PRICE_TIER_RATIO,
     compWeight, trendFactor,
     valueFromComps, outlierOf, OUTLIER_PCT, subjectSizeFit, askFit,
     conditionSpread, unexplainedGain, conditionFit, CONDITION_RANK,

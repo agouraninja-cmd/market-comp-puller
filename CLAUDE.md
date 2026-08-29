@@ -53,7 +53,9 @@ its own snapshot) and **`account-avatar.js`** (what may be stored as a
 profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-digest.js`** (the digest's copy and its
 "is this worth sending?" rule — the only email this product sends on its own
 initiative, so every judgment in it is about what a person is worth
-interrupting for) — plus **`report-access.js`** (the ONLY function that
+interrupting for), **`deal-date.js`** (the deal-date parser, including the
+Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
+the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`org-access.js`** (who is in a firm
 and what their membership allows — an unknown role is a `member`,
@@ -62,7 +64,20 @@ invited person accepts it) and **`market-hero.js`** (which city's
 photograph heads a market page, and the rule that a missing city gets no
 picture rather than someone else's skyline) and **`market-hero-quality.js`**
 (whether a stored hero JPEG is the right size and dense enough to not be an
-upscale) and **`test/routes.test.js`**, which boots a real
+upscale) and **`market-hero-pick.js`** (which Wikimedia candidate is worth
+downloading for a city nobody curated — every hard refusal in it ends in a
+satellite aerial, so it refuses freely) and **`market-hero-judge.js`** (the
+request that asks a model to LOOK at the finished crop, and the rule that any
+answer which is not a clear "good" is not a good picture) and
+**`market-area.js`** (the one claim a CITY's carved shape on the momentum map
+may make when it holds several markets: agreement colours it, disagreement is
+`mixed`, no reads is `none`, and an unread market never argues an agreeing
+city into `mixed`) and **`bulk.js`**
+(bulk valuation's rules: what counts as an address in a pasted list — a line
+is ONE address however many commas it holds — what one finished report is
+worth as a portfolio row, and the rule that a total sums only what was
+actually valued rather than counting a failed lookup as zero) and
+**`test/routes.test.js`**, which boots a real
 server twice as a child process to prove the gates are actually WIRED to the
 routes and not merely correct in isolation (320 tests on 2026-08-06). The
 count moves whenever a module is added, and this line has already lagged
@@ -91,9 +106,23 @@ every push: `node --check` on
 the entry points, the test suite, and a bare-environment boot smoke against
 `/healthz` — advisory on GitHub, but since 2026-08-08 the same checks also
 gate the deploy itself: `npm start` runs a `prestart` script (`node --check
-server.js && npm test`), so on Render a red build exits before the server
+server.js`), so on Render an unparseable server.js exits before the server
 listens and the previous green deploy keeps serving. That gate holds even
-when Actions is down. A red X on
+when Actions is down.
+
+**`npm test` was removed from `prestart` on 2026-08-20**, after it broke
+production deploys. It was written when the suite was about two seconds; it is
+now 1731 tests taking **63 seconds on Render**, and several suites spawn real
+child servers. On a 0.5-CPU Starter instance that is 63 seconds of saturated
+CPU before the port is ever bound, re-run from scratch on every restart and by
+every concurrent instance. Three deploys in a row died on
+`Timed out after waiting for internal health check ... /healthz` while the
+health checker fought the test suite for a core — and each failure restarted
+the instance, which re-ran the suite, which made the next one likelier to fail.
+`node --check` stays, because that is the failure the gate was actually
+protecting against: a syntax error in server.js takes the whole site down at
+boot. Correctness is CI's job, on every push, where it costs nothing to run it
+twice. A red X on
 GitHub Actions still means fix or revert now. **No result at all is not the same as
 green**, and it happens: during a 7-hour Actions incident on 2026-08-06 GitHub
 throttled webhooks to ~15% and four branches merged with no CI run ever
@@ -111,21 +140,149 @@ A Claude Code hook (`.claude/hooks/regen-tailwind.js`) regenerates it when
 session, the manual command is under "Restart rule". Either way, verify a NEW
 utility class actually landed in the vendored file and commit it alongside.
 
+## Working alongside another session
+
+**If someone else already has this folder, take your own.** A clone has one
+checked-out branch and one staging area shared by every process pointed at it,
+so two agents in `~/dev/compninja-owen` are not two workspaces, they are two
+people at one desk. Whichever commits first sweeps up whatever the other has
+staged, and a branch switch pulls files out from under the other mid-edit. On
+2026-08-20 that filed an entire iOS client under an unrelated feature branch one
+minute before that branch was pushed. Nothing was lost, but only because someone
+checked.
+
+```bash
+node scripts/worktree.js market-badge   # -> ../cn-market-badge on feat/market-badge
+```
+
+That makes a second folder with its own branch, its own staging area, and the
+same history, branched off `origin/main` as it is right now rather than off
+whatever this folder is sitting on. Git then refuses to check out one branch in
+two worktrees, which is the guardrail the shared folder never had. It also
+symlinks `.env`, which is gitignored and therefore absent from a fresh worktree
+— without it the server boots keyless and every Supabase script fails
+confusingly rather than obviously. The other gitignored files
+(`account-store.json`, `analytics.jsonl`, `shared-reports.json`,
+`search-cache.json`) are local fallback DATA and are deliberately not linked.
+
+Run `git worktree list` to see who holds what. When your PR merges,
+`git worktree remove <dir> && git worktree prune`.
+
+**Check what you are about to send, every time.** `git status` shows changed
+files and says nothing about whose commits are underneath them:
+
+```bash
+git log origin/main..HEAD
+```
+
+If that lists work you did not do, it arrived the way described above. Do not
+just drop it — confirm the same content is committed somewhere else first (`git
+diff --stat <other-commit> <yours>` over the relevant paths), then rebase in a
+throwaway worktree and push with `--force-with-lease`, leaving the shared folder
+on the other session's branch so its files stay on disk.
+
 ## Running it
 
 ```bash
-npm start          # prestart runs the checks (~2s), then node server.js -> http://localhost:3000
+npm start          # prestart runs node --check, then node server.js -> http://localhost:3000
 ```
 
-`npm start` first runs `prestart` (`node --check server.js && npm test`, about
-two seconds) and refuses to boot on a failure — that is the production deploy
-gate (Render's start command is `npm start`), so do not remove it to save the
-two seconds. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
+`npm start` first runs `prestart` (`node --check server.js`) and refuses to
+boot on a failure — that is the production deploy gate (Render's start command
+is `npm start`). Keep it: it is fast and it catches the one failure that takes
+the site down at boot. Do NOT put `npm test` back in front of it — see the note
+above on the deploys that killed. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
 a **portable (no-admin) copy**, so it's launched by full path instead:
 
 ```powershell
 & "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
 ```
+
+### Desktop app (`desktop.js`)
+
+```bash
+npm run desktop                          # local server + chromeless app window
+node desktop.js --url https://compninja.co   # hosted site as an app window, no local server
+```
+
+A zero-dependency launcher, **deliberately not Electron** — the no-npm-deps
+rule covers it, and every target machine already ships a Chromium (Edge is
+preinstalled on Windows). It boots the ordinary `server.js` on a **free
+port, never 3000** (so it can run beside `npm start`), waits for `/healthz`,
+then opens a Chromium-family browser in `--app` mode. Three rules from its
+header comment: children spawn from `process.execPath`, never the string
+`"node"` (the owner's portable Node is not on PATH); the app window gets its
+**own `--user-data-dir`** (`~/.compninja/desktop-profile`) — without one
+Chromium hands the URL to an existing instance and exits, leaving no process
+to wait on, so the server would die under an open window; and closing the
+window stops the server. Flags are refused, never guessed (`--ur`, a
+non-http `--url`, `--port` combined with `--url` are all errors). Pure
+helpers are tested in `test/desktop.test.js`, and requiring the module
+starts nothing (`require.main` guard).
+`scripts/install-desktop-shortcut.ps1` creates the Windows shortcut (repo
+favicon as icon, portable-Node lookup, `-Url` for the hosted variant,
+`-StartMenu` for a Start Menu copy).
+
+**The standalone downloadable app lives in `desktop-app/`** (2026-08-20) —
+an Electron shell around https://compninja.co with its own installer,
+icon, and process: no visible browser anywhere, which is what the owner
+asked for after the PWA still carried Chrome's chrome. It holds NO product
+code (every deploy of the site reaches installed copies instantly) and is
+**the one folder in the repo with npm dependencies** — dev-only build
+tools, in their own package.json; the site's zero-dep rule is about
+server.js and stands, and root `npm test`/`npm start` never touch this
+folder. The window is locked down like a browser tab (sandbox, no
+nodeIntegration, no preload, no IPC); navigation stays in-window only for
+compninja.co and *.stripe.com (checkout must complete and return),
+everything else opens the system browser; an unreachable site shows the
+branded `offline.html`, never Chromium's grey error. Installers build on a
+`desktop-v*` tag via `.github/workflows/desktop-release.yml` (create the
+release once, then a 3-OS matrix attaches `CompNinja-Setup.exe` /
+`CompNinja.dmg` / `CompNinja.AppImage` — version-less artifact names on
+purpose, so `releases/latest/download/…` URLs are stable; keep them in
+step with the /download page). Cut a release:
+`git tag desktop-vX.Y.Z && git push origin desktop-vX.Y.Z`. The installers
+are **unsigned** until the owner buys a Windows code-signing cert and
+Apple notarization ($99/yr) — first-run SmartScreen/Gatekeeper warnings
+are expected and the /download page says so honestly.
+
+**A door you are already through is hidden** (2026-08-20; `INAPP_BOOT` /
+`INAPP_UA_TOKEN` in server.js, `test/inapp-nav.test.js`). Inside the desktop
+app or an installed PWA, the Explore menu drops "Download the app". Nothing
+detects an app INSTALLED on the machine — browsers refuse to answer that and
+any attempt is a guess; what is knowable is whether THIS page is being viewed
+from inside the app. **Two signals, because one is not enough**: an installed
+PWA matches `display-mode: standalone`, but Electron reports
+`display-mode: browser` (measured via CDP, Electron 43) and is identifiable
+only by the UA token `desktop-app/main.js` appends — the test fails the build
+if the two spellings drift, since a rename on one side alone just quietly
+brings the link back inside the shipped app. One constant carries the script
+AND its CSS into all three surfaces (marketShell, the landing render, and
+index.html via an `<!--INAPP_BOOT-->` marker replaced at serve time like
+NAV_LINKS — never a hand-copy, THEME_BOOT being the cautionary tale). It runs
+inline in `<head>` so the link is never painted then snatched away, and
+`!important` is load-bearing for the `.hdr nav [hidden]` reason: `.hdr nav
+.dd a` sets `display:block` at higher specificity, as does the app menu's
+Tailwind `block`. Presentation only — `/download` itself stays reachable.
+
+**Users can also install from the site itself** (2026-08-20) — `desktop.js`
+is the owner/dev door; the site is an installable web app (PWA).
+`manifest.webmanifest` + `icon-192/512/icon-maskable-512.png` (all on the
+`STATIC_FILES` allowlist, served without a session so the wall never blocks
+install) make Chrome/Edge offer "Install CompNinja" from the address bar,
+and index.html's footer carries an "Install the desktop app" button that
+ships `hidden` and is revealed only by `beforeinstallprompt` — the
+Buy-button rule: a control that can only fail (already installed,
+Safari/Firefox) never renders. There is **deliberately NO service worker**:
+installability no longer requires one, and a SW cache could serve
+`/valuation.js` stale relative to index.html — the exact failure that
+file's `max-age: 0` rule exists to prevent; `test/manifest.test.js` pins
+that, the manifest fields, the icon sizes against their real PNG bytes, and
+the allowlist entries. There is no installer to host or code-sign anywhere:
+"where do users download it" is answered by compninja.co, and installed
+copies update themselves because the app IS the live site. (A Microsoft
+Store listing can wrap this same manifest via PWABuilder later; nothing
+here would change.)
 
 ### Restart rule (important)
 
@@ -154,6 +311,61 @@ a **portable (no-admin) copy**, so it's launched by full path instead:
   Classes already used anywhere in `index.html` (including inside JS strings)
   are covered; only genuinely new utilities need a regen. Commit the updated
   `tailwind.css` alongside the HTML change.
+
+### Design changes: before and after (standing rule)
+
+**Every time you change how something LOOKS, show the owner a before and an
+after picture of it** — a layout, spacing, colour, copy on a rendered surface,
+a new card or section, anything in `index.html`, `vault-page.js`, or the
+server-rendered pages in `server.js`. A diff of a template literal says what
+the markup now is and nothing about what the page now looks like, which is why
+this is a rule and not a nicety.
+
+```bash
+node scripts/shot.js /how-it-works --before      # vs origin/main
+node scripts/shot.js / /markets /brokers --before HEAD~1
+node scripts/shot.js / --size 390x844 --expand   # phone width, accordions open
+```
+
+PNGs land in the git-ignored `screenshots/` as `<page>--before.png` /
+`<page>--after.png`. Zero dependencies: it drives a Chromium the machine
+already has (`desktop.js`'s `findBrowser`, reused rather than copied) over the
+DevTools protocol, boots `server.js` on a free port at each side of the
+comparison, and removes the worktree it made. Five things to know before
+editing it or trusting its output:
+
+- **The "before" is a DETACHED WORKTREE, never `git stash`.** This checkout is
+  routinely shared with another session, and stash moves files under them
+  mid-edit. Detached because git refuses to check out one branch twice, and a
+  comparison needs no branch of its own.
+- **Both servers boot with `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` blanked**, by
+  ASSIGNMENT rather than delete — server.js's `.env` loader fills anything
+  `undefined` and would restore the real ones, pointing a scratch server at
+  production's corpus, market pages and cache (the trap `run-eval.js`
+  documents at more length). The consequence to remember when reading a
+  picture: **anything DB-driven renders its fallback**, so a change to real
+  market figures or to `/vault` will not show. `--env SUPABASE_URL=…` puts a
+  database back deliberately and prints a warning; point it at a scratch
+  project, because the before pass runs OLD code against whatever it is given.
+- **It emulates `prefers-reduced-motion: reduce`,** which is load-bearing, not
+  polite. The server-rendered pages hide below-the-fold content with
+  `.anim .rv{opacity:0}` and reveal it from an IntersectionObserver that never
+  fires in a beyond-viewport capture; without this, `/how-it-works` comes out
+  with blank bands where the Method and FAQ should be, and two runs of
+  IDENTICAL code produce different bytes.
+- **Collapsed `<details>` are invisible unless you pass `--expand`.** Real copy
+  lives inside them (the FAQ accordions on `/`, `/how-it-works` and `/brokers`;
+  the vault's `dbox` panels). A change to a FAQ answer photographs as two
+  identical pages, which reads as "nothing changed" rather than "you
+  photographed a closed drawer" — that is exactly how this was found.
+- **Identical pages produce byte-identical PNGs**, so "this changed nothing
+  visually" is provable with `sha256` rather than eyeballed. Treat a
+  same-bytes result on a change you expected to see as a question about the
+  capture (a closed accordion, a DB-driven surface) before concluding the code
+  is wrong.
+
+Pure helpers are tested in `test/shot.test.js`; requiring the module starts
+nothing.
 
 ## Configuration (environment / `.env`)
 
@@ -260,6 +472,36 @@ dependency. `.env` is git-ignored — never commit it.
   same Resend notifier). An in-memory counter reset at UTC midnight and on
   process restart — a backstop against a rotating-IP scraper the per-IP limiter
   can't stop, not precise accounting.
+- `BULK_DAILY_ADDRESSES` — optional (default 200). Per-MEMBER ceiling on
+  addresses bulk valuation may put through a search in one UTC day. A
+  SEPARATE number from `DAILY_SEARCH_CAP` on purpose: that one is site-wide
+  and Pro deliberately bypasses it (`countsDailyCap: !ent.pro`), an exemption
+  written for somebody typing one address at a time. Bulk multiplies it by
+  fifty per click — one run is ~17 minutes and ~$18, and with
+  one-job-at-a-time as the only other bound a member could start another the
+  moment it finishes, roughly $63/hour indefinitely. Charging bulk to
+  `DAILY_SEARCH_CAP` instead was rejected: one 50-address run would eat a
+  third of the site's daily allowance and lock out the free visitors that cap
+  exists to protect. Counts rows that were ATTEMPTED (anything past `queued`),
+  so cancelling a run costs what actually ran rather than what was queued;
+  windowed on `created_at`, so a job straddling midnight counts wholly against
+  the day it started. Fails OPEN on a read error — a paying member must not be
+  locked out by one failed count, and the 50-address cap still bounds the
+  damage. The remaining allowance rides on `GET /api/bulk` and the `/bulk`
+  boot payload (`leftToday`/`dailyLimit`) so the form says it BEFORE a list is
+  pasted, not only at the moment of refusal. Env-overridable because the
+  moment it bites is the moment a real customer is blocked mid-workday.
+- `SEARCH_API_URL` — **test-only**, unset in production, where the provider's
+  own endpoint is the live value. `RESEND_API_URL`'s precedent for
+  `RESEND_API_URL`'s reason: bulk valuation's whole point is fifty searches
+  leaving the building, and without this the suite could reach the provider
+  call and then had to stop and assume — everything from "a report came back"
+  through valuing it, writing the row and putting it on the member's desk was
+  argued in comments and never executed. `test/bulk-run.test.js` is the user.
+  It covers the SEARCH call only; the extract vendor (PDF/screenshot import)
+  keeps its own endpoint, so there is one override and one thing it can move.
+  Not a secret and authorizes nothing (the API key still does), but it decides
+  where a billed request is posted, so treat it as trusted config.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
   Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
   cookie gets the **landing page rendered at `/` with a 200** (the same
@@ -384,6 +626,38 @@ dependency. `.env` is git-ignored — never commit it.
   "CompNinja Street View cap" $5/month budget alert on the billing account
   (emails the owner at 50/90/100%), the route's per-IP rate limit, and the
   10k-photos/month free tier (a fully-hovered report uses ~6).
+- `GOOGLE_OAUTH_CLIENT_ID` + `GOOGLE_OAUTH_CLIENT_SECRET` — optional pair
+  enabling **"Continue with Google"** on the account modal (2026-08-25).
+  Unset (or half-set, which the startup banner calls out): `GET /auth/google`
+  and `/auth/google/callback` 404 and the button never renders — /api/config
+  carries `googleAuth` for exactly that reveal (the Buy-button rule). Created
+  in the Google Cloud console, project "compninja" (the Street View key's
+  project): OAuth consent screen (External, non-sensitive scopes only —
+  `openid email profile` — so no review), then Credentials → OAuth client ID
+  (Web application) with redirect URIs
+  `https://compninja.co/auth/google/callback` and
+  `http://localhost:3000/auth/google/callback`. What a returned token must
+  prove lives in the pure, tested **`google-auth.js`**; server.js owns the
+  `cn_gstate` state nonce (named in the privacy policy's cookie list — keep
+  in step), the code exchange, and find-or-create. Four decisions worth
+  knowing before touching it: **identity is the email** (018's rule), so
+  there is deliberately NO migration and no `google_sub` column — a Google
+  sign-in lands on the same `users` row a password sign-in does, gated on
+  `email_verified === true` strictly; a Google-created account gets a
+  **random password hash, never an empty one**, so the password door answers
+  it like any wrong guess and the existing reset flow is how it gains a
+  password (the reset email goes to the address Google verified, which is
+  also why the pre-hijack worry resolves in the email owner's favor); the
+  id_token's **signature is not verified**, safe only because the token
+  arrives over the server's own secret-authenticated exchange —
+  google-auth.js's header says when that stops being true; and the callback
+  logs the same `signup`/`login` analytics kinds as the password doors
+  (`source: "google"`), so the /admin funnel keeps counting.
+  `GOOGLE_OAUTH_TOKEN_URL` is **test-only** (`RESEND_API_URL`'s precedent:
+  the whole point is a credential exchange leaving the building, and
+  `test/google-auth-routes.test.js` runs the entire flow against a stub) —
+  not a secret, but it decides where that exchange is posted, so treat it as
+  trusted config and never set it in production.
 - `STREAM_ANTHROPIC` — optional `on`/`off`, **default ON**. Streams the
   Anthropic call (`stream: true` + a hand-rolled SSE reader, `sseFrames` in
   server.js) instead of awaiting one JSON body. The parsed report is identical
@@ -466,6 +740,77 @@ dependency. `.env` is git-ignored — never commit it.
   preserved and promoted. Keep `max_tokens` generous — the cap is a quality
   instruction, and a low `max_tokens` would truncate the JSON mid-array
   instead.
+  **FIELD ORDER is the other half of that lever** (2026-08-21). The model
+  writes the JSON top to bottom, and `comps` is the only part the browser
+  can paint while it is still writing, so every field above the array is
+  dead air on screen. The shape now writes `summary` (the one field the
+  loading card can show), currency, and the tiny subject lookups, then
+  **`comps`**, then every market-level field — `avg_price_per_sqft`,
+  `subject_lat`/`lng`, `market_cap_rate_range`, `market_opex_range`,
+  `value_drivers`, `market_trend`, `annual_price_trend_pct`,
+  `search_radius`, `transactions_reviewed`, `price_discovery`. That is
+  ~800 characters (~200 output tokens, ~2.5s at the measured 78 tok/s) the
+  live comp table no longer waits through, and it is a quality change in
+  the same direction: every one of those fields is a read OF the comps
+  (`avg_price_per_sqft` averages them, `transactions_reviewed` must exceed
+  their count), so the model now describes rows it has committed to
+  instead of rows it still intends to write. A new top-level field belongs
+  BELOW `comps` unless the browser can render it mid-stream or a later
+  figure depends on it; `test/routes.test.js` evaluates the taught shape
+  and fails the build otherwise.
+  Also dropped that day: `price_per_sqft` on any SALE comp carrying both a
+  price and a size. `reconcilePricePerSqft` already derived that number
+  server-side and already overrode the model's figure when the two
+  disagreed by more than 10%, so the field was tokens spent restating
+  arithmetic. The source cross-check it was really performing survives as
+  a prompt instruction; the field is still asked for where it is NOT
+  derivable (lease rates, and sales missing a price or a size). One
+  consequence: `psf_reconciled` now fires only on a real CORRECTION, never
+  on a fill, because a "calc" mark on every row would drain the meaning
+  out of a mark that says "we did not trust the figure we were handed".
+  **The default provider streams too, since 2026-08-29.** Gemini's wire
+  format was confirmed live that day with
+  **`node scripts/verify-gemini-stream.js`** (~$0.001 a run; plain and
+  `--grounded`), and the first run FAILED — the real stream is
+  `event_type`-tagged frames (`interaction.created`, `step.start`/`.delta`/
+  `.stop`, `interaction.completed`), not the `{steps:[...]}` snapshots the
+  reader was guessed from — which is exactly why it shipped dark behind a
+  verifier instead of guessing on the default path. The reader was rewritten
+  from the frames the script printed; the captured frames are committed as
+  `test/fixtures/gemini-stream-frames*.json` and replayed by
+  `test/search-provider-gemini.test.js`, the new ground truth. Keep the
+  script: it is how a vendor-side frame change gets diagnosed, and how a
+  future provider earns `streaming: true` the same way. The
+  `STREAM_UNVERIFIED` env opt-in and `capabilities.streamingUnverified` are
+  deleted, not just off — a test pins the flag as GONE so the branch cannot
+  quietly return. **Reading a stream lives behind
+  the provider seam**: `PROVIDER.createStreamReader()` takes one decoded SSE
+  frame and returns normalized events (`start` / `text` / `results` /
+  `search` / `usage` / `error` / `done`), and owns rebuilding the final
+  text. server.js's read loop names no vendor event type. The rule that
+  makes it safe, and the first test this code ever had: a reader's `text()`
+  must be **byte-identical** to what that provider's `parseResponse()`
+  produces from the equivalent non-streaming body, or `parseCompJson` sees
+  different input depending on a setting nobody thinks about. (One
+  deliberate asymmetry survives: streamed Gemini calls emit real `search`
+  events — the `google_search_call` delta carries the model's query strings
+  — while `parseResponse` still honestly reports `searches: 0`, because the
+  non-streaming body has nothing to count them from.) The request FORM
+  needs `?alt=sse` **and** `stream: true`; either alone silently returns
+  ordinary JSON. Three traps the reader guards, all test-pinned: a re-sent
+  cumulative snapshot must REPLACE rather than append (appending duplicates
+  the whole report, which still parses and is wrong — the worst failure
+  available); only newly-arrived characters may be emitted as `text`
+  events or the comp extractor re-scans and double-counts every comp; and
+  report text is harvested ONLY from a `model_output` step's deltas, so a
+  thought delta that one day carries text can never leak reasoning into
+  `parseCompJson`'s input. And thought tokens count toward OUTPUT there: a
+  measured call spent **4,207 in / 928 out / 6,473 thought**, so the report
+  JSON is about one eighth of what the model generates and reasoning is the
+  other seven eighths. That makes `THINKING_LEVEL` (see its bullet under
+  Configuration) a larger wall-clock lever than everything in the report
+  JSON put together — and makes it the one to MEASURE first, since Google's
+  guidance calls the default depth the best quality for agentic work.
   The Explorer reaches the same rule from the other side: its cache lookup
   lives inside the shared in-flight job, so it cannot decide up front whether
   the request is fast. Its SSE opens on the FIRST progress event instead, and
@@ -499,6 +844,40 @@ dependency. `.env` is git-ignored — never commit it.
   no reason to roll back the other. `off` restores exact-market matching in
   the inbox, the intro gate and the new-lead alert together. Rules live in
   `broker-leads.js`, so `npm test` covers them.
+- `NAV_SHELL` — optional `rail` (**default**) or `bar`, added 2026-08-28. Which
+  shape the SIGNED-IN chrome takes on every server-rendered page. `rail` lays
+  the header out as a persistent 224px left sidebar at **900px and up**; `bar`
+  is the horizontal header exactly as it shipped before that date, and is the
+  instant rollback lever. An unrecognized value **exits at boot** (the
+  `SEARCH_PROVIDER` / `THINKING_LEVEL` no-fallthrough rule).
+  **It gates ONE CSS class on `<html>` and nothing else.** The rail is not a
+  new component: every surface already renders the same header shape — brand,
+  `<nav>`, account slots, in a centered container — so the rail is that same
+  element re-laid-out, and **the markup is byte-identical in both modes**.
+  `test/nav-shell.test.js` diffs the two renders to hold that, because the
+  moment a second markup branch appears the eight-page header assertions in
+  `routes.test.js` are only checking one of them. Never grow one.
+  **No content wrapper moves.** `.wrap` keeps its own `margin:0 auto`, so with
+  the body padded on the left every centered band re-centres itself — measured
+  on `/markets`, where `main` lands 1120px wide beside the rail with nothing
+  else edited. The 224px width is a **literal**, never a `var()`: `theme.js`
+  holds colours, and `theme.test.js` fails any custom property that is not one
+  of its tokens.
+  **Below 900px the class does nothing** and the wrapping bar returns. That is
+  the whole mobile answer — no drawer, no focus trap, no scroll lock.
+  **Anonymous visitors never get it** (it marks being inside the product, and a
+  marketing page read by a stranger is not that); it is decided on cookie
+  presence, and those routes already send `vary: cookie`. The rules live in
+  **both** `MARKET_CSS` and `HOW_CSS`, which are twins — edit them together.
+  Two things moved because the rail forced them: the Explore `<details>` has
+  nowhere to open in a 224px column so it is hidden there and **its links moved
+  to `MARKET_FOOTER`** (which finally puts `/download` in a footer at all — it
+  had been in the Explore menu and in neither footer), and **Markets, Vault and
+  Bulk became nav destinations**. `/bulk` previously had NO link anywhere on
+  the site: not a menu, not a footer, not a header, only a link from inside
+  itself. `#navVault` moved out of the account dropdown to join them, so a hub
+  — which builds its header from `accountNavSlots` and not from `marketBar` —
+  no longer shows a vault link.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so
@@ -557,12 +936,85 @@ dependency. `.env` is git-ignored — never commit it.
   corpus-first retrieval remains a quality lever there but stops being a cost
   lever. Server code must branch on `PROVIDER.capabilities.*`, never on
   `PROVIDER.name`.
-  **`GET /healthz` reports the live `provider` AND `model`** — ask the
-  deployment, never the repo. `MODEL` is read once at startup from an env var
+  **`GET /healthz` reports the live `provider`, `model`, `commit` and
+  `started`** — ask the deployment, never the repo. `commit` is the deployed
+  SHA (`RENDER_GIT_COMMIT`, falling back to a `.git` read locally, `""` when
+  unknown) and it is how a deploy is verified from outside when the change has
+  no anonymous-visible byte — a server-side rule, a budget, a cache decision.
+  Grepping a served page proves nothing for those, and on 2026-08-09 two
+  deploys failed back to back while every page answered 200. `MODEL` is read once at startup from an env var
   nobody can see from here, and a provider's `defaultModel` moves with the
   code, so a checkout only proves what the source says. The Gemini default is
   `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
   `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.6-flash`.
+- `THINKING_LEVEL` — optional `low`/`medium`/`high`. **Production runs
+  `low`** as of 2026-08-22, set in Render's environment rather than in code,
+  so rollback is unsetting it with no deploy. Unset means the request is
+  byte-identical to what it was before this knob existed and the vendor's own
+  default applies (`medium` on gemini-3.7-flash).
+  **It is the largest wall-clock setting this deployment has**, and the
+  reason is that on Gemini thought tokens are generated and billed as
+  OUTPUT: a measured call spent 4,207 in / **928 out / 6,473 thought**, so
+  about seven of every eight tokens the model produces are reasoning and
+  only one in eight is the report. Every trim to the report JSON is
+  attacking that one eighth; this is the other seven.
+  **It was measured before it was set** (four runs, ~$1.36, full record in
+  `docs/evals/2026-08-22-thinking-level-decision.md`). `low` made reports
+  **3x faster (34.3s → ~10s) and 3x cheaper ($29.56 → ~$9.50 per 1,000)**,
+  and every delta is 3-5x the run-to-run noise floor. It returned about a
+  third fewer comps — but the shorter list was BETTER sourced: provenance
+  up, market match up, and the unsourced-`estimate` rate down from as high
+  as 14% to **2%**, the best this eval has recorded. Valuation stayed
+  possible on 100% of targets in every run, and 8 of 10 kept enough priced
+  sales (4+) for the hero's trimmed band. The cost paid is real and worth
+  knowing: ~20% of reports fall back to a full-spread value range, and the
+  comp table is visibly shorter.
+  **Two things to re-check on real traffic**, both in that record: the 2%
+  estimate rate is the prize, so a climb means re-running the comparison;
+  and comp counts should drift back UP on their own as the radius blend
+  folds saved corpus deals into new reports.
+  **`COMP_FLOOR` was the attempt to buy those comps back, and it failed** —
+  see its own note in server.js. It moved comps by less than the arm's own
+  wobble while more than doubling the estimate rate, and `thoughtTokens`
+  went 0 → 309: telling a model you have deliberately told to reason less to
+  "try harder" spends the saving on deliberation, not on searching. Kept in
+  the tree and off, because a recorded negative result is worth more than a
+  deleted one.
+  **`node scripts/compare-thinking.js` runs that whole pair as one command**
+  (boot → score → restart at the candidate depth → score → compare). Prefer
+  it over doing the steps by hand: it spawns the server with an EXPLICIT
+  env, which makes the PowerShell `$env:SUPABASE_URL = ""` delete-vs-empty
+  trap in run-eval.js's header impossible rather than merely documented; it
+  enforces the restart, refuses to run against the main checkout, verifies
+  via `/healthz` that the server is at the depth asked for BEFORE spending,
+  and prints the bill and stops without `--yes`.
+  The run summary records `thinkingLevel` beside `model` and `--compare`
+  prints it, so a pair that differs only in this can never be misread as
+  model noise. The scorecard also carries **spend** as of 2026-08-21 —
+  `costUsd`, `billedCalls`, `inputTokens`, `outputTokens`, `thoughtTokens`,
+  `reportTokens`, `thoughtShare` — because until then it measured quality
+  and wall clock and nothing about cost, which is the half of this question
+  that decides it. Those ride on a `_call` block that `gate()` attaches for
+  an INTERNAL caller only and only on a billed leg: never cached, never
+  harvested, never served to a customer, and absent (not zero) on a cache
+  hit, so a run that hit the cache reports "no cost data" rather than
+  halving its own average. `thought_tokens` is a **subset** of
+  `output_tokens`, never an addition — summing them double-counts the
+  thinking and doubles the bill; `reportTokens` is the remainder, and it is
+  the figure every prompt trim in this project has actually been aiming at. `GET /healthz` reports the live value for the same reason it
+  reports `model` — ask the deployment, never the repo; `""` there means the
+  vendor default, and an absent field means a build older than this.
+  Three rules, all pinned by tests. It is read through
+  `PROVIDER.capabilities.thinkingLevels`, never a provider name. An
+  unrecognized level **exits at boot** (the `SEARCH_PROVIDER` /
+  `/api/checkout` `PLANS` no-fallthrough rule). And a level set against a
+  provider that declares `thinkingLevels: null` — Anthropic, which has no
+  tunable depth on this path — **also exits at boot** rather than being
+  accepted and dropped: a knob that appears to work and changes nothing is
+  worse than either a working knob or a refused one, because the deployment
+  would conclude that thinking less does not help. Lowering it only ever
+  generates fewer tokens, so Gemini's `deadlineTokens()` ceiling stays safe
+  in the one direction this moves.
 - `PORT` — defaults to 3000. Hosts set this themselves.
 
 ### Admin access — comped Pro for the team
@@ -660,7 +1112,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 **`server.js`** — zero-dependency Node HTTP server. Routes:
 - `POST /api/comps` — the core endpoint. Enforces the password gate (if set),
   builds the prompt, calls Anthropic with the `web_search` tool enabled, and
-  returns parsed JSON. Body takes optional `maxComps` (allowed 4/6/8/10/12,
+  returns parsed JSON. **Its two halves are module-level functions, shared
+  with the bulk worker since 2026-08-21**: `runCompSearch()` (cache →
+  derivable window → daily cap → size memo → corpus retrieval → the billed
+  call, plus every side effect that must see the UNGATED report) and
+  `finishReportForViewer()` (the old `gate()` closure). Nothing about
+  either changed in the move, and the ordering rules inside them are
+  pinned by source-scanning tests that name them. Body takes optional `maxComps` (allowed 4/6/8/10/12,
   default 12 — the Explorer/seed pipeline stays pinned at 8) and optional
   `subjectSizeSqft`; when absent the prompt also asks the model to look up
   the building's size (returned as `subject_size_sqft` +
@@ -678,6 +1136,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   claimed — thin markets make the model pad with submarket rows despite
   the prompt telling it not to, and prompt rules are requests while
   normalization is a guarantee.
+  **Market-page cross-link (2026-08-20).** Every served report also carries
+  `market_page` (`{ slug, market }`) when a standing `/market/<slug>` page
+  covers the subject's market + type — attached at SERIALIZATION inside
+  `gate()` via `marketPageInfo()` (pure in-memory reads of the loaded page
+  stores, so it costs nothing and a page published later lights up older
+  cached reports), never written into the cache. index.html renders it as
+  the "See the {market} market page →" line under the Market Summary
+  (`renderMarketPageLink`; `no-print`/`no-capture` — navigation, not report
+  content). The reverse door is the market page's own CTA: a "value a
+  property here" mini-form (`vform` / `MARKET_VALUE_FORM_JS`) that stores
+  the typed address under `pendingLandingAddress.v1` — the landing form's
+  exact mechanism, already consumed at startup — and navigates to
+  `/?type=<type>` (member) or `/?auth=signup&type=<type>` (anonymous, the
+  wall-honored door). The same `marketPageInfo` decorates `GET
+  /api/portfolio` items and the watchlist feed, so My Desk links each saved
+  property and watched market to its market page.
   **"Verified" is a reserved word (2026-08-10).** It names a badge only the
   server awards (a broker vouched, our team reviewed), so the model must
   never write it. Two layers, the same requests-vs-guarantee split: the
@@ -763,12 +1237,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
-  `"bov"` for Broker Opinion of Value requests; the Supabase `leads` table has
-  a matching `source` column). Also takes an optional `size_sqft`, cleaned by
+  `"bov"` for Broker Opinion of Value requests, `"1031"` for a BOV request
+  from a browser that recently read `/1031-exchange` (the guide's widget
+  stamps localStorage `cnRef1031.v1`, index.html reads it at submit, 7-day
+  TTL); the Supabase `leads` table has a matching `source` column. `"1031"`
+  is bov-CLASS everywhere behavior branches (`bovClass` in the handler, and
+  the inbox/intro queries use `source=in.(bov,1031)`) — the tag is
+  attribution and urgency, never a separate funnel, and it surfaces as an
+  anonymized `is_1031` boolean in the broker inbox (never the raw tag).
+  Also takes an optional `size_sqft`, cleaned by
   `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
   so a lead with no size never touches the column — protects the file
   fallback if migration 015 has not run). A durably-stored (`dest === "db"`)
-  `bov` lead fires a fire-and-forget alert to every broker covering that
+  bov-class lead fires a fire-and-forget alert to every broker covering that
   market + property type: the same four anonymized facts the inbox shows,
   never the owner's name/email/phone/company/address, throttled to one email
   per broker/market/hour (`BROKER_ALERT_SUPPRESS`, `BROKER_ALERT_WINDOW_MS`)
@@ -926,10 +1407,12 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   - **A firm share can never carry whole vault comps** (400, not a silent
     strip). Private comps are anonymized into the valuation basis exactly as
     on an invited share, so a colleague's range matches to the dollar with no
-    address or price travelling. Sharing a broker's own book across their
-    firm is the spec's §7 and is deliberately NOT built: it needs the opt-in,
-    the attribution, and the vault's "Visible only to you" copy rewritten to
-    match.
+    address or price travelling. Opting an INDIVIDUAL comp into the firm is a
+    different act and it shipped on 2026-08-16 as the spec's §7 — see "The
+    shared vault" below; the three things it was waiting on (the opt-in, the
+    attribution, and the vault's "Visible only to you" copy rewritten to
+    match) all landed with it. This bullet is unaffected either way: a firm
+    SHARE still never carries a whole vault comp.
   - **`canUseOrg` gates creating and inviting, never accepting or reading.**
     It tracks `broker` (one subscription), so it is false on a dark
     deployment and for a tester without `vault_beta` — the invite route sends
@@ -937,14 +1420,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     receiving end needs no plan at all: they are exactly an invited share's
     viewer, and a firm that could only share with people who had already
     bought the product would not solve the problem it exists for.
-  - **Migration 028 must be run BEFORE the code deploys**, like 018 and 026
+  - **Migration 030 must be run BEFORE the code deploys**, like 018 and 026
     and unlike most: it adds `shared_reports.org_id`, which `getShareRecord`
     SELECTs by name on EVERY share read, and PostgREST 400s an unknown
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
-  029, owner's yes 2026-08-16). An owner or admin can set the firm to share
+  031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both
   switches. It ships with the safeguards the spec made a condition of building
   it at all, and each one is load-bearing:
@@ -968,7 +1451,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     somebody wants this off is the moment they are looking at the report.
     Guarded on `meta.autoShared`, or every subject-field repaint would
     re-publish — including something just undone.
-  **The shared vault** (§7, migration 030, 2026-08-16). A broker can opt one
+  **The shared vault** (§7, migration 032, 2026-08-16). A broker can opt one
   comp at a time into their firm; colleagues see it inside their OWN reports,
   attributed. `POST|DELETE /api/vault/firm`; the toggle is a column on
   `/vault`'s comps table, shown only to a broker who is in a firm. Rules in
@@ -1056,8 +1539,60 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   second copy would have been two sources of truth for one thing. That table
   becomes worth building when the shelf holds something a share cannot — a
   BOV pipeline row, or an individual vault comp.
-- `GET /api/geocode?address=` — CORS pass-through to the free US Census
-  geocoder. Comp pins are placed ENTIRELY from real geocoding — the model no
+  **Three shops, one architecture** (migrations `036-org-shop-kind.sql` and
+  `037-org-shop-kind-tenant-rep.sql`, **run both before deploying**; Business
+  Model Transition Plan v2 §6, 2026-08-17, third kind added 2026-08-21).
+  `orgs.kind` is `'broker'`, `'development'` or `'tenant_rep'` and decides two
+  things: the nouns a firm reads (a development shop is told its shelf holds
+  land comps, rent comps, absorption studies and feasibility packets, a tenant
+  rep shop that it holds lease abstracts, rent comps and market surveys, in the
+  invite email and on the desk) and which property type the firm shelf opens on
+  (Land for a development shop, everything for the other two). Nothing is gated
+  on it and nothing is published by it. Five rules:
+  - **Required at creation, not defaulted.** `POST /api/org` refuses without a
+    valid kind (`ORG.validateShopKind`), because the creator is the only person
+    who knows the answer and a default would be answered by silence. Changing
+    it later is an owner/admin call on `POST /api/org/settings`, the same
+    authority as `share_default` and for the same reason: it re-labels every
+    colleague's desk, not one person's own work.
+  - **036 is 030's hazard; 037 is a smaller one.** `orgsByIds()` and
+    `findOrg()` name `kind` in their SELECTs and PostgREST 400s an unknown
+    column, so deploying 036 second takes down every firm surface at once. 037
+    only WIDENS the CHECK, so nothing goes down, but until it runs the database
+    refuses the value the new third `<option>` sends and the owner who picks it
+    gets a 503 from a route that looks like it should have worked. Migrate,
+    then deploy, both times.
+  - **An unrecognized kind reads as `broker`** (`ORG.kindOf`), which is
+    incumbency rather than safety: every firm predating 036 has only ever been
+    shown broker-shop words, so a typo must not re-label their desk. The write
+    path normalizes case and padding; the read path stays strict.
+  - **Only one kind has a saved view, and that is deliberate.** Land is a
+    default VIEW rather than a claim about what a development shop may file,
+    and it exists because exactly one entry in `VAULT.PROPERTY_TYPES` names
+    that shop's subject. Nothing names a tenant rep's: office, industrial and
+    retail tenant reps are all normal, so its `shelfType` is `""` and a shelf
+    that opens filtered for two shops out of three is the bug that was avoided,
+    not a default that was forgotten. `test/org-access.test.js` asserts the
+    empty string on purpose.
+  - **The shelf's saved view never hides a row while its filter is off
+    screen.** The filter row is furniture under six items, so below six the
+    type is cleared rather than merely hidden, and a colleague's own choice of
+    filter is never stomped by a re-render. The header count always describes
+    the whole shelf.
+  Enterprise is still deliberately not a kind: §6 rules it out as a target
+  (a research department kills the deal internally) and names its real entry
+  point as somebody who used CompNinja at their last shop. Tenant rep passes
+  the test enterprise fails — it signs up one person at a time like the other
+  two, and reads different nouns off the same shelf — which is the bar a fourth
+  kind has to clear, because a value nothing may select is a value that rots.
+  The shops' words live in `ORG.SHOP_COPY` and are **mirrored** in index.html,
+  which cannot require the module; `test/index-html.test.js` pins the two
+  together, because drift there would invite a firm as a development shop and
+  then greet it with a broker shop's desk. **Two** strings are mirrored, not
+  one: the refusal `validateShopKind` returns is repeated in the browser (which
+  declines to spend a round trip on a question it can answer) and it ENUMERATES
+  the shops, so it goes stale the day a kind is added — the same suite pins it
+  to the module's own words.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -1066,13 +1601,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   here and deliberately nowhere else (GUARD 2 of the private-comp contract).
   The GET alias was removed rather than deprecated, because a door left open
   is one stale caller away from putting addresses back in URLs and nothing
-  detects that. Comp pins are placed ENTIRELY from real geocoding — the model no  longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
+  detects that. Comp pins are placed ENTIRELY from real geocoding — the model
+  no longer returns per-comp `lat`/`lng` (dropped 2026-07-31 to shrink the slow
   report-writing burst; only `subject_lat`/`subject_lng` remain, for the
   map's first paint and the wrong-state sanity gate). Old cached reports
   still carry comp coords and render unchanged. The front-end places every
-  pin from
-  geocoding (this proxy, then browser-direct Nominatim as fallback, results
-  cached in localStorage under `geoCache.v1`). Rate-limited per IP.
+  pin from geocoding (this proxy, then browser-direct Nominatim as fallback,
+  results cached in localStorage under `geoCache.v2`). Rate-limited per IP.
+  The market pages' own comp map runs the same stack but caches under
+  `mktGeoCache.v1`, and **the two stores must never be re-joined**: the market
+  map needs pins only, so it stores no geocoder label, and a label-less entry
+  read back by the app fails `geoLabelMatches` — the gate on subject photos
+  and footprint sizing. They shared a key until 2026-08-04; a test in
+  `test/routes.test.js` now holds the names apart.
 - `GET /api/streetview?lat=&lng=` (an `?address=` form exists but the
   client no longer sends it — address aiming showed the road on unmapped
   parcels) — Street View photo proxy for the map pin popups. The client
@@ -1114,7 +1655,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (billed AND cached) has its comps harvested by `harvestComps()` into the
   Supabase `comp_corpus` table (file fallback `comp-corpus.jsonl`, git-ignored),
   deduped by a normalized address|date|price key (unique constraint +
-  ignore-duplicates upsert; in-memory seen-set for the file path). Fire-and-
+  ignore-duplicates upsert; in-memory seen-set for the file path). Harvest
+  keeps only `public_record` and `listing`; `estimate` and `news` stay in the
+  report that found them and are not stored; an empty listing date is stored
+  as `"Active"`. Fire-and-
   forget — a corpus failure never affects the request. This is the permanent
   raw-data layer that broker verification and future retrieval features build
   on; the DDL lives in `migrations/001-comp-corpus.sql` (+ `004` for the
@@ -1204,6 +1748,27 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   parse. Verified end-to-end 2026-07-27 on both a 24-month and the default
   12-month lookback. Note the threshold is per market **and** property type, so
   it only pays off when traffic repeats in the same market.
+  **Archive-first (2026-08-21).** Above the corpus sits the searcher's OWN
+  vault: 4+ usable rows for the market+type (priced, or a lease with a rent —
+  `archiveCoverage`/`archiveIsStrong` in blend-comps.js, threshold mirrors
+  `corpusIsStrong`) floor the web budget exactly as corpus strength does.
+  Three rules, all pinned by `test/archive-first.test.js` against a real
+  server and a stub provider: **nothing vault-derived reaches the prompt**
+  (the strength flag rides on the corpus object; `buildPrompt` only ever
+  receives `corpus.comps`/`nearby`/`listed`); the budget and the
+  `source: "archive"` analytics tag read ONE flag, set once in
+  `runCompSearch`; and **a vault-subsidized report is never written to the
+  shared cache** — `search_cache` is keyed by property, so a later visitor
+  would be served the thinner report without the private rows that justified
+  it (corpus-strong entries stay cacheable, because the comps that shrank
+  THAT budget are in the cached body). Firm-shared comps deliberately do not
+  count, and internal callers pass no vault rows. **It is also gated on
+  `PROVIDER.capabilities.searchBudget`**, which means it is INERT on the
+  default provider: Gemini's `google_search` takes no `max_uses`, so the
+  floored budget is ignored and setting the flag would skip the cache write
+  for no saving at all — worse than not having the feature, and invisible.
+  It becomes a cost lever under `SEARCH_PROVIDER=anthropic`. Rollback is
+  `ARCHIVE_FIRST=off`.
   **Metro matching (2026-08-10).** Corpus-first retrieval, and ONLY it, also
   reads the subject market's immediate neighbors from `market.js`'s curated
   `METRO_GROUPS`, so a Meridian search can draw on Boise's rows. Those come
@@ -1223,8 +1788,37 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   sharing one submarket, never a whole statistical area, and a test pins every
   entry against `marketOf` because an exact-match key that never matches is
   invisible.
-- `GET /how-it-works` — the account-wall front door, reached from the header
-  nav (the old "Methodology" item) and the footer. Under the wall, `/` *is*
+  **On-market listings (2026-08-13).** Unparseable listing dates (`Active`,
+  `Listed Mar 2025`) come back as `listed` extra candidates with their own
+  prompt block; they do not count toward `coverage` or shrink the budget;
+  dated listing comps still do. Rollback is `CORPUS_LISTED=off`. The harvest
+  filter has no flag.
+  **An asking price is not a comparable sale, and `comp_corpus` now holds
+  both** — so EVERY aggregate over corpus rows must exclude the on-market
+  ones, and the test for "is this a closed deal" is that `parseDealDate`
+  returns non-null (`Active` and `Listed Mon YYYY` are both deliberately
+  unparseable). Most consumers got this free because they already required a
+  parseable date — the radius blend (`blend-corpus.js`), the backtest, the
+  market-page trend, and portfolio movement all filter on one, so the
+  VALUATION was never exposed. **Two did not, and both were fixed in the
+  shipping commit rather than found later**: `gut-check.js`'s `corpusStats`
+  (the broker's own benchmark — measured, one listing at $160 against four
+  closed sales near $100 moved the median 101 → 102 and Q3 102.5 → 104, so
+  every book looked cheap against it) and `buildWatchlistFeed`'s
+  `median_psf`, which windows on `ts` — when the row was HARVESTED, not when
+  the deal closed — and so had nothing at all to exclude an asking price
+  with; that median is quoted on My Desk and in the digest email. Both are
+  test-pinned, and the gut-check gate only trusts an INJECTED parser because
+  its fallback returns null for everything and would otherwise empty every
+  benchmark. `/api/corpus-comps` deliberately still offers these rows: they
+  carry a visible `date` of `Active`, and a comp a visitor reads and chooses
+  to add is not a silent aggregate. This is the cost of one table holding two
+  kinds of row — CLAUDE.md's own separate-tables rule (the vault privacy
+  wall) is the alternative that was not taken here, so a new corpus reader
+  must be checked against this rule by hand.
+- `GET /how-it-works` — the account-wall front door, reached from the footer
+  and, on the landing page, the line under the hero. It LEFT the Explore menu
+  on 2026-08-25 (owner’s call), along with /brokers. Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +
   address field + one sample exhibit), the three-step Method, the FAQ, and a
   one-block Brokers path to `/brokers`. There is no stat strip. The address
@@ -1276,14 +1870,45 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `refreshBillingUI` once `live`/`pro` are known, cleared either way).
   Sign-out reloads the page rather than re-hydrating, because the page
   around the bar may itself be signed-in-shaped (the vault above all).
-  Traps: /how-it-works takes `accountNavSlots({ desk: false })` or a member
-  sees TWO My Desk links (it renders its own); and `.hdr nav .dd a` sets
+  Traps: `.hdr nav .dd a` sets
   `display:block`, which out-specifies `[hidden]`, so the
   `.hdr nav [hidden]{display:none!important}` line in ACCOUNT_NAV_CSS is
   load-bearing — without it every page shows both auth states at once.
-  There are now THREE headers to keep in step (index.html, MARKET_BAR,
-  /how-it-works'). `test/routes.test.js` pins presence on all seven pages
+  `test/routes.test.js` pins presence on all seven pages
   and the no-double-desk rule.
+  **The headers unified (2026-08-20).** `/how-it-works`' hand-kept header is
+  gone: `marketBar(signedIn, current)` is THE header for every server-rendered
+  page (the two copies had drifted to within one `aria-current`, which is what
+  the new `current` argument renders — pass the page's own path from its
+  `marketShell` call and the Explore menu marks where the reader is). The
+  Explore menu's browse links themselves live in **`NAV_LINKS`**, one list
+  beside marketBar with three consumers: `navLinksHtml()` for marketBar,
+  and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
+  `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
+  index.html authors no copy of the menu any more, so adding a nav link is a
+  one-line edit to NAV_LINKS.
+  **A fourth marker, `<!--BULK_RUN-->`, carries bulk valuation's run view**
+  (2026-08-25). `bulk-page.js` renders that table once; `/bulk` uses it
+  directly and index.html receives the same bytes, which is what lets a list
+  pasted into the main search render its run inline. Two copies would
+  eventually quote two different portfolio values for one run. It brings its
+  own `<style>` (index.html gets no `MARKET_CSS`) with a fallback on every
+  colour; its DOM ids are prefixed `bk`, because index.html already owns
+  `#gate` and `rows`/`msg`/`run` were one refactor from colliding; and
+  `BULK_RUN_JS` reads no form at all — it reports state through an injected
+  callback, since the homepage has no `#bulkText` to dereference.
+  `test/bulk-inline.test.js` pins the marker on both sides, compiles what is
+  actually served, and fails the build if index.html grows a hand-copy.
+  Two traps: `APP_NAV_LINK_CLASS` must stay
+  identical to `#pricingLink`'s class string, because tailwind.css is purged
+  against index.html alone and a utility that existed only in the server-side
+  string would silently stop styling on a regen; and the marker must survive
+  in index.html, or the app quietly loses its browse links —
+  `test/routes.test.js` pins both the replacement and link parity with the
+  server-rendered headers. index.html's header ELEMENT still lives in
+  index.html (its auth chrome, account menu and pricing button are SPA
+  behavior owned by `refreshBillingUI()`); what is single-sourced is the
+  markup every header shares.
 - **Broker directory on market pages** (2026-08-06). A market page slug IS a
   (market, property type) pair — `industrial-boise-id` — the identical key
   `broker_coverage` uses, so "who covers Boise industrial" renders on
@@ -1302,28 +1927,87 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
-- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), nav label
-  **"Brokers"**. Hero payoff, then two stacked ledgers: Contribute (CREDIT /
+- `GET /firms` — the public front door for firm accounts (2026-08-28). Body in
+  **`firms-page.js`**, a marketShell BODY like `bulk-page.js`, so it carries no
+  CSS of its own and does NOT depend on the purged `tailwind.css`; server.js
+  owns the SEO metadata. It exists because everything about firm accounts has
+  worked since migration 030 — shelf, invites, auto-share, shared vault comps,
+  per-seat billing, three shop kinds — with **no public surface at all**: no
+  nav entry, no footer link, no tier on the pricing modal, and an invite email
+  as the only door, which only reaches somebody a member already knows.
+  Two rules: **the shop copy is PASSED IN** from `ORG.SHOP_COPY` (the same map
+  the invite email and the create box read) and `test/firms-page.test.js` fails
+  the build if any of the three `arrivals` strings appears as a literal in the
+  page; and **every privacy claim on it is a promise the code keeps** —
+  never-retroactive auto-share, the member veto that beats the firm, and the
+  rule that no whole vault comp travels. Those reach search engines, so check
+  each against the code before editing one, as the /brokers FAQ answers are.
+- `GET /pricing` — the rate card, at a URL for the first time (2026-08-28).
+  Body in **`pricing-page.js`**. Pricing had lived ONLY in index.html's modal,
+  which cannot be linked, indexed or emailed — and that modal carried Free /
+  Pro / Founding and **no firm tier**, while the /how-it-works FAQ had been
+  quoting the seat price in prose for weeks. The figures come from one
+  **`PRICING`** constant in server.js (`monthly`, `foundingAnnual`, `firmSeat`,
+  `minSeats` = `ORG.MIN_SEATS`) which the FAQ answer also reads, and
+  `test/pricing-page.test.js` pins index.html's modal to the same numbers —
+  that modal's own comment conceded "nothing catches a drift", which was true
+  of a figure typed into three files. **The page never buys anything**: every
+  control hands off to `/?pricing=1` or signup, because checkout needs the
+  session, the entitlements and — for a firm — an orgId and an ownership check
+  a cached page cannot make. The Firm tile's CTA is "how a firm works" for the
+  same reason: a firm subscription is bought by an owner for a firm that
+  already exists.
+- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), linked
+  from the footer of every surface and from the landing page’s "For brokers"
+  line; it left the Explore menu 2026-08-25 with /how-it-works. Hero split
+  (claim + an illustrative report exhibit that
+  *shows* the Verified chip), then two stacked ledgers: Contribute (CREDIT /
   INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
-  PRIVATE). One Submit door at the bottom (`/?submit=comp` — a query the
-  account wall can see; a `/#submit-comp` hash never reaches the server).
-  Unlike `/how-it-works` it carries no CSS of its own: it renders through
-  `marketShell()`, so `MARKET_CSS` / `MARKET_BAR` / `MARKET_FOOTER` style it
-  and it likewise does NOT depend on `tailwind.css`. Listed in `sitemap.xml`.
-  Do not confuse this with `GET /broker/<slug>`, the per-contributor public
-  profile.
-- `GET /1031-exchange` — public 1031-exchange education page (v4 slice 3;
-  spec `docs/superpowers/specs/2026-08-08-1031-guide-design.md`). All
-  content lives in the pure **`guide-1031.js`** (the vault-page.js
-  precedent) — FAQ array feeding both the accordions and the FAQPage
-  JSON-LD, the education-not-advice compliance box, and a client-side
-  45/180-day deadline-dates widget (calendar dates only, never taxes or
-  dollars; nothing is sent to a server). server.js only dresses it in
-  `marketShell` and spreads the module's JSON-LD nodes into the shared
-  `brandGraph()` @graph. Education, never advice — the compliance strings
-  are test-pinned in both directions (must-appear and must-never-appear).
-  Listed in `sitemap.xml`; linked from `MARKET_FOOTER`, `/how-it-works`'s
-  footer, and `/brokers`.
+  PRIVATE), with a three-beat submission path (`.bkpath` / `.bkbeat`, never
+  `.steps`) between them and a broker FAQ (`BROKERS_FAQ` — one array, both
+  the accordions and the FAQPage JSON-LD; its answers are PUBLIC
+  promises that reach search engines as structured data, so each one has to
+  survive a check against what the product currently does — the vault-privacy
+  answer must name BOTH ways a comp leaves a vault, publishing and firm
+  sharing, because it shipped saying only publishing and the vault page had
+  already stopped claiming "visible only to you" by then. Pinned by test).
+  One Submit door at the bottom
+  (`/?submit=comp` — a query the account wall can see; a `/#submit-comp`
+  hash never reaches the server). Unlike `/how-it-works` it carries no CSS
+  of its own: it renders through `marketShell()`, so `MARKET_CSS` /
+  `MARKET_BAR` / `MARKET_FOOTER` style it and it likewise does NOT depend
+  on `tailwind.css`. Listed in `sitemap.xml`. Do not confuse this with
+  `GET /broker/<slug>`, the per-contributor public profile.
+- `GET /1031-exchange` — public **1031 identification worksheet** (education
+  page underneath; v4 slice 3 as amended 2026-08-14). Spec
+  `docs/superpowers/specs/2026-08-14-1031-identification-worksheet-design.md`
+  (amends `2026-08-08-1031-guide-design.md`). All content lives in the pure
+  **`guide-1031.js`** — worksheet on top (relinquished property, closing date
+  → 45/180 calendar dates, three replacement slots, each with a Value handoff
+  through `pendingLandingAddress.v1`), then the explainer, FAQ array feeding
+  both the accordions and the FAQPage JSON-LD, a **Choosing a qualified
+  intermediary** vetting card, and the education-not-advice box. The date
+  widget computes calendar dates only, never taxes or dollars, and hands both
+  deadlines over as an `.ics` file built as a `data:` URI in the browser —
+  deterministic for a given closing date, because its DTSTAMP derives from
+  the closing rather than the clock. Sharing rides the URL fragment (`#p=`),
+  so a street address never lands in a server log; reading stays free and
+  unauthenticated. `renderGuide1031Body(signedIn)` picks the Value door (`/`
+  vs `/?auth=signup`). The script also stamps localStorage `cnRef1031.v1`
+  (guarded — no storage, no marker), which is how a later BOV request gets
+  tagged `source: "1031"` — see `POST /api/lead`; the key is test-pinned
+  because index.html reads the identical string. The route logs a PII-free
+  `guide_1031` event per read (`source`: member/visitor on cookie presence;
+  crawler UAs skipped via `isCrawlerUA`), feeding the "1031 guide funnel"
+  card on `/admin`. server.js only dresses it in `marketShell` and spreads
+  the module's JSON-LD nodes into the shared `brandGraph()` `@graph`.
+  Education, never advice — the compliance strings are test-pinned in both
+  directions (must-appear and must-never-appear), including that this is not
+  a written identification and not an exchange CompNinja created, and that
+  CompNinja is not a QI and holds no funds. Listed in `sitemap.xml`; linked
+  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
+  contextual one-liner after the CTA on every `/market/<slug>` page
+  (`guide1031` in `renderMarketPageHTML`).
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real
@@ -1344,18 +2028,93 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   every other server-rendered page.
 - `GET /markets`, `GET /market/<slug>` — programmatic-SEO landing pages
   (directory + one page per market, e.g. `/market/industrial-ontario-ca`).
+  The directory leads with the **momentum map** (see below) over its grid of
+  cards; each card carries its market's momentum word beside the median.
   **Server-rendered, self-contained HTML** (own inline `<style>`, so they do
   NOT depend on the purged `tailwind.css`) built from `market-seed.json` —
   static data committed to the repo, so pages survive redeploys and serve
-  instantly with no DB. Each page opens with an aerial photograph of the
-  city (curated Wikimedia Commons files in `market-heroes/`, keyed by city
-  in the pure, tested `market-hero.js` — 3840×800 plus a 1920w `srcset`
-  sibling so a full-bleed retina header is not upscaled; `/admin/heroes`
-  is the visual QA, with a file-size/dimension grade in the tested
-  `market-hero-quality.js`. A curated file that fails that grade is skipped
-  on the live header in favour of an Esri aerial of the same city. Explorer markets
-  without a photo fall through to an Esri aerial when we have coordinates,
-  and to no photo rather than the wrong city's skyline). Then: median/quartile $/SF, a cap-rate range, a
+  instantly with no DB. **Every market page opens with a picture of its own
+  city** (2026-08-21), resolved in `market-hero.js` in four steps: a curated
+  Wikimedia Commons file, then a GENERATED one, then an Esri satellite aerial
+  of the city's coordinates, then — only when there is not even a point —
+  nothing. All photos are 3840×800, a 1920w `srcset` sibling, and a
+  768×160 thumbnail for the `/markets` directory (a third stored size, because
+  that page carries every market at once and scaling the 1920w files in the
+  browser would make it a ~10 MB page). They are served from `market-heroes/`
+  rather than hotlinked (Wikimedia asks not to be a CDN), with the credit and
+  licence rendered on the photograph. `/admin/heroes` is the visual QA for BOTH
+  photo layers, with a file-size/dimension grade in the tested
+  `market-hero-quality.js`.
+
+  **The grade skips a FILE, never a city** (`skipFilesFromRows` →
+  `heroFor({ skipFiles })`, changed 2026-08-22). It was city-keyed while a city
+  could only have one photograph; now that a curated pick and a generated one
+  can both exist for one city, a city key would take the good one down with the
+  bad. Not hypothetical: Ontario, CA's curated JPEG is an upscale of a 1600px
+  original, so the generated layer is its understudy, and `/admin/heroes` marks
+  a passing photograph that is not the live one **Standby**. The generator has
+  the matching exception to "never generate for a curated city": it DOES run
+  for one whose stored file fails the grade, measured off the bytes on disk
+  (`curatedFileIsGood`), never configured. Commons has nothing better for
+  Ontario as of 2026-08-22 — six HABS elevations of one packing house — so it
+  stays on a satellite aerial, and the only remaining lever there is a decision
+  nobody has made: whether a soft-but-real photograph beats a satellite tile
+  (the 2026-08-15 rule says it does not).
+
+  **The generated layer** is `market-heroes-auto.json` + `node
+  scripts/auto-market-heroes.js` (`--city "Casper, WY"`, `--dry-run`,
+  `--force`, `--limit N`, `--no-judge`). It exists because the Explorer
+  publishes market pages from real searches, faster than anyone curates
+  photographs for them: on the day it shipped, 21 cities were curated and 13
+  live Explorer markets rendered with no picture at all. Per city it geocodes
+  with Zippopotam (city-check.js's own service), gathers candidates from the
+  English Wikipedia lead image, Commons categories, Commons geosearch and
+  Commons search, ranks them on metadata (`market-hero-pick.js`), encodes the
+  best, grades the encode, and **shows the finished crop to Claude**
+  (`market-hero-judge.js`, ~a cent a city, `HERO_JUDGE_MODEL` to override) —
+  the only step that can tell a skyline from a shopfront. Five rules:
+  - **Its output is COMMITTED, like the curated files.** Render erases its
+    disk on every deploy, so a photograph fetched at runtime would vanish; the
+    script is run deliberately and its JPEGs and JSON go in the same commit.
+    It is not part of `npm start` and requiring it starts nothing.
+  - **Any verdict that is not a clear "good" ships no photograph.** A refusal,
+    an unparseable answer, a failed call and an outright "bad" are one
+    outcome: the satellite aerial, which is always right about WHERE the
+    market is. A wrong good is a wrong city on a public page; a wrong bad
+    costs a tile.
+  - **Metadata cannot prove a city, so provenance does.** A Commons full-text
+    hit must name the city in its title (searching "Casper Wyoming skyline"
+    returns Skyline Drive, Virginia), and a geotagged photograph that does not
+    name it must be within `NEAR_CITY_M` of the middle of it — the first run
+    offered Agoura Hills a Library of Congress aerial of the Malibu coastline.
+  - **The second crop is for a bad CROP, not a bad photograph.** A skyline is
+    mostly sky, so the centred band can be mountains over a sliver of
+    buildings while the picture itself is right (measured on Salt Lake City's
+    lead image). A reviewer complaint about emptiness — and only that — earns
+    one retry lower down the frame.
+  - **Nothing in the generated file is believed on trust.** The file name
+    becomes a URL under `/market-heroes/`, so it goes through the same
+    `FILE_RE` the curated names do, and an entry missing its credit or its
+    Commons title is unattributable and unused.
+
+  **`.github/workflows/market-heroes.yml`** runs the generator monthly (and on
+  a "Run workflow" button), then opens a PR with whatever it found rather than
+  committing to main — a model approving a crop is not the same as somebody
+  having looked at it. Unlike `ci.yml` it needs three repository secrets:
+  `ANTHROPIC_API_KEY` for the reviewer, and the `SUPABASE_URL` /
+  `SUPABASE_SERVICE_KEY` pair, without which it sees only the markets committed
+  to the repo and would miss exactly the Explorer-published cities it exists
+  for. It fails loudly on a missing secret rather than reporting "nothing to
+  do". Setting them is Jacob's; the same command run locally needs nothing but
+  the `.env` that is already there.
+
+  **A market published since the last run of that script is still not blank**:
+  `attachCityCoords` resolves the city's coordinates once at PUBLISH time (both
+  the Explorer and the piggyback publisher) and stores them in the page's own
+  payload, so the satellite aerial is available from the moment the page
+  exists. It is deliberately resolved on the publish path and never on a
+  render — a market page must never wait on a network call — and it fails
+  open, leaving the page exactly as it was before this existed. Then: median/quartile $/SF, a cap-rate range, a
   market summary + `value_drivers` narrative, a recent-comps table (sortable,
   Sale/Lease filter; address links to `source_url` when the snapshot has a
   sanitized http(s) URL), and a CTA — owner valuation for anonymous visitors,
@@ -1364,6 +2123,64 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (edit its `TARGETS` list; it runs one cached search per market against a
   locally-running server and keeps only markets with ≥3 priced sale comps, so
   no thin pages). `sitemap.xml` lists `/`, `/markets`, and every market page.
+
+  **The momentum map** (2026-08-25). `/markets` opens with a Leaflet map of
+  the country, one pin per covered market coloured by that market's
+  expanding / flat / contracting read; **clicking a pin** flies to the city,
+  reveals its real municipal boundary washed in the city's momentum, and
+  opens a card linking every market there. Each market page draws the same
+  boundary under its comp pins, matching the "Momentum" badge already in that
+  card's heading. The rules, in the order a future editor will trip over
+  them:
+  - **`freshDirection` (market-snapshot.js) is the ONE gate** for the
+    three-word vocabulary and the 90-day expiry, on all FOUR surfaces: the
+    Explorer dropdown badge, the `/markets` pins and cards, the market page's
+    badge, and the wash under its comps. `test/routes.test.js` checks every
+    one of them against `/api/markets` market by market — a second copy of
+    the vocabulary or the age gate is what those tests exist to catch.
+  - **Hollow/outlined is NOT flat.** No current read renders an outline
+    making no colour claim, never grey's fill: "we don't know" and "the
+    market is flat" are different statements. `market-area.js` decides the
+    city-level claim when one shape holds several markets (see the
+    pure-modules list above); `mixed` is grey inside an ink ring, and the
+    legend swatch must keep matching what `areaStyle` actually DRAWS — it
+    shipped as a green/red gradient that appeared nowhere on the map.
+  - **`city-bounds.json` is COMMITTED**, like the market-hero JPEGs and for
+    the same reason (Render wipes its disk on deploy, and a page surface must
+    never wait on a network call at render time). `scripts/fetch-city-bounds.js`
+    writes it deliberately — it enumerates seed + dynamic + Supabase markets,
+    MERGES rather than clobbers, skips cities already stored, and takes
+    `--city "Name, ST"` for one. The monthly `Market heroes` workflow runs it
+    too, so an Explorer-published city gets its photograph and its boundary
+    in the same reviewed PR.
+  - **The two map surfaces make OPPOSITE trades on that file, deliberately.**
+    `/markets` may eventually want every city's shape, so it lazy-fetches the
+    whole ~110KB file on the FIRST PIN CLICK (never on page load). A market
+    page wants exactly one city's shape, so it INLINES that geometry in its
+    own blob (314 bytes for Ontario, ~6KB average) and fetches nothing.
+  - **`areaStyle` (directory) and `boundaryStyle` (market page) are ⚠ MIRROR
+    twins** — browser strings inside template literals cannot share code, so
+    every number and token is a deliberate copy, and
+    `test/markets-map-script.test.js` pins the two together plus the presence
+    of every `DIRECTIONS` word in both.
+  - **Every failure degrades to what existed before.** No boundary file, no
+    entry for a city, a degenerate geometry, a blocked Leaflet CDN: the pins
+    stand, the card still opens, and the comp pins still draw. A failed
+    boundary fetch is never memoized (city-check's rule: ok and unknown
+    memoize, an outage does not), so the next click retries.
+  - **The reads expire on a CLIFF.** Every seeded page carries one
+    `generatedAt`, so all of their momentum reads die on the same day
+    (2026-10-12 for the current seed) and the map goes hollow at once.
+    `scripts/check-market-freshness.js` reports the countdown and the weekly
+    **`Market freshness`** workflow fails inside a 30-day window so somebody
+    sees it coming; it needs no secrets. The only real fix is a regeneration
+    (`npm start`, then `node gen-market-seed.js` — one billed search per
+    market). **`scripts/derive-market-direction.js` cannot help**: it fills a
+    MISSING direction from the page's existing trend sentence and never
+    touches `generatedAt`, which is what the age is measured from. One
+    consequence to know rather than fix: `/markets` is cached an hour for
+    anonymous visitors, so on expiry day its pins can stay coloured for up to
+    an hour after the badges elsewhere have gone dark.
 - `POST /api/explore-market` — the **Market Explorer**: generates a
   `/market/<slug>` page on demand from the header search on the app page
   (one billed search per genuinely new market; results meeting the seed
@@ -1477,10 +2294,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   email+password accounts with a server-synced property **portfolio**
   (value-snapshot history per re-run) and an in-app market **watchlist** whose
   updates feed reads the comp corpus. Signed-in searches auto-save to
-  `portfolio_items` (upsert on address + type); Free My Desk is an address
+  `portfolio_items`, upserted on the **verified** address + type since
+  2026-08-21 (migration 035, **run before deploying** — `listPortfolio`
+  SELECTs `verified_key` by name and PostgREST 400s an unknown column, which
+  throws and takes the desk read down until it exists). It upserted on the
+  TYPED address, compared with `===`, which made one building typed three ways
+  three saved properties with three value histories — measured on a real desk
+  (`1210N17th st` / `1210 N 17th st Boise Idaho 83702` / `1210N17th st Boise
+  Id`), all of which the confirm dialog had already geocoded to one place
+  before running the report. Rules live in the pure, tested
+  **`portfolio-match.js`**; the browser sends the label the geocoder verified
+  and server.js stores it normalized. Four rules: it **misses rather than
+  guesses** (a miss costs a duplicate row somebody can delete, a wrong merge
+  destroys one of two value histories and nothing on the desk would show it),
+  so a key that names no street number — `boise, id` is a real geocoder answer
+  — is refused rather than shared; the **typed-address rule is unchanged** as
+  the fallback, which is what keeps every pre-035 row and every report
+  restored from history or a share behaving exactly as before; a stored key is
+  **only ever filled, never rewritten**, so a property keeps its identity even
+  if a later save geocodes differently; and the browser **refuses to send one
+  for an address naming a unit** (`unitDesignatorOf`, the same helper the
+  footprint estimate and the Street View gate use) because geocoders silently
+  drop the unit, so Apt 3 and Apt 5 verify identically. Nothing merges the
+  duplicates already on a desk — that is a decision about whose numbers to
+  keep, and the column has no business making it silently; Free My Desk is an address
   list, Pro is the book of values, and the caps (100 / 500) live in
-  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The `$20`
-  unlock does not auto-save. Auth is built into server.js — scrypt
+  `entitlements.js` as `portfolioMaxItems` / `portfolioValues`. The (retired)
+  `$20` unlock does not auto-save. Auth is built into server.js — scrypt
   (Node built-in) password hashes, 90-day session tokens stored as SHA-256
   hashes, `cn_session` httpOnly cookie. Routes: `POST /api/account/signup|
   login|logout|forgot|reset`, `GET /api/account/me`, `DELETE /api/account`,
@@ -1572,6 +2412,47 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     use of that key), so the link authenticates itself for somebody who is not
     signed in, months later, on a phone. `&on=1` is the same link in reverse —
     a one-way off switch with no way back is a support ticket.
+- **Search demand on the desk** (2026-08-25). Each watched market on My Desk
+  carries a line saying how many people searched it lately: "9 people ran 14
+  searches here in the last 30 days, 6 of them Industrial." It reads
+  `analytics_events`, which has logged every search since long before this
+  shipped; nothing new is recorded and no hot path changed.
+  **Pro-only**, via `canSeeSearchDemand` in `entitlements.js` — Pro, tester and
+  comped-admin get it; a **single-report purchase does not** (the Address
+  Explorer's argument: a $39 unlock buys one property's history, and a
+  market's demand is not scoped to a property), and it is **false on a dark
+  deployment** (the vault's argument, not the Explorer's: it never existed
+  before the tier, and it reports this site's own traffic). A free account
+  gets `demand_locked: true` on the feed item instead of a figure, which the
+  card renders as the standard `.unlock-comps-btn` prompt.
+  The RULES live in the pure, tested **`search-demand.js`**; server.js owns
+  only the read (`demandRowsForMarkets`, filtered at the database — the
+  `/admin` reducer's whole-table scan is right for a dashboard one person
+  opens and wrong for a route every subscriber hits). Four of them exist
+  because each is a way the number could flatter us, and the file's bar is
+  under-claim, never over-:
+  - **The broker's own searches are excluded** (`excludeUserId`). Without it
+    the first thing a broker sees on their home market is themselves,
+    reported as somebody else's interest.
+  - **Explorer sweeps are excluded** (`source: "explore"`). One Pro
+    subscriber walking a market address by address is not demand.
+  - **A `signup_gate` counts** — a blocked visitor wanted the same answer —
+    but is dropped when that visitor completed a search in the same market
+    the same UTC day, because that is one attempt writing two rows.
+  - **People and searches are separate numbers**, and where a row carries no
+    `visitor_id` (anything before migration 026) they all collapse into ONE
+    person rather than one each. Undercounting is the allowed error.
+  Aggregate only: the payload is `{ window_days, searches, viewers, in_type }`
+  and carries no address, email, visitor id or user id.
+  `buildWatchlistFeed(user, ent, cutoffOf, { withDemand: true })` is
+  **opt-in, and only the page opts in** — the digest does not, both because a
+  search count is not news anybody asked to be mailed and because its loop
+  over every account would fire one analytics query per watcher for a figure
+  it discards.
+  **It needs traffic to be worth reading.** At today's volume most markets
+  answer "no one searched this market in the last 30 days", which is honest
+  and is also the site telling a broker how quiet it is. The same
+  prerequisite blocks routing real leads to contributors.
 - `POST /api/redeem-passkey` — redeems `TESTER_PASSKEY` (comped Pro) or
   `VAULT_PASSKEY` (the broker vault) for the signed-in caller's account, on
   one route and one input: 401 if not signed in, rate-limited per IP, and the
@@ -1612,14 +2493,27 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
 - **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). Paid plan
-  gating free reports to **4 comps**, a **36-month** lookback ceiling, and
+  holding free reports to a **36-month** lookback ceiling and
   **5 exports/month** (0 for anonymous visitors — exporting requires an
   account), against Pro's unlimited everything plus report branding.
+  **The comp-list gate is GONE as of 2026-08-21**: `FREE_MAX_COMPS` is
+  `"all"`, so a free account itemizes every comparable the search found,
+  addresses and sources included. It went because the headline value range was
+  already computed from the FULL comp set (comp-gate.js's `locked_basis`), so
+  the gate was withholding the evidence for a number it had already published —
+  and because the same "a crippled free report is not a demo of the paid one"
+  argument had already widened the lookback. `gateReport()` is NOT dead code:
+  it still caps whenever `maxComps` is a number, this tier just stops
+  supplying one, and `test/comp-gate.test.js` keeps exercising the cap through
+  an explicit `cappedEnt` so the machinery stays covered. **The consequence this had for the $20 single-report unlock resolved the same
+  day**: with nothing locked its tile almost never surfaced, and the owner
+  retired the sale outright (2026-08-21, see the single-report section below);
+  purchases already made are honored forever.
   The free lookback was **12 months until 2026-08-04**. It was widened because
   at 12 months the free report often could not compute a valuation at all (the
   hero needs two priced sale comps and dense markets returned one), and because
-  a window that short usually returned ≤4 comps, so the 4-comp gate withheld
-  nothing and the $39 tile never appeared. Not widened further: the window is
+  a window that short usually returned ≤4 comps, so the then-4-comp gate
+  withheld nothing and the $39 tile never appeared. Not widened further: the window is
   clamped BEFORE the search and the model is asked for up to 12 comps
   regardless of plan, so a longer free window grows output — the cost and
   wall-clock driver — on the majority of traffic. The numbers live in
@@ -1628,6 +2522,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   those numbers: Free My Desk is an address list (cap 100), Pro is the book
   of values (cap 500), and the pricing compare table's Portfolio row restates
   it.
+  **Bulk valuation** is Pro-only as well (`canBulkValue` / `bulkMaxAddresses`)
+  — see its own section below.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the
@@ -1653,8 +2549,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   cache, `harvestComps()`, and `maybePublishMarketSnapshot()` keep seeing
   **whole** reports, so one cached search serves free and Pro alike and the
   corpus never starves on free traffic. Selection is sales-before-leases
-  (the hero's range is sales-only, so a free list of leases wouldn't support
-  the number above it) then best-first by a weight that **mirrors
+  (on a sales or mixed search the hero's range is sales-only, so a free list
+  of leases would not support the number above it; a leases-only search
+  headlines the rent range instead — see 3f) then best-first by a weight that **mirrors
   index.html's `compWeight()`** — a deliberate second copy that must stay in
   sync; there is a `⚠` comment on both.
   **`locked_basis`** is the load-bearing idea: one anonymized row per
@@ -1700,47 +2597,39 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   an unrecognized plan is a 400. It used to map everything that wasn't the
   founding plan onto monthly, which is why a $39 button was unsafe to add;
   restoring any such default would re-arm exactly that mischarge.
-  **The single-report unlock — $20 since 2026-08-04** (shipped 2026-08-03 at
-  $39). `plan: "single_report"` opens a Stripe **payment**-mode session, and the
-  `checkout.session.completed` handler writes a `report_purchases` row, after
-  which `computeEntitlements` grants **every Pro capability that can be scoped
-  to a property** — `maxComps: "all"`, `PRO_MAX_LOOKBACK_MONTHS`, unlimited
-  exports, `canBrand` — for that address + type. Four things to know:
-  - **The price lives in Stripe, not here.** The tile's `$20` is prose in
-    index.html; the actual charge comes from `STRIPE_PRICE_SINGLE_REPORT` in
-    Render. **They can disagree, and nothing detects it** — changing the copy
-    without creating a new Stripe price silently mischarges. Always move the
-    Stripe price FIRST (undercharging while the copy is stale is the safe
-    direction), then deploy the copy.
-  - **The report id is derived, never accepted, and is `address|type` —
-    NOT the lookback.** `reportIdFor()` hashes it out of the request body, so a
-    buyer cannot unlock a report they didn't pay for by posting an id. The
-    lookback left the key on 2026-08-04: while it was in there, a re-run at a
-    wider window was a different id that matched no purchase, so a purchase
-    could never carry Pro's ten-year window — which is exactly what the price
-    is now selling. It **mirrors `exportReportKey()` in index.html byte for
-    byte** (⚠ comment on both) — purchase key and export-tally key are the same
-    string, which stops a bought report burning a free export. Consequence:
-    exporting one property at two windows costs one export, not two.
-  - **The Address Explorer is the one Pro capability a purchase does NOT
-    grant** (`canExploreAddresses: pro`). It finds the NEXT property, so it
-    can't be scoped to a report without making $20 a substitute for the
-    subscription. It is deliberately the reason to subscribe.
-  - **The unlock is permanent for that address + type**, not for a
-    frozen set of comps. `report_purchases.comp_snapshot` is **nullable and
-    never written**: the webhook has a session and a payment intent but no
-    report data, and nothing reads a snapshot. If the table was created with
-    `not null`, the ALTER in `migrations/008-pro-billing.sql` must run or every
-    purchase webhook 400s. Re-running the search re-serves it whole from cache.
-  - **Buying returns to `/?purchase=success`, not `/desk`** — the buyer wants
-    the report, and the desk doesn't know which building it was. The address is
-    kept out of the URL; `localStorage.pendingUnlock.v1` carries it across the
-    redirect, and `handlePurchaseReturn()` polls **`POST /api/report-access`**
-    before re-running, so nobody who just paid gets a still-locked report.
-  - **The $39 tile is contextual.** `updateSingleReportTile()` shows it only
-    when a report is on screen with `lockedCount() > 0` and it isn't a shared
-    report. It still lives inside the ONE pricing modal — do not add a second
-    upgrade prompt.
+  **The single-report unlock — RETIRED 2026-08-21** (shipped 2026-08-03 at
+  $39, $20 from 2026-08-04). The one-off that bought every property-scoped Pro
+  capability for one address + type. Retired by the owner the day
+  `FREE_MAX_COMPS` went to `"all"`: with nothing locked inside the free
+  window it was left selling only the ten-year window, and its tile — keyed on
+  `lockedCount() > 0` — almost never surfaced. `single_report` is deleted
+  from `/api/checkout`'s `PLANS` map, so buying it answers the same 400 as
+  any unknown plan (the map's no-fallthrough design is what makes retirement
+  one deletion, pinned by a source scan in `test/routes.test.js`), and
+  `STRIPE_PRICE_SINGLE_REPORT` can be unset in Render and the price archived
+  in Stripe. **Everything else stays, because purchases already made are
+  honored FOREVER** — the unlock was sold as permanent for its address + type:
+  - the `checkout.session.completed` and refund webhook branches still write
+    and revoke `report_purchases` rows (an in-flight checkout can complete
+    after the deploy, and a refund on an old purchase must still land);
+  - `computeEntitlements` still grants per-property Pro (`reportUnlocked`:
+    `maxComps: "all"`, `PRO_MAX_LOOKBACK_MONTHS`, unlimited exports,
+    `canBrand`) when a purchase row matches;
+  - `POST /api/report-access` still answers "do I own this report yet?", and
+    `handlePurchaseReturn()` in index.html still handles a `?purchase=`
+    return — with no seller writing `pendingUnlock.v1` these go quiet on
+    their own, which is the point: the honoring side needs no trigger to
+    remain correct;
+  - `reportIdFor()` still **mirrors `exportReportKey()` byte for byte**
+    (⚠ comment on both) — the purchase key and the export-tally key stay the
+    same string, so an old buyer's report still never burns a free export;
+  - `report_purchases.comp_snapshot` stays nullable and never written.
+  Reselling a one-off later is an owner decision, not a merge accident: the
+  source scan fails the build if `single_report` reappears in `PLANS`, so
+  re-adding it means deleting that test deliberately. If it comes back,
+  re-read this section first — the tile trigger (`lockedCount`), the
+  `/?purchase` return path, and the id-excludes-lookback rule were each
+  earned by a real mistake.
   **Report branding** (shipped 2026-08-08). `GET|PUT|DELETE /api/branding`
   lets a signed-in member save one profile (firm name, preparer, phone,
   email, license number, a short disclaimer, and a logo stored inline as a
@@ -1758,9 +2647,24 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   broker, so a report carrying only a brokerage's mark would read as that
   brokerage's own appraisal. `/api/comps` carries `branding_allowed`
   (`ent.canBrand === true`) on every served report, computed per-report like
-  `exports_remaining` — a $20 single-report buyer's `canBrand` is scoped to
-  the property they bought, not a live Pro subscription, so this cannot be
-  folded into `/api/config`. Two rules a future editor will otherwise break:
+  `exports_remaining` — an existing $20 single-report buyer's `canBrand` is
+  scoped to the property they bought (the sale is retired; the grants are
+  not), not a live Pro subscription, so this cannot be folded into
+  `/api/config`.
+  **The firm fallback (2026-08-29; migration 041, `org_branding`).** A firm's
+  owner/admin saves one profile for the org (`GET|PUT|DELETE
+  /api/org/branding`, write gated on `ORG.canManageMembers`, validation
+  shared with the personal editor), and a member's render falls back to it
+  ONLY when their own profile normalizes to nothing — `brandForRender`'s
+  `firmProfile` argument owns that ordering, own-always-wins, and
+  `canBrand` still gates applying, so a free colleague stays unbranded.
+  Oldest active membership wins if anyone is ever in two firms. The read is
+  `findOrgBrandingFor` in server.js, deliberately fail-open (a failed org
+  read must never cost a member their own letterhead or fail a share) and a
+  SEPARATE table read by a separate function, never columns on `orgs` —
+  `orgsByIds`/`findOrg` name their SELECT columns, the 030/036 hazard. It
+  rides `GET /api/branding` as `firm` and the share snapshot inherits it
+  (auto-share included). Two rules a future editor will otherwise break:
   - **A shared report renders the sender's snapshot and never the viewer's
     own profile.** `POST /api/share` looks up the sender's saved profile at
     share time (only when `user && ent.canBrand`) and writes it into
@@ -1780,7 +2684,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     APPLYING a profile to a report, checked server-side at serialization
     (`/api/comps`'s `branding_allowed`) and again at share time (`POST
     /api/share`'s `ent.canBrand` check before the snapshot). This is what
-    makes the $20 single-report unlock's branding promise fulfillable: the
+    keeps the retired $20 unlock's branding promise fulfillable for the
+    people who bought one: the
     entitlement it grants is scoped to one address+type, so a buyer with no
     Pro subscription can still save a profile in advance and have it apply
     the moment they unlock a report, without the editor itself needing to
@@ -1827,7 +2732,82 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   Enforce it with **separate tables read by separate functions**, not a
   `private` column filtered in the corpus queries — the corpus read path
   swallows its own errors, so one missed filter would leak silently.
-- **Broker vault** (v1 server side, 2026-08-05; no UI yet). `GET|POST|DELETE
+- **Bulk valuation** (2026-08-21; migration `036-bulk-valuations.sql`, **run
+  before deploying**; spec
+  `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md`). A Pro member
+  pastes or uploads a list of addresses and gets a value on each, as one
+  portfolio, at **`/bulk`**. Rules live in the pure, tested **`bulk.js`**; the
+  page is **`bulk-page.js`** (a marketShell BODY, the /brokers pattern, so it
+  carries no chrome of its own); server.js owns the job tables and the worker.
+  Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
+  `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
+  THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
+  catches the three drifting). Every finished row is also upserted into
+  `portfolio_items`, so the valuation lands on My Desk as an ordinary saved
+  property and **`?property=<id>`** on index.html opens it.
+  Seven rules a future editor will otherwise break:
+  - **One number, one place.** A bulk row runs `runCompSearch` and
+    `finishReportForViewer` — the same two functions `/api/comps` runs — and
+    values the result with `VALUATION.valueFromComps`. Those two came OUT of
+    the /api/comps handler for this feature. A second path would make fifty
+    rows disagree with the fifty reports behind them, and nothing on either
+    screen could show it.
+  - **A pasted line is ONE address, whatever commas it holds.** Splitting
+    `123 Main St, Boise, ID 83702` searches for `123 Main St` in no city and
+    reads `83702` as a square footage. Columns are read ONLY when a header row
+    names an address column; then the vault's own `parseCsv` handles the BOM,
+    the quotes and the `#` note lines.
+  - **A job is an invoice.** Every address that misses the cache is its own
+    billed search (~$0.36, 40-70s). Hence `BULK.MAX_ADDRESSES` = 50 as a hard
+    ceiling, `bulkMaxAddresses` as the per-visitor half (the parser clamps the
+    entitlement to its own ceiling, so entitlements can never widen a job),
+    ONE live job per member read from the DATABASE, **`BULK_DAILY_ADDRESSES`
+    as the per-member daily bound** (see its env bullet — one job at a time
+    bounds concurrency, not spend, and without it a member could run ~$63/hour
+    indefinitely), and the count and wall clock said BEFORE the button. There
+    is deliberately **no header-only bypass** like `/api/comps`' `internal`: a
+    bypass a browser was never meant to have must not grow one on a spend
+    amplifier. The two caps split cleanly and should stay split: the per-job
+    number is a PRODUCT limit and lives in `entitlements.js`, the per-day
+    number is a SPEND backstop and lives in an env var, exactly as
+    `maxComps` and `DAILY_SEARCH_CAP` do.
+  - **`canBulkValue` is withheld on a dark deployment AND from a tester.** The
+    vault's asymmetry sharpened: this is not merely an access surface but a
+    SPEND surface, so `PRO_ENABLED=off` (the default) must not hand an
+    unmetered invoice to every visitor, and one `TESTER_PASSKEY` string handed
+    to a group must not become a fan-out. The retired $20 unlock does not
+    reach it either (the Address Explorer's argument: a tool for running fifty
+    OTHER addresses cannot be scoped to one address+type).
+  - **The worker outlives the request, so it holds no `req`/`res`.** That is
+    why `vaultCompsForReport` takes a `user` (2026-08-21) and
+    `orgCompsForReport` dropped the `req` it never read. The per-market vault
+    and firm reads are memoized as PROMISES, not rows: caching rows and
+    filling them in later hands the second and third concurrent rows in a
+    market an empty vault, which is invisible because an empty vault is a
+    normal state.
+  - **A stalled job is decided at READ time**, never by a timer or a boot
+    sweep (migration 025's argument): a worker writes `heartbeat_at` after
+    every row, and a read older than `BULK.STALL_MS` marks the job
+    `interrupted` once. Nothing is lost — finished rows are already written,
+    and re-running the list serves them from cache for free. Reaping also runs
+    before the one-job-at-a-time check, so a deploy mid-run cannot lock
+    somebody out of their own tool for the stall window.
+  - **Nothing is dropped silently, and a failure is not $0.** Places rather
+    than properties, duplicates, unparseable sizes and truncation past the cap
+    are each reported by line number; `BULK.summarize` sums only rows that
+    produced a figure and says how many. `sale_comps` is what a row shows, not
+    the comp count — the band comes from the sales.
+  **The worker is proven end to end** by `test/bulk-run.test.js`, which
+  stands a stub provider in front of `SEARCH_API_URL` and runs a whole job:
+  the search, the valuation, the desk upsert, the harvest, the cache write,
+  the job's completion, and a second run of the same list costing zero
+  searches. It also pins that one failed address costs the row and not the
+  run, and that the vendor's own error text never reaches the member.
+  Deliberately not built (see the spec's §5): mixed types in one job,
+  per-address lookback/details, an automatic resume (re-running IS the resume,
+  free from cache), a shareable portfolio, and any scheduling.
+- **Broker vault** (v1 server side 2026-08-05; the `/vault` page followed on
+  2026-08-06 — see "The `/vault` PAGE lives in `vault-page.js`" below). `GET|POST|DELETE
   /api/vault*` — the broker's private comp store. DDL in
   `migrations/013-broker-vault.sql` (**run before deploying**); plan in
   `docs/superpowers/plans/2026-08-05-broker-vault-v1.md`. Routes:
@@ -2288,10 +3268,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       the columns in its payload — coordinates travelling in it would mean a
       later upload that omitted them **wiped** the ones already stored. The
       PATCH filters `lat=is.null`, so a located building is never rewritten.
-    - **`geo_source` is only ever `'broker'`.** `'census'` is import-time
-      geocoding — step 2, deferred by the owner's §7 decision (zero real vault
-      uploads exist, so the question it answers cannot be measured yet, and it
-      is where the rate limit and retry policy would live). A test pins this.
+    - **`geo_source` is `'broker'` from the spreadsheet, `'census'` from the
+      import-time geocode — and the broker always wins.** Step 2 shipped
+      2026-08-29 (the §7 deferral was "buy it with evidence"; the roadmap
+      moved it to Next once the CSV mapper made `lat`/`lng` mappable):
+      `scheduleVaultGeocode` in server.js runs at the tail of
+      `linkVaultProperties`, fire-and-forget on `scheduleCorpusLocate`'s
+      contract, and geocodes up to 25 of an import's unlocated buildings
+      through `geocodeCensus` — our own in-process Census call, never
+      Nominatim, never the browser. It reads AND patches with `lat=is.null`,
+      and it runs after the broker-coordinate PATCHes, so a building the
+      broker located is never even read, let alone rewritten. A miss or an
+      outage is a skip, never a guess (outages are not cached in `GEO_MEM`,
+      so the next trigger retries). Pre-existing books backfill 8 per vault
+      read, riding `attachPropertyCoords` the way the corpus backfill rides
+      its own read. The pure filter is
+      `PROPS.propertiesNeedingGeocode` (`broker-properties.js`);
+      `test/vault-geocode-run.test.js` proves the wall end to end against
+      the fake PostgREST and a census stub on `CENSUS_API_URL` (test-only
+      env, `RESEND_API_URL`'s precedent — decides where a private address is
+      posted, so trusted config, unset in production).
   - **Gut check** (v4 slice 1, 2026-08-08; spec
     `docs/superpowers/specs/2026-08-08-gut-check-design.md`). A panel on
     `/vault` compares the broker's per-bucket median $/SF and cap rates
@@ -2491,23 +3487,116 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   exists specifically to catch drift between the two copies.
 - `GET /healthz` — health check for hosting platforms.
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
-- `GET /` — serves `index.html`. The same handler covers `/index.html`,
+- `GET /` — serves `index.html`. **For a signed-in member `/` opens the
+  WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
+  board and their own properties, with the real search desk above them. That
+  is the whole firm-first reorganization, and three rules hold it up:
+  - **The search desk stays visible on the workspace.** `showDeskView()` used
+    to hide `#searchSection`; it now shows it. Landing a member on a home page
+    with no address field would be worse than the page it replaced, so the
+    route change was only made after this one. It is the REAL `#compForm`, not
+    a compact copy — one form, one set of ids, read by `targetRange()`, the
+    footprint estimate, every report restore and the confirm dialog. A second
+    "launcher" would be a second address input to keep in step.
+  - **A report yields the workspace** rather than rendering under it, at BOTH
+    seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
+    Without both, comps stream in below the firm shelf.
+  - **The boot decision reads `looksSignedIn()`, never `currentUser`** (it runs
+    before the account bootstrap resolves, so every member would see the
+    marketing stack for a beat), and **`/r/<id>` is excluded by name** — a
+    shared report is somebody else's link and must never open the reader's own
+    desk. `popstate` mirrors the same rule, so Back to `/` does not drop a
+    member on marketing.
+  **`/desk` is kept working rather than redirected to `/`.** It is linked from
+  Stripe checkout returns *with a query string*, the watchlist digest, org
+  invite emails and `/bulk`; a 302 would drop the query and dead-end those.
+  Home moved by opening the same view, not by moving the URL. The five desk
+  decks now lead with **Your firm** (was third of five), and the label a person
+  reads is **Workspace** everywhere — prose says "your workspace" lowercase.
+  One duplicate is left undecided on purpose: for a member, `marketBar`'s
+  `Home` and the new `Workspace` link are the same destination. Suppressing
+  Home for members was tried and reverted — two tests defend that link for
+  signed-in visitors by name. See the comment on that line.
+  The same handler covers `/index.html`,
   `/desk`, and `/r/<id>`, and matches on the **path only** (`req.url` split at
   `?`). That matters: Stripe returns from checkout to `/desk?checkout=success`,
   and an exact `req.url` match 404'd it — along with every campaign link to
-  `/?utm_source=…`. Every other route in server.js still tests `req.url`
-  directly, so keep the query string in mind when adding one.
+  `/?utm_source=…`. **Every page route now does the same** (2026-08-28):
+  `pagePath` is declared beside `staticPath` and is what `/markets`,
+  `/market/<slug>`, `/broker/<slug>`, `/market-preview/<slug>`,
+  `/how-it-works`, `robots.txt` and `sitemap.xml` match on — the first three
+  of those were still testing `req.url`, so Facebook's own `?fbclid=…` made
+  every shared market page a 404 for whoever clicked it. A new PAGE route
+  belongs on `pagePath`; the API routes deliberately keep their exact
+  `req.url` matches, since a client calls those by an address it constructs
+  rather than one a person shares. `test/routes.test.js` walks every public
+  page with a tag on the end and checks the canonical still points at the
+  clean URL, so the fix cannot trade a dead link for duplicate entries in
+  Search Console.
+  **It is templated three times at serve time**, and the third one varies by
+  visitor: `NAV_LINKS`, `INAPP_BOOT`, and — since 2026-08-23 —
+  **`authBoot()`** at an `<!--AUTH_BOOT-->` marker in `<head>`. That last one
+  exists because this file ships one set of bytes to everybody and then
+  corrects them from `/api/config` and `/api/account/me`, so until those
+  landed a signed-in member saw a signed-OUT app: measured with the account
+  read slowed, "Sign in" in the header at 78ms and — in the frame where
+  config had answered and the account read had not — the search form replaced
+  by the wall's signup card at 1170ms. A race, so it is worst when the
+  database is slow. It carries two facts, both free of a database read on a
+  route that runs on every page view: `ACCOUNT_WALL` (a server constant, so
+  exact) and session-cookie **presence** (the wall's own cheap rule twenty
+  lines above it). Four rules:
+  - **Keying on a cookie is safe here ONLY because index.html is
+    `no-store`.** `/how-it-works` does the same signed-in swap and has to
+    carry `vary: cookie` and drop its hour cache to do it; there is no cached
+    copy of this file to hand to the wrong visitor.
+  - **It is a stand-in, and index.html retires it.** `refreshAccountUI()` —
+    the one function that runs after `/api/account/me` on every path,
+    including the failed one — drops `cn-in`/`cn-locked` and writes the truth
+    itself. That is what makes the `!important` safe: left standing, an
+    expired session would keep the "Sign in" button hidden by CSS the JS
+    cannot reach, i.e. a member who cannot sign back in.
+  - **`applySearchLock()` reads `looksSignedIn()`, never `currentUser`
+    alone**, and `accountWall` is seeded from the boot object rather than
+    defaulting to false. That pair is what fixes the big flash — the card
+    appeared because that function ran once with the wall off and once with
+    it on. The hint is consulted only until `authKnown` flips.
+  - **Presentation only**, like everything else the wall drives: a forged
+    cookie buys the sight of an account menu with nothing behind it, because
+    every limit is still enforced server-side.
+  `test/auth-boot.test.js` pins the server half (the right classes for the
+  right visitor, in both wall states) and the index.html half (the marker,
+  the retirement, and that every id the boot CSS names still exists).
 
 **`index.html`** — the entire front-end (Tailwind vendored as `tailwind.css`,
 html2canvas via CDN).
 Holds the form, password gate, results rendering, sortable table, and the
 CSV / PNG / Print-to-PDF exporters. The main form's controls row is **three
 cells on one line** (`sm:grid-cols-3`): Focus, Lookback and **Property SF**.
-It was briefly a 2x2 grid (2026-08-16) carrying the asking price as a fourth
-cell; the price moved down into "Details for comps" on 2026-08-17 (owner's
-call) and the row went back to one line, so `.rd-row-2up` and its
+Since 2026-08-23 that row sits **inside `<details id="searchSettings">`,
+behind a line stating its current values** ("Sales & leases · last 24 months ·
+size from public records", with a `Change` affordance), so the form asks for
+an address and nothing else. The app already held an answer to all three: two
+have defaults, the window's own caption says "Recommended for Industrial", and
+the size is looked up from public records or the footprint on most searches —
+asking is now stating. **The line is DERIVED, never written once**
+(`refreshSearchSettingsLine`), and that is the whole cost of the change: three
+visible controls explain themselves, while a stale summary describes a search
+that is not the one about to run, with the controls it describes hidden. Only
+the lookback has a funnel (`setLookbackControls`); focus and size are assigned
+directly by `rerunHistory`, the shared-report restore, the record-backed size
+autofill and `dropMachineSize`, none of which fire an event, so each calls the
+refresh itself. The footprint estimate is the one machine write that needs no
+call of its own, because it dispatches `input` on `#targetSize`. A test pins
+every one of those seams and another executes the function, because the
+failure is invisible on screen. Every field id is unchanged, so
+`targetRange()`, the footprint estimate and every report restore are
+untouched.
+The row was briefly a 2x2 grid (2026-08-16) carrying the asking price as a
+fourth cell; the price moved down into "Details for comps" on 2026-08-17
+(owner's call) and the row went back to one line, so `.rd-row-2up` and its
 wrapped-grid border rules are gone from the style block rather than left
-sitting unused. Three is the ceiling: the build chamber is ~552px, so a
+sitting unused. Three is still the ceiling: the build chamber is ~552px, so a
 fourth cell leaves ~106px of content and `.rd-lab`'s tracking wraps the label
 to two lines — and `.rd-cell:last-child` cannot see a wrapped grid, which is
 what the deleted rules existed to patch. **Asking price is a Refine field
@@ -2571,8 +3660,9 @@ private row has not earned. Two rules matter when editing anything down here:
   storing that miss would deny the Nominatim fallback to the public callers
   still entitled to it. Public comps are untouched by all of this.
   Owen owns the other half (migration 017, `lat`/`lng` in the vault CSV,
-  `toApiComp` lifting them onto the comp); **import-time geocoding is
-  deliberately deferred**. Moving `/api/geocode` to POST ranked above it and
+  `toApiComp` lifting them onto the comp); **import-time geocoding shipped
+  2026-08-29** — the rules live in the Private-comp coordinates bullet under
+  the broker vault above. Moving `/api/geocode` to POST ranked above it and
   **shipped 2026-08-17** — see that route's entry above; the address a private
   comp sends to our own proxy no longer lands in a URL.
 
@@ -2671,7 +3761,10 @@ private row has not earned. Two rules matter when editing anything down here:
    seams** — `renderOwnerHero` and `beginAssembly` — because assembly puts the
    hero on screen a minute before the real render repaints it, so without the
    second one a house sits under the previous report's noun for the whole
-   search. The basis line reads its field name from `SIZE_LABELS[meta.type]`
+   search. `setHeroTitle` takes the transaction focus as well as the type for
+   the same reason (2026-08-21): worded at only one seam, a leases-only search
+   would read "What This Building Is Worth" for that whole minute and then
+   flip to "Rents For". The basis line reads its field name from `SIZE_LABELS[meta.type]`
    and **not** from `#targetSizeLabel`, because a shared report renders
    somebody else's type into a form still labelled for whatever this visitor
    last searched.
@@ -2759,6 +3852,88 @@ private row has not earned. Two rules matter when editing anything down here:
    failure), not an ambitious list price. **User-typed
    asking price wins** (`askingRangeFrom`); the looked-up listing is the
    fallback that lights the comparison card when the visitor never typed one.
+
+3f. **A leases-only report headlines RENT, not a missing sale price**
+   (2026-08-21). Until this, `txFocus: "leases"` produced a hero with three
+   dashes, the line "No priced sale comps came back in this window", and a
+   button offering to re-run the whole search as SALES. Nothing had failed —
+   the comps were in the table — the report was answering a question nobody
+   asked, and it cost a billed search to find that out. Five rules:
+   - **The figure is `MARKETSNAP.rentFromComps`, the market pages' own
+     function**, reached from the browser rather than copied. `market-snapshot.js`
+     is dual-exported for this (browser global `MARKETSNAP`, `maxAge: 0`,
+     exactly like `valuation.js`, `gut-check.js` and `explore-query.js`). It
+     cannot be computed once on the server and shipped, because excluding a
+     comp has to move it; and a second copy of `leaseRentPsfYr` would be a
+     second answer to whether `$1.08/SF/month ($12.96/SF/yr)` is 1.08 or 12.96.
+   - **Gated on the SEARCH being leases-only** (`meta.txFocus === "leases"`),
+     not on "no sale comps came back", so a sales search that returned nothing
+     usable still says so and still offers the wider re-run.
+   - **Quoted in the market's own basis, off ONE annual figure.** The figure
+     is always annual (`leaseRentPsfYr` normalizes on the way in,
+     `rentFromComps` medians one canonical number) — that half is
+     broker-vault.js 029's rule and never bends, because a book holding two
+     bases quotes three rents for one lease. The DISPLAY is
+     `MARKETSNAP.leaseQuoteBasis`, which reads the basis off the comps'
+     own rate strings and divides by 12 for display only: California
+     industrial and retail quote MONTHLY, so "$16.20/SF/yr" in Fontana is a
+     number nobody there says out loud. **Evidence only, and the leading quote
+     wins** — `$1.08/SF/month ($12.96/SF/yr)` is one monthly vote, not one
+     each; a bare numeric `price_per_sqft` votes for neither; a tie is annual.
+     Note the deliberate asymmetry with `parseRentBasis`, which REFUSES to
+     default: that one writes a stored figure where a guess is 12x wrong
+     forever, while this one only picks a display unit for a number that is
+     already correct, so annual is at worst unidiomatic. The cost translation
+     in the trust line stays a YEAR figure in both bases and says "a year".
+   - **Under-claims like everything else here.** Two priced leases minimum,
+     never a one-comp band. Unlike `robustPpsfRange` there is no `trimmed`
+     flag to lean on — `rentFromComps` interpolates quartiles at any count —
+     so below four leases the trust line says it is a rough guide itself.
+   - **`lastValuation` and `currentPsfBand` stay null through this branch.**
+     A rent is not a value, and everything downstream of those two (the
+     asking-price check, the BOV, a portfolio save) means dollars of building.
+   - **The furniture follows the noun.** The heading (`setHeroTitle`, which
+     takes `txFocus` so BOTH seams word it the same), the scatter caption
+     (`compNoun`), the estimate disclaimer (`#ownerEstimateNote`, reset every
+     render), the no-range copy, and the widen button's re-run focus. Found by
+     rendering one, not by reading the diff: the branch was right the first
+     time and three pieces of furniture around it still said "sales".
+   - **The mechanics half describes the math that actually ran.** The
+     collapsed "How this range is calculated" explained the headline with
+     `compWeight` and the trend index, and the rent range applies NEITHER —
+     `rentFromComps` takes plain unweighted quartiles — so it was not odd
+     phrasing but an untrue account of how the figure was reached. It is
+     chosen off `leaseHero`, a flag set INSIDE the branch and never derived
+     from `leaseRent` being non-null (a leases-only search where somebody
+     typed an NOI and a cap rate still leads with the income approach). The
+     Residential MLS sentence is **omitted rather than reworded** on a rent
+     range: MLS, a CMA and an appraisal are all sale-price instruments, and
+     residential rental listings are ordinarily web-visible in a way MLS sales
+     are not, so there is no true lease version of that claim.
+   - **Every $/SF figure on the page says which rate it is.** The hero may
+     quote per MONTH while the comp table's `price_per_sqft` column and the
+     Market Avg tile hold the ANNUAL figure, so an unlabelled 13.5 under a
+     headline of $1.18 is the one number a reader could take for a monthly
+     rate and be 12x out. `columnsForType(type, txFocus)` relabels that column
+     `$/SF/yr` on a leases-only report and `renderStatTiles` does the same for
+     the tile. **Label only, never convert**: that column is shared with sale
+     reports and feeds sorting and the exports, and a column meaning different
+     things on different reports is the two-bases hazard broker-vault.js
+     refuses to take on. It relabels a COPY, or the first lease report would
+     leave `$/SF/yr` on every sale report after it in the same session, and
+     the test executes both column sets to prove nothing else moved.
+   - **The lead ask follows the noun too, and the lead itself does not.**
+     `bovCopy(meta)` gains a leases branch: "Get a free Broker Opinion of
+     Value / Want a real number?" under a rent range offers a SALE price and
+     reads as the report disowning the figure it just published. It is the
+     Residential branch's fix one report type over, and the same rule — the
+     words change, `openLeadModal("bov")` does not, so the broker inbox, the
+     coverage-gated intro and the BOV tracker are untouched. **Residential is
+     read FIRST**: a house that rents is a Residential report, and the trust
+     line's screen-only pointer ("A local agent below can confirm it") is
+     Residential-only and names that button by its noun, so a lease branch
+     above it would say agent above and leasing broker below — the drift that
+     block's own ⚠ warns about.
 
 3. **All valuation math is client-side; the model only supplies market
    figures.** `renderOwnerHero()` in `index.html` computes the Low/Likely/High

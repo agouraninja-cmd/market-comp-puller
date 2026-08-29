@@ -81,6 +81,14 @@ function distanceHalfLifeMiles(propType) {
   return propType === "Residential" ? 2 : 4;
 }
 
+// ⚠ MIRRORS valuation.js defaultFreePassMiles (and, through it,
+// blend-corpus.js radiusMilesFor). The free pass decides which comps rank
+// highest, so if the gate and the hero disagree the 4 comps a free visitor is
+// shown stop being the 4 that moved the number.
+function defaultFreePassMiles(propType) {
+  return propType === "Residential" ? 1 : 10;
+}
+
 function priceTierFactor(compPsf, subjectPsf) {
   if (!(compPsf > 0) || !(subjectPsf > 0)) return 1;
   const octaves = Math.abs(Math.log2(compPsf / subjectPsf));
@@ -101,7 +109,7 @@ function compWeight(c, asOfMs, subjectSqft, opts) {
   }
   const mi = numericValue(c && c.distance_mi);
   const halfLife = distanceHalfLifeMiles(propType);
-  const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : 1;
+  const freePass = Number(o.radiusMiles) > 0 ? Number(o.radiusMiles) : defaultFreePassMiles(propType);
   if (mi >= 0 && Number.isFinite(mi) && mi > freePass) w *= Math.pow(0.5, (mi - freePass) / halfLife);
   if (propType === "Residential") w *= priceTierFactor(salePsf(c), o.subjectPsf);
   const tier = tierOf(c);
@@ -131,7 +139,19 @@ function selectVisible(comps, limit, { asOfMs = Date.now(), subjectSqft = 0, pro
   const scored = all.map((c, i) => ({
     c, i, w: compWeight(c, asOfMs, subjectSqft, { propertyType, radiusMiles, subjectPsf }), lease: isLease(c),
   }));
-  const byRank = (a, b) => (b.w - a.w) || (a.i - b.i);
+  // Distance breaks a weight tie before index does. Inside the free pass every
+  // comp weighs the same by design, so without this the slot would go to
+  // whichever one the model happened to list first — and once the CRE free
+  // pass moved out to 10 miles, that started meaning a 9-mile comp could beat
+  // an identical one across the street. Only applied when both comps carry a
+  // distance: a comp the map has not placed is neutral here, never penalized,
+  // and falls through to index exactly as before.
+  const byRank = (a, b) => {
+    if (b.w !== a.w) return b.w - a.w;
+    const da = numericValue(a.c && a.c.distance_mi), db = numericValue(b.c && b.c.distance_mi);
+    if (Number.isFinite(da) && Number.isFinite(db) && da !== db) return da - db;
+    return a.i - b.i;
+  };
   const sales = scored.filter((x) => !x.lease).sort(byRank);
   const leases = scored.filter((x) => x.lease).sort(byRank);
 

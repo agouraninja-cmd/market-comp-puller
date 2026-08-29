@@ -730,6 +730,22 @@ if(dd)dd.open=false;});</script>
       <p class="sub" style="margin-top:0"><span id="pdfCount">0</span> deals in <span id="pdfName"></span>.
         Uncheck any that aren't yours. Fix a cell if we misread it. Nothing is saved until you import.</p>
       <p class="note" id="pdfStrip"></p>
+      <!-- The per-sheet rent basis (2026-08-29). Lease sheets routinely state
+           a rate and never the word "annual" or "monthly" because within a
+           market it goes without saying — measured at 4 refused rows in the
+           2026-08-28 extraction verdict. The basis stays required per ROW
+           (migration 029: a guess is 12x wrong), so the sheet-level answer is
+           STAMPED into the rows where the broker can see it, cell by cell,
+           and a hand-edited cell always wins. Rendered only when a row
+           actually needs it — the Buy-button rule. No default, on purpose. -->
+      <p class="note hide" id="pdfBasisRow">This sheet's rents are quoted
+        <select id="pdfBasis" aria-label="Rent basis for this sheet">
+          <option value="">choose…</option>
+          <option value="annual">annually</option>
+          <option value="monthly">monthly</option>
+        </select>
+        — filled into rows that don't say.
+      </p>
       <div class="tw"><table id="pdfTable">
         <thead id="pdfHead"></thead>
         <tbody id="pdfBody"></tbody>
@@ -1356,6 +1372,11 @@ if(dd)dd.open=false;});</script>
   // that is a happy accident of the parsers, not something to lean the display
   // on — the raw value is what gets compared and sent.
   function cellDisplay(k,v){
+    // A stored null deal_date IS the undated sentinel (042), and the word is
+    // what the parser accepts back — so it is both the display AND the raw
+    // value (cellInput below), letting a broker type a real date over it and
+    // have the edit land through the ordinary cell PATCH.
+    if(k==="deal_date"&&(v==null||v===""))return "undated";
     if(v==null||v==="")return "";
     if(k==="price")return money(v);
     if(k==="size_sqft")return num(v);
@@ -1382,7 +1403,9 @@ if(dd)dd.open=false;});</script>
     return Math.max(7,Math.min(CELL_MAX_CH[k]||24,n+3));
   }
   function cellInput(c,k){
-    var raw=c[k]==null?"":c[k],shown=cellDisplay(k,c[k]);
+    // deal_date's raw mirrors its display for the undated case — "undated" is
+    // a real input value the server accepts, unlike "" which it refuses.
+    var raw=c[k]==null?(k==="deal_date"?"undated":""):c[k],shown=cellDisplay(k,c[k]);
     return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
       '" data-raw="'+escA(raw)+'" value="'+escA(shown)+
       '" style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
@@ -2989,12 +3012,40 @@ if(dd)dd.open=false;});</script>
     return out;
   }
 
+  // ⚠ MIRROR of broker-vault.js's refusal copy ("rent_basis is required with
+  // a rent — …"). The needle is how the basis selector knows which part of a
+  // row's error IT can cure; pinned by test against the module's own message,
+  // because a reworded refusal would silently stop curing anything. The
+  // server re-validates every imported row regardless (normalizeRow's verdict
+  // is recomputed at import, never trusted from this screen).
+  var RENT_BASIS_NEEDLE="rent_basis is required with a rent";
+  function stripBasisError(err){
+    if(err==null)return null;
+    var parts=String(err).split("; ").filter(function(p){
+      return p.indexOf(RENT_BASIS_NEEDLE)<0;
+    });
+    return parts.length?parts.join("; "):null;
+  }
+  // A row the sheet-level basis may write into: it has a rent, and its basis
+  // is either absent or something THIS selector wrote earlier (stampedBasis),
+  // so re-choosing corrects a mis-pick without ever touching a cell a person
+  // typed into.
+  function pdfNeedsBasis(r){
+    var v=r&&r.values?r.values:{};
+    var hasRent=v.rent_psf!=null&&String(v.rent_psf)!=="";
+    var hasBasis=v.rent_basis!=null&&String(v.rent_basis)!=="";
+    return hasRent&&(!hasBasis||r.stampedBasis===true);
+  }
+
   function openPdfPreview(info){
     pdfPending=info||{filename:"",rows:[]};
     var rows=pdfPending.rows||[];
     rows.forEach(function(r){
       r.values=r.values||{};
-      r.checked=r.error==null;
+      // Derived only the FIRST time this row is drawn: the basis selector
+      // re-renders the table, and a checkbox the broker set by hand must
+      // survive that.
+      if(typeof r.checked!=="boolean")r.checked=r.error==null;
     });
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
@@ -3017,8 +3068,16 @@ if(dd)dd.open=false;});</script>
     });
     var failBit=fail?(allDate?fail+" need a date":fail+" need a fix"):"";
     $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
+    // The sheet-level basis row, only when a row can actually take it, with
+    // the current choice surviving a re-render.
+    var needsBasis=rows.some(pdfNeedsBasis);
+    $("pdfBasisRow").classList.toggle("hide",!needsBasis);
+    $("pdfBasis").value=pdfPending.rentBasis||"";
     $("pdfMsg").innerHTML="";
     $("pdfMsg").classList.add("hide");
+    // Re-renders (the basis selector) must not smooth-scroll the page back to
+    // a section the broker is already looking at.
+    var alreadyOpen=!$("pdfSec").classList.contains("hide");
     $("mapSec").classList.add("hide");
     $("pdfSec").classList.remove("hide");
     $("addSec").classList.add("hide");
@@ -3049,8 +3108,31 @@ if(dd)dd.open=false;});</script>
       }
     });
     refreshPdfGo();
-    $("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
+    if(!alreadyOpen)$("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
+
+  // Choosing a basis writes it into every row that needs one — visibly, cell
+  // by cell — and cures the rows whose ONLY blocker it was: their error
+  // clears and they check themselves. A row with other problems keeps its
+  // remaining errors and its tint. Registered once; the selector lives
+  // outside #pdfBody so it survives the re-render it triggers.
+  $("pdfBasis").addEventListener("change",function(){
+    if(!pdfPending)return;
+    var chosen=$("pdfBasis").value;
+    if(chosen!=="annual"&&chosen!=="monthly")return;
+    pdfPending.rentBasis=chosen;
+    (pdfPending.rows||[]).forEach(function(r){
+      if(!pdfNeedsBasis(r))return;
+      r.values.rent_basis=chosen;
+      r.stampedBasis=true;
+      var left=stripBasisError(r.error);
+      if(left!==r.error){
+        r.error=left;
+        if(left==null)r.checked=true;
+      }
+    });
+    openPdfPreview(pdfPending);
+  });
 
   function closePdfPreview(){
     $("pdfSec").classList.add("hide");
@@ -3567,7 +3649,11 @@ if(dd)dd.open=false;});</script>
     var hasRaw=el.getAttribute&&el.getAttribute("data-raw")!==null;
     var shown=hasRaw?cellDisplay(key,v):(v==null?"":String(v));
     if(hasRaw){
-      if(el.setAttribute)el.setAttribute("data-raw",v==null?"":String(v));
+      // deal_date's raw mirrors cellInput's rule: a stored null IS the
+      // undated sentinel, and "undated" is the input the server accepts —
+      // "" would be refused on the next save of this cell.
+      var raw=v==null?(key==="deal_date"?"undated":""):String(v);
+      if(el.setAttribute)el.setAttribute("data-raw",raw);
       el.value=shown;
     }
     // Re-widen for what is now in the cell. Typing a longer address than the

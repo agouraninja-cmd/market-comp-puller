@@ -204,6 +204,14 @@ function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
         if (req.method === "GET") {
           let rows = applyFilters(tables[table], params);
           rows = applyOrder(rows, url.searchParams.get("order"));
+          // `offset` is taught deliberately, like the filters above: server.js
+          // sends it (the vault export pages with limit+offset until an EMPTY
+          // page comes back; vaultReadPayload sends it too). A fake that
+          // ignored it answered the FIRST page to every request, so the
+          // export's pagination loop never saw an empty page and spun forever
+          // — a hang in the suite where production would have paged cleanly.
+          const offset = Number(url.searchParams.get("offset"));
+          if (Number.isFinite(offset) && offset > 0) rows = rows.slice(offset);
           const limit = Number(url.searchParams.get("limit"));
           if (Number.isFinite(limit) && limit > 0) rows = rows.slice(0, limit);
           return json(200, rows);

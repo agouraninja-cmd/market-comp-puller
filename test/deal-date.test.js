@@ -12,6 +12,11 @@ test("parseDealDate returns null for empty and on-market sentinels", () => {
   assert.equal(parseDealDate("Listed Apr 2026"), null);
   assert.equal(parseDealDate("Active listing 2025-2026"), null);
   assert.equal(parseDealDate("2024-2025"), null);
+  // The vault's own dateless sentinel (042). It never reaches the corpus
+  // (canPublish refuses an undated comp), but the word must stay unparseable
+  // here the way "Active" is — a sentinel a date parser could read would stop
+  // being a sentinel.
+  assert.equal(parseDealDate("undated"), null);
 });
 
 test("parseDealDate still parses closed-looking month-year strings", () => {

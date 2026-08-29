@@ -1,0 +1,33 @@
+-- 042: a broker's vault may hold a deal with NO date (2026-08-29).
+--
+-- The 2026-08-28 extraction verdict measured the cost of `deal_date` being
+-- required: a capital-markets report whose transactions table has no date
+-- column at all lost every one of its 9 real, named deals to the refusal.
+-- The fix is an explicit sentinel, not a relaxed parser: normalizeRow now
+-- accepts the literal word "undated" (a statement) and stores SQL NULL,
+-- while a BLANK date stays refused exactly as before (an accident).
+--
+-- What a null deal_date means downstream, all by construction:
+--   - excluded from every report blend and lookback (`deal_date=gte.` is
+--     NULL-false in SQL);
+--   - unpublishable (canPublish refuses a comp without a date);
+--   - unshareable to a firm (org_comps.deal_date stays NOT NULL — a firm
+--     comp must window into colleagues' reports; the share route refuses
+--     with a named reason);
+--   - the dedupe key's middle segment is empty (`addr||price`), which the
+--     string-keyed design already handles.
+--
+-- RUN BEFORE DEPLOY — the 038 hazard shape: the upload inserts rows in one
+-- PostgREST batch, and a single undated row against the NOT NULL refuses the
+-- broker's whole spreadsheet. Deploy-first costs an import, not just the
+-- feature.
+--
+-- Widening only; nothing to back out and a re-run is a clean no-op.
+-- migrations/verify.js cannot see nullability (it checks tables and columns
+-- through PostgREST), so this file's own check below is the verification.
+
+alter table broker_comps alter column deal_date drop not null;
+
+-- Verify (expect one row: is_nullable = 'YES'):
+-- select is_nullable from information_schema.columns
+--  where table_name = 'broker_comps' and column_name = 'deal_date';

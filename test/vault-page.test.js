@@ -3038,3 +3038,152 @@ test("every column the confirm table can show has a human label", () => {
       `the confirm table would head that column "${k}"`);
   }
 });
+
+// --- The undated comp on the compact table (042) -----------------------------
+
+test("an undated comp's date cell reads and holds the word, not a blank", async () => {
+  // A stored null deal_date IS the sentinel, and "undated" is the one input
+  // the server accepts back — a blank raw would make the next save of this
+  // cell refuse ("deal_date is required"), locking the broker out of the very
+  // cell that could fix it.
+  const c1 = comp({ id: "c1", address: "200 Cottontail Ln", deal_date: null, price: 21500000 });
+  const { doc } = await runPage([c1]);
+  const cell = cellOf(doc, "deal_date");
+  assert.equal(cell.value, "undated");
+  assert.equal(cell.getAttribute("data-raw"), "undated");
+});
+
+// --- The sheet-level rent basis on the confirm table (2026-08-29) ------------
+//
+// Lease sheets state a rate and never the word "annual" or "monthly" because
+// within a market it goes without saying — 4 refused rows in the 2026-08-28
+// extraction verdict. The basis stays required per ROW (a guess is 12x wrong);
+// the sheet-level answer is the broker's, stated once and stamped visibly.
+
+const VAULTMOD = require("../broker-vault.js");
+
+function leaseValues(overrides) {
+  return Object.assign({
+    address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial",
+    transaction: "lease", deal_date: "2026-03-12", rent_psf: "16.20",
+  }, overrides || {});
+}
+
+// Rows built through the REAL classifier, so the error strings the selector
+// must cure are the module's own, never a hand-copied guess.
+function extractOf(rows) {
+  return () => Promise.resolve(jsonResponse(200, {
+    filename: "leases.pdf",
+    rows: VAULTMOD.classifyExtractRows(rows),
+  }));
+}
+
+test("the selector's error needle is broker-vault's own refusal — the mirror pin", () => {
+  const refusal = VAULTMOD.normalizeRow(leaseValues()).errors.join("; ");
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const m = /var RENT_BASIS_NEEDLE="([^"]+)"/.exec(script);
+  assert.ok(m, "the page must hold the needle as a named constant");
+  assert.ok(refusal.includes(m[1]),
+    `the module's refusal no longer contains the page's needle ("${m[1]}") — ` +
+    "rewording broker-vault.js's message silently stops the selector curing anything");
+});
+
+test("the basis row renders only when a row can take it", async () => {
+  // A sheet with no rents: the control would be furniture that does nothing.
+  const { doc } = await runPage([], null, {
+    extract: extractOf([{ ...leaseValues(), transaction: "sale", rent_psf: "", price: "1000000" }]),
+  });
+  await choosePdf(doc, "leases.pdf");
+  assert.ok(doc.getElementById("pdfBasisRow").classList.contains("hide"),
+    "no row has a basisless rent, so the selector must not render");
+});
+
+test("choosing a basis stamps the rows, cures the basis-only failures, and posts it", async () => {
+  let posted = null;
+  const { doc } = await runPage([], null, {
+    extract: extractOf([
+      leaseValues(),                                   // only blocker: the basis
+      leaseValues({ address: "88 Freight Ln, Boise ID", rent_psf: "1.2M" }), // rent unreadable too
+    ]),
+    upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })); },
+  });
+  await choosePdf(doc, "leases.pdf");
+  assert.equal(doc.getElementById("pdfBasisRow").classList.contains("hide"), false,
+    "a basisless rent is on the sheet, so the selector renders");
+
+  const sel = doc.getElementById("pdfBasis");
+  sel.value = "annual";
+  sel.fire("change");
+
+  const rows = doc.getElementById("pdfBody").querySelectorAll("tr");
+  const boxes = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.type === "checkbox");
+  assert.equal(boxes[0].checked, true,
+    "the row whose ONLY blocker was the basis cures itself and checks in");
+  assert.equal(boxes[1].checked, false,
+    "a row with another problem keeps it — the basis cures only what it caused");
+  const basisCells = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.getAttribute("data-k") === "rent_basis");
+  assert.equal(basisCells[0].getAttribute("data-raw"), "annual",
+    "the stamp is visible in the row's own cell, not an invisible option");
+
+  doc.getElementById("pdfGo").click();
+  await tick();
+  assert.ok(posted, "the import should have posted");
+  assert.equal(posted.rows.length, 1, "only the cured row was checked");
+  assert.equal(posted.rows[0].rent_basis, "annual",
+    "the basis travels IN the row — zero server change, one validation path");
+});
+
+test("a basis the sheet stated, or a hand-typed one, is never overwritten", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractOf([
+      leaseValues({ rent_basis: "monthly" }),          // the sheet said monthly
+      leaseValues({ address: "88 Freight Ln, Boise ID" }),
+    ]),
+  });
+  await choosePdf(doc, "leases.pdf");
+
+  const sel = doc.getElementById("pdfBasis");
+  sel.value = "annual";
+  sel.fire("change");
+
+  const basisCells = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.getAttribute("data-k") === "rent_basis");
+  assert.equal(basisCells[0].getAttribute("data-raw"), "monthly",
+    "a stated basis wins over the sheet-level answer, always");
+  assert.equal(basisCells[1].getAttribute("data-raw"), "annual");
+
+  // Re-choosing corrects the SELECTOR's own stamps and nothing else.
+  sel.value = "monthly";
+  sel.fire("change");
+  const again = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.getAttribute("data-k") === "rent_basis");
+  assert.equal(again[1].getAttribute("data-raw"), "monthly",
+    "a stamped row follows a corrected pick");
+});
+
+test("a checkbox the broker set by hand survives the selector's re-render", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractOf([
+      leaseValues({ address: "1 Ready Way, Boise ID", rent_psf: "", transaction: "sale", price: "1000000" }),
+      leaseValues(),
+    ]),
+  });
+  await choosePdf(doc, "leases.pdf");
+  const before = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.type === "checkbox");
+  assert.equal(before[0].checked, true, "the clean row starts checked");
+  // The broker unchecks the clean row (not theirs), then states the basis.
+  before[0].checked = false;
+  before[0].fire("change");
+
+  doc.getElementById("pdfBasis").value = "annual";
+  doc.getElementById("pdfBasis").fire("change");
+
+  const after = doc.getElementById("pdfBody").querySelectorAll("input")
+    .filter((el) => el.type === "checkbox");
+  assert.equal(after[0].checked, false,
+    "the re-render must not resurrect a row the broker unchecked by hand");
+  assert.equal(after[1].checked, true, "while the cured row still checks in");
+});

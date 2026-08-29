@@ -2854,6 +2854,25 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     because base64 costs a third more than the bytes it carries. The
     `vault_extract` analytics event names the kind (`ok:image:5`), which is
     the only place "do brokers bring PDFs or screenshots?" can be counted.
+  - **The confirm table carries a per-sheet rent basis** (2026-08-29). Lease
+    sheets state a rate and never the word "annual"/"monthly" — within a
+    market it goes without saying — which made them close to unimportable
+    (4 refused rows in the 2026-08-28 extraction verdict). The basis stays
+    required per ROW (migration 029: a guess is 12x wrong); the sheet-level
+    answer is the broker's, chosen once on `#pdfBasisRow` (rendered only
+    when a row has a rent and no basis — the Buy-button rule, and no
+    default) and STAMPED visibly into exactly those rows' cells, curing the
+    rows whose only blocker it was. A stated or hand-typed cell always wins
+    (`stampedBasis` tracks the selector's own writes). The needle it cures
+    by (`RENT_BASIS_NEEDLE` in vault-page.js) is a ⚠ mirror of
+    broker-vault.js's refusal, pinned by test; the server re-validates every
+    imported row regardless. The value travels IN the rows — zero server
+    change. Three extract-prompt rules shipped with it, all pinned in
+    test/routes.test.js: the `undated` sentinel scoped to
+    document-has-no-date-column; rent_basis never inferred from market
+    convention; and addresses street-verbatim with "City, ST" completion
+    only when the document itself proves the state — the 2026-08-28
+    verdict's dedupe-key instability, made deterministic.
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
@@ -3207,6 +3226,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     number rather than stored as a best effort — a wrong number in a broker's
     own records is worse than a rejected row, because nobody will notice it.
     Pure and tested (`npm test`, 64 cases).
+  - **The one way past "deal_date is required" is the literal word `undated`**
+    (2026-08-29; migration 042 dropped the column's NOT NULL — run before
+    deploy, the 038 hazard shape). A blank stays refused (an accident); the
+    word is a statement, for real documents that date none of their deals
+    (the 2026-08-28 extraction verdict's capital-markets report lost all 9
+    rows to the refusal). Stored as SQL null; excluded from every report
+    blend and lookback by SQL semantics (`deal_date=gte.` is NULL-false);
+    unpublishable; unshareable to a firm (`org_comps.deal_date` stays NOT
+    NULL and `POST /api/vault/firm` refuses by name — and editing a shared
+    comp to undated PULLS the firm copy rather than leaving it stale). The
+    sentinel is contained by an opt-in flag on `parseDate` — only the
+    deal_date call passes `{ undatedOk: true }`, so `lease_expiry`,
+    `option_notice_date` and the hub's manual-comp date keep refusing the
+    word. `validateEdit` presents a stored null back as `undated` (without
+    that, an undated comp is permanently uneditable), the book export writes
+    `undated` for the null so export → re-import round-trips (an option only
+    that route passes — the confirm path must never turn a missing date into
+    a statement), and the compact table's date cell shows AND holds the word.
+    `test/vault-undated-run.test.js` proves the whole loop against a real
+    server.
   - **Every read is scoped by `user_id`**, including the DELETE — without it,
     knowing another broker's upload id would be enough to delete their data.
   - **The property dimension** (`migrations/016-broker-comps-star.sql`, **run

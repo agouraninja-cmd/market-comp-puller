@@ -24,6 +24,16 @@ so the rows below still stand on their own evidence until a service-key
 machine re-runs `node migrations/verify.js` and updates the "Full schema
 verified" line.
 
+**The new checks were proved to FIRE before being trusted**, against a
+throwaway PostgREST stub answering PostgREST's own signals (404/`PGRST205`
+for a table, 400/`PGRST204` for a column). A healthy stub answered
+"Everything present" at 46 tables / 70 columns, exit 0; a stub with all six
+new checks absent named each one under the right migration file and exited
+1. That is worth knowing because of what it rules out: when the real run
+finally happens, a dirty result is the SCHEMA, not a mis-typed table name or
+a column check that never ran. A row silently checking nothing is exactly
+the failure this file exists to catch, and it is invisible in a passing run.
+
 **The one migration the tool can never see is 037**: it only widens the
 `orgs_kind_check` CHECK constraint, and PostgREST exposes no read-only way to
 inspect a constraint — proving it would mean inserting a `tenant_rep` row,

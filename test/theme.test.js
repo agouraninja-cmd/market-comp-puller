@@ -293,13 +293,18 @@ test("the dark-mode footer ink reaches all three server-rendered footers", () =>
   assert.equal(definitions.length, 1, "FOOTER_DARK_CSS must be defined exactly once");
   assert.match(SERVER_JS, rule, "server.js does not define the dark footer link rule");
 
-  // Interpolated into both server-side stylesheets, and handed to the vault.
+  // Interpolated into both server-side stylesheets.
   const uses = SERVER_JS.match(/\$\{FOOTER_DARK_CSS\}/g) || [];
   assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate it");
-  assert.match(SERVER_JS, /renderVaultHTML\(boot, \{[^}]*FOOTER_DARK_CSS/s,
-    "the vault must be handed FOOTER_DARK_CSS through the chrome object");
-  assert.match(VAULT_JS, /chrome\.FOOTER_DARK_CSS/, "vault-page.js must read it");
-  assert.match(VAULT_JS, /\$\{FOOTER_DARK_CSS\}/, "vault-page.js must interpolate it");
+  // The vault used to be HANDED this block, because it built its own document
+  // and therefore its own footer. Since Task 9 (2026-08-30) it renders a body
+  // inside marketShell and gets the real MARKET_FOOTER, so it receives the
+  // rule the way every other page does — by being inside the stylesheet that
+  // interpolates it. There is no third footer left to keep in step, which is
+  // the point of the fold; test/vault-shell.test.js proves the served page is
+  // a marketShell render, footer included.
+  assert.ok(!/chrome\.FOOTER_DARK_CSS/.test(VAULT_JS),
+    "vault-page.js should no longer take footer chrome — marketShell owns it");
 
   // And it must not have quietly gone back to a token that inverts.
   assert.equal(/\[data-theme="dark"\] footer[^{]*\{color:var\(--ink-4\)\}/.test(SERVER_JS), false,
@@ -390,9 +395,13 @@ test("every in-scope server page can set the theme before first paint", () => {
   const howEnd = SERVER_JS.indexOf("\nfunction ", howStart + 10);
   const howShell = SERVER_JS.slice(howStart, howEnd);
   assert.ok(howShell.includes("THEME_BOOT"), "renderHowItWorksHTML lacks the boot script");
-  // vault-page.js: Task 6 landed THEME_BOOT in its <head> (interpolated, not
-  // a literal copy -- see the "vault takes its tokens from theme.js" test).
-  assert.ok(VAULT_JS.includes("THEME_BOOT"), "vault-page.js lacks the boot script");
+  // vault-page.js had its own head, and Task 6 put THEME_BOOT in it. Task 9
+  // (2026-08-30) retired that head: the page is a body inside marketShell now,
+  // so the marketShell window checked above IS the vault's boot script too.
+  // Asserted from the other side, because a file that stops emitting a head is
+  // exactly how this could regress unnoticed.
+  assert.ok(!VAULT_JS.includes("THEME_BOOT"),
+    "vault-page.js is a body now; a boot script in it would be the second on the page");
 });
 
 test("the toggle is rendered once per page, in the shared nav", () => {
@@ -912,7 +921,10 @@ test("the vault takes its tokens from theme.js rather than its own copy", () => 
   // It must not keep a literal copy that can drift.
   assert.equal(/:root\{\s*--ink:#/.test(VAULT_JS), false,
     "vault-page.js still declares its own literal :root token block");
-  assert.ok(VAULT_JS.includes("THEME_CSS"), "vault-page.js does not interpolate THEME_CSS");
+  // It does not interpolate THEME_CSS either since Task 9 (2026-08-30): it is a
+  // body inside marketShell, and MARKET_CSS opens with that block. The rule
+  // this test exists for — no literal token copy in this file — is the
+  // assertion above, and it is unchanged.
 });
 
 test("no raw hex colour remains in vault-page.js's style block outside the deliberate allowlist", () => {
@@ -1119,10 +1131,14 @@ test("the header CompNinja mark themes, and the footer mark does not", () => {
   assert.match(logo, /class="cn-logo"/, "CN_LOGO is missing class=\"cn-logo\"");
   assert.equal(light.includes("cn-logo"), false,
     "CN_LOGO_LIGHT picked up the themed class -- the footer mark would invert");
+  // vault-page.js left this list on 2026-08-30 (Task 9). It carried the rule
+  // because it drew its own header and therefore its own logo; it draws
+  // neither now, so a copy of this rule in that file would style nothing and
+  // would be one more thing to keep in step. The two stylesheets that DO wrap
+  // a header are the two that must carry it.
   for (const [where, css] of [
     ["MARKET_CSS", cssBlock("MARKET_CSS")],
     ["HOW_CSS", cssBlock("HOW_CSS")],
-    ["vault-page.js", VAULT_JS],
   ]) {
     assert.ok(css.includes(".cn-logo rect{fill:var(--ink)}"),
       `${where} is missing the .cn-logo rect rule`);

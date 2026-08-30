@@ -141,9 +141,31 @@ Pricing is a modal in one file today, so it can never be linked, indexed, or sen
 - Modify: `vault-page.js`, `hub-page.js`, `server.js`
 - Modify: `test/vault-page.test.js`, `test/hub-page.test.js`
 
-- [ ] Port `/vault` to render a **body** through `marketShell`, retiring its hand-written header — including its drifted Explore menu (Markets and "Run a report", missing Download) and its truncated Escape script.
-- [ ] `hub-page.js` is **client-facing** — recommend it does **not** get the rail: a hub is shown to someone else's client, who is not inside your product.
-- [ ] Run `npm test` — green.
+- [x] Port `/vault` to render a **body** through `marketShell`, retiring its hand-written header — including its drifted Explore menu (Markets and "Run a report", missing Download) and its truncated Escape script. **Done 2026-08-30.**
+- [x] `hub-page.js` is **client-facing** — it does **not** get the rail: a hub is shown to someone else's client, who is not inside your product. Confirmed, and pinned in `test/vault-shell.test.js` so it stays a decision rather than an oversight.
+- [x] Run `npm test` — green (2612).
+
+**What it actually cost, for whoever folds the next stray shell.** The header
+and footer were the easy half. The hard half is that `MARKET_CSS` lands on a
+document that already has a complete design system of its own, and the two
+independently use `.card`, `.ledger`, `.lcell`, `.btn`, `table`, `th` and `td`
+for DIFFERENT components — so every property the vault does not itself set
+falls through to MARKET_CSS's rule. Six did: a margin on `.ledger` and on
+`.card`, a right border and a flex basis on `.lcell`, and tabular figures on
+every column plus a 180px first column on the comps table. None of it was
+visible by reading either file; all of it was found by rendering a populated
+twelve-comp vault before and after and diffing 28 computed styles. Repeat that
+diff for any future fold. The durable half of the work is the invariant it
+produced: `test/vault-shell.test.js` COMPUTES the leak set from the two
+stylesheets rather than listing it, so a property added to a MARKET_CSS rule
+years from now fails the build.
+
+Two things were carried across on purpose: **Inter** (`INTER_FONT_HEAD`), which
+MARKET_CSS names in its body rule and which no server-rendered page actually
+fetches — every other page was designed against the system fallback and this
+one was not; and the page's **stylesheet position**, emitted in the BODY after
+MARKET_CSS, because `marketShell`'s `head` parameter comes before it and would
+lose on equal specificity.
 
 ### Task 10: Docs
 

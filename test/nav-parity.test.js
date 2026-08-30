@@ -158,31 +158,11 @@ test("a session that turns out to be invalid loses the rail on every surface", (
     "the shared script must never ADD the rail after paint");
 });
 
-test("the vault's footer is not a dead end", async (t) => {
-  // It was four lines of prose and NOT ONE LINK. Survivable while the page
-  // wore a top bar with an Explore dropdown in it; a dead end the moment the
-  // rail took that dropdown away, because below 900px the header is the only
-  // navigation on the page and above it the footer is where every other
-  // surface keeps these.
-  const srv = await boot({});
-  t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
-  const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
-  assert.ok(footer.length > 0, "/vault has no footer at all");
-  for (const href of ["/markets", "/brokers", "/firms", "/how-it-works", "/terms", "/privacy", "/download"]) {
-    assert.ok(footer.includes('href="' + href + '"'), "/vault's footer cannot reach " + href);
-  }
-  // One source, not a fourth hand-copy: these are the same columns
-  // MARKET_FOOTER renders, so a link added there arrives here too.
-  assert.match(SERVER_JS, /const FOOTER_LINK_COLS =/, "the columns were not extracted");
-  assert.equal(SERVER_JS.split("FOOTER_LINK_COLS").length - 1, 3,
-    "FOOTER_LINK_COLS should be declared once, then used by MARKET_FOOTER and by the vault");
-  // ...and the rules that draw them travel with the markup, or this page's own
-  // anchor colour paints them red on the navy slab.
-  assert.match(VAULT_JS, /\$\{FOOTER_LINKS_CSS\}/,
-    "the vault renders the columns with no rules for them");
-  // The rules themselves are shared rather than pasted a third time: MARKET_CSS
-  // and HOW_CSS take the same const, which is what RAIL_CSS's own note argues.
-  assert.equal(SERVER_JS.split("FOOTER_LINKS_CSS").length - 1, 4,
-    "FOOTER_LINKS_CSS should be declared once, then used by MARKET_CSS, HOW_CSS and the vault");
-});
+// "the vault's footer is not a dead end" lived here for two days and has moved
+// to test/vault-shell.test.js (Task 9, 2026-08-30). It asserted that the vault
+// was handed MARKET_FOOTER's link columns as a shared const, because the page
+// still built its own footer around them. It renders MARKET_FOOTER itself now,
+// so the plumbing it pinned no longer exists — and the promise it was really
+// making, that /vault has a way onward, is asserted there against the served
+// page instead. Nothing was dropped; it stopped being this file's business
+// when the vault stopped being the odd one out.

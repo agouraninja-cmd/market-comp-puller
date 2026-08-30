@@ -75,7 +75,7 @@ const HUBCOMP = require("./hub-comp.js");
 // The /vault page itself. A web page, so it is Jacob's file, which is exactly
 // why it is no longer inline here: it used to be a 475-line block in the
 // middle of server.js, and editing it meant editing this file.
-const { renderVaultHTML } = require("./vault-page");
+const { renderVaultBody } = require("./vault-page");
 // The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
 const { renderHubHTML } = require("./hub-page");
 // The 1031 identification worksheet. A web page, so it is not server code —
@@ -8225,6 +8225,20 @@ function authBoot(signedIn) {
     (cls ? `document.documentElement.className+=${JSON.stringify(cls)};` : "") +
     `</script>\n`;
 }
+
+// Inter, for the one marketShell page that has always loaded it. MARKET_CSS
+// names the family in body{} and NO server-rendered page fetches it — they all
+// fall back to system-ui, which is what they were designed against. /vault was
+// built as its own document and did load it, so folding it onto the shell
+// (Task 9) would have silently changed the typeface on the page brokers use
+// daily. Passed through marketShell's `head`, which is emitted BEFORE
+// MARKET_CSS: right for a font, which wants fetching early and competes with
+// nothing. Give this to another page only if that page really should look
+// different from its neighbours.
+const INTER_FONT_HEAD =
+  `<link rel="preconnect" href="https://fonts.googleapis.com"/>\n` +
+  `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>\n` +
+  `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>\n`;
 
 // Paired so the mobile browser chrome agrees with the page it frames.
 const THEME_META =
@@ -24606,48 +24620,28 @@ const server = http.createServer((req, res) =>
         vary: "cookie",
         "x-robots-tag": "noindex, nofollow",
       });
-      res.end(renderVaultHTML(boot, {
-        CN_LOGO,
-        MARKET_CSS,
-        FOOTER_DARK_CSS,
-        // The footer's link columns and their rules (2026-08-30). This page's
-        // footer carried no links at all, which was survivable while its
-        // header had an Explore dropdown and stopped being so the moment the
-        // rail took that dropdown away. Same route as FOOTER_DARK_CSS and
-        // RAIL_CSS: the const is shared, never re-pasted here.
-        FOOTER_LINK_COLS,
-        FOOTER_LINKS_CSS,
-        THEME_CSS,
-        THEME_BOOT,
-        ACCOUNT_NAV_CSS,
-        ACCOUNT_NAV_JS,
-        ACCOUNT_NAV_SLOTS: accountNavSlots({ desk: false }),
-        ACCOUNT_NAV_PRICING,
-        // The rail, on the last signed-in surface that was still wearing the
-        // top bar. The vault draws its own stylesheet, so it takes the shared
-        // const rather than a third copy of the rules — the same route
-        // ACCOUNT_NAV_CSS and FOOTER_DARK_CSS already travel by.
-        //
-        // This is NOT the chrome fold (the plan's Task 9, which retires this
-        // page's hand-written header entirely and renders it through
-        // marketShell). That is a much larger change to the page holding
-        // brokers' private books, and it is still owed. This is the shell
-        // consistency on its own, which is what a member actually sees.
-        RAIL_CSS,
-        // PRE-GATED, so vault-page.js keeps taking strings and nothing else.
-        // That file's header comment is explicit that it is a pure render and
-        // that every read stays in server.js behind vaultReadPayload's gate,
-        // so an auth decision inside it would be the first exception to a rule
-        // worth keeping. The route already has the answer.
-        //
-        // Empty in two cases and they collapse into one string: NAV_SHELL=bar
-        // (the rollback lever, which must reach this page like every other),
-        // and an anonymous render (the rail marks "you are inside the
-        // product"). Cookie PRESENCE decides the second, the same cheap rule
-        // every marketShell page uses -- the real gate is the boot payload
-        // resolved above; this only picks which shape the chrome takes.
-        NAV_SHELL_CLASS:
-          parseCookies(req)[SESSION_COOKIE] && NAV_SHELL_CLASS ? NAV_SHELL_CLASS : "",
+      // marketShell, like every other server-rendered page (Task 9, 2026-08-30).
+      // This route used to hand vault-page.js a twelve-key chrome object so it
+      // could rebuild the head, the header and the footer by hand; all of that
+      // is the shell's now, and the page renders a body.
+      res.end(marketShell({
+        title: "Broker Vault · CompNinja",
+        description: "Your private comp workspace.",
+        canonical: `${SITE_URL}/vault`,
+        noindex: true,
+        // Cookie PRESENCE, the wall's own cheap rule and what every other
+        // marketShell page uses -- the real gate is the boot payload above,
+        // resolved through vaultReadPayload. This only picks the chrome.
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/vault",
+        // Inter, which marketShell does not load and this page has always
+        // used. MARKET_CSS names the family in body{}, so without this the
+        // vault would silently fall back to system-ui -- the one visible
+        // regression the fold could have shipped. `head` is emitted BEFORE
+        // MARKET_CSS, which is exactly right for a font: it must be fetched
+        // early, and it is not competing with anything.
+        head: INTER_FONT_HEAD,
+        body: renderVaultBody(boot),
       }));
     })();
     return;

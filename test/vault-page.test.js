@@ -15,9 +15,19 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const { renderVaultHTML } = require("../vault-page");
+const { renderVaultBody } = require("../vault-page");
 
-const CHROME = { CN_LOGO: "<svg></svg>", MARKET_CSS: "" };
+// The page renders a BODY since Task 9 (2026-08-30) — the doctype, head,
+// header and footer are marketShell's, like every other server-rendered page.
+// Everything this file asserts about is inside that body (its stylesheet, its
+// markup, and the ~550 lines of browser JavaScript the first test compiles),
+// so the call sites keep their shape through this shim rather than being
+// rewritten forty times. CHROME is what the old signature's second argument
+// was; it is ignored now, and kept only so those call sites still read.
+// Chrome assertions did NOT move in here — they belong to marketBar and
+// MARKET_FOOTER, and routes.test.js and nav-parity.test.js own them.
+const CHROME = {};
+const renderVaultHTML = (boot) => renderVaultBody(boot);
 
 function comp(o) {
   return Object.assign({
@@ -129,45 +139,29 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
   assert.match(html, /id="repBox"[^>]*class="dbox hide"|class="dbox hide" id="repBox"/);
 });
 
-test("the vault header carries the site's browse links, not a short Search bar", () => {
-  // These used to sit inside an Explore <details>. They are flat rows now,
-  // because the rail hides every nav <details> and THIS page's footer is four
-  // lines of prose with no links in it — a hidden dropdown here would have
-  // stranded Pricing, Markets, the 1031 guide and Run a report, leaving the
-  // whole of /vault's navigation as Workspace and Vault.
-  //
-  // What this test has always been about is unchanged: the vault shows the
-  // SITE's links rather than a stubby local nav. Only their container moved.
-  const html = renderVaultHTML(boot([]), CHROME);
-  // /how-it-works left the Explore menu 2026-08-25 (and /brokers came back
-  // 2026-08-29); the 1031 guide is the entry that has been in this menu
-  // throughout, so it is what proves these are the site links rather than a
-  // Search bar.
-  assert.match(html, /href="\/1031-exchange"/);
-  assert.match(html, /href="\/markets"/);
-  assert.match(html, /aria-current="page">Vault/);
-  assert.doesNotMatch(html, />Search</);
+// The two header tests that used to sit here — "the vault header carries the
+// site's browse links" and "passed-in account-nav chrome lands in the vault
+// header" — are GONE rather than adapted (Task 9, 2026-08-30). Both asserted
+// that this file rebuilt the site's chrome correctly, and it no longer builds
+// any: marketBar does, for every page at once. Asking this file about a header
+// it does not render would pin nothing. What they were really protecting —
+// that /vault is not left with a stubby local nav — is now asserted against
+// the SERVED page in test/vault-shell.test.js, where it covers the real
+// header rather than this file's copy of one.
 
-  // And they must be reachable with the rail on, which is the failure this
-  // page was one edit away from shipping. Nothing browse-related may sit
-  // inside a <details> here, whatever else the header grows.
-  const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  assert.ok(!nav.includes("<details>"),
-    "a browse dropdown in the vault's nav is invisible in rail mode and has no footer to fall back on");
-});
-
-test("passed-in account-nav chrome lands in the vault header", () => {
-  const html = renderVaultHTML(boot([]), {
-    CN_LOGO: "<svg></svg>",
-    MARKET_CSS: "",
-    ACCOUNT_NAV_CSS: ".hdr nav [hidden]{display:none!important}",
-    ACCOUNT_NAV_JS: "<script>(function(){})();</script>",
-    ACCOUNT_NAV_SLOTS: '<details id="navAcct" class="acct" hidden></details>',
-    ACCOUNT_NAV_PRICING: '<a id="navPricing" href="/?pricing=1" hidden>Pricing</a>',
-  });
-  assert.match(html, /id="navAcct"/);
-  assert.match(html, /id="navPricing"/);
-  assert.match(html, /\.hdr nav \[hidden\]\{display:none!important\}/);
+test("the body renders no chrome of its own", () => {
+  // The half of the fold that can regress silently: someone re-adds a header,
+  // a footer or a doctype here "so the page looks right on its own", and the
+  // page ships two of each.
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  for (const tag of ["<!DOCTYPE", "<html", "<head", "<body", "<header", "<footer", "<main"]) {
+    assert.ok(!html.includes(tag), "the vault body re-grew a " + tag + " — marketShell owns that");
+  }
+  // It opens with its stylesheet, which is the load-bearing part: MARKET_CSS
+  // is emitted in the head, so these rules must come after it in document
+  // order to win on equal specificity.
+  assert.ok(html.trimStart().startsWith("<style>"),
+    "the page stylesheet must lead the body, after MARKET_CSS in document order");
 });
 
 test("add-comp and BOV use a form grid rather than a wrapping row", () => {

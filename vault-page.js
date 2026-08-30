@@ -40,6 +40,15 @@ function renderVaultHTML(boot, chrome) {
   // same navy slab with the same selectors, and that block already carries a
   // "keep the three in step" warning it has not always been kept in step with.
   const FOOTER_DARK_CSS = chrome.FOOTER_DARK_CSS || "";
+  // The footer's link columns and the rules that draw them, taken whole for
+  // the same reason as FOOTER_DARK_CSS above and RAIL_CSS below. Until
+  // 2026-08-30 this page's footer was four lines of prose and not one link:
+  // fine while the header carried an Explore dropdown, a dead end the moment
+  // the rail took that dropdown away. The CSS has to come with the markup —
+  // this file's global anchor rule paints links red, which on the navy footer
+  // slab is the one place that colour must not be used.
+  const FOOTER_LINK_COLS = chrome.FOOTER_LINK_COLS || "";
+  const FOOTER_LINKS_CSS = chrome.FOOTER_LINKS_CSS || "";
   const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
   const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
@@ -545,6 +554,11 @@ footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border
 footer .wrap{padding:36px var(--s6)}
 footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
+/* The link columns sit under the prose rather than beside it: this footer's
+   .wrap is a plain padded block, not the two-column flex MARKET_CSS gives its
+   own, and a broker's page has no reason to grow one. */
+footer .cols{margin-top:26px}
+${FOOTER_LINKS_CSS}
 ${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
 ${RAIL_CSS}
@@ -1058,6 +1072,7 @@ if(dd)dd.open=false;});</script>
 <footer><div class="wrap">
   <span class="wordmark">Comp<b>Ninja</b></span>
   <p>Private broker workspace. Your comps are never read into public records unless you choose to publish them.</p>
+  ${FOOTER_LINK_COLS}
 </div></footer>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>

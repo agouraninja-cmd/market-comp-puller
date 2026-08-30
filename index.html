@@ -933,11 +933,31 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         padding: 7px 20px; text-align: left; border-left: 3px solid transparent;
       }
       html.nav-rail .rd-appbar > nav > button:hover { background: var(--wash); }
+      html.nav-rail .rd-appbar > nav > a:hover { background: var(--wash); }
+      /* Where the reader already is (2026-08-30). Every server-rendered rail
+         has marked its own row since the rail shipped -- marketBar passes
+         `current`, which writes aria-current on the matching link -- and this
+         one marked nothing, so the app was the single page in the product
+         where the sidebar could not say which page you were on. markNavCurrent()
+         writes the attribute here; the values mirror MARKET_CSS's rule exactly
+         so the highlight does not change shape when a member leaves the app. */
+      html.nav-rail .rd-appbar > nav > a[aria-current="page"] {
+        color: var(--ink); font-weight: 500;
+        border-left-color: var(--red-fill); background: var(--wash);
+      }
       /* Explore has nowhere to open in a 224px column; its links live in the
          footer, exactly as on the server-rendered pages. */
       html.nav-rail #exploreMenuWrap { display: none; }
       /* The account cluster sits at the foot, and its menu opens UPWARD: the
-         default top-9 would put it off the bottom of the viewport from there. */
+         default top-9 would put it off the bottom of the viewport from there.
+         The theme toggle rides just above it, on the same margin the shared
+         rail gives its own #themeToggle -- a compact switch, not a nav row, so
+         it opts out of the 7px/20px row box the rule above hands every other
+         button in here. */
+      html.nav-rail #themeToggleApp {
+        margin: 6px 20px 0; padding: 0; border-left: 0;
+        align-self: flex-start; background: none;
+      }
       html.nav-rail #acctMenuWrap {
         margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
       }
@@ -2036,24 +2056,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <div id="settingsModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <div class="rd-lab">Settings</div>
-      <!-- Appearance. The toggle is the SAME element the header bar used to
-           carry (moved 2026-08-23): same id, same handler, same moon/sun
-           swap, so test/theme.test.js's mirror and icon checks hold. Light
-           is the default; a click flips to dark and is remembered. -->
-      <div class="mt-4 flex items-center justify-between gap-4">
-        <div>
-          <div class="text-sm font-medium text-[#1A2433]">Appearance</div>
-          <p class="text-xs text-[#68707E] mt-0.5">Light unless you switch it. Remembered on this browser.</p>
-        </div>
-        <button id="themeToggleApp" type="button"
-          class="text-[#5A6473] hover:text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5 leading-none"
-          aria-label="Switch colour theme" title="Switch colour theme">
-          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
-          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
-        </button>
-      </div>
+      <!-- Appearance moved OUT of this panel and back into the nav on
+           2026-08-30, where marketBar has carried it on every server-rendered
+           page since the rail shipped. It came here on 2026-08-23, five days
+           before the rail existed; once the rail landed, the app was the only
+           surface in the product whose theme control was two clicks inside a
+           modal while every other page showed it as a row. Same element, same
+           id, same handler -- only the parent moved. -->
       <!-- Plan. Copy comes from billingStatusCopy() (the desk plan card's
            generator); the buttons obey pricingLink's and menuBillingBtn's
            exact visibility rules, applied inside refreshBillingUI(). The
@@ -2192,7 +2201,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              .rd-appbar styles `> nav > a` alongside its buttons already
              (#menuVaultLink relies on that too), so one markup serves the
              rail and the bar. -->
-        <button id="myDeskLink" type="button" class="hover:text-[#1A2433] font-medium">Workspace</button>
+        <!-- An anchor, not a button (2026-08-30). Every other row in this rail
+             and every row marketBar renders is a real link; this one being a
+             button meant the workspace alone could not be middle-clicked,
+             opened in a new tab, or previewed on hover -- on the row a member
+             uses most. The href is /desk, the URL that already serves this
+             view and is already linked from the digest, org invites and the
+             Stripe returns, so it is a destination that exists rather than one
+             invented for the markup. The handler below still swaps the view in
+             place for a plain left-click, and stands aside for a modified or
+             middle click, so nothing navigates that did not navigate before. -->
+        <a id="myDeskLink" href="/desk" class="hover:text-[#1A2433] font-medium">Workspace</a>
         <!-- The vault's only entrance. It lived inside the account dropdown
              until 2026-08-29; in rail mode that buried a daily workspace two
              clicks down a menu pinned to the foot of the sidebar, so it is a
@@ -2204,7 +2223,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              not a button: /vault is its own server-rendered page, and the
              rail already styles `.rd-appbar > nav > a` alongside its
              buttons, so one markup serves rail and bar alike. -->
-        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Your vault</a>
+        <!-- "Vault", not "Your vault" (2026-08-30). marketBar, /vault's own
+             header and every server-rendered rail call the same destination
+             Vault, so the app was the one surface where the row a member is
+             looking at renamed itself the moment they clicked it. -->
+        <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Vault</a>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
         <!-- The guide is a bar row for a MEMBER and a menu item for a stranger
              (owner's, 2026-08-30). The row above it earns its slot for both
@@ -2228,6 +2251,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              entitlements.js owns. Ships hidden, like the vault link. -->
         <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Bulk valuation</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
+        <!-- The theme toggle, back in the nav (2026-08-30) where every
+             server-rendered header carries it -- accountNavSlots renders the
+             identical control as `#themeToggle` on /markets, /vault, /bulk and
+             the rest, so leaving the app's inside the settings modal made this
+             the one page in the product where the switch was not on screen.
+             Same id and same handler as before the move, which is what keeps
+             test/theme.test.js's mirror and moon/sun checks pointing at one
+             element. It sits immediately before the account cluster so the
+             rail's foot reads the same here as it does there. -->
+        <button id="themeToggleApp" type="button" class="text-[#5A6473] hover:text-[#1A2433] leading-none"
+          aria-label="Switch colour theme" title="Switch colour theme">
+          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
+        </button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
@@ -5570,6 +5609,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // screen up to a minute before renderResults repaints wholesale.
     document.getElementById("deskView").classList.add("hidden");
     document.getElementById("searchDeckHead").classList.add("hidden");
+    // The rail's Workspace row stops being the current page here, not only in
+    // showHomeView: a report yields the workspace at this seam a minute before
+    // renderResults repaints, and a highlight left standing over a view that
+    // is no longer showing is worse than none.
+    markNavCurrent();
     // The loading card slims down: its decorative gray skeletons are
     // redundant once real cards are filling in below it.
     document.getElementById("loadingSkeletons").classList.add("hidden");
@@ -11442,6 +11486,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // scroll and the wrong thing on top. "My Desk" brings the workspace back.
     document.getElementById("deskView").classList.add("hidden");
     document.getElementById("searchDeckHead").classList.add("hidden");
+    markNavCurrent();          // the report is not a nav destination — see beginAssembly
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
     // Glide down to the finished report.
@@ -11854,6 +11899,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   let pendingPricingHash = location.hash === "#pricing"
     || new URLSearchParams(location.search).get("pricing") === "1";
 
+  // Same shape, same reason, for the settings panel (2026-08-30). The panel
+  // lives only in this file, so the Settings row every server-rendered account
+  // menu now carries has to arrive as a navigation with a query the wall can
+  // see -- a fragment never reaches the server. Read at parse time, before
+  // anything can rewrite the URL, and consumed once by refreshAccountUI.
+  let pendingSettingsPanel = new URLSearchParams(location.search).get("settings") === "1";
+
   // Set when THIS page load arrived through the /?auth=signin door. That door
   // is a full navigation off whatever page the visitor was reading, because
   // the account modal lives only in this file — so cancelling it used to leave
@@ -12036,6 +12088,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // cards in place on whatever report is on screen.
     if (typeof renderAnalysisCluster === "function" && currentParsed && currentMeta) {
       renderAnalysisCluster(currentParsed, currentMeta, false);
+    }
+    // ?settings=1, the door every server-rendered account menu now points at
+    // (accountNavSlots' Settings row). Consumed HERE rather than at boot
+    // because the panel is signed-in only and this is the one function that
+    // runs after /api/account/me on every path, including the failed one: a
+    // member arrives with the panel open, and a stale link on a signed-out
+    // browser quietly does nothing rather than flashing an empty panel.
+    // The param is cleared either way, exactly as ?pricing=1 clears itself, so
+    // a reload does not reopen something the reader has already closed.
+    if (pendingSettingsPanel) {
+      pendingSettingsPanel = false;
+      if (on) openSettingsModal();
+      const qs = new URLSearchParams(location.search);
+      qs.delete("settings");
+      const rest = qs.toString();
+      history.replaceState({}, "", location.pathname + (rest ? "?" + rest : ""));
     }
   }
 
@@ -13051,6 +13119,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // location.pathname (entries created by full page loads carry null state),
   // and going Back never resurrects a closed report — saved chips cover that.
   // ----------------------------------------------------------------------------
+  // Which rail row the reader is standing on (2026-08-30). Every
+  // server-rendered header has answered this since the rail shipped --
+  // marketBar takes a `current` path and writes aria-current on the matching
+  // link, which MARKET_CSS paints with a red edge -- and this file answered it
+  // nowhere, so the app was the one page in the product whose sidebar could
+  // not say where you were. The app has exactly one row that names a view it
+  // can be showing (Workspace); the rest are other pages, and a report is not
+  // a nav destination, so nothing is marked while one is on screen.
+  //
+  // ONE writer, called from the two functions that own the view swap, so the
+  // attribute cannot drift from what is actually rendered. The attribute is
+  // what carries the state to a screen reader; the CSS hangs off it rather
+  // than off a class for that reason.
+  // Reads the deck's own class rather than onDesk() below it: that const is
+  // declared after this point, and showDeskView() runs from the boot path, so
+  // borrowing it here would be a temporal-dead-zone throw on first paint --
+  // during the one call that decides what a member's first frame looks like.
+  function markNavCurrent() {
+    const link = document.getElementById("myDeskLink");
+    if (!link) return;
+    const showing = !document.getElementById("deskView").classList.contains("hidden");
+    if (showing) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
   function showDeskView() {
     document.getElementById("hero").classList.add("hidden");
     // The search desk STAYS (2026-08-28). It used to be hidden here, which
@@ -13079,6 +13171,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
     renderMyDesk();
     applySearchLock();
+    markNavCurrent();
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
@@ -13093,6 +13186,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       el.classList.add("fade-in");
     });
     applySearchLock();
+    markNavCurrent();
   }
   // Desk deck visibility (2026-08-21). The desk's sections are grouped under
   // five [data-deck] headings, but each section keeps its own hidden toggling,
@@ -13118,8 +13212,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   refreshDeckVisibility();
 
   const onDesk = () => !document.getElementById("deskView").classList.contains("hidden");
+  // Is the URL in the bar already one that SERVES the workspace? Two of them
+  // do: /desk, and "/" for a member (2026-08-28's route change). Asked as one
+  // question in one place because the answer has to agree with the popstate
+  // listener below and with the boot rule -- all three describe the same fact.
+  const atWorkspaceUrl = () =>
+    location.pathname === "/desk"
+    || (location.pathname === "/" && looksSignedIn());
   function enterDesk({ markSeen } = {}) {
-    if (location.pathname !== "/desk") history.pushState({}, "", "/desk");
+    // Do not mint /desk over the top of "/" (2026-08-30). This pushed a second
+    // URL for a view that had not changed: a member already looking at their
+    // workspace at "/" clicked Workspace, the page did nothing visible, and
+    // the address bar quietly became /desk -- so Back then appeared to do
+    // nothing either. Both URLs still work and both still render this view;
+    // what stops is rewriting one into the other for no reason.
+    if (!atWorkspaceUrl()) history.pushState({}, "", "/desk");
     showDeskView();
     if (markSeen) renderWatchFeed({ markSeen: true });
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -13141,7 +13248,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     else showHomeView();
   });
 
-  document.getElementById("myDeskLink").addEventListener("click", () => enterDesk({ markSeen: true }));
+  // Workspace is an anchor now, so this handler has to behave like one. A
+  // plain left-click is still handled in place (no reload, no refetch of the
+  // desk); anything the browser would treat as "open this elsewhere" -- middle
+  // click, Ctrl/Cmd/Shift/Alt click -- is left alone so the href does its job.
+  // That is the whole reason it stopped being a <button>.
+  document.getElementById("myDeskLink").addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    enterDesk({ markSeen: true });
+  });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
   // The workspace header's shortcut to the demoted chamber. The scroll is an
   // instant jump ON PURPOSE: paired with a focus() it must land exactly once,

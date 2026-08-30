@@ -8253,6 +8253,16 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     // helper and NOT from marketBar, so a hub no longer shows a vault link.
     // That is correct for a client-facing page whose spec asks for minimal
     // chrome, and the broker viewing their own hub navigates away for it.
+    // Settings, added 2026-08-30. The panel behind it lives only in
+    // index.html — the digest switch, the profile photo, "Delete account…" —
+    // and until now so did its only door, so a member reading /markets or
+    // sitting in their vault could not reach their own account settings from
+    // the account menu that is otherwise identical to the app's. A LINK, not
+    // a button: the panel is on another page, and ?settings=1 is the door
+    // index.html opens it from (and strips, the way ?pricing=1 already works).
+    // It renders inside #navAcct, which is hidden until a session resolves, so
+    // it can never be offered to somebody with no account to configure.
+    `<a id="navSettings" href="/desk?settings=1">Settings</a>` +
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +
@@ -8298,6 +8308,16 @@ const ACCOUNT_NAV_JS =
   // sees it wink out once entitlements land.
   `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
+  // The shell follows identity too (2026-08-30), matching what index.html's
+  // refreshAccountUI already does for the app. marketShell stamps `nav-rail`
+  // from cookie PRESENCE, which is the right cheap rule for a synchronous
+  // render and is not the same question as "is this session still valid": an
+  // expired or forged cn_session left the product's own sidebar standing
+  // around a bar that had just drawn "Log in" and "Create account" in it,
+  // which the rail's own rule -- anonymous visitors never get the rail --
+  // forbids outright. Removed only, never added: a member's copy was stamped
+  // server-side before first paint and must not flicker in after it.
+  `if(!me)document.documentElement.classList.remove("nav-rail");` +
   `if(!me)return;` +
   // Pricing's href, for members only — see ACCOUNT_NAV_PRICING above. It sits
   // UNDER the `if(!me)return;` guard deliberately: that one line is what makes
@@ -8412,6 +8432,34 @@ const FOOTER_DARK_CSS = `
 [data-theme="dark"] footer{color:var(--ink-body)}
 [data-theme="dark"] footer a,[data-theme="dark"] footer li a{color:var(--ink-body)}
 [data-theme="dark"] footer p,[data-theme="dark"] footer .cols .ch{color:var(--ink-3)}
+`;
+
+// --- The footer's link columns, defined ONCE -------------------------------
+//
+// RAIL_CSS's argument, one block over: these rules were pasted into MARKET_CSS
+// and HOW_CSS under a "Mirrored in HOW_CSS and in index.html's footer; keep
+// the three in step" comment that the file itself records having failed to
+// keep in step. Extracting them is what lets /vault have footer links at all
+// without becoming a third copy — its stylesheet is its own, and its global
+// `a{color:var(--red)}` would otherwise paint them red on the navy slab.
+//
+// Only the rules that are BYTE-IDENTICAL in the two stylesheets moved. The
+// four above them (footer, .wrap, .wordmark, p) differ by padding and gap, so
+// they stay where they are rather than being unified into a const with an
+// argument.
+const FOOTER_LINKS_CSS = `
+footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
+footer a:hover{color:#fff}
+footer ul{list-style:none;margin:12px 0 0;padding:0}
+footer li{margin-bottom:8px}
+footer li a{text-decoration:none;color:var(--ink-4)}
+/* Grouped link columns — the flat list had grown long enough that the footer
+   became the tallest block on the page. Wraps on narrow screens so three
+   groups never push past 375px. index.html draws the same shape from Tailwind
+   utilities rather than these class names, so it is a parallel implementation
+   rather than a copy; its LIST of links is the thing to keep in step. */
+footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
+footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
 `;
 
 // --- The rail's stylesheet, defined ONCE -----------------------------------
@@ -8939,17 +8987,7 @@ footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:36px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:28px}
 footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
-footer a:hover{color:#fff}
-footer ul{list-style:none;margin:12px 0 0;padding:0}
-footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:var(--ink-4)}
-/* Grouped link columns — the flat list had grown long enough that the footer
-   became the tallest block on the page. Wraps on narrow screens so three
-   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
-   footer; keep the three in step. */
-footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_LINKS_CSS}
 ${FOOTER_DARK_CSS}
 ${LEAFLET_DARK_CSS}
 @media (min-width:640px){
@@ -9567,15 +9605,16 @@ function marketIntelRows(market, propertyType) {
   return MARKET_INTEL.byKey[`${String(market).toLowerCase()}|${propertyType}`] || [];
 }
 
-const MARKET_FOOTER =
-  `<footer><div class="wrap">` +
-  `<div><div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>` +
-  `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
-  `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
-  `verify independently before underwriting.</p>` +
-  `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
-  `<p>&copy; 2026 CompNinja LLC</p></div>` +
-  `<div class="right"><div class="cols">` +
+// The three link columns, split out of MARKET_FOOTER 2026-08-30 so /vault can
+// render them too. That page's footer was four lines of prose and NOT ONE
+// LINK — which was survivable while it wore the top bar with an Explore
+// dropdown in it, and stopped being survivable when the rail took the
+// dropdown away: below 900px the vault's own header is the only navigation on
+// the page, and above it the footer is where every other surface keeps these.
+// A member could reach their private book and then had no way onward except
+// the wordmark.
+const FOOTER_LINK_COLS =
+  `<div class="cols">` +
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
   `<li><a href="/brokers">Brokers</a></li>` +
@@ -9612,7 +9651,17 @@ const MARKET_FOOTER =
   `<li><a href="https://www.linkedin.com/company/compninja/" target="_blank" rel="noopener noreferrer">LinkedIn</a></li>` +
   `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
   `</ul></div>` +
-  `</div></div></div></footer>`;
+  `</div>`;
+
+const MARKET_FOOTER =
+  `<footer><div class="wrap">` +
+  `<div><div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>` +
+  `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
+  `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
+  `verify independently before underwriting.</p>` +
+  `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
+  `<p>&copy; 2026 CompNinja LLC</p></div>` +
+  `<div class="right">${FOOTER_LINK_COLS}</div></div></footer>`;
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first — a POST since 2026-08-17, so the address stays out
@@ -11556,17 +11605,7 @@ footer{background:var(--slab);color:var(--ink-4);font-size:13px}
 footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
 footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
-footer a{color:var(--ink-4);text-decoration:underline;text-decoration-color:var(--ink-body)}
-footer a:hover{color:#fff}
-footer ul{list-style:none;margin:12px 0 0;padding:0}
-footer li{margin-bottom:8px}
-footer li a{text-decoration:none;color:var(--ink-4)}
-/* Grouped link columns — the flat list had grown long enough that the footer
-   became the tallest block on the page. Wraps on narrow screens so three
-   groups never push past 375px. Mirrored in HOW_CSS and in index.html's
-   footer; keep the three in step. */
-footer .cols{display:flex;flex-wrap:wrap;gap:20px 44px}
-footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+${FOOTER_LINKS_CSS}
 ${FOOTER_DARK_CSS}
 @media (min-width:640px){
   .hdr nav{gap:24px}
@@ -24504,6 +24543,13 @@ const server = http.createServer((req, res) =>
         CN_LOGO,
         MARKET_CSS,
         FOOTER_DARK_CSS,
+        // The footer's link columns and their rules (2026-08-30). This page's
+        // footer carried no links at all, which was survivable while its
+        // header had an Explore dropdown and stopped being so the moment the
+        // rail took that dropdown away. Same route as FOOTER_DARK_CSS and
+        // RAIL_CSS: the const is shared, never re-pasted here.
+        FOOTER_LINK_COLS,
+        FOOTER_LINKS_CSS,
         THEME_CSS,
         THEME_BOOT,
         ACCOUNT_NAV_CSS,

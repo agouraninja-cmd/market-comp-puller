@@ -335,3 +335,73 @@ test("distillMarketSnapshot omits analyst extras when the search did not earn th
   assert.equal("direction_source" in snapshot, false);
   assert.equal("rent" in snapshot, false);
 });
+
+// ---------------------------------------------------------------------------
+// A monthly rate must never be banked as an annual one
+//
+// price_per_sqft is a bare number with no basis of its own, and the prompt asks
+// the model to put THE QUOTED RATE there — which in California industrial and
+// retail is the monthly figure. Reading it first meant the same lease answered
+// 1.08 or 12.96 depending only on which field it arrived in, and leaseQuoteBasis
+// (correctly reading the comp as monthly-quoted) then divided the already-
+// monthly figure by 12 again for display: $0.09/SF/mo on a $1.08 market.
+// ---------------------------------------------------------------------------
+
+test("the same lease reads the same whichever field carries the rate", () => {
+  const withPsf = {
+    transaction: "Lease", price_per_sqft: "$1.08",
+    price_or_rate: "$1.08/SF/month NNN ($12.96/SF/yr NNN)",
+  };
+  const withoutPsf = {
+    transaction: "Lease",
+    price_or_rate: "$1.08/SF/month NNN ($12.96/SF/yr NNN)",
+  };
+  assert.equal(leaseRentPsfYr(withPsf), 12.96);
+  assert.equal(leaseRentPsfYr(withoutPsf), 12.96);
+  assert.equal(leaseRentPsfYr(withPsf), leaseRentPsfYr(withoutPsf),
+    "one lease, one rent — the shape it arrived in cannot change it");
+
+  const band = rentFromComps([withPsf, withoutPsf]);
+  assert.equal(band.median, 12.96, "and the market median is a rent, not the mean of two units");
+});
+
+test("a monthly-only quote is refused even when price_per_sqft carries it", () => {
+  // Refusing monthly-only is this file’s existing decision (see the test
+  // higher up this file) and it stands. What was broken is that the refusal
+  // was reachable ONLY when price_per_sqft happened to be empty: with the bare
+  // number read first, the very same comp came back as an annual band 12x too
+  // low, and leaseQuoteBasis then divided it by 12 again for display.
+  assert.ok(Number.isNaN(leaseRentPsfYr({
+    transaction: "Lease", price_per_sqft: "$1.35", price_or_rate: "$1.35/SF/mo NNN",
+  })), "the monthly figure must not be banked as an annual one");
+  assert.ok(Number.isNaN(leaseRentPsfYr({
+    transaction: "Lease", price_per_sqft: "$1.35", price_or_rate: "$1.35/SF/month",
+  })));
+});
+
+test("a stated annual rate wins even when price_per_sqft holds the other figure", () => {
+  // The string names its unit; the bare number does not, so the string decides.
+  assert.equal(leaseRentPsfYr({
+    transaction: "Lease", price_per_sqft: "$12.96",
+    price_or_rate: "$1.08/SF/month ($12.96/SF/yr)",
+  }), 12.96, "never 12.96 x 12");
+});
+
+test("price_per_sqft is still read as annual when nothing states a basis", () => {
+  // The one case with nothing better to do, and the pre-existing behaviour.
+  assert.equal(leaseRentPsfYr({
+    transaction: "Lease", price_per_sqft: "$14.50", price_or_rate: "$14.50 NNN",
+  }), 14.5);
+});
+
+test("the figure and the display basis agree about the same comp", () => {
+  // The two halves of migration 029's rule: the stored figure is annual, the
+  // display converts. They disagreeing is what printed $0.09/SF/mo.
+  const comp = {
+    transaction: "Lease", price_per_sqft: "$1.08",
+    price_or_rate: "$1.08/SF/month NNN ($12.96/SF/yr NNN)",
+  };
+  assert.equal(leaseQuoteBasis([comp]), "monthly");
+  assert.equal((leaseRentPsfYr(comp) / 12).toFixed(2), "1.08",
+    "displayed in the basis the market quotes, back at the rate on the lease");
+});

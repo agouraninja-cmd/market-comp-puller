@@ -11628,37 +11628,75 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   function openHistoryReport(r) {
     leaveDesk();
     hideLoadingCard();
+    // BEFORE renderResults, not after: the hero reads the live inputs whenever
+    // this report's meta carries no figure of its own, so anything left in the
+    // form from the last search would multiply this report's $/SF.
+    restoreFormFromMeta(r.meta);
     const when = r.ts ? ` generated ${histDate(r.ts)}` : "";
     showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
     renderResults(r.data, { ...r.meta, fromHistory: true, generatedAt: r.ts || Date.now() });
   }
 
+  // Put the search form back to the report being shown.
+  //
+  // WHY THIS EXISTS, and why every field is ASSIGNED rather than assigned-if-
+  // present: subjectRangeFromMeta(), askingRangeFrom() and subjectCapRate() all
+  // fall back to the live inputs when the report's own meta.subject does not
+  // carry a figure, and the comment on the first of them says a reopened report
+  // has no form inputs to read. That is true on a cold page load and false the
+  // moment anything has been searched: renderOwnerHero AUTO-FILLS #targetSize
+  // with the size it looked up. So reopening a saved house after searching a
+  // 152,400 SF warehouse valued the house at its own $/SF times the
+  // warehouse's square footage - the most expensive number in the report taken
+  // from a different building. #targetPrice fed askFit and #capRate seeded the
+  // DCF the same way.
+  //
+  // A conditional restore would not have fixed it. The leak happens exactly
+  // when the new report has NO stored figure, which is the case a
+  // `if (x != null)` guard skips - so a blank field has to be written as blank.
+  //
+  // Not wired into loadSharedReport, which keeps its own copy deliberately: it
+  // runs once at boot on a full page load of /r/<id>, where there is no
+  // previous report to inherit from, and it must NOT restore an NOI (shares
+  // strip private finances, so there is never one to restore).
+  function restoreFormFromMeta(m) {
+    const meta = m || {};
+    const s = meta.subject || {};
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.value = v == null ? "" : v;
+    };
+    set("address", meta.address);
+    if (meta.type) document.getElementById("propertyType").value = meta.type;
+    // Rebuilds the per-type detail inputs, so it has to run BEFORE they are
+    // filled. A no-op when the type has not changed, which is what stops it
+    // wiping the fields it is about to populate.
+    syncSubjectFieldsToType();
+    if (meta.type) { typeResolution = "explicit"; renderTypeStatus(); }
+    set("marketNote", meta.note);
+    if (meta.months) setLookbackControls(meta.months);
+    if (meta.txFocus) document.getElementById("txFocus").value = meta.txFocus;
+    // sizeMax has no input to restore into since 2026-08-16 (same as priceMax
+    // since 2026-08-10); both survive in meta, so a report saved while they
+    // existed still shows its range on the subject row and in exports.
+    set("targetSize", s.sizeMin);
+    set("targetPrice", s.priceMin);
+    set("noi", s.noi);
+    set("capRate", s.capRate);
+    writeSubjectDetails(s.details);
+    // Everything above was assigned, not typed, so no input event has told the
+    // collapsed settings line what this report actually asks for.
+    refreshSearchSettingsLine();
+  }
+
   function rerunHistory(m) {
     leaveDesk();
-    document.getElementById("address").value = m.address;
-    document.getElementById("propertyType").value = m.type;
-    syncSubjectFieldsToType();
-    // The saved report already carries its type, and this requestSubmit()s
-    // straight away — without marking it the dialog would stop to re-ask.
+    restoreFormFromMeta(m);
+    // Marked unconditionally here, unlike the helper: this requestSubmit()s
+    // straight away, and a saved report with no type recorded would otherwise
+    // stop the dialog to re-ask for one the reader already chose once.
     typeResolution = "explicit";
     renderTypeStatus();
-    document.getElementById("marketNote").value = m.note || "";
-    if (m.months) setLookbackControls(m.months);
-    if (m.txFocus) document.getElementById("txFocus").value = m.txFocus;
-    if (m.subject) {
-      // sizeMax has no input to restore into since 2026-08-16 (same as priceMax
-      // since 2026-08-10); it stays in meta, so a report saved with a range
-      // still shows it on the subject row and in exports.
-      document.getElementById("targetSize").value = m.subject.sizeMin || "";
-      document.getElementById("targetPrice").value = m.subject.priceMin || "";
-      document.getElementById("noi").value = m.subject.noi || "";
-      document.getElementById("capRate").value = m.subject.capRate || "";
-      writeSubjectDetails(m.subject.details);
-    }
-    // Focus and size were assigned rather than typed. setLookbackControls
-    // refreshed the line for the window alone, and only when the saved report
-    // carried one, so the other two need saying here.
-    refreshSearchSettingsLine();
     document.getElementById("compForm").requestSubmit();
   }
 
@@ -12700,6 +12738,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     try {
       const item = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id));
       hideLoadingCard();
+      // Same rule as openHistoryReport: restore before rendering, or the hero
+      // falls back to the previous search's size, price and cap rate.
+      restoreFormFromMeta(item.payload && item.payload.meta);
       showStatus(`Reopened from your portfolio (saved ${new Date(item.updated_at).toLocaleDateString()}). Refresh valuation for fresh data.`, "info");
       // portfolioId lets assumption edits PATCH back onto this exact item.
       renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id, generatedAt: Date.parse(item.updated_at) });
@@ -18346,9 +18387,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
       let av = a[key], bv = b[key];
       if (col.isDate) {
+        // Unparseable dates SINK, exactly as unparseable numbers do in the
+        // branch below - and for a sharper reason than tidiness. Falling
+        // through to a string compare made this comparator intransitive:
+        // "Sep 2025" > "Q3 2025" and "Q3 2025" > "Feb 2026" lexically, while
+        // "Sep 2025" < "Feb 2026" chronologically. Array.sort given a
+        // contradictory comparator returns an arbitrary permutation, and this
+        // one really did put Feb 2026 first in an ASCENDING sort. comp.date is
+        // unconstrained model text and "Active" and "Q3 2025" are both real
+        // stored values, so it fired on ordinary reports.
+        //
+        // Note Date.parse is lenient enough to read "Holiday 2025" as 1 Jan
+        // 2025, so a few odd strings sort by their year rather than sinking.
+        // deal-date.js parses these shapes properly but is Node-only and off
+        // the static allowlist; teaching the browser about it is a separate
+        // change from making this a total order.
         const ad = Date.parse(av), bd = Date.parse(bv);
-        if (!isNaN(ad) && !isNaN(bd)) return (ad - bd) * sortState.dir;
-        // fall through to string compare when either date doesn't parse
+        const aNan = isNaN(ad), bNan = isNaN(bd);
+        if (aNan && bNan) return 0;
+        if (aNan) return 1;
+        if (bNan) return -1;
+        return (ad - bd) * sortState.dir;
       }
       if (col.numeric) {
         const an = numericValue(av), bn = numericValue(bv);

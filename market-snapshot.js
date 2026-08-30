@@ -92,18 +92,49 @@ function isLease(c) {
   return String((c && c.transaction) || "").toLowerCase().startsWith("lease");
 }
 
-// Annual $/SF/yr for a lease row. Prefer price_per_sqft (already a number).
-// A price_or_rate like "$1.08/SF/month NNN ($12.96/SF/yr NNN)" would parse as
-// 1.08 monthly if we used num() on the whole string, so a /yr capture is the
-// only fallback, and anything else is refused.
+// Annual $/SF/yr for a lease row.
+//
+// THE RATE STRING OUTRANKS price_per_sqft, and that ordering is the whole
+// function. `price_per_sqft` is a bare number carrying no basis of its own,
+// and the prompt asks the model to put THE QUOTED RATE there - which in
+// California industrial and retail is the MONTHLY figure. Trusting it first
+// meant the same lease answered 1.08 or 12.96 depending only on which field
+// it arrived in, so a two-comp market medianed to $7.02/SF/yr, a rent that
+// describes nothing. Worse downstream: leaseQuoteBasis correctly reads that
+// comp as monthly-quoted, so the hero divided the already-monthly 1.08 by 12
+// again and printed $0.09/SF/mo.
+//
+// So a figure that NAMES its unit always beats one that does not:
+//
+//   1. an explicit /SF/yr in the rate string - it states its own unit, and is
+//      also right when price_per_sqft happens to hold the other figure;
+//   2. an explicit /SF/mo with no annual beside it - REFUSED. That refusal is
+//      this file's existing decision and it stands; the bug was that it could
+//      only ever be reached when price_per_sqft happened to be empty;
+//   3. price_per_sqft, read as annual - reached only when NOTHING states a
+//      basis, the one case where there is nothing better to do.
+//
+// The figure stays annual throughout, which is broker-vault.js's rule
+// (migration 029) and its reason: a book holding two bases quotes three
+// different rents for one lease. leaseQuoteBasis below is the DISPLAY half
+// and converts for reading only.
 function leaseRentPsfYr(c) {
-  const fromPsf = num(c && c.price_per_sqft);
-  if (fromPsf > 0) return fromPsf;
   const raw = String((c && c.price_or_rate) || "");
-  const yr = raw.match(/([\d,.]+)\s*\/\s*sf\s*\/\s*yr/i);
-  if (!yr) return NaN;
-  const n = num(yr[1]);
-  return n > 0 ? n : NaN;
+  const yr = raw.match(RATE_PER_YEAR);
+  if (yr) {
+    const n = num(yr[1]);
+    if (n > 0) return n;
+  }
+  // A monthly quote with no annual figure beside it is REFUSED, not converted
+  // and not fallen through. Refusing is this file's existing decision and it
+  // stands; what was broken is that the refusal was reachable only when
+  // price_per_sqft happened to be empty. With the bare number consulted first,
+  // a monthly-quoted comp that carried one returned the monthly rate as an
+  // annual band - the 12x error - which is exactly what the refusal below
+  // exists to prevent.
+  if (RATE_PER_MONTH.test(raw)) return NaN;
+  const fromPsf = num(c && c.price_per_sqft);
+  return fromPsf > 0 ? fromPsf : NaN;
 }
 
 // Which basis a market QUOTES in, read off the comps instead of guessed.
@@ -127,6 +158,14 @@ function leaseRentPsfYr(c) {
 // and votes for neither. And the LEADING quote wins: "$1.08/SF/month NNN
 // ($12.96/SF/yr NNN)" is a monthly-quoted comp with an annual parenthetical,
 // not one vote each.
+// The same two shapes as PER_MONTH / PER_YEAR below, with the number
+// captured. Kept as one pair of constants rather than four inline literals so
+// "what counts as a monthly quote" has a single answer for the figure and for
+// the basis - they disagreeing is how a rate gets read in one unit and
+// displayed in the other.
+const RATE_PER_YEAR = /([\d,.]+)\s*\/\s*sf\s*\/\s*(?:yr\b|year)/i;
+const RATE_PER_MONTH = /([\d,.]+)\s*\/\s*sf\s*\/\s*(?:mo\b|month)/i;
+
 const PER_MONTH = /\/\s*sf\s*\/\s*(mo\b|month)/i;
 const PER_YEAR = /\/\s*sf\s*\/\s*(yr\b|year)/i;
 function leaseQuoteBasis(comps) {

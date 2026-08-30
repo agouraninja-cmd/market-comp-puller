@@ -2,6 +2,30 @@
   {
     "date": "2026-08-29",
     "type": "fix",
+    "title": "Reopening a saved report valued it with the last search's square footage",
+    "details": "subjectRangeFromMeta, askingRangeFrom and subjectCapRate fall back to the live form inputs whenever a report's own meta carries no figure, and the comment on the first of them says a reopened report has no form inputs to read. That is true on a cold page load and false the moment anything has been searched, because renderOwnerHero auto-fills the size box with the size it looked up. So opening a saved house from My Desk after searching a 152,400 SF warehouse priced the house at its own $/SF times the warehouse's square footage — the number CLAUDE.md calls the most expensive in the report, taken from a different building. The price box fed the asking-price check and the cap rate box seeded the DCF the same way. Both reopen paths now restore the form from the report's own meta before rendering, through one helper that rerunHistory shares. Every field is assigned rather than assigned-if-present: the leak happens exactly when the new report has no stored figure, which is the case a presence check skips, so a blank has to be written as blank."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "A monthly lease rate could be banked as an annual one",
+    "details": "leaseRentPsfYr trusted price_per_sqft before consulting the rate string, and price_per_sqft is a bare number carrying no basis — the prompt asks the model to put the quoted rate there, which in California industrial and retail is the monthly figure. The same lease therefore answered 1.08 or 12.96 depending only on which field it arrived in, and a two-comp market medianed to $7.02/SF/yr, a rent that describes nothing. Downstream it was worse: leaseQuoteBasis correctly read that comp as monthly-quoted, so the hero divided the already-monthly figure by 12 again and printed $0.09/SF/mo on a $1.08 market. A figure that names its unit now outranks one that does not. The existing refusal of monthly-only quotes stands unchanged and was never the problem — what was broken is that it could only ever be reached when price_per_sqft happened to be empty."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "Range-quoted corpus prices were treated as having no price at all",
+    "details": "The radius blend's money reader stripped every non-digit, which welds a real corpus value like \"$7.00-$12.00/SF/yr NNN\" into \"7.0012.00\" — a two-decimal-point string Number() rejects. The row then read as unpriced and blendNearbyComps skipped a perfectly good saved deal, so comps that had been harvested never reached a report. corpus-audit.js reads the first numeric run for exactly this reason and says so in a comment, which meant the audit counted the same row as priced while the blend dropped it, and nothing anywhere reported the disagreement. Now reads the first numeric run, so a range yields its low end and commas survive; \"Undisclosed\" and \"Rate Upon Request\" still correctly carry no price, and a $/SF-shaped figure in the price column is still refused rather than divided by the size."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "Sorting the comp table by Date could return an order that does not exist",
+    "details": "Parseable dates were compared chronologically and anything else lexicographically, which is not a total order: \"Sep 2025\" beats \"Q3 2025\" and \"Q3 2025\" beats \"Feb 2026\" as strings, while \"Sep 2025\" loses to \"Feb 2026\" as dates. Array.sort given a contradictory comparator returns an arbitrary permutation, and this one really did put Feb 2026 first in an ascending sort. The date column holds unconstrained model text and both \"Active\" and \"Q3 2025\" are real stored values, so it fired on ordinary reports rather than on edge cases. Unreadable dates now sink in both directions, exactly as unreadable numbers already do in the branch below it."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
     "title": "Every unsubscribe link in every email was truncated before it was sent",
     "details": "The letterhead's linkifier built its href from a character class that stopped at an ampersand. It runs on already-escaped text, so a query string arrives as ?u=abc&amp;t=xyz and the link was cut at the first parameter. Both unsubscribe builders in the product authenticate with a &t=<mac> token, and every outbound email gets this HTML part, so the \"turn these emails off\" link in the watchlist digest, the lease renewal notice and hub note emails all pointed at a URL the route could only refuse. Its refusal page reads \"it may have been truncated by an email client\" — it was truncated here. These three are the only things this product sends on its own initiative, which makes that the one link that has to work. Fixed by matching the &amp; entity rather than adding a bare ampersand to the class, so an apostrophe after a link still ends the URL and a crafted one still cannot escape the href attribute; a trailing entity also no longer gets its semicolon sheared into a malformed &amp."
   },

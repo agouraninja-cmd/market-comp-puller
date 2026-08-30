@@ -328,3 +328,61 @@ test("Residential extras of any price join when there is no ask to compare", () 
   const out = blendNearbyComps(report(), [cheap], { ...OPTS, propertyType: "Residential" });
   assert.equal(out.corpus_count, 1);
 });
+
+// ---------------------------------------------------------------------------
+// A range-quoted price is still a price
+//
+// moneyNumber stripped every non-digit, which welds "$7.00-$12.00/SF/yr NNN"
+// into "7.0012.00" — a two-decimal-point string Number() rejects as NaN. The
+// row then read as unpriced and blendNearbyComps skipped a perfectly good saved
+// deal. corpus-audit.js's hasPrice() reads the first numeric run for exactly
+// this reason and says so in a comment, so the audit counted the same row as
+// priced while the blend dropped it, and nothing reported the difference.
+// ---------------------------------------------------------------------------
+const { priced, salePsfOf } = require("../blend-corpus");
+
+test("a range-quoted corpus row counts as priced", () => {
+  assert.equal(priced({ price_or_rate: "$7.00-$12.00/SF/yr NNN" }), true);
+  assert.equal(priced({ price_or_rate: "$5.50-$7.50/SF" }), true);
+  assert.equal(priced({ price_per_sqft: "$95-$110" }), true);
+  // Unchanged: a row with no numeric run at all still has no price.
+  assert.equal(priced({ price_or_rate: "Undisclosed" }), false);
+  assert.equal(priced({ price_or_rate: "Rate Upon Request" }), false);
+  assert.equal(priced({ price_or_rate: "" }), false);
+  assert.equal(priced({}), false);
+});
+
+test("a range yields its low end, and commas survive", () => {
+  // Low end is the conservative read for a figure that goes on to price a comp.
+  assert.equal(salePsfOf({ price_per_sqft: "$95-$110" }), 95);
+  assert.equal(salePsfOf({ price_or_rate: "$5,500,000-$7,500,000", size_sqft: "10000" }), 550);
+  assert.equal(salePsfOf({ price_or_rate: "$1,250,000", size_sqft: "10000" }), 125,
+    "a comma-grouped total is still read whole, not as its first digit");
+});
+
+test("a $/SF-shaped range in the price column is still refused, not divided", () => {
+  // The plausibility guard is what catches this: $5.50 over 10,000 SF is
+  // $0.00055/SF, so the figure cannot be a total price and is not treated as one.
+  assert.equal(salePsfOf({ price_or_rate: "$5.50-$7.50/SF", size_sqft: "10000" }), 0);
+});
+
+test("a blend picks up a range-priced deal it used to skip", () => {
+  const report = { subject_lat: 43.6150, subject_lng: -116.2023, comps: [] };
+  const rows = [{
+    address: "900 Range Way, Boise, ID", market: "Boise, ID", property_type: "Industrial",
+    transaction: "Sale", deal_date: "2026-06-01", source_type: "public_record",
+    price_or_rate: "$5,500,000-$7,500,000", size_sqft: "10000",
+    lat: 43.6155, lng: -116.2030,
+  }];
+  const out = blendNearbyComps(report, rows, {
+    parseDealDate: (s) => {
+      const m = /^(\d{4})-(\d{2})/.exec(String(s || ""));
+      return m ? Number(m[1]) + (Number(m[2]) - 0.5) / 12 : null;
+    },
+    now: Date.parse("2026-08-29"),
+    months: 24,
+    propertyType: "Industrial",
+  });
+  assert.equal(out.comps.length, 1, "the range-priced deal now reaches the report");
+  assert.match(out.comps[0].address, /900 Range Way/);
+});

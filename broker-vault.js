@@ -583,10 +583,23 @@ const iso = (y, m, d) => `${y}-${String(m).padStart(2, "0")}-${String(d).padStar
  *    one way consistently rather than guessed per row. Documented on the
  *    template so a broker can see the assumption.
  *  - month names ("March 2025"), which usually mean a month with no day.
+ *
+ * The literal word "undated" is accepted ONLY when the caller passes
+ * { undatedOk: true } — the deal_date call and nobody else. It is an explicit
+ * statement ("this document shows no dates for its completed deals" — the
+ * 2026-08-28 extraction verdict's capital-markets report), where a blank is
+ * an accident and stays refused by normalizeRow. The flag is the
+ * containment: this same parser reads lease_expiry, option_notice_date and
+ * the hub's manual-comp date, and on those "undated" must keep falling
+ * through to the ordinary refusal — a marker escaping as a VALUE would reach
+ * a Postgres date column and 400 the broker's whole upload.
  */
-function parseDate(v) {
+function parseDate(v, { undatedOk = false } = {}) {
   const raw = String(v == null ? "" : v).trim();
   if (!raw) return { ok: true, value: null };
+  if (undatedOk && raw.toLowerCase() === "undated") {
+    return { ok: true, value: null, undated: true };
+  }
 
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(raw);
   if (m) {
@@ -802,11 +815,22 @@ function normalizeRow(raw) {
 
   // Required: it is half of the dedupe key, and a comp with no date cannot be
   // filtered by any lookback, which makes it unusable for the one thing comps
-  // are for.
-  const date = parseDate(src.deal_date);
+  // are for. The one way past the requirement is the literal word "undated"
+  // (2026-08-29): an explicit statement that the source document shows no
+  // dates for its completed deals — a whole class of real documents, measured
+  // at 9 of one capital-markets report's 9 transactions. A BLANK stays
+  // refused, because a blank is an accident and an undated deal must be a
+  // decision. Stored as SQL null (migration 042 dropped the NOT NULL);
+  // excluded from every dated surface by construction, since no lookback
+  // window matches a null; unpublishable (canPublish refuses below).
+  //
+  // Set EXPLICITLY to null, never left absent: the upload inserts rows in one
+  // PostgREST batch, which wants uniform keys, so a mixed dated/undated file
+  // must not produce rows of two shapes.
+  const date = parseDate(src.deal_date, { undatedOk: true });
   if (!date.ok) errors.push(date.error);
-  else if (date.value == null) errors.push("deal_date is required (YYYY-MM-DD)");
-  else row.deal_date = date.value;
+  else if (date.value == null && !date.undated) errors.push("deal_date is required (YYYY-MM-DD)");
+  else row.deal_date = date.value == null ? null : date.value;
 
   const price = parseMoney(src.price);
   if (price.ok) row.price = price.value; else errors.push(`price: ${price.error}`);
@@ -1022,6 +1046,15 @@ function validateEdit(existing, patch) {
   for (const f of EDITABLE_FIELDS) {
     merged[f] = Object.prototype.hasOwnProperty.call(p, f) ? p[f] : base[f];
   }
+  // A stored null deal_date IS the undated sentinel, so present it back as
+  // the word normalizeRow accepts. Without this, an undated comp would be
+  // permanently uneditable: the rebuild turns null into a blank, the blank
+  // hits the required refusal, and the compact table's cell PATCH carries
+  // only the changed key — so fixing the comp's PRICE would 400 on its date.
+  if (merged.deal_date == null && !Object.prototype.hasOwnProperty.call(p, "deal_date")
+      && base.deal_date === null) {
+    merged.deal_date = "undated";
+  }
   return normalizeRow(merged);
 }
 
@@ -1206,6 +1239,7 @@ function templateCsv() {
     `property_type: one of ${PROPERTY_TYPES.join(", ")}.`,
     "transaction: sale or lease.",
     "deal_date: 2025-03-14. Slash dates work too and are read US style, month first: 3/14/2025 means 14 March 2025.",
+    "A closed deal whose date you genuinely don't have: write undated. It stays out of every dated view and can't be published. Two undated deals at one address with no price look identical to us and import as one.",
     "price and size_sqft: $1,250,000 and 45,000 SF are both fine. 1.2M is not - write it out in full.",
     "cap_rate: 5.75 or 5.75%.",
     // Stated as a pair, and the basis line says WHY it is required rather than
@@ -1336,12 +1370,23 @@ function exportRowsWithCoords(comps, coordsById) {
  * address's coordinates on re-import and send it out to a third-party
  * geocoder on the next report.
  */
-function exportCsv(rows) {
+// `undatedNulls` is passed ONLY by the book export (GET /api/vault/export.csv),
+// where a stored null deal_date IS the undated sentinel and must round-trip as
+// the word parseDate accepts — emitted as "" it would be refused on re-import.
+// The confirm-table path (uploadPayloadToCsv) must NOT pass it: there a row
+// without a date is a row the model failed to read, and turning that into
+// "undated" would convert an accident into a statement nobody made.
+function exportCsv(rows, { undatedNulls = false } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const cols = exportColumns(list);
+  const cell = (r, c) => {
+    if (!r) return csvCell("");
+    if (undatedNulls && c === "deal_date" && r[c] === null) return csvCell("undated");
+    return csvCell(r[c]);
+  };
   return [
     cols.map(csvCell).join(","),
-    ...list.map((r) => cols.map((c) => csvCell(r ? r[c] : "")).join(",")),
+    ...list.map((r) => cols.map((c) => cell(r, c)).join(",")),
   ].join("\n") + "\n";
 }
 

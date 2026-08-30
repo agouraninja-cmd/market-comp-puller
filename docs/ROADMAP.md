@@ -73,31 +73,26 @@ intent, the devlog states history.
   more the two remaining causes are worth: if hand-keying is slower than
   4m51s, the table is already past the bar and 3 and 4 are polish.
 
-- **Two decisions before ingestion ships, neither an extraction problem**
-  (the extraction test is DONE and the two prompt defects it found are fixed
-  and verified — final verdict in
-  `docs/evals/extract-2026-08-28-verdict-final.md`: cap rates went 0 of 8
-  correct to 8 of 8, invented sale dates 3 to 0, field precision 99.6%).
-  What the measurement surfaced that a prompt cannot fix:
-  1. **The `deal_date` and `rent_basis` refusals cost 13 real deals** in a
-     16-document set. A brokerage capital-markets report whose transactions
-     table has no date column loses all 9 rows; lease sheets that state a
-     rate but never the word "annual" lose 4 more. Both refusals are correct
-     — `rent_basis` exists because guessing is 12x wrong — but the honest
-     options are a dateless-deal sentinel (the `Active` precedent) and a
-     per-import rent basis, not a relaxed parser.
-  2. **Address completion versus the dedupe key.** The model now completes
-     addresses the page abbreviates ("Atlanta" to "Atlanta, GA", measured on
-     5 of 5 rows of one sheet). The completion is correct, but `addressKey`
-     is the vault's dedupe key, so the same sheet imported either side of
-     that behaviour yields duplicate properties.
-  And one thing no prompt fixes: **image quality produces silent wrong
-  numbers.** On a synthetic 60dpi grayscale render — not even a photograph —
-  one page returned nothing at all and another silently misread $566,000 as
-  $560,000. A confirm step the broker actually reads is not optional for
-  photographed input. Still owed on the test itself: a stopwatch on
-  correction time (§9's first condition; two exercises are staged by
-  `scripts/make-correction-exercise.js`) and a real photographed scan.
+- **The two ingestion-gating decisions are DECIDED AND BUILT (2026-08-29)** —
+  the extraction test is done (final verdict in
+  `docs/evals/extract-2026-08-28-verdict-final.md`: cap rates 0 of 8 → 8 of
+  8, invented sale dates 3 → 0, field precision 99.6%), and the three fixes
+  its recall triage asked for shipped: the `undated` sentinel (migration
+  042 — a dateless capital-markets report's deals import as an explicit
+  statement, stored null, excluded from every dated surface, unpublishable
+  and unshareable by construction), the per-sheet rent basis on the confirm
+  table (no default, stamped visibly, hand-typed cells win), and the
+  extract prompt's address rule (street verbatim, "City, ST" completion
+  only when the document proves the state — the dedupe key stops flapping
+  between runs). `test/vault-undated-run.test.js` proves the loop end to
+  end. **Archive email ingestion is now unblocked on engineering**; what
+  remains owed on the measurement itself: a stopwatch on correction time
+  against the redesigned confirm table (§9's first condition; two exercises
+  are staged by `scripts/make-correction-exercise.js`), the never-taken
+  by-hand baseline (time a broker keying 12 comps manually), and a real
+  photographed scan — image quality still produces silent wrong numbers
+  (a 60dpi render misread $566,000 as $560,000), which is why the confirm
+  step is not optional for photographed input.
 
 ## Next
 

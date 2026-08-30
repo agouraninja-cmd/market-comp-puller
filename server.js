@@ -5450,7 +5450,10 @@ Rules:
 - Return the rows in the order they appear in the document: top to bottom, page by page. Never sort or group them - not by type, price, date, or anything else. A person checks these rows against the page they came from, and a reordered list makes them hunt the page for every single row.
 - Omit a field rather than invent it. Never invent a price, date, or size.
 - A row with no sale price and no sale date is a LISTING, not a completed deal, however much it looks like the sold rows around it. Omit transaction and deal_date for it. Never source deal_date from a list date, an assessment date, a photo date or a report date: if the row does not say when the deal closed, omit deal_date.
+- When the document's transactions table has no date column at all, write deal_date as "undated" for its completed sales - real deals the document dates nowhere. Never write "undated" for a row whose date appears anywhere in the document, and never for a listing.
+- Record rent_basis only when the document states it ("annual", "monthly", "/yr", "/mo", "per annum", "pcm"). Never infer a basis from market convention - leave it out and the reviewer states it once for the sheet.
 - address must be a specific property with a street number, not a district or "general submarket estimate".
+- Record the street portion of an address exactly as printed. When the document names the city but omits the state, append the state only when the document itself proves it (its letterhead, its market name, its other rows), written as "City, ST". Never guess a state the document does not support, and never append a city the document does not name.
 - Do not include a verified flag or a source_url.`;
 
 function buildPrompt(address, type, note, months, maxComps, txFocus, verifiedComps, subjectSizeSqft, corpusComps, corpusNearby, corpusListed, subjectDetails, lane = "solo") {
@@ -15504,7 +15507,12 @@ async function vaultReadPayload(req, params) {
   if (type && VAULT.PROPERTY_TYPES.includes(type)) {
     query += `&property_type=eq.${encodeURIComponent(type)}`;
   }
-  query += `&order=deal_date.desc&limit=${limit}&offset=${offset}`;
+  // `.nullslast` because Postgres DESC defaults to NULLS FIRST: without it,
+  // every `undated` comp (042 — deal_date null) would pin itself to the head
+  // of the window, and on a book past `limit` the block would push the oldest
+  // DATED comps off the dashboard entirely. `id.asc` makes the order unique,
+  // so the offset pages stably inside a date tie (the export's own rule).
+  query += `&order=deal_date.desc.nullslast,id.asc&limit=${limit}&offset=${offset}`;
 
   const [entR, compsR, uploadsR, profileR, firmR, sharedR] = await Promise.allSettled([
     entitlementsFor(req),
@@ -15640,6 +15648,9 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
     let query = `broker_comps?user_id=eq.${encodeURIComponent(user.id)}`;
     query += `&market=eq.${encodeURIComponent(market)}`;
     query += `&property_type=eq.${encodeURIComponent(type)}`;
+    // Also the `undated` gate (042): SQL's NULL >= cutoff is not true, so a
+    // dateless comp never reaches a report blend — by construction, no
+    // special case. Pinned by test; do not "fix" a null past this filter.
     query += `&deal_date=gte.${cutoff}`;
     // Capped: a broker with a thousand comps in one market would otherwise
     // bury the public evidence and bloat the response.
@@ -15684,18 +15695,27 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 // race. The rows are read back scoped by user_id FIRST, so a comp id from
 // somebody else's vault cannot be shared by naming it.
 async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
-  if (!DB_CONFIGURED || !orgId || !compIds.length) return 0;
+  if (!DB_CONFIGURED || !orgId || !compIds.length) return { count: 0, undatedSkipped: 0 };
   const rows = await sbRequest("GET",
     `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
     `&id=in.(${pgInList(compIds)})&limit=${compIds.length}`);
   const located = await attachPropertyCoords(user.id, Array.isArray(rows) ? rows : []);
   const payload = [];
+  let undatedSkipped = 0;
   for (const row of located) {
     const comp = BLEND.firmCompPayload(row);
-    // A comp with no address or no date cannot render and cannot be filtered
-    // by a lookback. broker-vault.js refuses both at the door, so this is a
-    // guard against a hand-written row, not an expected case.
-    if (!comp) continue;
+    // A comp with no address cannot render — broker-vault.js refuses that at
+    // the door, so it is a guard against a hand-written row. A comp with no
+    // DATE is an expected case since 042 (the `undated` sentinel), and it is
+    // genuinely unshareable rather than merely unhandled: org_comps.deal_date
+    // stays NOT NULL because colleagues' reports pick firm comps by lookback
+    // window, which a dateless deal can never enter. COUNTED so the route can
+    // refuse by name instead of answering ok while the toggle shows "Shared"
+    // for a comp no colleague will ever receive.
+    if (!comp) {
+      if (row && row.deal_date == null) undatedSkipped++;
+      continue;
+    }
     payload.push({
       org_id: orgId,
       shared_by_user_id: user.id,
@@ -15708,10 +15728,10 @@ async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
       updated_at: new Date().toISOString(),
     });
   }
-  if (!payload.length) return 0;
+  if (!payload.length) return { count: 0, undatedSkipped };
   await sbRequest("POST", "org_comps?on_conflict=org_id,source_comp_id", payload,
     { prefer: "resolution=merge-duplicates,return=minimal" });
-  return payload.length;
+  return { count: payload.length, undatedSkipped };
 }
 
 // Pull a comp back off every firm shelf it is on. Scoped by the SHARER, not by
@@ -15748,7 +15768,15 @@ async function refreshSharedComp(user, compId) {
     `org_comps?shared_by_user_id=eq.${encodeURIComponent(user.id)}` +
     `&source_comp_id=eq.${encodeURIComponent(compId)}&select=org_id,shared_by_name&limit=20`);
   for (const r of rows || []) {
-    await shareVaultCompsToOrg(user, r.org_id, [compId], r.shared_by_name || "");
+    const shared = await shareVaultCompsToOrg(user, r.org_id, [compId], r.shared_by_name || "");
+    // The edit made the comp unshareable — its date became `undated` (042) —
+    // so the upsert never fired and the firm's copy still holds the OLD
+    // dated version. A stale copy misstates the broker's own record on
+    // colleagues' shelves, so it is pulled, matching the delete path: the
+    // firm copy always mirrors the vault row or does not exist.
+    if (shared.count === 0 && shared.undatedSkipped > 0) {
+      await unshareVaultComps(user.id, [compId]);
+    }
   }
 }
 
@@ -20098,9 +20126,24 @@ const server = http.createServer((req, res) =>
           // restate it.
           const profile = await findBrokerProfile(user.email, user.id);
           const sharedByName = VAULT.creditName(profile) || user.name || "";
-          const n = await shareVaultCompsToOrg(user, orgId, ids, sharedByName);
+          const r = await shareVaultCompsToOrg(user, orgId, ids, sharedByName);
+          // Nothing landed and the reason is knowable: refuse by name. The
+          // toggle shares one comp per click, so all-skipped is the whole
+          // click — and the client treats any 200 as "Shared", which for an
+          // undated comp would be a lie until reload (no colleague's report
+          // can ever window it in).
+          if (r.count === 0 && r.undatedSkipped > 0) {
+            return sendJson(res, 400, {
+              error: "An undated comp can't be shared with your firm — " +
+                "colleagues' reports pick comps by date, so it would never reach one. " +
+                "Add its deal date first.",
+            });
+          }
           logEvent("vault_firm_share", {});
-          return sendJson(res, 200, { ok: true, shared: true, count: n });
+          return sendJson(res, 200, {
+            ok: true, shared: r.count > 0, count: r.count,
+            undatedSkipped: r.undatedSkipped,
+          });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("vault firm share failed:", err.message);
@@ -20266,7 +20309,11 @@ const server = http.createServer((req, res) =>
         // 0,0, which re-imports as a real coordinate: Null Island.
         const rows = VAULT.exportRowsWithCoords(comps, coords);
 
-        const csv = VAULT.exportCsv(rows);
+        // undatedNulls: a stored null deal_date IS the `undated` sentinel
+        // (042), and emitted as "" the row would be REFUSED on re-import —
+        // breaking the export's round-trip guarantee for exactly the rows a
+        // broker cannot retype a date for.
+        const csv = VAULT.exportCsv(rows, { undatedNulls: true });
         res.writeHead(200, {
           "content-type": "text/csv; charset=utf-8",
           "content-disposition": 'attachment; filename="compninja-vault.csv"',

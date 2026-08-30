@@ -2369,6 +2369,58 @@ test("EXTRACT_PROMPT tells the model a listing is not a sale", () => {
     "the prompt must forbid sourcing deal_date from a list date specifically");
 });
 
+// The three 2026-08-29 rules, each bought with the 2026-08-28 verdict's recall
+// triage (docs/evals/extract-2026-08-28-verdict-final.md): 13 real deals lost
+// to two correct refusals, and one behavior that destabilized the dedupe key.
+test("EXTRACT_PROMPT teaches the undated sentinel, narrowly", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const body = src.slice(src.indexOf("const EXTRACT_PROMPT"), src.indexOf("function buildPrompt"));
+  // A capital-markets report whose transactions table has no date column lost
+  // all 9 of its real deals to the deal_date refusal. The sentinel is scoped
+  // to exactly that document shape - never a substitute for a date the
+  // document holds, and never for a listing.
+  assert.match(body, /"undated"/,
+    "the prompt must teach the sentinel or every dateless transactions table keeps losing all its rows");
+  assert.match(body, /no date column/i,
+    "the sentinel must be scoped to the document-has-no-date-column case by name");
+});
+
+test("EXTRACT_PROMPT forbids inferring a rent basis from convention", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const body = src.slice(src.indexOf("const EXTRACT_PROMPT"), src.indexOf("function buildPrompt"));
+  // The per-import basis selector on the confirm table is the HUMAN's answer;
+  // the prompt's job is to make sure the model never starts supplying one of
+  // its own - a guessed basis is a well-formed 12x error nothing downstream
+  // can catch.
+  assert.match(body, /rent_basis/,
+    "the prompt must name rent_basis, or the model picks its own convention");
+  assert.match(body, /convention/i,
+    "the prompt must forbid inference from market convention by name");
+});
+
+test("EXTRACT_PROMPT pins address completion to what the document proves", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const src = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  const body = src.slice(src.indexOf("const EXTRACT_PROMPT"), src.indexOf("function buildPrompt"));
+  // "Atlanta" -> "Atlanta, GA" on 5 of 5 rows was CORRECT and still a
+  // problem: addressKey is the dedupe key, so completion that comes and goes
+  // between runs makes the same sheet import as duplicate properties. The
+  // rule makes it deterministic: street verbatim, state only when the
+  // document itself proves it (owner's call, 2026-08-29 - completion kept
+  // because marketOf() needs the state).
+  assert.match(body, /exactly as printed/i,
+    "the street portion must be verbatim - completing it invents an address");
+  assert.match(body, /City, ST/,
+    "the completion form must be pinned so the dedupe key is stable between runs");
+  assert.match(body, /Never guess a state/i,
+    "the rule must forbid an unevidenced state by name");
+});
+
 // --- Analytics visitor attribution ------------------------------------------
 //
 // migration 026's two columns exist so the event log can answer "did the same

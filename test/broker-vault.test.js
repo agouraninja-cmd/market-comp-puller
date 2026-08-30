@@ -1975,3 +1975,98 @@ test("the profile SELECT carries license_number, or every publish refuses", () =
   assert.ok(m[1].split(",").includes("license_number"),
     `broker profile SELECT is missing license_number: ${m[1]}`);
 });
+
+// --- the undated sentinel (migration 042) ------------------------------------
+//
+// A blank deal_date is an accident and stays refused; the literal word
+// "undated" is a statement — the 2026-08-28 extraction verdict's
+// capital-markets report dates none of its 9 real transactions anywhere in the
+// document. Stored as null, excluded from every dated surface by construction,
+// unpublishable, unshareable to a firm.
+
+const UNDATED_ROW = {
+  address: "200 Cottontail Lane, Somerset, NJ", property_type: "Industrial",
+  transaction: "sale", deal_date: "undated", price: "21,500,000", size_sqft: "347000",
+};
+
+test('deal_date "undated" is accepted and stored as an explicit null', () => {
+  const r = normalizeRow(UNDATED_ROW);
+  assert.equal(r.ok, true, (r.errors || []).join("; "));
+  assert.equal(r.row.deal_date, null);
+  // EXPLICIT null, never an absent key: the upload inserts rows in one
+  // PostgREST batch, which wants uniform keys across dated and undated rows.
+  assert.equal(Object.prototype.hasOwnProperty.call(r.row, "deal_date"), true);
+  assert.equal(r.row.dedupe_key, "200 cottontail lane somerset nj||21500000",
+    "the dedupe key's middle segment is empty — the string-key design's own handling");
+});
+
+test('"UNDATED" and " Undated " work too — the word, not the casing, is the statement', () => {
+  for (const v of ["UNDATED", " Undated "]) {
+    const r = normalizeRow({ ...UNDATED_ROW, deal_date: v });
+    assert.equal(r.ok, true, v);
+    assert.equal(r.row.deal_date, null);
+  }
+});
+
+test("a BLANK deal_date is still refused — a blank is an accident, not a statement", () => {
+  const r = normalizeRow({ ...UNDATED_ROW, deal_date: "" });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some((e) => /deal_date is required/.test(e)));
+});
+
+test("the sentinel is contained to deal_date — the renewal dates refuse the word", () => {
+  // parseDate also reads lease_expiry and option_notice_date, which are
+  // nullable date COLUMNS: a marker escaping as a value there would 400 the
+  // broker's whole upload at PostgREST. The flag is opt-in and only the
+  // deal_date call passes it.
+  const r = normalizeRow({ ...UNDATED_ROW, deal_date: "2025-03-14", lease_expiry: "undated" });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.some((e) => /lease_expiry/.test(e) && /not a date we can read/.test(e)));
+  const bare = parseDate("undated");
+  assert.equal(bare.ok, false, "without the flag, parseDate itself keeps refusing the word");
+});
+
+test("an undated comp stays EDITABLE — validateEdit round-trips the stored null", () => {
+  // Without this, fixing an undated comp's PRICE 400s on its date forever:
+  // validateEdit rebuilds from the stored row, null reads as blank, blank is
+  // refused, and the cell PATCH carries only the changed key.
+  const stored = normalizeRow(UNDATED_ROW).row;
+  assert.equal(stored.deal_date, null);
+  const edit = validateEdit(stored, { price: "22,000,000" });
+  assert.equal(edit.ok, true, (edit.errors || []).join("; "));
+  assert.equal(edit.row.deal_date, null, "the edit keeps the comp undated");
+  assert.equal(edit.row.price, 22000000);
+  // And typing a real date over it works through the same path.
+  const dated = validateEdit(stored, { deal_date: "2025-06-01" });
+  assert.equal(dated.ok, true);
+  assert.equal(dated.row.deal_date, "2025-06-01");
+});
+
+test("the book export writes 'undated' for a stored null — and only when asked", () => {
+  const stored = normalizeRow(UNDATED_ROW).row;
+  // The export path opts in, so export -> re-import round-trips to the same
+  // dedupe key (an ignore-duplicates no-op).
+  const csv = exportCsv([stored], { undatedNulls: true });
+  assert.match(csv, /undated/);
+  const back = parseUpload(csv);
+  assert.equal(back.ok, true, JSON.stringify(back.errors));
+  assert.equal(back.rows.length, 1);
+  assert.equal(back.rows[0].deal_date, null);
+  assert.equal(back.rows[0].dedupe_key, stored.dedupe_key);
+  // The confirm-table path (uploadPayloadToCsv) does NOT opt in: there a row
+  // without a date is a row the model failed to read, and turning that into
+  // "undated" would convert an accident into a statement nobody made.
+  const bare = exportCsv([{ ...stored }]);
+  assert.equal(/undated/.test(bare), false);
+});
+
+test("an undated comp cannot be published, and the refusal names the date", () => {
+  const stored = normalizeRow(UNDATED_ROW).row;
+  const verdict = canPublish(stored);
+  assert.equal(verdict.ok, false);
+  assert.match(verdict.reason, /deal date/i);
+});
+
+test("the template documents the undated sentinel beside the date rule", () => {
+  assert.match(templateCsv(), /undated/);
+});

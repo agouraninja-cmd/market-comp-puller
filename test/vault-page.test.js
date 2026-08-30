@@ -129,16 +129,31 @@ test("an empty vault hides the dashboard rather than showing empty panels", () =
   assert.match(html, /id="repBox"[^>]*class="dbox hide"|class="dbox hide" id="repBox"/);
 });
 
-test("the vault header uses the site Explore menu, not a short Search bar", () => {
+test("the vault header carries the site's browse links, not a short Search bar", () => {
+  // These used to sit inside an Explore <details>. They are flat rows now,
+  // because the rail hides every nav <details> and THIS page's footer is four
+  // lines of prose with no links in it — a hidden dropdown here would have
+  // stranded Pricing, Markets, the 1031 guide and Run a report, leaving the
+  // whole of /vault's navigation as Workspace and Vault.
+  //
+  // What this test has always been about is unchanged: the vault shows the
+  // SITE's links rather than a stubby local nav. Only their container moved.
   const html = renderVaultHTML(boot([]), CHROME);
-  assert.match(html, /<summary>Explore/);
   // /how-it-works left the Explore menu 2026-08-25 (and /brokers came back
   // 2026-08-29); the 1031 guide is the entry that has been in this menu
-  // throughout, so it is what proves this is the site menu rather than a
+  // throughout, so it is what proves these are the site links rather than a
   // Search bar.
   assert.match(html, /href="\/1031-exchange"/);
+  assert.match(html, /href="\/markets"/);
   assert.match(html, /aria-current="page">Vault/);
   assert.doesNotMatch(html, />Search</);
+
+  // And they must be reachable with the rail on, which is the failure this
+  // page was one edit away from shipping. Nothing browse-related may sit
+  // inside a <details> here, whatever else the header grows.
+  const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
+  assert.ok(!nav.includes("<details>"),
+    "a browse dropdown in the vault's nav is invisible in rail mode and has no footer to fall back on");
 });
 
 test("passed-in account-nav chrome lands in the vault header", () => {

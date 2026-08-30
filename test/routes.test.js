@@ -511,8 +511,13 @@ test("bare environment", async (t) => {
   //     anonymous `/` and /how-it-works are one render and would self-link,
   //     while a signed-in member's `/` is the app, so that same page IS owed
   //     the link (both pinned in account-wall.test.js, where the wall is up);
-  //   - it is in the signed-in bar TOO, beside "Run a report" — navigation
-  //     and a CTA are different affordances even sharing a destination.
+  //   - it is for ANONYMOUS visitors only (owner's call, 2026-08-29). A
+  //     member's "/" IS their workspace, so Home and Workspace were two rows
+  //     to one destination — invisible in a horizontal bar, obvious in a
+  //     224px rail where they stack adjacent. The affordance argument that
+  //     kept Home in the signed-in bar on 2026-08-28 (a CTA is not a way
+  //     home) is answered by Workspace, which is a destination and now sits
+  //     exactly where Home was.
   await t.test("signed-out pages open the nav with a Home link", async () => {
     // /how-it-works is in this list because THIS file boots with the wall off,
     // which makes it a page of its own rather than the render `/` is serving.
@@ -527,18 +532,32 @@ test("bare environment", async (t) => {
     }
   });
 
-  // The nav does not change shape with auth state (owner's call, 2026-08-28,
-  // correcting the same day's signed-out-only ship). "Run a report" points at
-  // `/` and is NOT a substitute: it reads as starting a task, not as going
-  // home, which is the reported bug restated one layer down. Both render.
-  await t.test("a signed-in member gets the same Home link", async () => {
+  // A member gets Workspace where a visitor gets Home (owner's call,
+  // 2026-08-29, reversing the 2026-08-28 decision that the nav does not
+  // change shape with auth state). For a member "/" opens the workspace, so
+  // Home and Workspace were two rows to one page; the rail stacks them
+  // adjacent, which is what made the duplication visible.
+  //
+  // "Run a report" still points at "/" and is still NOT the way home — that
+  // reasoning was right and is unchanged. What replaces Home is Workspace: a
+  // destination, in the same position, one row down.
+  await t.test("a signed-in member gets Workspace where a visitor gets Home", async () => {
     const html = await (await fetch(srv.base + "/markets", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
-    assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),
-      "a signed-in member is owed the same way home as everybody else");
+    assert.ok(!html.includes(`<a href="/">Home</a>`),
+      "a member's / IS their workspace, so Home duplicates the Workspace row");
+    assert.match(html, /<a href="\/desk">Workspace<\/a>/,
+      "suppressing Home is only safe because Workspace is the way back; without it "
+      + "a member is left with the wordmark and a CTA, which is the 2026-08-28 bug");
     assert.match(html, /Run a report/,
-      "Home is an addition to the signed-in bar, never a replacement for its CTA");
+      "the CTA is untouched: it was never the way home, and it is not one now");
+
+    // The half that must NOT move. Home was owner-reported missing for
+    // logged-out visitors, and that is still the whole reason it exists.
+    const anon = await (await fetch(srv.base + "/markets")).text();
+    assert.ok(anon.includes(`<nav><a href="/">Home</a><details>`),
+      "an anonymous visitor still opens the nav with Home");
   });
 
   // One nav, no copies (2026-08-20). index.html authors only a marker comment

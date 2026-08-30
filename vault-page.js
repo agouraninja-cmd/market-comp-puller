@@ -45,11 +45,21 @@ function renderVaultHTML(boot, chrome) {
   const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
   const THEME_CSS = chrome.THEME_CSS || "";
   const THEME_BOOT = chrome.THEME_BOOT || "";
+  // The rail, taken whole from server.js rather than restated here. This page
+  // draws its own stylesheet, so a pasted copy would be the THIRD -- and the
+  // Explore-hide bug that took the account cluster off every market page had
+  // to be fixed in two places precisely because there were already two.
+  const RAIL_CSS = chrome.RAIL_CSS || "";
+  // Already gated by the route: the class NAME when this render should wear
+  // the rail, "" otherwise (anonymous, or NAV_SHELL=bar). Deliberately not a
+  // signed-in boolean plus a decision here -- see the purity note at the top
+  // of this file: reads and gates live in server.js, this file draws.
+  const NAV_SHELL_CLASS = chrome.NAV_SHELL_CLASS || "";
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en"${NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : ""}><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
@@ -84,6 +94,11 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
   position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
   backdrop-filter:saturate(1.2) blur(10px)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
+/* The brand's wrapper, matching marketBar's header structure. It exists so
+   RAIL_CSS can pad it in rail mode without this file carrying a rail rule of
+   its own -- a fourth copy of the shell CSS in the file whose own comments
+   argue that copies are what drift. Same declaration MARKET_CSS uses. */
+.hleft{display:flex;align-items:center;gap:18px}
 /* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
    relationship shared with index.html's header and MARKET_CSS, not this
    page's spacing scale, so it stays literal and identical everywhere. */
@@ -532,23 +547,39 @@ footer .wordmark{color:#fff}
 footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
 ${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
+${RAIL_CSS}
 </style>
 ${THEME_BOOT}
 </head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+  <div class="hleft"><a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a></div>
   <nav>
-    <details>
-      <summary>Explore<span class="car">▾</span></summary>
-      <div class="dd">${ACCOUNT_NAV_PRICING}<a href="/">Run a report</a></div>
-    </details>
+    ${ACCOUNT_NAV_PRICING}
     <!-- The same rows in the same order as marketBar and the app's bar --
          Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
          (owner's, 2026-08-29). This header is composed by hand rather than by
          marketBar, so it is the surface that drifts: it had Markets and the
-         1031 guide buried in the dropdown above and no way at all to reach
-         bulk valuation, and the moment this page wears the rail that dropdown
-         stops rendering and the drift becomes two dead ends. -->
+         1031 guide buried in a dropdown and no way at all to reach bulk
+         valuation, and the moment this page wears the rail that dropdown
+         stops rendering and the drift becomes two dead ends.
+
+         The Explore dropdown is GONE rather than reduced. PR 222 left
+         Pricing and "Run a report" inside it, which was right while this
+         page still wore the top bar -- but the rail hides every nav dropdown
+         at 900px and up, so the moment the class lands (this branch) those
+         two become the very dead ends the paragraph above is about, and this
+         page has no footer links to fall back on: its footer is four lines
+         of prose. Promoting them is also what marketBar does, where Pricing
+         is a top-level row and "Run a report" is the trailing CTA, so this
+         converges the two headers rather than leaving a third shape. The
+         five rows the owner named keep their order exactly, untouched,
+         between them.
+
+         Two things this comment may not say, both learned the hard way:
+         no literal tag syntax (routes.test.js strips a dropdown open-to-close
+         to prove a link is a top-level row, and naming the tag here opens a
+         match that eats every row below it), and no bare hash-plus-digits
+         (theme.test.js reads it as a raw hex colour). -->
     <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
     <a href="/markets">Market explorer</a>
@@ -557,6 +588,7 @@ ${THEME_BOOT}
          all that is needed, and the entitlement read stays in the one place
          that owns it. -->
     <a id="navBulk" href="/bulk" hidden>Bulk valuation</a>
+    <a href="/">Run a report</a>
     ${ACCOUNT_NAV_SLOTS}
   </nav>
 </div></header>${ACCOUNT_NAV_JS}

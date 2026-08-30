@@ -138,19 +138,28 @@ test("the wall serves the landing page at the root", async (t) => {
       "/markets is where a walled visitor most needs the way back");
   });
 
-  // Whose home page `/` is depends on the visitor, which is the whole reason
-  // the suppression reads `home && !signedIn` rather than `home`. Under the
-  // wall an anonymous visitor at /how-it-works is looking AT what `/` serves
-  // them, so a Home link there would point at the page they are on; a member
-  // is looking at a marketing page while their `/` is the app, so the same
-  // URL owes them the link. Same page, same wall, opposite answers.
-  await t.test("/how-it-works gives a signed-in member the Home link it withholds from a visitor", async () => {
+  // Neither visitor gets Home here, for two DIFFERENT reasons, and the page
+  // cannot tell you which one is doing the work — so both are pinned.
+  //
+  // Anonymously, under the wall, /how-it-works and `/` are one render, so a
+  // Home link would point at the page being read. That has always been true.
+  //
+  // For a member it is the 2026-08-29 rule: their `/` is the workspace and
+  // the nav carries Workspace instead. Before that call, this same URL was
+  // the sharpest illustration of the old behaviour — same page, same wall,
+  // opposite answers. Now the answers agree by coincidence, which is exactly
+  // why the member case needs its own assertion: if the suppression were
+  // reverted, the anonymous half would still pass and hide the change.
+  await t.test("neither a visitor nor a member gets Home on /how-it-works", async () => {
     const anon = await (await get("/how-it-works")).text();
     assert.ok(!anon.includes(`<a href="/">Home</a>`),
       "anonymously this page IS `/`, so Home would link to itself");
+
     const member = await (await get("/how-it-works", FAKE_SESSION)).text();
-    assert.ok(member.includes(`<nav><a href="/">Home</a><details>`),
-      "a member's `/` is the app, so this page is not their home and owes the link");
+    assert.ok(!member.includes(`<a href="/">Home</a>`),
+      "a member's / is the workspace, and the nav carries Workspace instead");
+    assert.match(member, /<a href="\/desk">Workspace<\/a>/,
+      "the member is not left without a way back — that was the 2026-08-28 bug");
   });
 
   await t.test("/desk still redirects, to the sign-in door", async () => {

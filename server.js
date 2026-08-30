@@ -9105,19 +9105,26 @@ const marketBar = (signedIn = false, current = "") =>
   // is the drift this reorganization exists to remove, and it is sharper in
   // the rail, where they stack one above the other.
   //
-  // Suppressing Home for members was tried and REVERTED, because two tests
-  // named "…gives a signed-in member the Home link it withholds from a
-  // visitor" and "a signed-in member gets the same Home link" defend that
-  // behaviour on purpose — the same-day decision above records that
-  // signed-out-only was already tried once and judged wrong.
+  // Suppressed for members — owner's call, 2026-08-29, reversing the
+  // 2026-08-28 correction one line up. Read both before touching this again.
   //
-  // The objection it was judged wrong for ("a member is left with the
-  // wordmark and a call to action") is arguably answered now by Workspace,
-  // which is a destination rather than a CTA. But that is a product call
-  // about a decision made hours earlier, not a refactor, so it stays as-is
-  // until somebody chooses. Whoever does: change this line and those two
-  // tests together, or leave both.
-  (current !== "/" ? `<a href="/">Home</a>` : "") +
+  // The history: Home was owner-reported missing on 2026-08-28, shipped
+  // signed-out-only that day, then corrected the same day to render for
+  // everybody, on the grounds that "Run a report" points at "/" but reads as
+  // starting a task rather than as going home — so a member without Home had
+  // no way-back affordance at all.
+  //
+  // What changed is the rail. Home and Workspace are ONE destination for a
+  // member ("/" opens the workspace), and in a 224px column they no longer
+  // sit apart in a horizontal bar: they stack, adjacent, two rows pointing at
+  // the same page. And the objection the 2026-08-28 revert rested on is
+  // answered — the member's way back is Workspace, which is a destination
+  // rather than a CTA, and it is now the row directly below where Home was.
+  //
+  // Anonymous mode is UNCHANGED and must stay that way: the top bar keeps
+  // Home for every visitor, which is the bug that was actually reported.
+  // test/routes.test.js and test/account-wall.test.js pin both halves.
+  (current !== "/" && !signedIn ? `<a href="/">Home</a>` : "") +
   `<details><summary>Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current)}</div></details>` +
   // Pricing sits in the bar itself rather than one click inside Explore. It is

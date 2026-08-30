@@ -19,68 +19,37 @@
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 
-// CN_LOGO and the account-nav pieces are the site's shared chrome: one
-// definition in server.js, used by the other server-rendered pages. They are
-// passed IN rather than copied here, because a second copy would drift from
-// the first (server.js already carries a "keep the two in step" warning about
-// exactly that hazard elsewhere). Passing them keeps one source of truth and
-// means this file never has to reach back into server.js. The vault keeps its
-// own sticky header and stylesheet; it lifts the circle, Pricing slot, and
-// hydration script so a member leaving /desk does not appear to have signed
-// out.
-function renderVaultHTML(boot, chrome) {
-  chrome = chrome || {};
-  const CN_LOGO = chrome.CN_LOGO || "";
-  // MARKET_CSS is accepted so the page keeps taking the site's shared chrome
-  // object; the vault draws its own stylesheet and only lifts the account-nav
-  // pieces from it, because a second copy of MARKET_BAR would drift.
-  const ACCOUNT_NAV_CSS = chrome.ACCOUNT_NAV_CSS || "";
-  // The dark-mode footer ink, shared with MARKET_CSS and HOW_CSS rather than
-  // restated here: this page draws its own stylesheet but its footer is the
-  // same navy slab with the same selectors, and that block already carries a
-  // "keep the three in step" warning it has not always been kept in step with.
-  const FOOTER_DARK_CSS = chrome.FOOTER_DARK_CSS || "";
-  // The footer's link columns and the rules that draw them, taken whole for
-  // the same reason as FOOTER_DARK_CSS above and RAIL_CSS below. Until
-  // 2026-08-30 this page's footer was four lines of prose and not one link:
-  // fine while the header carried an Explore dropdown, a dead end the moment
-  // the rail took that dropdown away. The CSS has to come with the markup —
-  // this file's global anchor rule paints links red, which on the navy footer
-  // slab is the one place that colour must not be used.
-  const FOOTER_LINK_COLS = chrome.FOOTER_LINK_COLS || "";
-  const FOOTER_LINKS_CSS = chrome.FOOTER_LINKS_CSS || "";
-  const ACCOUNT_NAV_JS = chrome.ACCOUNT_NAV_JS || "";
-  const ACCOUNT_NAV_SLOTS = chrome.ACCOUNT_NAV_SLOTS || "";
-  const ACCOUNT_NAV_PRICING = chrome.ACCOUNT_NAV_PRICING || "";
-  const THEME_CSS = chrome.THEME_CSS || "";
-  const THEME_BOOT = chrome.THEME_BOOT || "";
-  // The rail, taken whole from server.js rather than restated here. This page
-  // draws its own stylesheet, so a pasted copy would be the THIRD -- and the
-  // Explore-hide bug that took the account cluster off every market page had
-  // to be fixed in two places precisely because there were already two.
-  const RAIL_CSS = chrome.RAIL_CSS || "";
-  // Already gated by the route: the class NAME when this render should wear
-  // the rail, "" otherwise (anonymous, or NAV_SHELL=bar). Deliberately not a
-  // signed-in boolean plus a decision here -- see the purity note at the top
-  // of this file: reads and gates live in server.js, this file draws.
-  const NAV_SHELL_CLASS = chrome.NAV_SHELL_CLASS || "";
+// The /vault BODY. Everything around it — the doctype, the head, the header,
+// the footer, the theme boot — is marketShell's, exactly as it is for
+// /markets, /brokers, /firms, /pricing and /bulk. (Task 9 of the rail plan,
+// 2026-08-30.)
+//
+// This file used to build a whole HTML document, and that is what made it the
+// surface that drifted. Its header was a third hand-written copy of a nav list
+// two other files already render. Its Escape script closed the dropdown and
+// never stepped back, which every other page does. Its footer had no links in
+// it until days ago. And ~34 lines of its stylesheet were chrome — .hdr,
+// .brand, .wordmark, .hleft, the dropdown — that MARKET_CSS already defines.
+// All of that is gone. What is left is the page.
+//
+// The stylesheet moved INTO the body, which is bulk-page.js's pattern and is
+// load-bearing here rather than a matter of taste: marketShell emits
+// MARKET_CSS in the head, and this page redefines body, a, .wrap, main.wrap,
+// .card, .kicker, .ledger and .lcell — so its rules have to come AFTER that
+// stylesheet in document order to win on equal specificity. marketShell's
+// head parameter is emitted BEFORE MARKET_CSS and would lose.
+//
+// Still pure — a boot payload in, a string out — which is what lets the whole
+// page be rendered and diffed with no database and no browser. It now takes
+// NOTHING but that payload: the twelve-key chrome object it used to be handed
+// (CN_LOGO, RAIL_CSS, ACCOUNT_NAV_*, FOOTER_*, THEME_*, NAV_SHELL_CLASS)
+// existed only to rebuild by hand what marketShell already had.
+function renderVaultBody(boot) {
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
-  return `<!DOCTYPE html>
-<html lang="en"${NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : ""}><head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
-<meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
-<meta name="theme-color" content="#121826" media="(prefers-color-scheme: dark)"/>
-<link rel="icon" href="/favicon.ico" sizes="48x48"/>
-<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<style>
+  return `<style>
 *{box-sizing:border-box}
-${THEME_CSS}
 :root{
   --serif:Georgia,'Times New Roman',serif;
   --r:6px;
@@ -98,50 +67,26 @@ body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-heigh
   font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   -webkit-font-smoothing:antialiased}
 a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
+/* .wrap is redefined rather than inherited: MARKET_CSS pads it 0 16px and
+   this page has always used its own --s6 (24px) gutter. Later in document
+   order, same specificity, so this wins -- which is the whole reason the
+   stylesheet is emitted in the body. */
 .wrap{max-width:1120px;margin:0 auto;padding:0 var(--s6);width:100%}
-.hdr{border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--paper) 92%, transparent);
-  position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
-  backdrop-filter:saturate(1.2) blur(10px)}
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
-/* The brand's wrapper, matching marketBar's header structure. It exists so
-   RAIL_CSS can pad it in rail mode without this file carrying a rail rule of
-   its own -- a fourth copy of the shell CSS in the file whose own comments
-   argue that copies are what drift. Same declaration MARKET_CSS uses. */
-.hleft{display:flex;align-items:center;gap:18px}
-/* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
-   relationship shared with index.html's header and MARKET_CSS, not this
-   page's spacing scale, so it stays literal and identical everywhere. */
-.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
-.brand svg{height:28px;width:28px;flex-shrink:0}
-/* Dark-mode fix (2026-08-10, fix round 1): CN_LOGO's rect/polygon carry a
-   literal fallback fill= (see its declaration in server.js), overridden here
-   the same way MARKET_CSS and HOW_CSS override it. This file does not
-   interpolate MARKET_CSS despite taking it as a parameter -- the page has
-   always carried its own copy of .hdr/.brand/.wordmark -- so the rule has
-   to be repeated here or /vault's header logo stays unthemed. */
-.cn-logo rect{fill:var(--ink)}
-.cn-logo polygon{fill:var(--red-fill)}
-.wordmark{font-size:var(--t3);font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
-.wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:var(--ink-2);padding:4px 0;white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
-.hdr nav a[aria-current="page"]{color:var(--ink);font-weight:600}
-/* Explore + account circle, matching MARKET_BAR so the vault is not the one
-   signed-in page whose bar drops Pricing and the circle. Load-bearing:
-   .hdr nav .dd a sets display:block, which out-specifies [hidden], so the
-   injected ACCOUNT_NAV_CSS (and the copy below) must keep slots hidden. */
-.hdr nav [hidden]{display:none!important}
-.hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-2);white-space:nowrap;user-select:none}
-.hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-3)}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
-  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
-  padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
-.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
-main{flex:1;padding:40px 0 72px}
+/* The header, the brand lockup, the nav and the dropdown used to be redeclared
+   here -- ~34 lines of chrome in a file whose own comments argue that copies
+   are what drift. MARKET_CSS owns all of it now, and marketBar owns the markup.
+   The .cn-logo dark-mode override went with them for the same reason.
+
+   What has to stay is this one rule. marketShell wraps the body in a single
+   main.wrap element, where this page used to have a main around a separate
+   wrap div -- so the vertical padding, which lived on the element selector,
+   would now lose to .wrap's own padding shorthand on the very same element.
+   MARKET_CSS states its own values the identical way
+   (main.wrap{flex:1;padding-top:32px;padding-bottom:64px}); these are the
+   vault's, unchanged, so the fold moves nothing on screen.
+   No literal tag syntax in here: this comment ships inside the stylesheet, and
+   the served page is counted for exactly one of each landmark element. */
+main.wrap{flex:1;padding-top:40px;padding-bottom:72px}
 .kicker{margin:0 0 var(--s3);font-size:var(--t6);font-weight:600;letter-spacing:.14em;
   text-transform:uppercase;color:var(--ink-3)}
 h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-height:1.12;
@@ -156,10 +101,17 @@ h1.h{font-family:var(--serif);font-weight:500;margin:0;font-size:var(--t1);line-
    one cell — Published — because zero staying zero is the number this page
    exists to prove. */
 .trust{margin:var(--s7) 0 0}
+/* margin, flex, min-width and border-right are stated here because MARKET_CSS
+   declares .ledger and .lcell too — a DIFFERENT component that happens to share
+   the name (a flex row of bordered-right cells with a 22px margin, where this
+   is a grid of bordered-left ones). Since 2026-08-30 this page is rendered
+   inside marketShell, so that stylesheet is on the document: any property this
+   rule leaves unset falls through to it. test/vault-shell.test.js computes the
+   full set and fails the build on a new one. */
 .ledger{border:1px solid var(--edge);border-top:2px solid var(--ink);border-radius:var(--r);
   background:var(--card);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;
-  box-shadow:var(--shadow),var(--lift)}
-.lcell{padding:18px 20px;border-left:1px solid var(--hair)}
+  margin:0;box-shadow:var(--shadow),var(--lift)}
+.lcell{padding:18px 20px;border-left:1px solid var(--hair);border-right:0;flex:0 1 auto;min-width:auto}
 .lcell:first-child{border-left:0}
 /* #F7FBF8 is the redesign's published-cell green wash; folded to --ok-bg
    (ΔRGB ~20, within the approved 25 bound) so the cell stays green in both
@@ -193,9 +145,16 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .drop.over{border-color:var(--red);border-style:solid;background:var(--err-bg);box-shadow:inset 0 0 0 1px var(--red)}
 .drop-k{margin:0 0 var(--s4);font-family:var(--serif);font-size:17px;font-weight:500;color:var(--ink)}
 .drop p{margin:var(--s4) 0 0;color:var(--ink-2);font-size:var(--t5)}
+/* display is stated for the .ledger reason above. MARKET_CSS's .btn is an
+   inline-block anchor; these are real <button>s, and the a.btn rule further
+   down restores inline-block for the two that are links. */
 .btn{background:var(--red-fill);color:#fff;border:0;border-radius:var(--r);padding:9px 16px;
-  font-weight:600;font-size:13.5px;font-family:inherit;cursor:pointer;line-height:1.3}
-.btn:hover{background:var(--red-fill-hover)}
+  display:inline-block;font-weight:600;font-size:13.5px;font-family:inherit;cursor:pointer;line-height:1.3}
+/* color is stated for the .ledger reason: MARKET_CSS's .btn:hover sets it too.
+   Same value the button already has, so nothing moves -- but the leak test
+   compares declarations, not outcomes, and a silent match today is a silent
+   mismatch the day either file changes its red. */
+.btn:hover{background:var(--red-fill-hover);color:#fff}
 .btn[disabled]{background:var(--ink-4);cursor:default}
 .btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
@@ -229,7 +188,16 @@ select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-c
    placeholder on the market field once already (see the market page note). */
 .filters input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none}
 .filters .exp{margin-left:auto}
-table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0}
+/* font-variant-numeric is stated for the same reason .ledger states margin:
+   MARKET_CSS is on this document now and sets tabular-nums on every table. The
+   vault wants it on NUMERIC CELLS only (td.num below) -- lining figures across
+   an address column widens the letterforms for nothing. The first-child rule
+   below neutralises its 180px minimum, which squared this table's first
+   column; the row rule is a border-BOTTOM here, so MARKET_CSS's border-top
+   would draw both. */
+table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px;margin:0;
+  font-variant-numeric:normal}
+td:first-child,th:first-child{min-width:0}
 /* Statement tables (approved as "Vault B", 2026-08-08): an ink rule closes
    every header on this page — the broker's own book of record earns the same
    audited-statement vocabulary the report's comp table shipped. */
@@ -238,7 +206,7 @@ th{text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase
 th[data-k],th[data-bk]{cursor:pointer}
 th[data-k]:hover,th[data-bk]:hover{color:var(--ink)}
 th .ar{color:var(--red)}
-td{padding:12px 14px;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink-body)}
+td{padding:12px 14px;border-top:0;border-bottom:1px solid var(--hair);vertical-align:top;color:var(--ink-body)}
 td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tbody tr:hover td{background:var(--wash)}
 .addr{color:var(--ink);font-weight:500}
@@ -385,9 +353,11 @@ td.rowact{white-space:nowrap}
    the map, and a map that hides everything but your current street is not a
    map. Clicking one drives the filter instead. */
 .cards{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+/* margin:0 for the .ledger reason above — MARKET_CSS's .card is a 22px-padded
+   article card with an 18px vertical margin, this is a compact clickable tile. */
 .card{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);padding:16px 18px;
   text-align:left;font-family:inherit;font-size:var(--t5);color:var(--ink);cursor:pointer;
-  display:flex;flex-direction:column;gap:2px;transition:border-color .15s,background .15s,box-shadow .15s;
+  display:flex;flex-direction:column;gap:2px;margin:0;transition:border-color .15s,background .15s,box-shadow .15s;
   box-shadow:var(--shadow),var(--lift)}
 .card:hover{border-color:var(--ink-4);background:var(--card)}
 .card.on{border-color:var(--red);background:var(--card);box-shadow:inset 0 0 0 1px var(--red),var(--shadow),var(--lift)}
@@ -550,70 +520,13 @@ a.btn.ghost:hover{color:var(--ink)}
   color:var(--ink-3);font-weight:600;user-select:none;list-style-position:inside}
 .dbox>summary:hover{color:var(--ink)}
 .dbox[open]>summary{margin-bottom:var(--s4);color:var(--ink)}
-footer{background:var(--slab);color:var(--ink-4);font-size:13px;padding:0;border:0;margin-top:auto}
-footer .wrap{padding:36px var(--s6)}
-footer .wordmark{color:#fff}
-footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
-/* The link columns sit under the prose rather than beside it: this footer's
-   .wrap is a plain padded block, not the two-column flex MARKET_CSS gives its
-   own, and a broker's page has no reason to grow one. */
-footer .cols{margin-top:26px}
-${FOOTER_LINKS_CSS}
-${FOOTER_DARK_CSS}
-${ACCOUNT_NAV_CSS}
-${RAIL_CSS}
+/* The footer is MARKET_FOOTER's now, and so are its rules: the four this file
+   used to declare, the shared link columns, the dark ink, the account-nav
+   block and the rail all arrive with MARKET_CSS. This page's own prose
+   footer -- and the four-lines-and-no-links dead end it had been -- is gone.
+   Its privacy sentence stayed, as the page's own closing line. */
+.vfoot{color:var(--ink-3);font-size:var(--t5);margin:var(--s8) 0 0;max-width:62ch}
 </style>
-${THEME_BOOT}
-</head><body>
-<header class="hdr"><div class="wrap">
-  <div class="hleft"><a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a></div>
-  <nav>
-    ${ACCOUNT_NAV_PRICING}
-    <!-- The same rows in the same order as marketBar and the app's bar --
-         Workspace, Vault, Market explorer, 1031 guide, Bulk valuation
-         (owner's, 2026-08-29). This header is composed by hand rather than by
-         marketBar, so it is the surface that drifts: it had Markets and the
-         1031 guide buried in a dropdown and no way at all to reach bulk
-         valuation, and the moment this page wears the rail that dropdown
-         stops rendering and the drift becomes two dead ends.
-
-         The Explore dropdown is GONE rather than reduced. PR 222 left
-         Pricing and "Run a report" inside it, which was right while this
-         page still wore the top bar -- but the rail hides every nav dropdown
-         at 900px and up, so the moment the class lands (this branch) those
-         two become the very dead ends the paragraph above is about, and this
-         page has no footer links to fall back on: its footer is four lines
-         of prose. Promoting them is also what marketBar does, where Pricing
-         is a top-level row and "Run a report" is the trailing CTA, so this
-         converges the two headers rather than leaving a third shape. The
-         five rows the owner named keep their order exactly, untouched,
-         between them.
-
-         Two things this comment may not say, both learned the hard way:
-         no literal tag syntax (routes.test.js strips a dropdown open-to-close
-         to prove a link is a top-level row, and naming the tag here opens a
-         match that eats every row below it), and no bare hash-plus-digits
-         (theme.test.js reads it as a raw hex colour). -->
-    <a href="/desk">Workspace</a>
-    <a href="/vault" aria-current="page">Vault</a>
-    <a href="/markets">Market explorer</a>
-    <a href="/1031-exchange">1031 guide</a>
-    <!-- Hydrated by ACCOUNT_NAV_JS, which this page already emits: the id is
-         all that is needed, and the entitlement read stays in the one place
-         that owns it. -->
-    <a id="navBulk" href="/bulk" hidden>Bulk valuation</a>
-    <a href="/">Run a report</a>
-    ${ACCOUNT_NAV_SLOTS}
-  </nav>
-</div></header>${ACCOUNT_NAV_JS}
-<script>document.addEventListener("click",function(e){
-document.querySelectorAll(".hdr nav details[open]").forEach(function(d){
-if(!d.contains(e.target))d.open=false;});});
-document.addEventListener("keydown",function(e){
-if(e.key!=="Escape")return;
-var dd=document.querySelector(".hdr nav details[open]");
-if(dd)dd.open=false;});</script>
-<main><div class="wrap">
   <p class="kicker">Private workspace</p>
   <h1 class="h">Broker Vault</h1>
   <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
@@ -1068,12 +981,12 @@ if(dd)dd.open=false;});</script>
       </table></div>
     </section>
   </div>
-</div></main>
-<footer><div class="wrap">
-  <span class="wordmark">Comp<b>Ninja</b></span>
-  <p>Private broker workspace. Your comps are never read into public records unless you choose to publish them.</p>
-  ${FOOTER_LINK_COLS}
-</div></footer>
+  <!-- The privacy sentence the old footer carried. It is page CONTENT, not
+       chrome -- the one promise this page exists to make -- so it stays with
+       the page rather than leaving with the footer that happened to hold it.
+       MARKET_FOOTER's own disclaimer is about valuations and says nothing
+       about a broker's book. -->
+  <p class="vfoot">Private broker workspace. Your comps are never read into CompNinja's public records unless you choose to publish them.</p>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
 <script>
@@ -4028,7 +3941,7 @@ if(dd)dd.open=false;});</script>
   var boot=window.__VAULT_BOOT__;
   if(boot&&typeof boot.s==="number"){apply(boot);}else{load();}
 })();
-</script></body></html>`;
+</script>`;
 }
 
-module.exports = { renderVaultHTML };
+module.exports = { renderVaultBody };

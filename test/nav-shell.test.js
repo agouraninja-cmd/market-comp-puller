@@ -159,11 +159,17 @@ test("both market stylesheets still take the rail, and the vault does too", () =
     assert.ok(m, `could not read ${block}`);
     assert.ok(m[0].includes("${RAIL_CSS}"), `${block} no longer takes the rail`);
   }
-  // vault-page.js draws its own stylesheet, so it takes the same const through
-  // the chrome object rather than by pasting a third copy.
-  assert.match(SERVER_JS, /RAIL_CSS,/, "the vault's chrome object is not handed RAIL_CSS");
-  assert.ok(VAULT_JS.includes("chrome.RAIL_CSS"), "vault-page.js does not read RAIL_CSS");
-  assert.ok(VAULT_JS.includes("${RAIL_CSS}"), "vault-page.js reads RAIL_CSS but never emits it");
+  // vault-page.js used to take this same const through a chrome object,
+  // because it drew its own stylesheet — which is what made two consumers
+  // three. Task 9 (2026-08-30) retired that: it renders a body inside
+  // marketShell, so the rail reaches it through MARKET_CSS like everything
+  // else, and the count above is the whole story again. The served page is
+  // checked for the rail further down this file, and in vault-shell.test.js.
+  // Checked as a USE, not a mention: that file's header comment names the
+  // twelve chrome keys it no longer takes, and the point of the comment is
+  // that a future reader can see what was retired.
+  assert.ok(!VAULT_JS.includes("chrome.RAIL_CSS") && !VAULT_JS.includes("${RAIL_CSS}"),
+    "vault-page.js should get the rail from the shell, not through a chrome object");
 });
 
 test("the rail never prints", () => {

@@ -872,11 +872,14 @@ dependency. `.env` is git-ignored — never commit it.
   retire the class once the account read answers: `refreshAccountUI()` in the
   app, `ACCOUNT_NAV_JS` on every server-rendered page. Removed only, never
   added — a member's copy is stamped before first paint and must not flicker
-  in after it. The rules live in **one** const, `RAIL_CSS`, with three
-  consumers (`MARKET_CSS`, `HOW_CSS`, and `vault-page.js`, which draws its own
-  stylesheet and would otherwise be a third copy); `FOOTER_LINK_COLS` +
-  `FOOTER_LINKS_CSS` travel the same way, which is what gives `/vault` a
-  footer with links in it rather than four lines of prose.
+  in after it. The rules live in **one** const, `RAIL_CSS`, interpolated by
+  `MARKET_CSS` and `HOW_CSS` — and since 2026-08-30 that is the whole list:
+  `/vault` was briefly a third consumer, taking `RAIL_CSS`, `FOOTER_LINK_COLS`
+  and `FOOTER_LINKS_CSS` through a chrome object because it drew its own
+  document, and Task 9 folded it onto `marketShell` so it gets all of them the
+  way every other page does. `FOOTER_LINK_COLS` / `FOOTER_LINKS_CSS` remain
+  extracted, now with `MARKET_FOOTER` and the two stylesheets as their
+  consumers.
   **The app draws its own half of this shell, and the two must agree.**
   `index.html` is not rendered by `marketBar`, so every rule above has a second
   implementation in that file's `<style>` and markup, and the whole class of
@@ -3007,13 +3010,37 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     2026-08-06). It is a web page, so it belongs to whoever owns the front end;
     as a 475-line block inside `server.js` it could not be edited without
     editing the server file, which made front-end and server work collide by
-    accident. `renderVaultHTML(boot, { CN_LOGO, MARKET_CSS })` takes the site's
-    shared chrome as an argument rather than copying it — a second copy would
-    drift, and `server.js` already carries a keep-the-two-in-step ⚠ about that
-    hazard. **The DATA is still resolved in `server.js` by `vaultReadPayload`,
-    which owns the entitlement gate**; `vault-page.js` only decides how that
-    data is drawn. Keep it that way — a read that happened there would be a
-    read outside the gate.
+    accident. **Since 2026-08-30 it renders a BODY, not a document**
+    (`renderVaultBody(boot)` — Task 9 of the rail plan): the doctype, head,
+    header and footer are `marketShell`'s, exactly as for `/markets`,
+    `/brokers`, `/firms`, `/pricing` and `/bulk`. Its old twelve-key chrome
+    object (`CN_LOGO`, `RAIL_CSS`, `ACCOUNT_NAV_*`, `FOOTER_*`, `THEME_*`,
+    `NAV_SHELL_CLASS`) is gone — every key existed only to rebuild by hand
+    what the shell already had, and rebuilding it is what made this the page
+    that drifted. **The DATA is still resolved in `server.js` by
+    `vaultReadPayload`, which owns the entitlement gate**; `vault-page.js`
+    only decides how that data is drawn. Keep it that way — a read that
+    happened there would be a read outside the gate.
+    Two rules the fold leaves behind, both easy to undo by accident:
+    - **The page's stylesheet is emitted in the BODY, after `MARKET_CSS`.**
+      That is `bulk-page.js`'s pattern and it is load-bearing, not tidiness:
+      this page redefines `body`, `a`, `.wrap`, `main.wrap`, `.card`,
+      `.kicker`, `.ledger` and `.lcell`, so its rules must come later in
+      document order to win on equal specificity. `marketShell`'s `head`
+      parameter is emitted BEFORE `MARKET_CSS` and would lose.
+    - **A shared selector leaks every property the vault does not set.** Both
+      stylesheets use `.card`, `.ledger`, `.lcell`, `.btn`, `table`, `th` and
+      `td` for entirely different components. Six declarations leaked on the
+      first pass (margins on `.ledger`/`.card`, a right border and flex basis
+      on `.lcell`, tabular figures and a 180px first column on the comps
+      table) — found by rendering a populated vault before and after and
+      diffing computed styles, not by reading. `test/vault-shell.test.js`
+      COMPUTES that set from the two stylesheets and fails the build on a new
+      one; the fix is to state the property on the vault's own rule.
+    `INTER_FONT_HEAD` rides through `marketShell`'s `head` for this page
+    alone: `MARKET_CSS` names Inter in `body{}` and no server-rendered page
+    fetches it, so without that link the fold would silently have restyled
+    the page brokers use daily.
   - **TWO DECKS, not ten peer sections** (Vault Direction U, approved and
     shipped 2026-08-10; card `vault/direction-u-two-decks.html`). The page is
     two products sharing one scroll, so it carries exactly two deck rules —

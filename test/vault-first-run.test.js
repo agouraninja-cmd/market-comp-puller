@@ -21,14 +21,17 @@
 const test = require("node:test");
 const assert = require("node:assert");
 
-const { renderVaultHTML } = require("../vault-page");
+// The page renders a BODY since Task 9 (2026-08-30); the chrome around it is
+// marketShell's. Everything this file asserts about — the invitations, the two
+// decks, the one file input — is inside that body, so nothing here changes but
+// the entry point.
+const { renderVaultBody } = require("../vault-page");
 
-const CHROME = { CN_LOGO: "<svg></svg>", MARKET_CSS: "" };
-const html = (comps, uploads) => renderVaultHTML({ s: 200, j: {
+const html = (comps, uploads) => renderVaultBody({ s: 200, j: {
   comps: comps || [], uploads: uploads || [],
   counts: { returned: (comps || []).length, published: 0 },
   markets: [], types: [],
-} }, CHROME);
+} });
 
 test("there is exactly one file input, however many buttons open it", () => {
   const page = html();

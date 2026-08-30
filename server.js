@@ -24487,16 +24487,20 @@ const server = http.createServer((req, res) =>
         // brokers' private books, and it is still owed. This is the shell
         // consistency on its own, which is what a member actually sees.
         RAIL_CSS,
-        // The CLASS, not just the stylesheet. RAIL_CSS is a constant and is
-        // therefore truthy in BOTH modes, so a vault that inferred the mode
-        // from it kept the sidebar after NAV_SHELL=bar -- a rollback lever
-        // that misses a surface is not a lever. This is the same value every
-        // other page gates on, and it is empty in bar mode.
-        NAV_SHELL_CLASS,
-        // Cookie PRESENCE, the identical cheap rule every marketShell page
-        // uses. The real gate is the boot payload resolved above; this only
-        // decides which shape the chrome takes.
-        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        // PRE-GATED, so vault-page.js keeps taking strings and nothing else.
+        // That file's header comment is explicit that it is a pure render and
+        // that every read stays in server.js behind vaultReadPayload's gate,
+        // so an auth decision inside it would be the first exception to a rule
+        // worth keeping. The route already has the answer.
+        //
+        // Empty in two cases and they collapse into one string: NAV_SHELL=bar
+        // (the rollback lever, which must reach this page like every other),
+        // and an anonymous render (the rail marks "you are inside the
+        // product"). Cookie PRESENCE decides the second, the same cheap rule
+        // every marketShell page uses -- the real gate is the boot payload
+        // resolved above; this only picks which shape the chrome takes.
+        NAV_SHELL_CLASS:
+          parseCookies(req)[SESSION_COOKIE] && NAV_SHELL_CLASS ? NAV_SHELL_CLASS : "",
       }));
     })();
     return;

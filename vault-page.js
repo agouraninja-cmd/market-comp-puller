@@ -50,19 +50,16 @@ function renderVaultHTML(boot, chrome) {
   // Explore-hide bug that took the account cluster off every market page had
   // to be fixed in two places precisely because there were already two.
   const RAIL_CSS = chrome.RAIL_CSS || "";
-  // The class the rules hang off, empty when NAV_SHELL=bar. Gated on this
-  // rather than on RAIL_CSS, which is a constant and true in both modes.
+  // Already gated by the route: the class NAME when this render should wear
+  // the rail, "" otherwise (anonymous, or NAV_SHELL=bar). Deliberately not a
+  // signed-in boolean plus a decision here -- see the purity note at the top
+  // of this file: reads and gates live in server.js, this file draws.
   const NAV_SHELL_CLASS = chrome.NAV_SHELL_CLASS || "";
-  // Whether to wear it. Signed-in only, the rule every other surface follows:
-  // the rail marks "you are inside the product". Decided on cookie PRESENCE,
-  // like every marketShell page, so the chrome never disagrees with the page
-  // it frames -- the real gate is the boot payload the route resolved.
-  const signedIn = Boolean(chrome.signedIn);
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
   const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
   return `<!DOCTYPE html>
-<html lang="en"${signedIn && NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : ""}><head>
+<html lang="en"${NAV_SHELL_CLASS ? ' class="' + NAV_SHELL_CLASS + '"' : ""}><head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Broker Vault · CompNinja</title><meta name="robots" content="noindex, nofollow"/>
 <meta name="theme-color" content="#FBFBF9" media="(prefers-color-scheme: light)"/>
@@ -97,6 +94,11 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
   position:sticky;top:0;z-index:20;-webkit-backdrop-filter:saturate(1.2) blur(10px);
   backdrop-filter:saturate(1.2) blur(10px)}
 .hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:var(--s4);padding:14px var(--s6)}
+/* The brand's wrapper, matching marketBar's header structure. It exists so
+   RAIL_CSS can pad it in rail mode without this file carrying a rail rule of
+   its own -- a fourth copy of the shell CSS in the file whose own comments
+   argue that copies are what drift. Same declaration MARKET_CSS uses. */
+.hleft{display:flex;align-items:center;gap:18px}
 /* 10px rather than --s4: the logo/wordmark lockup is a fixed brand
    relationship shared with index.html's header and MARKET_CSS, not this
    page's spacing scale, so it stays literal and identical everywhere. */
@@ -546,17 +548,11 @@ footer p{color:var(--ink-faint);margin:10px 0 0;max-width:62ch;line-height:1.6}
 ${FOOTER_DARK_CSS}
 ${ACCOUNT_NAV_CSS}
 ${RAIL_CSS}
-/* The brand. marketBar wraps it in .hleft, which the rail pads; this page
-   puts .brand straight in the header, so the same padding is applied here
-   rather than adding a wrapper the bar layout would then have to absorb. */
-@media (min-width:900px){
-  html.nav-rail .hdr .brand{padding:0 20px 16px}
-}
 </style>
 ${THEME_BOOT}
 </head><body>
 <header class="hdr"><div class="wrap">
-  <a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a>
+  <div class="hleft"><a class="brand" href="/" aria-label="CompNinja home">${CN_LOGO}<span class="wordmark">Comp<b>Ninja</b></span></a></div>
   <nav>
     ${ACCOUNT_NAV_PRICING}
     <!-- The same rows in the same order as marketBar and the app's bar --
@@ -567,16 +563,23 @@ ${THEME_BOOT}
          valuation, and the moment this page wears the rail that dropdown
          stops rendering and the drift becomes two dead ends.
 
-         The Explore <details> is GONE rather than reduced. #222 left Pricing
-         and "Run a report" inside it, which was right while this page wore
-         the top bar -- but the rail hides every nav <details> at >=900px, so
-         the moment the class lands (this branch) those two become the very
-         dead ends the comment above is about, and this page has no footer
-         links to fall back on: its footer is four lines of prose. Promoting
-         them is also what marketBar does, where Pricing is a top-level row
-         and "Run a report" is the trailing CTA -- so this converges the two
-         headers instead of leaving a third shape. The five rows the owner
-         named keep their order exactly, untouched, between them. -->
+         The Explore dropdown is GONE rather than reduced. PR 222 left
+         Pricing and "Run a report" inside it, which was right while this
+         page still wore the top bar -- but the rail hides every nav dropdown
+         at 900px and up, so the moment the class lands (this branch) those
+         two become the very dead ends the paragraph above is about, and this
+         page has no footer links to fall back on: its footer is four lines
+         of prose. Promoting them is also what marketBar does, where Pricing
+         is a top-level row and "Run a report" is the trailing CTA, so this
+         converges the two headers rather than leaving a third shape. The
+         five rows the owner named keep their order exactly, untouched,
+         between them.
+
+         Two things this comment may not say, both learned the hard way:
+         no literal tag syntax (routes.test.js strips a dropdown open-to-close
+         to prove a link is a top-level row, and naming the tag here opens a
+         match that eats every row below it), and no bare hash-plus-digits
+         (theme.test.js reads it as a raw hex colour). -->
     <a href="/desk">Workspace</a>
     <a href="/vault" aria-current="page">Vault</a>
     <a href="/markets">Market explorer</a>

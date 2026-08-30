@@ -2206,7 +2206,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              buttons, so one markup serves rail and bar alike. -->
         <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Your vault</a>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
-        <a href="/1031-exchange" class="hover:text-[#1A2433]">1031 guide</a>
+        <!-- The guide is a bar row for a MEMBER and a menu item for a stranger
+             (owner's, 2026-08-30). The row above it earns its slot for both
+             audiences; this one only earns it once the rail is on, because the
+             rail is what takes the dropdown away. A signed-out visitor still
+             opens Explore, and server.js injects the guide back into it as an
+             anonOnly entry -- see NAV_LINKS.
+             Ships hidden and is revealed by refreshAccountUI, the same shape
+             as #menuVaultLink and #menuBulkLink beside it: this file is one
+             set of bytes served to everybody, so anonymous is the pre-paint
+             default and the member's row arrives with their account. -->
+        <a id="nav1031Link" href="/1031-exchange" class="hidden hover:text-[#1A2433]">1031 guide</a>
         <!-- Bulk valuation, the second Pro tool, on the same 2026-08-29 report.
              /bulk had no link on this page at all -- not in the menu, not in
              the footer -- so from inside the app the only way in was typing
@@ -11993,6 +12003,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // forbids outright. Toggled rather than added so both directions hold.
     if (navRailMode) document.documentElement.classList.toggle("nav-rail", on);
     document.getElementById("signInLink").classList.toggle("hidden", on);
+    // The 1031 guide swaps places rather than appearing: a bar row for a
+    // member (the rail hides Explore, so a menu item would be unreachable),
+    // a menu item for a stranger (their dropdown opens, and this bar has a
+    // pitch to make). Both halves are toggled here so the two never show at
+    // once and neither is left behind by a sign-out, which this page also
+    // does without reloading.
+    document.getElementById("nav1031Link").classList.toggle("hidden", !on);
+    document.querySelectorAll(".nav-anon").forEach(function (el) {
+      el.classList.toggle("hidden", on);
+    });
     document.getElementById("acctMenuWrap").classList.toggle("hidden", !on);
     // Sign-in/out while on /desk swaps the prompt card and desk content live.
     document.getElementById("deskSignIn").classList.toggle("hidden", on);

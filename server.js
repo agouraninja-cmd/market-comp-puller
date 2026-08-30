@@ -8995,6 +8995,18 @@ ${ACCOUNT_NAV_CSS}`;
 const NAV_LINKS = [
   ["/brokers", "Brokers"],
   ["/firms", "For firms"],
+  // Back in the menu for a SIGNED-OUT reader only (owner's, 2026-08-30).
+  // The promotion above was justified by the rail hiding this dropdown --
+  // and the rail is a signed-in shell. An anonymous visitor never gets it,
+  // so for them the dropdown still opens, the guide was never unreachable,
+  // and a top-level row spent a slot in the one header that has to sell the
+  // product to a stranger. The fourth element is that rule: anonOnly.
+  //
+  // A member keeps the top-level row marketBar renders below, so nothing
+  // regresses for the reader the promotion was for. The two facts are one
+  // decision -- a link belongs where its reader can reach it -- which is why
+  // this is a flag on the shared list rather than a second list.
+  ["/1031-exchange", "1031 guide", "", true],
   // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
   // the desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
@@ -9005,8 +9017,16 @@ const NAV_LINKS = [
 ];
 // `current` is the path of the page being rendered: its own link gets the
 // `.on` style and aria-current so the menu shows where the reader already is.
-const navLinksHtml = (current = "") =>
-  NAV_LINKS.map(([href, label, cls]) => {
+const navLinksHtml = (current = "", signedIn = false) =>
+  // anonOnly entries are dropped for a member. marketBar knows the answer
+  // synchronously -- signedIn is cookie PRESENCE, not a database read -- so
+  // the server-rendered headers ship the truth rather than shipping both and
+  // correcting after paint. index.html cannot: it is one set of bytes served
+  // to everybody, so its copy carries the nav-anon class instead and
+  // refreshAccountUI hides it. Same rule, two mechanisms, because the two
+  // surfaces learn who is reading at different times.
+  NAV_LINKS.filter(([, , , anonOnly]) => !(anonOnly && signedIn))
+    .map(([href, label, cls]) => {
     const classes = [cls, href === current ? "on" : ""].filter(Boolean).join(" ");
     return `<a href="${href}"${classes ? ` class="${classes}"` : ""}` +
       `${href === current ? ' aria-current="page"' : ""}>${label}</a>`;
@@ -9019,8 +9039,16 @@ const navLinksHtml = (current = "") =>
 // in index.html's <style> covers these classes for the same reason.
 const APP_NAV_LINK_CLASS = "block px-3 py-2 text-[#374253] hover:bg-[#F5F4EF] hover:text-[#1A2433]";
 const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
-const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls]) =>
-  `<a href="${href}" class="${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}">${label}</a>`).join("");
+// nav-anon rides along for anonOnly entries: this string is injected into a
+// page served identically to members and strangers, so the entry has to ship
+// and then be hidden, the way #menuVaultLink and #menuBulkLink already do.
+// Anonymous is the pre-paint default because it is the safe one -- a member
+// briefly has one extra row inside a dropdown that is closed, while the
+// reverse would hide a link from the stranger it exists for.
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls, anonOnly]) => {
+  const classes = `${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}${anonOnly ? " nav-anon" : ""}`;
+  return `<a href="${href}" class="${classes}">${label}</a>`;
+}).join("");
 
 // --- The Market Explorer's example, rotated per page load (2026-08-24) ------
 //
@@ -9126,7 +9154,7 @@ const marketBar = (signedIn = false, current = "") =>
   // test/routes.test.js and test/account-wall.test.js pin both halves.
   (current !== "/" && !signedIn ? `<a href="/">Home</a>` : "") +
   `<details><summary>Explore<span class="car">▾</span></summary>` +
-  `<div class="dd">${navLinksHtml(current)}</div></details>` +
+  `<div class="dd">${navLinksHtml(current, signedIn)}</div></details>` +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
   // behind a browse menu reads as one that would rather not say. The
@@ -9164,13 +9192,19 @@ const marketBar = (signedIn = false, current = "") =>
       `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>`
     : "") +
   `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
-  // The 1031 guide, out of the Explore dropdown and into the bar (2026-08-29).
-  // See NAV_LINKS for why: the rail hides that dropdown, so this was the only
-  // link in it a signed-in member actually wanted and the only one they could
-  // not reach. Public like the explorer above it, and for the same reason --
-  // the worksheet is one of the few things a stranger can be shown that is
-  // the product rather than a description of it.
-  `<a href="/1031-exchange"${current === "/1031-exchange" ? ' aria-current="page"' : ""}>1031 guide</a>` +
+  // The 1031 guide, a bar row for a MEMBER only (2026-08-29, narrowed
+  // 2026-08-30). See NAV_LINKS for why: the rail hides the Explore dropdown,
+  // so for a signed-in member this was the only link in it they actually
+  // wanted and the only one they could not reach. A signed-out visitor never
+  // gets the rail, so their dropdown still opens and the guide goes back into
+  // it -- this bar is the one that has to sell to a stranger, and Brokers,
+  // For firms and the download earn its slots first.
+  //
+  // Rendered here rather than by navLinksHtml because a row and a menu item
+  // are different things; the list decides membership, this decides shape.
+  (signedIn
+    ? `<a href="/1031-exchange"${current === "/1031-exchange" ? ' aria-current="page"' : ""}>1031 guide</a>`
+    : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
       // menu, not in a footer, not in a header. Its only inbound link was

@@ -950,14 +950,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       html.nav-rail #exploreMenuWrap { display: none; }
       /* The account cluster sits at the foot, and its menu opens UPWARD: the
          default top-9 would put it off the bottom of the viewport from there.
-         The theme toggle rides just above it, on the same margin the shared
-         rail gives its own #themeToggle -- a compact switch, not a nav row, so
-         it opts out of the 7px/20px row box the rule above hands every other
-         button in here. */
-      html.nav-rail #themeToggleApp {
-        margin: 6px 20px 0; padding: 0; border-left: 0;
-        align-self: flex-start; background: none;
-      }
+         (No #themeToggleApp rule above it any more -- the switch went back
+         into the settings panel on 2026-08-30, on both halves of the rail, so
+         there is nothing in either nav to lay out.) */
       html.nav-rail #acctMenuWrap {
         margin-top: auto; padding: 12px 20px 0; border-top: 1px solid var(--hair);
       }
@@ -2056,13 +2051,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <div id="settingsModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
       <div class="rd-lab">Settings</div>
-      <!-- Appearance moved OUT of this panel and back into the nav on
-           2026-08-30, where marketBar has carried it on every server-rendered
-           page since the rail shipped. It came here on 2026-08-23, five days
-           before the rail existed; once the rail landed, the app was the only
-           surface in the product whose theme control was two clicks inside a
-           modal while every other page showed it as a row. Same element, same
-           id, same handler -- only the parent moved. -->
+      <!-- Appearance. Back in this panel on 2026-08-30 (owner's call), where
+           it sat from 2026-08-23. It spent one morning as a nav row on both
+           halves of the rail; the switch is one preference, so it gets one
+           control, and every server-rendered page reaches this panel through
+           its account menu's Settings row (/desk?settings=1) rather than
+           carrying a copy of the button -- accountNavSlots renders no toggle
+           any more. Same id and same handler as ever, which is what keeps
+           test/theme.test.js's moon/sun check pointing at one element. Light
+           is the default; a click flips to dark and is remembered on this
+           browser. -->
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <div>
+          <div class="text-sm font-medium text-[#1A2433]">Appearance</div>
+          <p class="text-xs text-[#68707E] mt-0.5">Light unless you switch it. Remembered on this browser.</p>
+        </div>
+        <button id="themeToggleApp" type="button" class="text-[#5A6473] hover:text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5 leading-none"
+          aria-label="Switch colour theme" title="Switch colour theme">
+          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
+          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
+            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
+        </button>
+      </div>
       <!-- Plan. Copy comes from billingStatusCopy() (the desk plan card's
            generator); the buttons obey pricingLink's and menuBillingBtn's
            exact visibility rules, applied inside refreshBillingUI(). The
@@ -2251,22 +2262,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              entitlements.js owns. Ships hidden, like the vault link. -->
         <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Bulk valuation</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
-        <!-- The theme toggle, back in the nav (2026-08-30) where every
-             server-rendered header carries it -- accountNavSlots renders the
-             identical control as `#themeToggle` on /markets, /vault, /bulk and
-             the rest, so leaving the app's inside the settings modal made this
-             the one page in the product where the switch was not on screen.
-             Same id and same handler as before the move, which is what keeps
-             test/theme.test.js's mirror and moon/sun checks pointing at one
-             element. It sits immediately before the account cluster so the
-             rail's foot reads the same here as it does there. -->
-        <button id="themeToggleApp" type="button" class="text-[#5A6473] hover:text-[#1A2433] leading-none"
-          aria-label="Switch colour theme" title="Switch colour theme">
-          <svg class="theme-moon w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>
-          <svg class="theme-sun w-4 h-4" viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor"
-            d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
-        </button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
             class="w-7 h-7 rounded-full bg-[#1A2433] text-white text-[11px] font-semibold leading-7 text-center overflow-hidden"
@@ -12175,17 +12170,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (typeof renderAnalysisCluster === "function" && currentParsed && currentMeta) {
       renderAnalysisCluster(currentParsed, currentMeta, false);
     }
-    // ?settings=1, the door every server-rendered account menu now points at
+    // ?settings=1, the door every server-rendered account menu points at
     // (accountNavSlots' Settings row). Consumed HERE rather than at boot
-    // because the panel is signed-in only and this is the one function that
-    // runs after /api/account/me on every path, including the failed one: a
-    // member arrives with the panel open, and a stale link on a signed-out
-    // browser quietly does nothing rather than flashing an empty panel.
+    // because this is the one function that runs after /api/account/me on
+    // every path, including the failed one, so the panel opens once its rows
+    // know who they are about rather than repainting under the reader.
+    // It opens for a SIGNED-OUT visitor too, since 2026-08-30: the panel is
+    // where the theme switch lives now, and it is the only place a browser
+    // that stored "dark" can store "light" again. Its two signed-in sections
+    // hide themselves (applySettingsAccountUI), leaving appearance and plan
+    // — the two rows that never needed an account.
     // The param is cleared either way, exactly as ?pricing=1 clears itself, so
     // a reload does not reopen something the reader has already closed.
     if (pendingSettingsPanel) {
       pendingSettingsPanel = false;
-      if (on) openSettingsModal();
+      openSettingsModal();
       const qs = new URLSearchParams(location.search);
       qs.delete("settings");
       const rest = qs.toString();
@@ -12349,10 +12348,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     resetSettingsDeleteConfirm();
     document.getElementById("settingsModal").classList.add("hidden");
   }
-  // The account menu's Settings row is the only door (the header gear it
-  // shipped beside was redundant with it and came out 2026-08-24). That menu
-  // is signed-in only, so the panel is too; a signed-out visitor on a shared
-  // report still has the theme toggle in every server-rendered header.
+  // The account menu's Settings row is the only door in the chrome (the
+  // header gear it shipped beside was redundant with it and came out
+  // 2026-08-24), and that menu is signed-in only. A signed-out visitor -- on
+  // a shared report, say -- has no row pointing here and, since the theme
+  // switch came back into this panel on 2026-08-30, no toggle in any header
+  // either: their door is /?settings=1, which the wall exempts for exactly
+  // this reason. An escape hatch, deliberately not advertised; picking a
+  // theme is a member affordance now.
   document.getElementById("menuSettingsBtn").addEventListener("click", openSettingsModal);
   document.getElementById("settingsClose").addEventListener("click", closeSettingsModal);
   document.getElementById("settingsModal").addEventListener("click", (e) => {
@@ -12514,13 +12517,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // The theme toggle. Two states: it flips and remembers. Light is the
   // default (see the boot script in <head> -- the OS preference is not
   // consulted); once someone clicks, their explicit choice wins forever.
-  // It lives in the settings panel now, not the header bar -- same id,
-  // same handler, so the mirror test below still finds it.
-  // ⚠ This is a hand-copy of server.js's ACCOUNT_NAV_JS toggle handler --
-  // this file is static and server.js never templates it. Nothing keeps the
-  // two in step but this comment and the "index.html's theme boot script and
-  // toggle handler mirror server.js" test in test/theme.test.js -- same
-  // storage key, same stored values, same attribute, same element.
+  // It lives in the settings panel, and since 2026-08-30 it is the ONLY
+  // theme control in the product: ACCOUNT_NAV_JS carried a hand-copy of this
+  // handler for its own nav button, and both went when the switch came back
+  // in here. server.js still hand-copies THEME_BOOT (applying a stored
+  // choice is not the same as offering one), and that pair is still checked
+  // by the "index.html's theme boot script ... mirror server.js" test in
+  // test/theme.test.js -- this handler no longer has a twin to drift from.
   const themeToggleApp = document.getElementById("themeToggleApp");
   if (themeToggleApp) themeToggleApp.addEventListener("click", () => {
     const el = document.documentElement;

@@ -894,11 +894,22 @@ dependency. `.env` is git-ignored — never commit it.
   before `renderResults` repaints); every nav row is a real link on both sides,
   so `#myDeskLink` is an `<a href="/desk">` whose handler stands aside for a
   modified or middle click; `/` and `/desk` both serve the workspace, so
-  neither rewrites the URL into the other; the theme toggle is a nav row on
-  both (it sat in the app's settings modal from 2026-08-23, five days before
-  the rail existed); and the settings panel, which lives only in `index.html`,
-  is reachable from every account menu through `/desk?settings=1` — a query
-  the wall can see, read and cleared exactly as `?pricing=1` is.
+  neither rewrites the URL into the other; **the theme toggle is a nav row on
+  NEITHER** (owner's call, 2026-08-30 — it was a row on both for one morning,
+  which fixed the old asymmetry the wrong way round; dark mode is one
+  preference, so it gets one control, `#themeToggleApp` in `index.html`'s
+  settings panel, and `accountNavSlots` renders no toggle, no moon/sun CSS
+  and no toggle handler — one hand-copy fewer, since `THEME_BOOT` alone is
+  what every page needs in order to APPLY a stored choice); and the settings
+  panel, which lives only in `index.html`, is reachable from every account
+  menu through `/desk?settings=1` — a query the wall can see, read and
+  cleared exactly as `?pricing=1` is. **A signed-out visitor has no account
+  menu and now no toggle either**, so the wall exempts a bare `/?settings=1`
+  (never `/desk?settings=1`, which stays a personal workspace) and the panel
+  opens for them showing its two account-free rows, appearance and plan.
+  Nothing in the chrome points there: it is the escape hatch for a browser
+  that stored `dark` and would otherwise have no way back to light. Choosing
+  a theme is a member affordance now.
   Two things moved because the rail forced them: the Explore `<details>` has
   nowhere to open in a 224px column so it is hidden there and **its links moved
   to `MARKET_FOOTER`** (which finally puts `/download` in a footer at all — it

@@ -404,39 +404,40 @@ test("every in-scope server page can set the theme before first paint", () => {
     "vault-page.js is a body now; a boot script in it would be the second on the page");
 });
 
-test("the toggle is rendered once per page, in the shared nav", () => {
-  const slots = SERVER_JS.slice(SERVER_JS.indexOf("function accountNavSlots("));
-  assert.ok(slots.slice(0, 1500).includes(`id="themeToggle"`), "no toggle in accountNavSlots");
-  // accountNavSlots is the ONE place it may live. A second copy in
-  // marketBar or the how-it-works header would render two toggles on the
-  // pages that call both.
-  const occurrences = SERVER_JS.split(`id="themeToggle"`).length - 1;
-  assert.equal(occurrences, 1, "themeToggle is declared more than once in server.js");
+test("the toggle is rendered once in the whole product, in the settings panel", () => {
+  // It was a nav row on every server-rendered page from 2026-08-23 and, for
+  // one morning on 2026-08-30, on the app's rail as well. The owner asked for
+  // it back in Settings that afternoon: one preference, one control. So
+  // server.js renders none at all — the pages reach the panel through the
+  // account menu's Settings row (/desk?settings=1) — and index.html holds the
+  // single button.
+  assert.equal(SERVER_JS.split(`id="themeToggle"`).length - 1, 0,
+    "a theme toggle is back in server.js; the one control lives in the settings panel");
+  assert.equal(INDEX.split(`id="themeToggleApp"`).length - 1, 1,
+    "index.html does not hold exactly one theme toggle");
+  // In the PANEL, not the header: this is the thing the move was about, and
+  // the <!-- Header --> marker is the boundary between the modals above it
+  // and the chrome below.
+  assert.ok(INDEX.indexOf(`<button id="themeToggleApp"`) < INDEX.indexOf("<!-- Header -->"),
+    "the toggle is below the header marker again — it belongs in the settings panel");
 });
 
-test("the theme toggle shows a moon in light and a sun in dark, on every in-scope header", () => {
+test("the theme toggle shows a moon in light and a sun in dark", () => {
   // Spec §6.1: "sun/moon". A moon-only button reads as "switch to dark"
   // even when you are already there, and a crescent is easy to miss on
-  // charcoal. Both headers must carry both icons; CSS (not JS) swaps them
-  // so the first paint is already correct.
-  function hasPair(src, where) {
-    assert.ok(src.includes("theme-moon"), `${where} is missing the moon icon`);
-    assert.ok(src.includes("theme-sun"), `${where} is missing the sun icon`);
-  }
-  const slotsStart = SERVER_JS.indexOf("function accountNavSlots(");
-  const slotsEnd = SERVER_JS.indexOf("\nfunction ", slotsStart + 10);
-  hasPair(SERVER_JS.slice(slotsStart, slotsEnd > 0 ? slotsEnd : slotsStart + 8000), "accountNavSlots");
-  // Anchored on the BUTTON, not on the first mention of the id (2026-08-30).
-  // The toggle moved back out of the settings panel and into the nav, and the
-  // rail gives it a style rule -- so the first "themeToggleApp" in this file
-  // is now a CSS selector a thousand lines above the element, and slicing from
-  // there read a window with no SVG in it at all. Anchoring on the markup is
-  // what this test was always trying to describe.
+  // charcoal. The button must carry both icons; CSS (not JS) swaps them so
+  // the first paint is already correct.
+  // ONE button since 2026-08-30, so one check. accountNavSlots renders no
+  // toggle and therefore owes no icons, and ACCOUNT_NAV_CSS's .theme-sun rule
+  // went with the button it styled -- those class names appearing there again
+  // would mean a copy has come back into the chrome.
   const toggleBtnAt = INDEX.indexOf(`<button id="themeToggleApp"`);
   assert.notEqual(toggleBtnAt, -1, "index.html's theme toggle button not found");
-  hasPair(INDEX.slice(toggleBtnAt, toggleBtnAt + 1800), "index.html toggle");
-  assert.match(cssBlock("ACCOUNT_NAV_CSS"), /\.theme-sun\{display:none\}/,
-    "ACCOUNT_NAV_CSS does not hide the sun in light mode");
+  const btn = INDEX.slice(toggleBtnAt, toggleBtnAt + 1800);
+  assert.ok(btn.includes("theme-moon"), "the toggle is missing the moon icon");
+  assert.ok(btn.includes("theme-sun"), "the toggle is missing the sun icon");
+  assert.equal(cssBlock("ACCOUNT_NAV_CSS").includes("theme-sun"), false,
+    "ACCOUNT_NAV_CSS styles the icons again -- has a nav toggle come back?");
   assert.match(INDEX_STYLE, /\.theme-sun \{ display: none \}/,
     "index.html does not hide the sun in light mode");
   assert.ok(INDEX_STYLE.includes(`[data-theme="dark"] .theme-sun { display: block }`),
@@ -895,24 +896,33 @@ test("index.html's theme boot script and toggle handler mirror server.js's THEME
       `${name} consults the OS preference -- the default is light (owner's call, 2026-08-23)`);
   }
 
+  // The toggle HANDLER had a second copy in ACCOUNT_NAV_JS and was compared
+  // here the same way. It has none since 2026-08-30: the switch went back
+  // into the settings panel, the nav button went with it, and one hand-copy
+  // left the codebase. What stays is the pair above -- THEME_BOOT, which
+  // every server-rendered page still needs in order to APPLY a stored choice.
   const navStart = SERVER_JS.indexOf("const ACCOUNT_NAV_JS =");
   assert.notEqual(navStart, -1, "ACCOUNT_NAV_JS not found");
-  const toggleAt = SERVER_JS.indexOf(`$("themeToggle")`, navStart);
-  assert.notEqual(toggleAt, -1, "the shared theme toggle handler not found in ACCOUNT_NAV_JS");
-  const toggleEnd = SERVER_JS.indexOf("catch(e){}});", toggleAt);
-  const serverToggleText = SERVER_JS.slice(toggleAt, toggleEnd);
-  const serverToggle = facts(serverToggleText);
+  const navEnd = SERVER_JS.indexOf("</script>`;", navStart);
+  assert.equal(SERVER_JS.slice(navStart, navEnd).includes("themeToggle"), false,
+    "ACCOUNT_NAV_JS has a theme toggle handler again -- that is a second copy of index.html's");
 
+  // index.html's is still the one that has to be right, and the inverted
+  // ternary this function was written to catch (`dark ? "dark" : "light"`,
+  // which stores the CURRENT theme instead of the new one, so the choice
+  // never survives a reload) is still the failure worth pinning. With no twin
+  // to compare against, compare it to the rule itself.
   const toggleAppAt = INDEX.indexOf(`getElementById("themeToggleApp")`);
   assert.notEqual(toggleAppAt, -1, "index.html's themeToggleApp handler not found");
   const toggleAppEnd = INDEX.indexOf("});", INDEX.indexOf("catch (e) {}", toggleAppAt));
   const indexToggleText = INDEX.slice(toggleAppAt, toggleAppEnd);
-  const indexToggle = facts(indexToggleText);
-
-  assert.deepEqual(indexToggle, serverToggle,
-    "index.html's toggle handler disagrees with the shared toggle handler (storage key / stored values / attribute / element)");
-  assert.deepEqual(ternaries(indexToggleText), ternaries(serverToggleText),
-    "index.html's toggle handler picks \"dark\"/\"light\" in a different branch order than the shared toggle handler -- one of them has an inverted ternary, which means the visitor's choice would not survive a reload");
+  assert.deepEqual(facts(indexToggleText).storageKey, ["theme"],
+    "index.html's toggle writes a different localStorage key than THEME_BOOT reads");
+  assert.deepEqual(facts(indexToggleText).attribute, ["data-theme"],
+    "index.html's toggle sets an attribute THEME_BOOT does not");
+  assert.ok(facts(indexToggleText).element, "index.html's toggle does not act on documentElement");
+  assert.deepEqual(ternaries(indexToggleText), [["light", "dark"]],
+    "index.html's toggle stores the CURRENT theme rather than the new one -- an inverted ternary, so the visitor's choice would not survive a reload");
 });
 
 test("the vault takes its tokens from theme.js rather than its own copy", () => {

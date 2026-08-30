@@ -102,26 +102,34 @@ test("the vault row is called the same thing on both sides of the click", () => 
     "the shared rail's label moved; the app's copy now disagrees with it");
 });
 
-test("the theme switch is a rail row on the app too, not a modal setting", () => {
-  // accountNavSlots renders this control as a row on /markets, /vault, /bulk
-  // and the rest. The app kept its copy inside the settings panel — which was
-  // right on 2026-08-23, five days before the rail existed, and left the app
-  // as the one surface in the product where the switch was not on screen.
-  const navAt = INDEX_HTML.indexOf('<button id="themeToggleApp"');
-  assert.notEqual(navAt, -1, "the app's theme toggle is gone");
-  const acctAt = INDEX_HTML.indexOf('<div id="acctMenuWrap"');
-  const modalEnd = INDEX_HTML.indexOf('<!-- Header -->');
-  assert.ok(navAt < acctAt,
-    "the toggle sits above the account cluster, as it does in the shared rail");
-  assert.ok(navAt > modalEnd,
-    "the toggle must have LEFT the settings panel, not been copied out of it");
-  // ONE button. A second toggle would be a second thing to keep in step with
-  // server.js's, which theme.test.js pins line for line — and it is exactly
-  // what a future editor reaches for when asked to put this back in Settings.
+test("the theme switch is one control, in the settings panel, on neither rail", () => {
+  // The parity rule here reversed on 2026-08-30 (owner's call), and reversed
+  // is not the same as abandoned: for one morning the switch was a nav row on
+  // BOTH halves, which fixed the asymmetry the wrong way round. Dark mode is
+  // one preference, so it gets one control, and the server-rendered pages
+  // reach it through the Settings row below rather than carrying a button of
+  // their own. What this test defends is that neither half grows a copy back
+  // on its own — a toggle in one nav and not the other is the seam.
+  const btnAt = INDEX_HTML.indexOf('<button id="themeToggleApp"');
+  assert.notEqual(btnAt, -1, "the app's theme toggle is gone entirely");
+  const modalEnd = INDEX_HTML.indexOf("<!-- Header -->");
+  assert.ok(btnAt < modalEnd,
+    "the toggle left the settings panel — it is the only control there is");
   assert.equal(INDEX_HTML.split('id="themeToggleApp"').length - 1, 1,
     "exactly one theme toggle element in index.html");
-  assert.match(INDEX_HTML, /html\.nav-rail #themeToggleApp \{/,
-    "the shared rail gives its toggle its own spacing; the app's needs the same");
+  // And none in the shared chrome. Counted over the WHOLE file rather than
+  // over accountNavSlots, so a copy pasted into marketBar or a page's own
+  // header fails here too.
+  assert.equal(SERVER_JS.split('id="themeToggle"').length - 1, 0,
+    "a theme toggle is back in the server-rendered chrome; the app's is in Settings");
+  assert.equal(SERVER_JS.includes("theme-moon"), false,
+    "the moon/sun icons are back in server.js — that means a button is too");
+  // The panel is the only home, so every page needs a door to it. That is the
+  // Settings row (checked by the next test) plus, for a signed-out browser
+  // that stored "dark" and has no account menu, the bare ?settings=1 URL the
+  // wall exempts. Without that exemption there is no way back to light.
+  assert.match(SERVER_JS, /qs\.get\("settings"\) === "1"/,
+    "the wall no longer lets ?settings=1 through — a signed-out browser cannot undo dark");
 });
 
 test("Settings is reachable from every account menu, not only from the app", () => {

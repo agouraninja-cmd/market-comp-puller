@@ -8265,15 +8265,12 @@ const ACCOUNT_NAV_CSS = `
 .hdr nav .dd button:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd .up{color:var(--red);font-weight:500}
 .hdr nav .dd a.vault{font-weight:500}
-/* Theme toggle. Sits in the nav row and reads as one of its links, not as a
-   switch widget -- this header is deliberately calm. */
-.hdr nav #themeToggle{display:inline-flex;align-items:center;padding:0;border:0;background:none;
-  color:var(--ink-3);cursor:pointer;line-height:0}
-.hdr nav #themeToggle:hover{color:var(--ink)}
-.theme-sun{display:none}
+/* No theme toggle here any more (2026-08-30, owner's call). The switch has
+   ONE home, the settings panel in index.html, reached from every one of
+   these pages through the account menu's Settings row (/desk?settings=1).
+   Its moon/sun icon rules went with it -- they styled that button and
+   nothing else on a server-rendered page. */
 @media screen{
-  [data-theme="dark"] .theme-moon{display:none}
-  [data-theme="dark"] .theme-sun{display:block}
   [data-theme="dark"] .hdr nav .dd{box-shadow:var(--lift)}
 }
 `;
@@ -8288,16 +8285,14 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
   // The Pricing link is dropped there by passing ACCOUNT_NAV_PRICING: "";
   // this drops the Upgrade button, which lives inside the account menu and so
   // cannot be removed from outside. Every other page keeps both by default.
-  // The theme toggle. Rendered here and nowhere else -- the pages that use
-  // this helper each render exactly one nav, so a second copy anywhere
-  // would double it. Not hidden like the account slots: it needs no
-  // knowledge of the visitor, so it is correct on the very first frame.
-  return `<button id="themeToggle" type="button" aria-label="Switch colour theme" title="Switch colour theme">` +
-    `<svg class="theme-moon" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
-    `d="M10 3a7 7 0 1 0 7 7 5.5 5.5 0 0 1-7-7Z"/></svg>` +
-    `<svg class="theme-sun" viewBox="0 0 20 20" aria-hidden="true" width="16" height="16"><path fill="currentColor" ` +
-    `d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg></button>` +
-    (desk
+  // No theme toggle. It was a row here from 2026-08-30 morning until the
+  // owner asked for it back in Settings the same day: dark mode is one
+  // preference, so it gets one control, and every page reaches it through
+  // the Settings row below. What that costs is stated where it lands --
+  // a SIGNED-OUT visitor has no account menu, so their door is the bare
+  // /?settings=1 URL the wall exempts, and nothing in the chrome points at
+  // it. Discoverable dark mode is a member feature now.
+  return (desk
     ? `<a id="navDesk" href="/desk" hidden>Workspace</a>` +
       `<a id="navSignIn" href="/?auth=signin" hidden>Sign in</a>`
     : "") +
@@ -8424,15 +8419,13 @@ const ACCOUNT_NAV_JS =
   `var out=$("navSignOut");if(out)out.addEventListener("click",function(){` +
   `fetch("/api/account/logout",{method:"POST"}).catch(function(){}).then(function(){` +
   `location.reload();});});` +
-  // ⚠ index.html hand-copies this toggle handler onto its own #themeToggleApp
-  // button (it is a static file server.js never templates). Nothing keeps
-  // the two copies in step but this comment and the "index.html's theme boot
-  // script and toggle handler mirror server.js" test in test/theme.test.js --
-  // same storage key, same stored values, same attribute, same element.
-  `var th=$("themeToggle");if(th)th.addEventListener("click",function(){` +
-  `var el=document.documentElement,dark=el.getAttribute("data-theme")==="dark";` +
-  `if(dark){el.removeAttribute("data-theme");}else{el.setAttribute("data-theme","dark");}` +
-  `try{localStorage.setItem("theme",dark?"light":"dark");}catch(e){}});` +
+  // No toggle handler here any more (2026-08-30). It was a hand-copy of
+  // index.html's, kept in step by nothing but a paired ⚠ comment and a test;
+  // with the switch back in the settings panel there is one handler, in the
+  // file that owns the panel, and this is one fewer mirror to maintain.
+  // THEME_BOOT still runs on every page -- APPLYING a stored choice is not
+  // the same thing as offering one -- so a member's dark theme still follows
+  // them onto a market page.
   `})();</script>`;
 
 // Research Desk system — the same palette and type as the landing page and
@@ -8590,7 +8583,6 @@ const RAIL_CSS = `
      the viewport from there. */
   html.nav-rail .hdr nav>#navAcct{margin-top:auto;position:relative}
   html.nav-rail .hdr nav>#navAcct .dd{right:auto;left:16px;top:auto;bottom:calc(100% + 8px)}
-  html.nav-rail .hdr nav>#themeToggle{margin:6px 20px 0;align-self:flex-start}
 }
 /* Paper has no sidebar. Without this the printed page carries a 224px empty
    column down its left edge on every server-rendered surface. */
@@ -23864,9 +23856,22 @@ const server = http.createServer((req, res) =>
       // price is exactly who must not be bounced to a page with no prices on
       // it; checkout itself still requires the account (401 → signup modal).
       const pricing = qs.get("pricing");
+      // The fifth door: ?settings=1, added 2026-08-30 when the theme switch
+      // went back into the settings panel and came out of every nav. The
+      // panel lives only in index.html, and its rows for a visitor with no
+      // account are exactly the two that need no account — appearance and
+      // plan — so a signed-out browser that stored "dark" yesterday must
+      // still have somewhere to store "light" today. Nothing in the chrome
+      // links here for them (see accountNavSlots): this is the escape hatch,
+      // not a feature, which is why it is a door and not a nav row.
+      // Narrower than the other three by one path: /desk?settings=1 (what the
+      // signed-in account menu links to) keeps its redirect, because asking
+      // for the desk is still asking for a personal workspace and the wall's
+      // rule about those does not bend for a query string.
+      const settings = qs.get("settings") === "1" && staticPath !== "/desk";
       const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
       if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
-          && pricing !== "1") {
+          && pricing !== "1" && !settings) {
         if (staticPath === "/desk") {
           // To the SIGN-IN door, not the front door (changed 2026-08-13).
           // Asking for /desk is asking for your own account, and answering

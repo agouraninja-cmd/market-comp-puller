@@ -260,11 +260,13 @@ test("/desk is kept alive rather than redirected", () => {
   }
 });
 
-test("one theme toggle, still, and no second account cluster", () => {
+test("no theme toggle in the chrome, and no second account cluster", () => {
   // theme.test.js counts these too; restated here because the rail is exactly
-  // the change that tempts somebody to add a second copy at the rail's foot.
-  assert.equal(SERVER_JS.split('id="themeToggle"').length - 1, 1,
-    "exactly one theme toggle in all of server.js");
+  // the change that tempts somebody to add a copy at the rail's foot. Zero
+  // since 2026-08-30: the switch lives in index.html's settings panel, which
+  // every page reaches through the account menu's Settings row.
+  assert.equal(SERVER_JS.split('id="themeToggle"').length - 1, 0,
+    "a theme toggle is back in server.js; the one control is in the settings panel");
   assert.equal(SERVER_JS.split('id="navAcct"').length - 1, 1,
     "exactly one account cluster");
 });

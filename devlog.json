@@ -2,6 +2,36 @@
   {
     "date": "2026-08-29",
     "type": "fix",
+    "title": "Every Florida address was read as one unit of a site",
+    "details": "unitDesignatorOf gates three things: the OSM footprint size estimate, the Street View or aerial photo on every map pin, and the verified_key that migration 035's portfolio dedupe runs on. \"fl\" is in its keyword vocabulary and FL is a state abbreviation, so \"873 E Citation Ct, Miami, FL 33101\" matched as floor 33101 and the whole state was refused — no size estimate, no photo on any pin, and dedupe off, so one Florida building typed three ways saved as three properties with three value histories. Invisible by construction: the vocabulary's own comment notes that a false positive silently costs a size estimate and a photo, which is exactly why the must-PASS direction needed a test and not only the must-REFUSE one. A trailing state and ZIP is now dropped before the vocabulary is applied, which is the general fix rather than an FL exemption — that suffix is never a unit designator whatever the keyword list grows to, and a genuine \"Fl 3\" still matches once it is gone."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "Outreach targeting skipped Florida, and any street named after a keyword",
+    "details": "outreach-draft.js carried its own loose copy of the unit-designator rule — a keyword followed by any word — so it refused \"500 Lot Ave\", \"900 Building Materials Way\" and \"100 Space Center Blvd\", and because FL is a state it refused every Florida address in the corpus. A refusal here only means a building is never written to, so nothing reported it. The file already imports isAggregateAddress from corpus-audit rather than restating that vocabulary, and now uses the same tight rule index.html does, with the two pinned together by a test: neither file can require the other, so the pair is kept honest the way ORG.SHOP_COPY's mirror is. The tests it gained run in both directions, which is what the copy in index.html needed after \"Roomy\", \"Lotus\" and \"United Nations\" all parsed as unit designators on its first pass."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "A failed report burned the anonymous visitor's one free search",
+    "details": "The rule stated where the guest gate is built is that the free search is spent only when a report is actually served. The consume ran before gate(), which is not a formality — it runs the radius blend, the comp gate, coordinate attachment and the vault and firm blends, any of which can throw into the handler's catch and answer 502. The visitor got no report and lost the allowance, with the cn_guest cookie already set, so the retry was refused with signin_required for a report that never arrived. /api/explore-market has always had this ordering right, consuming only on a published 200; the report route now serializes first and spends second, and reuses the serialized value at both exits rather than calling gate() again per exit."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "Import errors cited a line number the broker would find blank",
+    "details": "parseCsv drops blank rows before returning, so a caller's array index counts rows that survived parsing rather than lines of the file — and both callers that report line numbers computed it from that index while promising the number the person sees in their spreadsheet. One spacer row and the vault said \"Line 3\" about a row sitting on line 5; a quoted cell spanning two lines pushed it further. Bulk valuation had the same off-by-N in its header branch, surfaced in skipped[] and warnings[] to whoever pasted the list. parseCsv now stamps each row with the file line it started on, counting newlines inside quoted cells too, and both callers read the stamp. The property is non-enumerable, so a row is still an ordinary array of cells to every other consumer — same length, same JSON, same spread."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
+    "title": "Eight smaller defects found in the same sweep",
+    "details": "The Market Explorer read its type and state tables with bare lookups, so typing \"constructor Boise ID\" returned the Object function as a property type and rendered \"function Object() { [native code] }\" on the button — index.html already guards the identical shape one file over and says why, so the same own-property fix is applied here. The vault's filter dropdown built a quoted attribute with the innerHTML-safe escaper instead of the attribute-safe one defined two lines from it, and the values are markets parsed from addresses a broker typed. DELETE /api/vault/upload lacked the uuid guard every sibling vault route has, so a malformed id answered 502 \"could not remove that import, please try again\" — telling a broker our storage failed and inviting a retry that could never work; it now 404s like the others. The search-error status line interpolated a raw server message into innerHTML, which the file's two other error renderers both avoid deliberately. The subject last-sale and asking-price links built an href without the protocol check their four sibling link sites apply. refreshDistances drew the comp table before recomputing the value band it reads, so outlier chips could quote a range the hero was no longer showing. applyCuration rebuilt the column list without clearing the sort state, so excluding the last comp carrying a sorted column left the table sorted with no indicator and a blank sort control on mobile. And outreach.js padded the wrong side of a fallback and reported failed addresses as warmed."
+  },
+  {
+    "date": "2026-08-29",
+    "type": "fix",
     "title": "Reopening a saved report valued it with the last search's square footage",
     "details": "subjectRangeFromMeta, askingRangeFrom and subjectCapRate fall back to the live form inputs whenever a report's own meta carries no figure, and the comment on the first of them says a reopened report has no form inputs to read. That is true on a cold page load and false the moment anything has been searched, because renderOwnerHero auto-fills the size box with the size it looked up. So opening a saved house from My Desk after searching a 152,400 SF warehouse priced the house at its own $/SF times the warehouse's square footage — the number CLAUDE.md calls the most expensive in the report, taken from a different building. The price box fed the asking-price check and the cap rate box seeded the DCF the same way. Both reopen paths now restore the form from the report's own meta before rendering, through one helper that rerunHistory shares. Every field is assigned rather than assigned-if-present: the leak happens exactly when the new report has no stored figure, which is the case a presence check skips, so a blank has to be written as blank."
   },

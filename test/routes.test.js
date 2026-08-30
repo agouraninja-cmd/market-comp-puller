@@ -3568,3 +3568,41 @@ test("findUsersByIds chunks its in.() fan-out and bounds it", () => {
   assert.match(body, /i \+= 200/, "the id list must be chunked, like attachCitedCounts");
   assert.match(body, /limit=\$\{slice\.length\}/, "and bounded, like usersByIds and orgsByIds");
 });
+
+// ---------------------------------------------------------------------------
+// A failed report must not cost the anonymous visitor their free search
+//
+// The rule is stated where guestGate is built: consumed only when a report is
+// actually served, so a failed search never burns the free one. But the consume
+// ran BEFORE `await gate(...)`, and gate() is not a formality — it runs the
+// radius blend, gateReport, attachPropertyCoords and the vault/firm blend, any
+// of which can throw into the handler's catch and answer 502. The visitor got
+// no report and lost the allowance, with cn_guest already set, so the retry was
+// refused with signin_required for a report that never arrived.
+//
+// /api/explore-market has always had this right (it consumes only on a
+// published 200). Source-scanned rather than driven, because forcing gate() to
+// throw from outside means breaking a comp payload badly enough that the test
+// would be asserting about the breakage rather than the ordering.
+// ---------------------------------------------------------------------------
+
+test("the comps route serializes the report before it spends the free search", () => {
+  const src = serverSource();
+  const start = src.indexOf('console.error("Error handling /api/comps:"');
+  assert.ok(start > 0, "the /api/comps catch should still exist");
+  // Walk back to the exits that precede that catch.
+  const from = src.lastIndexOf("consumeGuestSearch(Boolean(sse))", start);
+  assert.ok(from > 0, "the comps route should still consume the guest allowance");
+  const gateCall = src.lastIndexOf("await gate(searched.report)", start);
+  assert.ok(gateCall > 0, "the report should still be serialized through gate()");
+  assert.ok(gateCall < from,
+    "gate() must be awaited BEFORE consumeGuestSearch — otherwise a throw in " +
+    "serialization returns 502 with the visitor's one free search already spent");
+
+  // And the serialized value is reused at both exits rather than gate() being
+  // called again per exit, which would re-run the blend and could throw after
+  // the allowance was already consumed.
+  const tail = src.slice(from, start);
+  assert.equal((tail.match(/await gate\(/g) || []).length, 0,
+    "neither exit should call gate() again after the allowance is spent");
+});

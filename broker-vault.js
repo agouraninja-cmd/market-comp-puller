@@ -122,8 +122,30 @@ function parseCsv(text) {
   // becomes part of the first header name, so `address` never matches.
   if (src.charCodeAt(0) === 0xfeff) i = 1;
 
+  // Which line of the FILE the current row started on, stamped onto every row
+  // below as a non-enumerable `line`.
+  //
+  // It exists because of the filter at the bottom of this function. Blank rows
+  // are dropped, so a caller's own array index indexes the COMPACTED grid and
+  // not the file — and both callers that report line numbers were computing
+  // `i + 2` from it while promising the number the person sees in their
+  // spreadsheet. One spacer row and "Line 3" pointed at a blank line while the
+  // refused row sat on line 5; a quoted cell spanning several lines pushed it
+  // further. Neither caller could have compensated: the information is already
+  // gone by the time they are handed the grid.
+  //
+  // Non-enumerable, so a row is still an ordinary array of cells everywhere
+  // else — same length, same JSON, same spread, same equality in tests.
+  let fileLine = 1;
+  let rowLine = 1;
+
   const endCell = () => { row.push(cell); cell = ""; };
-  const endRow = () => { endCell(); rows.push(row); row = []; };
+  const endRow = () => {
+    endCell();
+    Object.defineProperty(row, "line", { value: rowLine, enumerable: false });
+    rows.push(row);
+    row = [];
+  };
 
   while (i < src.length) {
     const c = src[i];
@@ -133,20 +155,25 @@ function parseCsv(text) {
         if (src[i + 1] === '"') { cell += '"'; i += 2; continue; }
         quoted = false; i++; continue;
       }
+      // A newline INSIDE quotes does not end the row, but it is still a line of
+      // the file — miss it and every row after a multi-line cell is off by one.
+      if (c === "\n") fileLine++;
       cell += c; i++; continue;
     }
 
     if (c === '"' && cell === "") { quoted = true; i++; continue; }
     if (c === ",") { endCell(); i++; continue; }
     if (c === "\r") { i++; continue; }          // CRLF -> LF
-    if (c === "\n") { endRow(); i++; continue; }
+    if (c === "\n") { endRow(); fileLine++; rowLine = fileLine; i++; continue; }
     cell += c; i++;
   }
   // A file not ending in a newline still has a final row.
   if (cell !== "" || row.length) endRow();
 
   // Drop entirely blank lines — trailing newlines and spacer rows are normal
-  // in hand-maintained spreadsheets and are not errors.
+  // in hand-maintained spreadsheets and are not errors. The `line` stamp above
+  // is what lets a caller still say where a surviving row actually came from;
+  // .filter() keeps the same array objects, so the property rides along.
   return rows.filter((r) => r.some((c) => String(c).trim() !== ""));
 }
 
@@ -1118,10 +1145,17 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
   let commented = 0;
 
   // Iterate the WHOLE body and skip inside the loop rather than filtering
-  // comments out first: line numbers are the raw body index, and a filtered
-  // array would renumber every error away from what Excel shows the broker.
+  // comments out first: a filtered array would renumber every error away from
+  // what Excel shows the broker.
   body.forEach((cells, i) => {
-    const lineNo = i + 2;                      // header is line 1
+    // parseCsv's own stamp, not the array index. The index counts rows that
+    // SURVIVED parseCsv, which drops blank lines — so one spacer row in the
+    // file reported a rejection on line 3 that the broker would find sitting
+    // on line 5, and a quoted multi-line cell shifted it further. The `i + 2`
+    // fallback is what a row parsed before this stamp existed would get; it is
+    // also exactly the old behaviour, so nothing regresses if a future caller
+    // hands this function rows it built itself.
+    const lineNo = Number.isFinite(cells.line) ? cells.line : i + 2;
     if (isCommentRow(cells)) { commented++; return; }
     const obj = {};
     headers.forEach((h, c) => { if (h) obj[h] = cells[c]; });

@@ -317,3 +317,29 @@ test("036 relies on no implicit string concatenation", () => {
   assert.deepEqual(LIVE_SQL.match(/'\s*\n\s*'/g) || [], [],
     "036 has adjacent string literals across a newline — join them into one");
 });
+
+// The same off-by-N as the vault's, from the same cause: parseCsv drops blank
+// rows, so the array index counts surviving rows rather than file lines. The
+// number is surfaced in skipped[] and warnings[] to the person who pasted the
+// list, under a comment promising "the number they see in the file".
+test("a blank row in a pasted CSV does not shift the reported line numbers", () => {
+  const csv = [
+    "address,size",
+    "1 Main St Boise ID,1000",   // line 2
+    "",
+    "2 Oak Ave Boise ID,2000",   // line 4
+    "Downtown,3000",             // line 5 — refused
+  ].join("\n");
+  const out = BULK.parseAddressList(csv, { max: 50 });
+  assert.deepEqual(out.rows.map((r) => r.line), [2, 4]);
+  assert.equal(out.skipped.length, 1);
+  assert.equal(out.skipped[0].line, 5,
+    "the refused address is on line 5; line 3 is the blank one");
+  assert.equal(out.skipped[0].address, "Downtown");
+});
+
+test("the no-header branch is unchanged — it splits the text itself", () => {
+  // It never went through parseCsv, so it was always right, and must stay so.
+  const out = BULK.parseAddressList("1 Main St Boise ID\n\n2 Oak Ave Boise ID\n", { max: 50 });
+  assert.deepEqual(out.rows.map((r) => r.line), [1, 3]);
+});

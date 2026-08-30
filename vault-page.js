@@ -1366,7 +1366,13 @@ if(dd)dd.open=false;});</script>
     var el=$(id),cur=el.value;
     if(cur&&vals.indexOf(cur)<0)vals=vals.concat([cur]);
     el.innerHTML='<option value="">All</option>'+vals.map(function(v){
-      return '<option value="'+esc(v)+'"'+(v===cur?" selected":"")+">"+esc(v)+"</option>"}).join("");
+      // escA, not esc, for the ATTRIBUTE: esc() leaves a literal double quote
+      // untouched (it is innerHTML-safe only), and these values are markets and
+      // types derived from addresses a broker typed. marketOf() takes the
+      // comma-segment before the state verbatim, so a crafted import could
+      // break out of value="...". The label after it stays on esc(), which is
+      // correct for text content.
+      return '<option value="'+escA(v)+'"'+(v===cur?" selected":"")+">"+esc(v)+"</option>"}).join("");
   }
 
   function compById(id){

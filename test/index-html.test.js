@@ -2496,3 +2496,59 @@ test("both reopen paths restore the form before they render", () => {
       fn + " must restore BEFORE rendering, or the hero reads the previous search's inputs");
   }
 });
+
+// ---------------------------------------------------------------------------
+// "FL 33101" is a state and a ZIP, not floor 33101
+//
+// unitDesignatorOf gates three things: the OSM footprint size estimate, the
+// Street View / aerial photo on every map pin, and the verified_key that
+// migration 035's portfolio dedupe runs on. "fl" is in the keyword vocabulary
+// and FL is a state abbreviation, so every Florida address matched — no size
+// estimate, no pin photo, and one building typed three ways saved as three
+// properties, for the whole state, with nothing anywhere reporting it.
+//
+// A refusal is invisible by design (the comment on the vocabulary says a false
+// positive "silently costs a size estimate and a photo"), which is exactly why
+// the must-PASS direction needs a test and not only the must-REFUSE one.
+// ---------------------------------------------------------------------------
+
+function unitDesignatorFn() {
+  const from = html.indexOf("var UNIT_KEYWORDS =");
+  const to = html.indexOf("const typeGuessCache");
+  assert.ok(from > 0 && to > from, "could not bound the unit-designator block");
+  return new Function(html.slice(from, to) + "; return unitDesignatorOf;")();
+}
+
+test("an ordinary address in Florida is not read as one unit of a site", () => {
+  const unitOf = unitDesignatorFn();
+  for (const address of [
+    "873 E Citation Ct, Miami, FL 33101",
+    "1450 NW 20th St, Fort Lauderdale, FL 33311",
+    "900 Building Materials Way, Tampa, FL 33602",
+    "12 Lotus Dr, Miami, FL 33101",
+    "77 Bay St, Miami, FL 33101-4021",
+  ]) {
+    assert.equal(unitOf(address), null,
+      address + " must keep its photo, its footprint size and its portfolio key");
+  }
+});
+
+test("stripping the state and ZIP does not cost a real unit designator", () => {
+  const unitOf = unitDesignatorFn();
+  const units = [
+    ["6728 W Fairview Ave Trailer 51, Boise, ID", "trailer 51"],
+    ["123 Main St Apt 3B, Boise, ID 83702", "apt 3b"],
+    ["500 Oak Ave Ste 200, Dallas, TX 75201", "ste 200"],
+    ["77 Bay St #45, Miami, FL 33101", "#45"],
+    // A genuine floor in Florida: the tail goes, the designator stays.
+    ["500 Main St Fl 3, Miami, FL 33101", "fl 3"],
+  ];
+  for (const [address, want] of units) {
+    assert.equal(String(unitOf(address)).toLowerCase(), want, address);
+  }
+  // The street names the vocabulary's own comment says it must not eat.
+  for (const address of ["100 Roomy Lane, Boise, ID", "3 Ste Genevieve Ave, St Louis, MO 63101",
+    "200 United Nations Plaza, New York, NY 10017", "500 Lot Ave, Dallas, TX 75201"]) {
+    assert.equal(unitOf(address), null, address);
+  }
+});

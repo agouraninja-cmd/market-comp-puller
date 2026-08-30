@@ -84,6 +84,42 @@ function dealDateValue(s) {
   return -Infinity;
 }
 
+// The unit vocabulary. ⚠ A DELIBERATE MIRROR of index.html's, pinned
+// character-for-character by "the two copies of the unit vocabulary agree" in
+// test/outreach-draft.test.js. This file is Node and index.html is a static
+// page that cannot require a module, so the pair is kept honest by a test
+// rather than by sharing code — the ORG.SHOP_COPY precedent.
+//
+// The copy that used to live here was written loose, and it cost real coverage.
+// "\b(...|lot|building|space|room|fl|...)\b" followed by any word matched
+// "500 Lot Ave", "900 Building Materials Way" and "100 Space Center Blvd" — and
+// because FL is a state abbreviation, EVERY Florida address was excluded from
+// outreach targeting. Silently: a refusal here only means a building is never
+// written to, so nothing reports it.
+//
+// After a keyword the identifier must carry a digit ("Apt 3B", "Ste 200") or be
+// one or two bare letters after whitespace ("Bldg B"). Matching any following
+// word reads "3 Ste Genevieve Ave" as suite Genevieve, and a keyword plus one
+// or two letters spells ordinary words: "Roomy" is room + y, "Lotus" is
+// lot + us, "United" is unit + ed.
+const UNIT_KEYWORDS = "apt|apartment|unit|ste|suite|spc|space|lot|trlr|trailer" +
+  "|bldg|building|rm|room|fl|floor|penthouse|ph";
+// Written as a literal rather than built from a string, so the keyword list is
+// visible inline; the test below pins it against UNIT_KEYWORDS above so the two
+// spellings in this file cannot drift from each other either.
+const UNIT_DESIGNATOR_RE =
+  /(?:^|[\s,])(?:#\s*[a-z0-9-]+|(?:apt|apartment|unit|ste|suite|spc|space|lot|trlr|trailer|bldg|building|rm|room|fl|floor|penthouse|ph)\.?(?:\s*[a-z0-9-]*\d[a-z0-9-]*|\s+[a-z]{1,2}))(?=$|[\s,])/i;
+
+// A trailing state + ZIP is dropped BEFORE the vocabulary is applied: "fl" is a
+// keyword and FL is a state. Stripping the tail rather than special-casing FL
+// is the general fix — that suffix is never a unit designator whatever the
+// keyword list grows to, and a genuine "Fl 3" still matches once it is gone.
+const ADDRESS_TAIL_RE = /,?\s*(?:[a-z]{2}\s+)?\d{5}(?:-\d{4})?\s*$/i;
+function unitDesignatorOf(address) {
+  const m = UNIT_DESIGNATOR_RE.exec(String(address || "").replace(ADDRESS_TAIL_RE, ""));
+  return m ? m[0].trim() : null;
+}
+
 function isTargetable(row) {
   if (!row) return false;
   if (BAD_PROVENANCE.test(String(row.source_type || ""))) return false;
@@ -96,8 +132,7 @@ function isTargetable(row) {
   // A unit designator names one tenant's suite, not the property somebody
   // owns. index.html refuses to measure or photograph these for the same
   // reason; writing to "Suite 200" is writing to the wrong person.
-  if (/\b(apt|apartment|unit|ste|suite|spc|space|trailer|lot|bldg|building|rm|room|fl|floor)\b\.?\s*[#]?\s*[a-z0-9-]+/i.test(addr)) return false;
-  if (/#\s*[a-z0-9-]+/i.test(addr)) return false;
+  if (unitDesignatorOf(addr)) return false;
   return true;
 }
 
@@ -189,4 +224,4 @@ function renderEmail({ address, city, type, url, report, from } = {}) {
   return { subject, body };
 }
 
-module.exports = { addressKeyOf, isTargetable, selectTargets, reportLine, renderEmail, dealDateValue };
+module.exports = { unitDesignatorOf, UNIT_KEYWORDS, addressKeyOf, isTargetable, selectTargets, reportLine, renderEmail, dealDateValue };

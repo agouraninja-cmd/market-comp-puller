@@ -2070,3 +2070,50 @@ test("an undated comp cannot be published, and the refusal names the date", () =
 test("the template documents the undated sentinel beside the date rule", () => {
   assert.match(templateCsv(), /undated/);
 });
+
+// ---------------------------------------------------------------------------
+// A reported line number must be the line the broker will find it on
+//
+// parseCsv drops blank rows, so the loop's array index counts rows that
+// SURVIVED parsing, not lines of the file. `i + 2` therefore promised "the
+// number Excel shows" and delivered something else the moment a spreadsheet
+// had a spacer row in it — the broker opens line 3 and finds it empty. A
+// quoted cell spanning several lines pushed it further still.
+// ---------------------------------------------------------------------------
+
+test("a blank spacer row does not shift every line number after it", () => {
+  const csv = [
+    "address,property_type,transaction,deal_date,price,size_sqft",
+    "1 Main St,Industrial,sale,2025-03-14,1250000,45000",
+    "",
+    "",
+    "Downtown,Industrial,sale,2025-04-01,900000,30000",   // file line 5
+  ].join("\n");
+  const out = parseUpload(csv);
+  assert.equal(out.errors.length, 1);
+  assert.match(out.errors[0], /^Line 5:/,
+    "the refused row is on line 5 of the file; line 3 is blank");
+});
+
+test("a quoted cell spanning lines still counts them", () => {
+  const csv = [
+    "address,property_type,transaction,deal_date,price,size_sqft",
+    '"1 Main St","Industrial","sale","2025-03-14",1250000,"45000',
+    'still inside the quotes"',
+    "Downtown,Industrial,sale,2025-04-01,900000,30000",   // file line 4
+  ].join("\n");
+  const out = parseUpload(csv);
+  const downtown = out.errors.find((e) => /Downtown/.test(e));
+  assert.ok(downtown, "the unnumbered address should still be refused");
+  assert.match(downtown, /^Line 4:/, "the row after a two-line cell is on line 4");
+});
+
+test("parseCsv stamps each row with its file line, invisibly", () => {
+  const rows = parseCsv("a,b\n\nc,d\n");
+  assert.deepEqual(rows, [["a", "b"], ["c", "d"]], "still plain arrays of cells");
+  assert.equal(rows[0].line, 1);
+  assert.equal(rows[1].line, 3, "the blank line is dropped but still counted");
+  // Non-enumerable, so nothing that serializes or spreads a row can see it.
+  assert.equal(JSON.stringify(rows[1]), '["c","d"]');
+  assert.deepEqual(Object.keys(rows[1]), ["0", "1"]);
+});

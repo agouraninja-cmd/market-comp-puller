@@ -5066,12 +5066,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!applyCompDistances(currentParsed, currentComps)) return;
     COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
     renderTableHead();
+    // HERO FIRST, then the table — the order every other caller uses
+    // (renderResults, applyCuration, the subject-edit handler, the USD toggle),
+    // and this was the one inversion. Pins settling is the first moment most
+    // search comps have a distance, so the Low / Likely / High that painted
+    // without one has to be redone; renderOwnerHero is also the only writer of
+    // currentPsfBand, which buildOutlierChip reads while the table paints. Drawn
+    // the other way round the chips kept the pre-distance band and quoted it in
+    // their own tooltip, so a comp could be labelled "18% above the range" next
+    // to a hero showing a range it sat inside — the exact disagreement the
+    // one-computation-feeds-both rule exists to prevent.
+    renderOwnerHero(currentParsed, currentMeta);
     renderTableBody(false);   // no entrance cascade — the rows are already on screen
     renderDistanceNote();
-    // Pins settling is the first moment most search comps have a distance, so
-    // the Low / Likely / High that painted without one has to be redone. Match
-    // labels ride renderTableBody above.
-    renderOwnerHero(currentParsed, currentMeta);
     renderAnalysisCluster(currentParsed, currentMeta, false);
     renderMarketChart();
   }
@@ -5399,6 +5406,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       : "Run a report";
     document.getElementById("submitBtn").disabled = isLoading;
   }
+  // For interpolating something we did NOT write into showStatus's markup.
+  // showStatus takes HTML on purpose — most callers pass a button or a link —
+  // so the escaping belongs at the call site that has untrusted text, which is
+  // the same split exploreFail's escq makes.
+  const escStatus = (s) => String(s ?? "").replace(/[&<>"']/g, (ch) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+
   function showStatus(html, kind = "info") {
     const box = document.getElementById("statusBox");
     const styles = {
@@ -6365,7 +6379,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     el.appendChild(document.createTextNode(sentence + " "));
 
-    if (ls.source_url) {
+    // http(s) only, the guard the four sibling link sites already apply
+    // (renderApproaches, the assessed-value row, and both comp-table Source
+    // links). Both normalizers strip a non-http URL server-side today, so this
+    // closes a gap rather than a live hole — and it also stops a bare path
+    // rendering as a link that silently goes nowhere.
+    if (/^https?:\/\//i.test(String(ls.source_url || ""))) {
       const a = document.createElement("a");
       a.href = ls.source_url;
       a.target = "_blank";
@@ -6405,7 +6424,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     el.appendChild(document.createTextNode(sentence + " "));
 
-    if (ask.source_url) {
+    // http(s) only, the guard the four sibling link sites already apply
+    // (renderApproaches, the assessed-value row, and both comp-table Source
+    // links). Both normalizers strip a non-http URL server-side today, so this
+    // closes a gap rather than a live hole — and it also stops a bare path
+    // rendering as a link that silently goes nowhere.
+    if (/^https?:\/\//i.test(String(ask.source_url || ""))) {
       const a = document.createElement("a");
       a.href = ask.source_url;
       a.target = "_blank";
@@ -7687,6 +7711,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // column back out — so re-prune before the head renders.
     applyCompDistances(currentParsed, currentComps);
     COLUMNS = pruneEmptyColumns(columnsForType(currentMeta.type, currentMeta.txFocus), currentComps);
+    // A pruned column can be the one being sorted by: exclude the only comp
+    // carrying a cap rate and that column goes, taking the ▲/▼ and aria-sort
+    // with it while currentComps is still in cap-rate order — a table that
+    // looks unsorted and is not, and a mobile sort <select> whose value matches
+    // no option, so it renders blank. renderResults resets sortState for the
+    // same reason; this path rebuilds COLUMNS just as thoroughly and did not.
+    if (sortState.key && !COLUMNS.some((c) => c.key === sortState.key)) {
+      sortState = { key: null, dir: 1 };
+    }
     renderTableHead();
     renderTableBody(false);
     renderDistanceNote();
@@ -9551,8 +9584,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   var UNIT_DESIGNATOR_RE = new RegExp(
     "(?:^|[\\s,])(?:#\\s*[a-z0-9-]+|(?:" + UNIT_KEYWORDS + ")\\.?" +
     "(?:\\s*[a-z0-9-]*\\d[a-z0-9-]*|\\s+[a-z]{1,2}))(?=$|[\\s,])", "i");
+  // A trailing state + ZIP is dropped BEFORE the vocabulary is applied, and
+  // this is not a nicety: "fl" is a keyword and FL is a state, so
+  // "873 E Citation Ct, Miami, FL 33101" matched as floor 33101 and every
+  // Florida address in the product was read as one unit of a site. That
+  // silently cost all three callers at once - no footprint size estimate, no
+  // Street View photo or aerial on any pin, and no verified_key, so migration
+  // 035's portfolio dedupe was off for the whole state and one building typed
+  // three ways saved as three properties.
+  //
+  // Stripping the tail rather than special-casing FL is the general fix: the
+  // state-and-ZIP suffix is never a unit designator whatever the keyword list
+  // grows to, and a real floor still matches, because "500 Main St Fl 3, Miami,
+  // FL 33101" keeps its "Fl 3" once the tail is gone.
+  var ADDRESS_TAIL_RE = /,?\s*(?:[a-z]{2}\s+)?\d{5}(?:-\d{4})?\s*$/i;
   function unitDesignatorOf(address) {
-    const m = UNIT_DESIGNATOR_RE.exec(String(address || ""));
+    const cleaned = String(address || "").replace(ADDRESS_TAIL_RE, "");
+    const m = UNIT_DESIGNATOR_RE.exec(cleaned);
     return m ? m[0].trim() : null;
   }
 
@@ -20139,7 +20187,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // A failed search can't fulfill a pending portfolio refresh — clear it so
       // a later unrelated report can never be written onto that item.
       pendingPortfolioRefresh = null;
-      const msg = err && err.message ? err.message : String(err);
+      // ESCAPED, because showStatus renders its argument as innerHTML and this
+      // message is not ours: it is payload.error off a non-OK response, or the
+      // text of an SSE `error` frame. The file's two other error renderers
+      // already do this — exploreFail escapes, and showSharedNotice builds
+      // nodes with a comment saying why — and an unescaped `<` here also breaks
+      // the markup for a perfectly innocent message that happens to contain one.
+      const msg = escStatus(err && err.message ? err.message : String(err));
       showStatus(
         `<strong>Something went wrong.</strong><br>${msg}` +
         `<br><button id="retryBtn" type="button" class="btn-live mt-2 text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Try again</button>`,

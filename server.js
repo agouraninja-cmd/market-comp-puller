@@ -16610,9 +16610,21 @@ const server = http.createServer((req, res) =>
           }
           throw err;
         }
+        // SERIALIZE FIRST, CONSUME SECOND. The rule stated where guestGate is
+        // built is that the free search is spent only when a report is actually
+        // served, and gate() is not a formality: it runs the radius blend,
+        // gateReport, attachPropertyCoords and the vault/firm blend, any of
+        // which can throw into the catch below and answer 502. Consuming ahead
+        // of it meant an anonymous visitor got no report AND lost their one
+        // free search - with the cn_guest cookie already set, so the retry was
+        // refused with signin_required for a report they never received.
+        //
+        // /api/explore-market has always had this ordering right (it consumes
+        // only on a published 200); this is the same rule at the sibling exit.
+        const served = await gate(searched.report);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", await gate(searched.report));
-        return sendJson(res, 200, await gate(searched.report));
+        if (sse) return sse.finish("result", served);
+        return sendJson(res, 200, served);
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success
@@ -20320,6 +20332,13 @@ const server = http.createServer((req, res) =>
         if (!user) return;
         const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
         if (!id) return sendJson(res, 400, { error: "Which import?" });
+        // broker_uploads.id is a uuid, so a malformed one makes PostgREST reject
+        // the query and the catch below answers 502 - our-storage-broke, when the
+        // truth is caller-sent-nonsense, and it invites a retry that can never
+        // work. 404 matches the sibling routes (/api/vault/comp, publish-many,
+        // firm, bulk) and, as there, treats a malformed id and someone else's id
+        // as the same "not in your vault" rather than confirming which ids exist.
+        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't in your vault." });
         // user_id in the filter, not just the id: without it, knowing another
         // broker's upload id would be enough to delete their data.
         await sbRequest("DELETE",

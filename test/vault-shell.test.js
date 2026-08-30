@@ -54,9 +54,16 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // Where the reader is, from marketShell's `current` rather than a literal.
   assert.match(nav, /id="navVault"[^>]*aria-current="page"/,
     "the vault does not mark its own row as the current page");
-  // The account cluster and the theme toggle arrive with accountNavSlots.
+  // The account cluster arrives with accountNavSlots. The theme toggle does
+  // NOT, since later the same day (owner's call): the switch went back into
+  // index.html's settings panel and out of every nav, so what this page owes
+  // its reader is the Settings row inside that cluster, which is the door to
+  // it. A toggle reappearing here would mean two controls again.
   assert.ok(nav.includes('id="navAcct"'), "no account cluster");
-  assert.ok(nav.includes('id="themeToggle"'), "no theme toggle");
+  assert.ok(!nav.includes('id="themeToggle"'),
+    "a theme toggle is back in the nav; the one control lives in the settings panel");
+  assert.ok(nav.includes('href="/desk?settings=1"'),
+    "the vault's account menu has no door to the settings panel");
 
   // The shared footer, with links in it. Before the fold this page's footer
   // was four lines of prose and not one anchor.

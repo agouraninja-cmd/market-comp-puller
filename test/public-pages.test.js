@@ -726,3 +726,38 @@ test("a market page header is a photograph of that city, or a satellite aerial i
   const sneak = await fetch(srv.base + "/market-heroes/../server.js");
   assert.equal(sneak.status, 404);
 });
+
+test("the settings door, for a visitor with no account menu to reach it from", async (t) => {
+  // The theme switch went back into the settings panel on 2026-08-30 and out
+  // of every nav, which took the only theme control a SIGNED-OUT visitor had.
+  // The panel lives in index.html and its door is the account menu, which
+  // they do not have — so a browser that stored "dark" would have had no way
+  // back to light. ?settings=1 is that way back: the fifth wall exemption,
+  // deliberately unadvertised (nothing in the chrome links to it).
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+
+  await t.test("/?settings=1 serves the app, not the landing page", async () => {
+    const r = await fetch(srv.base + "/?settings=1", { redirect: "manual" });
+    assert.equal(r.status, 200);
+    const html = await r.text();
+    assert.match(html, /id="settingsModal"/, "the settings panel lives only in index.html");
+    assert.match(html, /id="themeToggleApp"/, "and the theme switch lives only in that panel");
+    assert.ok(!/class="heroCta"/.test(html), "serving the landing page here is the bug, not the fix");
+  });
+
+  await t.test("/desk?settings=1 still redirects — a workspace is not a door", async () => {
+    // The signed-in account menu links THERE, and the wall's rule about
+    // personal workspaces does not bend for a query string. Narrower than
+    // ?auth= / ?submit=comp / ?pricing=1 by exactly this one path.
+    const r = await fetch(srv.base + "/desk?settings=1", { redirect: "manual" });
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get("location"), "/?auth=signin");
+  });
+
+  await t.test("an unrecognized settings value is not a door", async () => {
+    const html = await (await fetch(srv.base + "/?settings=whatever")).text();
+    assert.match(html, /class="heroCta"/, "junk gets the landing page");
+    assert.ok(!/id="settingsModal"/.test(html), "and must not leak the app");
+  });
+});

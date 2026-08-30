@@ -556,10 +556,84 @@ test("bare environment", async (t) => {
     // The list itself, not a superset: /brokers and /how-it-works left the
     // menu 2026-08-25 and both still appear in every footer, so a check for
     // their mere presence in the HTML would pass either way and pin nothing.
-    for (const href of ["/1031-exchange", "/download"]) {
+    // /1031-exchange left it 2026-08-29 and is pinned by the test below
+    // instead, as a top-level row rather than a menu item.
+    for (const href of ["/download"]) {
       assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
       assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
     }
+  });
+
+  // The rail's link set (owner-reported 2026-08-29: "in some places it only
+  // has workspace and your vault").
+  //
+  // THE FAILURE THIS PINS, and why no existing test saw it. The rail is the
+  // header re-laid-out by one class, and it hides the Explore dropdown --
+  // a menu has nowhere to open in a 224px column. So a link's reachability
+  // for a signed-in member on desktop depends on whether it is a TOP-LEVEL
+  // row or a dropdown item, and every test above this one asks only whether
+  // the link is in the document. The 1031 guide was in the document on every
+  // page and reachable from none of them.
+  //
+  // The three surfaces below each compose their header a different way --
+  // marketBar builds one, index.html authors one, vault-page.js hand-writes
+  // one -- which is why this asks all three for the same rows rather than
+  // trusting the shared helper. The vault is the one that had drifted:
+  // Markets and the guide were in its dropdown and /bulk was nowhere.
+  await t.test("every signed-in header carries the product surfaces as rows, in the owner's order", async () => {
+    const SESSION = { cookie: "cn_session=not-a-real-token" };
+    // The owner's order, 2026-08-29. Only what a member navigates BETWEEN:
+    // Brokers, For firms and the download are pitch pages for strangers and
+    // stay in the dropdown. Workspace is matched by NAME rather than by href
+    // because it is a link on the server-rendered pages and a button in the
+    // app, where it opens a panel instead of navigating.
+    const ROWS = [
+      ["Workspace", />Workspace</],
+      ["the vault", /<a [^>]*href="\/vault"/],
+      ["Market explorer", /<a [^>]*href="\/markets"/],
+      ["the 1031 guide", /<a [^>]*href="\/1031-exchange"/],
+      ["Bulk valuation", /<a [^>]*href="\/bulk"/],
+    ];
+    for (const page of ["/", "/markets", "/vault"]) {
+      const html = await (await fetch(srv.base + page, { headers: SESSION })).text();
+      const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
+      assert.ok(nav, page + " has no <nav> at all");
+      // The dropdown's own contents, removed before looking: a link that is
+      // only in here is exactly the bug, so finding it would pass wrongly.
+      // Both spellings of it — marketBar and the vault use a no-JS <details>,
+      // index.html uses a scripted div.
+      const rows = nav.replace(/<details[\s\S]*?<\/details>/g, "")
+        .replace(/<div id="exploreMenu"[\s\S]*?<\/div>/g, "");
+      let last = -1;
+      for (const [name, re] of ROWS) {
+        const at = rows.search(re);
+        assert.notEqual(at, -1,
+          `${page}'s header has no top-level row for ${name} — in the rail that is unreachable`);
+        // Order, not just presence. The three headers are built three
+        // different ways (marketBar composes one, index.html authors one,
+        // vault-page.js hand-writes one), so the sequence is the only thing
+        // stopping the sidebar reshuffling itself as a member navigates.
+        assert.ok(at > last,
+          `${page} puts ${name} out of order — expected ${ROWS.map((r) => r[0]).join(", ")}`);
+        last = at;
+      }
+    }
+  });
+
+  // Both Pro tools ship hidden and are revealed by their OWN entitlement.
+  // A link revealed by the wrong flag is a 403 with a nav row in front of it.
+  await t.test("the app reveals bulk valuation from canBulkValue, not from the vault's flag", async () => {
+    const app = await (await fetch(srv.base + "/")).text();
+    assert.match(app, /id="menuBulkLink"[^>]*class="hidden/,
+      "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
+    assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
+      "the bulk link is not toggled from canBulkValue");
+    // The vault's flag is read into `canVault` a line earlier (the My Desk
+    // card shares it), so this pins the definition rather than the toggle.
+    assert.match(app, /canVault = Boolean\(proConfig && proConfig\.canUseVault\)/,
+      "the vault link is not toggled from canUseVault");
+    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/,
+      "the vault link stopped reading canVault");
   });
 
   // The Market Explorer's example, rotated per page load (2026-08-24).

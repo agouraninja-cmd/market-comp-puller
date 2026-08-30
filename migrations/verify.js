@@ -250,13 +250,24 @@ function loadEnv() {
   return out;
 }
 
+// This script sets `process.exitCode` and RETURNS rather than calling
+// process.exit(), which is not a style preference. process.exit() tears the
+// process down while the fetch calls above still hold open sockets, and on
+// Windows that crashes with 0xC0000409 (STATUS_STACK_BUFFER_OVERRUN) instead
+// of reporting anything: measured at 13 of 16 concurrent runs, 0 of 16 once
+// the exit became natural. A crash is a non-zero exit like a missing table
+// is, so the failure would read as "the schema is wrong" while the output
+// saying WHICH migration to run is exactly what got lost. It also guarantees
+// stdout is flushed, which matters because the way this tool's result becomes
+// evidence in APPLIED.md is somebody redirecting it to a file.
 async function main() {
   const env = loadEnv();
   const url = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = String(env.SUPABASE_SERVICE_KEY || "");
   if (!url || !key) {
     console.error("SUPABASE_URL and SUPABASE_SERVICE_KEY are required (put them in .env).");
-    process.exit(2);
+    process.exitCode = 2;
+    return;
   }
   // Never print the key, and print only enough of the host to prove which
   // project was checked — this output gets pasted into chats and issues.
@@ -314,7 +325,7 @@ async function main() {
 
   if (!missing.length && !failed.length) {
     console.log("Everything present — the live schema matches the code.");
-    process.exit(0);
+    return; // exit code stays 0
   }
   if (missing.length) {
     console.log("MISSING from the live database:");
@@ -330,7 +341,9 @@ async function main() {
     console.log(`\nRun the file(s) above in the Supabase SQL editor, then re-run this.`);
     console.log(`Until then, anything reading those tables fails.`);
   }
-  process.exit(1);
+  // Non-zero for a failed CHECK too, not only for a missing object: being
+  // unable to verify is not the same as having verified.
+  process.exitCode = 1;
 }
 
 // Exported so test/migrations.test.js can hold TABLES against the migration
@@ -341,6 +354,6 @@ module.exports = { TABLES, COLUMNS };
 if (require.main === module) {
   main().catch((err) => {
     console.error("verify failed:", err.message);
-    process.exit(2);
+    process.exitCode = 2;
   });
 }

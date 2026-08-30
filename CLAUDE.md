@@ -867,8 +867,35 @@ dependency. `.env` is git-ignored — never commit it.
   the whole mobile answer — no drawer, no focus trap, no scroll lock.
   **Anonymous visitors never get it** (it marks being inside the product, and a
   marketing page read by a stranger is not that); it is decided on cookie
-  presence, and those routes already send `vary: cookie`. The rules live in
-  **both** `MARKET_CSS` and `HOW_CSS`, which are twins — edit them together.
+  presence, and those routes already send `vary: cookie`. Cookie presence is
+  not the same question as "is this session still valid", so BOTH shells
+  retire the class once the account read answers: `refreshAccountUI()` in the
+  app, `ACCOUNT_NAV_JS` on every server-rendered page. Removed only, never
+  added — a member's copy is stamped before first paint and must not flicker
+  in after it. The rules live in **one** const, `RAIL_CSS`, with three
+  consumers (`MARKET_CSS`, `HOW_CSS`, and `vault-page.js`, which draws its own
+  stylesheet and would otherwise be a third copy); `FOOTER_LINK_COLS` +
+  `FOOTER_LINKS_CSS` travel the same way, which is what gives `/vault` a
+  footer with links in it rather than four lines of prose.
+  **The app draws its own half of this shell, and the two must agree.**
+  `index.html` is not rendered by `marketBar`, so every rule above has a second
+  implementation in that file's `<style>` and markup, and the whole class of
+  bug here is a difference between them: a row named one thing on one side and
+  another thing on the other, a control that is a row here and a modal setting
+  there, a current-page highlight only one of them writes.
+  `test/nav-parity.test.js` reads both files together and exists for exactly
+  that; `test/nav-shell.test.js` pins that the rail exists at all. The rules
+  that fall out of it: the app writes `aria-current` from `markNavCurrent()`
+  (ONE writer, called from all four seams that change which view is showing —
+  the two report seams included, since assembly yields the workspace a minute
+  before `renderResults` repaints); every nav row is a real link on both sides,
+  so `#myDeskLink` is an `<a href="/desk">` whose handler stands aside for a
+  modified or middle click; `/` and `/desk` both serve the workspace, so
+  neither rewrites the URL into the other; the theme toggle is a nav row on
+  both (it sat in the app's settings modal from 2026-08-23, five days before
+  the rail existed); and the settings panel, which lives only in `index.html`,
+  is reachable from every account menu through `/desk?settings=1` — a query
+  the wall can see, read and cleared exactly as `?pricing=1` is.
   Two things moved because the rail forced them: the Explore `<details>` has
   nowhere to open in a 224px column so it is hidden there and **its links moved
   to `MARKET_FOOTER`** (which finally puts `/download` in a footer at all — it

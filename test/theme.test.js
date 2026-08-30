@@ -417,7 +417,15 @@ test("the theme toggle shows a moon in light and a sun in dark, on every in-scop
   const slotsStart = SERVER_JS.indexOf("function accountNavSlots(");
   const slotsEnd = SERVER_JS.indexOf("\nfunction ", slotsStart + 10);
   hasPair(SERVER_JS.slice(slotsStart, slotsEnd > 0 ? slotsEnd : slotsStart + 8000), "accountNavSlots");
-  hasPair(INDEX.slice(INDEX.indexOf("themeToggleApp"), INDEX.indexOf("themeToggleApp") + 1800), "index.html toggle");
+  // Anchored on the BUTTON, not on the first mention of the id (2026-08-30).
+  // The toggle moved back out of the settings panel and into the nav, and the
+  // rail gives it a style rule -- so the first "themeToggleApp" in this file
+  // is now a CSS selector a thousand lines above the element, and slicing from
+  // there read a window with no SVG in it at all. Anchoring on the markup is
+  // what this test was always trying to describe.
+  const toggleBtnAt = INDEX.indexOf(`<button id="themeToggleApp"`);
+  assert.notEqual(toggleBtnAt, -1, "index.html's theme toggle button not found");
+  hasPair(INDEX.slice(toggleBtnAt, toggleBtnAt + 1800), "index.html toggle");
   assert.match(cssBlock("ACCOUNT_NAV_CSS"), /\.theme-sun\{display:none\}/,
     "ACCOUNT_NAV_CSS does not hide the sun in light mode");
   assert.match(INDEX_STYLE, /\.theme-sun \{ display: none \}/,
@@ -1185,7 +1193,12 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
   assert.notEqual(logoAt, -1, "CN_LOGO not found");
   assert.notEqual(adminAt, -1, "renderAdminHTML not found");
   let inScope = SERVER_JS.slice(logoAt, adminAt);
-  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS"]) {
+  // FOOTER_LINKS_CSS joined the list on 2026-08-30: the footer's link rules
+  // were lifted out of MARKET_CSS and HOW_CSS into one const so /vault could
+  // take them too, and `footer a:hover{color:#fff}` -- white on the navy slab,
+  // which is dark in both themes -- was carved out with those blocks before
+  // the move. It is a stylesheet, not generated markup.
+  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS"]) {
     const block = cssBlock(name);
     assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);
     inScope = inScope.replace(block, "");

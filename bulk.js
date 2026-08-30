@@ -137,8 +137,17 @@ function parseAddressList(text, opts) {
 
   // Line numbers are reported back to the person who pasted the list, so they
   // count from 1 and include the header — the number they see in the file.
+  //
+  // The header branch reads parseCsv's own `line` stamp rather than the array
+  // index: parseCsv drops blank rows, so the index counts SURVIVING rows and a
+  // single spacer line reported a rejection one line above where it actually
+  // sat. The `i + 2` fallback is the old arithmetic, kept for a grid that
+  // carries no stamp. The no-header branch splits `src` directly and was always
+  // right, which is why it is untouched.
   const lines = hasHeader
-    ? grid.slice(1).map((cells, i) => ({ cells, line: i + 2 }))
+    ? grid.slice(1).map((cells, i) => ({
+        cells, line: Number.isFinite(cells.line) ? cells.line : i + 2,
+      }))
     : src.split(/\r\n|\r|\n/).map((raw, i) => ({ cells: [raw], line: i + 1 }));
 
   const rows = [];

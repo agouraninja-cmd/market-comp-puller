@@ -3509,3 +3509,100 @@ test("EXTRACT_PROMPT asks for the rows in the order the document prints them", (
   assert.match(body, /Never sort or group/i,
     "and must forbid sorting by name - an unstated order is one the model picks");
 });
+
+// ---------------------------------------------------------------------------
+// The mail runs build a THIRD user object, and it has to carry the same flags
+//
+// getSessionUser's narrowing trap, one object further along. findUsersByIds is
+// what the watchlist digest and the renewal watch mail from, and it selected
+// id/email/digest_optout only — so every comped account in a mail run was
+// handed to getEntitlements with `pro_tester` and `vault_beta` undefined, which
+// Boolean()s to false. Same silent shape vault_beta walked into on 2026-08-12.
+//
+// Nothing a watcher receives changes today, measured 2026-08-29: feedRowCap is
+// 20 for free and Pro alike since FREE_MAX_COMPS was retired on 2026-08-21, and
+// the digest never asks for demand (`withDemand` is the page's flag). That is
+// exactly why this is pinned rather than left to be renoticed — both things
+// masking it are one edit away from moving, and a send advances a high-water
+// mark, so a wrong digest is never repaired by re-running.
+// ---------------------------------------------------------------------------
+
+function serverSource() {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  return fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+}
+
+function findUsersByIdsBody(src) {
+  const start = src.indexOf("async function findUsersByIds");
+  assert.ok(start >= 0, "findUsersByIds should still exist");
+  const end = src.indexOf("\n}", start);
+  assert.ok(end > start, "could not bound findUsersByIds");
+  return src.slice(start, end);
+}
+
+test("every user flag entitlements reads is also selected for the mail runs", () => {
+  const src = serverSource();
+  const reads = [...src.matchAll(/Boolean\(user && user\.([a-z_]+)\)/g)].map((m) => m[1]);
+  assert.ok(reads.length >= 2,
+    "expected getEntitlements to read at least pro_tester and vault_beta; found " + JSON.stringify(reads));
+
+  const select = findUsersByIdsBody(src).match(/select=([a-z_,]+)/);
+  assert.ok(select, "findUsersByIds should still name its columns");
+  const columns = select[1].split(",");
+
+  for (const flag of new Set(reads)) {
+    assert.ok(columns.includes(flag),
+      `getEntitlements reads user.${flag}, but findUsersByIds does not select it — ` +
+      "every comped account in a digest or renewal run would resolve to the free tier");
+  }
+});
+
+// A fan-out that can come back SHORT is worse than one that fails outright: the
+// run mails whoever returned while summary.watchers counts whoever should have,
+// and the two disagree with nothing on screen to say so. PostgREST can honour a
+// project-level max-rows by returning fewer rows than asked, and a long enough
+// in.() list is refused as a URL, so every other fan-out here chunks and bounds.
+test("findUsersByIds chunks its in.() fan-out and bounds it", () => {
+  const body = findUsersByIdsBody(serverSource());
+  assert.match(body, /i \+= 200/, "the id list must be chunked, like attachCitedCounts");
+  assert.match(body, /limit=\$\{slice\.length\}/, "and bounded, like usersByIds and orgsByIds");
+});
+
+// ---------------------------------------------------------------------------
+// A failed report must not cost the anonymous visitor their free search
+//
+// The rule is stated where guestGate is built: consumed only when a report is
+// actually served, so a failed search never burns the free one. But the consume
+// ran BEFORE `await gate(...)`, and gate() is not a formality — it runs the
+// radius blend, gateReport, attachPropertyCoords and the vault/firm blend, any
+// of which can throw into the handler's catch and answer 502. The visitor got
+// no report and lost the allowance, with cn_guest already set, so the retry was
+// refused with signin_required for a report that never arrived.
+//
+// /api/explore-market has always had this right (it consumes only on a
+// published 200). Source-scanned rather than driven, because forcing gate() to
+// throw from outside means breaking a comp payload badly enough that the test
+// would be asserting about the breakage rather than the ordering.
+// ---------------------------------------------------------------------------
+
+test("the comps route serializes the report before it spends the free search", () => {
+  const src = serverSource();
+  const start = src.indexOf('console.error("Error handling /api/comps:"');
+  assert.ok(start > 0, "the /api/comps catch should still exist");
+  // Walk back to the exits that precede that catch.
+  const from = src.lastIndexOf("consumeGuestSearch(Boolean(sse))", start);
+  assert.ok(from > 0, "the comps route should still consume the guest allowance");
+  const gateCall = src.lastIndexOf("await gate(searched.report)", start);
+  assert.ok(gateCall > 0, "the report should still be serialized through gate()");
+  assert.ok(gateCall < from,
+    "gate() must be awaited BEFORE consumeGuestSearch — otherwise a throw in " +
+    "serialization returns 502 with the visitor's one free search already spent");
+
+  // And the serialized value is reused at both exits rather than gate() being
+  // called again per exit, which would re-run the blend and could throw after
+  // the allowance was already consumed.
+  const tail = src.slice(from, start);
+  assert.equal((tail.match(/await gate\(/g) || []).length, 0,
+    "neither exit should call gate() again after the allowance is spent");
+});

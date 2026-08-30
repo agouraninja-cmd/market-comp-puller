@@ -156,7 +156,10 @@ async function publishShare(data, meta) {
   console.log(`Market:   ${MARKET} · ${TYPE}`);
   console.log(`Already contacted: ${seen.length}`);
   console.log(`Targets:  ${targets.length}${targets.length === LIMIT ? " (capped by --limit)" : ""}`);
-  for (const t of targets) console.log(`  ${t.deal_date || "?".padEnd(10)}  ${t.address}`);
+  // (t.deal_date || "?") .padEnd, not t.deal_date || ("?".padEnd): padEnd
+  // binds to the literal, so the column only lined up for the rows with no
+  // date - the opposite of what padding is for.
+  for (const t of targets) console.log(`  ${(t.deal_date || "?").padEnd(10)}  ${t.address}`);
 
   const per = COST_PER_REPORT[provider] || COST_PER_REPORT.gemini;
   const est = (targets.length * per).toFixed(2);
@@ -171,6 +174,7 @@ async function publishShare(data, meta) {
 
   const drafts = [];
   const contacted = [];
+  let warmed = 0;
   for (const [i, t] of targets.entries()) {
     const label = `[${i + 1}/${targets.length}] ${t.address}`;
     try {
@@ -178,6 +182,7 @@ async function publishShare(data, meta) {
       const data = await runReport(t.address, TYPE);
       const secs = ((Date.now() - started) / 1000).toFixed(0);
       if (WARM_ONLY) {
+        warmed++;
         console.log(`${label} — warmed in ${secs}s (${(data.comps || []).length} comps)`);
         continue;
       }
@@ -196,7 +201,14 @@ async function publishShare(data, meta) {
   }
 
   if (WARM_ONLY) {
-    console.log(`\nWarmed ${targets.length} addresses. They answer from cache for 30 days.`);
+    // What actually warmed, not what was queued. The catch above skips a failed
+    // address and carries on by design, so targets.length reported every one of
+    // them as cached for 30 days - including the ones that errored, which is
+    // precisely the claim somebody would act on. The draft path in this same
+    // loop already counts only what it produced.
+    const missed = targets.length - warmed;
+    console.log(`\nWarmed ${warmed} of ${targets.length} address(es). They answer from cache for 30 days.`);
+    if (missed) console.log(`${missed} failed and were NOT warmed - re-run to try them again.`);
     return;
   }
 

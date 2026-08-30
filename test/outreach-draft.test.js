@@ -197,3 +197,78 @@ test("deal dates sort by when the deal happened, not alphabetically", () => {
     selectTargets(rows, { market: "Boise, ID", type: "Industrial" }).map((r) => r.address),
     ["2 B St, Boise, ID", "3 C St, Boise, ID", "1 A St, Boise, ID"]);
 });
+
+// ---------------------------------------------------------------------------
+// The unit-designator rule, in BOTH directions
+//
+// The copy that used to live in outreach-draft.js was written loose — a keyword
+// followed by any word — so it refused "500 Lot Ave", "900 Building Materials
+// Way" and "100 Space Center Blvd", and because FL is a state abbreviation it
+// refused EVERY Florida address in the corpus. Silently: a refusal here only
+// means a building is never written to, so nothing reported it.
+//
+// The must-PASS half is the half that was missing. CLAUDE.md records that
+// index.html's copy needed exactly this, after "Roomy", "Lotus" and "United
+// Nations" all parsed as unit designators on the first pass.
+// ---------------------------------------------------------------------------
+
+const { unitDesignatorOf, UNIT_KEYWORDS } = require("../outreach-draft");
+
+test("an ordinary property is targetable, whatever its street or state is called", () => {
+  const ordinary = [
+    // FL is a state, not a floor. This is the whole of Florida.
+    "873 E Citation Ct, Miami, FL 33101",
+    "1450 NW 20th St, Fort Lauderdale, FL 33311",
+    "900 Building Materials Way, Tampa, FL 33602",
+    // Street names that merely start with a keyword.
+    "500 Lot Ave, Dallas, TX 75201",
+    "100 Space Center Blvd, Houston, TX 77058",
+    "100 Roomy Lane, Boise, ID",
+    "12 Lotus Dr, Miami, FL 33101",
+    "3 Ste Genevieve Ave, St Louis, MO 63101",
+    "873 E Citation Ct, Boise, ID 83716",
+  ];
+  for (const address of ordinary) {
+    assert.equal(unitDesignatorOf(address), null, address);
+    assert.equal(isTargetable(row({ address })), true, address);
+  }
+});
+
+test("an address naming one unit of a site is still refused", () => {
+  const units = [
+    ["6728 W Fairview Ave Trailer 51, Boise, ID", "Trailer 51"],
+    ["123 Main St Apt 3B, Boise, ID 83702", "Apt 3B"],
+    ["500 Oak Ave Ste 200, Dallas, TX 75201", "Ste 200"],
+    ["77 Bay St #45, Miami, FL 33101", "#45"],
+    // A real floor still matches once the state/ZIP tail is gone — which is
+    // what makes stripping the tail safe rather than a blanket FL exemption.
+    ["500 Main St Fl 3, Miami, FL 33101", "Fl 3"],
+  ];
+  for (const [address, want] of units) {
+    assert.equal(String(unitDesignatorOf(address)).toLowerCase(), want.toLowerCase(), address);
+    assert.equal(isTargetable(row({ address })), false, address);
+  }
+});
+
+test("the two copies of the unit vocabulary agree", () => {
+  // index.html cannot require this module and this module cannot be served to
+  // the browser, so the pair is kept honest by a test — the ORG.SHOP_COPY
+  // precedent. Drift here means a building we photograph but never write to,
+  // or the reverse.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const m = /var UNIT_KEYWORDS = ([\s\S]*?);\n/.exec(html);
+  assert.ok(m, "index.html should still declare UNIT_KEYWORDS");
+  // Evaluate the concatenation rather than string-matching its line breaks.
+  const theirs = new Function("return " + m[1])();
+  assert.equal(UNIT_KEYWORDS, theirs,
+    "outreach-draft.js and index.html must name the same unit keywords");
+
+  // And the regex literal in this file must actually use that list.
+  const src = fs.readFileSync(path.join(__dirname, "..", "outreach-draft.js"), "utf8");
+  const re = /const UNIT_DESIGNATOR_RE =\s*\n?\s*\/([\s\S]*?)\/i;/.exec(src);
+  assert.ok(re, "outreach-draft.js should still declare UNIT_DESIGNATOR_RE as a literal");
+  assert.ok(re[1].includes(UNIT_KEYWORDS),
+    "the regex literal must embed UNIT_KEYWORDS verbatim, or the two drift inside one file");
+});

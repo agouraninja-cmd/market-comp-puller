@@ -130,8 +130,28 @@ function coordsFromReport(report) {
   return parseCoords({ lat: report.subject_lat, lng: report.subject_lng });
 }
 
+// A money figure out of a corpus cell.
+//
+// Reads the FIRST numeric run rather than stripping every non-digit, which is
+// corpus-audit.js's hasPrice() rule and it is here because the two disagreed
+// about the same column. Real corpus rows quote RANGES - the live table holds
+// "$7.00-$12.00/SF/yr NNN" - and stripping non-digits welds that into
+// "7.0012.00", a two-decimal-point string Number() rejects as NaN. This
+// returned 0 for it, priced() then called the row unpriced, and
+// blendNearbyComps skipped a perfectly good saved deal outright. The audit
+// counted the same row as priced, so a comp the audit said was fine never
+// reached a customer's report and nothing anywhere reported a difference.
+//
+// "Undisclosed" and "Rate Upon Request" still carry no numeric run at all, so
+// they still correctly read as no price.
+//
+// Commas are stripped inside the run, so "$1,250,000" is 1250000 and not 1.
+// A range yields its LOW end, which is the conservative read for a figure that
+// goes on to price a comp.
 function moneyNumber(v) {
-  const x = Number(String(v == null ? "" : v).replace(/[^0-9.]/g, ""));
+  const m = /[0-9][0-9,]*(?:[.][0-9]+)?/.exec(String(v == null ? "" : v));
+  if (!m) return 0;
+  const x = Number(m[0].replace(/,/g, ""));
   return Number.isFinite(x) && x > 0 ? x : 0;
 }
 

@@ -2003,10 +2003,52 @@ async function setDigestOptout(userId, optout) {
   const u = (await accountStore()).users.find((x) => x.id === userId);
   if (u) { u.digest_optout = Boolean(optout); await saveAccountStore(); }
 }
+// Accounts for a set of ids, for the two things this product mails on its own
+// initiative (the watchlist digest and the renewal watch).
+//
+// THE SELECT IS AN ENTITLEMENT INPUT LIST, not just a contact list. The rows
+// it returns are handed to getEntitlements(), which reads `pro_tester` (022)
+// and `vault_beta` (023) straight off the user object — so a column missing
+// here reads as `undefined`, then `false`, and a comped account resolves to
+// the free tier with nothing failing anywhere. That is the shape of the 023
+// incident, one object further along: getSessionUser was taught those columns
+// and this third builder never was.
+//
+// MEASURED 2026-08-29, because the honest version of this note matters more
+// than the alarming one: today the omission changes NOTHING a watcher
+// receives. buildWatchlistFeed reads exactly two things off `ent` —
+// `maxComps`, which is "all" for free and Pro alike since FREE_MAX_COMPS was
+// retired on 2026-08-21 (so feedRowCap is 20 either way), and
+// `canSeeSearchDemand`, which the digest never asks for (`withDemand` is the
+// page's flag, not the email's). Both guards that would expose this are
+// currently inert.
+//
+// It is fixed anyway, and named here rather than left to be rediscovered,
+// because the two things masking it are both one edit from moving: restoring
+// any free comp cap, or letting the digest carry demand, turns a silent
+// `false` into a comped subscriber mailed a gated digest — and
+// markWatchlistDigested advances the marker afterwards, so a wrong send is
+// never repaired by re-running. A new entitlement input has to be added HERE
+// as well as to getSessionUser.
+//
+// Chunked with an explicit limit, like usersByIds/orgsByIds/attachCitedCounts:
+// PostgREST can honour a project-level max-rows by returning FEWER rows than
+// asked with no error, and a long enough in.() list is refused as a URL. Either
+// way the digest would mail only the watchers that came back while
+// summary.watchers counted the ones that should have — two numbers disagreeing
+// with nothing on screen to say so.
 async function findUsersByIds(ids) {
-  if (!DB_CONFIGURED || !ids.length) return [];
-  return await sbRequest("GET",
-    `users?id=in.(${pgInList(ids)})&select=id,email,digest_optout`) || [];
+  const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length) return [];
+  const out = [];
+  for (let i = 0; i < list.length; i += 200) {
+    const slice = list.slice(i, i + 200);
+    const rows = await sbRequest("GET",
+      `users?id=in.(${pgInList(slice)})` +
+      `&select=id,email,digest_optout,pro_tester,vault_beta&limit=${slice.length}`);
+    for (const r of rows || []) out.push(r);
+  }
+  return out;
 }
 
 // The unsubscribe link has to work for somebody who is not signed in, months
@@ -2638,7 +2680,16 @@ async function handleStripeEvent(evt) {
       // A deletion is terminal regardless of what the object still says.
       const source = evt.type === "customer.subscription.deleted"
         ? { ...obj, status: "canceled" } : obj;
-      const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      // Stripe fires `customer.subscription.updated` on every Smart Retries
+      // state change while a subscription is past_due, so this is the handler
+      // that used to push the grace window forward each time and hand a dead
+      // card the whole retry schedule. subscriptionRowFrom keeps the window
+      // it is shown; reading the stored row is how it gets shown one.
+      const priorGrace = await findSubscription(userId);
+      const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, {
+        userId, graceDays: ENT.GRACE_DAYS,
+        existingGraceUntil: priorGrace && priorGrace.grace_until,
+      });
       if (!row) return;
       await upsertSubscription(row);
       console.log(`Subscription ${evt.type.split(".").pop()}: ${row.plan} -> ${row.status} (user ${userId})`);
@@ -2693,14 +2744,13 @@ async function handleStripeEvent(evt) {
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
       const existing = await findSubscription(userId);
+      // Don't restart the clock: a second failed attempt inside the window
+      // must not buy another 7 days. The rule itself is subscriptionRowFrom's
+      // (it was re-applied here by hand until 2026-08-29, which is exactly why
+      // the subscription.updated handler beside this one could go without it).
       const row = STRIPE.subscriptionRowFrom({ ...sub, status: "past_due" }, STRIPE_PRICES,
-        { userId, graceDays: ENT.GRACE_DAYS });
+        { userId, graceDays: ENT.GRACE_DAYS, existingGraceUntil: existing && existing.grace_until });
       if (!row) return;
-      // Don't restart the clock. A second failed attempt inside the window
-      // must not buy another 7 days of access.
-      if (existing && existing.status === "grace" && existing.grace_until) {
-        row.grace_until = existing.grace_until;
-      }
       await upsertSubscription(row);
       console.log(`⚠ Payment failed — grace until ${row.grace_until} (user ${userId})`);
       // Owner-facing only (sendEmail, not sendOutboundEmail): dunning mail to
@@ -4042,18 +4092,16 @@ async function setOrgSeats(orgId, seats) {
 // buy another seven days.
 async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
   const source = statusOverride ? { ...sub, status: statusOverride } : sub;
-  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, { graceDays: ENT.GRACE_DAYS });
+  const priorFirm = await findOrgSubscription(orgId);
+  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, {
+    graceDays: ENT.GRACE_DAYS,
+    existingGraceUntil: priorFirm && priorFirm.grace_until,
+  });
   if (!row) {
     console.error(`Firm subscription ${sub && sub.id} carries a price we do not sell — ignored.`);
     return null;
   }
   row.org_id = orgId;
-  if (row.status === "grace") {
-    const existing = await findOrgSubscription(orgId);
-    if (existing && existing.status === "grace" && existing.grace_until) {
-      row.grace_until = existing.grace_until;
-    }
-  }
   await upsertOrgSubscription(row);
   await setOrgSeats(orgId, STRIPE.seatsOf(sub));
   console.log(`${label}: ${row.plan} -> ${row.status}, ${STRIPE.seatsOf(sub)} seat(s) (firm ${orgId})`);
@@ -16601,9 +16649,21 @@ const server = http.createServer((req, res) =>
           }
           throw err;
         }
+        // SERIALIZE FIRST, CONSUME SECOND. The rule stated where guestGate is
+        // built is that the free search is spent only when a report is actually
+        // served, and gate() is not a formality: it runs the radius blend,
+        // gateReport, attachPropertyCoords and the vault/firm blend, any of
+        // which can throw into the catch below and answer 502. Consuming ahead
+        // of it meant an anonymous visitor got no report AND lost their one
+        // free search - with the cn_guest cookie already set, so the retry was
+        // refused with signin_required for a report they never received.
+        //
+        // /api/explore-market has always had this ordering right (it consumes
+        // only on a published 200); this is the same rule at the sibling exit.
+        const served = await gate(searched.report);
         consumeGuestSearch(Boolean(sse));
-        if (sse) return sse.finish("result", await gate(searched.report));
-        return sendJson(res, 200, await gate(searched.report));
+        if (sse) return sse.finish("result", served);
+        return sendJson(res, 200, served);
       } catch (err) {
         console.error("Error handling /api/comps:", err);
         // A failed search used to leave NO trace: logEvent fires on the success
@@ -20311,6 +20371,13 @@ const server = http.createServer((req, res) =>
         if (!user) return;
         const id = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
         if (!id) return sendJson(res, 400, { error: "Which import?" });
+        // broker_uploads.id is a uuid, so a malformed one makes PostgREST reject
+        // the query and the catch below answers 502 - our-storage-broke, when the
+        // truth is caller-sent-nonsense, and it invites a retry that can never
+        // work. 404 matches the sibling routes (/api/vault/comp, publish-many,
+        // firm, bulk) and, as there, treats a malformed id and someone else's id
+        // as the same "not in your vault" rather than confirming which ids exist.
+        if (!VAULT.isUuid(id)) return sendJson(res, 404, { error: "That import isn't in your vault." });
         // user_id in the filter, not just the id: without it, knowing another
         // broker's upload id would be enough to delete their data.
         await sbRequest("DELETE",

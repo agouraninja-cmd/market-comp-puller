@@ -79,6 +79,21 @@
     return s.replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase());
   }
 
+  // Own-property lookup, never a bare one. TYPE_SYNONYMS and STATE_NAMES are
+  // plain object literals and the tokens come from a text box, so
+  // STATE_NAMES["constructor"] is the Object FUNCTION and perfectly truthy.
+  // Typing "warehouse Boise constructor" returned { state: ƒ Object } and the
+  // Explorer button rendered "…Boise, function Object() { [native code] }";
+  // "constructor Boise ID" did the same to the property type, then posted a
+  // body with the key silently dropped by JSON.stringify for a confusing 400.
+  //
+  // index.html:15944 already guards the identical shape and says why —
+  // "`direction` arrives over the wire, and DIR_COLOR['constructor'] is truthy
+  // on a plain object". Same fix, same reason, one file over.
+  function own(map, key) {
+    return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+  }
+
   function parseExploreQuery(raw) {
     let tokens = String(raw || "").toLowerCase().replace(/,/g, " ")
       .split(/\s+/).filter(Boolean);
@@ -90,8 +105,8 @@
     let type = null;
     for (let i = 0; i < tokens.length - 1 && !type; i++) {
       const pair = tokens[i] + " " + tokens[i + 1];
-      if (TYPE_SYNONYMS[pair]) {
-        type = TYPE_SYNONYMS[pair];
+      if (own(TYPE_SYNONYMS, pair)) {
+        type = own(TYPE_SYNONYMS, pair);
         tokens.splice(i, 2);
       }
     }
@@ -103,9 +118,9 @@
       }
     }
     if (!type) {
-      const syn = tokens.find((t) => TYPE_SYNONYMS[t]);
+      const syn = tokens.find((t) => own(TYPE_SYNONYMS, t));
       if (syn) {
-        type = TYPE_SYNONYMS[syn];
+        type = own(TYPE_SYNONYMS, syn);
         tokens = tokens.filter((t) => t !== syn);
       }
     }
@@ -119,13 +134,13 @@
     // the "IN" in "warehouse in Gary IN" and lose Indiana.
     let state = null;
     const pair = tokens.slice(-2).join(" ");
-    if (tokens.length >= 2 && STATE_NAMES[pair]) {
-      state = STATE_NAMES[pair];
+    if (tokens.length >= 2 && own(STATE_NAMES, pair)) {
+      state = own(STATE_NAMES, pair);
       tokens = tokens.slice(0, -2);
     } else {
       const last = tokens[tokens.length - 1] || "";
-      if (STATE_NAMES[last]) {
-        state = STATE_NAMES[last];
+      if (own(STATE_NAMES, last)) {
+        state = own(STATE_NAMES, last);
         tokens = tokens.slice(0, -1);
       } else if (STATE_ABBRS.indexOf(last.toUpperCase()) !== -1) {
         state = last.toUpperCase();

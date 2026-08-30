@@ -2097,7 +2097,11 @@ test("every seam that moves focus, window or size refreshes the settings line", 
     [/noteMachineSize\(meta\.address, Math\.round\(found\)\);\s*\n\s*\/\/[\s\S]{0,220}?refreshSearchSettingsLine\(\)/,
       "the record-backed size autofill"],
     // Restores, which assign every one of the three without an event.
-    [/function rerunHistory\(m\) \{[\s\S]*?refreshSearchSettingsLine\(\)[\s\S]*?requestSubmit\(\)/, "rerunHistory"],
+    // The restore seam. rerunHistory used to carry this call inline; it now
+    // delegates to restoreFormFromMeta, which the two REOPEN paths call too —
+    // they assign the same three values and never refreshed the line at all.
+    [/function restoreFormFromMeta\(m\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "restoreFormFromMeta"],
+    [/function rerunHistory\(m\) \{[\s\S]*?restoreFormFromMeta\(m\)[\s\S]*?requestSubmit\(\)/, "rerunHistory"],
     [/function syncSubjectFieldsToType\(\) \{[\s\S]*?refreshSearchSettingsLine\(\)/, "syncSubjectFieldsToType"],
   ];
   for (const [re, what] of seams) {
@@ -2352,4 +2356,199 @@ test("proConfigResolved is only ever set from a real /api/config answer", () => 
     "expected exactly the two config-answer call sites to set proConfigResolved");
   assert.match(html, /let proConfigResolved = false;/,
     "the flag must default to false, so nothing acts before config lands");
+});
+
+// ---------------------------------------------------------------------------
+// The Date column must sort into an order that exists
+//
+// The comparator compared parseable pairs chronologically and everything else
+// lexicographically, which is not a total order: "Sep 2025" > "Q3 2025" and
+// "Q3 2025" > "Feb 2026" by string, while "Sep 2025" < "Feb 2026" by date.
+// Array.sort given a contradictory comparator returns an arbitrary permutation,
+// and this one put Feb 2026 first in an ASCENDING sort. comp.date is
+// unconstrained model text and "Active" and "Q3 2025" are both real stored
+// values, so it fired on ordinary reports.
+//
+// Compiled out of the page rather than restated here, so the test is exercising
+// the shipped comparator and not a copy of it.
+// ---------------------------------------------------------------------------
+
+function dateComparator() {
+  const start = html.indexOf("currentComps.sort((a, b) => {");
+  assert.ok(start >= 0, "the comp sort should still exist");
+  const from = html.indexOf("      if (col.isDate) {", start);
+  const to = html.indexOf("      if (col.numeric) {", from);
+  assert.ok(from > 0 && to > from, "could not bound the isDate branch");
+  // The string tail is the branch this used to fall through to; keeping it
+  // means the test would still see the old intransitivity if it came back.
+  return new Function("av", "bv", "dir",
+    "const col = { isDate: true }, sortState = { dir: dir };" +
+    html.slice(from, to) +
+    'return String(av || "").toLowerCase()' +
+    '.localeCompare(String(bv || "").toLowerCase()) * dir;');
+}
+
+test("the Date comparator is a total order, whatever the model wrote", () => {
+  const cmp = dateComparator();
+  const A = "Sep 2025", B = "Feb 2026", Z = "Q3 2025";
+
+  // The contradiction itself: if all three of these held, no order exists.
+  const cyclical = cmp(A, Z, 1) > 0 && cmp(Z, B, 1) > 0 && cmp(A, B, 1) < 0;
+  assert.equal(cyclical, false, "A > Z > B while A < B is a comparator with no valid answer");
+
+  const asc = (rows) => [...rows].sort((x, y) => cmp(x, y, 1));
+  assert.deepEqual(asc([B, Z, A]), asc([A, Z, B]),
+    "the same three comps must sort the same however they arrived");
+  assert.equal(asc([B, Z, A])[0], A, "ascending starts at the oldest real date");
+});
+
+test("an unreadable date sinks in both directions, like an unreadable number", () => {
+  const cmp = dateComparator();
+  const rows = ["Feb 2026", "Active", "Jan 2025"];
+  const asc = [...rows].sort((x, y) => cmp(x, y, 1));
+  const desc = [...rows].sort((x, y) => cmp(x, y, -1));
+  assert.deepEqual(asc, ["Jan 2025", "Feb 2026", "Active"]);
+  assert.deepEqual(desc, ["Feb 2026", "Jan 2025", "Active"]);
+  assert.equal(asc.at(-1), "Active", "never sorted among the real dates");
+  assert.equal(desc.at(-1), "Active", "and not floated to the top by reversing");
+});
+
+// ---------------------------------------------------------------------------
+// Reopening a saved report must not value it with the last search's building
+//
+// subjectRangeFromMeta / askingRangeFrom / subjectCapRate fall back to the live
+// form inputs when the report's own meta carries no figure — and the comment on
+// the first of them says a reopened report "has no form inputs to read". True
+// on a cold load, false after any search: renderOwnerHero auto-fills
+// #targetSize with the size it looked up. So reopening a saved house after
+// searching a 152,400 SF warehouse multiplied the house's $/SF by the
+// warehouse's square footage. CLAUDE.md calls the subject size the most
+// expensive number in the report; this is it arriving from another building.
+// ---------------------------------------------------------------------------
+
+function restoreFormFn() {
+  const from = html.indexOf("  function restoreFormFromMeta(m) {");
+  assert.ok(from > 0, "restoreFormFromMeta should still exist");
+  const to = html.indexOf("\n  }\n", from) + 4;
+  const fields = {};
+  const doc = {
+    getElementById: (id) => (fields[id] = fields[id] || { value: "" }),
+  };
+  const fn = new Function("document", "syncSubjectFieldsToType", "renderTypeStatus",
+    "setLookbackControls", "writeSubjectDetails", "refreshSearchSettingsLine", "__fields",
+    "let typeResolution = null;" + html.slice(from, to) +
+    "return (m) => { restoreFormFromMeta(m); return __fields; };");
+  const noop = () => {};
+  let wroteDetails = "unset";
+  return {
+    fields,
+    run: fn(doc, noop, noop, noop, (d) => { wroteDetails = d; }, noop, fields),
+    details: () => wroteDetails,
+  };
+}
+
+test("reopening a report blanks a field the new report has no figure for", () => {
+  const h = restoreFormFn();
+  // The previous search left the warehouse's looked-up size in the form.
+  h.fields.targetSize = { value: "152400" };
+  h.fields.targetPrice = { value: "8200000" };
+  h.fields.capRate = { value: "6.25" };
+  h.fields.noi = { value: "410000" };
+
+  // A saved house whose owner never typed any of them.
+  h.run({ address: "12 Oak St, Boise, ID", type: "Residential", subject: {} });
+
+  assert.equal(h.fields.targetSize.value, "",
+    "a blank size must be written as blank — this is the number the hero multiplies");
+  assert.equal(h.fields.targetPrice.value, "");
+  assert.equal(h.fields.capRate.value, "");
+  assert.equal(h.fields.noi.value, "");
+  assert.equal(h.fields.address.value, "12 Oak St, Boise, ID");
+});
+
+test("a report that does carry its own figures still restores them", () => {
+  const h = restoreFormFn();
+  h.fields.targetSize = { value: "152400" };
+  h.run({
+    address: "12 Oak St, Boise, ID", type: "Residential",
+    subject: { sizeMin: 2100, priceMin: 615000, capRate: 5.5, noi: 33000 },
+  });
+  assert.equal(h.fields.targetSize.value, 2100);
+  assert.equal(h.fields.targetPrice.value, 615000);
+  assert.equal(h.fields.capRate.value, 5.5);
+  assert.equal(h.fields.noi.value, 33000);
+});
+
+test("both reopen paths restore the form before they render", () => {
+  for (const fn of ["openHistoryReport", "openPortfolioItem"]) {
+    const from = html.indexOf("function " + fn + "(");
+    assert.ok(from > 0, fn + " should still exist");
+    // Comment lines are stripped first: the code comments at both call sites
+    // name renderResults while explaining the ordering, and an index into a
+    // sentence about the rule is not an index into the rule.
+    const body = html.slice(from, html.indexOf("\n  }\n", from))
+      .split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+    const restore = body.indexOf("restoreFormFromMeta(");
+    const render = body.indexOf("renderResults(");
+    assert.ok(restore > 0, fn + " must restore the form from the report's meta");
+    assert.ok(render > 0, fn + " should still render");
+    assert.ok(restore < render,
+      fn + " must restore BEFORE rendering, or the hero reads the previous search's inputs");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// "FL 33101" is a state and a ZIP, not floor 33101
+//
+// unitDesignatorOf gates three things: the OSM footprint size estimate, the
+// Street View / aerial photo on every map pin, and the verified_key that
+// migration 035's portfolio dedupe runs on. "fl" is in the keyword vocabulary
+// and FL is a state abbreviation, so every Florida address matched — no size
+// estimate, no pin photo, and one building typed three ways saved as three
+// properties, for the whole state, with nothing anywhere reporting it.
+//
+// A refusal is invisible by design (the comment on the vocabulary says a false
+// positive "silently costs a size estimate and a photo"), which is exactly why
+// the must-PASS direction needs a test and not only the must-REFUSE one.
+// ---------------------------------------------------------------------------
+
+function unitDesignatorFn() {
+  const from = html.indexOf("var UNIT_KEYWORDS =");
+  const to = html.indexOf("const typeGuessCache");
+  assert.ok(from > 0 && to > from, "could not bound the unit-designator block");
+  return new Function(html.slice(from, to) + "; return unitDesignatorOf;")();
+}
+
+test("an ordinary address in Florida is not read as one unit of a site", () => {
+  const unitOf = unitDesignatorFn();
+  for (const address of [
+    "873 E Citation Ct, Miami, FL 33101",
+    "1450 NW 20th St, Fort Lauderdale, FL 33311",
+    "900 Building Materials Way, Tampa, FL 33602",
+    "12 Lotus Dr, Miami, FL 33101",
+    "77 Bay St, Miami, FL 33101-4021",
+  ]) {
+    assert.equal(unitOf(address), null,
+      address + " must keep its photo, its footprint size and its portfolio key");
+  }
+});
+
+test("stripping the state and ZIP does not cost a real unit designator", () => {
+  const unitOf = unitDesignatorFn();
+  const units = [
+    ["6728 W Fairview Ave Trailer 51, Boise, ID", "trailer 51"],
+    ["123 Main St Apt 3B, Boise, ID 83702", "apt 3b"],
+    ["500 Oak Ave Ste 200, Dallas, TX 75201", "ste 200"],
+    ["77 Bay St #45, Miami, FL 33101", "#45"],
+    // A genuine floor in Florida: the tail goes, the designator stays.
+    ["500 Main St Fl 3, Miami, FL 33101", "fl 3"],
+  ];
+  for (const [address, want] of units) {
+    assert.equal(String(unitOf(address)).toLowerCase(), want, address);
+  }
+  // The street names the vocabulary's own comment says it must not eat.
+  for (const address of ["100 Roomy Lane, Boise, ID", "3 Ste Genevieve Ave, St Louis, MO 63101",
+    "200 United Nations Plaza, New York, NY 10017", "500 Lot Ave, Dallas, TX 75201"]) {
+    assert.equal(unitOf(address), null, address);
+  }
 });

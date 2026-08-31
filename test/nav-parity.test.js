@@ -174,3 +174,56 @@ test("a session that turns out to be invalid loses the rail on every surface", (
 // making, that /vault has a way onward, is asserted there against the served
 // page instead. Nothing was dropped; it stopped being this file's business
 // when the vault stopped being the odd one out.
+
+test("pricing is one control in the app, in the settings panel", () => {
+  // The theme switch's journey, the same week and for the same reason
+  // (owner's call, 2026-08-30). Pricing was a dropdown row until 2026-08-21
+  // and a bar row after that, on the argument that a B2B site hiding its price
+  // reads as one that would rather not say. True of the SITE, never true of
+  // this surface: index.html is the signed-in app, and the settings panel has
+  // carried a Plan row with a "See pricing" button — on the identical
+  // `live && !pro` rule — since 2026-08-23. Two controls, one question.
+  assert.ok(!INDEX_HTML.includes('id="pricingLink"'),
+    "the app's nav still carries a Pricing row; Settings is the one control now");
+
+  // The button that replaced it, and the rule it obeys. Checked as a rule
+  // rather than a presence: the failure that matters is Pricing being offered
+  // to somebody who already pays, or on a deployment with nothing for sale.
+  assert.match(INDEX_HTML, /id="settingsUpgradeBtn"[^>]*>See pricing</,
+    "the settings panel lost its pricing button");
+  assert.match(INDEX_HTML,
+    /getElementById\("settingsUpgradeBtn"\)\.classList\.toggle\("hidden", !live \|\| pro\)/,
+    "the settings pricing button no longer follows the billing rule the nav row followed");
+
+  // The SITE keeps selling. marketBar renders its own row for every visitor on
+  // every server-rendered page, and that is the surface the original argument
+  // was really about — a stranger on a market page.
+  assert.match(SERVER_JS, /id="navPricing" href="\/pricing"/,
+    "the shared chrome lost its Pricing link; that is the one a stranger needs");
+
+  // ...and the deep links still work, which is what keeps that shared row and
+  // the /pricing page's own CTA pointing at something.
+  for (const door of ['get("pricing") === "1"', 'location.hash === "#pricing"']) {
+    assert.ok(INDEX_HTML.includes(door), "the app stopped honouring " + door);
+  }
+  assert.match(INDEX_HTML, /if \(live && !pro\) openPricingModal\(\)/,
+    "the ?pricing=1 door no longer opens the modal");
+});
+
+test("a signed-out reader can still find the price", () => {
+  // The consequence of the move, and the reason it needed a second edit.
+  // Settings is signed-in chrome: its door is the account menu. An anonymous
+  // visitor reading a shared report at /r/<id> gets index.html with no account
+  // menu, so once the nav row went there was no pricing door on the page at
+  // all. Every server-rendered footer has carried /pricing since that page
+  // existed; this footer had not.
+  const footerAt = INDEX_HTML.indexOf("<footer");
+  assert.notEqual(footerAt, -1, "index.html has no footer");
+  const footer = INDEX_HTML.slice(footerAt);
+  assert.ok(footer.includes('href="/pricing"'),
+    "the app's footer cannot reach the rate card, and Settings needs an account");
+  // The rate card is a real page that works signed out — a modal would not
+  // have solved this, which is why the fix is a link and not a button.
+  assert.match(SERVER_JS, /pagePath === "\/pricing"|req\.url[^\n]*"\/pricing"/,
+    "/pricing is not a route any more, so the footer link goes nowhere");
+});

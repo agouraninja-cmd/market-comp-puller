@@ -9192,6 +9192,27 @@ function nextMarketExample() {
 // a forged cookie changes which buttons are drawn and nothing else.
 // Callers must pair this with sendShellPage()'s headers, or the cached
 // anonymous copy is re-served to someone who has just signed in.
+
+// The four pages a member is WORKING IN rather than browsing (owner's call,
+// 2026-08-30). On these, the red "Run a report" CTA comes off the bar: a
+// broker reading their vault, a market, the 1031 guide or a bulk run is
+// mid-task, and a call to action for a different task is a nag on the one
+// page that is not about it. Everywhere else it stays, because those pages
+// are where somebody is deciding whether to run one.
+//
+// Keyed on the SAME paths the nav rows point at, so "the row you are standing
+// on" and "the page that drops the CTA" cannot drift into two lists. Note
+// what this is NOT: a way home. That reasoning (2026-08-28/29, above) is
+// unchanged — the CTA never was the way back, Workspace is, and Workspace is
+// still on every one of these bars, which is the only reason dropping the
+// button here strands nobody.
+//
+// A market DETAIL page (/market/<slug>) passes no `current` and keeps the
+// CTA. It is a browse surface reached FROM the explorer, and it already
+// carries its own "value a property here" form lower down; the owner named
+// the explorer, not the pages under it.
+const CTA_FREE_PAGES = new Set(["/vault", "/markets", "/1031-exchange", "/bulk"]);
+
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
   `<div class="hleft">` +
@@ -9305,7 +9326,8 @@ const marketBar = (signedIn = false, current = "") =>
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
       `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk valuation</a>` +
-      `<a class="btn sm" href="/">Run a report</a>`
+      // Dropped on the four working pages — see CTA_FREE_PAGES above.
+      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/">Run a report</a>`)
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must

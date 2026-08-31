@@ -540,9 +540,12 @@ test("bare environment", async (t) => {
   //
   // "Run a report" still points at "/" and is still NOT the way home — that
   // reasoning was right and is unchanged. What replaces Home is Workspace: a
-  // destination, in the same position, one row down.
+  // destination, in the same position, one row down. (The CTA itself comes
+  // off four pages as of 2026-08-30 — see the next test — which is why the
+  // page checked here is /brokers, where it stays. Checking it on /markets
+  // would tie this test to a decision it is not about.)
   await t.test("a signed-in member gets Workspace where a visitor gets Home", async () => {
-    const html = await (await fetch(srv.base + "/markets", {
+    const html = await (await fetch(srv.base + "/brokers", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
     assert.ok(!html.includes(`<a href="/">Home</a>`),
@@ -551,13 +554,45 @@ test("bare environment", async (t) => {
       "suppressing Home is only safe because Workspace is the way back; without it "
       + "a member is left with the wordmark and a CTA, which is the 2026-08-28 bug");
     assert.match(html, /Run a report/,
-      "the CTA is untouched: it was never the way home, and it is not one now");
+      "the CTA is untouched on a browse page: it was never the way home, and it is not one now");
 
     // The half that must NOT move. Home was owner-reported missing for
     // logged-out visitors, and that is still the whole reason it exists.
     const anon = await (await fetch(srv.base + "/markets")).text();
     assert.ok(anon.includes(`<nav><a href="/">Home</a><details>`),
       "an anonymous visitor still opens the nav with Home");
+  });
+
+  // The CTA comes off the four pages a member is WORKING IN (owner's call,
+  // 2026-08-30): the vault, the market explorer, the 1031 guide and bulk
+  // valuation. A broker mid-task is not deciding whether to run a report, and
+  // on those four the red button is a nag for a different task.
+  await t.test("the Run a report CTA is dropped on the four working pages", async () => {
+    const member = { cookie: "cn_session=irrelevant-presence-only" };
+    for (const p of ["/vault", "/markets", "/1031-exchange", "/bulk"]) {
+      const html = await (await fetch(srv.base + p, { headers: member })).text();
+      const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
+      assert.ok(!/class="btn sm" href="\/">Run a report/.test(nav),
+        p + " still carries the Run a report CTA in its header");
+      // Dropping it is only safe because the way back is still a row, not a
+      // button — the same argument that let Home go for members.
+      assert.match(nav, /<a href="\/desk">Workspace<\/a>/,
+        p + " lost the CTA and has no Workspace row either — that strands the member");
+    }
+  });
+
+  await t.test("...and stays on the pages where somebody is still deciding", async () => {
+    // The suppression is a list, not a rule about being signed in, so the
+    // browse and marketing surfaces must be checked from the other side or a
+    // widened set would go unnoticed. A market DETAIL page is deliberately in
+    // here: it is reached FROM the explorer and passes no `current`.
+    const member = { cookie: "cn_session=irrelevant-presence-only" };
+    for (const p of ["/brokers", "/pricing", "/firms", "/market/industrial-ontario-ca"]) {
+      const html = await (await fetch(srv.base + p, { headers: member })).text();
+      const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
+      assert.match(nav, /class="btn sm" href="\/">Run a report/,
+        p + " lost the CTA; only the four working pages drop it");
+    }
   });
 
   // One nav, no copies (2026-08-20). index.html authors only a marker comment

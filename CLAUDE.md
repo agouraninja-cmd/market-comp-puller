@@ -919,6 +919,21 @@ dependency. `.env` is git-ignored — never commit it.
   itself. `#navVault` moved out of the account dropdown to join them, so a hub
   — which builds its header from `accountNavSlots` and not from `marketBar` —
   no longer shows a vault link.
+  **The red "Run a report" CTA is dropped on the four pages a member is
+  WORKING IN** (owner's call, 2026-08-30; `CTA_FREE_PAGES` above `marketBar`,
+  pinned from both sides in `test/routes.test.js`): `/vault`, `/markets`,
+  `/1031-exchange`, `/bulk`. A broker mid-task is not deciding whether to run
+  a report, so there the button is a nag for a different task; every other
+  server-rendered page keeps it, because those are where somebody is still
+  deciding. Two things it is NOT. It is not a way home — that argument
+  (2026-08-28/29) is unchanged, the way back is the **Workspace** row, and it
+  is the only reason dropping the button strands nobody, so a future edit that
+  suppresses Workspace on these pages must put the CTA back. And a market
+  DETAIL page (`/market/<slug>`) keeps it: it passes no `current`, it is a
+  browse surface reached FROM the explorer, and it already carries its own
+  "value a property here" form. Keyed on the same paths the nav rows point at,
+  so "the row you are standing on" and "the page that drops the CTA" cannot
+  become two lists.
 - `SITE_URL` — optional. Public URL used in `robots.txt`/`sitemap.xml`; defaults
   to the Render URL. index.html's canonical/`og:url`/JSON-LD tags are written
   against the default origin and rewritten to `SITE_URL` at serve time, so

@@ -2074,9 +2074,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
         </button>
       </div>
-      <!-- Plan. Copy comes from billingStatusCopy() (the desk plan card's
-           generator); the buttons obey pricingLink's and menuBillingBtn's
-           exact visibility rules, applied inside refreshBillingUI(). The
+      <!-- Plan, and since 2026-08-30 the app's ONLY pricing control: the nav
+           row that used to mirror this button is gone (owner's call), on the
+           theme toggle's precedent from the same week — one question, one
+           control. Copy comes from billingStatusCopy() (the desk plan card's
+           generator); "See pricing" obeys the exact `live && !pro` rule the
+           nav row obeyed, and Manage billing follows menuBillingBtn's, both
+           applied inside refreshBillingUI(). The
            whole row follows the desk card's own rule and disappears on a
            deployment where nothing is for sale — billingStatusCopy()'s Free
            branch names caps that a dark deployment does not impose. -->
@@ -2183,16 +2187,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!--NAV_LINKS-->
           </div>
         </div>
-        <!-- Pricing left the Explore dropdown (2026-08-21): it is the question a
-             prospect arrives with, and a B2B site that hides its price behind a
-             browse menu reads as one that would rather not say. Same id, same
-             `hidden` class, same refreshBillingUI toggle and same click handler
-             as when it lived in the menu, so the billing rule is untouched and
-             only the position moved. Styled as a bar item (#myDeskLink's own
-             classes) rather than a menu row; the dropdown-row utilities it used
-             to carry are used on 40-plus other lines in this file, so the
-             tailwind purge still emits them for the server-injected NAV_LINKS. -->
-        <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
+        <!-- Pricing is in Settings now (owner's call, 2026-08-30), not in this
+             nav. It was a dropdown row until 2026-08-21 and a bar row after
+             that, on the argument that a B2B site hiding its price reads as
+             one that would rather not say — which is true of the site and was
+             never true of THIS surface. index.html is the signed-in app: the
+             reader is a member who has already bought or already declined, and
+             the Settings panel has carried a Plan row with a "See pricing"
+             button, on this exact `live && !pro` rule, since 2026-08-23. Two
+             controls, one question. The theme toggle's precedent, the same
+             week and for the same reason.
+             Nothing about the SITE's pricing changed: marketBar still renders
+             #navPricing on every server-rendered page (to /pricing for a
+             stranger, /?pricing=1 for a member), the footer below links
+             /pricing like every other footer does, and the ?pricing=1 and
+             #pricing deep links still open the modal here. -->
+
         <!-- THE ORDER, owner's (2026-08-29): Workspace, Vault, Market
              explorer, 1031 guide, Bulk valuation. Identical here, in
              marketBar and in vault-page.js's hand-written header, so the
@@ -4362,6 +4372,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
               <li><a href="/brokers" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Brokers</a></li>
               <li><a href="/firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For firms</a></li>
+              <!-- Every server-rendered footer has carried /pricing since the
+                   page existed; this one had not, which did not matter while
+                   the nav had a Pricing row. It does now (2026-08-30): that
+                   row moved into Settings, and Settings is signed-in chrome —
+                   so without this line an anonymous reader of a shared report
+                   had no pricing door anywhere on the page. The rate card is
+                   a real URL and works signed out, which is exactly what that
+                   reader needs. -->
+              <li><a href="/pricing" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Pricing</a></li>
               <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
               <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><a href="/1031-exchange" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">1031 exchange guide</a></li>
@@ -16777,7 +16796,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // the button appears once billing is known and vanishes post-purchase.
     if (typeof renderLockedNotice === "function") renderLockedNotice();
 
-    document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+    // The nav's Pricing row is gone (2026-08-30); #settingsUpgradeBtn below
+    // carries this same `!live || pro` rule, and is the one control now.
 
     // The redeem row: signed-in, this deployment has a passkey configured, AND
     // there is still something this account could redeem. Deliberately NOT
@@ -16816,8 +16836,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // link: it flipped the one-shot, skipped the modal because `live` was a
     // guess, and cleared ?pricing=1 from the URL anyway -- so clicking
     // Pricing from any server-rendered header landed on a bare home page with
-    // no modal, and only a SECOND click (on #pricingLink, unhidden by then)
-    // opened it. Reported 2026-08-29 and reproduced on the first load of
+    // no modal, and only a SECOND click (on the nav's Pricing row, unhidden
+    // by then — that row has since moved into Settings) opened it. Reported 2026-08-29 and reproduced on the first load of
     // /?pricing=1. Do not fold this into the `live && !pro` test below: the
     // point is to leave the link UNCONSUMED and the URL intact so the next
     // call, the one with a real answer, still finds it.
@@ -16911,8 +16931,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     // The settings panel's plan row: the same copy generator as the desk
-    // card and the same button rules as pricingLink and menuBillingBtn, so
-    // this stays a third surface, never a second decider. Unlike the desk
+    // card and the same button rules menuBillingBtn follows, so this stays a
+    // third surface, never a second decider — and since 2026-08-30 it is the
+    // app's only pricing door, the nav row it used to mirror having gone. Unlike the desk
     // card it also paints signed out — billingStatusCopy() has an honest
     // "Not signed in" branch — but it shares the card's dark-deployment
     // rule: where nothing is for sale and nothing is comped, the Free
@@ -17191,13 +17212,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("pricingModal").addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest(".pricing-buy");
     if (btn) startCheckout(btn.dataset.plan, btn);
-  });
-  document.getElementById("pricingLink").addEventListener("click", () => {
-    // Lives inside the Explore dropdown — close it so it isn't left open
-    // behind the pricing modal.
-    document.getElementById("exploreMenu").classList.add("hidden");
-    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
-    openPricingModal();
   });
   document.getElementById("menuUpgradeBtn").addEventListener("click", () => {
     document.getElementById("acctMenu").classList.add("hidden");

@@ -2074,8 +2074,10 @@ test("tester passkey", async (t) => {
     assert.equal(after.pro.tester, true);
     assert.equal(after.pro.isPro, true);
     assert.equal(after.pro.status, "tester");
-    // The one capability a tester is deliberately denied.
-    assert.equal(after.pro.canUseVault, false);
+    // Since 2026-09-01 a tester is Pro outright, vault included (owner's
+    // call); the redeem route is unchanged, this is entitlements.js reporting
+    // the wider grant through /api/config.
+    assert.equal(after.pro.canUseVault, true);
 
     // Redeeming twice is idempotent, not an error.
     const again = await redeem(PASSKEY, cookie);
@@ -2277,17 +2279,19 @@ test("vault passkey", async (t) => {
     t.after(() => srv.stop());
     const redeem = redeemer(srv);
 
-    // A tester code must not open the vault — that exclusion is the reason
-    // this second secret exists at all.
+    // Since 2026-09-01 a tester code DOES open the vault (owner's call), so
+    // the separation this test guards is now one-directional: the vault code
+    // must still not comp Pro, which the second half below still asserts.
     const testerCookie = await signUp(srv, "tester-only");
     assert.equal((await redeem(TESTER, testerCookie)).status, 200);
     const t1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: testerCookie } })).json();
     assert.equal(t1.pro.isPro, true);
-    assert.equal(t1.pro.canUseVault, false, "the tester grant must still exclude the vault");
+    assert.equal(t1.pro.canUseVault, true, "a tester is Pro, vault included");
 
-    // ...and a tester still holding no vault grant is told a wrong code is
-    // wrong, rather than "already": there IS something left for them to
-    // redeem on this deployment.
+    // ...and a tester still holding no vault_beta ROW is told a wrong code is
+    // wrong, rather than "already": the redeem route's idempotency reads the
+    // stored flags, not the capabilities they resolve to, and this account
+    // does not hold the vault_beta grant even though it can use the vault.
     const wrong = await redeem("neither-of-them", testerCookie);
     assert.equal(wrong.status, 401);
 

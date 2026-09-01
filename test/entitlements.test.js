@@ -156,14 +156,16 @@ test("tester status is never a Stripe status — there is no customer to manage"
   assert.equal(ent({ user: USER, tester: true }).status, "tester");
 });
 
-test("a tester does NOT get the broker vault", () => {
-  // The vault is a private-data workspace with an upload endpoint. A passkey
-  // shared with a wider group is a bigger surface than "try Pro's reports",
-  // so the vault stays admin/paid-only. This is the one place a tester is
-  // deliberately NOT equal to Pro.
+test("a tester gets the broker vault", () => {
+  // Reversed on 2026-09-01 (owner's call). Until then the vault was the one
+  // place a tester was deliberately not equal to Pro, on the argument that a
+  // shared passkey is a bigger surface than "try Pro's reports". What that
+  // produced in practice was testers opening /vault and reading the product
+  // as the free tier, and a tester who cannot see the whole product cannot
+  // test it. The grant is Pro, capability for capability, from here on.
   const e = ent({ user: USER, tester: true });
-  assert.equal(e.broker, false);
-  assert.equal(e.canUseVault, false);
+  assert.equal(e.broker, true);
+  assert.equal(e.canUseVault, true);
 });
 
 test("a real subscription always wins over the tester flag", () => {
@@ -843,9 +845,12 @@ test("a tester who also holds vault_beta gets the vault with the comp", () => {
   assert.equal(e.canUseVault, true);
 });
 
-test("a tester without vault_beta still has no vault", () => {
+test("a tester without vault_beta has the vault from the tester grant itself", () => {
+  // The vault_beta grant is still a real, separate door (a broker handed the
+  // vault WITHOUT comped Pro); it is simply no longer the ONLY way a tester
+  // reaches the vault.
   const e = ent({ user: USER, tester: true });
-  assert.equal(e.canUseVault, false);
+  assert.equal(e.canUseVault, true);
 });
 
 test("vault_beta is independent of billing: the vault survives a lapse", () => {
@@ -907,10 +912,12 @@ test("a dark deployment grants no firm, for the vault's reason plus one of its o
     "and possession of ADMIN_KEY cannot switch it on either");
 });
 
-test("a beta tester gets no firm unless they also hold the vault grant", () => {
-  // The passkey exclusion, restated: a code shared with a wider group must not
-  // also hand out an endpoint that emails any address typed into it.
-  assert.equal(ent({ user: USER, tester: true }).canUseOrg, false);
+test("a beta tester gets a firm, with or without the vault grant", () => {
+  // Reversed 2026-09-01 with the vault (owner's call): canUseOrg tracks
+  // `broker`, and a tester is `broker` now. The invite route still sends
+  // email; what bounds that is the same thing that bounded it for a paying
+  // member — the per-firm seat cap and the one-row revoke on pro_tester.
+  assert.equal(ent({ user: USER, tester: true }).canUseOrg, true);
   assert.equal(ent({ user: USER, tester: true, vaultBeta: true }).canUseOrg, true);
 });
 
@@ -958,14 +965,16 @@ test("a dark deployment grants no bulk valuation, unlike every other capability"
   assert.equal(ent.canExploreAddresses, true, "the contrast: the Explorer WAS free before the tier");
 });
 
-test("a beta tester gets Pro's reports, not a fan-out that spends", () => {
-  // TESTER_PASSKEY is one string handed to a group. "Try Pro's reports" is
-  // what the code is for, and a report at a time is what it grants; fifty
-  // billed searches per click, unbounded in how often, is not that.
+test("a beta tester gets bulk valuation, at Pro's own per-job cap", () => {
+  // Reversed 2026-09-01 (owner's call). The fan-out worry was real and is
+  // still bounded — just not here: BULK_DAILY_ADDRESSES in server.js caps
+  // every member per UTC day, tester or paid, and that env-level backstop was
+  // always the one doing the work. This branch hands out Pro's per-job cap,
+  // never a wider one, so entitlements can still never widen a job.
   const ent = computeEntitlements({ user: { id: "u" }, tester: true, now: Date.now(), enabled: true });
   assert.equal(ent.pro, true, "a tester really does get Pro's report features");
-  assert.equal(ent.canBulkValue, false);
-  assert.equal(ent.bulkMaxAddresses, 0);
+  assert.equal(ent.canBulkValue, true);
+  assert.equal(ent.bulkMaxAddresses, 50, "Pro's cap, not a tester-specific one");
 });
 
 test("an admin gets bulk valuation, because the team renders every surface", () => {

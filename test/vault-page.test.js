@@ -223,22 +223,37 @@ const VAULT = require("../broker-vault");
 // A <select> as the mapper's own emitted markup describes it: the source
 // column on data-src, and the option carrying `selected` as the value. pick()
 // is what a broker doing the one thing this screen asks of them does.
-function stubSelect(src, value) {
+function stubSelect(src, value, cval) {
   const changed = [];
   return {
     value,
-    getAttribute(a) { return a === "data-src" ? src : null; },
+    // data-cval joined data-src when a broker gained the ability to answer a
+    // required field once for a whole file: those selects name the FIELD they
+    // answer rather than a source column, and a stub that knew only data-src
+    // would report them as unattributed and make the row untestable.
+    getAttribute(a) {
+      if (a === "data-src") return src;
+      if (a === "data-cval") return cval;
+      return null;
+    },
     addEventListener(t, fn) { if (t === "change") changed.push(fn); },
     pick(v) { this.value = v; changed.forEach((fn) => fn({})); },
   };
 }
 function parseSelects(html) {
   const out = [];
-  const re = /<select data-src="([^"]*)">([\s\S]*?)<\/select>/g;
+  // Attributes in any order and any number: the mapper's own selects carry
+  // data-src alone, the whole-file answers carry data-cval and an id. The
+  // regex used to require data-src as the sole attribute, which silently
+  // matched nothing at all for the second kind.
+  const re = /<select\b([^>]*)>([\s\S]*?)<\/select>/g;
   let m;
   while ((m = re.exec(html))) {
-    const sel = /<option value="([^"]*)" selected>/.exec(m[2]);
-    out.push(stubSelect(m[1], sel ? sel[1] : ""));
+    const attrs = m[1];
+    const src = (/\bdata-src="([^"]*)"/.exec(attrs) || [])[1] || null;
+    const cval = (/\bdata-cval="([^"]*)"/.exec(attrs) || [])[1] || null;
+    const sel = /<option value="([^"]*)"[^>]*\sselected>/.exec(m[2]);
+    out.push(stubSelect(src, sel ? sel[1] : "", cval));
   }
   return out;
 }
@@ -837,21 +852,30 @@ test("no add-a-column advice while the broker still has an unmapped column", asy
     "told the broker to add a column while an unmapped one was on screen: " + msg);
 });
 
-test("a genuinely unclaimable required field says what to do about it", async () => {
+test("a required field no column can supply is answered on the spot, not sent away", async () => {
   // The CoStar sale-comps case: no deal-type column, because every row is a
-  // sale. Here every column the file HAS is mapped and `transaction` is still
-  // missing, so no dropdown can rescue it and Cancel was the only exit.
+  // sale. Every column the file HAS is mapped and `transaction` is still
+  // missing, so no dropdown in the table can rescue it.
+  //
+  // Until 2026-09-01 this was a dead end, and the screen's whole answer was to
+  // go add a column and upload again. It is a question now.
   const { doc } = await runPage([comp({})]);
   await chooseFile(doc, "Property Address,Type,Sale Date\n1 Main St,Industrial,2026-01-05\n");
 
   assert.equal(doc.getElementById("mapIgnored").textContent, "Every column is mapped.",
     "this test only means something if the file has no spare column left");
-  assert.equal(doc.getElementById("mapGo").disabled, true);
+  assert.equal(doc.getElementById("mapGo").disabled, true, "it is still unanswered");
+
   const msg = doc.getElementById("mapMsg").textContent;
-  assert.match(msg, /no column saying whether each deal was a sale or a lease/,
-    "the dead end is not explained");
-  assert.match(msg, /values Sale or Lease, then upload again/,
-    "the explanation does not say what to do");
+  assert.match(msg, /Still needed:/, "the missing field must still be named");
+  assert.ok(msg.indexOf("upload again") < 0,
+    "told the broker to go edit a spreadsheet while the answer sat on screen: " + msg);
+  assert.ok(msg.indexOf("Nothing in your file looks like") < 0,
+    "same advice, generic wording: " + msg);
+
+  constSelectFor(doc, "transaction").pick("Sale");
+  assert.equal(doc.getElementById("mapGo").disabled, false,
+    "answering the question must be enough to import: " + doc.getElementById("mapMsg").textContent);
 });
 
 test("two columns claiming one field disables Import and names the clash", async () => {
@@ -872,6 +896,117 @@ test("two columns claiming one field disables Import and names the clash", async
   assert.match(msg, /Sq Ft and Sale Price are both mapped to Price/);
   assert.match(msg, /Pick one/);
   assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// The whole-file answers (2026-09-01)
+//
+// A developer's or owner-operator's own sheet names no property type and no
+// deal type, because every row is the one thing they build and nobody writes
+// that down. The screen asks once instead of refusing the file.
+// ---------------------------------------------------------------------------
+
+// Everything required resolves EXCEPT property type and sale-or-lease, which
+// no column supplies — the shape of a real tracking sheet.
+const NO_TYPE_CSV =
+  "Property Address,Sale Date,Sq Ft,Sale Price\n" +
+  "1 Main St,2026-01-05,10000,2450000\n";
+
+const constSelectFor = (doc, field) =>
+  doc.getElementById("mapConst").querySelectorAll("select")
+    .filter((s) => s.getAttribute("data-cval") === field)[0];
+
+test("a sheet naming no property type is asked once, and Import waits for the answer", async () => {
+  const { doc } = await runPage([comp({})]);
+  await chooseFile(doc, NO_TYPE_CSV);
+
+  const box = doc.getElementById("mapConst");
+  assert.ok(!box.classList.contains("hide"), "the question row stayed hidden");
+  assert.match(box.innerHTML, /what kind of property these are/);
+  assert.match(box.innerHTML, /sales or leases/);
+  assert.equal(doc.getElementById("mapGo").disabled, true,
+    "Import must wait: two required fields are still unanswered");
+
+  // Nothing is pre-selected. A guessed "Industrial" would stamp every row.
+  assert.equal(constSelectFor(doc, "property_type").value, "");
+  assert.equal(constSelectFor(doc, "transaction").value, "");
+
+  constSelectFor(doc, "property_type").pick("Industrial");
+  assert.equal(doc.getElementById("mapGo").disabled, true, "one of two is not enough");
+  constSelectFor(doc, "transaction").pick("Sale");
+  assert.equal(doc.getElementById("mapGo").disabled, false,
+    "both answered, so the file can be imported: " + doc.getElementById("mapMsg").textContent);
+});
+
+test("the answers travel with the mapping", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, NO_TYPE_CSV);
+  constSelectFor(doc, "property_type").pick("Industrial");
+  constSelectFor(doc, "transaction").pick("Lease");
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.deepEqual(up[0].body.constants, { property_type: "Industrial", transaction: "Lease" });
+  assert.equal(up[0].body.mapping.property_address, "address",
+    "the mapping must still travel alongside");
+});
+
+test("a column claiming the field withdraws the question and its answer", async () => {
+  // Answering AND mapping a column for one field is refused by the server as
+  // a contradiction, so the screen must never produce it.
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, NO_TYPE_CSV);
+  constSelectFor(doc, "property_type").pick("Industrial");
+  constSelectFor(doc, "transaction").pick("Sale");
+
+  // The broker realises their "Sq Ft" column is really the deal type.
+  selectFor(doc, "sq_ft").pick("transaction");
+  assert.equal(constSelectFor(doc, "transaction"), undefined,
+    "the question stayed on screen for a field a column now supplies");
+
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.deepEqual(up[0].body.constants, { property_type: "Industrial" },
+    "only the answer still being asked for may travel");
+});
+
+test("a file that supplies everything is asked nothing at all", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, MAPPABLE_CSV);
+  assert.ok(doc.getElementById("mapConst").classList.contains("hide"),
+    "the question row appeared for a file that needs none of it");
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.ok(!("constants" in up[0].body),
+    "a file needing no answers must send byte for byte what it always did");
+});
+
+test("a lease sheet with a rate and no basis is asked which it is", async () => {
+  // The original per-sheet case, asked on the confirm table since 2026-08-29
+  // and unaskable in a CSV until now. Not a required field in general — it is
+  // required of any row carrying a rent, so the question follows the rent
+  // column rather than the required list.
+  const { doc } = await runPage([comp({})]);
+  await chooseFile(doc,
+    "Property Address,Sale Date,Sq Ft,Rent PSF\n1 Main St,2026-01-05,10000,0.72\n");
+
+  assert.ok(constSelectFor(doc, "rent_basis"),
+    "a mapped rent with no basis column must raise the question");
+  assert.match(doc.getElementById("mapConst").innerHTML, /per year or per month/);
 });
 
 test("an ambiguous field is left blank and the screen says we left it", async () => {

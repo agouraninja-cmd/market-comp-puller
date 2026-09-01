@@ -2790,21 +2790,17 @@ a.btn.ghost:hover{color:var(--ink)}
     address_city:"City (joins the address)", address_state:"State (joins the address)"
   };
   function tLabel(t){ return TARGET_LABELS[t]||t }
-  // A required field can be unclaimable rather than merely unclaimed: a CoStar
-  // or MLS SALE-comps export carries no deal-type column at all, because every
-  // row is a sale. Value transformation is deliberately out of scope, so no
-  // dropdown rescues that file and "Still needed: Sale or lease" with a dead
-  // Import button and a Cancel button is the whole conversation. These say
-  // what is wrong and what to do about it, in the broker's own words.
-  var NO_COLUMN_HELP={
-    transaction:"Your file has no column saying whether each deal was a sale or a lease. Add one with values Sale or Lease, then upload again.",
-    // The same shape as transaction, and it was missing: a developer's or an
-    // owner-operator's own tracking sheet names no property type anywhere,
-    // because every row is the one thing they build. Without an entry here
-    // that file got a bare "Still needed: Property type" and no way to learn
-    // what to do about it.
-    property_type:"Your file has no column saying what kind of property each deal is. Add one with values Industrial, Office, Retail, Multifamily, Land or Residential, then upload again."
-  };
+  // NO_COLUMN_HELP lived here until 2026-09-01. It explained the dead end a
+  // CoStar or MLS sale-comps export reached — no deal-type column at all,
+  // because every row is a sale — and told the broker to go add one, on the
+  // grounds that value transformation was out of scope and no dropdown could
+  // rescue that file. A dropdown rescues it now: both fields it covered are
+  // answerable once for the whole file, right above the Import button, so
+  // every word of that advice had become obsolete. The two required fields
+  // that can still be genuinely unclaimable are the address and the deal
+  // date, which are per-row by nature and can never be answered once — those
+  // fall to the single generic sentence below, which is what it was always
+  // for.
   // The raw header the broker actually sees in their spreadsheet, for a
   // normalized key. column_4 is our own synthetic name for a header that
   // normalizes to nothing (a "$" price column); it exists nowhere in their
@@ -2834,34 +2830,44 @@ a.btn.ghost:hover{color:var(--ink)}
     // impossible annual one. A guess either way stores a figure 12x wrong.
     rent_basis:"Your file gives a rent but doesn't say whether it's per year or per month. Which is it?"
   };
-  // Built ONCE per file, then shown and hidden — never re-rendered by
-  // refreshMapper, which runs on every dropdown change and would throw away a
-  // half-made choice each time.
-  function renderConstantFields(){
-    var offer=(mapInfo.constantTargets||[]).filter(function(t){return CONST_OPTIONS[t]});
-    $("mapConst").innerHTML=offer.map(function(t){
-      return '<div class="crow hide" data-const="'+esc(t)+'" style="margin:6px 0">'+
-        '<label for="mc_'+esc(t)+'">'+esc(CONST_ASK[t])+"</label> "+
-        '<select id="mc_'+esc(t)+'" data-cval="'+esc(t)+'">'+
-        '<option value="">&mdash; choose &mdash;</option>'+
-        CONST_OPTIONS[t].map(function(v){
-          return '<option value="'+esc(v)+'">'+esc(v)+"</option>";
-        }).join("")+"</select></div>";
-    }).join("");
-    Array.prototype.forEach.call($("mapConst").querySelectorAll("select"),function(s){
-      s.addEventListener("change",refreshMapper);
-    });
+  // The answers live HERE rather than being read back off the DOM. The set of
+  // questions changes as columns are mapped, so the row is rebuilt when that
+  // set changes — and a rebuild would throw away a half-made choice if the
+  // <select> were the only place it was kept. Reset per file by openMapper: a
+  // new spreadsheet must never inherit the last one's answers.
+  var constAnswers={}, constShown="";
+  function syncConstants(wants){
+    var key=wants.join(",");
+    if(key!==constShown){
+      constShown=key;
+      $("mapConst").innerHTML=wants.map(function(t){
+        var chosen=constAnswers[t]||"";
+        return '<div class="crow" style="margin:6px 0">'+
+          '<label for="mc_'+esc(t)+'">'+esc(CONST_ASK[t])+"</label> "+
+          '<select data-cval="'+esc(t)+'" id="mc_'+esc(t)+'">'+
+          '<option value=""'+(chosen?"":" selected")+">&mdash; choose &mdash;</option>"+
+          CONST_OPTIONS[t].map(function(v){
+            return '<option value="'+esc(v)+'"'+(chosen===v?" selected":"")+">"+esc(v)+"</option>";
+          }).join("")+"</select></div>";
+      }).join("");
+      Array.prototype.forEach.call($("mapConst").querySelectorAll("select"),function(s){
+        s.addEventListener("change",function(){
+          constAnswers[s.getAttribute("data-cval")]=s.value;
+          refreshMapper();
+        });
+      });
+    }
+    if(wants.length)$("mapConst").classList.remove("hide");
+    else $("mapConst").classList.add("hide");
   }
-  // Only a VISIBLE answer counts. A field that a column has since claimed has
-  // its select cleared and hidden by refreshMapper, and reading it anyway
-  // would send an answer the broker can no longer see — which the server
-  // refuses as a contradiction, correctly but bafflingly.
+  // Only a question currently ON SCREEN counts. A field a column has since
+  // claimed must not still be sending an answer the broker can no longer see:
+  // the server refuses that as a contradiction, correctly but bafflingly. The
+  // answer is remembered, though, so re-unmapping the column brings it back.
   function currentConstants(){
     var c={};
-    Array.prototype.forEach.call($("mapConst").querySelectorAll("[data-const]"),function(row){
-      if(row.classList.contains("hide"))return;
-      var s=row.querySelector("select");
-      if(s&&s.value)c[row.getAttribute("data-const")]=s.value;
+    (constShown?constShown.split(","):[]).forEach(function(t){
+      if(constAnswers[t])c[t]=constAnswers[t];
     });
     return c;
   }
@@ -2912,7 +2918,8 @@ a.btn.ghost:hover{color:var(--ink)}
     Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
       s.addEventListener("change",refreshMapper);
     });
-    renderConstantFields();
+    // A new file starts with no answers, and no question row rendered.
+    constAnswers={}; constShown=""; $("mapConst").innerHTML="";
     refreshMapper();
     $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -2938,22 +2945,13 @@ a.btn.ghost:hover{color:var(--ink)}
     // rent column was mapped. So it is asked exactly when a rent column is
     // mapped and no basis column is, which is the ordinary shape of a leasing
     // book: the rate is stated and the basis goes without saying.
-    var wants=unclaimed.slice();
-    if(claimed.indexOf("rent_psf")>=0&&claimed.indexOf("rent_basis")<0)wants.push("rent_basis");
-    var offering=[];
-    Array.prototype.forEach.call($("mapConst").querySelectorAll("[data-const]"),function(row){
-      var t=row.getAttribute("data-const");
-      if(wants.indexOf(t)>=0){ row.classList.remove("hide"); offering.push(t); }
-      else{
-        row.classList.add("hide");
-        // Cleared, not merely hidden: a column supplies this now, and leaving
-        // the answer set would send both and be refused as a contradiction the
-        // broker cannot see on screen.
-        var s=row.querySelector("select"); if(s)s.value="";
-      }
-    });
-    if(offering.length)$("mapConst").classList.remove("hide");
-    else $("mapConst").classList.add("hide");
+    var askable=(mapInfo.constantTargets||[]).filter(function(t){return CONST_OPTIONS[t]});
+    var offering=unclaimed.filter(function(t){return askable.indexOf(t)>=0});
+    if(askable.indexOf("rent_basis")>=0&&
+       claimed.indexOf("rent_psf")>=0&&claimed.indexOf("rent_basis")<0){
+      offering.push("rent_basis");
+    }
+    syncConstants(offering);
     var answered=currentConstants();
     var missing=unclaimed.filter(function(t){return !answered[t]});
     // Naming the ignored columns is half the point: importing while quietly
@@ -2995,16 +2993,12 @@ a.btn.ghost:hover{color:var(--ink)}
       // spreadsheet": the fix is the dropdown sitting right there, and telling
       // them to add a column instead would be advice we just made obsolete.
       var stuck=(anyFree?[]:missing).filter(function(t){return offering.indexOf(t)<0});
-      stuck.filter(function(t){return NO_COLUMN_HELP[t]}).forEach(function(t){
-        lines.push(NO_COLUMN_HELP[t]);
-      });
-      // The rest share one sentence rather than one each: three near-identical
-      // lines under a dead button is noise, not help.
-      var rest=stuck.filter(function(t){return !NO_COLUMN_HELP[t]});
-      if(rest.length){
+      // One sentence for whatever is left rather than one each: three
+      // near-identical lines under a dead button is noise, not help.
+      if(stuck.length){
         lines.push("Nothing in your file looks like the "+
-          rest.map(function(t){return tLabel(t).toLowerCase()}).join(" or ")+", so "+
-          (rest.length===1?"that column has":"those columns have")+
+          stuck.map(function(t){return tLabel(t).toLowerCase()}).join(" or ")+", so "+
+          (stuck.length===1?"that column has":"those columns have")+
           " to be added before this file can be imported.");
       }
     }

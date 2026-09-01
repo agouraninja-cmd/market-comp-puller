@@ -8621,9 +8621,15 @@ const TESTER_BADGE_HTML = `
       <div class="tfm-lab">Tell the team</div>
       <p class="tfm-note">You are on a tester code, so this goes straight to Jacob, Chuck and Owen. They can reply to you directly.</p>
       <label class="tfm-l" for="testerKind">What is this?</label>
+      <!-- ORDER IS THE DEFAULT: a select with nothing marked selected takes
+           its first option, and idea leads deliberately (owner's call). Do not
+           reorder these for tidiness -- opening on "something is broken"
+           primes a tester to hunt faults, and ideas are the half of a beta a
+           bug tracker never collects. TESTER_FEEDBACK_KINDS validates the
+           values, not their order, so it needs no matching edit. -->
       <select id="testerKind" class="tfm-in">
-        <option value="problem">Something is broken</option>
         <option value="idea">An idea or a request</option>
+        <option value="problem">Something is broken</option>
         <option value="other">Anything else</option>
       </select>
       <label class="tfm-l" for="testerMessage">What happened?</label>

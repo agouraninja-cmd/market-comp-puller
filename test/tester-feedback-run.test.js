@@ -179,3 +179,107 @@ test("tester feedback", async (t) => {
     assert.equal(h.db.sent.length, 0);
   });
 });
+
+const _sessions = new Map();
+async function sessionFor(srv) {
+  if (!_sessions.has(srv.base)) {
+    _sessions.set(srv.base, await makeTester(srv, uniqueEmail("surface")));
+  }
+  return _sessions.get(srv.base);
+}
+
+// --- Where the badge actually renders ---------------------------------------
+//
+// The markup, CSS and handlers live in ONE constant that index.html receives
+// through a marker and marketShell emits for the work surfaces. That is only
+// worth anything if the bytes really arrive on each page, and the marker in
+// particular fails SILENTLY: an unreplaced comment renders as nothing at all,
+// so the app would simply have no badge and no error anywhere.
+
+test("the badge block reaches every surface that asked for it", async (t) => {
+  const h = await bootFeedback();
+  t.after(() => h.stop());
+
+  const get = async (path) => {
+    const r = await fetch(h.srv.base + path, { headers: { cookie: await sessionFor(h.srv) } });
+    return { status: r.status, html: await r.text() };
+  };
+
+  // The app. The marker must be REPLACED, never served as a comment.
+  const app = await get("/");
+  assert.equal(app.status, 200);
+  assert.ok(!app.html.includes("<!--TESTER_BADGE-->"),
+    "an unreplaced marker is invisible: no badge, no error, nothing to notice");
+  assert.ok(app.html.includes('id="testerBadge"'), "the app must carry the badge");
+  assert.ok(app.html.includes(".tninja{"), "and its CSS");
+  assert.ok(app.html.includes("/api/tester-feedback"), "and its handler");
+
+  // The two work surfaces, which emit the SAME block through marketShell.
+  for (const path of ["/vault", "/bulk"]) {
+    const page = await get(path);
+    assert.equal(page.status, 200, path + " should render for a signed-in visitor");
+    assert.ok(page.html.includes('id="testerBadge"'), path + " must carry the badge");
+    assert.ok(page.html.includes('id="testerModal"'), path + " must carry the modal");
+    assert.ok(page.html.includes(".tninja{"),
+      path + " must carry the badge's own CSS — it never loads tailwind.css");
+    assert.ok(page.html.includes("/api/tester-feedback"), path + " must carry the handler");
+    // The reveal on these pages rides the nav script's existing config read.
+    assert.ok(page.html.includes('$("testerBadge")'),
+      path + " must reveal the badge from /api/config, not leave it hidden forever");
+  }
+
+  // Byte-for-byte the same block on both work surfaces: the whole point of
+  // single-sourcing is that /vault and /bulk cannot drift apart.
+  const vault = (await get("/vault")).html;
+  const bulk = (await get("/bulk")).html;
+  const grab = (html) => {
+    const i = html.indexOf('<button id="testerBadge"');
+    const j = html.indexOf("</div>", html.indexOf('id="testerModal"'));
+    return html.slice(i, j);
+  };
+  assert.equal(grab(vault), grab(bulk), "one source, so these must be identical bytes");
+});
+
+test("a marketing page does not carry a work-surface affordance", async (t) => {
+  const h = await bootFeedback();
+  t.after(() => h.stop());
+  // marketShell emits it only where a page opts in. /markets is a browse
+  // surface a stranger reads; the badge ships hidden anyway, so this is about
+  // which pages carry the markup at all, not about who can see it.
+  const r = await fetch(h.srv.base + "/markets");
+  assert.equal(r.status, 200);
+  const html = await r.text();
+  assert.ok(!html.includes('id="testerBadge"'),
+    "/markets did not opt in, so it must not carry the block");
+});
+
+test("the form opens on an idea, not on a fault", async (t) => {
+  // Owner's call: opening on "something is broken" primes a tester to go
+  // looking for faults, and the ideas are the half of a beta that a bug
+  // tracker never collects. The default is carried by ORDER -- a select with
+  // nothing marked selected takes its first option -- so this asserts the
+  // order rather than a selected attribute, which is what actually decides
+  // what a tester sends without touching the control.
+  const h = await bootFeedback();
+  t.after(() => h.stop());
+
+  const html = await (await fetch(h.srv.base + "/vault", {
+    headers: { cookie: await sessionFor(h.srv) },
+  })).text();
+
+  const select = html.match(/<select id="testerKind"[\s\S]*?<\/select>/);
+  assert.ok(select, "the kind selector is gone");
+  const values = [...select[0].matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(values, ["idea", "problem", "other"],
+    "idea must lead: the first option is what a tester sends without touching the control");
+  assert.ok(!/selected/.test(select[0]),
+    "the default rides on order alone; a stray selected= would be a second rule to keep in step");
+
+  // And the value that default sends must still be one the route accepts, or
+  // the commonest submission of all would 400.
+  const r = await report(h.srv, await sessionFor(h.srv), {
+    kind: values[0],
+    message: "Could the comp table remember my sort?",
+  });
+  assert.equal(r.status, 200, "the default kind must be accepted by the route");
+});

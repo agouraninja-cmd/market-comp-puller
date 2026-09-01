@@ -124,6 +124,17 @@ const RENEWAL = require("./renewal-watch");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES, siblingMarkets,
   exampleMarketOrder } = require("./market");
+// Did marketOf actually FIND a market, or hand back what it was given?
+//
+// It cannot fail: an address it cannot parse comes back unchanged, which is
+// right for the corpus (a comp is still worth storing) and wrong for the
+// vault, where the market IS the index — a comp filed under a market called
+// "6200 W Gowen Rd" is stored, never appears in the broker's own reports, and
+// says nothing about why. Every real key is "City, ST", so that shape is the
+// whole test. Handed to VAULT.parseUpload, which deliberately knows nothing
+// about markets and takes this as an injected predicate.
+const MARKET_KEY_RE = /^[^,]+,\s[A-Z]{2}$/;
+const addressHasMarket = (address) => MARKET_KEY_RE.test(marketOf(address));
 // What counts as somebody looking at a market, and how those rows add up into
 // the figure a Pro subscriber sees on My Desk. Pure and tested, because every
 // line of it is a way the number could flatter us — see its header.
@@ -8526,6 +8537,156 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
 // hydration script never runs. The rewrite is the exception, not the rule.
 const ACCOUNT_NAV_PRICING = `<a id="navPricing" href="/pricing" hidden>Pricing</a>`;
 
+// --- The tester feedback badge, for every surface ---------------------------
+//
+// ONE source for the ninja in the corner and the form behind it. index.html
+// carries a marker and marketShell emits the same block, the way NAV_LINKS and
+// INAPP_BOOT already work -- never a hand-copy (THEME_BOOT is the cautionary
+// tale, and test/nav-parity.test.js exists because of the class of bug a
+// second copy creates).
+//
+// Plain CSS, not Tailwind utilities: the app loads tailwind.css and the
+// server-rendered pages do not, so a shared blob written in utilities would
+// style on / and render unstyled on /vault. Every colour is a theme token, so
+// the same bytes are correct in light and dark on both surfaces -- the token
+// names are identical because theme.js is the one source for those too.
+//
+// It is REVEALED per surface, not here: index.html's refreshBillingUI() and
+// ACCOUNT_NAV_JS below both already know the visitor's entitlements, and each
+// owns the visibility of its own chrome. That split is the account nav's, for
+// the same reason -- one fetch per page, and one owner per surface.
+const TESTER_BADGE_MARKER = "<!--TESTER_BADGE-->";
+
+const TESTER_BADGE_CSS = `
+    .tninja{position:fixed;top:14px;right:16px;z-index:1000;width:40px;height:40px;
+      display:grid;place-items:center;border-radius:9999px;padding:0;
+      background:var(--slab);color:#fff;border:1px solid rgba(255,255,255,.16);
+      box-shadow:0 2px 10px rgba(16,20,26,.28);cursor:pointer;
+      transition:background .12s ease, transform .12s ease}
+    .tninja:hover{background:var(--red-fill);transform:translateY(-1px)}
+    .tninja:focus-visible{outline:2px solid var(--red-fill);outline-offset:2px}
+    /* Two classes, so this beats a one-class .hidden whatever order the
+       stylesheets end up in -- the cascade trap vault-page.js documents. */
+    .tninja.hidden{display:none}
+    /* The top-right corner is only taken where it is empty. The rail is 224px
+       and the content column is capped at 1024px and centred in the rest, so
+       the column reaches the window edge until about 1360px: at 1280 a
+       top-right badge sits on the desk's "Run a report" button. Under 1380 it
+       tucks bottom-right, which also covers the sub-900px case where the rail
+       becomes a top bar and it would land on the account circle. */
+    @media (max-width:1379px){.tninja{top:auto;bottom:16px;right:16px}}
+    .tfm{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.7);
+      display:flex;align-items:center;justify-content:center;padding:16px}
+    /* .hidden is Tailwind's in the app and nobody's on a server-rendered
+       page, so the shared blob defines it for itself. */
+    .tfm.hidden{display:none}
+    .tfm-card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+      box-shadow:0 10px 30px rgba(16,20,26,.25);width:100%;max-width:28rem;padding:24px;
+      max-height:calc(100dvh - 32px);overflow-y:auto}
+    .tfm-lab{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+    .tfm-note{font-size:12px;color:var(--ink-3);margin-top:4px;line-height:1.5}
+    .tfm-l{display:block;font-size:14px;font-weight:500;color:var(--ink);margin-top:16px}
+    .tfm-in{width:100%;margin-top:4px;border:1px solid var(--edge);border-radius:8px;
+      padding:8px 12px;background:var(--card);color:var(--ink);font:inherit}
+    .tfm-in:focus{outline:none;border-color:var(--red-fill)}
+    .tfm-hint{font-size:12px;color:var(--ink-faint);margin-top:8px;line-height:1.5}
+    .tfm-msg{font-size:14px;margin-top:8px}
+    .tfm-msg.ok{color:var(--ok-text)}
+    .tfm-msg.bad{color:var(--err-text)}
+    .tfm-msg.hidden{display:none}
+    .tfm-row{margin-top:16px;display:flex;flex-wrap:wrap;align-items:center;
+      justify-content:flex-end;gap:8px 16px}
+    .tfm-cancel{background:none;border:0;font-size:14px;color:var(--ink-mute);cursor:pointer}
+    .tfm-send{background:var(--red-fill);color:#fff;border:0;border-radius:8px;
+      padding:8px 14px;font-size:14px;font-weight:500;cursor:pointer}
+    .tfm-send:hover{background:var(--red-fill-hover)}
+    .tfm-send:disabled{opacity:.6;cursor:default}
+`;
+
+// no-print / no-capture are index.html's own classes and inert elsewhere; they
+// keep the badge out of the printed report and the PNG export, where it is
+// chrome rather than report content.
+const TESTER_BADGE_HTML = `
+  <button id="testerBadge" type="button" class="tninja hidden no-print no-capture"
+    aria-label="Send feedback to the CompNinja team" title="Tester: send feedback">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12 3.2c4.5 0 8.1 2.9 8.1 6.5 0 .5-.05 1-.15 1.5H3.95c-.1-.5-.15-1-.15-1.5C3.9 6.1 7.5 3.2 12 3.2Z"/>
+      <path d="M4.3 14.1h15.4c-1 3.5-4 5.9-7.7 5.9s-6.7-2.4-7.7-5.9Z"/>
+      <circle cx="9" cy="12.6" r="1.25"/>
+      <circle cx="15" cy="12.6" r="1.25"/>
+    </svg>
+  </button>
+  <div id="testerModal" class="tfm hidden no-print">
+    <div class="tfm-card">
+      <div class="tfm-lab">Tell the team</div>
+      <p class="tfm-note">You are on a tester code, so this goes straight to Jacob, Chuck and Owen. They can reply to you directly.</p>
+      <label class="tfm-l" for="testerKind">What is this?</label>
+      <!-- ORDER IS THE DEFAULT: a select with nothing marked selected takes
+           its first option, and idea leads deliberately (owner's call). Do not
+           reorder these for tidiness -- opening on "something is broken"
+           primes a tester to hunt faults, and ideas are the half of a beta a
+           bug tracker never collects. TESTER_FEEDBACK_KINDS validates the
+           values, not their order, so it needs no matching edit. -->
+      <select id="testerKind" class="tfm-in">
+        <option value="idea">An idea or a request</option>
+        <option value="problem">Something is broken</option>
+        <option value="other">Anything else</option>
+      </select>
+      <label class="tfm-l" for="testerMessage">What happened?</label>
+      <textarea id="testerMessage" class="tfm-in" rows="5" maxlength="4000" aria-label="Your feedback"
+        placeholder="What you did, what you expected, and what you got instead."></textarea>
+      <p class="tfm-hint">The page you are on and your browser go along automatically, so you do not have to describe them.</p>
+      <p id="testerMsg" class="tfm-msg hidden"></p>
+      <div class="tfm-row">
+        <button id="testerCancel" type="button" class="tfm-cancel">Cancel</button>
+        <button id="testerSend" type="button" class="tfm-send">Send to the team</button>
+      </div>
+    </div>
+  </div>
+`;
+
+// Open, close and submit. Reveal lives with each surface's own config read.
+const TESTER_BADGE_JS = `(function(){
+var $=function(i){return document.getElementById(i);};
+var modal=$("testerModal"),badge=$("testerBadge");
+if(!modal||!badge)return;
+var open=function(){var m=$("testerMsg");m.className="tfm-msg hidden";modal.classList.remove("hidden");$("testerMessage").focus();};
+var close=function(){modal.classList.add("hidden");};
+badge.addEventListener("click",open);
+$("testerCancel").addEventListener("click",close);
+modal.addEventListener("click",function(e){if(e.target===modal)close();});
+/* Escape: index.html routes it through MODAL_CANCELS, so this listener is for
+   the server-rendered pages, which have no such registry. Guarded on the modal
+   being open so it never swallows Escape from anything else on the page. */
+document.addEventListener("keydown",function(e){
+if(e.key==="Escape"&&!modal.classList.contains("hidden")){e.preventDefault();close();}});
+$("testerSend").addEventListener("click",function(){
+var btn=$("testerSend"),box=$("testerMessage"),msg=$("testerMsg");
+if(btn.disabled)return;
+var message=box.value.trim();
+if(!message){msg.textContent="Please say what happened first.";msg.className="tfm-msg bad";box.focus();return;}
+msg.className="tfm-msg hidden";
+btn.disabled=true;var label=btn.textContent;btn.textContent="Sending...";
+fetch("/api/tester-feedback",{method:"POST",headers:{"content-type":"application/json"},
+body:JSON.stringify({kind:$("testerKind").value,message:message,
+context:{url:location.href,viewport:window.innerWidth+"x"+window.innerHeight,ua:navigator.userAgent}})})
+.then(function(r){return r.json().catch(function(){return {};}).then(function(d){
+if(!r.ok)throw new Error(d.error||"That did not send.");return d;});})
+.then(function(){
+box.value="";
+msg.textContent="Sent - thank you. They can reply to you directly.";
+msg.className="tfm-msg ok";})
+/* A failed send never clears the box: retyping a bug report is how a tester
+   stops sending them. */
+.catch(function(ex){msg.textContent=ex.message;msg.className="tfm-msg bad";})
+.then(function(){btn.disabled=false;btn.textContent=label;});
+});
+})();`;
+
+function testerBadgeBlock() {
+  return `<style>${TESTER_BADGE_CSS}</style>${TESTER_BADGE_HTML}<script>${TESTER_BADGE_JS}</script>`;
+}
+
 const ACCOUNT_NAV_JS =
   `<script>(function(){` +
   `var $=function(i){return document.getElementById(i);};` +
@@ -8576,6 +8737,11 @@ const ACCOUNT_NAV_JS =
   // hubs; see vaultReadPayload and #vaultLocked.
   // This line is under `if(!me)return;` already, so it is members-only.
   `show($("navVault"),true);` +
+  // The tester badge, where the page asked for one. Same read, same pass:
+  // this script has already paid for /api/config, and the badge ships
+  // hidden so a non-tester never sees it blink. classList, not the hidden
+  // ATTRIBUTE that show() uses, because .tninja sets display and would win.
+  `var tb=$("testerBadge");if(tb)tb.classList.toggle("hidden",!pro.tester);` +
   // Same shape as the vault's rule, against the entitlement /api/config
   // already carries. Both links ship hidden and appear together once the
   // account resolves, which is why the rail is a fixed width — an item
@@ -10626,7 +10792,7 @@ function brandGraph() {
 // Keep this note OUT of the function body: theme.test.js reads only
 // marketShell's first 2000 characters looking for THEME_BOOT, and six lines of
 // comment in there is enough to push the boot script out of that window.
-function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current }) {
+function marketShell({ title, description, canonical, body, jsonLd, noindex, head, signedIn, hero, ogImage, current, testerBadge }) {
   const shareImage = ogImage || `${SITE_URL}/og-image.png`;
   const shellClass = signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : "";
   return `<!DOCTYPE html>\n<html lang="en"${shellClass}>\n<head>\n` +
@@ -10657,7 +10823,11 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
     INAPP_BOOT +
-    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n</body>\n</html>\n`;
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
+    // Opt-in, never on every page: this is a WORK surface affordance, and a
+    // marketing page read by a stranger is not that. The block ships hidden
+    // either way, so the switch is about which pages carry the markup at all.
+    `${testerBadge ? testerBadgeBlock() : ""}</body>\n</html>\n`;
 }
 
 // The one place that serves a marketShell page, so the header swap and the
@@ -19833,8 +20003,17 @@ const server = http.createServer((req, res) =>
             // Served rather than hard-coded in vault-page.js so the dropdown
             // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
             // Adding a per-type field stays a one-place change.
-            targets: VAULT.MAPPABLE_TARGETS,
+            // Address parts ride along so a sheet keeping Address, City and
+            // State in three columns can say so. They are not fields we
+            // store — parseUpload builds the address out of them and drops
+            // them — which is why they are a second list rather than members
+            // of MAPPABLE_TARGETS.
+            targets: [...VAULT.MAPPABLE_TARGETS, ...VAULT.ADDRESS_PART_TARGETS],
             required: VAULT.REQUIRED_TARGETS,
+            // Which required fields may be answered once for the whole file
+            // when no column can supply them. Served rather than hard-coded
+            // for the same reason `targets` is.
+            constantTargets: VAULT.SHEET_CONSTANT_TARGETS,
           });
         } catch (e) {
           // Same guard as /api/vault/upload's, and it matters more here: V8
@@ -20015,7 +20194,7 @@ const server = http.createServer((req, res) =>
           }
 
           const parsedBody = JSON.parse(body || "{}");
-          const { filename, mapping } = parsedBody;
+          const { filename, mapping, constants } = parsedBody;
           const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
           if (!made.ok) {
             return sendJson(res, 400, { error: made.error || "Nothing to import." });
@@ -20025,7 +20204,23 @@ const server = http.createServer((req, res) =>
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
+          // hasMarket refuses an address carrying no city and state rather than
+          // letting it be filed under a market that does not exist — see
+          // addressHasMarket. It applies to BOTH doors (a CSV and the confirm
+          // table's rows), because the extract prompt completes "City, ST" only
+          // when the document proves the state, so a photographed sheet can
+          // produce exactly the same bare street address a spreadsheet does.
+          const parsed = VAULT.parseUpload(csv, {
+            mapping: parsedBody.rows ? null : (mapping || null),
+            hasMarket: addressHasMarket,
+            // The whole-file answers for a field the sheet omits entirely
+            // (property type, sale-or-lease). parseUpload validates them
+            // through the same parsers a mapped column goes through and
+            // refuses the upload on a bad one, which is why nothing is
+            // checked here. Confirm-table rows carry their own values per
+            // row, so they never send these.
+            constants: parsedBody.rows ? null : (constants || null),
+          });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -20761,6 +20956,24 @@ const server = http.createServer((req, res) =>
           }
           const result = VAULT.normalizeRow(JSON.parse(body || "{}"));
           if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+          // The upload path's rule, on the other door: a hand-typed address
+          // with no city and state is filed under a market that does not
+          // exist, and then the comp never appears in this broker's own
+          // reports. Refused here rather than stored — see addressHasMarket.
+          //
+          // The EDIT route deliberately does NOT carry this check. A broker
+          // whose vault already holds such a row would find every field on it
+          // uneditable until they fixed the address, including the address
+          // itself being the only thing they could change — and refusing to
+          // let somebody correct a price is a worse outcome than the bad
+          // market key that is already stored. New data is held to the rule;
+          // existing data is left reachable.
+          if (!addressHasMarket(result.row.address)) {
+            return sendJson(res, 400, {
+              error: `"${result.row.address}" needs a city and state, or it cannot be filed ` +
+                `under a market — write the whole address in one line.`,
+            });
+          }
 
           const row = result.row;
           // normalizeRow never sets user_id, and PROPS.propertyRowsFrom
@@ -24390,6 +24603,10 @@ const server = http.createServer((req, res) =>
         // never a hand-copy of the in-app detection (THEME_BOOT is the
         // cautionary tale — a copy that has to be kept in step by comment).
         .replace(INAPP_BOOT_MARKER, INAPP_BOOT)
+        // The tester badge, from the same constant /vault and /bulk emit --
+        // markup, its plain CSS and its handlers. index.html reveals it from
+        // refreshBillingUI(), which already knows the entitlements.
+        .replace(TESTER_BADGE_MARKER, testerBadgeBlock())
         // The third rewrite, and the only one that varies by visitor: what
         // this handler already knows about them, so the first paint is not a
         // signed-out app that corrects itself a beat later. Cookie presence
@@ -25055,6 +25272,9 @@ const server = http.createServer((req, res) =>
         // marketShell page uses — the real gate is the boot payload above.
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
         current: "/bulk",
+        // A tester filing a bug about bulk valuation should not have to go
+        // back to the app to report it.
+        testerBadge: true,
         body: renderBulkPageBody(boot),
       }));
     })();
@@ -25110,6 +25330,7 @@ const server = http.createServer((req, res) =>
         // MARKET_CSS, which is exactly right for a font: it must be fetched
         // early, and it is not competing with anything.
         head: INTER_FONT_HEAD,
+        testerBadge: true,
         body: renderVaultBody(boot),
       }));
     })();

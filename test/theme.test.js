@@ -1224,7 +1224,11 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
   // take them too, and `footer a:hover{color:#fff}` -- white on the navy slab,
   // which is dark in both themes -- was carved out with those blocks before
   // the move. It is a stylesheet, not generated markup.
-  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS"]) {
+  // TESTER_BADGE_CSS joined on 2026-09-01, the same way FOOTER_LINKS_CSS did:
+  // it is a stylesheet the server concatenates into two surfaces, not markup
+  // with a colour baked into it. Carving it out here would leave it unchecked,
+  // so it has a test of its own directly below.
+  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS", "TESTER_BADGE_CSS"]) {
     const block = cssBlock(name);
     assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);
     inScope = inScope.replace(block, "");
@@ -1263,6 +1267,37 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
   const named = offenders.filter((o) => !ALLOWLIST.has(o));
   assert.deepEqual(named, [],
     `raw colour literal(s) in in-scope server.js generated markup: ${named.join(", ")}`);
+});
+
+test("the tester badge stylesheet themes itself, like every other one", () => {
+  // Carved out of the markup test above, so it needs its own. It ships to BOTH
+  // surfaces -- the app and the server-rendered work pages -- and both read the
+  // same theme.js tokens, so a raw colour here is wrong in dark mode on two
+  // pages at once. That is not hypothetical: this stylesheet first used
+  // var(--ink) as its background, which is the TEXT token and near-white in
+  // dark, and would have drawn a white ninja on a white pill.
+  const css = cssBlock("TESTER_BADGE_CSS");
+  const offenders = [];
+  for (const decl of css.split(/[;{}]/)) {
+    const hexMatches = decl.match(/#[0-9A-Fa-f]{3,8}\b/g);
+    if (!hexMatches) continue;
+    const propMatch = decl.match(/([a-zA-Z-]+)\s*:/);
+    const prop = propMatch ? propMatch[1].trim().toLowerCase() : "(unknown)";
+    for (const hex of hexMatches) offenders.push(`${prop}:${hex.toLowerCase()}`);
+  }
+  // The same literal index.html's own stylesheet allowlists, for the same
+  // reason: white text on a filled red/dark surface, both of which are dark in
+  // either theme.
+  const ALLOWED = new Set(["color:#fff"]);
+  assert.deepEqual(offenders.filter((o) => !ALLOWED.has(o)), [],
+    "raw colour literal(s) in TESTER_BADGE_CSS: " + offenders.join(", "));
+
+  // And it must actually reach for tokens, or the assertion above passes
+  // trivially on a stylesheet that names no colours at all.
+  for (const token of ["--slab", "--red-fill", "--card", "--line", "--ink"]) {
+    assert.ok(css.includes("var(" + token + ")"),
+      "TESTER_BADGE_CSS should draw " + token + " from the shared tokens");
+  }
 });
 
 

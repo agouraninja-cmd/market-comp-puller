@@ -102,13 +102,19 @@ async function until(fn, ms = 4000) {
   return fn();
 }
 
+// Commas, deliberately. These fixtures read "1450 Mission Ave Boise ID" until
+// 2026-09-01, which marketOf cannot parse — so the comp they stood for would
+// have been filed under a market literally called "1450 Mission Ave Boise ID",
+// never appearing in the uploader's own reports. The upload path refuses that
+// now (parseUpload's injected hasMarket), and these say what a real address
+// looks like, which is also what templateCsv has always shown.
 const CSV_NO_COORDS =
   "address,property_type,transaction,deal_date,price,size_sqft\n" +
-  "1450 Mission Ave Boise ID,Industrial,sale,2026-03-14,4250000,31000\n";
+  "\"1450 Mission Ave, Boise, ID\",Industrial,sale,2026-03-14,4250000,31000\n";
 
 const CSV_WITH_COORDS =
   "address,property_type,transaction,deal_date,price,size_sqft,lat,lng\n" +
-  "1450 Mission Ave Boise ID,Industrial,sale,2026-03-14,4250000,31000,43.99,-116.99\n";
+  "\"1450 Mission Ave, Boise, ID\",Industrial,sale,2026-03-14,4250000,31000,43.99,-116.99\n";
 
 test("import-time geocoding (spec step 2)", async (t) => {
   await t.test("an upload without coordinates locates its building, geo_source census", async () => {

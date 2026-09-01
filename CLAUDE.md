@@ -112,6 +112,20 @@ says so where it reads `sent` with no wait. A wait is only half of it: the
 suites must also assert that the REQUEST which should have caused the mail
 succeeded, or an unrelated failure — a 503, a child server dying mid-run —
 arrives as an empty recipient list and reads as a broken notifier.
+**A subtest that touches the test context must DECLARE one** — write
+`async (t) => {}`, never `async () => {}`. The argument-less form has no
+context of its own, so a `t.after()` inside it (or a fixture helper it hands
+`t` to) registers on the PARENT, and every server the block boots stays alive
+until its LAST subtest ends, then shuts down in one burst. Nothing goes red;
+the suite just runs with eleven idle server.js children and eleven stand-in
+databases where it uses one, which is the load that makes boot.js's
+spontaneous child death likelier and the burst a hung `node --test` was found
+sitting in. Fixed once in PR #239 and again the next day in four more files
+(2026-09-01, after `test/org-run.test.js` went intermittently red under load),
+so it is a check now rather than a convention: **`test/subtest-teardown.test.js`**
+scans every suite and fails the build on either shape. The difference between
+right and wrong is one character and the suite is green either way, so a
+person is the wrong detector for it.
 Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on

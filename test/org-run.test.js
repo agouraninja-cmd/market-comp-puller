@@ -1074,24 +1074,41 @@ const CONTACT_CSV = [
   "Bad Row,not-an-email,X",
 ].join("\n");
 
+// Pass the SUBTEST's own `t`, never the parent's. A subtest declared
+// `async (t) => {}` shadows it and closes its own server when it ends; a
+// subtest declared `async () => {}` closes over the parent's, so every
+// server this block boots stays up until the LAST subtest finishes and they
+// are all shut down in one burst. That was the state here until 2026-09-01
+// — eleven live server.js children and eleven stand-in databases at peak,
+// against the one this block uses at a time — and it is the second defect
+// PR #239 named in test/hub-note-email-run.test.js. Measured after: peak 1.
+//
+// Each fixture also asserts its OWN three requests, which is PR #239's first
+// lesson applied here: without it a fixture that failed under load arrived as
+// a contacts rule failing, and the accusation landed on the one thing the run
+// never got to test.
 async function firmWithMike(t) {
   const tables = seedTables();
   const { db, srv, stop } = await bootWithDb(tables);
   t.after(stop);
-  const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
+  const made = await fetch(srv.base + "/api/org", as(BRAD, {
     method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
-  }))).json();
-  await fetch(srv.base + "/api/org/invite", as(BRAD, {
+  }));
+  assert.equal(made.status, 200, "the fixture could not create the firm");
+  const org = await made.json();
+  const invited = await fetch(srv.base + "/api/org/invite", as(BRAD, {
     method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
   }));
-  await fetch(srv.base + "/api/org/accept", as(MIKE, {
+  assert.equal(invited.status, 200, "the fixture could not invite Mike");
+  const accepted = await fetch(srv.base + "/api/org/accept", as(MIKE, {
     method: "POST", body: JSON.stringify({ orgId: org.id }),
   }));
+  assert.equal(accepted.status, 200, "the fixture could not have Mike accept");
   return { tables, db, srv, org };
 }
 
 test("a firm's tenant contacts", async (t) => {
-  await t.test("one member adds, every member sees, and who added it is recorded", async () => {
+  await t.test("one member adds, every member sees, and who added it is recorded", async (t) => {
     const { srv, org } = await firmWithMike(t);
 
     const add = await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(MIKE, {
@@ -1112,7 +1129,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(list.contacts[0].mine, false, "and Brad is told it is not his");
   });
 
-  await t.test("a CSV imports, refuses its bad rows by line, and counts its note lines", async () => {
+  await t.test("a CSV imports, refuses its bad rows by line, and counts its note lines", async (t) => {
     const { srv, org } = await firmWithMike(t);
     const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
@@ -1125,7 +1142,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.match(r.errors[0], /not an email address/);
   });
 
-  await t.test("an Excel file imports, through the same rules the CSV obeys", async () => {
+  await t.test("an Excel file imports, through the same rules the CSV obeys", async (t) => {
     const { srv, org } = await firmWithMike(t);
     // A real .xlsx: shared strings, r= cell references, deflated parts.
     const xlsx = xlsxFromRows([
@@ -1154,7 +1171,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(ray.company, "Nordic Cold", "and the cell after the gap keeps its own column");
   });
 
-  await t.test("a spreadsheet refusal names the row the person is looking at", async () => {
+  await t.test("a spreadsheet refusal names the row the person is looking at", async (t) => {
     const { srv, org } = await firmWithMike(t);
     // Rows 2 and 3 are blank. The bad address is on row 5 OF THE SHEET, and
     // that is the number the error has to give: counting surviving rows would
@@ -1174,7 +1191,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.match(r.errors[0], /^Line 5:/);
   });
 
-  await t.test("a CSV with a spacer row also names the real line", async () => {
+  await t.test("a CSV with a spacer row also names the real line", async (t) => {
     // The same rule from the other door. This was WRONG until the grid work:
     // parseContactsCsv counted the compacted grid, so one blank line above a
     // bad address pointed the refusal at a line that was fine.
@@ -1187,7 +1204,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.match(r.errors[0], /^Line 5:/);
   });
 
-  await t.test("a wrong file is refused by name, and nothing is stored", async () => {
+  await t.test("a wrong file is refused by name, and nothing is stored", async (t) => {
     const { srv, org, tables } = await firmWithMike(t);
     const post = (body) => fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`,
       as(BRAD, { method: "POST", body: JSON.stringify(body) }));
@@ -1213,7 +1230,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(tables.org_contacts.length, 0, "no refusal wrote a row");
   });
 
-  await t.test("importing the same file twice never doubles an emailed contact", async () => {
+  await t.test("importing the same file twice never doubles an emailed contact", async (t) => {
     const { srv, org } = await firmWithMike(t);
     const post = () => fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),
@@ -1246,7 +1263,7 @@ test("a firm's tenant contacts", async (t) => {
       "an un-emailed contact is never merged, so a re-import duplicates it");
   });
 
-  await t.test("an edit is refused when it would make a row the import would reject", async () => {
+  await t.test("an edit is refused when it would make a row the import would reject", async (t) => {
     const { srv, org } = await firmWithMike(t);
     await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
@@ -1271,7 +1288,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(after.contacts[0].name, "Dana Wu", "an untouched field survives the edit");
   });
 
-  await t.test("another firm cannot read, edit or delete these contacts", async () => {
+  await t.test("another firm cannot read, edit or delete these contacts", async (t) => {
     const { srv, org, tables } = await firmWithMike(t);
     await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
@@ -1293,7 +1310,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(tables.org_contacts[0].name, "Dana Wu");
   });
 
-  await t.test("a delete is scoped to the firm as well as the id", async () => {
+  await t.test("a delete is scoped to the firm as well as the id", async (t) => {
     const { srv, org, tables } = await firmWithMike(t);
     await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ name: "Dana Wu", email: "dana@acme.com" }),
@@ -1315,7 +1332,7 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(tables.org_contacts.length, 0);
   });
 
-  await t.test("the fake understood every filter these routes sent", async () => {
+  await t.test("the fake understood every filter these routes sent", async (t) => {
     const { srv, org, db } = await firmWithMike(t);
     await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
       method: "POST", body: JSON.stringify({ csv: CONTACT_CSV }),

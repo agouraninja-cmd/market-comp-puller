@@ -8889,6 +8889,11 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 // too. Lifting rules out of a checked block and into an unchecked one is the
 // quiet way to lose that guarantee.
 const RAIL_CSS = `
+/* The tools label is rail-only, and this is the line that makes it so. It sits
+   outside the media query below on purpose -- everything in that block is
+   guarded at 900px, so a display rule written in there could only ever turn
+   the label ON. */
+.hdr nav>.navsec{display:none}
 /* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
    The header, stood on its end. Not a new component: the same element, the
    same markup, re-laid-out by one class on <html> that only a SIGNED-IN
@@ -8924,6 +8929,23 @@ const RAIL_CSS = `
     border-left-color:var(--red-fill);background:var(--wash)}
   /* The call to action is a button, not a nav row. */
   html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* The rail's one grouping rule (2026-09-01). Workspace and Vault are the
+     member's two SPACES -- their firm's record and their own -- and the rows
+     under this label are tools they reach from either. Messages joins the
+     group above it when it ships.
+
+     A label, not a bare rule, because the rows underneath are not obviously
+     one kind of thing: a browse surface, a reference guide and a Pro tool
+     read as a list of leftovers without one.
+
+     It is rail-only. Below 900px the header is a wrapping horizontal bar and
+     a section label sitting between two links in it is noise -- so the span
+     ships in BOTH modes (nav-shell.test.js diffs the two renders and holds
+     the markup byte-identical) and is displayed in neither until the rail
+     turns on. An anonymous visitor never gets a rail, so they never see it. */
+  html.nav-rail .hdr nav>.navsec{display:block;margin:14px 0 2px;padding:14px 20px 0;
+    border-top:1px solid var(--hair);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;font-weight:600;color:var(--ink-3)}
   /* Explore has nowhere to open in a 224px column, and its two links belong
      in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
      rather than removed so the markup stays identical in both modes.
@@ -9658,6 +9680,10 @@ const marketBar = (signedIn = false, current = "") =>
       // bulk, below the public pair.
       `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>`
     : "") +
+  // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
+  // visitor and shown only in the rail, so the markup stays identical in both
+  // modes and a stranger's horizontal bar never grows a section heading.
+  `<span class="navsec">Tools</span>` +
   `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
   // The 1031 guide, a bar row for a MEMBER only (2026-08-29, narrowed
   // 2026-08-30). See NAV_LINKS for why: the rail hides the Explore dropdown,

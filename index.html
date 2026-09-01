@@ -894,6 +894,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
     .rd-appbar > nav { flex-wrap: wrap; }
     .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
+    /* The tools label is rail-only. Declared here rather than in the rail
+       block below, because everything in there is guarded at 900px and a
+       display rule written inside it could only ever turn the label ON --
+       leaving a section heading sitting between two links in the wrapping
+       horizontal bar a phone gets. Same split as server.js RAIL_CSS. */
+    .rd-appbar > nav > .navsec { display: none; }
     /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
        The app's half of the shell server.js gives every other page. Same
        geometry, same one class on <html> -- stamped by authBoot before first
@@ -948,6 +954,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       /* Explore has nowhere to open in a 224px column; its links live in the
          footer, exactly as on the server-rendered pages. */
       html.nav-rail #exploreMenuWrap { display: none; }
+      /* The tools group's label — the twin of RAIL_CSS's .navsec rule in
+         server.js. Workspace and Vault are the member's two spaces; the rows
+         under this are tools reached from either. Written by hand rather than
+         as utilities, like every other rule in this block: tailwind.css is a
+         vendored purged build and a new utility here would silently not
+         style. The default (display:none) is outside this media query, with
+         the other always-on rules. */
+      html.nav-rail .rd-appbar > nav > .navsec {
+        display: block; margin: 14px 0 2px; padding: 14px 20px 0;
+        border-top: 1px solid var(--hair); font-size: 10px; letter-spacing: .14em;
+        text-transform: uppercase; font-weight: 600; color: var(--ink-3);
+      }
       /* The account cluster sits at the foot, and its menu opens UPWARD: the
          default top-9 would put it off the bottom of the viewport from there.
          (No #themeToggleApp rule above it any more -- the switch went back
@@ -2254,6 +2272,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              Vault, so the app was the one surface where the row a member is
              looking at renamed itself the moment they clicked it. -->
         <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Vault</a>
+        <!-- The tools group's label. Rail-only, and present for every visitor
+             so the two nav authors keep emitting the same shape -- see
+             server.js's marketBar and RAIL_CSS for the twin. -->
+        <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
         <!-- The guide is a bar row for a MEMBER and a menu item for a stranger
              (owner's, 2026-08-30). The row above it earns its slot for both

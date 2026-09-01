@@ -1734,7 +1734,9 @@ test("admin gating", async (t) => {
   });
 
   await t.test("the hero review page is noindex and does not embed the grades", async () => {
-    const r = await fetch(srv.base + "/admin/heroes");
+    const r = await fetch(srv.base + "/admin/heroes", {
+      headers: { "x-admin-key": ADMIN },
+    });
     assert.equal(r.status, 200);
     assert.match(r.headers.get("x-robots-tag") || "", /noindex/);
     assert.equal(r.headers.get("cache-control"), "no-store");
@@ -3110,7 +3112,9 @@ test("a refund revokes only a FULL refund, and only a report unlock", () => {
 test("/admin's watchlist digest card", async (t) => {
   const srv = await boot({ ADMIN_KEY: "admin-card-key" });
   t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/admin")).text();
+  const html = await (await fetch(srv.base + "/admin", {
+    headers: { "x-admin-key": "admin-card-key" },
+  })).text();
 
   await t.test("the card and both buttons are wired", async () => {
     assert.match(html, /id="digest"/, "the mount point should exist");

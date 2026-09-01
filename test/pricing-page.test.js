@@ -57,7 +57,7 @@ test("the price a visitor reads is the one the FAQ has been quoting", async (t) 
   t.after(() => srv.stop());
 
   const pricing = await (await fetch(srv.base + "/pricing")).text();
-  const how = await (await fetch(srv.base + "/how-it-works")).text();
+  const how = await (await fetch(srv.base + "/")).text();
 
   // Both surfaces read the same constant. Before this page existed the FAQ was
   // the only public statement of the seat price; two prose copies of a number

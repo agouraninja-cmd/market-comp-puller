@@ -131,7 +131,7 @@ test("hub note email unsubscribe", async (t) => {
   const WHO = "tenant@acme.com";
   const PATH = "/hub/notes/unsubscribe";
 
-  await t.test("a wrong, missing, or cross-feature token is refused", async () => {
+  await t.test("a wrong, missing, or cross-feature token is refused", async (t) => {
     const srv = await shared.boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());
     const watchlistMac = crypto.createHmac("sha256", SERVICE)
@@ -153,7 +153,7 @@ test("hub note email unsubscribe", async (t) => {
     }
   });
 
-  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async () => {
+  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async (t) => {
     const srv = await shared.boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());
     const r = await fetch(srv.base + `${PATH}?e=${encodeURIComponent(WHO)}&t=${macFor(WHO)}`);
@@ -168,7 +168,7 @@ test("hub note email unsubscribe", async (t) => {
     assert.equal(r.headers.get("x-robots-tag"), "noindex");
   });
 
-  await t.test("it promises that nothing else changes, because nothing else does", async () => {
+  await t.test("it promises that nothing else changes, because nothing else does", async (t) => {
     // Turning the mail off must not read as leaving the hub. The route only
     // writes hub_email_prefs; access is hub_participants and is untouched.
     const srv = await shared.boot({ SUPABASE_SERVICE_KEY: SERVICE });
@@ -177,7 +177,7 @@ test("hub note email unsubscribe", async (t) => {
     assert.match(await r.text(), /stays open to you/);
   });
 
-  await t.test("the way back on is reachable from the same link", async () => {
+  await t.test("the way back on is reachable from the same link", async (t) => {
     // A one-way off switch with no way back is a support ticket.
     const srv = await shared.boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());
@@ -188,7 +188,7 @@ test("hub note email unsubscribe", async (t) => {
     assert.match(html, /<form method="POST"/);
   });
 
-  await t.test("with no database the POST refuses instead of claiming it saved", async () => {
+  await t.test("with no database the POST refuses instead of claiming it saved", async (t) => {
     // The failure mode this guards: somebody believes they unsubscribed, keeps
     // getting mail, and has no reason to try the link again.
     const srv = await shared.boot({ SUPABASE_SERVICE_KEY: SERVICE });
@@ -200,7 +200,7 @@ test("hub note email unsubscribe", async (t) => {
     assert.match(html, /could not save that/i);
   });
 
-  await t.test("the path does not shadow a hub, and a hub does not shadow it", async () => {
+  await t.test("the path does not shadow a hub, and a hub does not shadow it", async (t) => {
     // /hub/unsubscribe WOULD have collided: the page route matches
     // /hub/<id> where an id is 6 to 32 characters of [A-Za-z0-9_-], and
     // "unsubscribe" is eleven of them. The third segment is what settles it,

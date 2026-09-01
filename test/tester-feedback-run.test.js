@@ -76,7 +76,7 @@ let seq = 0;
 const uniqueEmail = (tag) => `${tag}-${Date.now()}-${seq++}@example.test`;
 
 test("tester feedback", async (t) => {
-  await t.test("the refusal ladder: anonymous, then a signed-in non-tester", async () => {
+  await t.test("the refusal ladder: anonymous, then a signed-in non-tester", async (t) => {
     const h = await bootFeedback();
     t.after(() => h.stop());
 
@@ -91,7 +91,7 @@ test("tester feedback", async (t) => {
     assert.equal(h.db.sent.length, 0, "no refusal may reach the mail provider");
   });
 
-  await t.test("a tester reaches all three inboxes, and a reply goes back to them", async () => {
+  await t.test("a tester reaches all three inboxes, and a reply goes back to them", async (t) => {
     const h = await bootFeedback();
     t.after(() => h.stop());
 
@@ -146,7 +146,7 @@ test("tester feedback", async (t) => {
     assert.equal(h.db.sent.length, 0, "nothing refused may reach the mail provider");
   });
 
-  await t.test("with outbound mail unconfigured it refuses instead of pretending", async () => {
+  await t.test("with outbound mail unconfigured it refuses instead of pretending", async (t) => {
     // sendOutboundEmail is a SILENT no-op without EMAIL_FROM, which is exactly
     // the failure this route cannot afford: the tester would be thanked and
     // nobody would ever read the report. The digest refuses to run blind for
@@ -163,7 +163,7 @@ test("tester feedback", async (t) => {
     assert.equal(h.db.sent.length, 0);
   });
 
-  await t.test("a dark deployment has no tester grant, so no channel either", async () => {
+  await t.test("a dark deployment has no tester grant, so no channel either", async (t) => {
     // PRO_ENABLED off is the pre-Pro app for everybody, staff included --
     // entitlements.js's rule, restated here because the badge and this route
     // both hang off `tester` and would otherwise look broken rather than off.

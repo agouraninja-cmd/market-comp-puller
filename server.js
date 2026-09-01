@@ -26159,7 +26159,7 @@ const server = http.createServer((req, res) =>
       });
       res.end(marketShell({
         title: "Messages · CompNinja",
-        description: "Your firm's messages.",
+        description: "Your messages.",
         canonical: `${SITE_URL}/messages`,
         noindex: true,
         signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),

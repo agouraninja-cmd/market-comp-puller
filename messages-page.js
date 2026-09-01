@@ -76,25 +76,10 @@ function renderMessagesBody(boot) {
 .msg-btn.sm{padding:4px 9px;font-size:12px}
 
 /* --- the thread list --------------------------------------------------- */
-/* The Chats / People switch. A tab, not a button: it says which of two lists
-   this column is showing, so the pressed one reads as the current place. */
-.msg-tab{appearance:none;border:0;background:transparent;cursor:pointer;font:inherit;
-  font-size:13.5px;font-weight:600;color:var(--ink-3);padding:6px 2px;margin-right:16px;
-  border-bottom:2px solid transparent;line-height:1.4}
-.msg-tab:hover{color:var(--ink)}
-.msg-tab[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--red)}
 /* The firm, quietly, at the foot of the column. */
 .msg-firm{border-top:1px solid var(--hair);padding:9px 14px;font-size:11.5px;
   color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* A person in the People list. Same row furniture as a thread, so the two
-   lists read as one column rather than as two designs. */
-.msg-person{display:flex;gap:10px;align-items:center;width:100%;text-align:left;
-  padding:11px 14px;border:0;border-bottom:1px solid var(--hair);background:transparent;
-  cursor:pointer;font:inherit;color:var(--ink)}
-.msg-person:hover{background:var(--wash)}
-.msg-person.waiting{cursor:default;background:transparent}
-.msg-person.waiting .msg-av{background:var(--wash-2);color:var(--ink-faint);border:1px solid var(--edge)}
-.msg-person.waiting .msg-name,.msg-person.waiting .msg-sub{color:var(--ink-faint)}
+/* Used by the New panel's people rows. */
 .msg-sub{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .msg-search{padding:10px 12px;border-bottom:1px solid var(--hair)}
@@ -207,8 +192,9 @@ function renderMessagesBody(boot) {
      it is not whose page this is. Nothing about the access rules changed with
      the wording - a thread is still firm-scoped and still walled twice. -->
 <section style="padding:28px 0 0">
-  <div class="kicker">Messages</div>
-  <h1 style="margin:6px 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
+  <!-- ONE heading. The eyebrow above this said Messages too, directly over an
+       h1 saying Messages, under a rail row saying Messages. -->
+  <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
   <p style="margin:0;color:var(--ink-2);max-width:62ch;font-size:14px;line-height:1.6">
     Message the people you work with, and send them comps straight from your
     vault. Anything you send is kept in the conversation, so a deal you talk
@@ -218,19 +204,18 @@ function renderMessagesBody(boot) {
 
 <div class="msg-page" id="msgPage" hidden>
   <aside class="msg-side">
-    <!-- Chats and People, because a directory of colleagues is a thing you
-         LOOK AT and not a step inside a dialog. It lived behind the New button
-         before, which meant the only way to find out who you could message was
-         to start doing it. -->
+    <!-- ONE list (owner's, 2026-09-01). There was a People tab beside this
+         one, listing the firm; it went because New already searches the same
+         people and a directory you have to switch views to reach is a second
+         answer to the same question. Chats is a LABEL now, not a tab — a tab
+         with one option is a button that does nothing. -->
     <div class="msg-head">
-      <button class="msg-tab" id="msgSideChats" type="button" aria-pressed="true">Chats</button>
-      <button class="msg-tab" id="msgSidePeople" type="button" aria-pressed="false">People</button>
+      <h2 id="msgSideChats">Chats</h2>
       <span class="msg-grow"></span>
       <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
     </div>
     <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off"></div>
     <div class="msg-threads" id="msgThreads"></div>
-    <div class="msg-threads msg-hide" id="msgPeople"></div>
     <!-- PEOPLE FIRST. The box searches colleagues; it used to be a channel
          name with "leave blank for a direct message" under it, so typing a
          label for a conversation with one person silently made a CHANNEL
@@ -297,7 +282,7 @@ function renderMessagesBody(boot) {
   var $ = function(id){ return document.getElementById(id); };
   var state = {
     me: "", firm: null, people: [], threads: [], canAttach: false,
-    openId: "", cursor: "", messages: [], tab: "chat", side: "chats", picked: [],
+    openId: "", cursor: "", messages: [], tab: "chat", picked: [],
     attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
   };
 
@@ -372,63 +357,6 @@ function renderMessagesBody(boot) {
     }
     return String(t.preview || "").toLowerCase().indexOf(q) >= 0;
   }
-  // --- Chats / People ------------------------------------------------------
-  // Which of the two lists this column is showing. The thread list and the
-  // directory share the column, the search box and the row furniture, so a
-  // person and a conversation read as one place rather than two designs.
-  function setSide(tab){
-    state.side = tab;
-    $("msgSideChats").setAttribute("aria-pressed", tab === "chats" ? "true" : "false");
-    $("msgSidePeople").setAttribute("aria-pressed", tab === "people" ? "true" : "false");
-    $("msgThreads").className = tab === "chats" ? "msg-threads" : "msg-threads msg-hide";
-    $("msgPeople").className = tab === "people" ? "msg-threads" : "msg-threads msg-hide";
-    $("msgFilter").placeholder = tab === "people" ? "Search people" : "Search";
-    if (tab === "chats") renderThreads(); else renderPeople();
-  }
-
-  // Everyone at the firm except you, INCLUDING people who have been invited
-  // and have not joined yet. Showing them is what turns "why isn't Sarah
-  // here" from a bug report into a legible state: the firm knows about her,
-  // she has not accepted. They are not clickable, because a thread member has
-  // to be an account.
-  function renderPeople(){
-    var q = ($("msgFilter").value || "").trim().toLowerCase();
-    var list = state.people.filter(function(p){
-      if (!q) return true;
-      return (p.name + " " + p.email).toLowerCase().indexOf(q) >= 0;
-    });
-    if (!state.people.length) {
-      $("msgPeople").innerHTML = '<div class="msg-empty"><h3>Nobody else here yet</h3>' +
-        '<p>Once colleagues join your firm they will show up here and you can message them.</p></div>';
-      return;
-    }
-    if (!list.length) { $("msgPeople").innerHTML = '<div class="msg-empty">Nobody matches that.</div>'; return; }
-    var html = "";
-    for (var i = 0; i < list.length; i++) {
-      var p = list[i];
-      var waiting = p.pending || !p.userId;
-      html += '<' + (waiting ? "div" : "button") + ' class="msg-person' + (waiting ? " waiting" : "") + '"' +
-        (waiting ? "" : ' type="button" data-person-dm="' + esc(p.userId) + '"') + '>' +
-        '<span class="msg-av">' + esc(initial(p.name)) + '</span>' +
-        '<span class="msg-rowbody">' +
-          '<span class="msg-name">' + esc(p.name) + '</span>' +
-          '<span class="msg-sub">' + esc(waiting ? "Invited, has not joined yet" : p.email) + '</span>' +
-        '</span></' + (waiting ? "div" : "button") + '>';
-    }
-    $("msgPeople").innerHTML = html;
-  }
-
-  // Click a person, land in the conversation with them. The route is
-  // idempotent on the pair, so this opens the existing thread when there is
-  // one and makes it when there is not.
-  function openDmWith(userId){
-    api("POST", "/api/messages/thread", { kind: "dm", memberIds: [userId] }).then(function(o){
-      if (o.s !== 201) { note((o.j && o.j.error) || "Couldn't open that conversation.", true); return; }
-      var id = o.j.thread.id;
-      refreshList(true).then(function(){ setSide("chats"); openThread(id, true); });
-    });
-  }
-
   function renderThreads(){
     var q = ($("msgFilter").value || "").trim();
     var list = state.threads.filter(function(t){ return threadMatches(t, q); });
@@ -683,8 +611,8 @@ function renderMessagesBody(boot) {
       state.me = (j.me && j.me.id) || "";
       state.firm = j.firm || null;
       // Everyone at the firm except the reader. Pending invitees ride along
-      // and are marked; renderPeople draws them, and everything that needs a
-      // real account filters on userId.
+      // and are marked; the New panel filters them out, because everything
+      // that needs a real account filters on userId.
       state.people = (j.people || []).filter(function(p){ return p.userId !== state.me; });
       state.canAttach = j.canAttachComps === true;
       state.threads = j.threads || [];
@@ -698,7 +626,7 @@ function renderMessagesBody(boot) {
         joined + (joined === 1 ? " colleague" : " colleagues") +
         (waiting ? ", " + waiting + " invited" : "");
       $("msgAttach").className = state.canAttach ? "msg-btn sm" : "msg-btn sm msg-hide";
-      if (state.side === "people") renderPeople(); else renderThreads();
+      renderThreads();
     });
   }
 
@@ -869,7 +797,7 @@ function renderMessagesBody(boot) {
       if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
       $("msgNewPanel").className = "msg-panel msg-hide";
       state.picked = [];
-      refreshList(true).then(function(){ setSide("chats"); openThread(o.j.thread.id, true); });
+      refreshList(true).then(function(){ openThread(o.j.thread.id, true); });
     });
   }
 
@@ -915,13 +843,7 @@ function renderMessagesBody(boot) {
     renderTray();
   });
   $("msgFilter").addEventListener("input", function(){
-    if (state.side === "people") renderPeople(); else renderThreads();
-  });
-  $("msgSideChats").addEventListener("click", function(){ setSide("chats"); });
-  $("msgSidePeople").addEventListener("click", function(){ setSide("people"); });
-  $("msgPeople").addEventListener("click", function(e){
-    var row = e.target.closest("[data-person-dm]");
-    if (row) openDmWith(row.getAttribute("data-person-dm"));
+    renderThreads();
   });
   $("msgPickFilter").addEventListener("input", renderPicker);
   $("msgAttach").addEventListener("click", openPicker);

@@ -76,6 +76,11 @@ const TABLES = [
   ["hub_email_prefs",     "040-hub-note-emails.sql"],
   ["org_branding",        "041-org-branding.sql"],
   ["recent_searches",      "043-recent-searches.sql"],
+  ["msg_threads",         "044-firm-messaging.sql"],
+  ["msg_thread_members",  "044-firm-messaging.sql"],
+  ["msg_messages",        "044-firm-messaging.sql"],
+  ["msg_comps",           "044-firm-messaging.sql"],
+  ["msg_comp_saves",      "044-firm-messaging.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

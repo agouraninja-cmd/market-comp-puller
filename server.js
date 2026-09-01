@@ -91,6 +91,13 @@ const HUBCOMP = require("./hub-comp.js");
 const { renderVaultBody } = require("./vault-page");
 // The /hub/<id> screen. Same shape as vault-page.js: a pure render, no I/O.
 const { renderHubHTML } = require("./hub-page");
+// Firm messaging (044) — who may read or post in a thread, and what a comp may
+// become on its way into a message. Pure and tested, like org-access.js and
+// hub-access.js, and deliberately separate from both: this is
+// colleague↔colleague inside one firm, not broker↔client.
+const MSG = require("./messaging");
+// The /messages screen. A marketShell BODY, the bulk-page.js pattern.
+const { renderMessagesBody } = require("./messages-page");
 // The 1031 identification worksheet. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
@@ -4385,6 +4392,165 @@ async function orgCompRowsForBoard(orgId) {
     `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
     `&select=id,market,property_type,created_at,shared_by_user_id,shared_by_name` +
     `&order=created_at.desc&limit=1000`)) || [];
+}
+
+// ---------------------------------------------------------------------------
+// Firm messaging (migration 044) — the reads and writes behind /api/messages*.
+//
+// Spec: docs/superpowers/specs/2026-09-01-firm-messaging-design.md
+// Rules: messaging.js (pure). This section owns only the I/O.
+//
+// NOT the comp hub below, which is broker↔client, gated on a hashed
+// per-participant token, and pointed outward at one deal. This is
+// colleague↔colleague, gated on firm membership, and it is the firm's own
+// correspondence. Four things in this repo are called "hub"; this one is
+// called Messages in the nav and in every string a person reads.
+//
+// TWO WALLS ON EVERY READ, and this is the rule to keep. The thread id always
+// arrives from the browser and proves nothing, so each query below carries
+// `org_id=eq.<the firm the CALLER was resolved into>` as well as going through
+// MSG.canReadThread's membership check. Either alone would do; two mean a bug
+// in one of them is not a cross-firm leak. That is canReadShare's rule — it
+// requires BOTH visibility==='org' and a non-null org_id for the same reason.
+//
+// DATABASE ONLY, no file fallback, for 013's and 018's reason: a message
+// somebody's colleague can read is an access decision, and an access-control
+// list in a JSON file on an ephemeral disk is not one.
+// ---------------------------------------------------------------------------
+
+// The caller's firm, resolved from THEIR OWN membership rows and never from
+// anything on the request. A member belongs to at most one firm in practice
+// (POST /api/org 409s when they are already in one), so ORG.membershipOf's
+// single answer is the whole resolution.
+//
+// Fails CLOSED: an unreadable membership read answers "no firm", which costs
+// the page and never opens somebody else's.
+async function messagingFirmOf(user) {
+  if (!DB_CONFIGURED || !user || !user.email) return null;
+  try {
+    const rows = await orgMembershipsFor(user.email);
+    const membership = ORG.membershipOf(rows, user.email);
+    if (!membership) return null;
+    return { orgId: String(membership.org_id), membership };
+  } catch (err) {
+    console.error("Messaging firm read failed:", err.message);
+    return null;
+  }
+}
+
+// One thread, scoped by the firm as well as by its id. The org_id filter is
+// the second wall and it is deliberately in the QUERY rather than checked
+// after the read: a row from another firm never arrives in this process at
+// all, so there is nothing for a later mistake to leak.
+async function msgThreadRow(threadId, orgId) {
+  if (!DB_CONFIGURED || !threadId || !orgId) return null;
+  const rows = await sbRequest("GET",
+    `msg_threads?id=eq.${encodeURIComponent(threadId)}` +
+    `&org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,org_id,kind,title,dm_key,created_by,created_at,last_message_at&limit=1`);
+  return (rows && rows[0]) || null;
+}
+
+// Everyone in a thread, LEAVERS INCLUDED. messaging.js filters them (its
+// activeMembers), and a leaver's name still has to render beside the messages
+// they wrote — org_members' roster read makes the same call for the same
+// reason.
+async function msgThreadMemberRows(threadIds) {
+  const list = [...new Set((threadIds || []).map((v) => String(v || "")).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length) return [];
+  return (await sbRequest("GET",
+    `msg_thread_members?thread_id=in.(${pgInList(list)})` +
+    `&select=id,thread_id,user_id,email,added_at,last_read_at,left_at&limit=2000`)) || [];
+}
+
+// The thread ids this member is actually in. The starting point for the list
+// read: everything else is filtered from here, so a thread nobody added them
+// to can never enter the payload even before the org filter runs.
+async function msgThreadIdsFor(userId) {
+  if (!DB_CONFIGURED || !userId) return [];
+  const rows = await sbRequest("GET",
+    `msg_thread_members?user_id=eq.${encodeURIComponent(userId)}` +
+    `&left_at=is.null&select=thread_id,last_read_at&limit=500`);
+  return rows || [];
+}
+
+async function msgThreadRowsByIds(ids, orgId) {
+  const list = [...new Set((ids || []).map((v) => String(v || "")).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length || !orgId) return [];
+  return (await sbRequest("GET",
+    `msg_threads?id=in.(${pgInList(list)})` +
+    `&org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,org_id,kind,title,dm_key,created_by,created_at,last_message_at` +
+    `&order=last_message_at.desc&limit=500`)) || [];
+}
+
+// A thread's messages. `since` is the poll cursor — a server-issued timestamp,
+// never a browser clock (the hub's rule).
+//
+// An absent or unparseable cursor reads the WHOLE thread rather than nothing,
+// which is the hub's decision too: a bad cursor should cost a big read, not an
+// empty screen that looks like the conversation was deleted.
+async function msgMessageRows(threadId, since) {
+  if (!DB_CONFIGURED || !threadId) return [];
+  const at = Date.parse(String(since || ""));
+  const cursor = Number.isFinite(at) ? `&created_at=gt.${encodeURIComponent(new Date(at).toISOString())}` : "";
+  return (await sbRequest("GET",
+    `msg_messages?thread_id=eq.${encodeURIComponent(threadId)}${cursor}` +
+    `&select=id,thread_id,user_id,author_email,body,comp_count,created_at,edited_at,deleted_at` +
+    `&order=created_at.asc&limit=${MSG.PAGE_SIZE}`)) || [];
+}
+
+// The comps attached to a set of messages. A separate read and a stitch, the
+// house pattern (usersByIds, orgsByIds) — PostgREST embedding would tie this
+// payload to a foreign-key name.
+async function msgCompRowsForMessages(messageIds) {
+  const list = [...new Set((messageIds || []).map((v) => String(v || "")).filter(Boolean))];
+  if (!DB_CONFIGURED || !list.length) return [];
+  return (await sbRequest("GET",
+    `msg_comps?message_id=in.(${pgInList(list)})` +
+    `&select=id,message_id,thread_id,shared_by,shared_by_name,source,source_comp_id,` +
+    `address,address_key,property_type,deal_date,snapshot,created_at` +
+    `&order=created_at.asc&limit=1000`)) || [];
+}
+
+// Every comp ever shared in one thread — the Comps tab, and the visible form
+// of "comps sent between employees are saved".
+async function msgCompRowsForThread(threadId) {
+  if (!DB_CONFIGURED || !threadId) return [];
+  return (await sbRequest("GET",
+    `msg_comps?thread_id=eq.${encodeURIComponent(threadId)}` +
+    `&select=id,message_id,shared_by,shared_by_name,source,source_comp_id,` +
+    `address,address_key,property_type,deal_date,snapshot,created_at` +
+    `&order=created_at.desc&limit=500`)) || [];
+}
+
+// Which of these shared comps the CALLER has already put in their own vault,
+// so the button can say so rather than silently making a second copy.
+// Never throws: a receipt is a courtesy, and losing it must not cost the tab.
+async function msgCompSaveIdsFor(userId, compIds) {
+  const out = new Set();
+  const list = [...new Set((compIds || []).map((v) => String(v || "")).filter(Boolean))];
+  if (!DB_CONFIGURED || !userId || !list.length) return out;
+  try {
+    const rows = await sbRequest("GET",
+      `msg_comp_saves?user_id=eq.${encodeURIComponent(userId)}` +
+      `&msg_comp_id=in.(${pgInList(list)})&select=msg_comp_id&limit=${list.length}`);
+    for (const r of rows || []) out.add(String(r.msg_comp_id));
+  } catch (err) {
+    console.error("Message comp save receipts read failed (rows are unaffected):", err.message);
+  }
+  return out;
+}
+
+// Ordering only. A failed touch costs the list's ordering for one message and
+// never the message itself, so it is fire-and-forget like touchHub.
+function touchMsgThread(threadId, when) {
+  if (!DB_CONFIGURED || !threadId) return;
+  sbRequest("PATCH",
+    `msg_threads?id=eq.${encodeURIComponent(threadId)}`,
+    { last_message_at: when || new Date().toISOString() },
+    { prefer: "return=minimal" }
+  ).catch((err) => console.error("Thread touch failed (the message is stored):", err.message));
 }
 
 // ---------------------------------------------------------------------------
@@ -9587,7 +9753,7 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-const CTA_FREE_PAGES = new Set(["/vault", "/markets", "/1031-exchange", "/bulk"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -9674,11 +9840,27 @@ const marketBar = (signedIn = false, current = "") =>
   // with nothing around them.
   (signedIn
     ? `<a href="/desk">Workspace</a>` +
+      // Messages, its own tab (owner's, 2026-09-01). Deliberately NOT hidden
+      // and hydrated the way #navVault and #navBulk are: those two ask an
+      // ENTITLEMENT question, which is a database read this synchronous render
+      // must never make, while this one asks "are you signed in", which the
+      // render already knows. A member with no firm gets the page and an
+      // invitation to start one, which is a better answer than a missing row
+      // — and it costs nothing to render it for them.
       // The vault, hydrated after paint by ACCOUNT_NAV_JS exactly as the
       // account slots are — its entitlement is a database read this
       // synchronous render must never make, so it ships hidden. Same for
       // bulk, below the public pair.
-      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>`
+      `<a id="navVault" href="/vault"${current === "/vault" ? ' aria-current="page"' : ""} hidden>Vault</a>` +
+      // BELOW the vault (owner's, 2026-09-01). It shipped above it for one
+      // afternoon; this is the placement.
+      //
+      // One consequence to know rather than fix: the vault row above ships
+      // hidden and is revealed by entitlement, so for a member without one
+      // Messages closes up directly under Workspace. That is the same thing
+      // that already happens to Bulk valuation, and it is why the order is
+      // pinned as a SEQUENCE rather than by position.
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages</a>`
     : "") +
   // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
   // visitor and shown only in the rail, so the markup stays identical in both
@@ -23694,6 +23876,688 @@ const server = http.createServer((req, res) =>
   }
 
   // ==========================================================================
+  // Firm messaging — /api/messages and /api/messages/*
+  //
+  // Spec: docs/superpowers/specs/2026-09-01-firm-messaging-design.md
+  // Schema: migrations/044-firm-messaging.sql   Rules: messaging.js
+  //
+  // NOT the comp hub below. The prefix is deliberately outside /api/hub,
+  // whose single `if` swallows everything under /api/hub/ with its own 404.
+  //
+  // The shape of every route here: resolve the caller's OWN firm, read the
+  // thread scoped by that firm, read the caller's own member row, ask
+  // messaging.js, then act. No route makes its own access decision and no
+  // route trusts anything the browser said about which firm it is in.
+  // ==========================================================================
+  const msgPath = req.url.split("?")[0];
+  if (msgPath === "/api/messages" || msgPath.startsWith("/api/messages/")) {
+    const readMsgBody = (max = 2e4) => new Promise((resolve, reject) => {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        body += c;
+        if (body.length > max && !tooBig) { tooBig = true; req.destroy(); }
+      });
+      req.on("end", () => {
+        if (tooBig) return reject(new Error("too_big"));
+        try { resolve(JSON.parse(body || "{}")); }
+        catch (_) { reject(new SyntaxError("bad_json")); }
+      });
+      req.on("error", () => reject(new Error("aborted")));
+    });
+
+    // 401 not signed in → 503 no database → 403 not in a firm.
+    //
+    // DELIBERATELY NOT a fourth copy of the vault's 401/403/503 ladder. Its
+    // middle refusal is a different question with a different answer on
+    // screen: "Messages are for your firm", with a door to /firms, rather
+    // than "this is part of Pro". Messaging itself is NOT entitlement-gated —
+    // that is canUseOrg's rule, which gates creating a firm and inviting but
+    // never accepting or reading, and a firm whose junior broker cannot be
+    // messaged does not solve the problem this exists for.
+    //
+    // The database check sits ABOVE the firm check because resolving the firm
+    // IS a database read: asked the other way round, an outage would report
+    // itself as "you are not in a firm", which is the misreport-an-outage-as-
+    // absence trap the hub list and the lead inbox each had to fix.
+    const openMessaging = async () => {
+      const user = await getSessionUser(req);
+      if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
+      if (!DB_CONFIGURED) {
+        sendJson(res, 503, { error: "Messages are unavailable right now. Please try again in a minute." });
+        return null;
+      }
+      const firm = await messagingFirmOf(user);
+      if (!firm) {
+        sendJson(res, 403, {
+          // Reaches the screen verbatim, so it is product copy: it names what
+          // is missing and it does not imply anything is for sale.
+          error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+          code: "no_firm",
+        });
+        return null;
+      }
+      return { user, orgId: firm.orgId, membership: firm.membership };
+    };
+
+    // The firm's people, with the user ids thread membership is keyed on.
+    //
+    // org_members carries a user_id (acceptOrgInvite writes it) but it is
+    // NULLABLE, so a row predating that write, or one created by a path that
+    // never set it, would silently drop a colleague off the list nobody can
+    // message. The users read resolves BOTH that and the display name, which
+    // the roster route deliberately does not carry.
+    const rosterFor = async (orgId) => {
+      // Joined members AND people who have been invited and have not accepted
+      // yet (2026-09-01). Showing the pending ones is what turns "why isn't
+      // Sarah here" from a bug report into a legible state: the firm knows
+      // about her, she has not accepted. They are marked and everything that
+      // needs a real account filters on userId, so a pending row can never
+      // become a thread member.
+      //
+      // Removed people are excluded outright — that is a decision somebody
+      // made, not a state anybody is waiting on.
+      const rows = (await orgMemberRows(orgId)).filter((r) => ORG.isActive(r) || ORG.isPending(r));
+      const emails = rows.map((r) => ORG.normalizeEmail(r.email)).filter(Boolean);
+      const byEmail = new Map();
+      if (emails.length) {
+        try {
+          const users = await sbRequest("GET",
+            `users?email=in.(${pgInList(emails)})&select=id,email,name&limit=${emails.length}`);
+          for (const u of users || []) byEmail.set(ORG.normalizeEmail(u.email), u);
+        } catch (err) {
+          console.error("Messaging roster user read failed:", err.message);
+        }
+      }
+      const out = [];
+      for (const r of rows) {
+        const email = ORG.normalizeEmail(r.email);
+        const u = byEmail.get(email) || null;
+        const userId = String((u && u.id) || r.user_id || "");
+        const pending = !ORG.isActive(r);
+        // A JOINED member with no resolvable account cannot be a thread member
+        // — the key would be "". Dropped rather than shown as a row whose
+        // button could only fail. A PENDING one is expected to have no account
+        // yet (that is what the invitation is for), so it stays and is marked.
+        if (!pending && !userId) continue;
+        out.push({ userId, email, name: MSG.displayName({ name: u && u.name, email }), pending });
+      }
+      return out;
+    };
+
+    // Real names for a set of thread members.
+    //
+    // A SECOND read and a stitch, the house pattern (usersByIds, orgsByIds) —
+    // and it reads `users` rather than reusing the roster, because a thread's
+    // members include LEAVERS and people who have since left the firm, who are
+    // in no roster. Without it every name on the page is the local part of an
+    // email address: a DM with Mike Okafor is headed "mike", and so is every
+    // message he wrote. usersByIds never throws and the caller falls through
+    // to that same local part, so a failed lookup costs polish and not a page.
+    const namesFor = async (memberRows) => {
+      const users = await usersByIds((memberRows || []).map((m) => m.user_id));
+      const out = new Map();
+      for (const m of memberRows || []) {
+        const id = String(m.user_id);
+        const u = users.get(id);
+        out.set(id, MSG.displayName({ name: u && u.name, email: (u && u.email) || m.email }));
+      }
+      return out;
+    };
+
+    // One thread as the page reads it. `members` carries every member INCLUDING
+    // leavers, because a leaver's name still has to render beside the messages
+    // they wrote.
+    const threadPayload = (thread, memberRows, me, latest, unread, names) => ({
+      id: String(thread.id),
+      kind: MSG.kindOf(thread),
+      title: String(thread.title || ""),
+      // The label is computed from rows carrying the resolved name, so a DM is
+      // headed by a person rather than by half of their email address.
+      label: MSG.threadLabel(
+        thread,
+        memberRows.map((m) => ({ ...m, name: (names && names.get(String(m.user_id))) || "" })),
+        me
+      ),
+      members: memberRows.map((m) => ({
+        userId: String(m.user_id),
+        email: String(m.email || ""),
+        name: (names && names.get(String(m.user_id))) || MSG.displayName({ email: m.email }),
+        left: Boolean(m.left_at),
+      })),
+      lastMessageAt: thread.last_message_at || thread.created_at || null,
+      preview: MSG.previewOf(latest),
+      unread: unread || 0,
+    });
+
+    // --- GET /api/messages — my threads and my firm's people ----------------
+    if (req.method === "GET" && msgPath === "/api/messages") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const ent = await entitlementsFor(req);
+        const [mine, people, org] = await Promise.all([
+          msgThreadIdsFor(g.user.id),
+          rosterFor(g.orgId),
+          findOrg(g.orgId),
+        ]);
+        // The org filter is the SECOND wall: a member row is what selects the
+        // ids, and the firm is what proves they belong here.
+        const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+        const memberRows = await msgThreadMemberRows(threads.map((t) => t.id));
+        // ONE name lookup for every member of every thread, not one per
+        // thread: this route already loops, and a per-thread read would turn a
+        // 15-second poll into a read per conversation.
+        const names = await namesFor(memberRows);
+        const byThread = new Map();
+        for (const m of memberRows) {
+          const k = String(m.thread_id);
+          if (!byThread.has(k)) byThread.set(k, []);
+          byThread.get(k).push(m);
+        }
+        // The unread count and the preview both need the thread's recent
+        // messages, so they are one read per thread rather than two. Capped at
+        // the number of threads a person can plausibly be in; past that the
+        // list is the wrong tool and the firm wants the shelf.
+        const out = [];
+        for (const t of threads.slice(0, 100)) {
+          const rows = byThread.get(String(t.id)) || [];
+          const mineRow = MSG.memberRowOf(rows, g.user.id);
+          const verdict = MSG.canReadThread({ thread: t, orgId: g.orgId, memberRow: mineRow });
+          if (!verdict.ok) continue;
+          const recent = await msgMessageRows(t.id, "");
+          const latest = recent.length ? recent[recent.length - 1] : null;
+          const unread = MSG.unreadCount(recent, {
+            lastReadAt: mineRow && mineRow.last_read_at,
+            userId: g.user.id,
+          });
+          out.push(threadPayload(t, rows, g.user.id, latest, unread, names));
+        }
+        return sendJson(res, 200, {
+          ok: true,
+          firm: { id: g.orgId, name: (org && org.name) || "", kind: ORG.kindOf(org) },
+          me: { id: String(g.user.id), email: String(g.user.email || "") },
+          // The Attach control is not rendered without this — the Buy-button
+          // rule. Attaching reads a vault, so it is the vault's own gate, and
+          // messaging itself stays open to every colleague.
+          canAttachComps: ent.canUseVault === true,
+          people,
+          threads: out,
+        });
+      })().catch((err) => {
+        console.error("Messages list failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load your messages. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/thread — open a DM, or make a channel -----------
+    if (req.method === "POST" && msgPath === "/api/messages/thread") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const body = await readMsgBody();
+        // Neither a `kind` nor a `title` from the browser (2026-09-01). The
+        // shape follows from who was picked and nothing else — see
+        // validateThread's header for why letting the caller say turned a
+        // direct message into a channel called "Test", and why names went
+        // altogether.
+        const want = MSG.validateThread({ memberIds: body && body.memberIds });
+        if (!want.ok) return sendJson(res, 400, { error: want.error });
+
+        // Every named member must be a JOINED member of THIS firm. The ids
+        // came from the browser, so this is the check that keeps a thread from
+        // being opened with somebody at another shop.
+        //
+        // The `pending` filter is load-bearing and was added with them
+        // (2026-09-01): rosterFor now returns invited-but-not-accepted people
+        // so the People list can explain their absence, and an invitation is
+        // NOT a membership — 030's rule, and the reason joined_at exists at
+        // all. Without this line, inviting an address that already has an
+        // account would be enough to put that account in a thread before they
+        // ever agreed to join the firm.
+        const people = (await rosterFor(g.orgId)).filter((p) => !p.pending && p.userId);
+        const allowed = new Map(people.map((p) => [p.userId, p]));
+        const me = String(g.user.id);
+        const others = want.memberIds.filter((id) => id !== me);
+        if (!others.length || others.some((id) => !allowed.has(id))) {
+          return sendJson(res, 400, { error: "Pick colleagues from your firm." });
+        }
+
+        const now = new Date().toISOString();
+        const COLS = "id,org_id,kind,title,dm_key,created_at,last_message_at";
+
+        // ONE creation path for a direct message and a group, because they
+        // are the same act with a different number of people.
+        //
+        // A conversation is identified by WHO IS IN IT, so it is looked up
+        // before it is made and picking the same people twice reopens the one
+        // room they already share. With no names anywhere (owner's,
+        // 2026-09-01) that is the only consistent answer: two rooms holding
+        // the same people would be two identical rows in the list.
+        const key = MSG.participantKey([me, ...others]);
+        // "" cannot happen here (others is non-empty and excludes the caller),
+        // but a stored "" would collide with every other unkeyable set under
+        // the partial unique index, so it is refused rather than trusted.
+        if (!key) return sendJson(res, 400, { error: "Pick somebody to message." });
+        const findByKey = async () => {
+          const rows = await sbRequest("GET",
+            `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
+            `&dm_key=eq.${encodeURIComponent(key)}&select=${COLS}&limit=1`);
+          return (rows && rows[0]) || null;
+        };
+
+        let thread = await findByKey();
+        if (!thread) {
+          try {
+            const made = await sbRequest("POST", `msg_threads?select=${COLS}`,
+              [{
+                org_id: g.orgId,
+                kind: want.kind,
+                title: "",
+                dm_key: key,
+                created_by: g.user.id,
+                created_at: now,
+                last_message_at: now,
+              }],
+              { prefer: "return=representation" });
+            thread = (made && made[0]) || null;
+          } catch (err) {
+            // READ-THEN-INSERT with a race catch, never on_conflict:
+            // msg_threads_dm_uidx is PARTIAL and PostgREST cannot infer a
+            // partial index (42P10 — the bug that once made every hub vault
+            // send fail, 100%). Two colleagues pressing "message" at the same
+            // moment is exactly the race this catches.
+            if (!/23505|409/.test(String(err.message))) throw err;
+            thread = await findByKey();
+          }
+        }
+        if (!thread) return sendJson(res, 502, { error: "Couldn't open that conversation. Please try again." });
+
+        // Membership is inserted for everyone who is not already in it, so
+        // re-opening a DM adds nobody twice and re-adding somebody who left a
+        // channel is a matter of clearing left_at.
+        const already = await msgThreadMemberRows([thread.id]);
+        const have = new Set(already.map((r) => String(r.user_id)));
+        const add = [me, ...others].filter((id) => !have.has(id)).map((id) => ({
+          thread_id: thread.id,
+          user_id: id,
+          email: id === me ? MSG.normalizeEmail(g.user.email) : (allowed.get(id) || {}).email || "",
+          added_at: now,
+        }));
+        if (add.length) {
+          await sbRequest("POST", "msg_thread_members", add, { prefer: "return=minimal" });
+        }
+        const rows = await msgThreadMemberRows([thread.id]);
+        logEvent("message_thread", { source: MSG.kindOf(thread) });
+        return sendJson(res, 201, {
+          ok: true,
+          thread: threadPayload(thread, rows, me, null, 0, await namesFor(rows)),
+        });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message thread open failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't open that conversation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/messages/thread?id=&since= — read and poll ----------------
+    if (req.method === "GET" && msgPath === "/api/messages/thread") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const q = new URL(req.url, "http://localhost").searchParams;
+        const id = (q.get("id") || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which conversation?" });
+        const thread = await msgThreadRow(id, g.orgId);
+        const rows = await msgThreadMemberRows([id]);
+        const mineRow = MSG.memberRowOf(rows, g.user.id);
+        const verdict = MSG.canReadThread({ thread, orgId: g.orgId, memberRow: mineRow });
+        if (!verdict.ok) {
+          // One 404 for "no such thread", "another firm's thread" and "not in
+          // it", on purpose: which conversations exist is not an answer a
+          // stranger has earned. `left` is separated because it is that
+          // person's own history and they know it exists.
+          if (verdict.reason === "left") {
+            return sendJson(res, 403, { error: "You have left this conversation.", code: "left" });
+          }
+          return sendJson(res, 404, { error: "That conversation isn't yours.", code: verdict.reason });
+        }
+        // READING A THREAD IS READING IT. Stamped here rather than left to the
+        // browser's own POST /api/messages/read, which is the hub's rule
+        // (stampHubSeen runs on every GET /api/hub) and for its reason: a
+        // badge that only clears when a second request succeeds is a badge
+        // that stays lit after a dropped request, and the reader has no way to
+        // put it out. On every poll, not only the first, because a poll only
+        // fires from a visible tab — so it is evidence somebody is looking.
+        //
+        // Fire-and-forget: a failed stamp costs one stale badge, never the
+        // conversation.
+        sbRequest("PATCH",
+          `msg_thread_members?thread_id=eq.${encodeURIComponent(id)}` +
+          `&user_id=eq.${encodeURIComponent(g.user.id)}`,
+          { last_read_at: new Date().toISOString() }, { prefer: "return=minimal" }
+        ).catch((err) => console.error("Read stamp failed (the thread is fine):", err.message));
+
+        const since = q.get("since") || "";
+        const messages = await msgMessageRows(id, since);
+        const comps = await msgCompRowsForMessages(messages.map((m) => m.id));
+        const saved = await msgCompSaveIdsFor(g.user.id, comps.map((c) => c.id));
+        const byMessage = new Map();
+        for (const c of comps) {
+          const k = String(c.message_id);
+          if (!byMessage.has(k)) byMessage.set(k, []);
+          byMessage.get(k).push({
+            id: String(c.id),
+            address: String(c.address || ""),
+            propertyType: c.property_type || "",
+            dealDate: c.deal_date || null,
+            sharedBy: String(c.shared_by_name || ""),
+            snapshot: c.snapshot || {},
+            savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
+          });
+        }
+        const names = await namesFor(rows);
+        return sendJson(res, 200, {
+          ok: true,
+          thread: threadPayload(thread, rows, String(g.user.id), null, 0, names),
+          messages: messages.filter((m) => !m.deleted_at).map((m) => ({
+            id: String(m.id),
+            userId: String(m.user_id || ""),
+            author: String(m.author_email || ""),
+            // Resolved server-side so the browser never has to guess a name
+            // out of an email address. Falls back to the local part, which is
+            // what it used to do everywhere.
+            authorName: names.get(String(m.user_id || "")) ||
+              MSG.displayName({ email: m.author_email }),
+            mine: String(m.user_id || "") === String(g.user.id),
+            body: String(m.body || ""),
+            createdAt: m.created_at,
+            comps: byMessage.get(String(m.id)) || [],
+          })),
+          // SERVER-ISSUED, never a browser clock — the hub's rule. Echoes the
+          // cursor it was given when nothing new arrived, so a quiet poll does
+          // not rewind the conversation.
+          cursor: messages.length ? messages[messages.length - 1].created_at : (since || ""),
+        });
+      })().catch((err) => {
+        console.error("Message thread read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load that conversation. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET /api/messages/comps?thread= — every comp ever sent in it -------
+    // The Comps tab, and the visible form of "comps sent between employees are
+    // saved". Its own route rather than a flag on the thread read, because the
+    // thread read runs on a 15-second poll and this one does not.
+    if (req.method === "GET" && msgPath === "/api/messages/comps") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const id = (new URL(req.url, "http://localhost").searchParams.get("thread") || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which conversation?" });
+        const thread = await msgThreadRow(id, g.orgId);
+        const rows = await msgThreadMemberRows([id]);
+        const verdict = MSG.canReadThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+        const comps = await msgCompRowsForThread(id);
+        const saved = await msgCompSaveIdsFor(g.user.id, comps.map((c) => c.id));
+        return sendJson(res, 200, {
+          ok: true,
+          comps: comps.map((c) => ({
+            id: String(c.id),
+            messageId: String(c.message_id),
+            address: String(c.address || ""),
+            propertyType: c.property_type || "",
+            dealDate: c.deal_date || null,
+            sharedBy: String(c.shared_by_name || ""),
+            sharedAt: c.created_at,
+            snapshot: c.snapshot || {},
+            savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
+          })),
+        });
+      })().catch((err) => {
+        console.error("Message comps read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load the comps in this conversation." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/send -------------------------------------------
+    if (req.method === "POST" && msgPath === "/api/messages/send") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        if (rateLimited("msgsend:" + clientIp(req), 120)) {
+          return sendJson(res, 429, { error: "Too many messages. Please wait a moment." });
+        }
+        const body = await readMsgBody();
+        const id = String((body && body.threadId) || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which conversation?" });
+        const want = MSG.validateMessage({ body: body && body.body, compIds: body && body.compIds });
+        if (!want.ok) return sendJson(res, 400, { error: want.error });
+
+        const thread = await msgThreadRow(id, g.orgId);
+        const rows = await msgThreadMemberRows([id]);
+        const verdict = MSG.canPostToThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+
+        // The comps, if any. Ids are read back from broker_comps SCOPED BY
+        // user_id — the hub's vault-send rule — so a member can only ever
+        // send comps that are already theirs, whatever ids the browser names.
+        let compRows = [];
+        if (want.compIds.length) {
+          const ent = await entitlementsFor(req);
+          if (!ent.canUseVault) {
+            return sendJson(res, 403, {
+              error: "Sending comps from your vault is part of Pro.",
+              code: "vault_required",
+            });
+          }
+          const owned = await sbRequest("GET",
+            `broker_comps?user_id=eq.${encodeURIComponent(g.user.id)}` +
+            `&id=in.(${pgInList(want.compIds)})&select=*&limit=${MSG.MAX_COMPS_PER_MESSAGE}`);
+          for (const r of owned || []) {
+            const built = MSG.compRowFrom(VAULTAPI.toApiComp(r), { addressKey: r.address_key });
+            if (built) compRows.push({ raw: r, built });
+          }
+          if (!compRows.length && !want.body) {
+            return sendJson(res, 400, { error: "Those comps aren't in your vault." });
+          }
+        }
+
+        const now = new Date().toISOString();
+        const inserted = await sbRequest("POST", "msg_messages?select=id,created_at",
+          [{
+            thread_id: id,
+            // The second wall, written at insert time so every later read of
+            // this row can be firm-scoped without a join.
+            org_id: g.orgId,
+            // The author is the SESSION, never the body — hub_messages' rule.
+            user_id: g.user.id,
+            author_email: MSG.normalizeEmail(g.user.email),
+            body: want.body || null,
+            comp_count: compRows.length,
+            created_at: now,
+          }],
+          { prefer: "return=representation" });
+        const message = (inserted && inserted[0]) || null;
+        if (!message) return sendJson(res, 502, { error: "Couldn't send that message. Please try again." });
+
+        if (compRows.length) {
+          const creditName = MSG.displayName({ name: g.user.name, email: g.user.email });
+          await sbRequest("POST", "msg_comps",
+            compRows.map(({ built }) => ({
+              message_id: message.id,
+              thread_id: id,
+              org_id: g.orgId,
+              shared_by: g.user.id,
+              shared_by_name: creditName,
+              source: "vault",
+              // A bare uuid, NOT a foreign key (044). It is allowed to point
+              // at a row that no longer exists: the snapshot is the record of
+              // what was sent, and deleting the vault comp must not rewrite
+              // what a colleague read last week.
+              source_comp_id: built.snapshot && built.snapshot.id ? built.snapshot.id : null,
+              address: built.address,
+              address_key: built.address_key,
+              property_type: built.property_type,
+              deal_date: built.deal_date,
+              snapshot: built.snapshot,
+              created_at: now,
+            })),
+            { prefer: "return=minimal" });
+        }
+        touchMsgThread(id, now);
+        // PII-free, and MARKET-free as well: a firm's markets are their
+        // private book, so unlike a search event nothing here may carry one.
+        // The vault_visit precedent.
+        logEvent("message_sent", { source: compRows.length ? "comps" : "text" });
+        return sendJson(res, 201, {
+          ok: true,
+          message: { id: String(message.id), createdAt: message.created_at, comps: compRows.length },
+        });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message send failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't send that message. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/read — stamp how far I have read ----------------
+    if (req.method === "POST" && msgPath === "/api/messages/read") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const body = await readMsgBody(2e3);
+        const id = String((body && body.threadId) || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which conversation?" });
+        const thread = await msgThreadRow(id, g.orgId);
+        const rows = await msgThreadMemberRows([id]);
+        const verdict = MSG.canReadThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+        // Scoped by the caller's own user_id as well as the thread: a mark is
+        // a statement about one person's reading and nobody may make it for
+        // somebody else.
+        await sbRequest("PATCH",
+          `msg_thread_members?thread_id=eq.${encodeURIComponent(id)}` +
+          `&user_id=eq.${encodeURIComponent(g.user.id)}`,
+          { last_read_at: new Date().toISOString() }, { prefer: "return=minimal" });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message read stamp failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't update that conversation." });
+      });
+      return;
+    }
+
+    // --- POST /api/messages/comp/save — put a received comp in my vault -----
+    //
+    // Goes through VAULT.normalizeRow, the SAME function every imported and
+    // hand-typed comp goes through, rather than inserting the snapshot
+    // directly. That is the undo-a-delete precedent: a restore must not put
+    // back something the vault would refuse to be told today, and a comp
+    // arriving by message is exactly that case one step further out.
+    if (req.method === "POST" && msgPath === "/api/messages/comp/save") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const ent = await entitlementsFor(req);
+        if (!ent.canUseVault) {
+          return sendJson(res, 403, { error: "Saving a comp needs a vault, which is part of Pro.", code: "vault_required" });
+        }
+        const body = await readMsgBody(2e3);
+        const compId = String((body && body.compId) || "").trim();
+        if (!compId) return sendJson(res, 400, { error: "Which comp?" });
+
+        // Firm-scoped in the query, then membership-checked: both walls, on
+        // the one route here that WRITES into somebody's private book.
+        const found = await sbRequest("GET",
+          `msg_comps?id=eq.${encodeURIComponent(compId)}` +
+          `&org_id=eq.${encodeURIComponent(g.orgId)}` +
+          `&select=id,thread_id,snapshot,address&limit=1`);
+        const shared = (found && found[0]) || null;
+        if (!shared) return sendJson(res, 404, { error: "That comp isn't in your messages." });
+        const thread = await msgThreadRow(shared.thread_id, g.orgId);
+        const rows = await msgThreadMemberRows([shared.thread_id]);
+        const verdict = MSG.canReadThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, { error: "That comp isn't in your messages." });
+
+        const snap = shared.snapshot || {};
+        const result = VAULT.normalizeRow({
+          ...snap,
+          // 042's sentinel: a deliberately undated vault comp is stored as SQL
+          // null, and normalizeRow refuses a BLANK date on purpose (a blank is
+          // an accident). The word is how a null round-trips, exactly as the
+          // book export writes it.
+          deal_date: snap.deal_date == null ? "undated" : snap.deal_date,
+        });
+        if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+        const row = result.row;
+        row.user_id = g.user.id;
+        row.market = marketOf(row.address);
+        // upload_id stays null: a saved comp belongs to no import, so it can
+        // only ever be removed per-comp. The add route's rule.
+
+        const clash = await sbRequest("GET",
+          `broker_comps?user_id=eq.${encodeURIComponent(g.user.id)}` +
+          `&dedupe_key=eq.${encodeURIComponent(row.dedupe_key)}&select=id&limit=1`);
+        let vaultCompId = clash && clash.length ? String(clash[0].id) : "";
+        // Already having it is a SUCCESS, not a 409. The receipt below is the
+        // point of the button, and telling somebody "you already have this"
+        // while leaving the button offering to save it again is the state this
+        // route exists to make impossible.
+        if (!vaultCompId) {
+          const saved = await sbRequest("POST", "broker_comps",
+            [PROPS.stripCarriedKeys({ ...row })], { prefer: "return=representation" });
+          vaultCompId = String(((saved && saved[0]) || {}).id || "");
+          await linkVaultProperties(g.user.id, [row]);
+        }
+        // The receipt. Never throws: it is what makes the button honest, and
+        // losing it must not cost the broker the comp they just saved.
+        try {
+          await sbRequest("POST", "msg_comp_saves?on_conflict=msg_comp_id,user_id",
+            [{ msg_comp_id: compId, user_id: g.user.id, vault_comp_id: vaultCompId || null }],
+            { prefer: "resolution=merge-duplicates,return=minimal" });
+        } catch (err) {
+          console.error("Message comp save receipt failed (the comp is in the vault):", err.message);
+        }
+        logEvent("message_comp_saved", {});
+        return sendJson(res, 200, { ok: true, already: Boolean(clash && clash.length), vaultCompId });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message comp save failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that comp. Please try again in a minute." });
+      });
+      return;
+    }
+
+    return sendJson(res, 404, { error: "Not found." });
+  }
+
+  // ==========================================================================
   // The messaging hub — /api/hubs and /api/hub/*
   //
   // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
@@ -25302,6 +26166,65 @@ const server = http.createServer((req, res) =>
         // back to the app to report it.
         testerBadge: true,
         body: renderBulkPageBody(boot),
+      }));
+    })();
+    return;
+  }
+
+  // Firm messaging — its OWN page and its own tab (owner's, 2026-09-01), not a
+  // panel on /vault and not a deck on the desk. The vault is a broker's
+  // private book; this is the firm's correspondence, and a communication
+  // surface buried inside a workspace is one nobody reads.
+  //
+  // pagePath, not req.url: a link somebody shares carries ?fbclid= and an
+  // exact match would 404 it. Same rule every other page route follows.
+  if (req.method === "GET" && pagePath === "/messages") {
+    (async () => {
+      // The first answer rides down WITH the page, so a member with no firm is
+      // told so before any fetch resolves rather than watching a spinner turn
+      // into a wall. The client re-reads immediately either way, which is what
+      // keeps this a head start rather than a second source of truth.
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Messages are unavailable right now. Please try again in a minute." } };
+        else if (!(await messagingFirmOf(user))) {
+          boot = { s: 403, j: {
+            error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+            code: "no_firm",
+          } };
+        } else boot = { s: 200, j: {} };
+      } catch (err) {
+        console.error("messages boot failed:", err.message);
+      }
+      // PII-free AND market-free, the vault_visit precedent: a firm's markets
+      // are their private book. `source` is the boot outcome.
+      logEvent("messages_visit", { source:
+        !boot ? "error"
+        : boot.s === 200 ? "ok"
+        : boot.s === 401 ? "signin"
+        : boot.s === 403 ? "nofirm"
+        : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Messages · CompNinja",
+        description: "Your messages.",
+        canonical: `${SITE_URL}/messages`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/messages",
+        // Inter, for /vault's reason: MARKET_CSS names the family in body{}
+        // and no server-rendered page fetches it, so without this the page
+        // silently falls back to system-ui.
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderMessagesBody(boot),
       }));
     })();
     return;

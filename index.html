@@ -2272,6 +2272,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              Vault, so the app was the one surface where the row a member is
              looking at renamed itself the moment they clicked it. -->
         <a id="menuVaultLink" href="/vault" class="hidden hover:text-[#1A2433] font-medium">Vault</a>
+        <!-- Messages, its own page and its own tab (owner's, 2026-09-01) —
+             firm messaging, deliberately NOT a panel on /vault and not a deck
+             on this desk. The vault is a broker's private book; this is the
+             firm's correspondence, and a communication surface buried inside a
+             workspace is one nobody reads.
+             BELOW the vault, which is the owner's placement (it shipped above
+             it for one afternoon). marketBar renders the identical row in the
+             identical position, and test/messages-routes.test.js reads both
+             files together for exactly that reason.
+             Unlike #menuVaultLink above and #menuBulkLink below, this ships
+             VISIBLE and is never hydrated: those two ask an entitlement
+             question and this one does not. A member with no firm gets the
+             page and an invitation to start one — a better answer than a
+             missing row. The consequence is that when the vault row is hidden
+             this one closes up under Workspace, exactly as Bulk valuation
+             already does, which is why the order is pinned as a sequence. -->
+        <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium">Messages</a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->

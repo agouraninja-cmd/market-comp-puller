@@ -19815,8 +19815,17 @@ const server = http.createServer((req, res) =>
             // Served rather than hard-coded in vault-page.js so the dropdown
             // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
             // Adding a per-type field stays a one-place change.
-            targets: VAULT.MAPPABLE_TARGETS,
+            // Address parts ride along so a sheet keeping Address, City and
+            // State in three columns can say so. They are not fields we
+            // store — parseUpload builds the address out of them and drops
+            // them — which is why they are a second list rather than members
+            // of MAPPABLE_TARGETS.
+            targets: [...VAULT.MAPPABLE_TARGETS, ...VAULT.ADDRESS_PART_TARGETS],
             required: VAULT.REQUIRED_TARGETS,
+            // Which required fields may be answered once for the whole file
+            // when no column can supply them. Served rather than hard-coded
+            // for the same reason `targets` is.
+            constantTargets: VAULT.SHEET_CONSTANT_TARGETS,
           });
         } catch (e) {
           // Same guard as /api/vault/upload's, and it matters more here: V8
@@ -19997,7 +20006,7 @@ const server = http.createServer((req, res) =>
           }
 
           const parsedBody = JSON.parse(body || "{}");
-          const { filename, mapping } = parsedBody;
+          const { filename, mapping, constants } = parsedBody;
           const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
           if (!made.ok) {
             return sendJson(res, 400, { error: made.error || "Nothing to import." });
@@ -20016,6 +20025,13 @@ const server = http.createServer((req, res) =>
           const parsed = VAULT.parseUpload(csv, {
             mapping: parsedBody.rows ? null : (mapping || null),
             hasMarket: addressHasMarket,
+            // The whole-file answers for a field the sheet omits entirely
+            // (property type, sale-or-lease). parseUpload validates them
+            // through the same parsers a mapped column goes through and
+            // refuses the upload on a bad one, which is why nothing is
+            // checked here. Confirm-table rows carry their own values per
+            // row, so they never send these.
+            constants: parsedBody.rows ? null : (constants || null),
           });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.

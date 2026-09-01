@@ -424,8 +424,14 @@ async function runPage(comps, benchResult, opts, identity) {
       if (!info.ok) return Promise.resolve(jsonResponse(400, { error: info.error }));
       return Promise.resolve(jsonResponse(200, Object.assign({}, info, {
         remembered: opts.remembered || null,
-        targets: VAULT.MAPPABLE_TARGETS,
+        // Mirrors the real /api/vault/inspect: address parts ride along so a
+        // sheet keeping Address, City and State in three columns can say so,
+        // and constantTargets says which required fields may be answered once
+        // for the whole file. A stub that lagged the route would let the page
+        // pass here against a shape the server never sends.
+        targets: [...VAULT.MAPPABLE_TARGETS, ...VAULT.ADDRESS_PART_TARGETS],
         required: VAULT.REQUIRED_TARGETS,
+        constantTargets: VAULT.SHEET_CONSTANT_TARGETS,
       })));
     }
     if (u.indexOf("/api/vault/extract") === 0) {

@@ -342,6 +342,74 @@ const EXTRACT_KEYS = VAULT_FIELD_KEYS.filter((k) => k !== "lat" && k !== "lng");
 // the mapper and the row parser cannot disagree about what "required" means.
 const REQUIRED_TARGETS = ["address", "property_type", "transaction", "deal_date"];
 
+// ---------------------------------------------------------------------------
+// TWO THINGS A FILE CAN BE MISSING THAT THE BROKER STILL KNOWS THE ANSWER TO
+// ---------------------------------------------------------------------------
+// Both of these exist because an owner-operator's or a developer's own tracking
+// sheet is written for people who already share its context, so it omits what
+// everyone at that firm takes for granted.
+//
+// ADDRESS PARTS. Their sheet keeps Address, City and State in three columns.
+// Only the first can be mapped onto `address`, and a street address with no
+// city is filed under a market that does not exist (see parseUpload's
+// hasMarket note). These two are NOT fields we store: they are used to build
+// the address, and then they are gone. That is why they are a separate list
+// and deliberately NOT in MAPPABLE_TARGETS or VAULT_FIELD_KEYS, both of which
+// are checked against the broker_comps schema in both directions — an
+// `address_city` in there would correctly fail that test, and the fix would be
+// this list rather than a looser check.
+const ADDRESS_PART_TARGETS = ["address_city", "address_state"];
+
+// SHEET CONSTANTS. Their sheet names no property type and no deal type because
+// every row is an industrial lease and nobody writes that down. These are the
+// only two fields a broker may answer once for a whole file, and the limit is
+// the point: both are small closed vocabularies, so a single answer is either
+// right for every row or obviously wrong for all of them. A price or a date
+// answered once would be wrong per row and invisible.
+//
+// Precedent: the per-sheet rent basis on the confirm table (2026-08-29), for
+// the identical reason — the sheet states a rate and never the word annual or
+// monthly, because within a market that goes without saying.
+// rent_basis is the third and it is the ORIGINAL case: the confirm table has
+// asked this per sheet since 2026-08-29, because a lease sheet states a rate
+// and never the word annual or monthly. A CSV of the same leases had no way to
+// say it, so a leasing book was close to unimportable through this door while
+// the photographed version of it worked.
+const SHEET_CONSTANT_TARGETS = ["property_type", "transaction", "rent_basis"];
+
+// When a whole-file answer may be applied to a row at all. Only rent_basis
+// needs one: it belongs to a rent, and stamping it onto the sale rows of a
+// mixed book would attach a rent basis to deals that have no rent. The other
+// two are true of every row in the file by construction.
+const CONSTANT_APPLIES = {
+  rent_basis: (row) => String(row.rent_psf == null ? "" : row.rent_psf).trim() !== "",
+};
+
+/**
+ * Build one address out of the columns a sheet split it across.
+ *
+ * Only ever APPENDS what is missing. A sheet that repeats the city inside the
+ * address column ("6200 W Gowen Rd, Boise" plus a City of "Boise") must not
+ * become "6200 W Gowen Rd, Boise, Boise, ID" — that parses to a market of
+ * "Boise, ID" by luck today and to nonsense the day the parse changes.
+ *
+ * Does NOT expand a full state name. market.js keeps state CODES and reads
+ * "…, Boise, Idaho" as a market called "Idaho", so a silent expansion here
+ * would be this module inventing geography it deliberately knows nothing
+ * about. A spelled-out state is left alone and refused downstream, where the
+ * message names the two-letter code as the fix.
+ */
+function composeAddress(address, city, state) {
+  const parts = [text(address, 200)];
+  const has = (v) => new RegExp(`(^|,)\\s*${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*(,|$)`, "i")
+    .test(parts.join(", "));
+  for (const raw of [city, state]) {
+    const v = text(raw, 60);
+    if (v && !has(v)) parts.push(v);
+  }
+  return parts.filter(Boolean).join(", ");
+}
+
 /**
  * Suggest a mapping from a file's headers onto our fields.
  *
@@ -405,11 +473,18 @@ function suggestMapping(headers) {
  * than repairing: a mapping we quietly fixed is a mapping the broker did not
  * actually approve.
  */
-function validateMapping(mapping, headers) {
+function validateMapping(mapping, headers, constants = null) {
   const errors = [];
   if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) {
     return { ok: false, errors: ["No column mapping was supplied."] };
   }
+
+  // A sheet constant may satisfy a required field that no column can. Checked
+  // BEFORE the mapping, and refused rather than dropped: a constant we silently
+  // ignored would leave the broker looking at a screen that said Industrial
+  // while the import refused every row for having no property type.
+  const applied = validateConstants(constants);
+  errors.push(...applied.errors);
 
   // normalizedHeaderRow, not a bare normalizeHeader map: a header like "$"
   // that normalizes away entirely still gets a positional `column_N` key
@@ -423,7 +498,7 @@ function validateMapping(mapping, headers) {
       errors.push(`The file has no column called "${source}".`);
       continue;
     }
-    if (!MAPPABLE_TARGETS.includes(target)) {
+    if (!MAPPABLE_TARGETS.includes(target) && !ADDRESS_PART_TARGETS.includes(target)) {
       errors.push(`"${target}" is not a field we store.`);
       continue;
     }
@@ -434,12 +509,60 @@ function validateMapping(mapping, headers) {
     claimedBy.set(target, source);
   }
 
-  const missing = REQUIRED_TARGETS.filter((t) => !claimedBy.has(t));
+  // A required field is satisfied by a COLUMN or by a sheet constant. Nothing
+  // else changes: `address` and `deal_date` still have to come from the file,
+  // because neither is the same for every row.
+  const missing = REQUIRED_TARGETS.filter((t) =>
+    !claimedBy.has(t) && !Object.prototype.hasOwnProperty.call(applied.constants, t));
   if (missing.length) {
     errors.push(`Still needed: ${missing.join(", ")}.`);
   }
 
-  return { ok: errors.length === 0, errors };
+  // Answering for the whole sheet AND mapping a column for it is a
+  // contradiction the broker should settle, not one we should resolve by
+  // preferring whichever we happen to check first.
+  for (const t of Object.keys(applied.constants)) {
+    if (claimedBy.has(t)) {
+      errors.push(`${t} is both mapped to the column "${claimedBy.get(t)}" and answered for the whole file. Pick one.`);
+    }
+  }
+
+  return { ok: errors.length === 0, errors, constants: applied.constants };
+}
+
+/**
+ * The sheet-wide answers, validated through the SAME parsers a mapped column
+ * goes through. A constant is one value standing in for a column, so it has to
+ * clear the bar that column would have cleared — otherwise "Industral" is
+ * accepted here and then refused once per row, forty times, with the screen
+ * still showing it as the answer.
+ */
+function validateConstants(constants) {
+  const out = { constants: {}, errors: [] };
+  if (constants == null) return out;
+  if (typeof constants !== "object" || Array.isArray(constants)) {
+    out.errors.push("Those whole-file answers could not be read.");
+    return out;
+  }
+  const PARSE = {
+    property_type: parsePropertyType,
+    transaction: parseTransaction,
+    rent_basis: parseRentBasis,
+  };
+  for (const [key, raw] of Object.entries(constants)) {
+    if (!SHEET_CONSTANT_TARGETS.includes(key)) {
+      out.errors.push(`"${key}" cannot be answered once for a whole file.`);
+      continue;
+    }
+    // An empty answer is no answer, not an error: the screen renders these
+    // selects with nothing chosen, and an untouched one must read as absent
+    // rather than as a refusal the broker cannot see the cause of.
+    if (raw == null || String(raw).trim() === "") continue;
+    const parsed = PARSE[key](raw);
+    if (parsed.ok) out.constants[key] = parsed.value;
+    else out.errors.push(parsed.error);
+  }
+  return out;
 }
 
 /**
@@ -1100,7 +1223,7 @@ function validateEdit(existing, patch) {
  * wrong-file mistake rather than a data mistake.
  */
 function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null,
-                                hasMarket = null } = {}) {
+                                hasMarket = null, constants = null } = {}) {
   const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0, commented: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
@@ -1113,12 +1236,23 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
   // column, say) would pass validation and then be neutralized to
   // `_ignored_N` here because this array never produced that key to match.
   let headers = normalizedHeaderRow(table[0]);
+  // The whole-file answers, once validated. Kept out of the row loop so a bad
+  // one refuses the upload rather than repeating itself on every line.
+  let sheet = {};
   if (mapping) {
     // Validate BEFORE applying: an invalid mapping must refuse the upload, not
     // import a partial one. Same stance as every other refusal in this module.
-    const check = validateMapping(mapping, table[0]);
+    const check = validateMapping(mapping, table[0], constants);
     if (!check.ok) return { ...empty, errors: check.errors };
+    sheet = check.constants;
     headers = applyHeaderMapping(headers, mapping);
+  } else if (constants) {
+    // Constants without a mapping: an already-shaped file that still omits the
+    // one column everybody at that firm takes for granted. Validated on the
+    // same path, so nothing reaches a row unchecked just by arriving alone.
+    const check = validateConstants(constants);
+    if (check.errors.length) return { ...empty, errors: check.errors };
+    sheet = check.constants;
   }
   // `address` is the one column nothing works without, so it doubles as the
   // "is this even the template?" check. With a mapping applied it is always
@@ -1161,6 +1295,25 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     const obj = {};
     headers.forEach((h, c) => { if (h) obj[h] = cells[c]; });
 
+    // Put the address back together from the columns the sheet split it
+    // across, then drop the parts: they are not fields, and normalizeRow would
+    // not know what to do with them. Done BEFORE the constants below only
+    // because it reads nothing they write — the two are independent.
+    if (obj.address_city != null || obj.address_state != null) {
+      obj.address = composeAddress(obj.address, obj.address_city, obj.address_state);
+    }
+    delete obj.address_city;
+    delete obj.address_state;
+
+    // A whole-file answer fills a blank; a value in the row always wins. The
+    // file is the record and the answer is only what the file left unsaid — so
+    // a sheet that names the type on three of forty rows keeps those three.
+    for (const [key, value] of Object.entries(sheet)) {
+      if (String(obj[key] == null ? "" : obj[key]).trim() !== "") continue;
+      if (CONSTANT_APPLIES[key] && !CONSTANT_APPLIES[key](obj)) continue;
+      obj[key] = value;
+    }
+
     const result = normalizeRow(obj);
     if (!result.ok) {
       skipped++;
@@ -1186,8 +1339,12 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     if (hasMarket && !hasMarket(result.row.address)) {
       skipped++;
       if (errors.length < maxErrors) {
-        errors.push(`Line ${lineNo}: "${result.row.address}" needs a city and state — ` +
-          `write the whole address in one cell, like "${result.row.address}, Boise, ID"`);
+        // Names the two-letter code specifically: market.js keeps state CODES,
+        // so a spelled-out "Idaho" reads as a market called "Idaho" and lands
+        // here too — and "needs a city and state" alone is baffling advice to
+        // somebody who can see both words sitting in their file.
+        errors.push(`Line ${lineNo}: "${result.row.address}" needs a city and a two-letter ` +
+          `state — write the whole address in one cell, like "${result.row.address}, Boise, ID"`);
       }
       return;
     }
@@ -1883,6 +2040,10 @@ module.exports = {
   normalizeHeader,
   normalizedHeaderRow,
   suggestMapping,
+  composeAddress,
+  validateConstants,
+  ADDRESS_PART_TARGETS,
+  SHEET_CONSTANT_TARGETS,
   isRateHeader,
   validateMapping,
   applyHeaderMapping,

@@ -46,7 +46,10 @@ test("with the predicate, a city-less address is refused rather than misfiled", 
   assert.strictEqual(out.skipped, 1);
   assert.strictEqual(out.errors.length, 1);
   assert.match(out.errors[0], /Line 2:/, "the broker has to be told which row");
-  assert.match(out.errors[0], /city and state/, "and what is actually wrong");
+  // "a two-letter state" specifically: market.js keeps state codes, so a
+  // spelled-out "Idaho" lands here too, and "needs a city and state" alone is
+  // baffling advice to somebody who can see both words in their file.
+  assert.match(out.errors[0], /city and a two-letter state/, "and what is actually wrong");
   assert.match(out.errors[0], /Boise, ID/, "and what the fix looks like");
 });
 

@@ -75,6 +75,7 @@ const TABLES = [
   ["hub_notify",          "040-hub-note-emails.sql"],
   ["hub_email_prefs",     "040-hub-note-emails.sql"],
   ["org_branding",        "041-org-branding.sql"],
+  ["recent_searches",      "043-recent-searches.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -123,6 +124,12 @@ const COLUMNS = [
   // returns nothing and EVERY broker is told to add a credit name they can
   // see on their own screen.
   ["broker_profiles",   ["license_number"],                     "034-broker-license.sql"],
+  // 043's absence is SOFT, unlike most here: a bulk run still values every
+  // address and still writes its rows, it just cannot record where each
+  // report was filed, so the run table shows plain text instead of links.
+  // Named so the tool can say which file to run rather than leaving somebody
+  // hunting for why the addresses stopped opening.
+  ["bulk_job_items",    ["recent_item_id"],                     "043-recent-searches.sql"],
   // 035's absence is LOUD but total: listPortfolio names verified_key in its
   // SELECT and sbRequest throws on PostgREST's 400, so the whole desk read —
   // and every portfolio save — fails until it runs. Named here so the tool

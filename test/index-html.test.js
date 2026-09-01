@@ -673,12 +673,26 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
   }
 });
 
-test("empty desk copy no longer tells them to press Save", () => {
-  // The em dash came out on 2026-08-22 (owner's standing copy rule), which is
-  // why this pins the new wording. The assertion below it is the one carrying
-  // the test's actual name and must outlive any future rewording.
-  assert.match(html, /id="deskEmpty"[^>]*>Run a report and it will show up here\./);
-  assert.doesNotMatch(html, /press "Save to portfolio"/);
+test("empty desk copy names the way properties actually get there", () => {
+  // THIS TEST'S PREMISE REVERSED ON 2026-08-31, and the reversal is the point.
+  //
+  // It used to assert that the copy did NOT mention Save, because every
+  // signed-in search auto-saved itself and telling somebody to press a button
+  // that had already fired was the bug. The portfolio is opt-in now — it holds
+  // what a member says they OWN — so Save IS the mechanism and naming it is
+  // correct. "Run a report and it will show up here" became untrue the same
+  // day, which is why the old wording is pinned as FORBIDDEN rather than
+  // simply dropped: it reads perfectly well and would quietly promise the old
+  // behaviour back.
+  assert.doesNotMatch(html, /Run a report and it will show up here/,
+    "a report does not land on the desk by itself any more");
+  const m = html.match(/id="deskEmpty"[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(m, "#deskEmpty must still exist");
+  const copy = m[1];
+  assert.match(copy, /Save to portfolio/, "it has to name the control that does it");
+  assert.match(copy, /recent searches/i, "and the other door, for a report already run");
+  // Owner's standing copy rule (2026-08-22): no em dashes in copy.
+  assert.ok(!copy.includes("\u2014"), "no em dashes in copy");
 });
 
 test("a failed desk read says nothing has been lost, not just that it failed", () => {
@@ -2551,4 +2565,55 @@ test("stripping the state and ZIP does not cost a real unit designator", () => {
     "200 United Nations Plaza, New York, NY 10017", "500 Lot Ave, Dallas, TX 75201"]) {
     assert.equal(unitOf(address), null, address);
   }
+});
+
+// ---------------------------------------------------------------------------
+// A portfolio holds what you OWN (2026-08-31)
+//
+// Every signed-in search used to auto-save itself into the portfolio, which
+// made "Your properties" a log of everything the account had ever looked up.
+// saveHistory() now writes to /api/recents instead, and the ONLY portfolio
+// write left on that path is the pending "Refresh valuation" branch — which is
+// not an exception: the member already claimed that property, and clicking
+// Refresh on it is the ask.
+//
+// Source-scanned rather than executed, because the failure is a single line
+// coming back in a 20,000-line file and it would look entirely reasonable in a
+// diff. The route-level half of this rule lives in test/recents-run.test.js.
+// ---------------------------------------------------------------------------
+test("a search files itself under recents, never onto the desk", () => {
+  const body = html.match(/function saveHistory\(meta, data\)[\s\S]*?\n  \}\n/);
+  assert.ok(body, "saveHistory must still exist");
+  const src = body[0];
+
+  assert.match(src, /acctApi\("POST", "\/api\/recents"/,
+    "a completed search has to be recorded somewhere the member can reach it");
+
+  // The one surviving portfolio write, and the guard that keeps it honest.
+  const portfolioWrites = src.match(/acctApi\("POST", "\/api\/portfolio"/g) || [];
+  assert.equal(portfolioWrites.length, 1,
+    "exactly one portfolio write may remain in saveHistory: the Refresh branch");
+  assert.match(src, /pendingPortfolioRefresh &&\s*\n\s*pendingPortfolioRefresh\.address === meta\.address/,
+    "and it must stay gated on the member having asked to refresh THAT property");
+  assert.match(src, /id: refreshId/,
+    "the Refresh branch updates an existing item by id; it never creates one");
+});
+
+test("the signup import lands in recents, not on a new member's desk", () => {
+  // The worst instance of the old behaviour: whatever reports the browser
+  // happened to be holding became a portfolio, before anybody had seen the
+  // product or claimed anything.
+  const handler = html.match(/acctImportYes"\)\.addEventListener\("click"[\s\S]*?\n  \}\);/);
+  assert.ok(handler, "the import handler must still exist");
+  assert.match(handler[0], /acctApi\("POST", "\/api\/recents"/);
+  assert.doesNotMatch(handler[0], /\/api\/portfolio/,
+    "importing browser history must never fill a desk");
+});
+
+test("clearing recent searches clears the server copy too", () => {
+  // Otherwise "clear" empties this browser, leaves the list standing on the
+  // member's other devices, and repopulates itself here on the next fetch.
+  const handler = html.match(/clearHistoryBtn"\)\.addEventListener\("click"[\s\S]*?\n  \}\);/);
+  assert.ok(handler, "the clear handler must still exist");
+  assert.match(handler[0], /acctApi\("DELETE", "\/api\/recents"\)/);
 });

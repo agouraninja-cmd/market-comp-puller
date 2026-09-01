@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-08-31",
+    "type": "improvement",
+    "title": "A portfolio holds the properties you own",
+    "details": "Every signed-in search used to save itself onto My Desk, so \"Your properties\" was really a log of everything the account had ever looked up. A search now files itself under Recent searches, which moved server-side so it follows you across devices, and you add what is yours from the report or from the row. Bulk valuation lands there too: one click can put fifty addresses through it, and a broker pricing a prospect list owns none of them. Nothing already on a desk was touched."
+  },
+  {
     "date": "2026-08-30",
     "type": "improvement",
     "title": "The header stops selling a report to somebody already working",

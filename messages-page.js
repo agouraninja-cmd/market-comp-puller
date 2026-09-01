@@ -713,6 +713,21 @@ function renderMessagesBody(boot) {
         $("msgInput").style.height = "auto";
         state.attach = [];
         renderTray();
+        // Close the vault picker and clear its ticks. It stayed open over the
+        // message that had just been sent, with the comp still ticked while
+        // the tray below it was empty, so the page showed a comp as selected
+        // and as already gone at the same time. It also buried the composer,
+        // which is what made a comp and the sentence about it land as two
+        // messages instead of one.
+        $("msgPicker").className = "msg-panel msg-hide";
+        $("msgPickMsg").textContent = "";
+        // Guarded: with no vault loaded yet renderPicker writes its empty-vault
+        // invitation, and leaving that sitting inside a hidden panel would show
+        // it to somebody who opens the picker before the fetch lands.
+        if (state.vault) renderPicker();
+        // Back to the box, so the next thing typed goes where the reader is
+        // already looking.
+        try { $("msgInput").focus(); } catch (e) {}
         // Read straight back rather than echoing locally: the server owns the
         // cursor, and one source for what is in a thread means an optimistic
         // bubble can never disagree with what everybody else sees.

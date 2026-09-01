@@ -10028,8 +10028,15 @@ function marketIntelRows(market, propertyType) {
 // the page, and above it the footer is where every other surface keeps these.
 // A member could reach their private book and then had no way onward except
 // the wordmark.
-const FOOTER_LINK_COLS =
-  `<div class="cols">` +
+// Under the wall, anonymous visitors already have Method and FAQ on `/`.
+// Pointing those two footer labels at /how-it-works would send them through
+// a 302 (losing #faq) or, before the 302 existed, a homepage clone.
+// Members keep the real methodology page, because their `/` is the workspace
+// and those anchors are not there.
+function footerLinkCols(signedIn = false) {
+  const howHref = (ACCOUNT_WALL && !signedIn) ? "/#how-it-works" : "/how-it-works";
+  const faqHref = (ACCOUNT_WALL && !signedIn) ? "/#faq" : "/how-it-works#faq";
+  return `<div class="cols">` +
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
   `<li><a href="/brokers">Brokers</a></li>` +
@@ -10040,8 +10047,8 @@ const FOOTER_LINK_COLS =
   // Pricing had no URL at all until 2026-08-28 — only a modal inside
   // index.html, which cannot be linked, indexed, or sent in an email.
   `<li><a href="/pricing">Pricing</a></li>` +
-  `<li><a href="/how-it-works">How it works</a></li>` +
-  `<li><a href="/how-it-works#faq">FAQ</a></li>` +
+  `<li><a href="${howHref}">How it works</a></li>` +
+  `<li><a href="${faqHref}">FAQ</a></li>` +
   `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
@@ -10067,16 +10074,18 @@ const FOOTER_LINK_COLS =
   `<li><a href="https://x.com/comp_ninja_co" target="_blank" rel="noopener noreferrer">X</a></li>` +
   `</ul></div>` +
   `</div>`;
+}
 
-const MARKET_FOOTER =
-  `<footer><div class="wrap">` +
+function marketFooter(signedIn = false) {
+  return `<footer><div class="wrap">` +
   `<div><div class="brand">${CN_LOGO_LIGHT}<span class="wordmark">Comp<b style="color:#EF4444">Ninja</b></span></div>` +
   `<p>Every valuation is an automated estimate, not an appraisal. CompNinja is not a licensed brokerage; we ` +
   `connect you with local brokers for opinions of value. Comparables derive from publicly available data; ` +
   `verify independently before underwriting.</p>` +
   `<p><a href="mailto:info@compninja.co">info@compninja.co</a></p>` +
   `<p>&copy; 2026 CompNinja LLC</p></div>` +
-  `<div class="right">${FOOTER_LINK_COLS}</div></div></footer>`;
+  `<div class="right">${footerLinkCols(signedIn)}</div></div></footer>`;
+}
 
 // Client script for the market pages' comp map. Mirrors index.html's geocoding
 // stack (Census proxy first — a POST since 2026-08-17, so the address stays out
@@ -10808,7 +10817,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
     INAPP_BOOT +
-    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
+    `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${marketFooter(signedIn)}\n` +
     // Opt-in, never on every page: this is a WORK surface affordance, and a
     // marketing page read by a stranger is not that. The block ships hidden
     // either way, so the switch is about which pages carry the markup at all.
@@ -10849,6 +10858,66 @@ function sendNotFound(req, res, message) {
     body,
     signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
   }));
+}
+
+function sendRedirect(res, location) {
+  res.writeHead(302, { location, "cache-control": "no-store" });
+  return res.end();
+}
+
+// Internal dashboards (/admin, /dev, /hq, /contacts, /admin/heroes) used to
+// answer 200 with an "Enter admin key" form for anyone who typed the URL.
+// That advertised the tools and the shared-secret gate. Unauthenticated
+// requests now look like any other missing page; a valid cn_admin cookie or
+// x-admin-key still serves the dashboard. A browser that asks for HTML and
+// has no cookie gets a password wall that does not mention admin keys, so
+// the team can still type the secret without the public form. Curl and the
+// test suite send Accept: */* and therefore see the ordinary 404.
+function sendPrivateWall(req, res) {
+  const body =
+    `<section style="padding:56px 0">` +
+    `<h1>This page isn't public.</h1>` +
+    `<form id="privateGate" style="margin-top:24px;max-width:20rem">` +
+    `<label class="lab" for="privatePass">Password</label>` +
+    `<input id="privatePass" type="password" autocomplete="current-password" required ` +
+    `style="display:block;width:100%;margin:8px 0;padding:10px;font:inherit">` +
+    `<button class="btn" type="submit">Continue</button>` +
+    `<p id="privateErr" style="color:var(--red);margin-top:8px"></p>` +
+    `</form></section>` +
+    `<script>(function(){var f=document.getElementById("privateGate");` +
+    `if(!f)return;f.addEventListener("submit",function(e){e.preventDefault();` +
+    `var err=document.getElementById("privateErr");if(err)err.textContent="";` +
+    `fetch("/api/admin-access",{method:"POST",headers:{"content-type":"application/json"},` +
+    `body:JSON.stringify({key:document.getElementById("privatePass").value})})` +
+    `.then(function(r){if(!r.ok)throw r;location.reload();})` +
+    `.catch(function(){if(err)err.textContent="Incorrect.";});});})();</script>`;
+  res.writeHead(401, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-robots-tag": "noindex, nofollow",
+  });
+  res.end(marketShell({
+    title: "Page not found | CompNinja",
+    description: "That page doesn't exist.",
+    canonical: `${SITE_URL}/`,
+    noindex: true,
+    body,
+    signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+  }));
+}
+
+function sendAdminSurface(req, res, html) {
+  if (!ADMIN_KEY) return sendNotFound(req, res);
+  if (!isAdminRequest(req)) {
+    if (/text\/html/i.test(String(req.headers.accept || ""))) return sendPrivateWall(req, res);
+    return sendNotFound(req, res);
+  }
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-robots-tag": "noindex, nofollow",
+  });
+  return res.end(html);
 }
 
 // Coarse on purpose: this only keeps the obvious non-humans (search
@@ -12850,16 +12919,25 @@ function renderPrivacyPageHTML(signedIn) {
   return marketShell({ title, description, canonical, body, signedIn });
 }
 
+function renderContactPageHTML(signedIn) {
+  const title = "Contact | CompNinja";
+  const canonical = `${SITE_URL}/contact`;
+  const description = "Contact CompNinja at info@compninja.co.";
+  const body =
+    `<h1>Contact</h1>` +
+    `<p class="sub"><a href="mailto:info@compninja.co">info@compninja.co</a></p>`;
+  return marketShell({ title, description, canonical, body, signedIn });
+}
+
 function renderHowItWorksHTML({ home = false, signedIn = false } = {}) {
   // This content is BOTH the /how-it-works page and, under ACCOUNT_WALL, what
   // a logged-out visitor gets at `/` itself (200, not a redirect — the root
   // domain is the strongest URL the site has, and Search Console showed
   // Google never crawled the redirect it used to answer with). `home: true`
-  // renders the root flavor: canonical `/`, a head-term title. The
-  // /how-it-works route passes `home: ACCOUNT_WALL` so that while the wall is
-  // up the two identical pages canonicalize to ONE URL (`/`) instead of
-  // splitting their signals; with the wall off, `/` is the app again and
-  // /how-it-works reverts to canonicalizing itself.
+  // renders the root flavor: canonical `/`, a head-term title. Anonymous
+  // requests to /how-it-works 302 onto `/#how-it-works` while the wall is up;
+  // signed-in visitors and the wall-off rollback still render this page with
+  // home: false so it is not a silent homepage clone.
   //
   // The non-home title matches a question people actually type; the home one
   // carries the head terms, and the H1/content still target the rest.
@@ -13158,7 +13236,7 @@ ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
   </div>
 
   <div class="band"><div class="wrap">
-    <section class="rv" data-rv>
+    <section id="how-it-works" class="rv" data-rv>
       <div class="kicker">Method</div>
       <h2 class="h">How a report comes together.</h2>
       <div class="steps" data-rv>${steps}</div>
@@ -13259,7 +13337,7 @@ ${marketBar(signedIn, home && !signedIn ? "/" : "/how-it-works")}
      the second time the copies drifted (see theme.test.js on the dark-ink
      fix). One constant means the landing page cannot fall behind /brokers
      again. -->
-${MARKET_FOOTER}
+${marketFooter(signedIn)}
 <script>
 (function(){
   var f=document.getElementById("landingSearch");
@@ -24756,30 +24834,31 @@ const server = http.createServer((req, res) =>
     return res.end(JSON.stringify(list));
   }
 
-  // --- How It Works — the standalone proof/FAQ page (header + footer nav).
-  // Static content, so it caches for an hour like the market pages.
-  // While the wall is up, `/` serves this same content to logged-out
-  // visitors, so this URL canonicalizes to `/` (home: true) rather than
-  // splitting one page's signals across two indexed URLs; wall off, `/` is
-  // the app again and this page canonicalizes itself. ---
+  // --- How It Works. Under the account wall the landing page at `/` already
+  // holds the Method section (`#how-it-works`) and the FAQ (`#faq`), so an
+  // anonymous request here 302s onto those anchors rather than serving the
+  // same bytes at a second URL. Signed-in visitors, and the wall-off
+  // rollback, still get the methodology page with its own title. ---
   if (req.method === "GET" && pagePath === "/how-it-works") {
-    // Cookie PRESENCE only, same rule as the wall at `/`: this runs on every
-    // view and getSessionUser() reads the database. A signed-in visitor gets
-    // app chrome (My Desk / Run a report) instead of the signup buttons —
-    // the static signed-out header here used to read as having been logged
-    // out mid-session. Presentation only; a forged cookie buys different
-    // buttons and nothing else.
     const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
+    if (ACCOUNT_WALL && !signedIn) return sendRedirect(res, "/#how-it-works");
     res.writeHead(200, {
       "content-type": "text/html; charset=utf-8",
-      // The signed-in variant must never be cached (it would outlive a
-      // sign-out); the anonymous one keeps its hour cache for crawlers, with
-      // `vary: cookie` so a browser copy cached before signing in is not
-      // re-served after.
       "cache-control": signedIn ? "no-store" : "public, max-age=3600",
       vary: "cookie",
     });
-    return res.end(renderHowItWorksHTML({ home: ACCOUNT_WALL, signedIn }));
+    return res.end(renderHowItWorksHTML({ home: false, signedIn }));
+  }
+
+  // Common URLs that 404'd on the live site. /blog has no honest target and
+  // stays a 404. /contact is a one-line page (the public email), not a new
+  // marketing surface.
+  if (req.method === "GET" && pagePath === "/login") return sendRedirect(res, "/?auth=signin");
+  if (req.method === "GET" && pagePath === "/signup") return sendRedirect(res, "/?auth=signup");
+  if (req.method === "GET" && pagePath === "/about") return sendRedirect(res, "/leadership");
+  if (req.method === "GET" && pagePath === "/app") return sendRedirect(res, "/desk");
+  if (req.method === "GET" && pagePath === "/contact") {
+    return sendShellPage(req, res, (signedIn) => renderContactPageHTML(signedIn));
   }
 
   // --- 1031 identification worksheet. Content lives in guide-1031.js (a
@@ -25019,15 +25098,8 @@ const server = http.createServer((req, res) =>
     });
     return;
   }
-  if (req.method === "GET" && req.url === "/dev") {
-    // Same triple-noindex treatment as /admin (its own meta tag, this header,
-    // and the robots.txt Disallow).
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderDevHubHTML());
+  if (req.method === "GET" && pagePath === "/dev") {
+    return sendAdminSurface(req, res, renderDevHubHTML());
   }
 
   // --- Contacts: the internal rolodex. Every response returns the FULL list so
@@ -25077,13 +25149,8 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  if (req.method === "GET" && req.url === "/contacts") {
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderContactsHTML());
+  if (req.method === "GET" && pagePath === "/contacts") {
+    return sendAdminSurface(req, res, renderContactsHTML());
   }
 
   // --- Analytics: PII-free aggregates (ADMIN_KEY-gated) + a self-contained
@@ -25137,24 +25204,11 @@ const server = http.createServer((req, res) =>
       });
     return;
   }
-  if (req.method === "GET" && req.url === "/admin") {
-    // Third noindex layer alongside the page's own meta tag and the
-    // robots.txt Disallow — belt-and-suspenders against a crawler that
-    // ignores one of the other two (same pattern as /market-preview/).
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderAdminHTML());
+  if (req.method === "GET" && pagePath === "/admin") {
+    return sendAdminSurface(req, res, renderAdminHTML());
   }
-  if (req.method === "GET" && req.url.split("?")[0] === "/admin/heroes") {
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(HEROREVIEW.renderHeroReviewHTML({ CN_LOGO }));
+  if (req.method === "GET" && pagePath === "/admin/heroes") {
+    return sendAdminSurface(req, res, HEROREVIEW.renderHeroReviewHTML({ CN_LOGO }));
   }
   if (req.method === "GET" && req.url.split("?")[0] === "/api/admin/heroes") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
@@ -25344,15 +25398,8 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  if (req.method === "GET" && req.url === "/hq") {
-    // Same triple-noindex treatment as /admin (its own meta tag, this header,
-    // and the robots.txt Disallow).
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store",
-      "x-robots-tag": "noindex, nofollow",
-    });
-    return res.end(renderHqHTML());
+  if (req.method === "GET" && pagePath === "/hq") {
+    return sendAdminSurface(req, res, renderHqHTML());
   }
 
   // --- SEO: robots.txt + sitemap (homepage + market directory + every market
@@ -25368,7 +25415,7 @@ const server = http.createServer((req, res) =>
   }
   if (req.method === "GET" && pagePath === "/robots.txt") {
     res.writeHead(200, { "content-type": "text/plain" });
-    return res.end(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /contacts\nDisallow: /desk\nDisallow: /dev\nDisallow: /hq\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
+    return res.end(`User-agent: *\nAllow: /\nDisallow: /desk\nDisallow: /market-preview/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);
   }
   if (req.method === "GET" && pagePath === "/sitemap.xml") {
     const merged = allMarketPages();

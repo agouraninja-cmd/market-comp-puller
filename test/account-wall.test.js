@@ -116,45 +116,33 @@ test("the wall serves the landing page at the root", async (t) => {
     assert.match(html, /"@type":"WebApplication"/, "the crawler-facing product entity now lives at /");
   });
 
-  await t.test("/how-it-works canonicalizes to / while the wall is up", async () => {
-    // Same content at two URLs; the signals must consolidate on ONE.
-    const html = await (await get("/how-it-works")).text();
-    assert.match(html, /<link rel="canonical" href="[^"]*\/"\/>/,
-      "under the wall this page is a duplicate of / and must say so");
+  await t.test("/how-it-works is not a silent homepage clone", async () => {
+    // Live 2026-08-31: this URL answered 200 with the same title and H1 as `/`.
+    // Anonymous visitors now 302 onto the Method section that already lives
+    // on the landing page; members keep a real methodology page of their own.
+    const r = await get("/how-it-works");
+    assert.equal(r.status, 302, "an anonymous visitor must not get a second copy of /");
+    assert.equal(r.headers.get("location"), "/#how-it-works");
+    assert.match(r.headers.get("cache-control") || "", /no-store/);
   });
 
   // The header's Home link (2026-08-28) must not point at the page drawing it.
-  // Under the wall `/` and /how-it-works are the SAME render, so a link that
-  // is right on /markets is a self-link on both of these.
-  await t.test("neither home URL offers a Home link back to itself", async () => {
-    for (const p of ["/", "/how-it-works"]) {
-      const html = await (await get(p)).text();
-      assert.ok(!html.includes(`<a href="/">Home</a>`),
-        p + " is the home page under the wall and must not link back to it");
-    }
+  // Under the wall `/` is the landing page, so a link that is right on
+  // /markets is a self-link here.
+  await t.test("the landing does not offer a Home link back to itself", async () => {
+    const html = await (await get("/")).text();
+    assert.ok(!html.includes(`<a href="/">Home</a>`),
+      "/ is the home page under the wall and must not link back to it");
     // The link is not simply missing everywhere: a page that is not home has it.
     const markets = await (await get("/markets")).text();
     assert.ok(markets.includes(`<nav><a href="/">Home</a><details>`),
       "/markets is where a walled visitor most needs the way back");
   });
 
-  // Neither visitor gets Home here, for two DIFFERENT reasons, and the page
-  // cannot tell you which one is doing the work — so both are pinned.
-  //
-  // Anonymously, under the wall, /how-it-works and `/` are one render, so a
-  // Home link would point at the page being read. That has always been true.
-  //
-  // For a member it is the 2026-08-29 rule: their `/` is the workspace and
-  // the nav carries Workspace instead. Before that call, this same URL was
-  // the sharpest illustration of the old behaviour — same page, same wall,
-  // opposite answers. Now the answers agree by coincidence, which is exactly
-  // why the member case needs its own assertion: if the suppression were
-  // reverted, the anonymous half would still pass and hide the change.
-  await t.test("neither a visitor nor a member gets Home on /how-it-works", async () => {
-    const anon = await (await get("/how-it-works")).text();
-    assert.ok(!anon.includes(`<a href="/">Home</a>`),
-      "anonymously this page IS `/`, so Home would link to itself");
-
+  // A member's `/` is the workspace, so their methodology page must not
+  // carry a Home row that would duplicate Workspace. Anonymous /how-it-works
+  // is a redirect, not a second home render, so it is no longer in this pin.
+  await t.test("a member reading /how-it-works gets Workspace, not Home", async () => {
     const member = await (await get("/how-it-works", FAKE_SESSION)).text();
     assert.ok(!member.includes(`<a href="/">Home</a>`),
       "a member's / is the workspace, and the nav carries Workspace instead");
@@ -228,7 +216,7 @@ test("the wall serves the landing page at the root", async (t) => {
   });
 
   await t.test("the public pages are untouched", async () => {
-    for (const p of ["/how-it-works", "/markets", "/brokers", "/terms", "/privacy", "/healthz"]) {
+    for (const p of ["/markets", "/brokers", "/terms", "/privacy", "/healthz"]) {
       assert.equal((await get(p)).status, 200, p + " must stay public");
     }
   });
@@ -237,7 +225,7 @@ test("the wall serves the landing page at the root", async (t) => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
     assert.match(xml, /<loc>[^<]*\/<\/loc>/, "/ is a real 200 now and the strongest URL the site has");
     assert.ok(!/how-it-works/.test(xml),
-      "under the wall /how-it-works canonicalizes to /; listing a self-declared duplicate is a soft error");
+      "under the wall /how-it-works is a 302 onto /; listing the redirect is a soft error");
   });
 });
 
@@ -290,26 +278,27 @@ test("/how-it-works does not read as logged out to a signed-in visitor", async (
       "a cached signed-in copy would outlive a sign-out");
   });
 
-  await t.test("the anonymous variant still caches, but varies on the cookie", async () => {
-    const r = await fetch(srv.base + "/how-it-works");
-    assert.match(r.headers.get("cache-control") || "", /max-age/, "the SEO-facing page keeps its hour cache");
-    assert.match((r.headers.get("vary") || "").toLowerCase(), /cookie/,
-      "without this, the hour-old signed-out copy survives signing in");
+  await t.test("anonymous /how-it-works is a redirect, not a cached duplicate", async () => {
+    const r = await fetch(srv.base + "/how-it-works", { redirect: "manual" });
+    assert.equal(r.status, 302);
+    assert.equal(r.headers.get("location"), "/#how-it-works");
+    assert.match(r.headers.get("cache-control") || "", /no-store/,
+      "a cached 302 would keep sending people at a URL we just retired as a clone");
   });
 });
 
-test("/how-it-works carries the signup controls", async (t) => {
+test("the landing carries the signup controls", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
   await t.test("both auth doors are linked", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     assert.match(html, /href="\/\?auth=signup"/, "a visitor sent here must be able to create an account");
     assert.match(html, /href="\/\?auth=signin"/, "and an existing customer must be able to log in");
   });
 
   await t.test("nothing on the page links back into a redirect", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     // The closing CTA used to point at "/", which under the wall bounces the
     // visitor straight back to the page they are standing on.
     assert.ok(!/class="btn"\s+href="\/"/.test(html), "no button may point at the walled app root");
@@ -317,13 +306,13 @@ test("/how-it-works carries the signup controls", async (t) => {
   });
 
   await t.test("the redundant top kicker is gone", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     assert.ok(!/class="kicker">How it works</.test(html), "the page IS the front door; it need not label itself");
     assert.match(html, /class="kicker">Method</, "the other section kickers stay");
   });
 
   await t.test("it carries the product's structured data", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     // It moved off index.html, which no crawler reaches under the wall.
     assert.match(html, /"@type":"WebApplication"/);
     assert.match(html, /"@type":"FAQPage"/, "the FAQ markup that was already here must survive");

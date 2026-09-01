@@ -206,7 +206,7 @@ test("the cost answer matches what the product actually sells", async (t) => {
   // answer about this product. It claimed "there is no subscription" while
   // $129/mo Pro, a $990/yr founding plan and a $20 report unlock were all
   // live and buyable.
-  const pages = ["/", "/how-it-works"];
+  const pages = ["/"];
 
   await t.test("it no longer denies the subscription that exists", async () => {
     for (const p of pages) {
@@ -269,8 +269,8 @@ test("the cost answer matches what the product actually sells", async (t) => {
     // inside the Explore dropdown. The owner's own read is that broker
     // relationships are the better acquisition lever than SEO, so the page
     // that every visitor lands on should say what a broker gets and where to
-    // go. Asserted on both surfaces because `/` and /how-it-works serve the
-    // same bytes while the wall is up.
+    // go. Asserted on the landing page, which is the only anonymous surface
+    // that still carries this copy once /how-it-works 302s onto it.
     //
     // The heading became "Where a comp can go." on 2026-08-29, when the page
     // went broker-first throughout. "What brokers get" was right for a
@@ -323,14 +323,14 @@ test("the cost answer matches what the product actually sells", async (t) => {
   });
 
   await t.test("it still leads with the free tier, because that is true", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     assert.match(html, /free/i, "reports genuinely are free with an account; that is the offer");
   });
 
   await t.test("the answer is carried into the FAQ structured data too", async () => {
     // One array, two surfaces. If they ever diverge, the invisible one is the
     // one that reaches search results.
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/")).text();
     const ld = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
     assert.ok(ld, "the page must still emit structured data");
     const graph = JSON.parse(ld[1])["@graph"];
@@ -469,7 +469,7 @@ test("the landing names the real search cost without a stat strip", async (t) =>
   t.after(() => srv.stop());
 
   await t.test("the old numbers are gone from both pages", async () => {
-    for (const p of ["/", "/how-it-works"]) {
+    for (const p of ["/"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/3&ndash;6/.test(html), p + " must not undersell the comp count");
       assert.ok(!/~40s/.test(html), p + " must not promise a 40-second report");
@@ -524,12 +524,12 @@ test("the landing is a product page, not two copies of a methodology exhibit", a
 // comp puller stop being the centre of attention and leave the top of the
 // page; before this, the hero's CTA WAS the address field and the exhibit
 // beside it was a one-property report. Nothing pinned that, so nothing stopped
-// it drifting back — these do. Asserted on both surfaces, because `/` and
-// /how-it-works serve the same bytes while the wall is up.
+// it drifting back — these do. Asserted on `/`, because that is the landing
+// a stranger actually arrives on; /how-it-works 302s onto it under the wall.
 test("the landing leads with the archive, not the address field", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
-  const pages = ["/", "/how-it-works"];
+  const pages = ["/"];
 
   await t.test("the vault is the first beat and the search sits below Method", async () => {
     for (const p of pages) {

@@ -2665,7 +2665,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
-              <option value="tenant_rep">Tenant rep shop</option>
             </select>
           </div>
           <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
@@ -2708,7 +2707,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
-                <option value="tenant_rep">Tenant rep shop</option>
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
@@ -13788,7 +13786,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
-  // The three shops (migrations 036 and 037), Transition Plan v2 §6.
+  // The two shops (migration 036), Transition Plan v2 §6. A tenant rep shop
+  // was a third between 2026-08-21 and 2026-08-31 and was withdrawn.
   //
   // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
   // require. test/index-html.test.js pins the two together, which is the
@@ -13805,13 +13804,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       label: "Development shop",
       arrivals: "land comps, rent comps, absorption studies and feasibility packets",
       shelfType: "Land",
-    },
-    tenant_rep: {
-      label: "Tenant rep shop",
-      arrivals: "lease abstracts, rent comps and market surveys",
-      // Empty on purpose, not an oversight: no property type names a tenant
-      // rep's subject the way Land names a development shop's.
-      shelfType: "",
     },
   };
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
@@ -14485,10 +14477,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sel = document.getElementById("firmShopSelect");
     const state = document.getElementById("firmShopState");
     const copy = shopCopy(firm.kind);
-    // Was a two-way ternary until 037. Reading the kind back through the
-    // same map the words come from means a fourth shop is a map entry and an
-    // <option>, not a third branch somebody forgets: an unrecognized kind
-    // lands on broker here for exactly the reason shopCopy() does.
+    // Reading the kind back through the same map the words come from means a
+    // shop is a map entry and an <option>, never a branch somebody forgets in
+    // one place: an unrecognized kind lands on broker here for exactly the
+    // reason shopCopy() does. That is what makes WITHDRAWING a kind safe as
+    // well as adding one — a firm still holding the retired 'tenant_rep'
+    // reads as a broker shop instead of showing an empty select.
     sel.value = SHOP_COPY[firm.kind] ? firm.kind : "broker";
     sel.disabled = !firm.canManage;
     state.textContent = firm.canManage
@@ -14668,7 +14662,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // arrive as a sentence under the name box about a question further up the
     // form. Same words either way (org-access.js validateShopKind owns them).
     if (!kind) {
-      err.textContent = "Choose whether this is a broker shop, a development shop or a tenant rep shop.";
+      err.textContent = "Choose whether this is a broker shop or a development shop.";
       err.classList.remove("hidden");
       return;
     }

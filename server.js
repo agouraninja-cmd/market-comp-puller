@@ -12135,13 +12135,13 @@ const TEAM = [
 //
 // ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
 // page module, which keeps that module pure and — more to the point — keeps
-// the three shop sentences single-sourced. They are read here by the invite
+// the shop sentences single-sourced. They are read here by the invite
 // email, the create box in index.html and now this page; a fourth hand-typed
 // copy is the one that goes stale, so test/firms-page.test.js fails the build
 // if any of them appears as a literal in firms-page.js.
 // ---------------------------------------------------------------------------
 function renderFirmsPageHTML(signedIn) {
-  const title = "Firm Accounts for Brokerages, Developers & Tenant Reps | CompNinja";
+  const title = "Firm Accounts for Brokerages and Development Shops | CompNinja";
   const canonical = `${SITE_URL}/firms`;
   // Kept under the ~160 characters Google renders.
   const description =

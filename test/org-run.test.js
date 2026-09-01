@@ -884,15 +884,17 @@ test("what an invited colleague actually receives", async (t) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migrations 036 and 037) — Transition Plan v2 §6's customer
-// types, plus the tenant rep shop added on top of it 2026-08-21.
+// Shop kind (migration 036) — Transition Plan v2 §6's customer types. A
+// tenant rep shop was a third kind from 2026-08-21 and was withdrawn on
+// 2026-08-31; the route refusing it is the whole wall, since 037's CHECK
+// still accepts the string.
 //
 // The rules worth executing rather than arguing: the question cannot be
 // answered by silence, changing the answer is an admin's job, and the answer
 // survives a fresh read. org-access.test.js proves the pure half with no
 // database; this is the half that writes a column.
 // ---------------------------------------------------------------------------
-test("a firm is one of three shops, and says which", async (t) => {
+test("a firm is one of two shops, and says which", async (t) => {
   const tables = seedTables();
   const ctx = await bootWithDb(tables);
   t.after(() => ctx.stop());
@@ -908,7 +910,7 @@ test("a firm is one of three shops, and says which", async (t) => {
       const r = await create(body);
       assert.equal(r.status, 400, JSON.stringify(body));
       assert.match((await r.json()).error,
-        /broker shop, a development shop or a tenant rep shop/);
+        /broker shop or a development shop/);
     }
     assert.equal(tables.orgs.length, 0, "and nothing was written");
   });
@@ -945,29 +947,25 @@ test("a firm is one of three shops, and says which", async (t) => {
     assert.equal((await myOrg(MIKE)).orgs[0].kind, "broker", "the colleague reads the new words too");
 
     for (const junk of ["enterprise", "", true, "dev", "brokerage",
-                        "tenant", "tenant rep", "tenant-rep"]) {
+                        "tenant_rep", "Tenant_Rep", "tenant", "tenant rep", "tenant-rep"]) {
       assert.equal((await settings(BRAD, { kind: junk })).status, 400, JSON.stringify(junk));
     }
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "broker", "a refused change changed nothing");
 
     // Case and padding are NORMALIZED on the way in rather than refused, the
     // way validateOrgName collapses a name. The column may only ever hold the
-    // three exact values (037's CHECK says so, widening 036's), and that is
-    // what this proves: the write path cleans, the read path in org-access.js
-    // stays strict.
+    // two exact values, and that is what this proves: the write path cleans,
+    // the read path in org-access.js stays strict.
     assert.equal((await settings(BRAD, { kind: "  DEVELOPMENT " })).status, 200);
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "development");
     assert.equal(tables.orgs[0].kind, "development", "stored lower case, never as typed");
 
-    // 037's value, driven all the way to the column. The fake database does
-    // not enforce a CHECK, so this cannot prove Supabase will accept it — that
-    // is what running the migration before the deploy is for — but it does
-    // prove every layer above the column agrees on the exact string, which is
-    // the half that a typo would break silently.
-    assert.equal((await settings(BRAD, { kind: " Tenant_Rep " })).status, 200);
-    assert.equal(tables.orgs[0].kind, "tenant_rep", "underscored, lower case, never as typed");
-    assert.equal((await myOrg(MIKE)).orgs[0].kind, "tenant_rep",
-      "and the colleague reads the new words too");
+    // The withdrawn kind, driven all the way to the route rather than argued
+    // about in the module. 037's CHECK still ACCEPTS 'tenant_rep' — nothing
+    // in Postgres would stop this write — so the settings route refusing it
+    // above is the only thing keeping the value out of the column, and that
+    // refusal is worth executing here as well as in org-access.test.js.
+    assert.equal(tables.orgs[0].kind, "development", "the retired kind never reached the column");
   });
 
   await t.test("the fake never had to guess at a query it did not understand", () => {
@@ -1079,7 +1077,7 @@ async function firmWithMike(t) {
   const { db, srv, stop } = await bootWithDb(tables);
   t.after(stop);
   const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
-    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "tenant_rep" }),
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
   }))).json();
   await fetch(srv.base + "/api/org/invite", as(BRAD, {
     method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),

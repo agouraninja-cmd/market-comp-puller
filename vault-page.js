@@ -888,7 +888,7 @@ a.btn.ghost:hover{color:var(--ink)}
       <div class="msg bad hide" id="propsErr">Couldn&rsquo;t load your properties just now.
         Nothing has been lost. Refresh in a moment.</div>
       <div class="invite hide" id="propsEmpty">
-        <p>Nothing here yet. Your portfolio holds the properties you own &mdash; run a report and
+        <p>Nothing here yet. Your portfolio holds the properties you own. Run a report and
           use <strong>Save to portfolio</strong>, or add one from your recent searches.</p>
       </div>
       <div class="tw hide" id="propsWrap"><table id="propsTbl">
@@ -2101,10 +2101,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // A cell is a BUTTON only when there is a panel behind it to open. Rendering
   // an affordance over a hidden panel would be a control that does nothing,
   // which is worse than a plain figure.
-  function stripCell(lab,fig,sub,target,ok){
+  // The title argument is optional and only the properties strip passes one.
+  // because "Between checks" needs to say outright what the figure is not --
+  // see the call site.
+  function stripCell(lab,fig,sub,target,ok,title){
     var tag=target?"button":"div",
         cls="scell"+(target?" act":""),
-        attr=target?' type="button" data-open="'+target+'"':"";
+        attr=(target?' type="button" data-open="'+target+'"':"")+
+             (title?' title="'+escA(title)+'"':"");
     return "<"+tag+' class="'+cls+'"'+attr+'><span class="slab">'+lab+"</span>"+
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
@@ -4211,6 +4215,13 @@ a.btn.ghost:hover{color:var(--ink)}
       // "Between checks", and the note names its own sample. This is not a
       // return: it compares each property's last two check-ins, over only
       // the properties checked at least twice, with no time window at all.
+      // Said outright, because the label alone reads as a portfolio return and
+      // the figure is not one: it compares each property's last two check-ins,
+      // over only the properties checked at least twice, with no time window at
+      // all -- one pair may be a day apart and another eight months.
+      var BETWEEN_TITLE="Change in combined likely value between the last two checks of each "+
+        "property checked at least twice. Checks happen when you re-run a report, "+
+        "so this is not a return over any period of time.";
       var betweenNote=bookPct==null?"re-run a property to start the trail"
         :(pairedN===items.length?"all "+items.length+" properties"
           :pairedN+" of "+items.length+" properties")+", last check vs the one before";
@@ -4219,7 +4230,8 @@ a.btn.ghost:hover{color:var(--ink)}
         stripCell("Properties",String(items.length),typeNote,"")+
         stripCell("Combined likely value",combined?money(combined):"&mdash;",
           "from each property's last run","")+
-        stripCell("Between checks",bookPct==null?"&mdash;":pctSpan(bookPct),betweenNote,"");
+        stripCell("Between checks",bookPct==null?"&mdash;":pctSpan(bookPct),betweenNote,"",false,
+          bookPct==null?"":BETWEEN_TITLE);
     }else{
       strip.className="strip hide";strip.innerHTML="";
     }

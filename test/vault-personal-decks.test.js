@@ -2,6 +2,8 @@ const test = require("node:test");
 const assert = require("node:assert");
 const crypto = require("node:crypto");
 const vm = require("node:vm");
+const fs = require("node:fs");
+const path = require("node:path");
 const shared = require("./helpers/boot");
 const fake = require("./helpers/fake-supabase");
 const { renderVaultBody } = require("../vault-page.js");
@@ -151,6 +153,94 @@ test("no heading collides with the two market-ish ones this page already had", (
   assert.ok(labels.includes("Your watchlist"), "the watchlist deck lost its name");
   assert.ok(!labels.includes("Your markets"),
     "'Your markets' is #rollupSec's h2 — a deck by that name is a collision");
+});
+
+// ---------------------------------------------------------------------------
+// Rules that came WITH the portfolio from /desk on 2026-09-01. Each was earned
+// on the workspace and pinned in test/index-html.test.js; the surface moved,
+// so these moved with it rather than lapsing. See that file's retirement note
+// for the ones that genuinely died with the desk's reading strip.
+// ---------------------------------------------------------------------------
+
+test("the empty copy names the way properties actually get there", () => {
+  // The premise of this reversed on 2026-08-31 and the reversal is the point.
+  // It used to assert the copy did NOT mention Save, because every signed-in
+  // search auto-saved itself and naming a button that had already fired was
+  // the bug. The portfolio is opt-in now -- it holds what a member says they
+  // OWN -- so Save IS the mechanism. "Run a report and it will show up here"
+  // became untrue the same day, which is why it is pinned as FORBIDDEN rather
+  // than dropped: it reads perfectly well and would promise the old behaviour.
+  const html = bootBody({ s: 200, j: { portfolioValues: true } });
+  assert.doesNotMatch(html, /Run a report and it will show up here/,
+    "a report does not land in the portfolio by itself");
+  const m = html.match(/id="propsEmpty"[^>]*>([\s\S]*?)<\/div>/);
+  assert.ok(m, "#propsEmpty must exist");
+  const copy = m[1];
+  assert.match(copy, /Save to portfolio/, "it has to name the control that does it");
+  assert.match(copy, /recent searches/i, "and the other door, for a report already run");
+  // Owner's standing copy rule (2026-08-22): no em dashes in copy.
+  assert.ok(!copy.includes("\u2014") && !copy.includes("&mdash;"), "no em dashes in copy");
+});
+
+test("the between-checks cell names its sample and cannot read as a return", () => {
+  // "Since last checks" read as a portfolio return, and the figure is not one:
+  // it compares each property's last two check-ins, over only the properties
+  // checked at least twice, with no time window at all. The arithmetic stays;
+  // the caption must not over-claim.
+  const html = bootBody({ s: 200, j: { portfolioValues: true } });
+  assert.ok(html.includes('stripCell("Between checks"'), "the cell is labelled Between checks");
+  assert.ok(html.includes("last check vs the one before"), "the note names the basis");
+  assert.ok(html.includes('pairedN+" of "+items.length+" properties"'),
+    "the note names its sample");
+  assert.ok(html.includes("not a return over any period of time"),
+    "the title says outright what the figure is not");
+  assert.ok(!html.includes('stripCell("Since last checks"'),
+    "the return-shaped label must not come back");
+  // One figure, computed once: the same bookPct feeds the strip cell and the
+  // table's footer, so the two can never disagree.
+  assert.ok((html.match(/bookPct/g) || []).length >= 4, "bookPct must feed both surfaces");
+});
+
+test("the attention line says nothing when nothing is waiting", () => {
+  const html = bootBody({ s: 200, j: { portfolioValues: true } });
+  // It ships hidden. A standing "you're all caught up" banner is the vault's
+  // own 0-0 scoreboard lesson.
+  assert.match(html, /id="propsAttn" class="note hide"|class="note hide" id="propsAttn"/,
+    "it ships hidden");
+  assert.ok(html.includes("var showAttn=showValues&&staleN>0"),
+    "shown only when something is actually stale, and never on a values-free desk");
+  assert.ok(html.includes("1 property was last checked over a year ago"), "singular copy");
+  assert.ok(html.includes("properties were last checked over a year ago"), "plural copy");
+  // textContent only: this states a fact about somebody's own properties and
+  // never interpolates one of their addresses.
+  assert.ok(!/propsAttn[\s\S]{0,300}innerHTML/.test(html), "textContent only");
+});
+
+test("stale is a year, and it is not a number invented here", () => {
+  const html = bootBody({ s: 200, j: { portfolioValues: true } });
+  assert.ok(html.includes("var STALE_MS=365*24*60*60*1000"), "one year");
+  // portfolio-delta.js already draws this line and says why: past a year a
+  // window "stops being 'since you last looked' and becomes market history".
+  // It is a server module and cannot be required from a browser script, so the
+  // mirror is marked -- the treatment compWeight and SHOP_COPY get.
+  assert.ok(html.includes("portfolio-delta.js"), "the source of the threshold is named");
+  assert.ok(html.includes("MIRRORED CONSTANT"), "the duplication is flagged, not silent");
+  const delta = fs.readFileSync(path.join(__dirname, "..", "portfolio-delta.js"), "utf8");
+  assert.match(delta, /MAX_WINDOW_YEARS = 1/, "the constant this mirrors still says a year");
+});
+
+test("the checked date and the attention line count the same fact", () => {
+  // The table said "checked {updated_at}" -- when the ROW was last written by
+  // anything -- while the line counts the last time a VALUE was produced. Two
+  // dates for one word, thirty pixels apart, contradicted each other on screen
+  // (caught in a browser against an aged store, not by reading).
+  const html = bootBody({ s: 200, j: { portfolioValues: true } });
+  assert.ok(html.includes("var lastTs=last&&last.ts?last.ts:item.updated_at"),
+    "the row reads the last snapshot, falling back only when there is none");
+  assert.ok(!html.includes("checked \"+esc(new Date(item.updated_at)"),
+    "the row must not go back to the row-written date");
+  assert.ok(html.includes("var ts=last&&last.ts?Date.parse(last.ts):NaN"),
+    "the count reads the same field");
 });
 
 // ---------------------------------------------------------------------------

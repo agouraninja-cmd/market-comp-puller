@@ -159,8 +159,21 @@ function mapHeaders(headers, normalizeHeader) {
 // names in produces zero contacts however many rows it has, and saying so is
 // far better than importing two thousand blanks.
 function parseContactsCsv(text, { parseCsv, isCommentRow, normalizeHeader }) {
-  const rows = parseCsv(str(text));
-  if (!rows.length) return { rows: [], errors: ["That file is empty."], commented: 0, total: 0 };
+  return parseContactsGrid(parseCsv(str(text)), { isCommentRow, normalizeHeader });
+}
+
+// The same rules, over a grid somebody else split.
+//
+// It exists because a CSV is no longer the only door. xlsx.js hands back rows
+// in exactly the shape parseCsv produces — cells, blank rows already dropped,
+// a non-enumerable `line` — and a spreadsheet import has to obey the identical
+// header mapping, the identical refusals and the identical cap. A second copy
+// of this loop is how one door quietly starts accepting a row the other one
+// rejects.
+function parseContactsGrid(rows, { isCommentRow, normalizeHeader }) {
+  if (!Array.isArray(rows) || !rows.length) {
+    return { rows: [], errors: ["That file is empty."], commented: 0, total: 0 };
+  }
 
   const headers = rows[0] || [];
   const map = mapHeaders(headers, normalizeHeader);
@@ -191,9 +204,15 @@ function parseContactsCsv(text, { parseCsv, isCommentRow, normalizeHeader }) {
     const src = {};
     for (const f of FIELDS) if (map[f] != null) src[f] = cells[map[f]];
     const { row, errors: rowErrors } = normalizeContact(src);
-    // Line numbers are 1-based and count the header, so they match what the
-    // broker sees in Excel — parseUpload's rule.
-    if (rowErrors.length) errors.push(`Line ${i + 1}: ${rowErrors.join("; ")}`);
+    // The number a person can act on is the one in THEIR sheet, so it comes
+    // off the row's own `line` stamp — broker-vault.js:1158's rule, adopted
+    // here late. `i + 1` counts the compacted grid, which has had blank rows
+    // dropped out of it, so one spacer row above a bad address pointed the
+    // refusal at the wrong line; a quoted cell spanning several lines pushed
+    // it further still. Kept as the fallback for a splitter that stamps
+    // nothing.
+    const lineNo = Number.isFinite(cells.line) ? cells.line : i + 1;
+    if (rowErrors.length) errors.push(`Line ${lineNo}: ${rowErrors.join("; ")}`);
     else out.push(row);
   }
 
@@ -232,6 +251,7 @@ module.exports = {
   normalizeContact,
   validateContactEdit,
   parseContactsCsv,
+  parseContactsGrid,
   mapHeaders,
   dropExisting,
   dedupeKey,

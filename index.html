@@ -1852,24 +1852,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
-      <!-- Comped access for beta testers. Hidden until /api/config resolves,
-           and shown only to a signed-in non-Pro visitor: the grant is stored
-           on an account, so there is nothing to attach it to signed out. -->
-      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
-        <button id="passkeyToggle" type="button" aria-expanded="false"
-          class="text-sm text-[#68707E] hover:text-[#374253] underline">
-          Have a code?
-        </button>
-        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
-          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
-            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <button id="passkeySubmit" type="button"
-            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
-            Redeem
-          </button>
-        </div>
-        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
-      </div>
+      <!-- The "Have a code?" disclosure lived here until 2026-08-31, when the
+           tester-code box MOVED into the Settings panel (#passkeyRow, owner's
+           call). One code, one control — the theme toggle's precedent from
+           2026-08-30, and the Plan row's: a second copy here would be a second
+           input, a second message element and a second visibility rule to keep
+           in step, for a box that is typed into once per person, ever. The
+           door is the account menu's Settings row (/desk?settings=1). -->
 
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
@@ -2074,9 +2063,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             d="M10 5.5a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9zm0-3a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 10 2.5zm0 13.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75zM2.5 10a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5A.75.75 0 0 1 2.5 10zm13.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75zM4.22 4.22a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.22 5.28a.75.75 0 0 1 0-1.06zm9.44 9.44a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06zM15.78 4.22a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM6.34 13.66a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0z"/></svg>
         </button>
       </div>
-      <!-- Plan. Copy comes from billingStatusCopy() (the desk plan card's
-           generator); the buttons obey pricingLink's and menuBillingBtn's
-           exact visibility rules, applied inside refreshBillingUI(). The
+      <!-- Plan, and since 2026-08-30 the app's ONLY pricing control: the nav
+           row that used to mirror this button is gone (owner's call), on the
+           theme toggle's precedent from the same week — one question, one
+           control. Copy comes from billingStatusCopy() (the desk plan card's
+           generator); "See pricing" obeys the exact `live && !pro` rule the
+           nav row obeyed, and Manage billing follows menuBillingBtn's, both
+           applied inside refreshBillingUI(). The
            whole row follows the desk card's own rule and disappears on a
            deployment where nothing is for sale — billingStatusCopy()'s Free
            branch names caps that a dark deployment does not impose. -->
@@ -2090,6 +2083,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
         </div>
         <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
+      </div>
+      <!-- Tester code. Moved here from the pricing modal's "Have a code?"
+           disclosure on 2026-08-31 (owner's call): the codes go to friends,
+           family and people testing the site, so the place to type one is the
+           panel you open to look at your own account — not a modal you open to
+           look at prices. One code, one control, on the theme toggle's
+           precedent from the day before; the pricing modal keeps no copy.
+           Sits directly under Plan because that is what it changes.
+
+           It is a row, not a disclosure: every other row in this panel shows
+           its control, and hiding an input behind a toggle inside a panel that
+           is itself behind a menu is one door too many.
+
+           Visibility is refreshBillingUI()'s, unchanged by the move — signed
+           in, a code configured on this deployment, and something still left
+           to redeem. Not gated on billing being live: a code is exactly what
+           someone uses on a deployment with no Stripe keys. VAULT_PASSKEY
+           redeems through this same input, by design (whoever was handed a
+           code should not also have to know which kind it is). -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <div class="text-sm font-medium text-[#1A2433]">Tester code</div>
+        <p class="text-xs text-[#68707E] mt-0.5">Got a code from us? Enter it here to unlock the paid features on this account.</p>
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Tester code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
       </div>
       <!-- Watchlist digest email. Signed-in only; state is
            currentUser.digestOptout, written through POST /api/account/digest.
@@ -2183,16 +2207,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!--NAV_LINKS-->
           </div>
         </div>
-        <!-- Pricing left the Explore dropdown (2026-08-21): it is the question a
-             prospect arrives with, and a B2B site that hides its price behind a
-             browse menu reads as one that would rather not say. Same id, same
-             `hidden` class, same refreshBillingUI toggle and same click handler
-             as when it lived in the menu, so the billing rule is untouched and
-             only the position moved. Styled as a bar item (#myDeskLink's own
-             classes) rather than a menu row; the dropdown-row utilities it used
-             to carry are used on 40-plus other lines in this file, so the
-             tailwind purge still emits them for the server-injected NAV_LINKS. -->
-        <button id="pricingLink" type="button" class="hidden hover:text-[#1A2433]">Pricing</button>
+        <!-- Pricing is in Settings now (owner's call, 2026-08-30), not in this
+             nav. It was a dropdown row until 2026-08-21 and a bar row after
+             that, on the argument that a B2B site hiding its price reads as
+             one that would rather not say — which is true of the site and was
+             never true of THIS surface. index.html is the signed-in app: the
+             reader is a member who has already bought or already declined, and
+             the Settings panel has carried a Plan row with a "See pricing"
+             button, on this exact `live && !pro` rule, since 2026-08-23. Two
+             controls, one question. The theme toggle's precedent, the same
+             week and for the same reason.
+             Nothing about the SITE's pricing changed: marketBar still renders
+             #navPricing on every server-rendered page (to /pricing for a
+             stranger, /?pricing=1 for a member), the footer below links
+             /pricing like every other footer does, and the ?pricing=1 and
+             #pricing deep links still open the modal here. -->
+
         <!-- THE ORDER, owner's (2026-08-29): Workspace, Vault, Market
              explorer, 1031 guide, Bulk valuation. Identical here, in
              marketBar and in vault-page.js's hand-written header, so the
@@ -2575,7 +2605,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Tenant contacts</span>
           <span id="contactsStats" class="dk-note"></span>
         </div>
-        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a CSV — nothing here is ever filled in from CompNinja enquiries.</p>
+        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
 
         <form id="contactAddForm" class="mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
@@ -2596,14 +2626,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
           <!-- A second door for a list somebody already keeps in a
                spreadsheet. It posts to the same route the Add button does. -->
-          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a CSV</button>
-          <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
+          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
+          <!-- .xls is accepted INTO the dialog on purpose, so the server can
+               answer "that is an older .xls, save it as .xlsx" by name. Left
+               out, the broker's own file is greyed out with nothing on screen
+               saying why — the vault's HEIC rule. -->
+          <input id="contactCsvFile" type="file" class="hidden"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
         </form>
         <p id="contactMsg" class="hidden text-sm mt-2"></p>
         <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a CSV with a name column.</p>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -2637,7 +2672,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
-              <option value="tenant_rep">Tenant rep shop</option>
             </select>
           </div>
           <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
@@ -2680,7 +2714,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
-                <option value="tenant_rep">Tenant rep shop</option>
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
@@ -4369,6 +4402,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
               <li><a href="/brokers" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Brokers</a></li>
               <li><a href="/firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For firms</a></li>
+              <!-- Every server-rendered footer has carried /pricing since the
+                   page existed; this one had not, which did not matter while
+                   the nav had a Pricing row. It does now (2026-08-30): that
+                   row moved into Settings, and Settings is signed-in chrome —
+                   so without this line an anonymous reader of a shared report
+                   had no pricing door anywhere on the page. The rate card is
+                   a real URL and works signed out, which is exactly what that
+                   reader needs. -->
+              <li><a href="/pricing" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Pricing</a></li>
               <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
               <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><a href="/1031-exchange" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">1031 exchange guide</a></li>
@@ -12515,6 +12557,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     resetSettingsDeleteConfirm();
     document.getElementById("settingsDigestErr").classList.add("hidden");
     document.getElementById("settingsPlanError").classList.add("hidden");
+    document.getElementById("passkeyMsg").classList.add("hidden");
     showAvatarMsg("");
     applySettingsAccountUI();
     document.getElementById("settingsModal").classList.remove("hidden");
@@ -13949,7 +13992,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
-  // The three shops (migrations 036 and 037), Transition Plan v2 §6.
+  // The two shops (migration 036), Transition Plan v2 §6. A tenant rep shop
+  // was a third between 2026-08-21 and 2026-08-31 and was withdrawn.
   //
   // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
   // require. test/index-html.test.js pins the two together, which is the
@@ -13966,13 +14010,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       label: "Development shop",
       arrivals: "land comps, rent comps, absorption studies and feasibility packets",
       shelfType: "Land",
-    },
-    tenant_rep: {
-      label: "Tenant rep shop",
-      arrivals: "lease abstracts, rent comps and market surveys",
-      // Empty on purpose, not an oversight: no property type names a tenant
-      // rep's subject the way Land names a development shop's.
-      shelfType: "",
     },
   };
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
@@ -14379,14 +14416,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!file) return;
     contactsMsg("Reading " + file.name + "...");
     try {
-      const csv = await file.text();
-      const out = await postContacts({ csv });
+      // THE BYTES DECIDE which door this file takes, never its name and never
+      // the browser's declared type — xlsx.js's sniff rule, mirrored here so a
+      // spreadsheet saved with a .csv extension still imports. The server
+      // sniffs again and is the one that counts; this only chooses transport.
+      const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      const isZip = head[0] === 0x50 && head[1] === 0x4b;
+      const isOle = head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0;
+
+      let out;
+      if (isZip || isOle) {
+        // An .xls (OLE2) is sent rather than refused here, so the refusal a
+        // person reads is the server's specific one about saving it as .xlsx.
+        out = await postContacts({ filename: file.name, xlsx: toBase64(await file.arrayBuffer()) });
+      } else {
+        // Unchanged: file.text() decodes as UTF-8 and parseCsv strips the BOM
+        // Excel writes on Save As CSV.
+        out = await postContacts({ csv: await file.text() });
+      }
       contactsMsg(importSummary(out), out.imported === 0);
       await renderContacts();
     } catch (err) {
       contactsMsg(err.message || "That file couldn't be imported.", true);
     }
   });
+
+  // Chunked because String.fromCharCode.apply on a whole megabyte-long array
+  // overflows the argument stack and throws — on a big file only, which is
+  // exactly the case a quick test never covers.
+  function toBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.
@@ -14617,10 +14683,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sel = document.getElementById("firmShopSelect");
     const state = document.getElementById("firmShopState");
     const copy = shopCopy(firm.kind);
-    // Was a two-way ternary until 037. Reading the kind back through the
-    // same map the words come from means a fourth shop is a map entry and an
-    // <option>, not a third branch somebody forgets: an unrecognized kind
-    // lands on broker here for exactly the reason shopCopy() does.
+    // Reading the kind back through the same map the words come from means a
+    // shop is a map entry and an <option>, never a branch somebody forgets in
+    // one place: an unrecognized kind lands on broker here for exactly the
+    // reason shopCopy() does. That is what makes WITHDRAWING a kind safe as
+    // well as adding one — a firm still holding the retired 'tenant_rep'
+    // reads as a broker shop instead of showing an empty select.
     sel.value = SHOP_COPY[firm.kind] ? firm.kind : "broker";
     sel.disabled = !firm.canManage;
     state.textContent = firm.canManage
@@ -14800,7 +14868,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // arrive as a sentence under the name box about a question further up the
     // form. Same words either way (org-access.js validateShopKind owns them).
     if (!kind) {
-      err.textContent = "Choose whether this is a broker shop, a development shop or a tenant rep shop.";
+      err.textContent = "Choose whether this is a broker shop or a development shop.";
       err.classList.remove("hidden");
       return;
     }
@@ -16983,9 +17051,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // the button appears once billing is known and vanishes post-purchase.
     if (typeof renderLockedNotice === "function") renderLockedNotice();
 
-    document.getElementById("pricingLink").classList.toggle("hidden", !live || pro);
+    // The nav's Pricing row is gone (2026-08-30); #settingsUpgradeBtn below
+    // carries this same `!live || pro` rule, and is the one control now.
 
-    // The redeem row: signed-in, this deployment has a passkey configured, AND
+    // The tester-code row, in the SETTINGS panel since 2026-08-31 (it was the
+    // pricing modal's "Have a code?" disclosure before that; one code, one
+    // control). This rule did not move with it: signed-in, this deployment has
+    // a passkey configured, AND
     // there is still something this account could redeem. Deliberately NOT
     // gated on billingLive() — a code is exactly what someone uses on a
     // deployment with no Stripe keys, the same exception the vault link makes.
@@ -17022,8 +17094,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // link: it flipped the one-shot, skipped the modal because `live` was a
     // guess, and cleared ?pricing=1 from the URL anyway -- so clicking
     // Pricing from any server-rendered header landed on a bare home page with
-    // no modal, and only a SECOND click (on #pricingLink, unhidden by then)
-    // opened it. Reported 2026-08-29 and reproduced on the first load of
+    // no modal, and only a SECOND click (on the nav's Pricing row, unhidden
+    // by then — that row has since moved into Settings) opened it. Reported 2026-08-29 and reproduced on the first load of
     // /?pricing=1. Do not fold this into the `live && !pro` test below: the
     // point is to leave the link UNCONSUMED and the URL intact so the next
     // call, the one with a real answer, still finds it.
@@ -17117,8 +17189,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
 
     // The settings panel's plan row: the same copy generator as the desk
-    // card and the same button rules as pricingLink and menuBillingBtn, so
-    // this stays a third surface, never a second decider. Unlike the desk
+    // card and the same button rules menuBillingBtn follows, so this stays a
+    // third surface, never a second decider — and since 2026-08-30 it is the
+    // app's only pricing door, the nav row it used to mirror having gone. Unlike the desk
     // card it also paints signed out — billingStatusCopy() has an honest
     // "Not signed in" branch — but it shares the card's dark-deployment
     // rule: where nothing is for sale and nothing is comped, the Free
@@ -17323,13 +17396,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
 
-  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
-    const form = document.getElementById("passkeyForm");
-    const open = form.classList.toggle("hidden");
-    e.currentTarget.setAttribute("aria-expanded", String(!open));
-    if (!open) document.getElementById("passkeyInput").focus();
-  });
-
   async function submitPasskey() {
     const input = document.getElementById("passkeyInput");
     const btn = document.getElementById("passkeySubmit");
@@ -17361,13 +17427,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // modal silently, which is right for a Pro code (the plan card behind it
       // already says Pro), would leave them with no idea what just happened.
       // So name it and point at it, and let them close the modal themselves.
+      // Say what happened, and leave the panel open. This used to close the
+      // pricing modal on a Pro grant, which was right there — the plan card
+      // behind it already said Pro. In Settings the Plan row is directly
+      // above this one and refreshProConfig() has just repainted it, so
+      // closing would hide the very confirmation the redemption earned.
+      //
+      // A vault code still names its destination: it lands somebody on a
+      // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
         msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
         msg.className = "mt-2 text-sm text-emerald-700";
         msg.classList.remove("hidden");
         return;
       }
-      closePricingModal();
+      // `already` is the route's answer to a code this account has already
+      // redeemed. It is a 200, so it must not read as a failure.
+      msg.textContent = data.already
+        ? "This account already has everything that code unlocks."
+        : "You're all set — your code is applied to this account.";
+      msg.className = "mt-2 text-sm text-emerald-700";
+      msg.classList.remove("hidden");
     } catch (ex) {
       msg.textContent = ex.message;
       msg.className = "mt-2 text-sm text-red-700";
@@ -17397,13 +17477,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("pricingModal").addEventListener("click", (e) => {
     const btn = e.target.closest && e.target.closest(".pricing-buy");
     if (btn) startCheckout(btn.dataset.plan, btn);
-  });
-  document.getElementById("pricingLink").addEventListener("click", () => {
-    // Lives inside the Explore dropdown — close it so it isn't left open
-    // behind the pricing modal.
-    document.getElementById("exploreMenu").classList.add("hidden");
-    document.getElementById("exploreMenuBtn").setAttribute("aria-expanded", "false");
-    openPricingModal();
   });
   document.getElementById("menuUpgradeBtn").addEventListener("click", () => {
     document.getElementById("acctMenu").classList.add("hidden");

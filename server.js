@@ -59,6 +59,19 @@ const ORG = require("./org-access.js");
 // means (039). Pure and tested, and deliberately holding NO way to build a
 // contact from a lead or a hub participant — see its header.
 const CONTACTS = require("./org-contacts.js");
+// Reading an .xlsx: the ZIP and the XML by hand, on built-in zlib, because
+// every library that does this is an npm dependency and this repo has none
+// outside desktop-app/. Text only — it deliberately does not interpret Excel
+// date serials, which is why it serves the contacts list (four text fields)
+// and must not be pointed at the vault without that work being done first.
+// See its header.
+const XLSX = require("./xlsx.js");
+// One Excel file, bounded. Sized under readOrgBody(2e6): base64 costs a third
+// more than the bytes it carries, so a 1 MB file arrives as ~1.4 MB of JSON
+// and still fits. A contacts sheet is far smaller than this; the ceiling is
+// there so a mis-picked file fails fast with a sentence a person can act on
+// rather than being decompressed first.
+const MAX_CONTACTS_XLSX_BYTES = 1024 * 1024;
 // Who shared what to the firm, by market and by month. Pure and clockless like
 // org-access.js — this file owns the two reads and hands the rows in. It counts
 // CONTRIBUTION to the firm, never closings; see its header for why that is the
@@ -12266,13 +12279,13 @@ const TEAM = [
 //
 // ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
 // page module, which keeps that module pure and — more to the point — keeps
-// the three shop sentences single-sourced. They are read here by the invite
+// the shop sentences single-sourced. They are read here by the invite
 // email, the create box in index.html and now this page; a fourth hand-typed
 // copy is the one that goes stale, so test/firms-page.test.js fails the build
 // if any of them appears as a literal in firms-page.js.
 // ---------------------------------------------------------------------------
 function renderFirmsPageHTML(signedIn) {
-  const title = "Firm Accounts for Brokerages, Developers & Tenant Reps | CompNinja";
+  const title = "Firm Accounts for Brokerages and Development Shops | CompNinja";
   const canonical = `${SITE_URL}/firms`;
   // Kept under the ~160 characters Google renders.
   const description =
@@ -22852,7 +22865,44 @@ const server = http.createServer((req, res) =>
           let commented = 0;
           let total = 0;
 
-          if (typeof body.csv === "string") {
+          if (typeof body.xlsx === "string") {
+            // An Excel file, base64'd — /api/vault/extract's transport, for its
+            // reason: multipart would be hundreds of lines of hand-rolled
+            // parsing in a repo with no dependencies.
+            //
+            // NOTHING IS STORED OF THE FILE ITSELF. It is decoded, read into a
+            // grid, and dropped; only the contacts a person confirmed by
+            // importing are written, exactly as on the CSV path.
+            let bytes;
+            try { bytes = Buffer.from(body.xlsx, "base64"); }
+            catch (_) { return sendJson(res, 400, { error: "That file could not be read." }); }
+            if (!bytes.length) return sendJson(res, 400, { error: "That file is empty." });
+            if (bytes.length > MAX_CONTACTS_XLSX_BYTES) {
+              return sendJson(res, 413, { error: "That spreadsheet is too large. Files up to 1 MB import here; a bigger one can be saved as CSV." });
+            }
+
+            let grid;
+            try {
+              grid = XLSX.readXlsxGrid(bytes).rows;
+            } catch (e) {
+              // xlsx.js writes its refusals FOR the person holding the file and
+              // names what to do about each one, so they are passed through —
+              // but only the ones it recognises as its own. An unexpected
+              // throw is ours, not theirs, and gets the generic line.
+              const mine = e && typeof e.code === "string" && e.code !== "";
+              if (!mine) console.error("xlsx read failed:", e && e.message);
+              return sendJson(res, 400, {
+                error: mine ? e.message : "That spreadsheet could not be read. Saving it as CSV will work.",
+              });
+            }
+
+            const parsed = CONTACTS.parseContactsGrid(grid, {
+              isCommentRow: VAULT.isCommentRow,
+              normalizeHeader: VAULT.normalizeHeader,
+            });
+            rows = parsed.rows; errors = parsed.errors;
+            commented = parsed.commented; total = parsed.total;
+          } else if (typeof body.csv === "string") {
             const parsed = CONTACTS.parseContactsCsv(body.csv, {
               parseCsv: VAULT.parseCsv,
               isCommentRow: VAULT.isCommentRow,

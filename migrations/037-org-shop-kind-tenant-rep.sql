@@ -1,4 +1,12 @@
 -- 037 · Tenant rep is the third kind of shop (2026-08-21)
+--
+-- WITHDRAWN IN CODE 2026-08-31. The owner dropped the tenant rep shop, so
+-- SHOP_KINDS holds two values again and validateShopKind refuses this string.
+-- THIS FILE IS NOT REVERTED AND MUST NOT BE: the constraint stays wide, and
+-- APPLIED.md's row for it says why (narrowing would fail on the only rows
+-- that make narrowing matter, and nothing can write the value any more). It
+-- is kept as the applied history of a column that still allows three values
+-- while the product offers two.
 -- Plan:  Business Model Transition Plan v2 §6 ("Broker Shops and Development
 --        Shops"), Chuck Dickinson, 2026-08-17, extended by Owen 2026-08-21.
 -- Rules: org-access.js (kindOf, SHOP_KINDS, SHOP_COPY)

@@ -18,6 +18,7 @@ const crypto = require("node:crypto");
 const shared = require("./helpers/boot");
 const fake = require("./helpers/fake-supabase");
 const ORG = require("../org-access");
+const { xlsxFromRows } = require("./helpers/make-xlsx.js");
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
@@ -883,15 +884,17 @@ test("what an invited colleague actually receives", async (t) => {
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migrations 036 and 037) — Transition Plan v2 §6's customer
-// types, plus the tenant rep shop added on top of it 2026-08-21.
+// Shop kind (migration 036) — Transition Plan v2 §6's customer types. A
+// tenant rep shop was a third kind from 2026-08-21 and was withdrawn on
+// 2026-08-31; the route refusing it is the whole wall, since 037's CHECK
+// still accepts the string.
 //
 // The rules worth executing rather than arguing: the question cannot be
 // answered by silence, changing the answer is an admin's job, and the answer
 // survives a fresh read. org-access.test.js proves the pure half with no
 // database; this is the half that writes a column.
 // ---------------------------------------------------------------------------
-test("a firm is one of three shops, and says which", async (t) => {
+test("a firm is one of two shops, and says which", async (t) => {
   const tables = seedTables();
   const ctx = await bootWithDb(tables);
   t.after(() => ctx.stop());
@@ -907,7 +910,7 @@ test("a firm is one of three shops, and says which", async (t) => {
       const r = await create(body);
       assert.equal(r.status, 400, JSON.stringify(body));
       assert.match((await r.json()).error,
-        /broker shop, a development shop or a tenant rep shop/);
+        /broker shop or a development shop/);
     }
     assert.equal(tables.orgs.length, 0, "and nothing was written");
   });
@@ -944,29 +947,25 @@ test("a firm is one of three shops, and says which", async (t) => {
     assert.equal((await myOrg(MIKE)).orgs[0].kind, "broker", "the colleague reads the new words too");
 
     for (const junk of ["enterprise", "", true, "dev", "brokerage",
-                        "tenant", "tenant rep", "tenant-rep"]) {
+                        "tenant_rep", "Tenant_Rep", "tenant", "tenant rep", "tenant-rep"]) {
       assert.equal((await settings(BRAD, { kind: junk })).status, 400, JSON.stringify(junk));
     }
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "broker", "a refused change changed nothing");
 
     // Case and padding are NORMALIZED on the way in rather than refused, the
     // way validateOrgName collapses a name. The column may only ever hold the
-    // three exact values (037's CHECK says so, widening 036's), and that is
-    // what this proves: the write path cleans, the read path in org-access.js
-    // stays strict.
+    // two exact values, and that is what this proves: the write path cleans,
+    // the read path in org-access.js stays strict.
     assert.equal((await settings(BRAD, { kind: "  DEVELOPMENT " })).status, 200);
     assert.equal((await myOrg(BRAD)).orgs[0].kind, "development");
     assert.equal(tables.orgs[0].kind, "development", "stored lower case, never as typed");
 
-    // 037's value, driven all the way to the column. The fake database does
-    // not enforce a CHECK, so this cannot prove Supabase will accept it — that
-    // is what running the migration before the deploy is for — but it does
-    // prove every layer above the column agrees on the exact string, which is
-    // the half that a typo would break silently.
-    assert.equal((await settings(BRAD, { kind: " Tenant_Rep " })).status, 200);
-    assert.equal(tables.orgs[0].kind, "tenant_rep", "underscored, lower case, never as typed");
-    assert.equal((await myOrg(MIKE)).orgs[0].kind, "tenant_rep",
-      "and the colleague reads the new words too");
+    // The withdrawn kind, driven all the way to the route rather than argued
+    // about in the module. 037's CHECK still ACCEPTS 'tenant_rep' — nothing
+    // in Postgres would stop this write — so the settings route refusing it
+    // above is the only thing keeping the value out of the column, and that
+    // refusal is worth executing here as well as in org-access.test.js.
+    assert.equal(tables.orgs[0].kind, "development", "the retired kind never reached the column");
   });
 
   await t.test("the fake never had to guess at a query it did not understand", () => {
@@ -1078,7 +1077,7 @@ async function firmWithMike(t) {
   const { db, srv, stop } = await bootWithDb(tables);
   t.after(stop);
   const org = await (await fetch(srv.base + "/api/org", as(BRAD, {
-    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "tenant_rep" }),
+    method: "POST", body: JSON.stringify({ name: "Colliers Boise", kind: "broker" }),
   }))).json();
   await fetch(srv.base + "/api/org/invite", as(BRAD, {
     method: "POST", body: JSON.stringify({ orgId: org.id, emails: [MIKE.email] }),
@@ -1122,6 +1121,94 @@ test("a firm's tenant contacts", async (t) => {
     assert.equal(r.errors.length, 1);
     assert.match(r.errors[0], /^Line 5:/);
     assert.match(r.errors[0], /not an email address/);
+  });
+
+  await t.test("an Excel file imports, through the same rules the CSV obeys", async () => {
+    const { srv, org } = await firmWithMike(t);
+    // A real .xlsx: shared strings, r= cell references, deflated parts.
+    const xlsx = xlsxFromRows([
+      ["Name", "Email", "Company"],
+      ["Dana Wu", "dana@acme.com", "Acme Logistics"],
+      ["Ray Ortiz", null, "Nordic Cold"],
+    ]);
+    const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST",
+      body: JSON.stringify({ filename: "tenants.xlsx", xlsx: xlsx.toString("base64") }),
+    }))).json();
+    assert.equal(r.imported, 2);
+    assert.equal(r.total, 2);
+    assert.deepStrictEqual(r.errors, []);
+
+    const list = await (await fetch(srv.base +
+      `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD))).json();
+    assert.deepStrictEqual(list.contacts.map((c) => c.name).sort(), ["Dana Wu", "Ray Ortiz"]);
+    assert.equal(list.contacts.find((c) => c.name === "Dana Wu").email, "dana@acme.com",
+      "lowercased by the same normalizeContact the typed door uses");
+    // Excel omits an empty cell ENTIRELY rather than writing a blank one, so
+    // without the r= reference being read "Nordic Cold" slides one column left
+    // and the company is stored as the email address.
+    const ray = list.contacts.find((c) => c.name === "Ray Ortiz");
+    assert.ok(!ray.email, "the omitted cell stays empty");
+    assert.equal(ray.company, "Nordic Cold", "and the cell after the gap keeps its own column");
+  });
+
+  await t.test("a spreadsheet refusal names the row the person is looking at", async () => {
+    const { srv, org } = await firmWithMike(t);
+    // Rows 2 and 3 are blank. The bad address is on row 5 OF THE SHEET, and
+    // that is the number the error has to give: counting surviving rows would
+    // say 3, and there is nothing wrong with row 3.
+    const xlsx = xlsxFromRows([
+      ["Name", "Email"],
+      [],
+      [],
+      ["Dana Wu", "dana@acme.com"],
+      ["Bad Row", "not-an-email"],
+    ]);
+    const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ xlsx: xlsx.toString("base64") }),
+    }))).json();
+    assert.equal(r.imported, 1);
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /^Line 5:/);
+  });
+
+  await t.test("a CSV with a spacer row also names the real line", async () => {
+    // The same rule from the other door. This was WRONG until the grid work:
+    // parseContactsCsv counted the compacted grid, so one blank line above a
+    // bad address pointed the refusal at a line that was fine.
+    const { srv, org } = await firmWithMike(t);
+    const csv = ["name,email", "", "", "Dana Wu,dana@acme.com", "Bad Row,not-an-email"].join(String.fromCharCode(10));
+    const r = await (await fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`, as(BRAD, {
+      method: "POST", body: JSON.stringify({ csv }),
+    }))).json();
+    assert.equal(r.imported, 1);
+    assert.match(r.errors[0], /^Line 5:/);
+  });
+
+  await t.test("a wrong file is refused by name, and nothing is stored", async () => {
+    const { srv, org, tables } = await firmWithMike(t);
+    const post = (body) => fetch(srv.base + `/api/org/contacts?id=${encodeURIComponent(org.id)}`,
+      as(BRAD, { method: "POST", body: JSON.stringify(body) }));
+
+    // An older .xls: an OLE2 document, not a zip. Named, because it is the
+    // likeliest wrong file to arrive and "could not be read" sends somebody
+    // hunting for a fault in their own contact list.
+    const xls = Buffer.alloc(64);
+    xls[0] = 0xd0; xls[1] = 0xcf; xls[2] = 0x11; xls[3] = 0xe0;
+    const old = await post({ xlsx: xls.toString("base64") });
+    assert.equal(old.status, 400);
+    assert.match((await old.json()).error, /older .xls/i);
+
+    // A PDF someone picked by mistake.
+    const pdf = await post({ xlsx: Buffer.from("%PDF-1.7 nope").toString("base64") });
+    assert.equal(pdf.status, 400);
+    assert.match((await pdf.json()).error, /spreadsheet|.csv/i);
+
+    // Too big to be worth decompressing.
+    const big = await post({ xlsx: Buffer.alloc(1024 * 1024 + 1).toString("base64") });
+    assert.equal(big.status, 413);
+
+    assert.equal(tables.org_contacts.length, 0, "no refusal wrote a row");
   });
 
   await t.test("importing the same file twice never doubles an emailed contact", async () => {

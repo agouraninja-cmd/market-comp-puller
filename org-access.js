@@ -136,9 +136,19 @@ function validateOrgName(raw) {
 // different saved views". Both lose the same work the same way. Only the
 // nouns change, so only the nouns are stored.
 //
-// TWO KINDS, NOT THREE. The same section rules enterprise out as a target and
-// names its entry point as someone who used CompNinja at their last shop, so
-// there is no third value to select and nothing here pretends there is.
+// TWO KINDS. The same section rules enterprise out as a target and names its
+// entry point as someone who used CompNinja at their last shop, so there is
+// no third value to select and nothing here pretends there is.
+//
+// A tenant rep shop was a third kind between 2026-08-21 and 2026-08-31
+// (migration 037) and was withdrawn. Removing a kind is safe in exactly the
+// way adding one was not: kindOf reads anything it does not recognize as
+// 'broker', so a firm that had chosen it goes back to reading the incumbent
+// vocabulary rather than losing a screen, and validateShopKind refusing the
+// string is what stops a new one ever being written. The DATABASE constraint
+// is deliberately left wide — narrowing it would fail on exactly the rows
+// that make narrowing matter, and a value no code can send is a value no row
+// can gain. See migrations/APPLIED.md's 037 entry.
 //
 // Fails closed the way this file's other readers do, with one difference
 // worth stating: 'broker' is not the safe answer in an access sense, because
@@ -147,7 +157,7 @@ function validateOrgName(raw) {
 // unrecognized kind renders what its members have already been reading rather
 // than switching a firm's vocabulary on the strength of a typo.
 // ---------------------------------------------------------------------------
-const SHOP_KINDS = ["broker", "development", "tenant_rep"];
+const SHOP_KINDS = ["broker", "development"];
 
 // The nouns, in one place, because two of them are read by a server that
 // writes an email and a browser that writes a page. index.html carries its
@@ -175,20 +185,6 @@ const SHOP_COPY = {
     // is the only property type in VAULT.PROPERTY_TYPES that names one. This
     // is a DEFAULT and not a filter the firm is stuck behind.
     shelfType: "Land",
-  },
-  // The third kind (migration 037). Same architecture, third vocabulary: a
-  // tenant rep's subject is a lease rather than a sale, so the sentence names
-  // what they hand a tenant rather than what they hand an owner.
-  tenant_rep: {
-    label: "Tenant rep shop",
-    arrivals: "lease abstracts, rent comps and market surveys",
-    // EMPTY, unlike development, and this is the interesting one. Land earned
-    // development its default because exactly one property type names that
-    // shop's subject. Nothing in VAULT.PROPERTY_TYPES names a tenant rep's:
-    // office, industrial and retail tenant reps all exist and are all normal,
-    // so picking one would open two shops out of three on a filtered shelf.
-    // No honest default is the honest default.
-    shelfType: "",
   },
 };
 
@@ -222,7 +218,7 @@ function shopCopyOf(org) {
 function validateShopKind(raw) {
   const kind = String(raw == null ? "" : raw).trim().toLowerCase();
   if (!SHOP_KINDS.includes(kind)) {
-    return { ok: false, error: "Choose whether this is a broker shop, a development shop or a tenant rep shop." };
+    return { ok: false, error: "Choose whether this is a broker shop or a development shop." };
   }
   return { ok: true, kind };
 }

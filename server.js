@@ -1257,7 +1257,7 @@ function accountStore() {
         }
         store = {};
       }
-      for (const k of ["users", "sessions", "portfolio", "watchlist"]) {
+      for (const k of ["users", "sessions", "portfolio", "watchlist", "recents"]) {
         if (!Array.isArray(store[k])) store[k] = [];
       }
       return store;
@@ -1676,6 +1676,151 @@ function cleanSnapshot(snap) {
 // 500 in DB mode while file mode 404s. File-mode ids are crypto.randomUUID(),
 // so the same regex matches both modes.
 function isUuidish(v) { return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || "")); }
+
+// --- recent searches ---------------------------------------------------------
+// Everything a signed-in member has run, as against portfolio_items, which
+// since 2026-08-31 holds only what they said they OWN. Migration 043 has the
+// argument for the separate table; the rules that live here are:
+//
+//   * A recent is written on EVERY completed search, exactly where the
+//     portfolio auto-save used to fire. Nothing asks first, because a list of
+//     what you just looked at is not a claim about anything.
+//   * Identity is portfolio-match.js's, shared with the desk, so a property
+//     added to the portfolio later matches the recent it came from and one
+//     building typed three ways is one row in both tables.
+//   * Only the newest RECENTS_PAYLOAD_MAX rows keep their report. The browser
+//     has had this rule since propertyHistory.v1 and the numbers are kept
+//     equal to it on purpose — two stores disagreeing about how far back a
+//     report can be reopened is a difference nobody can see and everybody
+//     hits.
+//   * Every failure here is soft. A recent is a convenience; losing one costs
+//     a re-run, so no caller of this layer may be able to fail a search.
+const RECENTS_MAX = 25;          // rows kept at all — mirrors HISTORY_MAX
+const RECENTS_PAYLOAD_MAX = 10;  // newest N that keep their report — mirrors PAYLOAD_MAX
+const RECENT_LIST_COLUMNS = "id,address,property_type,verified_key,created_at,updated_at";
+
+async function listRecents(userId) {
+  if (DB_CONFIGURED) {
+    return sbRequest("GET",
+      `recent_searches?user_id=eq.${encodeURIComponent(userId)}` +
+      `&select=${RECENT_LIST_COLUMNS}&order=updated_at.desc&limit=${RECENTS_MAX}`) || [];
+  }
+  return (await accountStore()).recents.filter((x) => x.user_id === userId)
+    .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
+    .slice(0, RECENTS_MAX)
+    .map(({ payload, ...rest }) => rest);
+}
+
+// One row WITH its report, for reopening. Returns null once the row has aged
+// past the payload window — the caller re-runs rather than reopening.
+async function getRecentItem(userId, id) {
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("GET",
+      `recent_searches?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}&limit=1`);
+    return rows && rows[0] ? rows[0] : null;
+  }
+  return (await accountStore()).recents.find((x) => x.user_id === userId && x.id === id) || null;
+}
+
+// Drop rows past RECENTS_MAX and strip payloads past RECENTS_PAYLOAD_MAX.
+// Fire-and-forget from the write paths: a failed trim costs storage, never a
+// save, so it must never reject into a caller.
+async function trimRecents(userId) {
+  try {
+    if (DB_CONFIGURED) {
+      const rows = await sbRequest("GET",
+        `recent_searches?user_id=eq.${encodeURIComponent(userId)}` +
+        `&select=id&order=updated_at.desc&limit=200`) || [];
+      const stale = rows.slice(RECENTS_MAX).map((r) => r.id);
+      const strip = rows.slice(RECENTS_PAYLOAD_MAX, RECENTS_MAX).map((r) => r.id);
+      // `in.()` with an empty list is a syntax error, not an empty match.
+      if (stale.length) {
+        await sbRequest("DELETE",
+          `recent_searches?user_id=eq.${encodeURIComponent(userId)}&id=in.(${stale.join(",")})`);
+      }
+      if (strip.length) {
+        await sbRequest("PATCH",
+          `recent_searches?user_id=eq.${encodeURIComponent(userId)}&id=in.(${strip.join(",")})` +
+          `&payload=not.is.null`, { payload: null });
+      }
+      return;
+    }
+    const s = await accountStore();
+    const mine = s.recents.filter((x) => x.user_id === userId)
+      .sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+    const keep = new Set(mine.slice(0, RECENTS_MAX).map((x) => x.id));
+    s.recents = s.recents.filter((x) => x.user_id !== userId || keep.has(x.id));
+    mine.slice(RECENTS_PAYLOAD_MAX, RECENTS_MAX).forEach((x) => { x.payload = null; });
+    await saveAccountStore();
+  } catch (err) {
+    console.error("recents trim failed:", err.message);
+  }
+}
+
+// Upsert one search. Matches on portfolio-match.js's rules so the row a member
+// later adds to their portfolio is the row they were looking at.
+async function saveRecentSearch(userId, { address, property_type, payload, verifiedKey }) {
+  const now = new Date().toISOString();
+  const vkey = PFMATCH.verifiedKeyFor(verifiedKey);
+  const existing = PFMATCH.findMatch(await listRecents(userId), {
+    address, propertyType: property_type, verifiedKey: vkey,
+  });
+  if (existing) {
+    // Fills a verified key, never rewrites one — updatePortfolioItem's rule,
+    // for its reason: an identity that moves is worse than one slightly stale.
+    const patch = { address, payload, updated_at: now };
+    if (vkey && !existing.verified_key) patch.verified_key = vkey;
+    if (DB_CONFIGURED) {
+      await sbRequest("PATCH",
+        `recent_searches?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(existing.id)}`, patch);
+    } else {
+      const row = (await accountStore()).recents.find((x) => x.user_id === userId && x.id === existing.id);
+      if (row) Object.assign(row, patch);
+      await saveAccountStore();
+    }
+    trimRecents(userId);
+    return { ...existing, ...patch };
+  }
+  const row = {
+    user_id: userId, address, property_type, payload,
+    created_at: now, updated_at: now,
+  };
+  // Conditional spread, insertPortfolioItem's rule: PostgREST 400s an insert
+  // naming a column the table lacks, and that would take the whole write down
+  // rather than just the key.
+  if (vkey) row.verified_key = vkey;
+  let saved;
+  if (DB_CONFIGURED) {
+    const rows = await sbRequest("POST", "recent_searches", row, { prefer: "return=representation" });
+    saved = rows[0];
+  } else {
+    row.id = crypto.randomUUID();
+    (await accountStore()).recents.push(row);
+    await saveAccountStore();
+    saved = row;
+  }
+  trimRecents(userId);
+  return saved;
+}
+
+async function deleteRecentItem(userId, id) {
+  if (DB_CONFIGURED) {
+    return sbRequest("DELETE",
+      `recent_searches?user_id=eq.${encodeURIComponent(userId)}&id=eq.${encodeURIComponent(id)}`);
+  }
+  const s = await accountStore();
+  s.recents = s.recents.filter((x) => !(x.user_id === userId && x.id === id));
+  await saveAccountStore();
+}
+
+async function clearRecents(userId) {
+  if (DB_CONFIGURED) {
+    return sbRequest("DELETE", `recent_searches?user_id=eq.${encodeURIComponent(userId)}`);
+  }
+  const s = await accountStore();
+  s.recents = s.recents.filter((x) => x.user_id !== userId);
+  await saveAccountStore();
+}
 
 // --- watchlist + feed (feed reads the existing comp_corpus) ---
 const WATCHLIST_MAX_ITEMS = 20;
@@ -7492,6 +7637,9 @@ function bulkItemRow(it) {
     market: it.market || null,
     trimmed: it.trimmed === true,
     cached: it.cached === true,
+    recent_item_id: it.recent_item_id || null,
+    // Legacy: runs finished before 2026-08-31 filed their report on the desk.
+    // Kept so a run already on somebody's screen keeps its working link.
     portfolio_item_id: it.portfolio_item_id || null,
     finished_at: it.finished_at || null,
   };
@@ -7681,17 +7829,19 @@ async function runBulkItem(item, ctx) {
       return;
     }
 
-    // The valuation goes on the desk too, as if the address had been searched
-    // by hand — same table, same shape, same `meta`, so the row re-renders
-    // into a whole report and every desk feature (movement, sharing, the
-    // market-page link) works on it with no bulk-specific branch anywhere.
-    let portfolioItemId = null;
+    // The valuation is filed under the member's recent searches, as if the
+    // address had been searched by hand — same shape, same `meta`, so the row
+    // re-renders into a whole report and the member can add it to their
+    // portfolio from there if it is theirs. It went straight onto the desk
+    // until 2026-08-31; see saveBulkValuationToRecents for why it no longer
+    // does.
+    let recentItemId = null;
     try {
-      portfolioItemId = await saveBulkValuationToDesk(user, ent, job, item, report, valued);
+      recentItemId = await saveBulkValuationToRecents(user, job, item, report, valued);
     } catch (err) {
-      // A desk write must never lose a valuation that has already been paid
+      // This write must never lose a valuation that has already been paid
       // for. The row keeps its numbers and simply has no link.
-      console.error("bulk desk save failed:", err.message);
+      console.error("bulk recent save failed:", err.message);
     }
 
     await patchBulkItem(user.id, item.id, {
@@ -7705,7 +7855,7 @@ async function runBulkItem(item, ctx) {
       sale_comps: valued.sale_comps, comp_count: valued.comp_count,
       trimmed: valued.trimmed,
       error: valued.sized ? null : "No building size found — showing the $/SF range only.",
-      portfolio_item_id: portfolioItemId,
+      recent_item_id: recentItemId,
     });
     console.log(`Bulk ${job.id}: ${address} — ${searched.kind} in ${Math.round((Date.now() - started) / 1000)}s`);
   } catch (err) {
@@ -7725,14 +7875,31 @@ function round2(v) {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
-// Write one finished bulk valuation onto My Desk. Upserts on address + type,
-// exactly as a signed-in search does, so re-running a list updates the
-// properties already there rather than duplicating them.
-async function saveBulkValuationToDesk(user, ent, job, item, report, valued) {
+/**
+ * File one finished bulk row under the member's recent searches.
+ *
+ * It wrote straight to the PORTFOLIO until 2026-08-31. That was the single
+ * biggest source of properties nobody had claimed — one click could put fifty
+ * addresses on a desk headed "Your properties", and a broker pricing a
+ * prospect list owns none of them. A portfolio is what you own, so the run
+ * lands here and the member adds what is theirs from the report itself.
+ *
+ * No snapshot is written, and that is the change with teeth: a value history
+ * is a record kept ABOUT something you hold, so it starts when the property is
+ * added rather than the first time it was priced. Adding a recent to the
+ * portfolio recomputes the snapshot from the same report, so nothing is lost
+ * except a history for buildings the member never claimed.
+ *
+ * No entitlement is read either. The portfolio cap is a product limit on how
+ * many properties a plan may hold; recents are bounded by RECENTS_MAX for
+ * everybody, and a full desk must not be able to silently swallow a row from a
+ * run the member already paid for.
+ */
+async function saveBulkValuationToRecents(user, job, item, report, valued) {
   const payload = {
-    // The shape index.html saves, field for field. A desk row written here
-    // has to be indistinguishable from one written by a search, or the
-    // report it reopens will render differently from every other one.
+    // The shape index.html saves, field for field. A row written here has to
+    // be indistinguishable from one written by a search, or the report it
+    // reopens will render differently from every other one.
     meta: {
       address: item.address,
       type: job.property_type,
@@ -7749,41 +7916,18 @@ async function saveBulkValuationToDesk(user, ent, job, item, report, valued) {
     },
     data: report,
   };
-  const snapshot = {
-    low: valued.value_low, likely: valued.value_likely, high: valued.value_high,
-    median_psf: valued.psf_mid,
-  };
-  // portfolio-match.js owns "is this the same property", and the bulk worker
-  // has to route through it for the reason it exists: one building typed three
-  // ways was three desk rows with three value histories. `findPortfolioMatch`
-  // was this line until 2026-08-21 and is gone.
+  // portfolio-match.js owns "is this the same property" for both tables, so a
+  // row filed here is the row a later hand-run absorbs rather than duplicates.
   //
   // No verified key, deliberately: that key comes from the BROWSER's geocoder
   // confirmation, and a bulk row is never confirmed by anybody — fifty confirm
   // dialogs is not a workflow. Passing "" falls through to the typed-address
-  // rule, which is exactly what this did before the column existed, and a later
-  // hand-run of the same address adopts the key and absorbs this row rather
-  // than duplicating it.
-  const items = await listPortfolio(user.id);
-  const existing = PFMATCH.findMatch(items, {
-    address: item.address, propertyType: job.property_type, verifiedKey: "",
-  });
-  if (existing) {
-    const updated = await updatePortfolioItem(user.id, existing.id, { payload, snapshot: cleanSnapshot(snapshot) });
-    logEvent("portfolio_refresh", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
-    return updated ? updated.id : existing.id;
-  }
-  // The cap is the member's, read from the entitlement like every other
-  // portfolio write. A full desk stops the row landing there and nothing
-  // else: the valuation is still in the job, still exportable, and saying so
-  // is better than silently dropping the fifty-first property.
-  const cap = Number(ent.portfolioMaxItems) || ENT.FREE_PORTFOLIO_MAX_ITEMS;
-  if (items.length >= cap) return null;
-  const saved = await insertPortfolioItem(user.id, {
+  // rule, and a later hand-run adopts the key.
+  const saved = await saveRecentSearch(user.id, {
     address: item.address, property_type: job.property_type,
-    payload, snapshot: cleanSnapshot(snapshot),
+    payload, verifiedKey: "",
   });
-  logEvent("portfolio_add", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
+  logEvent("recent_add", { prop_type: job.property_type, market: marketOf(item.address), source: "bulk" });
   return saved ? saved.id : null;
 }
 
@@ -17707,6 +17851,87 @@ const server = http.createServer((req, res) =>
     }
   }
 
+  // --- Recent searches: everything run, as against the portfolio's owned ---
+  // The desk's own list stopped being written on every search on 2026-08-31
+  // (a portfolio is what you own), so this is where a signed-in member's
+  // search history lives instead. Migration 043.
+  //
+  // Deliberately NOT folded into /api/portfolio with a flag: two kinds of row
+  // behind one route is the same mistake as two kinds of row in one table,
+  // and this route has no caps, no snapshots and no entitlement to consult.
+  if (req.url === "/api/recents" || req.url.startsWith("/api/recents?")) {
+    if (req.method === "GET") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        if (id) {
+          if (!isUuidish(id)) return sendJson(res, 404, { error: "Not found." });
+          const item = await getRecentItem(user.id, id);
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          return sendJson(res, 200, item);
+        }
+        // Same market-page decoration the desk gets — a recent row links out
+        // to /market/<slug> for the same reason a saved one does, and the
+        // read is pure in-memory so it costs nothing.
+        const items = (await listRecents(user.id)).map((item) => {
+          const mp = marketPageInfo(marketOf(item.address), item.property_type);
+          return mp ? { ...item, market_page: mp } : item;
+        });
+        return sendJson(res, 200, { items });
+      })().catch((err) => { console.error("recents GET error:", err); sendJson(res, 500, { error: "Recent searches read failed." }); });
+      return;
+    }
+    if (req.method === "POST") {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (c) => { body += c; if (body.length > 3e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          // Matches the portfolio limiter: one completed search writes here
+          // up to three times (renderResults, the geocode refinement, subject
+          // edits), so this must sit well above any per-search burst.
+          if (rateLimited("rc:" + clientIp(req), 600)) {
+            return sendJson(res, 429, { error: "Too many requests. Please slow down." });
+          }
+          const user = await requireUser(req, res);
+          if (!user) return;
+          const { payload, verifiedKey } = JSON.parse(body || "{}");
+          if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
+            return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
+          }
+          const address = String(payload.meta.address || "").trim().slice(0, 300);
+          const property_type = String(payload.meta.type || "").trim().slice(0, 40);
+          if (!address || !property_type) return sendJson(res, 400, { error: "The report is missing its address or type." });
+          const saved = await saveRecentSearch(user.id, {
+            address, property_type, payload, verifiedKey,
+          });
+          return sendJson(res, 200, { id: saved ? saved.id : null });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("recents POST error:", err);
+          return sendJson(res, 500, { error: "Recent search save failed." });
+        }
+      });
+      return;
+    }
+    if (req.method === "DELETE") {
+      (async () => {
+        const user = await requireUser(req, res);
+        if (!user) return;
+        const id = new URL(req.url, "http://localhost").searchParams.get("id");
+        // No id clears the whole list — the browser's own "clear" control has
+        // always been all-or-nothing, and a server list it could not clear
+        // would make that button a lie.
+        if (!id) { await clearRecents(user.id); return sendJson(res, 200, { ok: true }); }
+        if (!isUuidish(id)) return sendJson(res, 200, { ok: true }); // same no-op as deleting a nonexistent scoped row
+        await deleteRecentItem(user.id, id);
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => { console.error("recents DELETE error:", err); sendJson(res, 500, { error: "Recent search delete failed." }); });
+      return;
+    }
+  }
+
   // --- Watchlist: watched markets + the in-app updates feed ----------------
   if (req.url === "/api/watchlist" || req.url.startsWith("/api/watchlist?")) {
     if (req.method === "GET") {
@@ -19167,12 +19392,16 @@ const server = http.createServer((req, res) =>
           const job = await getBulkJob(user.id, item.job_id);
           if (!job) return sendJson(res, 404, { error: "Not found." });
 
-          // The stored report. Absent only when the desk write failed or the
-          // portfolio was full — in which case there is genuinely nothing to
-          // re-value, and saying so beats a silent no-op.
-          const saved = item.portfolio_item_id
-            ? await getPortfolioItem(user.id, item.portfolio_item_id)
-            : null;
+          // The stored report. Absent only when the write failed — in which
+          // case there is genuinely nothing to re-value, and saying so beats a
+          // silent no-op. Recents first, then the desk: a run finished before
+          // 2026-08-31 filed its report as a portfolio item, and re-valuing a
+          // row must not stop working because the destination moved.
+          const saved = item.recent_item_id
+            ? await getRecentItem(user.id, item.recent_item_id)
+            : item.portfolio_item_id
+              ? await getPortfolioItem(user.id, item.portfolio_item_id)
+              : null;
           const report = saved && saved.payload && saved.payload.data;
           if (!report || !Array.isArray(report.comps)) {
             return sendJson(res, 409, {
@@ -19207,8 +19436,14 @@ const server = http.createServer((req, res) =>
           };
           await patchBulkItem(user.id, item.id, patch);
 
-          // The desk copy moves with it, payload included, so reopening the
-          // property shows the size that produced the figure beside it.
+          // The stored report moves with it, payload included, so reopening
+          // the row shows the size that produced the figure beside it.
+          //
+          // Writes back to whichever store the report actually came from: a
+          // run since 2026-08-31 filed it under recent searches, an older one
+          // filed it on the desk, and re-valuing must keep working for both.
+          // No snapshot on the recents path — that list keeps no value
+          // history, which is the point of it not being the portfolio.
           try {
             const payload = {
               ...saved.payload,
@@ -19217,17 +19452,24 @@ const server = http.createServer((req, res) =>
                 subject: { ...(saved.payload.meta.subject || {}), sizeMin: size, sizeMax: size },
               },
             };
-            await updatePortfolioItem(user.id, saved.id, {
-              payload,
-              snapshot: cleanSnapshot({
-                low: valued.value_low, likely: valued.value_likely,
-                high: valued.value_high, median_psf: valued.psf_mid,
-              }),
-            });
+            if (item.recent_item_id) {
+              await saveRecentSearch(user.id, {
+                address: saved.address, property_type: saved.property_type,
+                payload, verifiedKey: saved.verified_key || "",
+              });
+            } else {
+              await updatePortfolioItem(user.id, saved.id, {
+                payload,
+                snapshot: cleanSnapshot({
+                  low: valued.value_low, likely: valued.value_likely,
+                  high: valued.value_high, median_psf: valued.psf_mid,
+                }),
+              });
+            }
           } catch (err) {
-            // The row is already right; the desk catching up is not worth
-            // failing the request the member just watched succeed.
-            console.error("bulk size re-value: desk update failed:", err.message);
+            // The row is already right; the stored copy catching up is not
+            // worth failing the request the member just watched succeed.
+            console.error("bulk size re-value: stored report update failed:", err.message);
           }
 
           logEvent("bulk_resize", { prop_type: job.property_type });

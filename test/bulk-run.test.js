@@ -111,7 +111,7 @@ async function bootAll() {
       user_id: PAT.id, plan: "pro_monthly", status: "active",
       current_period_end: YEAR_OUT, cancel_at_period_end: false,
     }],
-    bulk_jobs: [], bulk_job_items: [], portfolio_items: [],
+    bulk_jobs: [], bulk_job_items: [], portfolio_items: [], recent_searches: [],
     comp_corpus: [], search_cache: [], analytics_events: [],
     comp_submissions: [], subject_sizes: [], market_pages: [],
   };
@@ -210,7 +210,7 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     // any other way, a portfolio stops reconciling with the reports behind it
     // and neither screen can show that.
     //
-    // Valued against the report STORED on the desk, not against the stub's
+    // Valued against the report AS STORED, not against the stub's
     // reply — and the difference is the point. The served report is the stub's
     // reply after normalization, $/SF reconciliation, distance stamping and
     // the radius blend, and salePsfOf prefers the reconciled price_per_sqft
@@ -219,7 +219,7 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     // (measured: 99.90 vs 99.92), which is exactly the kind of quiet drift
     // this assertion exists to catch.
     for (const it of finished.items) {
-      const saved = tables.portfolio_items.find((x) => x.id === it.portfolio_item_id);
+      const saved = tables.recent_searches.find((x) => x.id === it.recent_item_id);
       const expected = BULK.valueFromReport(saved.payload.data, {
         asOf: Date.now(), propertyType: "Industrial",
       });
@@ -243,23 +243,32 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
       finished.items.reduce((n, it) => n + it.value_likely, 0));
   });
 
-  await t.test("every valuation is on My Desk, linked from its row", async () => {
+  await t.test("every valuation is filed under recent searches, linked from its row", async () => {
     // The half a member actually keeps: a bulk row is a summary, and the
-    // evidence for it has to be reachable as an ordinary saved property.
-    assert.equal(tables.portfolio_items.length, 2);
+    // evidence for it has to be reachable as an ordinary stored report.
+    //
+    // RECENT SEARCHES, not the portfolio (2026-08-31). One click can put fifty
+    // addresses through this, and a broker pricing a prospect list owns none
+    // of them — a portfolio is what you own, so the member adds what is theirs
+    // from the report itself.
+    assert.equal(tables.recent_searches.length, 2);
+    assert.equal(tables.portfolio_items.length, 0,
+      "a bulk run must never put a property on the desk unasked");
     for (const it of finished.items) {
-      assert.ok(it.portfolio_item_id, "a valued row must link to its property");
-      const saved = tables.portfolio_items.find((x) => x.id === it.portfolio_item_id);
+      assert.ok(it.recent_item_id, "a valued row must link to its stored report");
+      const saved = tables.recent_searches.find((x) => x.id === it.recent_item_id);
       assert.ok(saved, "the link must point at a real row");
       assert.equal(saved.user_id, PAT.id);
       assert.equal(saved.address, it.address);
       assert.equal(saved.property_type, "Industrial");
-      // A whole report, so the desk re-renders it exactly like a searched one.
+      // A whole report, so it re-renders exactly like a searched one.
       assert.ok(Array.isArray(saved.payload.data.comps) && saved.payload.data.comps.length);
       assert.equal(saved.payload.meta.type, "Industrial");
       assert.equal(saved.payload.meta.months, 24);
-      assert.equal(saved.snapshots[0].likely, it.value_likely,
-        "the desk's value history must agree with the row");
+      // No value history, deliberately: that is a record kept about something
+      // you hold, so it starts when the property is added to the portfolio.
+      assert.equal(saved.snapshots, undefined,
+        "a recent search keeps no value history");
     }
   });
 
@@ -306,7 +315,7 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
       assert.ok(it.value_likely > 0);
     }
     // Upserted, not duplicated: the same two properties, re-valued.
-    assert.equal(tables.portfolio_items.length, 2);
+    assert.equal(tables.recent_searches.length, 2);
   });
 });
 
@@ -462,7 +471,7 @@ test("a row with no size can be valued by typing one, for free", async (t) => {
   });
 
   await t.test("it is the same arithmetic the worker runs", async () => {
-    const saved = tables.portfolio_items[0];
+    const saved = tables.recent_searches[0];
     const expected = BULK.valueFromReport(saved.payload.data, {
       subjectSizeSqft: 20000, asOf: Date.parse(saved.updated_at), propertyType: "Industrial",
     });
@@ -473,12 +482,14 @@ test("a row with no size can be valued by typing one, for free", async (t) => {
     assert.equal(after.summary.likely, expected.value_likely);
   });
 
-  await t.test("the desk copy moves with it", () => {
-    const saved = tables.portfolio_items[0];
+  await t.test("the stored report moves with it", () => {
+    const saved = tables.recent_searches[0];
     assert.equal(saved.payload.meta.subject.sizeMin, 20000,
-      "reopening the property must show the size that produced the figure");
-    const last = saved.snapshots[saved.snapshots.length - 1];
-    assert.ok(last.likely > 0, "and the desk's value history records the new value");
+      "reopening the row must show the size that produced the figure");
+    // Re-valued in place, not filed a second time.
+    assert.equal(tables.recent_searches.length, 1);
+    assert.equal(tables.portfolio_items.length, 0,
+      "re-valuing a bulk row must not put it on the desk either");
   });
 
   await t.test("a size that is not a number is refused, not stored as a guess", async () => {

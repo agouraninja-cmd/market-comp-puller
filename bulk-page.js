@@ -367,14 +367,20 @@ function rowHtml(it,i){
     ? money(it.value_likely)+'<div class="sub">'+money(it.value_low)+" \\u2013 "+money(it.value_high)+"</div>"
     : '<span class="sub">\\u2014</span>';
   var note=it.error?'<div class="sub">'+esc(it.error)+"</div>":"";
-  // The address opens the saved property when there is one: the row is a
+  // The address opens the stored report when there is one: the row is a
   // summary, and the evidence for it — the comps, the weighting, the trust
-  // line — lives in the report on the desk. ?property= is index.html's own
-  // door and its read is user-scoped, so the link cannot open anything that
-  // is not already this member's. On the homepage that navigation leaves the
-  // inline run behind; the job keeps going server-side and /bulk resumes it.
-  var addr=it.portfolio_item_id
-    ? '<a href="/?property='+encodeURIComponent(it.portfolio_item_id)+'">'+esc(it.address)+"</a>"
+  // line — lives in the report itself. ?recent= and ?property= are both
+  // index.html's own doors and both reads are user-scoped, so neither can open
+  // anything that is not already this member's. On the homepage that
+  // navigation leaves the inline run behind; the job keeps going server-side
+  // and /bulk resumes it.
+  //
+  // Recents first, then the desk: a run finished before 2026-08-31 filed its
+  // report as a portfolio item, and those links must keep working.
+  var openId=it.recent_item_id?'/?recent='+encodeURIComponent(it.recent_item_id)
+    :it.portfolio_item_id?'/?property='+encodeURIComponent(it.portfolio_item_id):"";
+  var addr=openId
+    ? '<a href="'+openId+'">'+esc(it.address)+"</a>"
     : esc(it.address);
   var lbl=it.label?'<div class="sub">'+esc(it.label)+"</div>":"";
   // Editable on any FINISHED row — not only an unsized one. A looked-up size

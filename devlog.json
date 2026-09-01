@@ -2,6 +2,12 @@
   {
     "date": "2026-08-31",
     "type": "improvement",
+    "title": "A portfolio holds the properties you own",
+    "details": "Every signed-in search used to save itself onto My Desk, so \"Your properties\" was really a log of everything the account had ever looked up. A search now files itself under Recent searches, which moved server-side so it follows you across devices, and you add what is yours from the report or from the row. Bulk valuation lands there too: one click can put fifty addresses through it, and a broker pricing a prospect list owns none of them. Nothing already on a desk was touched."
+  },
+  {
+    "date": "2026-08-31",
+    "type": "improvement",
     "title": "The tenant rep shop is withdrawn",
     "details": "A firm could say it was a broker shop, a development shop or a tenant rep shop. The third one is gone, ten days after it landed. The option is out of both places the question is asked — creating a firm and changing it afterwards — the refusal under the select names the two shops that remain, and the /firms page counts its own cards instead of promising three. Nothing about a firm's shelf, invites, auto-share, shared vault comps or seats changed. No database work was needed in either direction, and that is the part worth knowing: an unrecognized kind has always read as a broker shop, on purpose, so a firm that had chosen tenant rep goes back to reading the words every firm read before the kind existed rather than losing a screen, and the route refusing the string is what stops a new one being written. The CHECK that migration 037 widened is deliberately left alone — narrowing it would fail on exactly the rows that would make narrowing worth doing, and a value no code can send is a value no row can gain. The /firms heading now reads its count off the list of shops rather than a typed numeral, because a kind was added and withdrawn inside ten days and a page saying “three” over two cards is the drift that guarantees."
   },

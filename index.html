@@ -1572,37 +1572,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .pwtog:hover { color: var(--ink); }
     .pwtog:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
     .pwtog svg { width: 18px; height: 18px; }
-    /* --- Tester feedback badge ------------------------------------------
-       Only an account on a tester code ever sees this; refreshBillingUI()
-       reveals it from /api/config's pro.tester.
-
-       FIXED, not a nav item, because the signed-in chrome is a left RAIL at
-       900px and up -- there is no top-right header to sit in up there, and
-       the top right is where this was asked for.
-
-       It only TAKES the top right where that corner is empty. The rail is
-       224px and the content column is capped at 1024px and centred in the
-       rest, so the column reaches the right edge of the window until about
-       1360px wide: at 1280 a top-right badge sits on top of the desk's "Run
-       a report" button, which is what the first screenshot of it showed.
-       Under 1380px it tucks into the bottom-right corner instead. Below
-       900px the same rule covers the other collision, where the rail becomes
-       an ordinary top bar and the badge would land on the account circle.
-
-       .tninja.hidden is two classes and therefore beats .hidden's one
-       whatever order tailwind.css and this block end up in -- the cascade
-       trap vault-page.js's .deck.hide rule documents. Plain CSS rather than
-       Tailwind utilities on purpose: the vendored tailwind.css is purged
-       against this file, and a media query like this has no utility. */
-    .tninja{position:fixed;top:14px;right:16px;z-index:1000;width:40px;height:40px;
-      display:grid;place-items:center;border-radius:9999px;padding:0;
-      background:var(--slab);color:#fff;border:1px solid rgba(255,255,255,.16);
-      box-shadow:0 2px 10px rgba(16,20,26,.28);cursor:pointer;
-      transition:background .12s ease, transform .12s ease}
-    .tninja:hover{background:var(--red-fill);transform:translateY(-1px)}
-    .tninja:focus-visible{outline:2px solid var(--red-fill);outline-offset:2px}
-    .tninja.hidden{display:none}
-    @media (max-width:1379px){.tninja{top:auto;bottom:16px;right:16px}}
   </style>
 </head>
 <body class="bg-[#FBFBF9] text-[#1A2433] min-h-screen">
@@ -2198,43 +2167,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     </div>
   </div>
 
-  <!-- The tester badge and its modal. Hidden for everybody but an account
-       carrying the tester grant; the route behind it re-checks that same
-       entitlement, because pro.tester is presentation only. no-print and
-       no-capture because it is chrome, not report content. -->
-  <button id="testerBadge" type="button" class="tninja hidden no-print no-capture"
-    aria-label="Send feedback to the CompNinja team" title="Tester: send feedback">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 3.2c4.5 0 8.1 2.9 8.1 6.5 0 .5-.05 1-.15 1.5H3.95c-.1-.5-.15-1-.15-1.5C3.9 6.1 7.5 3.2 12 3.2Z"/>
-      <path d="M4.3 14.1h15.4c-1 3.5-4 5.9-7.7 5.9s-6.7-2.4-7.7-5.9Z"/>
-      <circle cx="9" cy="12.6" r="1.25"/>
-      <circle cx="15" cy="12.6" r="1.25"/>
-    </svg>
-  </button>
-  <div id="testerModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
-    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-md p-6">
-      <div class="rd-lab">Tell the team</div>
-      <p class="text-xs text-[#68707E] mt-1">You are on a tester code, so this goes straight to Jacob, Chuck and Owen. They can reply to you directly.</p>
-      <label for="testerKind" class="block text-sm font-medium text-[#1A2433] mt-4">What is this?</label>
-      <select id="testerKind"
-        class="w-full mt-1 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-        <option value="problem">Something is broken</option>
-        <option value="idea">An idea or a request</option>
-        <option value="other">Anything else</option>
-      </select>
-      <label for="testerMessage" class="block text-sm font-medium text-[#1A2433] mt-3">What happened?</label>
-      <textarea id="testerMessage" rows="5" maxlength="4000" aria-label="Your feedback"
-        placeholder="What you did, what you expected, and what you got instead."
-        class="w-full mt-1 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
-      <p class="text-xs text-[#9AA2AD] mt-2">The page you are on and your browser go along automatically, so you do not have to describe them.</p>
-      <p id="testerMsg" class="hidden mt-2 text-sm"></p>
-      <div class="mt-4 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
-        <button id="testerCancel" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">Cancel</button>
-        <button id="testerSend" type="button"
-          class="btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5 disabled:opacity-60">Send to the team</button>
-      </div>
-    </div>
-  </div>
+  <!-- The tester badge and its modal are injected here at serve time from
+       server.js's TESTER_BADGE_* constants -- markup, its own plain CSS and
+       its handlers -- because /vault and /bulk emit the SAME block through
+       marketShell. A hand-copy in this file is what the marker exists to
+       prevent (THEME_BOOT is the cautionary tale, and test/nav-parity.test.js
+       is what a drifted second copy costs). Revealed by refreshBillingUI()
+       below, which already knows this visitor's entitlements. -->
+  <!--TESTER_BADGE-->
 
   <!-- Header -->
   <header class="no-print border-b rd-hairline bg-[#FBFBF9]">
@@ -16269,78 +16209,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // key in every modal but confirm — and worse, the report-close handler
   // below would fire UNDER the pricing modal and silently discard the report.
   // ----------------------------------------------------------------------------
-  // --- Tester feedback ------------------------------------------------------
-  // The badge is revealed by refreshBillingUI() and nothing else, so a
-  // non-tester never has this modal reachable at all. Everything here is
-  // presentation: /api/tester-feedback re-resolves the entitlement itself.
-  function openTesterModal() {
-    const msg = document.getElementById("testerMsg");
-    msg.classList.add("hidden");
-    document.getElementById("testerModal").classList.remove("hidden");
-    document.getElementById("testerMessage").focus();
-  }
-  function closeTesterModal() {
-    document.getElementById("testerModal").classList.add("hidden");
-  }
-  document.getElementById("testerBadge").addEventListener("click", openTesterModal);
-  document.getElementById("testerCancel").addEventListener("click", closeTesterModal);
-  document.getElementById("testerModal").addEventListener("click", (e) => {
-    if (e.target === e.currentTarget) closeTesterModal();
-  });
-
-  async function sendTesterFeedback() {
-    const btn = document.getElementById("testerSend");
-    const box = document.getElementById("testerMessage");
-    const msg = document.getElementById("testerMsg");
-    // Enter-to-send is deliberately absent (this is a multi-line box), but the
-    // button can still be double-clicked before the first request settles.
-    if (btn.disabled) return;
-    const message = box.value.trim();
-    if (!message) {
-      msg.textContent = "Please say what happened first.";
-      msg.className = "mt-2 text-sm text-red-700";
-      msg.classList.remove("hidden");
-      box.focus();
-      return;
-    }
-    msg.classList.add("hidden");
-    btn.disabled = true;
-    const label = btn.textContent;
-    btn.textContent = "Sending...";
-    try {
-      const r = await fetch("/api/tester-feedback", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind: document.getElementById("testerKind").value,
-          message,
-          // Context the tester should not have to type. The server caps and
-          // strips all three before they reach an email body.
-          context: {
-            url: location.href,
-            viewport: window.innerWidth + "x" + window.innerHeight,
-            ua: navigator.userAgent,
-          },
-        }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || "That did not send.");
-      box.value = "";
-      msg.textContent = "Sent - thank you. They can reply to you directly.";
-      msg.className = "mt-2 text-sm text-emerald-700";
-      msg.classList.remove("hidden");
-    } catch (ex) {
-      // Never clear the box on a failure: the words are the whole point, and
-      // retyping a bug report is how a tester stops reporting them.
-      msg.textContent = ex.message;
-      msg.className = "mt-2 text-sm text-red-700";
-      msg.classList.remove("hidden");
-    } finally {
-      btn.disabled = false;
-      btn.textContent = label;
-    }
-  }
-  document.getElementById("testerSend").addEventListener("click", sendTesterFeedback);
+  // The tester badge's open/close/submit handlers now ship WITH its markup,
+  // injected from server.js at the TESTER_BADGE marker above, so /vault and
+  // /bulk get the identical behaviour rather than a copy of it. What stays in
+  // this file is the reveal, in refreshBillingUI(), because only this file
+  // knows when entitlements change (sign-in, sign-out, a checkout return).
 
   const MODAL_CANCELS = [
     ["pricingModal", "pricingCancel"],
@@ -16354,7 +16227,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
     for (const [modalId, cancelId] of MODAL_CANCELS) {
-      if (!document.getElementById(modalId).classList.contains("hidden")) {
+      const modalEl = document.getElementById(modalId);
+      if (!modalEl) continue;   // injected markup (testerModal) may be absent
+      if (!modalEl.classList.contains("hidden")) {
         e.preventDefault();
         document.getElementById(cancelId).click();
         return;
@@ -16380,7 +16255,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // shareModal were missing, so Escape on the pricing modal closed the
     // REPORT underneath it while the modal stayed up.
     if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal"]
-        .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
+        .some((id) => { const el = document.getElementById(id); return el && !el.classList.contains("hidden"); })) return;
     // A focused form control keeps Escape for itself — just drop focus.
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
@@ -16408,7 +16283,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.defaultPrevented) return;
     if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
     if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal"]
-        .some((id) => !document.getElementById(id).classList.contains("hidden"))) return;
+        .some((id) => { const el = document.getElementById(id); return el && !el.classList.contains("hidden"); })) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
     leaveDesk();
@@ -17228,8 +17103,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // not. isTesterPro() rather than a second copy of the flag test: that
     // helper already IS this rule, and it reads a missing flag as false, so an
     // older /api/config that predates the field just leaves the badge hidden.
-    document.getElementById("testerBadge")
-      .classList.toggle("hidden", !currentUser || !isTesterPro());
+    const testerBadgeEl = document.getElementById("testerBadge");
+    if (testerBadgeEl) testerBadgeEl.classList.toggle("hidden", !currentUser || !isTesterPro());
 
     // /#pricing — the deep link the server-rendered headers use, because the
     // pricing modal lives only in this file (the same idiom /brokers already

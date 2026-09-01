@@ -124,6 +124,17 @@ const RENEWAL = require("./renewal-watch");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES, siblingMarkets,
   exampleMarketOrder } = require("./market");
+// Did marketOf actually FIND a market, or hand back what it was given?
+//
+// It cannot fail: an address it cannot parse comes back unchanged, which is
+// right for the corpus (a comp is still worth storing) and wrong for the
+// vault, where the market IS the index — a comp filed under a market called
+// "6200 W Gowen Rd" is stored, never appears in the broker's own reports, and
+// says nothing about why. Every real key is "City, ST", so that shape is the
+// whole test. Handed to VAULT.parseUpload, which deliberately knows nothing
+// about markets and takes this as an injected predicate.
+const MARKET_KEY_RE = /^[^,]+,\s[A-Z]{2}$/;
+const addressHasMarket = (address) => MARKET_KEY_RE.test(marketOf(address));
 // What counts as somebody looking at a market, and how those rows add up into
 // the figure a Pro subscriber sees on My Desk. Pure and tested, because every
 // line of it is a way the number could flatter us — see its header.
@@ -19804,8 +19815,17 @@ const server = http.createServer((req, res) =>
             // Served rather than hard-coded in vault-page.js so the dropdown
             // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
             // Adding a per-type field stays a one-place change.
-            targets: VAULT.MAPPABLE_TARGETS,
+            // Address parts ride along so a sheet keeping Address, City and
+            // State in three columns can say so. They are not fields we
+            // store — parseUpload builds the address out of them and drops
+            // them — which is why they are a second list rather than members
+            // of MAPPABLE_TARGETS.
+            targets: [...VAULT.MAPPABLE_TARGETS, ...VAULT.ADDRESS_PART_TARGETS],
             required: VAULT.REQUIRED_TARGETS,
+            // Which required fields may be answered once for the whole file
+            // when no column can supply them. Served rather than hard-coded
+            // for the same reason `targets` is.
+            constantTargets: VAULT.SHEET_CONSTANT_TARGETS,
           });
         } catch (e) {
           // Same guard as /api/vault/upload's, and it matters more here: V8
@@ -19986,7 +20006,7 @@ const server = http.createServer((req, res) =>
           }
 
           const parsedBody = JSON.parse(body || "{}");
-          const { filename, mapping } = parsedBody;
+          const { filename, mapping, constants } = parsedBody;
           const made = VAULT.uploadPayloadToCsv({ csv: parsedBody.csv, rows: parsedBody.rows });
           if (!made.ok) {
             return sendJson(res, 400, { error: made.error || "Nothing to import." });
@@ -19996,7 +20016,23 @@ const server = http.createServer((req, res) =>
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
+          // hasMarket refuses an address carrying no city and state rather than
+          // letting it be filed under a market that does not exist — see
+          // addressHasMarket. It applies to BOTH doors (a CSV and the confirm
+          // table's rows), because the extract prompt completes "City, ST" only
+          // when the document proves the state, so a photographed sheet can
+          // produce exactly the same bare street address a spreadsheet does.
+          const parsed = VAULT.parseUpload(csv, {
+            mapping: parsedBody.rows ? null : (mapping || null),
+            hasMarket: addressHasMarket,
+            // The whole-file answers for a field the sheet omits entirely
+            // (property type, sale-or-lease). parseUpload validates them
+            // through the same parsers a mapped column goes through and
+            // refuses the upload on a bad one, which is why nothing is
+            // checked here. Confirm-table rows carry their own values per
+            // row, so they never send these.
+            constants: parsedBody.rows ? null : (constants || null),
+          });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -20732,6 +20768,24 @@ const server = http.createServer((req, res) =>
           }
           const result = VAULT.normalizeRow(JSON.parse(body || "{}"));
           if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+          // The upload path's rule, on the other door: a hand-typed address
+          // with no city and state is filed under a market that does not
+          // exist, and then the comp never appears in this broker's own
+          // reports. Refused here rather than stored — see addressHasMarket.
+          //
+          // The EDIT route deliberately does NOT carry this check. A broker
+          // whose vault already holds such a row would find every field on it
+          // uneditable until they fixed the address, including the address
+          // itself being the only thing they could change — and refusing to
+          // let somebody correct a price is a worse outcome than the bad
+          // market key that is already stored. New data is held to the rule;
+          // existing data is left reachable.
+          if (!addressHasMarket(result.row.address)) {
+            return sendJson(res, 400, {
+              error: `"${result.row.address}" needs a city and state, or it cannot be filed ` +
+                `under a market — write the whole address in one line.`,
+            });
+          }
 
           const row = result.row;
           // normalizeRow never sets user_id, and PROPS.propertyRowsFrom

@@ -689,6 +689,14 @@ a.btn.ghost:hover{color:var(--ink)}
         <tbody id="mapBody"></tbody>
       </table></div>
       <p class="note" id="mapIgnored"></p>
+      <!-- The whole-file answers. A developer's or owner-operator's own sheet
+           names no property type and no deal type anywhere, because every row
+           is the one thing they build and nobody writes that down. Shown only
+           for a required field no column is giving us, with nothing chosen:
+           a pre-selected "Industrial" would stamp forty rows on a guess, and
+           the rows most likely to be wrong are the ones nobody would check.
+           Same shape as #pdfBasisRow, for the same reason. -->
+      <div id="mapConst" class="hide" style="margin:10px 0"></div>
       <p id="mapMsg" class="msg bad hide"></p>
       <div class="formact mapact">
         <button class="btn" id="mapGo">Import</button>
@@ -2561,7 +2569,7 @@ a.btn.ghost:hover{color:var(--ink)}
   var pending = null;   // {name, csv} held while the broker maps
   var pdfPending = null; // extract result held while the broker confirms
 
-  function doImport(name, csv, mapping, onOk, rows){
+  function doImport(name, csv, mapping, onOk, rows, constants){
     // Whether this import came from the mapping screen decides where its
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
@@ -2577,7 +2585,13 @@ a.btn.ghost:hover{color:var(--ink)}
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
     var payload={filename:name};
     if(rows){ payload.rows=rows; }
-    else { payload.csv=csv; if(mapping) payload.mapping=mapping; }
+    else {
+      payload.csv=csv;
+      if(mapping) payload.mapping=mapping;
+      // Omitted entirely when nothing was answered, so a file that needed none
+      // of this sends byte for byte what it always did.
+      if(constants&&Object.keys(constants).length) payload.constants=constants;
+    }
     // Line-numbered problems are the point: a broker fixing a spreadsheet
     // needs to know WHICH row, in the numbering Excel shows them.
     function errList(j){
@@ -2768,18 +2782,25 @@ a.btn.ghost:hover{color:var(--ink)}
     // until a lease row was actually photographed. A test now pins every
     // PDF_KEYS entry to a label.
     rent_psf:"Rent ($/SF)", rent_basis:"Rent basis", lease_type:"Lease type",
-    lease_expiry:"Lease expiry", option_notice_date:"Option notice date"
+    lease_expiry:"Lease expiry", option_notice_date:"Option notice date",
+    // Not fields we store. A sheet that keeps the address in three columns can
+    // point at the other two, and parseUpload builds one address out of them
+    // and drops them. Labelled so nobody reads them as somewhere a city gets
+    // filed — there is no city column in the vault.
+    address_city:"City (joins the address)", address_state:"State (joins the address)"
   };
   function tLabel(t){ return TARGET_LABELS[t]||t }
-  // A required field can be unclaimable rather than merely unclaimed: a CoStar
-  // or MLS SALE-comps export carries no deal-type column at all, because every
-  // row is a sale. Value transformation is deliberately out of scope, so no
-  // dropdown rescues that file and "Still needed: Sale or lease" with a dead
-  // Import button and a Cancel button is the whole conversation. These say
-  // what is wrong and what to do about it, in the broker's own words.
-  var NO_COLUMN_HELP={
-    transaction:"Your file has no column saying whether each deal was a sale or a lease. Add one with values Sale or Lease, then upload again."
-  };
+  // NO_COLUMN_HELP lived here until 2026-09-01. It explained the dead end a
+  // CoStar or MLS sale-comps export reached — no deal-type column at all,
+  // because every row is a sale — and told the broker to go add one, on the
+  // grounds that value transformation was out of scope and no dropdown could
+  // rescue that file. A dropdown rescues it now: both fields it covered are
+  // answerable once for the whole file, right above the Import button, so
+  // every word of that advice had become obsolete. The two required fields
+  // that can still be genuinely unclaimable are the address and the deal
+  // date, which are per-row by nature and can never be answered once — those
+  // fall to the single generic sentence below, which is what it was always
+  // for.
   // The raw header the broker actually sees in their spreadsheet, for a
   // normalized key. column_4 is our own synthetic name for a header that
   // normalizes to nothing (a "$" price column); it exists nowhere in their
@@ -2787,6 +2808,68 @@ a.btn.ghost:hover{color:var(--ink)}
   function rawHeader(n){
     var i=(mapInfo.normalized||[]).indexOf(n);
     return i<0?n:String((mapInfo.headers||[])[i]);
+  }
+
+  // The only two fields a broker may answer once for a whole file, and the
+  // limit is the point: both are small closed lists, so one answer is either
+  // right for every row or obviously wrong for all of them. A price or a date
+  // answered once would be wrong per row and invisible. The server holds the
+  // same list (SHEET_CONSTANT_TARGETS) and serves it as constantTargets; these
+  // are the words and the options, which only exist here.
+  var CONST_OPTIONS={
+    property_type:["Industrial","Office","Retail","Multifamily","Land","Residential"],
+    transaction:["Sale","Lease"],
+    rent_basis:["Annual","Monthly"]
+  };
+  var CONST_ASK={
+    property_type:"Your file doesn't say what kind of property these are. What are they?",
+    transaction:"Your file doesn't say whether these were sales or leases. Which are they?",
+    // No default, and the reason is the sharpest of the three: California
+    // industrial and retail quote rent MONTHLY while most of the country
+    // quotes annually, so $1.35/SF is an ordinary monthly rent and an
+    // impossible annual one. A guess either way stores a figure 12x wrong.
+    rent_basis:"Your file gives a rent but doesn't say whether it's per year or per month. Which is it?"
+  };
+  // The answers live HERE rather than being read back off the DOM. The set of
+  // questions changes as columns are mapped, so the row is rebuilt when that
+  // set changes — and a rebuild would throw away a half-made choice if the
+  // <select> were the only place it was kept. Reset per file by openMapper: a
+  // new spreadsheet must never inherit the last one's answers.
+  var constAnswers={}, constShown="";
+  function syncConstants(wants){
+    var key=wants.join(",");
+    if(key!==constShown){
+      constShown=key;
+      $("mapConst").innerHTML=wants.map(function(t){
+        var chosen=constAnswers[t]||"";
+        return '<div class="crow" style="margin:6px 0">'+
+          '<label for="mc_'+esc(t)+'">'+esc(CONST_ASK[t])+"</label> "+
+          '<select data-cval="'+esc(t)+'" id="mc_'+esc(t)+'">'+
+          '<option value=""'+(chosen?"":" selected")+">&mdash; choose &mdash;</option>"+
+          CONST_OPTIONS[t].map(function(v){
+            return '<option value="'+esc(v)+'"'+(chosen===v?" selected":"")+">"+esc(v)+"</option>";
+          }).join("")+"</select></div>";
+      }).join("");
+      Array.prototype.forEach.call($("mapConst").querySelectorAll("select"),function(s){
+        s.addEventListener("change",function(){
+          constAnswers[s.getAttribute("data-cval")]=s.value;
+          refreshMapper();
+        });
+      });
+    }
+    if(wants.length)$("mapConst").classList.remove("hide");
+    else $("mapConst").classList.add("hide");
+  }
+  // Only a question currently ON SCREEN counts. A field a column has since
+  // claimed must not still be sending an answer the broker can no longer see:
+  // the server refuses that as a contradiction, correctly but bafflingly. The
+  // answer is remembered, though, so re-unmapping the column brings it back.
+  function currentConstants(){
+    var c={};
+    (constShown?constShown.split(","):[]).forEach(function(t){
+      if(constAnswers[t])c[t]=constAnswers[t];
+    });
+    return c;
   }
 
   function openMapper(info){
@@ -2835,6 +2918,8 @@ a.btn.ghost:hover{color:var(--ink)}
     Array.prototype.forEach.call($("mapBody").querySelectorAll("select"),function(s){
       s.addEventListener("change",refreshMapper);
     });
+    // A new file starts with no answers, and no question row rendered.
+    constAnswers={}; constShown=""; $("mapConst").innerHTML="";
     refreshMapper();
     $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -2849,7 +2934,26 @@ a.btn.ghost:hover{color:var(--ink)}
 
   function refreshMapper(){
     var m=currentMapping(), claimed=Object.keys(m).map(function(k){return m[k]});
-    var missing=(mapInfo.required||[]).filter(function(t){return claimed.indexOf(t)<0});
+    var unclaimed=(mapInfo.required||[]).filter(function(t){return claimed.indexOf(t)<0});
+    // Offer the whole-file answer for any required field no column is giving
+    // us, and deliberately NOT gated on every other column being mapped the
+    // way NO_COLUMN_HELP is. A real sheet always leaves something unmapped
+    // (Tenant, Suite), so that gate would mean this never appears on exactly
+    // the files it exists for.
+    // rent_basis is not required in general — it is required of any row that
+    // carries a rent, and whether the file has rents is decided by whether a
+    // rent column was mapped. So it is asked exactly when a rent column is
+    // mapped and no basis column is, which is the ordinary shape of a leasing
+    // book: the rate is stated and the basis goes without saying.
+    var askable=(mapInfo.constantTargets||[]).filter(function(t){return CONST_OPTIONS[t]});
+    var offering=unclaimed.filter(function(t){return askable.indexOf(t)>=0});
+    if(askable.indexOf("rent_basis")>=0&&
+       claimed.indexOf("rent_psf")>=0&&claimed.indexOf("rent_basis")<0){
+      offering.push("rent_basis");
+    }
+    syncConstants(offering);
+    var answered=currentConstants();
+    var missing=unclaimed.filter(function(t){return !answered[t]});
     // Naming the ignored columns is half the point: importing while quietly
     // dropping a column is the silent failure this screen exists to end. It
     // names the RAW header, never the normalized key — "column_4" is our
@@ -2885,17 +2989,16 @@ a.btn.ghost:hover{color:var(--ink)}
       // this, and the extra sentence would be a confidently wrong instruction
       // to go edit a spreadsheet that was already fine.
       var anyFree=(mapInfo.normalized||[]).some(function(n){ return n&&!m[n] });
-      var stuck=anyFree?[]:missing;
-      stuck.filter(function(t){return NO_COLUMN_HELP[t]}).forEach(function(t){
-        lines.push(NO_COLUMN_HELP[t]);
-      });
-      // The rest share one sentence rather than one each: three near-identical
-      // lines under a dead button is noise, not help.
-      var rest=stuck.filter(function(t){return !NO_COLUMN_HELP[t]});
-      if(rest.length){
+      // A field we are offering to answer above is never "go edit your
+      // spreadsheet": the fix is the dropdown sitting right there, and telling
+      // them to add a column instead would be advice we just made obsolete.
+      var stuck=(anyFree?[]:missing).filter(function(t){return offering.indexOf(t)<0});
+      // One sentence for whatever is left rather than one each: three
+      // near-identical lines under a dead button is noise, not help.
+      if(stuck.length){
         lines.push("Nothing in your file looks like the "+
-          rest.map(function(t){return tLabel(t).toLowerCase()}).join(" or ")+", so "+
-          (rest.length===1?"that column has":"those columns have")+
+          stuck.map(function(t){return tLabel(t).toLowerCase()}).join(" or ")+", so "+
+          (stuck.length===1?"that column has":"those columns have")+
           " to be added before this file can be imported.");
       }
     }
@@ -2925,7 +3028,7 @@ a.btn.ghost:hover{color:var(--ink)}
     // The panel closes on SUCCESS only. Closing here would clear the mapping,
     // the held file and every dropdown before knowing whether the import
     // worked, leaving a re-pick and a full re-map as the only way back.
-    doImport(p.name,p.csv,currentMapping(),closeMapper);
+    doImport(p.name,p.csv,currentMapping(),closeMapper,null,currentConstants());
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();

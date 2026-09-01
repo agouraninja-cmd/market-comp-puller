@@ -1142,7 +1142,11 @@ const GOOD = {
 };
 
 test("a complete mapping is accepted", () => {
-  assert.deepEqual(validateMapping(GOOD, HEADERS), { ok: true, errors: [] });
+  // `constants` joined the return shape when a broker gained the ability to
+  // answer property type / sale-or-lease / rent basis once for a whole file.
+  // Empty here because this mapping supplies every required field itself,
+  // which is the case that must keep behaving exactly as it always did.
+  assert.deepEqual(validateMapping(GOOD, HEADERS), { ok: true, errors: [], constants: {} });
 });
 
 test("a missing required field is refused and named", () => {

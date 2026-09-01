@@ -20,6 +20,21 @@ const ADMIN_KEY = (process.env.ADMIN_KEY || "").trim();
 // this list intentionally small — a few genuinely useful pages beat many thin
 // ones. Add rows here and re-run to expand coverage.
 const TARGETS = [
+  // The Treasure Valley — the owner's home market, and the first customer's
+  // whole world. Deliberately three cities rather than Boise alone: market.js's
+  // METRO_GROUPS already treats Boise/Meridian/Nampa/Caldwell as ONE market for
+  // corpus retrieval and broker coverage, so searches across them compound into
+  // the same bucket, and an industrial developer in this valley builds in all
+  // three. Nothing in Idaho was seeded before 2026-08-31, which meant the one
+  // market we most needed to look strong rendered no page at all.
+  { type: "Industrial", city: "Boise", state: "ID" },
+  { type: "Industrial", city: "Meridian", state: "ID" },
+  { type: "Industrial", city: "Nampa", state: "ID" },
+  // Land, for the development side of the same market. Expect this one to be
+  // the marginal call: land trades per ACRE, so like the multifamily rows below
+  // it may miss the >=3-priced-sale-comps filter and simply not publish. That
+  // is the filter working — prune it if it keeps failing, never relax it.
+  { type: "Land", city: "Boise", state: "ID" },
   // Industrial — the site's strongest vertical, so it gets the deepest coverage.
   { type: "Industrial", city: "Ontario", state: "CA" },
   { type: "Industrial", city: "Riverside", state: "CA" },
@@ -103,7 +118,15 @@ async function buildOne(t) {
   return snapshot;
 }
 
-(async () => {
+// Guarded, like every other script in this repo (shot.js, desktop.js,
+// auto-market-heroes.js, firm-sandbox.js). This one had no guard until
+// 2026-08-31, so `require("./gen-market-seed.js")` — from a test, a REPL, or a
+// one-liner checking the file parses — ran the whole list immediately. That is
+// ~40 billed searches and roughly $14 against a running server, with the only
+// clue being output scrolling past. It was found the dull way: by doing it.
+// Nothing was lost, because the merge below keeps every existing page when a
+// target fails, which is the same design that makes a re-run safe.
+async function main() {
   const file = path.join(__dirname, "market-seed.json");
   // Merge into the existing seed so a target that fails a re-run keeps its
   // live page instead of silently vanishing from the site.
@@ -131,4 +154,13 @@ async function buildOne(t) {
   }
   fs.writeFileSync(file, JSON.stringify(out, null, 2));
   console.log(`\nWrote ${Object.keys(out).length} market pages to ${file}`);
-})();
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`gen-market-seed failed: ${err.message}`);
+    process.exit(1);
+  });
+}
+
+module.exports = { TARGETS };

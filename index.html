@@ -2620,13 +2620,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- A second door for a list somebody already keeps in a
                spreadsheet. It posts to the same route the Add button does. -->
           <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
-          <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
+          <!-- .xls is accepted INTO the dialog on purpose, so the server can
+               answer "that is an older .xls, save it as .xlsx" by name. Left
+               out, the broker's own file is greyed out with nothing on screen
+               saying why — the vault's HEIC rule. -->
+          <input id="contactCsvFile" type="file" class="hidden"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
         </form>
         <p id="contactMsg" class="hidden text-sm mt-2"></p>
         <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet, saved as CSV, with a name column.</p>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -14213,14 +14218,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!file) return;
     contactsMsg("Reading " + file.name + "...");
     try {
-      const csv = await file.text();
-      const out = await postContacts({ csv });
+      // THE BYTES DECIDE which door this file takes, never its name and never
+      // the browser's declared type — xlsx.js's sniff rule, mirrored here so a
+      // spreadsheet saved with a .csv extension still imports. The server
+      // sniffs again and is the one that counts; this only chooses transport.
+      const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      const isZip = head[0] === 0x50 && head[1] === 0x4b;
+      const isOle = head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0;
+
+      let out;
+      if (isZip || isOle) {
+        // An .xls (OLE2) is sent rather than refused here, so the refusal a
+        // person reads is the server's specific one about saving it as .xlsx.
+        out = await postContacts({ filename: file.name, xlsx: toBase64(await file.arrayBuffer()) });
+      } else {
+        // Unchanged: file.text() decodes as UTF-8 and parseCsv strips the BOM
+        // Excel writes on Save As CSV.
+        out = await postContacts({ csv: await file.text() });
+      }
       contactsMsg(importSummary(out), out.imported === 0);
       await renderContacts();
     } catch (err) {
       contactsMsg(err.message || "That file couldn't be imported.", true);
     }
   });
+
+  // Chunked because String.fromCharCode.apply on a whole megabyte-long array
+  // overflows the argument stack and throws — on a big file only, which is
+  // exactly the case a quick test never covers.
+  function toBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.

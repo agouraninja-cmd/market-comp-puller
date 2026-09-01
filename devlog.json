@@ -3811,5 +3811,11 @@
     "type": "improvement",
     "title": "One Messages heading, one list",
     "details": "Owner’s, on seeing it live. The page said Messages twice - an uppercase eyebrow directly over an h1 saying the same word, under a rail row also saying it - so the eyebrow went. And the thread column had Chats and People tabs; People went, because the New panel already searches the same colleagues and a directory you have to switch views to reach is a second answer to one question. Chats is a plain label now rather than a tab, since a tab with one option is a button that does nothing. Nothing was lost that mattered: pending invitees are still reported on the firm line at the foot of the column (“Barnes Firm · 2 colleagues, 1 invited”), which is where the count belonged anyway. The dead styles and the whole setSide/renderPeople/openDmWith path are deleted rather than left unreferenced. Also corrected the page’s meta description, which still read “Your firm’s messages” after the page stopped saying that."
+  },
+  {
+    "date": "2026-09-01",
+    "type": "improvement",
+    "title": "One page for brokers and firms, at /brokers-firms",
+    "details": "/brokers and /firms were two pitches to the same reader — a broker deciding whether to bring their comp book, and the same broker deciding whether to bring their office. They shared an audience, a price answer and a privacy argument, and spent two of the four Explore slots saying it twice. They are now one page: upload your book, your deals inside your own reports, then the firm's shared shelf, then the price pair. Both old paths 301 here, so an indexed link and every invite email still land. Two things did not survive the merge on purpose: the broker FAQ, whose questions belong on /faq so only one page carries FAQ structured data, and the /brokers proof line. The \"Submit a comp\" door did survive — it is the only public entrance to the submission form — and now sits in the closing band."
   }
 ]

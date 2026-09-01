@@ -319,8 +319,13 @@ test("autoShareValue maps the three named choices, and refuses anything else", (
 });
 
 // ---------------------------------------------------------------------------
-// Shop kind (migrations 036 and 037) — the customer types of Transition Plan
-// v2 §6, plus the tenant rep shop added on top of it 2026-08-21.
+// Shop kind (migration 036) — the customer types of Transition Plan v2 §6.
+//
+// A tenant rep shop was a third kind from 2026-08-21 and was withdrawn on
+// 2026-08-31. It is still named below, on purpose and in the refusals: the
+// database CHECK still accepts the string (037 is deliberately not reverted),
+// so the ONLY thing keeping it out of a firm's row is this module, and a
+// withdrawn value that quietly comes back is what these lines exist to catch.
 //
 // One column, two vocabularies. These pin the two rules that make it safe to
 // read anywhere: an unrecognized kind renders the words a firm has already
@@ -334,15 +339,16 @@ test("an unrecognized kind reads as 'broker' — the words the firm already saw"
   for (const v of ["BROKER", "enterprise", "dev", "", null, undefined, true, 3]) {
     assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
   }
-  // 037's near misses, which are the ones a hand-written row or an older
-  // client would actually produce. None of them is the value.
-  for (const v of ["tenant", "tenant rep", "tenant-rep", "TENANT_REP", "rep"]) {
+  // The WITHDRAWN kind, and the reason removing it needed no data migration:
+  // a firm that had chosen 'tenant_rep' before 2026-08-31 reads as a broker
+  // shop by the same incumbency rule, so it loses a vocabulary rather than a
+  // screen. Its near misses go the same way.
+  for (const v of ["tenant_rep", "tenant", "tenant rep", "tenant-rep", "TENANT_REP", "rep"]) {
     assert.equal(ORG.kindOf({ kind: v }), "broker", JSON.stringify(v));
   }
   assert.equal(ORG.kindOf(null), "broker");
   assert.equal(ORG.kindOf("development"), "broker", "a string is not an org row");
   assert.equal(ORG.kindOf({ kind: "development" }), "development");
-  assert.equal(ORG.kindOf({ kind: "tenant_rep" }), "tenant_rep");
 });
 
 test("creating a firm cannot answer the shop question by silence", () => {
@@ -357,17 +363,16 @@ test("creating a firm cannot answer the shop question by silence", () => {
   for (const junk of ["enterprise", "brokerage", "dev", 1, true, {}]) {
     assert.equal(ORG.validateShopKind(junk).ok, false, JSON.stringify(junk));
   }
-  // The write path normalizes case and padding and NOTHING else: a space or a
-  // hyphen where the underscore goes is a different string, and the CHECK in
-  // 037 would refuse it one layer down anyway. Refusing here keeps the two
-  // layers saying the same thing.
-  for (const near of ["tenant", "tenant rep", "tenant-rep", "tenantrep"]) {
-    assert.equal(ORG.validateShopKind(near).ok, false, JSON.stringify(near));
+  // The withdrawn kind is refused HERE and nowhere else that matters: 037's
+  // CHECK still accepts the string, so this route is the whole wall. A future
+  // edit that restores the value to SHOP_KINDS without a deliberate decision
+  // fails on this line.
+  for (const gone of ["tenant_rep", " Tenant_Rep ", "tenant", "tenant rep", "tenant-rep", "tenantrep"]) {
+    assert.equal(ORG.validateShopKind(gone).ok, false, JSON.stringify(gone));
   }
   assert.deepEqual(ORG.validateShopKind("  Development "), { ok: true, kind: "development" },
     "trimmed and lowercased, the way validateOrgName collapses a name");
   assert.deepEqual(ORG.validateShopKind("broker"), { ok: true, kind: "broker" });
-  assert.deepEqual(ORG.validateShopKind(" Tenant_Rep "), { ok: true, kind: "tenant_rep" });
 });
 
 test("the refusal names every shop there is", () => {
@@ -396,14 +401,18 @@ test("every kind has copy, and only the kinds do", () => {
   assert.equal(ORG.shopCopyOf({ kind: "nonsense" }), ORG.SHOP_COPY.broker);
 
   // Land is a DEFAULT VIEW and not a claim about what a development shop may
-  // file, which is why only one kind has one. A tenant rep works across
-  // office, industrial and retail, so any single type here would open two
-  // shops out of three on a shelf that looks like it lost rows.
-  assert.equal(ORG.shopCopyOf({ kind: "tenant_rep" }).shelfType, "",
-    "a filtered default nobody chose is worse than no default");
+  // file, which is why only one kind has one — a broker shop's work spans
+  // every type, and a filtered default nobody chose is worse than no default.
+  assert.equal(ORG.shopCopyOf({ kind: "broker" }).shelfType, "");
 
-  // Three kinds, three sentences. A copy-paste that left two shops reading the
-  // same nouns would pass every other assertion in this file.
+  // The withdrawn kind has no copy at all, which is what makes shopCopyOf
+  // safe for a row that still holds it: it goes through kindOf first and
+  // lands on broker, rather than dereferencing an entry nobody deleted.
+  assert.equal(ORG.shopCopyOf({ kind: "tenant_rep" }), ORG.SHOP_COPY.broker);
+  assert.equal(ORG.SHOP_COPY.tenant_rep, undefined);
+
+  // One sentence per kind. A copy-paste that left two shops reading the same
+  // nouns would pass every other assertion in this file.
   const said = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].arrivals);
   assert.equal(new Set(said).size, said.length, "two shops read the same shelf sentence");
   const labels = ORG.SHOP_KINDS.map((k) => ORG.SHOP_COPY[k].label);

@@ -14,7 +14,7 @@
 //
 // WHY THIS PAGE EXISTS. The firm feature has been complete on the backend
 // since migration 030 — orgs, the shared shelf, invites, auto-share, shared
-// vault comps, per-seat billing, three shop kinds — and had NO public surface
+// vault comps, per-seat billing, the shop kinds — and had NO public surface
 // at all: nothing in the nav, nothing in the footer, no tier on the pricing
 // modal. The only door was an invite email, which only reaches somebody a
 // member already knows. A broker asking "what does this cost for my team"
@@ -26,8 +26,12 @@
 //      org-access.js's SHOP_COPY, the same map the invite email and the
 //      create box read. Hand-copying those sentences here would make this the
 //      fourth copy and the first to go stale — test/firms-page.test.js fails
-//      the build if any of the three `arrivals` strings appears in this file
-//      as a literal.
+//      the build if any of the `arrivals` strings appears in this file as a
+//      literal. The HEADING over those cards counts them the same way, off
+//      shopKinds.length rather than a typed numeral: a kind was added and
+//      withdrawn inside ten days (tenant rep, 2026-08-21 to 2026-08-31), and
+//      a page that says "three" over two cards is the drift this rule is
+//      about.
 //   2. EVERY PRIVACY CLAIM BELOW IS A PROMISE THE CODE KEEPS. "Never
 //      retroactive" is org-access.js's auto-share guard; the member veto that
 //      beats the firm is `org_members.auto_share`'s nullable third state; "no
@@ -53,6 +57,12 @@ function renderFirmsPageBody({ signedIn = false, shopKinds = [], shopCopy = {} }
 
   // What each shop is told its shelf will hold. The sentence is dropped
   // mid-clause, which is why `arrivals` is lower case with no final stop.
+  //
+  // The count in the heading below is read off this same list. Spelled rather
+  // than digits (it sits in running prose); past four it falls back to the
+  // numeral, which is a heading nobody has had to write yet.
+  const COUNT_WORDS = ["no", "one", "two", "three", "four"];
+  const shopCount = COUNT_WORDS[shopKinds.length] || String(shopKinds.length);
   const shopCards = shopKinds
     .map((kind) => {
       const copy = shopCopy[kind] || {};
@@ -124,8 +134,8 @@ function renderFirmsPageBody({ signedIn = false, shopKinds = [], shopCopy = {} }
     `person's inbox.</p>` +
     `</div>` +
 
-    // --- The three shops ----------------------------------------------------
-    `<div class="kicker" style="margin-top:34px">One shelf, three kinds of shop</div>` +
+    // --- The shops ----------------------------------------------------------
+    `<div class="kicker" style="margin-top:34px">One shelf, ${shopCount} kinds of shop</div>` +
     `<h2 style="font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;color:var(--ink);margin:10px 0 4px">` +
     `Tell us what kind of shop you are, and the shelf speaks your language.</h2>` +
     `<div class="grid">${shopCards}</div>` +

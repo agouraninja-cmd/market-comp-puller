@@ -492,6 +492,11 @@ test("with outbound mail live, the invitation is emailed and carries the token",
   assert.equal(j.emailed, true, "the send's own answer, never a restatement of the configuration");
   assert.deepEqual(j.emailFailed, []);
 
+  // Read with no wait, deliberately, and this is the one mail path in the app
+  // where that is safe: sendHubInvites AWAITS its sends (`emailed` above is
+  // their own answer, not a restatement of the configuration), so the response
+  // cannot arrive before the post to the stub has. Every other suite on this
+  // fake needs fake.waitForMail — see its header.
   assert.equal(db.sent.length, 1);
   assert.deepEqual(db.sent[0].to, [TENANT.email]);
   assert.match(JSON.stringify(db.sent[0]), new RegExp(`https://compninja\\.co/hub/${j.id}#k=`),

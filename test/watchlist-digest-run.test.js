@@ -66,13 +66,24 @@ const runDigest = (srv, body) => fetch(srv.base + "/api/watchlist/digest", {
 
 // The Resend post is fire-and-forget by design (analytics and mail must never
 // delay a response), so the summary can return before the mail lands.
-async function settle(db, want) {
-  for (let i = 0; i < 60 && db.sent.length < want; i++) await new Promise((r) => setTimeout(r, 25));
-  return db.sent;
-}
+//
+// The loop lives in the fake now, beside the `sent` array it waits on. This
+// copy budgeted 1.5 seconds and had no settling beat after the mail arrived —
+// short enough that a slow send under full-suite parallelism leaves `sent`
+// empty and `const [mail] = await settle(db, 1)` fails on `mail.subject` being
+// undefined, which names nothing. See the helper's header.
+const settle = fake.waitForMail;
 
+// Each subtest takes its OWN `t`. `t.after` inside a callback that takes no
+// argument registers on the PARENT, so every server this file booted stayed
+// up until the whole test finished and they were all closed in one burst —
+// and `db.stop()` is `server.close()`, which waits on its connections. That
+// is the state a hung `node --test` was observed in on 2026-09-01: it sat for
+// five hours after printing its last test line, which in CI is a job that
+// never ends rather than a build that goes red. Each subtest here boots and
+// uses exactly one server, so each should close its own.
 test("the digest actually runs", async (t) => {
-  await t.test("mails a watcher with news, skips one without, and marks only what it sent", async () => {
+  await t.test("mails a watcher with news, skips one without, and marks only what it sent", async (t) => {
     const tables = {
       users: [
         { id: "u1", email: "watcher@example.com", digest_optout: false },
@@ -113,7 +124,7 @@ test("the digest actually runs", async (t) => {
     assert.equal(rows.find((r) => r.id === "w2").last_digest_at, null, "w2 had no news and must keep its mark");
   });
 
-  await t.test("a second run mails nobody twice", async () => {
+  await t.test("a second run mails nobody twice", async (t) => {
     // The single most expensive mistake this feature could make.
     const tables = {
       users: [{ id: "u1", email: "watcher@example.com", digest_optout: false }],
@@ -136,7 +147,7 @@ test("the digest actually runs", async (t) => {
     assert.equal(db.sent.length, 1, "the same comps must never be mailed twice");
   });
 
-  await t.test("two watchers both get mail", async () => {
+  await t.test("two watchers both get mail", async (t) => {
     // findUsersByIds and markWatchlistDigested build PostgREST `in.(...)`
     // lists, and a list is the one shape that works for a sample of one and
     // then does not. A run that mails nobody looks identical to a quiet week
@@ -166,7 +177,7 @@ test("the digest actually runs", async (t) => {
     assert.deepEqual(db.unparsed, [], "the fake refused a filter it could not parse: " + JSON.stringify(db.unparsed));
   });
 
-  await t.test("an opted-out account is skipped before anything is built", async () => {
+  await t.test("an opted-out account is skipped before anything is built", async (t) => {
     const tables = {
       users: [
         { id: "u1", email: "yes@example.com", digest_optout: false },
@@ -196,7 +207,7 @@ test("the digest actually runs", async (t) => {
 });
 
 test("the digest's send cutoff", async (t) => {
-  await t.test("is the LATER of last_seen_at and last_digest_at", async () => {
+  await t.test("is the LATER of last_seen_at and last_digest_at", async (t) => {
     // The rule that stops the email telling somebody what they already saw on
     // screen. This account was mailed a month ago but opened the app
     // yesterday, so a comp from three days ago is old news.
@@ -220,7 +231,7 @@ test("the digest's send cutoff", async (t) => {
     assert.equal(db.sent.length, 0);
   });
 
-  await t.test("a never-mailed watch reaches back to when it was created, not to the epoch", async () => {
+  await t.test("a never-mailed watch reaches back to when it was created, not to the epoch", async (t) => {
     // Otherwise a brand new watch mails a year of backlog on day one.
     const tables = {
       users: [{ id: "u1", email: "new@example.com", digest_optout: false }],
@@ -245,7 +256,7 @@ test("the digest's send cutoff", async (t) => {
 });
 
 test("a dry run changes nothing", async (t) => {
-  await t.test("returns the copy, sends no mail, and advances no marker", async () => {
+  await t.test("returns the copy, sends no mail, and advances no marker", async (t) => {
     const tables = {
       users: [{ id: "u1", email: "watcher@example.com", digest_optout: false }],
       watchlist_items: [
@@ -296,7 +307,7 @@ test("the outbound-mail guard", async (t) => {
     comp_corpus: [corpusRow()],
   });
 
-  await t.test("a real run refuses when mail is unconfigured, and marks nothing", async () => {
+  await t.test("a real run refuses when mail is unconfigured, and marks nothing", async (t) => {
     const { db, srv, stop } = await bootWithDb(tables(), { EMAIL_FROM: "", RESEND_API_KEY: "" });
     t.after(stop);
 
@@ -311,7 +322,7 @@ test("the outbound-mail guard", async (t) => {
       "refusing is only safe if it also leaves the high-water mark alone");
   });
 
-  await t.test("a dry run still works without mail configured", async () => {
+  await t.test("a dry run still works without mail configured", async (t) => {
     // The deliberate exemption: looking at the copy must not require a
     // verified sending domain, which is the state this deployment is actually
     // in today.
@@ -328,7 +339,7 @@ test("the outbound-mail guard", async (t) => {
 });
 
 test("one broken account does not stop the run", async (t) => {
-  await t.test("the rest of the list is still mailed", async () => {
+  await t.test("the rest of the list is still mailed", async (t) => {
     // A watcher row with no market at all: corpusRowsForMarket refuses it and
     // the account throws. The next account is still owed its mail.
     const tables = {
@@ -374,7 +385,7 @@ test("unsubscribing actually stops the mail", async (t) => {
     comp_corpus: [corpusRow()],
   });
 
-  await t.test("the POST writes the flag and the next run skips them", async () => {
+  await t.test("the POST writes the flag and the next run skips them", async (t) => {
     const { db, srv, stop } = await bootWithDb(tables());
     t.after(stop);
 
@@ -390,7 +401,7 @@ test("unsubscribing actually stops the mail", async (t) => {
     assert.equal(db.sent.length, 0, "an unsubscribed account must not be mailed");
   });
 
-  await t.test("the same link turns them back on, and the backlog is still waiting", async () => {
+  await t.test("the same link turns them back on, and the backlog is still waiting", async (t) => {
     // The markers were never advanced while they were opted out, so coming
     // back gets what they missed rather than a silent gap.
     const { db, srv, stop } = await bootWithDb(tables());
@@ -409,7 +420,7 @@ test("unsubscribing actually stops the mail", async (t) => {
     assert.match(mail.text, /100 Test Way/, "the comps they missed are still owed to them");
   });
 
-  await t.test("a forged token writes nothing", async () => {
+  await t.test("a forged token writes nothing", async (t) => {
     const { db, srv, stop } = await bootWithDb(tables());
     t.after(stop);
     const r = await fetch(srv.base + "/watchlist/unsubscribe?u=u1&t=deadbeef", { method: "POST" });
@@ -419,6 +430,11 @@ test("unsubscribing actually stops the mail", async (t) => {
   });
 });
 
+// The exception to the rule above, and the reason it is stated per subtest
+// rather than applied to the file: this parent boots ONE server and shares it
+// across all three of its subtests, so the teardown belongs to the parent and
+// these callbacks deliberately do NOT take their own `t`. A `t.after` added
+// inside one of them would stop the server the other two are still using.
 test("the run log distinguishes a preview from a send", async (t) => {
   // /admin's card reports when the digest last MAILED anybody, because the
   // schedule lives outside this process and an external cron that quietly

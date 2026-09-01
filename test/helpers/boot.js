@@ -151,6 +151,16 @@ async function bootOnce(env) {
       GOOGLE_OAUTH_CLIENT_ID: "",
       GOOGLE_OAUTH_CLIENT_SECRET: "",
       GOOGLE_OAUTH_TOKEN_URL: "",
+      // The tester-feedback recipients, blanked for a sharper version of the
+      // reason above: this one has a real DEFAULT. Unset, it is three live
+      // @compninja.co addresses, and server.js's .env loader fills anything
+      // undefined -- so the day EMAIL_FROM and RESEND_API_KEY land in a
+      // developer's .env (which is the whole point of verifying the domain),
+      // `npm test` would start mailing Jacob, Chuck and Owen for real, from
+      // whichever suite touched the route. Blank here means the route reports
+      // "nothing delivered" instead, which is the failure direction to want;
+      // a suite that means to assert on recipients sets them explicitly.
+      TESTER_FEEDBACK_EMAIL: "",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

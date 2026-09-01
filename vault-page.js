@@ -2778,7 +2778,13 @@ a.btn.ghost:hover{color:var(--ink)}
   // Import button and a Cancel button is the whole conversation. These say
   // what is wrong and what to do about it, in the broker's own words.
   var NO_COLUMN_HELP={
-    transaction:"Your file has no column saying whether each deal was a sale or a lease. Add one with values Sale or Lease, then upload again."
+    transaction:"Your file has no column saying whether each deal was a sale or a lease. Add one with values Sale or Lease, then upload again.",
+    // The same shape as transaction, and it was missing: a developer's or an
+    // owner-operator's own tracking sheet names no property type anywhere,
+    // because every row is the one thing they build. Without an entry here
+    // that file got a bare "Still needed: Property type" and no way to learn
+    // what to do about it.
+    property_type:"Your file has no column saying what kind of property each deal is. Add one with values Industrial, Office, Retail, Multifamily, Land or Residential, then upload again."
   };
   // The raw header the broker actually sees in their spreadsheet, for a
   // normalized key. column_4 is our own synthetic name for a header that

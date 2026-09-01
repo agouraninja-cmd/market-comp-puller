@@ -1099,7 +1099,8 @@ function validateEdit(existing, patch) {
  * comps. A file with NO readable header is a hard failure, because that is a
  * wrong-file mistake rather than a data mistake.
  */
-function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null } = {}) {
+function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null,
+                                hasMarket = null } = {}) {
   const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0, commented: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
@@ -1164,6 +1165,30 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     if (!result.ok) {
       skipped++;
       if (errors.length < maxErrors) errors.push(`Line ${lineNo}: ${result.errors.join("; ")}`);
+      return;
+    }
+    // An address with no city and state is filed under a market that does not
+    // exist. server.js attaches `market` with marketOf(), which returns the
+    // string it was handed when it cannot parse one — so "6200 W Gowen Rd"
+    // becomes a market called "6200 W Gowen Rd". Nothing fails: the comp is
+    // stored, and then it never appears in the broker's own reports (retrieval
+    // keys on market), the rollup grows one bucket per building, and the gut
+    // check has nothing to compare it against. It is the quietest way to lose a
+    // comp, and it is exactly what a developer's own spreadsheet produces,
+    // because those keep Address, City and State in three separate columns and
+    // only the first can be mapped onto `address`.
+    //
+    // INJECTED, never required: this module does not know what a market is
+    // (see normalizeRow's own note that `market` is server.js's job), and a
+    // marketOf import here would be a second answer to a question market.js
+    // already owns. Omitted, behaviour is identical to before this existed,
+    // which is what keeps every other caller safe by default.
+    if (hasMarket && !hasMarket(result.row.address)) {
+      skipped++;
+      if (errors.length < maxErrors) {
+        errors.push(`Line ${lineNo}: "${result.row.address}" needs a city and state — ` +
+          `write the whole address in one cell, like "${result.row.address}, Boise, ID"`);
+      }
       return;
     }
     // Within-file duplicates, caught here so the database's unique constraint

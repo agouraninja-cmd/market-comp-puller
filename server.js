@@ -124,6 +124,17 @@ const RENEWAL = require("./renewal-watch");
 // internally, for the key only).
 const { marketOf, marketForLog, US_STATES, siblingMarkets,
   exampleMarketOrder } = require("./market");
+// Did marketOf actually FIND a market, or hand back what it was given?
+//
+// It cannot fail: an address it cannot parse comes back unchanged, which is
+// right for the corpus (a comp is still worth storing) and wrong for the
+// vault, where the market IS the index — a comp filed under a market called
+// "6200 W Gowen Rd" is stored, never appears in the broker's own reports, and
+// says nothing about why. Every real key is "City, ST", so that shape is the
+// whole test. Handed to VAULT.parseUpload, which deliberately knows nothing
+// about markets and takes this as an injected predicate.
+const MARKET_KEY_RE = /^[^,]+,\s[A-Z]{2}$/;
+const addressHasMarket = (address) => MARKET_KEY_RE.test(marketOf(address));
 // What counts as somebody looking at a market, and how those rows add up into
 // the figure a Pro subscriber sees on My Desk. Pure and tested, because every
 // line of it is a way the number could flatter us — see its header.
@@ -19996,7 +20007,16 @@ const server = http.createServer((req, res) =>
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
           // wrong, which is why nothing is checked here.
-          const parsed = VAULT.parseUpload(csv, { mapping: parsedBody.rows ? null : (mapping || null) });
+          // hasMarket refuses an address carrying no city and state rather than
+          // letting it be filed under a market that does not exist — see
+          // addressHasMarket. It applies to BOTH doors (a CSV and the confirm
+          // table's rows), because the extract prompt completes "City, ST" only
+          // when the document proves the state, so a photographed sheet can
+          // produce exactly the same bare street address a spreadsheet does.
+          const parsed = VAULT.parseUpload(csv, {
+            mapping: parsedBody.rows ? null : (mapping || null),
+            hasMarket: addressHasMarket,
+          });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
           if (!parsed.ok) {
@@ -20732,6 +20752,24 @@ const server = http.createServer((req, res) =>
           }
           const result = VAULT.normalizeRow(JSON.parse(body || "{}"));
           if (!result.ok) return sendJson(res, 400, { error: result.errors.join("; ") });
+          // The upload path's rule, on the other door: a hand-typed address
+          // with no city and state is filed under a market that does not
+          // exist, and then the comp never appears in this broker's own
+          // reports. Refused here rather than stored — see addressHasMarket.
+          //
+          // The EDIT route deliberately does NOT carry this check. A broker
+          // whose vault already holds such a row would find every field on it
+          // uneditable until they fixed the address, including the address
+          // itself being the only thing they could change — and refusing to
+          // let somebody correct a price is a worse outcome than the bad
+          // market key that is already stored. New data is held to the rule;
+          // existing data is left reachable.
+          if (!addressHasMarket(result.row.address)) {
+            return sendJson(res, 400, {
+              error: `"${result.row.address}" needs a city and state, or it cannot be filed ` +
+                `under a market — write the whole address in one line.`,
+            });
+          }
 
           const row = result.row;
           // normalizeRow never sets user_id, and PROPS.propertyRowsFrom

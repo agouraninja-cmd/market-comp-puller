@@ -413,11 +413,18 @@ dependency. `.env` is git-ignored — never commit it.
   revoked one tester at a time with a one-row `update users set pro_tester =
   false where email = …` rather than by rotating the code for everyone.
   Rules live in `entitlements.js`, so `npm test` covers them; four of them
-  matter. It grants everything Pro **except the broker vault** — the vault is a
-  private-data workspace with an upload endpoint, and a passkey shared with a
-  wider group is a bigger surface than "try Pro's reports". (The door for
-  handing a broker the vault is `VAULT_PASSKEY` / `users.vault_beta` — see
-  the next bullet.) It **cannot switch
+  matter. It grants **everything Pro, the broker vault, firms and bulk
+  valuation included** (owner's call, 2026-09-01). Until then it withheld all
+  three — the vault as a private-data workspace with an upload endpoint, firms
+  as an endpoint that emails any address typed in, bulk as a spend fan-out —
+  on the argument that a shared passkey is a bigger surface than "try Pro's
+  reports"; what that produced was testers opening `/vault` and `/bulk` and
+  reading the product as the free tier. The bounds that remain are the ones
+  that were always doing the work: `BULK_DAILY_ADDRESSES` caps bulk spend per
+  member per day, and revoking one tester is still a one-row UPDATE. (The
+  door for handing a broker the vault WITHOUT comping Pro is still
+  `VAULT_PASSKEY` / `users.vault_beta` — see the next bullet; that direction
+  is unchanged.) It **cannot switch
   a dark deployment on** (`PRO_ENABLED` still wins, same as the admin branch).
   Its `status` is `"tester"`, never `"active"`, so the UI never offers a
   billing portal to an account with no Stripe customer. And unlike the admin
@@ -1483,8 +1490,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     SHARE still never carries a whole vault comp.
   - **`canUseOrg` gates creating and inviting, never accepting or reading.**
     It tracks `broker` (one subscription), so it is false on a dark
-    deployment and for a tester without `vault_beta` — the invite route sends
-    email, so a widely-shared passkey must not open it. A colleague on the
+    deployment. (It was also withheld from a tester without `vault_beta`
+    until 2026-09-01, when testers became Pro outright — see the
+    `TESTER_PASSKEY` bullet.) A colleague on the
     receiving end needs no plan at all: they are exactly an invited share's
     viewer, and a firm that could only share with people who had already
     bought the product would not solve the problem it exists for.
@@ -2846,11 +2854,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     number is a PRODUCT limit and lives in `entitlements.js`, the per-day
     number is a SPEND backstop and lives in an env var, exactly as
     `maxComps` and `DAILY_SEARCH_CAP` do.
-  - **`canBulkValue` is withheld on a dark deployment AND from a tester.** The
-    vault's asymmetry sharpened: this is not merely an access surface but a
-    SPEND surface, so `PRO_ENABLED=off` (the default) must not hand an
-    unmetered invoice to every visitor, and one `TESTER_PASSKEY` string handed
-    to a group must not become a fan-out. The retired $20 unlock does not
+  - **`canBulkValue` is withheld on a dark deployment.** The vault's
+    asymmetry sharpened: this is not merely an access surface but a SPEND
+    surface, so `PRO_ENABLED=off` (the default) must not hand an unmetered
+    invoice to every visitor. (It was withheld from a tester too until
+    2026-09-01; testers are Pro outright now, and `BULK_DAILY_ADDRESSES` is
+    the per-member backstop that bounds them exactly as it bounds a paying
+    member.) The retired $20 unlock does not
     reach it either (the Address Explorer's argument: a tool for running fifty
     OTHER addresses cannot be scoped to one address+type).
   - **The worker outlives the request, so it holds no `req`/`res`.** That is

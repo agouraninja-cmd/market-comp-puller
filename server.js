@@ -414,9 +414,9 @@ function proEnabledFor(user) {
 // Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
 // devices and survives a passkey rotation — and revoking one tester is a
 // one-row UPDATE, without changing the passkey for everyone else. See the
-// comped-tester branch in entitlements.js for what it grants (everything Pro
-// except the broker vault) and what it cannot override (PRO_ENABLED, and a
-// real paid subscription).
+// comped-tester branch in entitlements.js for what it grants (everything Pro,
+// vault and bulk included since 2026-09-01) and what it cannot override
+// (PRO_ENABLED, and a real paid subscription).
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 
 // The vault's own shared passkey — the broker-onboarding door, and the reason

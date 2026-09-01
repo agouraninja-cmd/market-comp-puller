@@ -76,6 +76,27 @@ function renderMessagesBody(boot) {
 .msg-btn.sm{padding:4px 9px;font-size:12px}
 
 /* --- the thread list --------------------------------------------------- */
+/* The Chats / People switch. A tab, not a button: it says which of two lists
+   this column is showing, so the pressed one reads as the current place. */
+.msg-tab{appearance:none;border:0;background:transparent;cursor:pointer;font:inherit;
+  font-size:13.5px;font-weight:600;color:var(--ink-3);padding:6px 2px;margin-right:16px;
+  border-bottom:2px solid transparent;line-height:1.4}
+.msg-tab:hover{color:var(--ink)}
+.msg-tab[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--red)}
+/* The firm, quietly, at the foot of the column. */
+.msg-firm{border-top:1px solid var(--hair);padding:9px 14px;font-size:11.5px;
+  color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A person in the People list. Same row furniture as a thread, so the two
+   lists read as one column rather than as two designs. */
+.msg-person{display:flex;gap:10px;align-items:center;width:100%;text-align:left;
+  padding:11px 14px;border:0;border-bottom:1px solid var(--hair);background:transparent;
+  cursor:pointer;font:inherit;color:var(--ink)}
+.msg-person:hover{background:var(--wash)}
+.msg-person.waiting{cursor:default;background:transparent}
+.msg-person.waiting .msg-av{background:var(--wash-2);color:var(--ink-faint);border:1px solid var(--edge)}
+.msg-person.waiting .msg-name,.msg-person.waiting .msg-sub{color:var(--ink-faint)}
+.msg-sub{display:block;font-size:12px;color:var(--ink-3);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .msg-search{padding:10px 12px;border-bottom:1px solid var(--hair)}
 .msg-search input{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
   padding:7px 10px;font:inherit;font-size:13px;background:var(--paper);color:var(--ink)}
@@ -176,37 +197,52 @@ function renderMessagesBody(boot) {
 @media (min-width:901px){ #msgBack{display:none} }
 </style>
 
+<!-- THIS IS THE READER'S INBOX, not the firm's noticeboard (owner's, 2026-09-01).
+     It shipped headed "Your firm's messages" with the firm's name above the
+     thread list, and read as a company page somebody had been given access to
+     rather than as their own. The firm is the CONTEXT for who you can reach;
+     it is not whose page this is. Nothing about the access rules changed with
+     the wording - a thread is still firm-scoped and still walled twice. -->
 <section style="padding:28px 0 0">
   <div class="kicker">Messages</div>
-  <h1 style="margin:6px 0 4px;font-size:26px;letter-spacing:-.01em">Your firm's messages</h1>
+  <h1 style="margin:6px 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
   <p style="margin:0;color:var(--ink-2);max-width:62ch;font-size:14px;line-height:1.6">
-    Talk to the people you work with, and send them comps out of your vault.
-    A comp you send is kept in the conversation, so the deal stays with the firm
-    instead of in somebody's text messages.
+    Message the people you work with, and send them comps straight from your
+    vault. Anything you send is kept in the conversation, so a deal you talk
+    about stays on the record instead of in somebody's text messages.
   </p>
 </section>
 
 <div class="msg-page" id="msgPage" hidden>
   <aside class="msg-side">
+    <!-- Chats and People, because a directory of colleagues is a thing you
+         LOOK AT and not a step inside a dialog. It lived behind the New button
+         before, which meant the only way to find out who you could message was
+         to start doing it. -->
     <div class="msg-head">
-      <div class="msg-grow" style="min-width:0">
-        <h2 id="msgFirmName">Messages</h2>
-        <div class="sub" id="msgFirmSub"></div>
-      </div>
-      <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
+      <button class="msg-tab" id="msgSideChats" type="button" aria-pressed="true">Chats</button>
+      <button class="msg-tab" id="msgSidePeople" type="button" aria-pressed="false">People</button>
+      <span class="msg-grow"></span>
+      <button class="msg-btn sm" id="msgNewBtn" type="button">New channel</button>
     </div>
-    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search conversations" autocomplete="off"></div>
+    <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off"></div>
     <div class="msg-threads" id="msgThreads"></div>
+    <div class="msg-threads msg-hide" id="msgPeople"></div>
+    <!-- Channels only. A direct message is started by clicking a person under
+         People, which is where somebody looking for a person already is. -->
     <div class="msg-panel msg-hide" id="msgNewPanel">
-      <h3>Start a conversation</h3>
-      <input id="msgNewTitle" type="text" placeholder="Channel name (leave blank for a direct message)" maxlength="80">
+      <h3>New channel</h3>
+      <input id="msgNewTitle" type="text" placeholder="Channel name" maxlength="80">
       <div id="msgNewPeople"></div>
       <div class="msg-panelfoot">
-        <button class="msg-btn primary sm" id="msgNewGo" type="button">Start</button>
+        <button class="msg-btn primary sm" id="msgNewGo" type="button">Create</button>
         <button class="msg-btn sm" id="msgNewCancel" type="button">Cancel</button>
         <span class="msg-hint" id="msgNewMsg"></span>
       </div>
     </div>
+    <!-- The firm, as CONTEXT rather than as the headline. It was the biggest
+         thing on this column and it is not whose page this is. -->
+    <div class="msg-firm" id="msgFirmLine"></div>
   </aside>
 
   <div class="msg-main" id="msgMain">
@@ -251,7 +287,7 @@ function renderMessagesBody(boot) {
   var $ = function(id){ return document.getElementById(id); };
   var state = {
     me: "", firm: null, people: [], threads: [], canAttach: false,
-    openId: "", cursor: "", messages: [], tab: "chat",
+    openId: "", cursor: "", messages: [], tab: "chat", side: "chats",
     attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
   };
 
@@ -326,6 +362,63 @@ function renderMessagesBody(boot) {
     }
     return String(t.preview || "").toLowerCase().indexOf(q) >= 0;
   }
+  // --- Chats / People ------------------------------------------------------
+  // Which of the two lists this column is showing. The thread list and the
+  // directory share the column, the search box and the row furniture, so a
+  // person and a conversation read as one place rather than two designs.
+  function setSide(tab){
+    state.side = tab;
+    $("msgSideChats").setAttribute("aria-pressed", tab === "chats" ? "true" : "false");
+    $("msgSidePeople").setAttribute("aria-pressed", tab === "people" ? "true" : "false");
+    $("msgThreads").className = tab === "chats" ? "msg-threads" : "msg-threads msg-hide";
+    $("msgPeople").className = tab === "people" ? "msg-threads" : "msg-threads msg-hide";
+    $("msgFilter").placeholder = tab === "people" ? "Search people" : "Search";
+    if (tab === "chats") renderThreads(); else renderPeople();
+  }
+
+  // Everyone at the firm except you, INCLUDING people who have been invited
+  // and have not joined yet. Showing them is what turns "why isn't Sarah
+  // here" from a bug report into a legible state: the firm knows about her,
+  // she has not accepted. They are not clickable, because a thread member has
+  // to be an account.
+  function renderPeople(){
+    var q = ($("msgFilter").value || "").trim().toLowerCase();
+    var list = state.people.filter(function(p){
+      if (!q) return true;
+      return (p.name + " " + p.email).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!state.people.length) {
+      $("msgPeople").innerHTML = '<div class="msg-empty"><h3>Nobody else here yet</h3>' +
+        '<p>Once colleagues join your firm they will show up here and you can message them.</p></div>';
+      return;
+    }
+    if (!list.length) { $("msgPeople").innerHTML = '<div class="msg-empty">Nobody matches that.</div>'; return; }
+    var html = "";
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      var waiting = p.pending || !p.userId;
+      html += '<' + (waiting ? "div" : "button") + ' class="msg-person' + (waiting ? " waiting" : "") + '"' +
+        (waiting ? "" : ' type="button" data-person-dm="' + esc(p.userId) + '"') + '>' +
+        '<span class="msg-av">' + esc(initial(p.name)) + '</span>' +
+        '<span class="msg-rowbody">' +
+          '<span class="msg-name">' + esc(p.name) + '</span>' +
+          '<span class="msg-sub">' + esc(waiting ? "Invited, has not joined yet" : p.email) + '</span>' +
+        '</span></' + (waiting ? "div" : "button") + '>';
+    }
+    $("msgPeople").innerHTML = html;
+  }
+
+  // Click a person, land in the conversation with them. The route is
+  // idempotent on the pair, so this opens the existing thread when there is
+  // one and makes it when there is not.
+  function openDmWith(userId){
+    api("POST", "/api/messages/thread", { kind: "dm", memberIds: [userId] }).then(function(o){
+      if (o.s !== 201) { note((o.j && o.j.error) || "Couldn't open that conversation.", true); return; }
+      var id = o.j.thread.id;
+      refreshList(true).then(function(){ setSide("chats"); openThread(id, true); });
+    });
+  }
+
   function renderThreads(){
     var q = ($("msgFilter").value || "").trim();
     var list = state.threads.filter(function(t){ return threadMatches(t, q); });
@@ -574,15 +667,23 @@ function renderMessagesBody(boot) {
       var j = o.j || {};
       state.me = (j.me && j.me.id) || "";
       state.firm = j.firm || null;
+      // Everyone at the firm except the reader. Pending invitees ride along
+      // and are marked; renderPeople draws them, and everything that needs a
+      // real account filters on userId.
       state.people = (j.people || []).filter(function(p){ return p.userId !== state.me; });
       state.canAttach = j.canAttachComps === true;
       state.threads = j.threads || [];
       ungate();
-      $("msgFirmName").textContent = (state.firm && state.firm.name) || "Messages";
-      $("msgFirmSub").textContent = state.people.length +
-        (state.people.length === 1 ? " colleague" : " colleagues");
+      // The firm as a quiet line at the foot of the column, not as the
+      // headline. Counts only people who have actually joined, because a
+      // pending invitation is not somebody you can talk to.
+      var joined = state.people.filter(function(p){ return !p.pending && p.userId; }).length;
+      var waiting = state.people.length - joined;
+      $("msgFirmLine").textContent = ((state.firm && state.firm.name) || "Your firm") + " · " +
+        joined + (joined === 1 ? " colleague" : " colleagues") +
+        (waiting ? ", " + waiting + " invited" : "");
       $("msgAttach").className = state.canAttach ? "msg-btn sm" : "msg-btn sm msg-hide";
-      renderThreads();
+      if (state.side === "people") renderPeople(); else renderThreads();
     });
   }
 
@@ -662,16 +763,29 @@ function renderMessagesBody(boot) {
     });
   }
 
-  // --- starting a conversation --------------------------------------------
+  // --- starting a channel --------------------------------------------------
+  // CHANNELS ONLY since the People tab exists. A direct message is started by
+  // clicking a person, which is where somebody looking for a person already
+  // is, so this panel no longer has to guess which of the two you meant from
+  // whether you typed a name.
+  //
+  // Only people who have actually joined can be picked: a thread member has to
+  // be an account, so a pending invitee here would be a checkbox that fails on
+  // submit.
+  function joinedPeople(){
+    return state.people.filter(function(p){ return !p.pending && p.userId; });
+  }
   function renderNewPeople(){
-    if (!state.people.length) {
-      $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet. ' +
-        '<a href="/desk">Invite a colleague</a>.</div>';
+    var people = joinedPeople();
+    if (!people.length) {
+      $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet, ' +
+        'so there is no one to add. Invitations are managed on your ' +
+        '<a href="/desk">workspace</a>.</div>';
       return;
     }
     var html = "";
-    for (var i = 0; i < state.people.length; i++) {
-      var p = state.people[i];
+    for (var i = 0; i < people.length; i++) {
+      var p = people[i];
       html += '<div class="msg-pick"><label>' +
         '<input type="checkbox" data-person="' + esc(p.userId) + '">' +
         '<span class="who">' + esc(p.name) + '<span class="sub"> · ' + esc(p.email) + '</span></span>' +
@@ -684,19 +798,16 @@ function renderMessagesBody(boot) {
     var boxes = $("msgNewPeople").querySelectorAll("input[data-person]");
     for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].getAttribute("data-person"));
     var title = ($("msgNewTitle").value || "").trim();
-    // The shape follows the input rather than asking twice: one person and no
-    // name is a direct message, anything else is a channel and needs one.
-    var kind = (!title && picked.length === 1) ? "dm" : "channel";
+    if (!title) { $("msgNewMsg").textContent = "Name the channel."; return; }
     if (!picked.length) { $("msgNewMsg").textContent = "Pick at least one colleague."; return; }
-    if (kind === "channel" && !title) { $("msgNewMsg").textContent = "Name the channel."; return; }
     $("msgNewGo").disabled = true;
     $("msgNewMsg").textContent = "";
-    api("POST", "/api/messages/thread", { kind: kind, title: title, memberIds: picked }).then(function(o){
+    api("POST", "/api/messages/thread", { kind: "channel", title: title, memberIds: picked }).then(function(o){
       $("msgNewGo").disabled = false;
-      if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
+      if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't create that."; return; }
       $("msgNewPanel").className = "msg-panel msg-hide";
       $("msgNewTitle").value = "";
-      refreshList(true).then(function(){ openThread(o.j.thread.id, true); });
+      refreshList(true).then(function(){ setSide("chats"); openThread(o.j.thread.id, true); });
     });
   }
 
@@ -741,7 +852,15 @@ function renderMessagesBody(boot) {
     }
     renderTray();
   });
-  $("msgFilter").addEventListener("input", renderThreads);
+  $("msgFilter").addEventListener("input", function(){
+    if (state.side === "people") renderPeople(); else renderThreads();
+  });
+  $("msgSideChats").addEventListener("click", function(){ setSide("chats"); });
+  $("msgSidePeople").addEventListener("click", function(){ setSide("people"); });
+  $("msgPeople").addEventListener("click", function(e){
+    var row = e.target.closest("[data-person-dm]");
+    if (row) openDmWith(row.getAttribute("data-person-dm"));
+  });
   $("msgPickFilter").addEventListener("input", renderPicker);
   $("msgAttach").addEventListener("click", openPicker);
   $("msgPickDone").addEventListener("click", function(){ $("msgPicker").className = "msg-panel msg-hide"; });

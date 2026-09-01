@@ -181,6 +181,27 @@ test("firm messaging, end to end", async (t) => {
     assert.equal(ctx.tables.msg_threads.length, 1, "a second DM row was created");
   });
 
+  await t.test("an invited colleague is listed but cannot be put in a thread", async () => {
+    // Two rules meeting. The People list SHOWS somebody who has been invited
+    // and has not accepted, so their absence from a conversation is legible
+    // rather than mysterious. And an invitation is still not a membership
+    // (030's rule), so naming them cannot put them in a thread — which
+    // matters because an invited address may already have an account.
+    ctx.tables.users.push({ id: "u-pat", email: "pat@colliers.com", name: "Pat",
+      pro_tester: false, vault_beta: false, digest_optout: false });
+    ctx.tables.org_members.push({
+      id: "m-pat", org_id: OURS, email: "pat@colliers.com", user_id: null, role: "member",
+      invited_at: "2026-08-30T00:00:00.000Z", joined_at: null, removed_at: null });
+
+    const list = await get(BRAD, "/api/messages");
+    const pat = list.j.people.filter((p) => p.email === "pat@colliers.com")[0];
+    assert.ok(pat, "an invited colleague is missing from the People list");
+    assert.equal(pat.pending, true, "she is not marked as still invited");
+
+    const o = await post(BRAD, "/api/messages/thread", { kind: "dm", memberIds: [pat.userId] });
+    assert.equal(o.s, 400, "an invitation is not a membership");
+  });
+
   await t.test("a rival at another shop cannot open a thread with our people", async () => {
     const o = await post(RIVAL, "/api/messages/thread", { kind: "dm", memberIds: [BRAD.id] });
     assert.equal(o.s, 400, "the ids came from the browser and prove nothing");

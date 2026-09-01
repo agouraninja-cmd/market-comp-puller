@@ -1633,7 +1633,12 @@ test("the comps toolbar offers to open a spreadsheet", () => {
 test("each import offers Open, next to Remove", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /data-open-sheet/);
-  assert.match(html, />Open</);
+  // The label lives in the list renderer's own ternary — the imports list is
+  // drawn client-side, so the static page never contains a literal >Open<.
+  // The old assertion (/>Open</) was in fact matching the HUB table's Open
+  // link, which left with the hubs deck on 2026-09-01; it passed for a month
+  // while proving nothing about the imports list it named.
+  assert.match(html, /\(editing\?"Editing":"Open"\)/);
 });
 
 test("Open spreadsheet turns the current view into editable cells", async () => {
@@ -2505,27 +2510,24 @@ test("the gut check abstains on a leasing book rather than judging rent against 
     "no benchmark exists for rent, so the panel must not draw a verdict");
 });
 
-test("a failed hub load says so instead of inviting you to create your first hub", () => {
-  // The bug: 401/403/503 all fell into one branch, so a 503 rendered
-  // "No hubs yet. Create one when you have comps to put in front of a client."
-  // An outage read as "you have none" — to the one person who would know it
-  // was wrong. It happened for real during a deploy on 2026-08-14.
-  //
-  // It is also backwards from this repo's own rule: the lead inbox refuses
-  // with a 503 rather than showing an empty inbox, "because an empty inbox on
-  // error would misreport demand as zero".
+test("the hubs deck is gone from the vault, and a road sign stands where it was", () => {
+  // Owner's direction, 2026-09-01: "get rid of the hub in the vault and make
+  // it only the messages feature." Client conversations — creating one,
+  // inviting, the people list, closing — live in Messages under External now,
+  // and this page stopped being their second home. What remains is the
+  // transition pointer, because a broker who used "Your hubs" yesterday
+  // should find a road sign where the road was, not an unexplained absence.
   const fs = require("node:fs");
   const path = require("node:path");
   const src = fs.readFileSync(path.join(__dirname, "..", "vault-page.js"), "utf8");
-  assert.match(src, /function hubsFailed\(text\)\{/);
-  // Not-for-you stays silent; everything else speaks.
-  assert.match(src, /if\(o\.s===401\|\|o\.s===403\)\{hubs=\[\];renderHubs\(\);return;\}/);
-  assert.match(src, /if\(o\.s!==200\)\{hubsFailed\(/);
-  assert.match(src, /\.catch\(function\(\)\{hubsFailed\(/);
-  // And the invitation must be HIDDEN on failure — "create your first hub" is
-  // the wrong thing to say to somebody whose hubs we could not fetch.
-  const fn = src.match(/function hubsFailed\(text\)\{[\s\S]*?\n  \}/)[0];
-  assert.match(fn, /hubShow\(\$\("hubEmpty"\),false\)/);
+  // The deck's machinery is DELETED, not hidden: hidden code is the drift
+  // this repo keeps paying for.
+  for (const gone of ["loadHubs", "renderHubs", "hubsFailed", "hubInvites", "hubRows", "+ New hub"]) {
+    assert.ok(!src.includes(gone), `the vault still carries hub machinery: ${gone}`);
+  }
+  // The pointer, and where it points.
+  assert.match(src, /Client conversations/);
+  assert.match(src, /href="\/messages"/);
 });
 
 // ---------------------------------------------------------------------------

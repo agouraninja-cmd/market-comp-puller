@@ -255,3 +255,36 @@ Messages, then remove the vault's hub section, leaving at most a
 a solo broker with deal rooms and no firm cannot reach the inbox view of them.
 Their deal rooms are unaffected (the vault still lists them). Worth revisiting
 when a real solo broker exists.
+
+## 12. Steps 2-4 — shipped later the same day
+
+The §11 migration finished in one round:
+
+- **Create + invite live in Messages.** Typing a full email address into the
+  New panel's search offers "Invite <email> — outside your firm, by email"
+  (only when the member has a vault, since POST /api/hubs refuses without
+  one). Any outside email makes the whole selection an external conversation;
+  colleagues picked alongside become participants by their email. One optional
+  client-facing field appears for external creation — "What's this about?" —
+  which is NOT a name for the member (the no-names rule stands internally):
+  it is the subject the CLIENT sees in their invite email and on their page,
+  and left empty the email says "shared a set of comps with you".
+- **People and closing live on the conversation.** A People button on every
+  external thread opens the guest list: who is in it, whether they have
+  opened it, invite by email (a wholesale PUT of the full list — the route
+  re-mails nobody already on it), remove (confirm; their link dies at once),
+  and Close (confirm; read stays, writes stop, and the panel disables its own
+  write controls). One-time invite links that could not be emailed render
+  here with copy buttons, guarded so one room's links can never display
+  inside another room's panel.
+- **The vault's hubs deck is REMOVED** — markup and machinery deleted, not
+  hidden — and a pointer deck stands where it was ("Client conversations →
+  Open Messages") for the transition. Delete the pointer outright once the
+  move has settled. One archaeology note: the old vault-page test "each
+  import offers Open" was matching the HUB table's Open link the whole time;
+  it now pins the imports renderer's own label expression.
+
+This closes the owner's "get rid of the hub in the vault and make it only the
+messages feature." What remains hub-branded is the CLIENT's own page at
+/hub/<id> and its token door, which are deliberately untouched — the client
+experience never changed through any of this.

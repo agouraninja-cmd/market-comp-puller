@@ -86,11 +86,32 @@ async function bootWithDb(tables, extraEnv) {
   return { db, srv, stop: async () => { srv.stop(); await db.stop(); } };
 }
 
-const postNote = (srv, user, body) => fetch(srv.base + "/api/hub/message", {
-  method: "POST",
-  headers: { "content-type": "application/json", cookie: `cn_session=tok-${user.id}` },
-  body: JSON.stringify({ id: HUB, ...body }),
-});
+// Every note in this suite is a note that POSTS, so the status is checked here
+// rather than at the call sites — and it is checked at all of them, which it
+// was not.
+//
+// The failure this ends: anything that stops the request succeeding — a 503, a
+// session that did not resolve, a child server that died mid-run — arrived as
+// an empty recipient list, which reads as a broken notifier. Reproduced
+// 2026-08-31 in a loop of this file: a test server exited on its own (boot.js
+// documents that death and prints a ⛔ naming it), and the test that noticed
+// said "the broker had the hub open and was mailed anyway" — blaming the one
+// rule it was actually proving, in the direction that trains somebody to
+// re-run a red build instead of reading it.
+//
+// `why` is the sentence the call site would have written; the server's own
+// answer is appended, because a status alone does not say what it objected to.
+async function postNote(srv, user, body, why) {
+  const r = await fetch(srv.base + "/api/hub/message", {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: `cn_session=tok-${user.id}` },
+    body: JSON.stringify({ id: HUB, ...body }),
+  });
+  const answer = (await r.text()).slice(0, 300);
+  assert.equal(r.status, 201,
+    `${why ? why + " — " : ""}POST /api/hub/message answered ${r.status}: ${answer}`);
+  return r;
+}
 
 const readHub = (srv, user) => fetch(
   `${srv.base}/api/hub?id=${HUB}`,
@@ -101,18 +122,33 @@ const readHub = (srv, user) => fetch(
 // answered before the notifier runs, so the 201 can land before the mail does.
 // Waits for `want` messages, then a beat longer, so "nobody else was mailed"
 // is a real assertion rather than a race the test happens to win.
-async function settle(db, want) {
-  // 400 x 25ms, not 80: the loop exits the moment the mail lands, so patience
-  // is free on a healthy run and the only thing a short budget buys is a flake.
-  // Observed once in a full-suite run on 2026-08-26 — the node runner runs the
-  // files in parallel, and enough concurrent server boots pushed a
-  // fire-and-forget send past two seconds, which reported "nobody was mailed"
-  // for a notifier that was working perfectly.
-  for (let i = 0; i < 400 && db.sent.length < want; i++) {
-    await new Promise((r) => setTimeout(r, 25));
+//
+// The loop itself lives in the fake, beside the `sent` array it waits on; see
+// its header for why there is one of these rather than four. The budget and
+// the tail are unchanged from what this file proved it needed.
+//
+// What is added here is the SERVER. Mail that never arrives has two
+// explanations and they are not the same bug: the notifier decided not to
+// send, or the process that would have sent it is gone. Reproduced 2026-08-31
+// in a loop of this file — a child answered 201 and then exited on its own
+// (boot.js prints a ⛔ naming that death, Windows code 3221226505), so the
+// note was saved, nothing was mailed, and the test said "the broker read it
+// since we last wrote, so they are reachable again" over an empty list. That
+// sentence is about the one rule the run never got to test.
+//
+// It cuts the other way too, and that half is the quieter hole: this file's
+// "a chatty thread mailed once per note" and "nothing is sent" both assert
+// that mail did NOT arrive, and a dead server satisfies those for the wrong
+// reason. Asking on every call, including the ones expecting silence, is what
+// stops a death from reading as a pass.
+async function settle(db, want, srv) {
+  const sent = await fake.waitForMail(db, want);
+  if (srv) {
+    assert.ok(await srv.alive(),
+      "the test server exited on its own mid-run (see the ⛔ above) — nothing below " +
+      "this line is a verdict on the notifier; re-read, do not re-run");
   }
-  await new Promise((r) => setTimeout(r, 120));
-  return db.sent;
+  return sent;
 }
 
 const to = (db) => db.sent.map((m) => m.to[0]).sort();
@@ -122,15 +158,26 @@ const to = (db) => db.sent.map((m) => m.to[0]).sort();
 const assertNoUnparsed = (db) =>
   assert.deepEqual(db.unparsed, [], "the fake refused a filter server.js really sends");
 
+// Each subtest takes its OWN `t`, and the shadowing is the point: `t.after`
+// inside a subtest whose callback takes no argument registers on the PARENT,
+// so all twelve servers and all twelve stand-in databases stayed up for the
+// whole run and were torn down in one burst at the end. Measured 2026-09-01:
+// twelve live server.js children at peak, against the one this suite ever
+// needs at a time.
+//
+// It is not only tidiness. `db.stop()` is `server.close()`, which waits on its
+// connections, and a twelve-way close of servers whose children were killed a
+// moment earlier is the state a hung runner was observed in: `node --test` sat
+// for five hours after printing its last test line, which in CI is a job that
+// never ends rather than a build that goes red.
 test("a note in a hub reaches the other people in it", async (t) => {
-  await t.test("mails the broker and the other participant, never the author or a removed person", async () => {
+  await t.test("mails the broker and the other participant, never the author or a removed person", async (t) => {
     const tables = seedTables();
     const { db, srv, stop } = await bootWithDb(tables);
     t.after(() => stop());
 
-    const r = await postNote(srv, TENANT, { body: "Can we tour the second one?" });
-    assert.equal(r.status, 201);
-    await settle(db, 2);
+    await postNote(srv, TENANT, { body: "Can we tour the second one?" });
+    await settle(db, 2, srv);
     assertNoUnparsed(db);
 
     assert.deepEqual(to(db), [COLLEAGUE.email, BROKER.email].sort());
@@ -153,7 +200,7 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.equal(mail.reply_to, TENANT.email);
   });
 
-  await t.test("the owner is reached even though they have no participant row", async () => {
+  await t.test("the owner is reached even though they have no participant row", async (t) => {
     // 024 never writes the owner a hub_participants row, so before 040 there
     // was nowhere to keep the broker's state at all — and the broker is the
     // paying half of this relationship. This is the direction most likely to
@@ -163,7 +210,7 @@ test("a note in a hub reaches the other people in it", async (t) => {
     t.after(() => stop());
 
     await postNote(srv, BROKER, { body: "Sending three more over." });
-    await settle(db, 2);
+    await settle(db, 2, srv);
     assertNoUnparsed(db);
 
     assert.deepEqual(to(db), [COLLEAGUE.email, TENANT.email].sort());
@@ -172,23 +219,23 @@ test("a note in a hub reaches the other people in it", async (t) => {
       "this test is meaningless if something started writing the owner a participant row");
   });
 
-  await t.test("a second note while everyone is still away mails nobody", async () => {
+  await t.test("a second note while everyone is still away mails nobody", async (t) => {
     // THE RULE. Ten notes posted while a client is away is one email, not ten.
     const tables = seedTables();
     const { db, srv, stop } = await bootWithDb(tables);
     t.after(() => stop());
 
     await postNote(srv, TENANT, { body: "First." });
-    await settle(db, 2);
+    await settle(db, 2, srv);
     assert.equal(db.sent.length, 2);
 
     await postNote(srv, TENANT, { body: "Second." });
     await postNote(srv, TENANT, { body: "Third." });
-    await settle(db, 3);
+    await settle(db, 3, srv);
     assert.equal(db.sent.length, 2, "a chatty thread mailed once per note");
   });
 
-  await t.test("somebody who came back since being mailed is mailed again", async () => {
+  await t.test("somebody who came back since being mailed is mailed again", async (t) => {
     // The other half of the same rule: opening the hub re-arms you. Seeded
     // rather than driven, because a real visit is also RECENT, and a recent
     // visit is suppressed by the presence window tested below.
@@ -202,14 +249,14 @@ test("a note in a hub reaches the other people in it", async (t) => {
     t.after(() => stop());
 
     await postNote(srv, TENANT, { body: "Any thoughts?" });
-    await settle(db, 1);
+    await settle(db, 1, srv);
     assertNoUnparsed(db);
 
     assert.deepEqual(to(db), [BROKER.email],
       "the broker read it since we last wrote, so they are reachable again; the colleague is not");
   });
 
-  await t.test("somebody looking at the hub right now is not mailed about it", async () => {
+  await t.test("somebody looking at the hub right now is not mailed about it", async (t) => {
     // Proves stampHubSeen is really wired to the read. A visible tab polls
     // every 15 seconds, so telling that person about a note they are watching
     // arrive is the fastest way to get the feature switched off.
@@ -225,13 +272,13 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.ok(seen && seen.seen_at, "a hub read did not stamp the broker as present");
 
     await postNote(srv, TENANT, { body: "Just sent it." });
-    await settle(db, 1);
+    await settle(db, 1, srv);
 
     assert.deepEqual(to(db), [COLLEAGUE.email],
       "the broker had the hub open and was mailed anyway");
   });
 
-  await t.test("an address that turned these off is not mailed", async () => {
+  await t.test("an address that turned these off is not mailed", async (t) => {
     const tables = seedTables({
       hub_email_prefs: [{ email: COLLEAGUE.email, notify: false, updated_at: ago(60) }],
     });
@@ -239,7 +286,7 @@ test("a note in a hub reaches the other people in it", async (t) => {
     t.after(() => stop());
 
     await postNote(srv, TENANT, { body: "Third one is under contract." });
-    await settle(db, 1);
+    await settle(db, 1, srv);
     // If the opt-out read had 400'd, this would still pass with 2 recipients
     // and look like a working feature, which is what assertNoUnparsed catches.
     assertNoUnparsed(db);
@@ -247,7 +294,7 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.deepEqual(to(db), [BROKER.email], "an address that opted out was mailed anyway");
   });
 
-  await t.test("a note on one comp names that building", async () => {
+  await t.test("a note on one comp names that building", async (t) => {
     const tables = seedTables({
       hub_items: [{
         id: "11111111-2222-3333-4444-555555555555", hub_id: HUB, kind: "comp",
@@ -259,12 +306,11 @@ test("a note in a hub reaches the other people in it", async (t) => {
     const { db, srv, stop } = await bootWithDb(tables);
     t.after(() => stop());
 
-    const r = await postNote(srv, TENANT, {
+    await postNote(srv, TENANT, {
       body: "Too close to the freeway.",
       itemId: "11111111-2222-3333-4444-555555555555",
     });
-    assert.equal(r.status, 201);
-    await settle(db, 2);
+    await settle(db, 2, srv);
 
     const mail = db.sent[0];
     // "Somebody left a note" with no building attached is the version of this
@@ -273,13 +319,13 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.match(mail.text, /on 455 S Capitol Blvd/);
   });
 
-  await t.test("the notify cursor is written for everybody mailed, and nobody else", async () => {
+  await t.test("the notify cursor is written for everybody mailed, and nobody else", async (t) => {
     const tables = seedTables();
     const { db, srv, stop } = await bootWithDb(tables);
     t.after(() => stop());
 
     await postNote(srv, TENANT, { body: "Noted." });
-    await settle(db, 2);
+    await settle(db, 2, srv);
 
     const notified = tables.hub_notify.filter((n) => n.notified_at).map((n) => n.email).sort();
     assert.deepEqual(notified, [COLLEAGUE.email, BROKER.email].sort());
@@ -290,16 +336,16 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.ok(!author.notified_at, "the author was recorded as having been mailed");
   });
 
-  await t.test("a mail provider having a bad afternoon does not cost the note", async () => {
+  await t.test("a mail provider having a bad afternoon does not cost the note", async (t) => {
     // Fire and forget, deliberately: the row is already written and the author
     // is about to be told it saved.
     const tables = seedTables();
     const { db, srv, stop } = await bootWithDb(tables, { fakeOpts: { resendStatus: 500 } });
     t.after(() => stop());
 
-    const r = await postNote(srv, TENANT, { body: "Still saved." });
-    assert.equal(r.status, 201, "a refused send turned a posted note into an error");
-    await settle(db, 2);
+    await postNote(srv, TENANT, { body: "Still saved." },
+      "a refused send turned a posted note into an error");
+    await settle(db, 2, srv);
 
     assert.equal(tables.hub_messages.length, 1, "the note itself was lost");
     // Stamped anyway, on purpose: a permanently bad address is attempted once
@@ -307,7 +353,7 @@ test("a note in a hub reaches the other people in it", async (t) => {
     assert.equal(tables.hub_notify.filter((n) => n.notified_at).length, 2);
   });
 
-  await t.test("with 040 unrun, the note still posts and the mail still goes out", async () => {
+  await t.test("with 040 unrun, the note still posts and the mail still goes out", async (t) => {
     // The promise 040 makes in its own header: every hub_notify read and write
     // is wrapped so a missing table costs the EMAIL and never the NOTE. That
     // is the opposite of 024's fail-closed stance, and it is only a comment
@@ -324,16 +370,16 @@ test("a note in a hub reaches the other people in it", async (t) => {
     });
     t.after(() => stop());
 
-    const r = await postNote(srv, TENANT, { body: "Still works." });
-    assert.equal(r.status, 201, "an unrun migration cost somebody their note");
-    await settle(db, 2);
+    await postNote(srv, TENANT, { body: "Still works." },
+      "an unrun migration cost somebody their note");
+    await settle(db, 2, srv);
 
     assert.equal(tables.hub_messages.length, 1);
     assert.deepEqual(to(db), [COLLEAGUE.email, BROKER.email].sort(),
       "a missing cursor table must degrade to mailing, not to silence");
   });
 
-  await t.test("and even then the author is not mailed their own note", async () => {
+  await t.test("and even then the author is not mailed their own note", async (t) => {
     // THIS is where hubNoteAudience's author exclusion is the only thing
     // standing between somebody and their own words in their inbox.
     //
@@ -350,23 +396,22 @@ test("a note in a hub reaches the other people in it", async (t) => {
     t.after(() => stop());
 
     await postNote(srv, TENANT, { body: "Talking to myself." });
-    await settle(db, 2);
+    await settle(db, 2, srv);
 
     assert.ok(!to(db).includes(TENANT.email),
       "the author was mailed their own note once the cursor table was gone");
     assert.equal(db.sent.length, 2);
   });
 
-  await t.test("with outbound mail switched off, nothing is sent and nothing is marked", async () => {
+  await t.test("with outbound mail switched off, nothing is sent and nothing is marked", async (t) => {
     // sendOutboundEmail is a SILENT no-op without EMAIL_FROM. Marking anyway
     // would burn everyone's one nudge on mail that never left the building.
     const tables = seedTables();
     const { db, srv, stop } = await bootWithDb(tables, { env: { EMAIL_FROM: "" } });
     t.after(() => stop());
 
-    const r = await postNote(srv, TENANT, { body: "Quiet." });
-    assert.equal(r.status, 201);
-    await settle(db, 1);
+    await postNote(srv, TENANT, { body: "Quiet." });
+    await settle(db, 1, srv);
 
     assert.equal(db.sent.length, 0);
     assert.equal(tables.hub_notify.filter((n) => n.notified_at).length, 0,

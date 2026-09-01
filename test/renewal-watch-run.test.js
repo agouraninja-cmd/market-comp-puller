@@ -81,15 +81,23 @@ const runDigest = (srv, body) => fetch(srv.base + "/api/watchlist/digest", {
   body: JSON.stringify(body || {}),
 });
 
-async function settle(db, want) {
-  for (let i = 0; i < 60 && db.sent.length < want; i++) await new Promise((r) => setTimeout(r, 25));
-  return db.sent;
-}
+// Fire-and-forget, like the digest it rides — see the helper's header in the
+// fake. This copy budgeted 1.5 seconds with no settling beat, which is the
+// same too-short loop watchlist-digest-run.test.js carried.
+const settle = fake.waitForMail;
 
 const BROKER = { id: "u1", email: "broker@example.com", digest_optout: false };
 
+// Each subtest takes its OWN `t`. `t.after` inside a callback that takes no
+// argument registers on the PARENT, so every server this file booted stayed
+// up until the whole test finished and they were all closed in one burst —
+// and `db.stop()` is `server.close()`, which waits on its connections. That
+// is the state a hung `node --test` was observed in on 2026-09-01: it sat for
+// five hours after printing its last test line, which in CI is a job that
+// never ends rather than a build that goes red. Each subtest here boots and
+// uses exactly one server, so each should close its own.
 test("the renewal watch actually runs", async (t) => {
-  await t.test("mails a broker about a due lease, then never again", async () => {
+  await t.test("mails a broker about a due lease, then never again", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -127,7 +135,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(db.sent.length, 1, "and posts no second email");
   });
 
-  await t.test("a deadline further out than the window is left alone", async () => {
+  await t.test("a deadline further out than the window is left alone", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -142,7 +150,7 @@ test("the renewal watch actually runs", async (t) => {
       "and is NOT marked — it must still fire when it comes round");
   });
 
-  await t.test("a deadline that has already passed is never mailed about", async () => {
+  await t.test("a deadline that has already passed is never mailed about", async (t) => {
     // The rule that keeps this feature from becoming something people turn
     // off: a message about a date that went by is a notification of a loss.
     const tables = {
@@ -157,7 +165,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(db.sent.length, 0);
   });
 
-  await t.test("a lease with no dates is not a watched lease", async () => {
+  await t.test("a lease with no dates is not a watched lease", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -170,7 +178,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(db.sent.length, 0);
   });
 
-  await t.test("an expiry-only lease is found by the second read and worded honestly", async () => {
+  await t.test("an expiry-only lease is found by the second read and worded honestly", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -186,7 +194,7 @@ test("the renewal watch actually runs", async (t) => {
       "never claims notice is owed on a lease that records none");
   });
 
-  await t.test("a dry run builds the copy, sends nothing, and marks nothing", async () => {
+  await t.test("a dry run builds the copy, sends nothing, and marks nothing", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -205,7 +213,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.deepEqual(preview.to, "broker@example.com");
   });
 
-  await t.test("an opted-out broker is not mailed, and their lease is not marked", async () => {
+  await t.test("an opted-out broker is not mailed, and their lease is not marked", async (t) => {
     // One opt-out governs both self-initiated emails. Honouring it for the
     // digest and not for this would make an unsubscribe mean nothing.
     const tables = {
@@ -222,7 +230,7 @@ test("the renewal watch actually runs", async (t) => {
       "an opt-out must not silently consume the one reminder they would get back");
   });
 
-  await t.test("two brokers are mailed separately, each about only their own lease", async () => {
+  await t.test("two brokers are mailed separately, each about only their own lease", async (t) => {
     // The read is not user-scoped — it sweeps every broker at once — so this
     // is the assertion that the grouping actually holds. A bug here mails one
     // broker another broker's addresses, which is a vault-class leak.
@@ -252,7 +260,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(/400 Main St/.test(theirs.text), false);
   });
 
-  await t.test("the digest and the renewal watch ride one run without disturbing each other", async () => {
+  await t.test("the digest and the renewal watch ride one run without disturbing each other", async (t) => {
     const tables = {
       users: [BROKER],
       watchlist_items: [],
@@ -268,7 +276,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(summary.renewals.sent, 1);
   });
 
-  await t.test("it refuses without outbound mail rather than marking everyone as told", async () => {
+  await t.test("it refuses without outbound mail rather than marking everyone as told", async (t) => {
     // The digest's own rule, and it matters more here: sendOutboundEmail is a
     // silent no-op with no EMAIL_FROM, so running blind would stamp
     // renewal_notified_at on every lease and delete a reminder nobody got.
@@ -286,7 +294,7 @@ test("the renewal watch actually runs", async (t) => {
       "nothing was marked, so the reminder survives to be sent once mail works");
   });
 
-  await t.test("the market figure comes from the standing market page, in the broker's basis", async () => {
+  await t.test("the market figure comes from the standing market page, in the broker's basis", async (t) => {
     // The one path the tests above cannot reach: every other case has no
     // market page for Renewtown, so the email correctly drops the comparison
     // line. This seeds the page the way the Explorer publishes one and proves
@@ -324,7 +332,7 @@ test("the renewal watch actually runs", async (t) => {
     assert.equal(/below market|above market|overpay|%/i.test(mail.text), false);
   });
 
-  await t.test("the fake understood every filter the run sent", async () => {
+  await t.test("the fake understood every filter the run sent", async (t) => {
     // The guarantee the whole file rests on. A window filter the fake could
     // not parse would return the WHOLE table, which is how a test proves a
     // narrow read works while the real one mails everybody.

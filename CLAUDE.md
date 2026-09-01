@@ -100,6 +100,18 @@ anything else rather than matching everything** (a fake that matches
 everything reports a user-scoped read as working while it returns another
 account's rows); and it is a stand-in, not a Postgres, so a new query shape
 means teaching it that shape deliberately, never loosening its parser.
+It also owns **`waitForMail(db, want)`**, and every suite that reads its
+`sent` array must go through it: the routes that mail hand the send to
+`sendOutboundEmail` WITHOUT awaiting it, so `sent` fills in after the response
+and a test reading it on the next line is asserting on a race it usually wins.
+There were four hand-copied versions of that loop with three different budgets
+(1.5s, 1.5s, 2s, 10s), and the short ones were the ones written first rather
+than a decision about those routes. The one exception is the hub invitation,
+whose sends ARE awaited (`emailed` is their own answer) — `test/hub-run.test.js`
+says so where it reads `sent` with no wait. A wait is only half of it: the
+suites must also assert that the REQUEST which should have caused the mail
+succeeded, or an unrelated failure — a 503, a child server dying mid-run —
+arrives as an empty recipient list and reads as a broken notifier.
 Nothing beyond those modules and that route wiring is tested; do not assume a
 green suite means the app works. CI (`.github/workflows/ci.yml`) runs on
 every push: `node --check` on

@@ -225,6 +225,14 @@ async function bootOnce(env) {
           everHealthy = true;
           return {
             base,
+            // Is this child still there? The ⛔ above names a death in the run
+            // that suffered it, but only in the log — a suite whose next
+            // assertion is "and then nobody was mailed" still reports that as
+            // its own rule failing. A test with a claim that a dead server
+            // would satisfy can ask, and say which of the two it is.
+            alive: async () => {
+              try { return (await fetch(base + "/healthz")).ok; } catch (_) { return false; }
+            },
             stop: () => {
               child.kill();
               try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (_) {}

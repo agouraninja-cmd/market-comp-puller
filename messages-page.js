@@ -463,11 +463,16 @@ function renderMessagesBody(boot) {
     if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
     if (s.price_per_sqft) facts.push('<span>' + esc(money(s.price_per_sqft)) + '/SF</span>');
     else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
-    var foot = c.savedByMe
-      ? '<span class="msg-saved">In your vault</span>'
-      : (state.canAttach
-          ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my vault</button>'
-          : '<span class="msg-hint">A vault is part of Pro.</span>');
+    // A comp YOU sent came out of your own vault, so a Save button on it can
+    // only be a no-op. It says so instead, and drops the "Sent by" line, which
+    // would otherwise be your own name repeated back at you.
+    var foot = c.mine
+      ? '<span class="msg-hint">You sent this from your vault</span>'
+      : (c.savedByMe
+          ? '<span class="msg-saved">In your vault</span>'
+          : (state.canAttach
+              ? '<button class="msg-btn sm" type="button" data-save="' + esc(c.id) + '">Save to my vault</button>'
+              : '<span class="msg-hint">A vault is part of Pro.</span>'));
     return '<div class="msg-comp">' +
       '<h4>' + esc(c.address || "Untitled comp") + '</h4>' +
       '<div class="facts">' +
@@ -475,7 +480,7 @@ function renderMessagesBody(boot) {
         facts.join("") +
       '</div>' +
       '<div class="foot">' + foot +
-        (c.sharedBy ? '<span class="msg-hint">Sent by ' + esc(c.sharedBy) + '</span>' : "") +
+        (!c.mine && c.sharedBy ? '<span class="msg-hint">Sent by ' + esc(c.sharedBy) + '</span>' : "") +
       '</div>' +
     '</div>';
   }

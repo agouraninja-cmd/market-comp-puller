@@ -24190,6 +24190,11 @@ const server = http.createServer((req, res) =>
             sharedBy: String(c.shared_by_name || ""),
             snapshot: c.snapshot || {},
             savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
           });
         }
         const names = await namesFor(rows);
@@ -24252,6 +24257,11 @@ const server = http.createServer((req, res) =>
             sharedAt: c.created_at,
             snapshot: c.snapshot || {},
             savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
           })),
         });
       })().catch((err) => {

@@ -247,6 +247,16 @@ test("firm messaging, end to end", async (t) => {
       "another broker's comp reached a thread");
   });
 
+  await t.test("the sender is not offered a Save button for his own comp", async () => {
+    // It came out of his vault, so saving it back can only answer "already".
+    // The card says "you sent this" instead. Buy-button rule.
+    const o = await get(BRAD, "/api/messages/thread?id=" + encodeURIComponent(threadId));
+    const c = o.j.messages.filter((m) => m.comps.length)[0].comps[0];
+    assert.equal(c.mine, true, "the sender is not told the comp is his own");
+    const tab = await get(BRAD, "/api/messages/comps?thread=" + encodeURIComponent(threadId));
+    assert.equal(tab.j.comps[0].mine, true, "the Comps tab disagrees with the thread");
+  });
+
   await t.test("Mike reads the thread and sees the comp", async () => {
     const o = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(threadId));
     assert.equal(o.s, 200);
@@ -254,6 +264,7 @@ test("firm messaging, end to end", async (t) => {
     assert.ok(withComp, "the comp did not reach the reader");
     assert.equal(withComp.comps[0].address, BRADS_COMP.address);
     assert.equal(withComp.comps[0].savedByMe, false);
+    assert.equal(withComp.comps[0].mine, false, "the recipient must still be offered the save");
     assert.equal(withComp.mine, false, "authorship is decided by the session, not the body");
     assert.ok(o.j.cursor, "a server-issued cursor came back");
   });

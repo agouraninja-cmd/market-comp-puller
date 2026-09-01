@@ -2552,3 +2552,78 @@ test("stripping the state and ZIP does not cost a real unit designator", () => {
     assert.equal(unitOf(address), null, address);
   }
 });
+
+// --- The tester code, in Settings -------------------------------------------
+//
+// TESTER_PASSKEY (and VAULT_PASSKEY, which shares the input) is redeemed from
+// ONE box, and on 2026-08-31 that box moved out of the pricing modal's "Have
+// a code?" disclosure into the Settings panel — the codes go to friends,
+// family and testers, so the place to type one is the panel you open to look
+// at your own account. These pin the move, because the two ways to undo it are
+// both invisible on screen: a second copy put back in the modal (two inputs,
+// two message elements, two visibility rules, and whichever one a person finds
+// first), and a handler left pointing at an element that no longer exists —
+// index.html's script aborts WHOLE on a throw, so a stale
+// getElementById(...).addEventListener takes the entire front end down while
+// the page still renders its HTML and CSS.
+
+// The one big inline block — the whole front end. Picked as the longest real
+// JS block rather than by index, so a new small inline script above it (an
+// analytics shim, a boot guard) cannot silently point these at the wrong one.
+function appScript() {
+  const real = extractScriptBlocks(html).filter(isRealJsBlock);
+  assert.ok(real.length > 0, "no real inline script blocks found");
+  return real.reduce((a, b) => (b.body.length > a.body.length ? b : a)).body;
+}
+
+test("the tester-code box lives in the Settings panel, and only there", () => {
+  const inputs = html.split('id="passkeyInput"').length - 1;
+  assert.equal(inputs, 1,
+    "exactly one tester-code input — a second copy is a second thing to keep in step");
+
+  const settings = html.indexOf('id="settingsModal"');
+  const close = html.indexOf('id="settingsClose"');
+  const row = html.indexOf('id="passkeyRow"');
+  assert.ok(settings > 0 && close > settings, "settings modal brackets not found");
+  assert.ok(row > settings && row < close,
+    "#passkeyRow must sit inside the settings modal, between #settingsModal and #settingsClose");
+
+  // The pricing modal is earlier in the document and must carry no copy.
+  const pricing = html.indexOf('id="pricingModal"');
+  assert.ok(pricing > 0 && pricing < settings, "pricing modal is expected before the settings modal");
+  const pricingMarkup = html.slice(pricing, settings);
+  assert.ok(!/id="passkey/.test(pricingMarkup),
+    "the pricing modal must not carry a second tester-code box");
+});
+
+test("nothing still reaches for the disclosure the settings row replaced", () => {
+  // The row shows its input directly, so #passkeyToggle and #passkeyForm are
+  // gone. A handler outliving its element throws on load and kills the app.
+  for (const dead of ["passkeyToggle", "passkeyForm"]) {
+    assert.ok(!html.includes(dead),
+      dead + " is gone from the markup, so no script may still name it");
+  }
+});
+
+test("every element the tester-code handlers address exists in the markup", () => {
+  const script = appScript();
+  for (const id of ["passkeyRow", "passkeyInput", "passkeySubmit", "passkeyMsg"]) {
+    assert.ok(script.includes('"' + id + '"'), id + " must still be wired up");
+    assert.ok(html.includes('id="' + id + '"'), id + " must exist in the markup");
+  }
+});
+
+test("redeeming from Settings reports the outcome instead of closing a modal", () => {
+  const script = appScript();
+  const start = script.indexOf("async function submitPasskey");
+  assert.ok(start > 0, "submitPasskey not found");
+  const body = script.slice(start, start + 3000);
+  assert.ok(!body.includes("closePricingModal()"),
+    "the box is in Settings now; closing the pricing modal would hide the Plan row that just repainted");
+  assert.ok(body.includes("refreshProConfig()"),
+    "a grant must re-read /api/config so the Plan row above it updates in place");
+  // The route answers a re-redemption with a 200 and `already`. Reported as
+  // an error it would read as a code that stopped working.
+  assert.ok(body.includes("data.already"),
+    "an already-redeemed code must read as success, not failure");
+});

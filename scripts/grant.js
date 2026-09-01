@@ -365,14 +365,28 @@ function parseArgs(argv) {
 async function main() {
   const { opts, rest } = parseArgs(process.argv.slice(2));
   const [command, subject] = rest;
-  if (!command || !subject) { console.log(USAGE); process.exit(1); }
+  // exitCode + return throughout, never process.exit() — see the catch at the
+  // bottom for the Windows abort that rule exists to avoid. These two run
+  // before any query and would be safe either way; one pattern is worth more
+  // than the distinction.
+  if (!command || !subject) { console.log(USAGE); process.exitCode = 1; return; }
 
   loadEnv();
   SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
   SUPABASE_SERVICE_KEY = (process.env.SUPABASE_SERVICE_KEY || "").trim();
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
-    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY are required " +
-      "(a .env in the project root is enough). Accounts and firms live only in the database.");
+    // Names WHERE to get them, because this repo's own .env deliberately does
+    // not carry them: it holds API keys only, and the eval docs tell anyone
+    // setting up a worktree to copy that one line and nothing else, precisely
+    // so a stray script cannot reach production. So the honest instruction is
+    // "fetch these from Render for one command", not "put them in .env".
+    throw new Error(
+      "SUPABASE_URL and SUPABASE_SERVICE_KEY are required — accounts and firms live " +
+      "only in the database.\n" +
+      "  This repo's .env carries API keys only, on purpose. Copy both values from the\n" +
+      "  Render dashboard (Environment) and pass them for the one command:\n" +
+      "    $env:SUPABASE_URL=\"https://…\"; $env:SUPABASE_SERVICE_KEY=\"…\"\n" +
+      "    node scripts/grant.js status you@example.com");
   }
   // Said out loud every run: this tool's whole job is production, so the one
   // thing an operator must never be unsure about is which database they are in.
@@ -388,14 +402,22 @@ async function main() {
     case "firm":   return cmdFirm(String(subject).trim(), opts);
     default:
       console.log(USAGE);
-      process.exit(1);
+      process.exitCode = 1;
   }
 }
 
 if (require.main === module) {
   main().catch((err) => {
     console.error(`\ngrant failed: ${err.message}`);
-    process.exit(1);
+    // exitCode, never process.exit(). Forcing an exit while an HTTP
+    // keep-alive socket is still closing aborts the process on Windows with a
+    // libuv assertion — "!(handle->flags & UV_HANDLE_CLOSING)" — and an exit
+    // code of 3221226505, so a refusal that had just printed perfectly looked
+    // like a crash to anything reading the status. Every refusal here happens
+    // AFTER at least one query, so this path always has a live connection pool
+    // behind it; the ordinary success paths already end by returning and Node
+    // exits on its own once that pool drains.
+    process.exitCode = 1;
   });
 }
 

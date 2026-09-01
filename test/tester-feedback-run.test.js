@@ -180,10 +180,12 @@ test("tester feedback", async (t) => {
   });
 });
 
-let _session = null;
+const _sessions = new Map();
 async function sessionFor(srv) {
-  if (!_session) _session = await makeTester(srv, uniqueEmail("surface"));
-  return _session;
+  if (!_sessions.has(srv.base)) {
+    _sessions.set(srv.base, await makeTester(srv, uniqueEmail("surface")));
+  }
+  return _sessions.get(srv.base);
 }
 
 // --- Where the badge actually renders ---------------------------------------
@@ -249,4 +251,35 @@ test("a marketing page does not carry a work-surface affordance", async (t) => {
   const html = await r.text();
   assert.ok(!html.includes('id="testerBadge"'),
     "/markets did not opt in, so it must not carry the block");
+});
+
+test("the form opens on an idea, not on a fault", async (t) => {
+  // Owner's call: opening on "something is broken" primes a tester to go
+  // looking for faults, and the ideas are the half of a beta that a bug
+  // tracker never collects. The default is carried by ORDER -- a select with
+  // nothing marked selected takes its first option -- so this asserts the
+  // order rather than a selected attribute, which is what actually decides
+  // what a tester sends without touching the control.
+  const h = await bootFeedback();
+  t.after(() => h.stop());
+
+  const html = await (await fetch(h.srv.base + "/vault", {
+    headers: { cookie: await sessionFor(h.srv) },
+  })).text();
+
+  const select = html.match(/<select id="testerKind"[\s\S]*?<\/select>/);
+  assert.ok(select, "the kind selector is gone");
+  const values = [...select[0].matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(values, ["idea", "problem", "other"],
+    "idea must lead: the first option is what a tester sends without touching the control");
+  assert.ok(!/selected/.test(select[0]),
+    "the default rides on order alone; a stray selected= would be a second rule to keep in step");
+
+  // And the value that default sends must still be one the route accepts, or
+  // the commonest submission of all would 400.
+  const r = await report(h.srv, await sessionFor(h.srv), {
+    kind: values[0],
+    message: "Could the comp table remember my sort?",
+  });
+  assert.equal(r.status, 200, "the default kind must be accepted by the route");
 });

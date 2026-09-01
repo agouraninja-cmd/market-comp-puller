@@ -516,10 +516,12 @@ dependency. `.env` is git-ignored — never commit it.
   where a billed request is posted, so treat it as trusted config.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
   Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
-  cookie gets the **landing page rendered at `/` with a 200** (the same
-  content `/how-it-works` serves, via `renderHowItWorksHTML({ home: true })`,
-  canonical `/`, served no-store because what lives at `/` depends on auth
-  state) — NOT the 302 to `/how-it-works` the wall shipped with, which left
+  cookie gets a **real page rendered at `/` with a 200** (since 2026-09-01
+  that is the HOME page, `renderHomeHTML()` over `home-page.js`; until then it
+  was the same bytes `/how-it-works` served, via
+  `renderHowItWorksHTML({ home: true })`. Canonical `/`, served no-store
+  because what lives at `/` depends on auth state) — NOT the 302 to
+  `/how-it-works` the wall shipped with, which left
   the site's strongest URL a redirect Google never followed (Search Console
   confirmed the target was never crawled). `/desk` still 302s, and since
   2026-08-13 it goes to **`/?auth=signin`** rather than `/`: asking for the
@@ -543,15 +545,15 @@ dependency. `.env` is git-ignored — never commit it.
   signup card above them) and `/?auth=signup|signin` (the account modal lives
   only in `index.html`, so the signup buttons on the landing page need a door
   that serves the app — note a 200 alone no longer proves which page answered;
-  tests discriminate on content). While the wall is on, `/how-it-works` serves
-  the same bytes as `/` and **canonicalizes to `/`** (`home: ACCOUNT_WALL`),
-  `sitemap.xml` lists `/` and drops `/how-it-works` (listing a self-declared
-  duplicate is a Search Console soft error), and the `WebApplication` JSON-LD
-  reaches crawlers at `/` itself via the landing render. `off` is the instant
-  rollback lever and restores the pre-wall app exactly — `/` serves the app,
-  `/how-it-works` reverts to its own canonical and returns to the sitemap,
-  and `GUEST_SEARCH_LIMIT` keeps its own configured value; the startup banner
-  says which state it is in. Spec in
+  tests discriminate on content). **The /how-it-works coupling is gone as of
+  2026-09-01**: that page no longer shares this render, canonicalizes to
+  itself in both wall states, and is in `sitemap.xml` unconditionally. What
+  the wall still decides at `/` is WHICH page answers — the home page for an
+  anonymous visitor, the app for a member — and the `WebApplication` JSON-LD
+  still reaches crawlers at `/` itself through that render. `off` is the
+  instant rollback lever and restores the pre-wall app exactly — `/` serves
+  the app and `GUEST_SEARCH_LIMIT` keeps its own configured value; the startup
+  banner says which state it is in. Spec in
   `docs/superpowers/specs/2026-08-05-account-wall-and-how-it-works-landing-design.md`
   (predates the 200-at-root change; test/account-wall.test.js pins the
   current contract).
@@ -1961,7 +1963,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   and `APP_NAV_LINKS_HTML`, which the `/` handler injects into index.html's
   `#exploreMenu` at serve time in place of the `<!--NAV_LINKS-->` marker —
   index.html authors no copy of the menu any more, so adding a nav link is a
-  one-line edit to NAV_LINKS.
+  one-line edit to NAV_LINKS. **`/faq` joined it 2026-09-01** (design 3b),
+  beside Brokers and For firms because it answers the same reader. The
+  `<summary>` itself now takes an `.on` class when the page being rendered is
+  one of these — the menu ITEM was already marked, but a closed dropdown hides
+  that, so the bar said nothing on /brokers, /firms, /faq or /download. The
+  class goes on the summary and **never** on the `<details>`:
+  `test/routes.test.js` pins the literal string
+  `<nav><a href="/">Home</a><details>` on every signed-out page.
   **A fourth marker, `<!--BULK_RUN-->`, carries bulk valuation's run view**
   (2026-08-25). `bulk-page.js` renders that table once; `/bulk` uses it
   directly and index.html receives the same bytes, which is what lets a list
@@ -2002,6 +2011,80 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
+- `GET /` and `GET /faq` — **the home page and the FAQ, split apart
+  2026-09-01** (designs 3a/3b, handed off as `design_handoff_home_and_faq`).
+  Bodies in **`home-page.js`** and **`faq-page.js`**, both marketShell BODIES
+  like `firms-page.js`; server.js owns the routes, the SEO metadata and the
+  structured data.
+
+  **What changed, and why it matters more than the pixels.** `/` and
+  `/how-it-works` had been ONE render since 2026-08-08: `renderHowItWorksHTML`
+  answered both, /how-it-works canonicalized to `/`, and the sitemap listed
+  only one of them because a URL that declares itself a duplicate is a Search
+  Console soft error. That arrangement existed because `/` had no page of its
+  own. It has one now, so **all three of those facts reversed**: each page
+  canonicalizes to itself, both are in the sitemap, and /how-it-works is the
+  methodology page it is named after (Method steps and the sample-report
+  anatomy — the vault hero, firm shelf and sharing panes went to the home
+  page's bands and /firms; the FAQ went to /faq; the brokers ledger went to
+  /brokers, whose own CREDIT / INTROS / PROFILE rows carry the same promises).
+
+  Four things to know before editing either page:
+
+  - **`.heroCta` is load-bearing beyond layout.** Three suites use its
+    presence to decide WHICH page answered a URL — it is how the account-wall
+    tests tell the home page from index.html. It has wrapped an address form,
+    then an account CTA, and now the comp finder. Keep the class name whatever
+    the contents become.
+  - **Both pages carry their `<style>` in the BODY, not through
+    `marketShell`'s `head`.** The head is emitted BEFORE `MARKET_CSS`, so a
+    rule placed there loses on equal specificity — `bulk-page.js` already
+    carries its own style for this reason, and it is what lets the home page
+    neutralise `main.wrap` (it is full-bleed bands, not a 1120px column). The
+    bands use HOW_CSS's `box-shadow: 0 0 0 100vmax` + `clip-path` device
+    rather than `100vw`, which includes the scrollbar and overflows.
+  - **Every colour is a TOKEN.** The design was drawn in the light palette and
+    its literals ARE theme.js's light values, so the mapping was exact and
+    dark mode came free. The one exception is the home page's closing band: it
+    sits on `--slab`, which is dark in BOTH themes, so its text is literal the
+    way `MARKET_FOOTER`'s is — and it takes a **dark-only top border**,
+    because `--wash` and `--slab` are the same `#243044` in dark and the band
+    above it would otherwise be one continuous charcoal.
+  - **The comp finder hands off; it does not search.** The wall forces
+    `GUEST_SEARCH_LIMIT` to 0, so an anonymous POST to `/api/comps` is refused
+    by design. Address and type ride `pendingLandingAddress.v1` /
+    **`pendingLandingType.v1`** (new) and index.html picks them up —
+    `setTypeProgrammatic`, never a bare `.value =`, or the subject fields and
+    the lookback hint keep the previous type's shape. Both keys are pinned
+    against index.html's reads. The placeholder option submits an EMPTY value
+    on purpose: "Property type" must never arrive as Industrial.
+
+  **/faq's ten answers are public promises, and four were corrected off the
+  design before they shipped** — the design file states things the product
+  does not do, and `test/faq-page.test.js` asserts each by the fact it gets
+  wrong, so "restoring the design copy" fails the build. (1) It named four
+  source badges; the enum has five, News included. (2) It claimed the search
+  runs "rather than against a stale cache" — the exact sentence deleted from
+  the landing page on 2026-08-21, because `runCompSearch` reads the cache, the
+  derivable window and the corpus before anything is billed. (3) It described
+  only the anonymized share; `POST /api/share` has three outcomes, and a
+  public link STRIPS vault comps rather than anonymizing them. (4) It offered
+  branded exports to everybody; branding is Pro and free is five a month. The
+  design's closing "Write to us — a person answers" was **dropped on the
+  owner's call**: there is no contact route that guarantees a human reply, and
+  the handoff README asked for one to be confirmed first.
+
+  Two known losses, both deliberate and both worth revisiting if traffic says
+  so: four HOW_FAQ answers were not carried over ("What is a comp in
+  commercial real estate?", the broker-submission answer, "Can I find out what
+  my building is worth?", "How accurate are the reports?"), and the home page
+  no longer carries a broker-facing band — the 2026-08-12 decision that put
+  one there is the one promise design 3a does not keep in the body of the
+  page. The intro photograph (`boise-skyline.png`, on the `STATIC_FILES`
+  allowlist) is a **client-supplied asset with unconfirmed licensing** and is
+  612x395 against a 940px 3:1 frame, so it upscales ~1.5x (~3x on retina);
+  `market-heroes/boise-id.jpg` is the licensed 3840x800 alternative.
+
 - `GET /firms` — the public front door for firm accounts (2026-08-28). Body in
   **`firms-page.js`**, a marketShell BODY like `bulk-page.js`, so it carries no
   CSS of its own and does NOT depend on the purged `tailwind.css`; server.js

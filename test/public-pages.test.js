@@ -201,12 +201,17 @@ test("the cost answer matches what the product actually sells", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  // HOW_FAQ feeds BOTH the visible accordions and the FAQPage JSON-LD, so a
-  // stale answer here is not merely on-page copy: Google can serve it as the
-  // answer about this product. It claimed "there is no subscription" while
-  // $129/mo Pro, a $990/yr founding plan and a $20 report unlock were all
-  // live and buyable.
-  const pages = ["/", "/how-it-works"];
+  // faq-page.js's FAQ feeds BOTH the visible blocks and the FAQPage JSON-LD,
+  // so a stale answer here is not merely on-page copy: Google can serve it as
+  // the answer about this product. It claimed "there is no subscription"
+  // while $129/mo Pro, a $990/yr founding plan and a $20 report unlock were
+  // all live and buyable.
+  //
+  // The pages under test moved on 2026-09-01. This used to read `/` and
+  // /how-it-works, which were one render carrying nine accordions; the
+  // questions are /faq now and neither of those pages shows an FAQ. Every
+  // assertion below is unchanged in what it protects — only the URL moved.
+  const pages = ["/faq"];
 
   await t.test("it no longer denies the subscription that exists", async () => {
     for (const p of pages) {
@@ -229,8 +234,14 @@ test("the cost answer matches what the product actually sells", async (t) => {
         p + " must not claim a ten-comp free limit; FREE_MAX_COMPS is \"all\"");
       assert.ok(!/unlocks on its own for \$20/i.test(html) && !/single report unlocks/i.test(html),
         p + " must not sell the single-report unlock; it was retired 2026-08-21");
-      assert.ok(/itemize every comparable/i.test(html),
+      // The wording is faq-page.js's now ("every comparable itemized with its
+      // date, size, $/SF and a disclosed source", and the three-year window
+      // stated outright). What is pinned is the same thing it always was:
+      // the page says what the free tier actually is.
+      assert.ok(/every comparable itemized/i.test(html),
         p + " should state the real free tier, not go vague about it");
+      assert.ok(/three-year lookback/i.test(html),
+        p + " should name the free lookback; FREE_MAX_LOOKBACK_MONTHS is 36");
     }
   });
 
@@ -257,80 +268,80 @@ test("the cost answer matches what the product actually sells", async (t) => {
 
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
-      const said = html.match(/Pro, at \$([\d,]+) a month/);
+      const said = html.match(/Individual Pro is \$([\d,]+) a month/);
       assert.ok(said, p + " no longer states a monthly price in the cost answer");
       assert.equal(said[1], tile[1],
         p + " quotes $" + said[1] + " a month while the pricing modal charges $" + tile[1]);
     }
   });
 
-  await t.test("brokers have a path off the landing page, not just an FAQ row", async () => {
-    // Until 2026-08-12 a broker arriving here met one FAQ answer and a link
-    // inside the Explore dropdown. The owner's own read is that broker
-    // relationships are the better acquisition lever than SEO, so the page
-    // that every visitor lands on should say what a broker gets and where to
-    // go. Asserted on both surfaces because `/` and /how-it-works serve the
-    // same bytes while the wall is up.
-    //
-    // The heading became "Where a comp can go." on 2026-08-29, when the page
-    // went broker-first throughout. "What brokers get" was right for a
-    // sidebar on an owner-facing page; on a page whose hero is already the
-    // broker's own vault it reads as a leftover. What the section has to DO is
-    // unchanged, and the three promises below are what actually matter.
-    for (const p of pages) {
-      const html = await (await fetch(srv.base + p)).text();
-      assert.match(html, /Where a comp can go/, p + " should address brokers directly");
-      assert.match(html, /href="\/brokers"/, p + " should link to the broker page");
-      // The three concrete trades, not a pitch. Matched around the
-      // apostrophes, which escHtml turns into &#39; on the way out.
-      assert.match(html, /public records unless you choose to publish/i,
-        p + " should state the privacy trade plainly");
-      assert.match(html, /Verified badge and your firm\S{0,6}s name/i,
-        p + " should name the credit a broker actually receives");
-    }
+  // The 2026-08-12 rule, restated for where the pages went (2026-09-01).
+  //
+  // The original: a broker arriving at the landing page met one FAQ answer
+  // and a link inside a closed dropdown, and the owner's read is that broker
+  // relationships beat SEO as an acquisition lever, so the page every visitor
+  // lands on should say what a professional gets and where to go.
+  //
+  // Design 3a keeps that and changes who it addresses: the home page's third
+  // band is For firms rather than For brokers, and it closes on a link to
+  // /firms. The broker path is the Explore menu and the footer, which is what
+  // the 08-12 change was reacting against — WORTH RAISING WITH THE OWNER if
+  // broker acquisition is still the lever, because this is the one promise
+  // from that day the redesign does not keep in the body of the page.
+  //
+  // The two concrete promises it pinned are both still public and both still
+  // pinned: the privacy trade is /faq's answer below and BROKERS_FAQ's, and
+  // the Verified credit is /brokers' CREDIT row and the home page's tile.
+  await t.test("a professional arriving at the home page has a path, not just a dropdown", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.match(html, /For firms — Pro version/, "the home page should address a firm directly");
+    assert.match(html, /href="\/firms"/, "and link to the page that sells to one");
+    assert.match(html, /class="hmvault"/, "showing the vault it is selling, not only naming it");
   });
 
-  await t.test("the brokers trades are a ledger, not a paragraph or a Method clone", async () => {
-    // Homepage-look collapsed this to one .sub paragraph, which still named
-    // the three trades but read as Method's leftover. The trades are not a
-    // sequence: they are a statement, drawn as hairline rows like the report
-    // ledger, with the Verified chip shown on Credit rather than described.
-    for (const p of pages) {
-      const html = await (await fetch(srv.base + p)).text();
-      const chunk = html.split('kicker">Brokers')[1];
-      assert.ok(chunk, p + " must still have a Brokers kicker");
-      // Bounded by the CTA's CLASS, not by its heading text. This split used
-      // to look for "See it on your own building", which the 2026-08-29
-      // rewrite deleted — and a split on a string that is not there returns
-      // the whole remainder, so the slice would have quietly grown to the end
-      // of the document and every assertion below would have stopped meaning
-      // what it says. The class is the structural boundary and cannot drift
-      // with copy.
-      const brokers = chunk.split('class="cta')[0];
-      assert.ok(brokers.length < chunk.length, p + " must still close with the CTA");
-      assert.equal((brokers.match(/class="bkrow"/g) || []).length, 3,
-        p + " should show three trades as rows");
-      assert.match(brokers, /class="bklag">Private</, p + " should label the privacy trade");
-      assert.match(brokers, /class="bklag">Credit</, p + " should label the credit trade");
-      assert.match(brokers, /class="bklag">Leads</, p + " should label the leads trade");
-      assert.match(brokers, /Verified &middot; via Your Firm/,
-        p + " should show the credit chip, not only describe it");
-      assert.ok(!/class="steps"/.test(brokers),
-        p + " must not reuse Method's three-up");
-    }
-    const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /class="steps"/, "Method still uses .steps");
+  await t.test("the privacy trade and the credit are still stated in public", async () => {
+    const faq = await (await fetch(srv.base + "/faq")).text();
+    assert.match(faq, /visible only to you[\s\S]{0,80}publish/i,
+      "/faq should state the privacy trade plainly");
+    const brokers = await (await fetch(srv.base + "/brokers")).text();
+    assert.match(brokers, /Verified badge and your firm\S{0,6}s name/i,
+      "/brokers should name the credit a broker actually receives");
+    const home = await (await fetch(srv.base + "/")).text();
+    assert.match(home, /carries your firm\S{0,6}s name on every report/i,
+      "and the home page's Verified credit tile says the same thing");
+  });
+
+  // Moved with the ledger it describes (2026-09-01). Private / Credit / Leads
+  // was the LANDING page's three-row statement of the broker trade; design 3a
+  // has no brokers band, so the rows that survive are /brokers' own —
+  // CREDIT / INTROS / PROFILE above BOOK / PIPELINE / PRIVATE. What is pinned
+  // is unchanged: the trades are a ledger of hairline rows, not a paragraph
+  // and not a clone of Method's three-up, and Credit SHOWS the chip rather
+  // than only describing it.
+  await t.test("the broker trades are a ledger, not a paragraph or a Method clone", async () => {
+    const html = await (await fetch(srv.base + "/brokers")).text();
+    assert.equal((html.match(/class="bkrow"/g) || []).length, 6,
+      "/brokers should show two ledgers of three trades each");
+    assert.match(html, /class="bklag">CREDIT</, "the credit trade must keep its label");
+    assert.match(html, /class="bklag">INTROS</, "and the introductions trade");
+    assert.match(html, /class="bklag">PRIVATE</, "and the privacy trade");
+    assert.match(html, /Verified &middot; via Your Firm/,
+      "Credit should show the chip, not only describe it");
+    assert.ok(!/class="steps"/.test(html), "/brokers must not reuse Method's three-up");
+    // Method's own three-up is still where it belongs.
+    const how = await (await fetch(srv.base + "/how-it-works")).text();
+    assert.match(how, /class="steps"/, "Method still uses .steps, on the methodology page");
   });
 
   await t.test("it still leads with the free tier, because that is true", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/faq")).text();
     assert.match(html, /free/i, "reports genuinely are free with an account; that is the offer");
   });
 
   await t.test("the answer is carried into the FAQ structured data too", async () => {
     // One array, two surfaces. If they ever diverge, the invisible one is the
     // one that reaches search results.
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
+    const html = await (await fetch(srv.base + "/faq")).text();
     const ld = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/s);
     assert.ok(ld, "the page must still emit structured data");
     const graph = JSON.parse(ld[1])["@graph"];
@@ -464,10 +475,13 @@ test("a lost visitor gets a page, not a bare string", async (t) => {
   });
 });
 
-test("the landing names the real search cost without a stat strip", async (t) => {
+test("the home page names the real search cost without a stat strip", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
+  // `/` and /how-it-works were one render until 2026-09-01 and this suite
+  // asserted on both. They are two documents now, and the numbers below are
+  // wrong on either of them, so both are still swept.
   await t.test("the old numbers are gone from both pages", async () => {
     for (const p of ["/", "/how-it-works"]) {
       const html = await (await fetch(srv.base + p)).text();
@@ -479,8 +493,8 @@ test("the landing names the real search cost without a stat strip", async (t) =>
 
   await t.test("the replacements match what the product does", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /Cited comps/, "name the comps without inventing a count");
     assert.match(html, /minute/i, "a minute is the honest unit for a live search");
+    assert.match(html, /source on every line/i, "name the citation without inventing a count");
   });
 
   await t.test("there is no stat strip and no To start hedge", async () => {
@@ -490,76 +504,102 @@ test("the landing names the real search cost without a stat strip", async (t) =>
   });
 });
 
-test("the landing is a product page, not two copies of a methodology exhibit", async (t) => {
+test("the home page is a product page, not two copies of a methodology exhibit", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  await t.test("exactly one sample exhibit, plus an address field that is not the app form", async () => {
+  await t.test("exactly one sample report, plus an address field that is not the app form", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    const exhibits = html.match(/class="exhibit\b/g) || [];
-    assert.equal(exhibits.length, 1, "one sample report; the mini + full pair is the bug");
-    assert.match(html, /id="landingAddress"/, "the page still asks for a building");
-    assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise the landing");
+    // Selectors moved with the rebuild (design 3a, 2026-09-01): .exhibit ->
+    // .hmcard, #landingAddress -> #homeAddress. What each line protects is
+    // unchanged; the mini-plus-full exhibit pair was a real bug and the
+    // count is what caught it.
+    assert.equal((html.match(/class="hmcard"/g) || []).length, 1,
+      "one sample report; the mini + full pair is the bug");
+    assert.match(html, /id="homeAddress"/, "the page still asks for a building");
+    assert.match(html, /class="heroCta"/, "account-wall tests still have to recognise this page");
     assert.ok(!/id="compForm"/.test(html), "the real search form lives only in index.html");
     assert.ok(
-      !/<input[^>]*id="landingAddress"[^>]*\bname\s*=/i.test(html),
+      !/<input[^>]*id="homeAddress"[^>]*\bname\s*=/i.test(html),
       "a named input would put the street address on GET /?auth=signup"
     );
     assert.match(html, /pendingLandingAddress\.v1/, "the form must hand off through sessionStorage");
-    assert.ok(!/Here is exactly how that gets built/.test(html), "that line is how-it-works voice");
     assert.match(html, /Run a report/, "the button names the product, not the gate");
   });
 
-  await t.test("brokers is one block, not a second Method 3-up", async () => {
+  // The type picker is new with design 3a, and its whole contract is that it
+  // does NOT default. A plain first <option> would submit Industrial for
+  // everybody who never touched it, which is a wrong report rather than a
+  // missing preference — and index.html would have no way to know.
+  await t.test("the property type submits nothing until one is chosen", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    const afterBrokers = html.split(/kicker">Brokers/)[1];
-    assert.ok(afterBrokers, "the Brokers kicker stays");
-    const brokersBlock = afterBrokers.split(/class="cta/)[0];
-    assert.ok(!/class="steps"/.test(brokersBlock), "do not reuse Method's 3-up for brokers");
-    assert.match(html, /kicker">Method[\s\S]*?class="steps"/, "Method still has its steps");
+    assert.match(html, /<option value="">Property type<\/option>/,
+      "the placeholder option must carry an empty value");
+    for (const type of ["Industrial", "Office", "Retail", "Multifamily", "Land", "Residential"]) {
+      assert.ok(html.includes(`<option value="${type}">${type}</option>`),
+        type + " is missing from the home page's type picker");
+    }
+    // Both halves of the handoff, pinned against the key index.html reads.
+    assert.match(html, /pendingLandingType\.v1/, "the chosen type must ride to the app");
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const app = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+    assert.match(app, /pendingLandingType\.v1/,
+      "index.html must pick the type up; a rename on one side alone drops it silently");
   });
 });
 
-// The 2026-08-29 rebuild. The owner's instruction was that the single-address
-// comp puller stop being the centre of attention and leave the top of the
-// page; before this, the hero's CTA WAS the address field and the exhibit
-// beside it was a one-property report. Nothing pinned that, so nothing stopped
-// it drifting back — these do. Asserted on both surfaces, because `/` and
-// /how-it-works serve the same bytes while the wall is up.
-test("the landing leads with the archive, not the address field", async (t) => {
+// The 2026-09-01 rebuild (design 3a). The owner's order, top to bottom:
+// what the company is, the thing the product does, proof it did it, the firm
+// pitch, the closing CTA. The suite it replaces pinned the 2026-08-29 order
+// (vault first, search below Method) for the same reason — nothing pinned the
+// arrangement, so nothing stopped it drifting back.
+test("the home page follows the owner's band order", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
-  const pages = ["/", "/how-it-works"];
 
-  await t.test("the vault is the first beat and the search sits below Method", async () => {
-    for (const p of pages) {
-      const html = await (await fetch(srv.base + p)).text();
-      const vault = html.indexOf('class="vault"');
-      const addr = html.indexOf('id="landingAddress"');
-      const method = html.indexOf('kicker">Method');
-      assert.ok(vault > -1, p + " must show the vault sheet");
-      assert.ok(vault < addr, p + " must lead with the vault, not the address field");
-      assert.ok(method < addr, p + " must put the search below Method, in the proof section");
-      assert.equal((html.match(/class="vault"/g) || []).length, 1,
-        p + " needs one vault sheet; a second is the mini+full bug in a new costume");
-    }
+  await t.test("intro, then the comp finder, then proof, then the firm pitch", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const at = (needle) => {
+      const i = html.indexOf(needle);
+      assert.ok(i > -1, "the home page is missing " + needle);
+      return i;
+    };
+    const intro = at("Enterprise software for commercial real estate");
+    const finder = at("Market comp finder");
+    const addr = at('id="homeAddress"');
+    const report = at('class="hmcard"');
+    const firms = at("For firms — Pro version");
+    const closing = at('class="hmclose"');
+    assert.ok(intro < finder, "the intro band opens the page");
+    assert.ok(finder < report, "the comp finder comes before the sample it produces");
+    assert.ok(addr < report, "the address field is in the finder band, above the sample");
+    assert.ok(report < firms, "proof comes before the firm pitch");
+    assert.ok(firms < closing, "the closing band is last, and is its own section");
+  });
+
+  // Explicit, because it is the one thing the design says twice: the FAQ
+  // moved to a page of its own and must not come back here.
+  await t.test("the FAQ is not on the home page", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.ok(!/class="q"/.test(html), "no FAQ accordions on the home page");
+    assert.ok(!/"@type":"FAQPage"/.test(html), "and no FAQ structured data either");
+    assert.match(html, /href="\/faq"/, "but the Explore menu must reach the page they went to");
   });
 
   await t.test("the vault chip is ownership, never provenance", async () => {
-    for (const p of pages) {
-      const html = await (await fetch(srv.base + p)).text();
-      assert.match(html, /class="badge bv">From your vault</,
-        p + " should show the chip a broker meets inside their own report");
-      // "Verified" is a word the SERVER awards when a named broker vouches.
-      // A private row has not earned it, and the two must never be conflated
-      // in the one place a broker is being told what the vault is.
-      assert.ok(!/[Vv]erified[^<]{0,24}vault/.test(html),
-        p + " must never describe a vault comp as verified");
-    }
+    const html = await (await fetch(srv.base + "/")).text();
+    assert.match(html, /class="badge bv">Your vault</,
+      "the home page should show the chip a broker meets inside their own report");
+    // "Verified" is a word the SERVER awards when a named broker vouches.
+    // A private row has not earned it, and the two must never be conflated
+    // in the one place a broker is being told what the vault is.
+    assert.ok(!/[Vv]erified[^<]{0,24}vault/.test(html),
+      "the home page must never describe a vault comp as verified");
   });
 
   await t.test("it states what leaves the vault, in full", async () => {
-    for (const p of pages) {
+    for (const p of ["/", "/faq"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /no address, no total price, no notes/i,
         p + " should say exactly what a shared comp keeps");
@@ -572,12 +612,13 @@ test("the landing leads with the archive, not the address field", async (t) => {
 
   // BRAND.md §4 protects this sentence, and it had never been asserted on the
   // page it most needs to be on. It is the line most likely to be lost to a
-  // future layout tidy-up.
+  // future layout tidy-up. Case-insensitive since 2026-09-01: design 3a runs
+  // it mid-sentence in the finder caption rather than as its own line.
   await t.test("the appraisal disclaimer survives the layout", async () => {
-    for (const p of pages) {
+    for (const p of ["/", "/faq", "/how-it-works"]) {
       const html = await (await fetch(srv.base + p)).text();
-      assert.match(html, /An automated estimate, not an appraisal/,
-        p + " must carry the disclaimer verbatim");
+      assert.match(html, /an automated estimate, not an appraisal/i,
+        p + " must carry the disclaimer");
     }
   });
 
@@ -588,7 +629,7 @@ test("the landing leads with the archive, not the address field", async (t) => {
   await t.test("it does not sell the search saving, which is inert in production", async () => {
     const forbidden = [/cheaper search/i, /fewer searches/i, /without spending a search/i,
                        /costs? (you )?less to search/i, /skips? the search/i];
-    for (const p of pages) {
+    for (const p of ["/", "/faq", "/how-it-works"]) {
       const html = await (await fetch(srv.base + p)).text();
       for (const bad of forbidden) {
         assert.ok(!bad.test(html), p + " must not claim the archive cheapens a search: " + bad);
@@ -597,16 +638,21 @@ test("the landing leads with the archive, not the address field", async (t) => {
   });
 
   // deal-board.js is explicit that it counts CONTRIBUTION to the firm, not
-  // closings. A landing page that promised otherwise would be selling
-  // surveillance the product deliberately does not do.
-  await t.test("the firm section does not promise a closings leaderboard", async () => {
-    for (const p of pages) {
-      const html = await (await fetch(srv.base + p)).text();
-      assert.ok(!/who (is|are) closing what[^<]*\./i.test(html.replace(/It does not report who is closing what\./g, "")),
-        p + " must not offer a record of who is closing what");
-      assert.match(html, /does not report who is closing what/i,
-        p + " should say plainly what the deal board is not");
-    }
+  // closings. A page that promised otherwise would be selling surveillance
+  // the product deliberately does not do.
+  //
+  // The NEGATION is stripped before the sweep, because the honest sentence
+  // and the dishonest one share their last five words. Design 3a's
+  // deal-board tile phrases it "Counts what each member contributed to the
+  // shelf — not who is closing what", where the landing page it replaces
+  // said "It does not report who is closing what."
+  await t.test("the firm band does not promise a closings leaderboard", async () => {
+    const html = await (await fetch(srv.base + "/")).text();
+    const stripped = html.replace(/not who is closing what/g, "");
+    assert.ok(!/who (is|are) closing what/i.test(stripped),
+      "the home page must not offer a record of who is closing what");
+    assert.match(html, /not who is closing what/i,
+      "the deal-board tile should say plainly what the board is not");
   });
 });
 

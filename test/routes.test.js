@@ -456,7 +456,7 @@ test("bare environment", async (t) => {
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
-      "/1031-exchange", "/how-it-works", "/terms", "/privacy", "/vault", "/leadership"];
+      "/1031-exchange", "/how-it-works", "/faq", "/terms", "/privacy", "/vault", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -486,7 +486,7 @@ test("bare environment", async (t) => {
   // door must sit under ACCOUNT_NAV_JS's `if(!me)return;`, because that single
   // line is the whole guarantee that a signed-out visitor is never handed it.
   await t.test("the header's Pricing link is the rate card for a signed-out reader", async () => {
-    const pages = ["/markets", "/brokers", "/how-it-works", "/leadership", "/pricing"];
+    const pages = ["/markets", "/brokers", "/how-it-works", "/faq", "/leadership", "/pricing"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /<a id="navPricing" href="\/pricing"/,
@@ -524,7 +524,10 @@ test("bare environment", async (t) => {
     // Its walled behavior — no self-link — is pinned in account-wall.test.js.
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
       "/1031-exchange", "/download", "/terms", "/privacy", "/leadership",
-      "/how-it-works"];
+      // /how-it-works joined this list unconditionally on 2026-09-01. It was
+      // already here because THIS file boots with the wall off; it now also
+      // has Home when the wall is UP, because `/` stopped being this render.
+      "/how-it-works", "/faq"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(html.includes(`<nav><a href="/">Home</a><details>`),

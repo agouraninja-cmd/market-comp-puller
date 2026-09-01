@@ -228,7 +228,7 @@ test("the wall serves the landing page at the root", async (t) => {
   });
 
   await t.test("the public pages are untouched", async () => {
-    for (const p of ["/how-it-works", "/markets", "/brokers", "/terms", "/privacy", "/healthz"]) {
+    for (const p of ["/how-it-works", "/markets", "/brokers-firms", "/terms", "/privacy", "/healthz"]) {
       assert.equal((await get(p)).status, 200, p + " must stay public");
     }
   });

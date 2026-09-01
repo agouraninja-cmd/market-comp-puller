@@ -35,7 +35,7 @@ const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
-const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/1031-exchange", "/terms", "/privacy"];
 
 test("the public pages let a visitor sign in", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
@@ -86,98 +86,23 @@ test("the broker contribution path is not a dead end", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  await t.test("/brokers points its CTA at a door the wall actually opens", async () => {
+  await t.test("/brokers-firms points its submit door at a door the wall opens", async () => {
     // It used to link /#submit-comp. Under the wall an anonymous visitor at /
     // gets the landing page, which has no comp-submission modal and no such
-    // anchor, so the broker page's single most important button did nothing
-    // at all. Broker-contributed comps are the whole verified-comp layer.
-    const html = await (await fetch(srv.base + "/brokers")).text();
+    // anchor, so the broker page's single most important link did nothing at
+    // all. Broker-contributed comps are the whole verified-comp layer.
+    //
+    // The door SURVIVED the 2026-09-01 merge on purpose. Design 4a drew no
+    // submission link, and /brokers-firms is the only public page that offers
+    // one, so implementing the design literally would have retired the
+    // funnel's only public entrance. It moved into the closing band instead
+    // (owner's call) — smaller, but present.
+    const html = await (await fetch(srv.base + "/brokers-firms")).text();
     assert.ok(!/href="\/#submit-comp"/.test(html),
       "a bare hash link cannot survive the wall, which decides before the fragment is ever sent");
-    assert.match(html, /href="\/\?submit=comp"/, "the CTA needs a query the wall can see");
-  });
-
-  await t.test("/brokers is two stacked ledgers, not two cards", async () => {
-    // Spec: docs/superpowers/specs/2026-08-13-brokers-page-ledger-design.md
-    // Contribute vs Pro must stay two statements. One list makes the vault
-    // look like it comes with a submitted comp.
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    const offer = html.split("<h1>")[1].split('class="cta"')[0];
-    assert.equal((offer.match(/class="bk"/g) || []).length, 2,
-      "/brokers should show two ledgers");
-    const contribute = offer.split("For submitting a comp.")[1].split("With Pro.")[0];
-    const pro = offer.split("With Pro.")[1];
-    assert.ok(contribute && pro, "both ledger headings must exist");
-    assert.equal((contribute.match(/class="bkrow"/g) || []).length, 3,
-      "contribute ledger is three trades");
-    assert.match(contribute, /class="bklag">CREDIT</);
-    assert.match(contribute, /class="bklag">INTROS</);
-    assert.match(contribute, /class="bklag">PROFILE</);
-    assert.equal((contribute.match(/Verified &middot; via Your Firm/g) || []).length, 1,
-      "the credit chip is shown on Credit, once");
-    assert.ok(!/class="badge v"/.test(contribute),
-      "MARKET_CSS .v collides with .tile .v; the chip stays inline-styled");
-    assert.equal((pro.match(/class="bkrow"/g) || []).length, 3,
-      "Pro ledger is three trades");
-    assert.match(pro, /class="bklag">BOOK</);
-    assert.match(pro, /class="bklag">PIPELINE</);
-    assert.match(pro, /class="bklag">PRIVATE</);
-    assert.ok(!/Verified &middot; via Your Firm/.test(pro),
-      "the chip belongs on Credit, not on the vault");
+    assert.match(html, /href="\/\?submit=comp"/, "the door needs a query the wall can see");
     assert.equal((html.match(/href="\/\?submit=comp"/g) || []).length, 1,
       "exactly one Submit door");
-    assert.ok(!/class="steps"/.test(html), "do not reuse Method's 3-up");
-    assert.ok(!/class="grid"/.test(offer), "the offer is not a two-card grid");
-    assert.match(html, /Working a 1031 exchange\?/);
-    assert.match(html, /CompNinja is not a licensed brokerage/);
-    assert.match(html, /id="upgradeProLink"/);
-    assert.match(html, /class="bkhero"/, "the claim sits beside a report exhibit");
-    assert.match(html, /class="bkex"/, "the exhibit shows the Verified chip in situ");
-    assert.match(offer, /Illustrative/, "the exhibit must not read as a live pull");
-    assert.equal((html.match(/class="bkpath"/g) || []).length, 1,
-      "how a submission works is one path, not Method");
-    assert.equal((html.match(/class="bkbeat"/g) || []).length, 3,
-      "the path is three beats");
-    const pathChunk = html.split('class="bkpath"')[1].split('class="cta"')[0];
-    assert.ok(!/href="\/\?submit=comp"/.test(pathChunk),
-      "the path is not a second Submit door");
-  });
-
-  await t.test("/brokers FAQ matches its JSON-LD, and does not claim we are a broker", async () => {
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    const visible = (html.match(/<details class="q">/g) || []).length;
-    assert.equal(visible, 5, "five broker questions");
-    const ldBlocks = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)];
-    const faq = ldBlocks.map((m) => JSON.parse(m[1])).map((doc) => {
-      const graph = doc["@graph"] || (doc["@type"] === "FAQPage" ? [doc] : []);
-      return graph.find((n) => n && n["@type"] === "FAQPage");
-    }).find(Boolean);
-    assert.ok(faq, "FAQPage node must ride the brokers page");
-    assert.equal(faq.mainEntity.length, visible,
-      "accordions and JSON-LD must both render every FAQ entry");
-    const answers = faq.mainEntity.map((q) => q.acceptedAnswer.text).join(" ");
-    assert.ok(!/\bwe are (a )?brokers?\b/i.test(answers),
-      "FAQ must not claim CompNinja is a brokerage");
-    assert.ok(!/\bappraisal\b/i.test(answers),
-      "FAQ must not call a report an appraisal");
-    assert.match(answers, /Submitting is free/,
-      "the first question has to stay the honest price answer");
-
-    // The vault-privacy answer is a PUBLIC promise about a broker's own book,
-    // and it rides into FAQPage JSON-LD, so search engines quote it back. It
-    // must name every way a comp can leave the vault. When this page was
-    // written publishing was the only one; sharing a comp with your firm
-    // (migration 032) landed before it merged, and the vault page itself
-    // stops saying "visible only to you" the moment something is shared
-    // (renderFirmPrivacy). A flat "never appears in anyone else's report
-    // unless you publish" would deny a sharing path that exists.
-    const vault = faq.mainEntity.find((q) => /vault private/i.test(q.name));
-    assert.ok(vault, "the vault-privacy question must stay on the page");
-    assert.match(vault.acceptedAnswer.text, /firm/i,
-      "the privacy answer must name firm sharing, not just publishing");
-    assert.ok(!/never appear in anyone else's report unless you publish one/i
-      .test(vault.acceptedAnswer.text),
-      "that phrasing denies firm sharing, which exists");
   });
 
   await t.test("that door serves the app, not the landing page", async () => {
@@ -280,7 +205,7 @@ test("the cost answer matches what the product actually sells", async (t) => {
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /Where a comp can go/, p + " should address brokers directly");
-      assert.match(html, /href="\/brokers"/, p + " should link to the broker page");
+      assert.match(html, /href="\/brokers-firms"/, p + " should link to the broker page");
       // The three concrete trades, not a pitch. Matched around the
       // apostrophes, which escHtml turns into &#39; on the way out.
       assert.match(html, /public records unless you choose to publish/i,

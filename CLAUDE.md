@@ -335,7 +335,7 @@ this is a rule and not a nicety.
 
 ```bash
 node scripts/shot.js /how-it-works --before      # vs origin/main
-node scripts/shot.js / /markets /brokers --before HEAD~1
+node scripts/shot.js / /markets /brokers-firms --before HEAD~1
 node scripts/shot.js / --size 390x844 --expand   # phone width, accordions open
 ```
 
@@ -366,7 +366,7 @@ editing it or trusting its output:
   with blank bands where the Method and FAQ should be, and two runs of
   IDENTICAL code produce different bytes.
 - **Collapsed `<details>` are invisible unless you pass `--expand`.** Real copy
-  lives inside them (the FAQ accordions on `/`, `/how-it-works` and `/brokers`;
+  lives inside them (the FAQ accordions on `/` and `/how-it-works`;
   the vault's `dbox` panels). A change to a FAQ answer photographs as two
   identical pages, which reads as "nothing changed" rather than "you
   photographed a closed drawer" — that is exactly how this was found.
@@ -1674,8 +1674,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   one: the refusal `validateShopKind` returns is repeated in the browser (which
   declines to spend a round trip on a question it can answer) and it ENUMERATES
   the shops, so it goes stale the day a kind is added OR removed — the same
-  suite pins it to the module's own words. The `/firms` page counts the shops
-  off `SHOP_KINDS.length` for the same reason, rather than saying a numeral.
+  suite pins it to the module's own words. The `/brokers-firms` page draws its
+  shop row off `SHOP_KINDS` for the same reason, rather than typing the cards.
 - `POST /api/geocode` (body `{address}`) — CORS pass-through to the free US
   Census geocoder. **POST, and there is no GET form** (2026-08-17): a query
   string lands in the platform's access logs and in every outbound Referer,
@@ -1901,10 +1901,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   must be checked against this rule by hand.
 - `GET /how-it-works` — the account-wall front door, reached from the footer
   and, on the landing page, the line under the hero. It LEFT the Explore menu
-  on 2026-08-25 (owner’s call), along with /brokers. Under the wall, `/` *is*
+  on 2026-08-25 (owner’s call), along with /brokers (which merged into
+  /brokers-firms on 2026-09-01). Under the wall, `/` *is*
   this render (`renderHowItWorksHTML({ home: true })`). Holds a hero (claim +
   address field + one sample exhibit), the three-step Method, the FAQ, and a
-  one-block Brokers path to `/brokers`. There is no stat strip. The address
+  one-block Brokers path to `/brokers-firms`. There is no stat strip. The address
   field is not `#compForm`; it stores `pendingLandingAddress.v1` and opens
   `/?auth=signup` (signed-in: `/`). **Server-rendered and
   self-contained** like the market pages (`HOW_CSS` — the Research Desk `rd-*`
@@ -1937,7 +1938,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   complaint above, generalized: `MARKET_BAR` carried three links and nothing
   else, so leaving the home page dropped Pricing, My Desk and the account
   circle in one go — reading as a mid-browse logout on `/markets`, all
-  `/market/<slug>` pages, `/brokers`, `/1031-exchange`, `/terms`, `/privacy`.
+  `/market/<slug>` pages, `/brokers-firms`, `/1031-exchange`, `/terms`, `/privacy`.
   Fixed the OPPOSITE way from /how-it-works, on purpose: the markup is
   byte-identical for every visitor (hidden slots) and a client script asks
   `/api/config` + `/api/account/me` (both `no-store`) after paint, then
@@ -2010,21 +2011,52 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `findBrokersForMarket()`: the latter carries broker email and phone and is
   OWNER-facing only. Routing is owner-mediated; a public directory is the
   reverse of that.
-- `GET /firms` — the public front door for firm accounts (2026-08-28). Body in
-  **`firms-page.js`**, a marketShell BODY like `bulk-page.js`, so it carries no
-  CSS of its own and does NOT depend on the purged `tailwind.css`; server.js
-  owns the SEO metadata. It exists because everything about firm accounts has
-  worked since migration 030 — shelf, invites, auto-share, shared vault comps,
-  per-seat billing, the shop kinds — with **no public surface at all**: no
-  nav entry, no footer link, no tier on the pricing modal, and an invite email
-  as the only door, which only reaches somebody a member already knows.
-  Two rules: **the shop copy is PASSED IN** from `ORG.SHOP_COPY` (the same map
-  the invite email and the create box read) and `test/firms-page.test.js` fails
-  the build if any of the three `arrivals` strings appears as a literal in the
-  page; and **every privacy claim on it is a promise the code keeps** —
-  never-retroactive auto-share, the member veto that beats the firm, and the
-  rule that no whole vault comp travels. Those reach search engines, so check
-  each against the code before editing one, as the /brokers FAQ answers are.
+- `GET /brokers-firms` — **the** public pitch to the professional audience
+  (2026-09-01, design 4a). Body in **`brokers-firms-page.js`**; server.js owns
+  the SEO metadata and the shell. It REPLACED `/brokers` and `/firms`, which
+  both **301** here — they were two pages selling to one reader (a broker
+  deciding whether to bring their comp book, and the same broker deciding
+  whether to bring their office), sharing an audience, a price answer and a
+  privacy argument while spending two of the four Explore slots saying it
+  twice. One Explore entry, one footer link, one sitemap line; a sitemap must
+  never list a URL that redirects, so the two old ones came out.
+  Order: hero → **One · your book** (a static picture of the import) → **Two ·
+  your vault** → **Three · your firm** → price pair → dark CTA → compliance.
+  Unlike the pages it replaced it carries its **own stylesheet, in the BODY**
+  (the `/faq` and `/bulk` rule): the design is full-bleed alternating bands,
+  which needs `main.wrap{max-width:none}` to beat MARKET_CSS, and marketShell's
+  `head` is emitted BEFORE MARKET_CSS so the same rule there would silently
+  lose. It still does NOT depend on the purged `tailwind.css`.
+  Five standing rules, all test-pinned: **the shop copy is PASSED IN** from
+  `ORG.SHOP_COPY` (the same map the invite email and the create box read; the
+  design's own wording on those cards is illustrative and this rule outranks
+  it, and the muted "tell us which one you are" card is the SPARE COLUMN — it
+  renders only while there are fewer than three kinds); **the prices are
+  PASSED IN** from `PRICING`, which `/pricing` and the FAQ answer also read;
+  **every privacy claim is a promise the code keeps** — the vault's closed list
+  of exactly two exits, the never-retroactive auto-share guard, the member
+  setting that beats the firm's (`org_members.auto_share`'s nullable third
+  state) and `blend-comps.js` refusing a firm share the un-anonymized row;
+  **the upload and vault panels are illustrative markup, not UI** (nothing
+  posts or reads a file, and "Import 214 deals" is a `<span>` — a
+  button-shaped link that goes nowhere is worse than a picture of one); and
+  **the two dark bands carry literal colours** because `--slab` is dark in
+  BOTH themes, so the ink ramp runs backwards on it (the trap FOOTER_DARK_CSS
+  exists for, and the reasoning MARKET_CSS already records for `.mkt-hero`).
+  **What did NOT survive the merge, deliberately:** `BROKERS_FAQ` and its
+  FAQPage JSON-LD (owner's call — those questions belong on `/faq`, and only
+  one page should carry FAQ structured data; the three answers not already
+  covered there — submitting is free, who sees an owner's contact details, how
+  long review takes — are owed to that page), the `MARKET_CREDIT` proof line,
+  and the `#upgradeProLink` Pro card (the hook survives, guarded, in
+  `ACCOUNT_NAV_JS` with no consumer). **What DID survive is the
+  `/?submit=comp` door**, in the closing band: it is the site's only public
+  entrance to the comp-submission modal, broker-contributed comps are the
+  whole verified-comp layer, and design 4a drew no submission link at all.
+  The hero PHOTOGRAPH the design shows is deliberately absent — the handoff
+  asks for an industrial aerial cropped 3.4:1, supplies none, and says to ship
+  without the band rather than with stock filler. Listed in `sitemap.xml`.
+  Do not confuse this with `GET /broker/<slug>`, the per-contributor profile.
 - `GET /pricing` — the rate card, at a URL for the first time (2026-08-28).
   Body in **`pricing-page.js`**. Pricing had lived ONLY in index.html's modal,
   which cannot be linked, indexed or emailed — and that modal carried Free /
@@ -2040,27 +2072,6 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   a cached page cannot make. The Firm tile's CTA is "how a firm works" for the
   same reason: a firm subscription is bought by an owner for a firm that
   already exists.
-- `GET /brokers` — the broker-facing page (`renderBrokersPageHTML`), linked
-  from the footer of every surface and from the landing page’s "For brokers"
-  line; it left the Explore menu 2026-08-25 with /how-it-works. Hero split
-  (claim + an illustrative report exhibit that
-  *shows* the Verified chip), then two stacked ledgers: Contribute (CREDIT /
-  INTROS / PROFILE, Verified chip shown inline) and Pro (BOOK / PIPELINE /
-  PRIVATE), with a three-beat submission path (`.bkpath` / `.bkbeat`, never
-  `.steps`) between them and a broker FAQ (`BROKERS_FAQ` — one array, both
-  the accordions and the FAQPage JSON-LD; its answers are PUBLIC
-  promises that reach search engines as structured data, so each one has to
-  survive a check against what the product currently does — the vault-privacy
-  answer must name BOTH ways a comp leaves a vault, publishing and firm
-  sharing, because it shipped saying only publishing and the vault page had
-  already stopped claiming "visible only to you" by then. Pinned by test).
-  One Submit door at the bottom
-  (`/?submit=comp` — a query the account wall can see; a `/#submit-comp`
-  hash never reaches the server). Unlike `/how-it-works` it carries no CSS
-  of its own: it renders through `marketShell()`, so `MARKET_CSS` /
-  `MARKET_BAR` / `MARKET_FOOTER` style it and it likewise does NOT depend
-  on `tailwind.css`. Listed in `sitemap.xml`. Do not confuse this with
-  `GET /broker/<slug>`, the per-contributor public profile.
 - `GET /1031-exchange` — public **1031 identification worksheet** (education
   page underneath; v4 slice 3 as amended 2026-08-14). Spec
   `docs/superpowers/specs/2026-08-14-1031-identification-worksheet-design.md`
@@ -2088,7 +2099,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   directions (must-appear and must-never-appear), including that this is not
   a written identification and not an exchange CompNinja created, and that
   CompNinja is not a QI and holds no funds. Listed in `sitemap.xml`; linked
-  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers`, and a
+  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers-firms`, and a
   contextual one-liner after the CTA on every `/market/<slug>` page
   (`guide1031` in `renderMarketPageHTML`).
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
@@ -2820,7 +2831,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `docs/superpowers/specs/2026-08-21-bulk-valuation-design.md`). A Pro member
   pastes or uploads a list of addresses and gets a value on each, as one
   portfolio, at **`/bulk`**. Rules live in the pure, tested **`bulk.js`**; the
-  page is **`bulk-page.js`** (a marketShell BODY, the /brokers pattern, so it
+  page is **`bulk-page.js`** (a marketShell BODY, the /brokers-firms pattern, so it
   carries no chrome of its own); server.js owns the job tables and the worker.
   Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
@@ -3068,7 +3079,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     accident. **Since 2026-08-30 it renders a BODY, not a document**
     (`renderVaultBody(boot)` — Task 9 of the rail plan): the doctype, head,
     header and footer are `marketShell`'s, exactly as for `/markets`,
-    `/brokers`, `/firms`, `/pricing` and `/bulk`. Its old twelve-key chrome
+    `/brokers-firms`, `/pricing` and `/bulk`. Its old twelve-key chrome
     object (`CN_LOGO`, `RAIL_CSS`, `ACCOUNT_NAV_*`, `FOOTER_*`, `THEME_*`,
     `NAV_SHELL_CLASS`) is gone — every key existed only to rebuild by hand
     what the shell already had, and rebuilding it is what made this the page

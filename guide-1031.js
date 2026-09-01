@@ -572,7 +572,7 @@ function renderGuide1031Body(signedIn) {
     `real comparable sales. When you are ready, CompNinja can connect you with a local ` +
     `broker for a Broker Opinion of Value.</p>` +
     `<a class="btn" href="/">Value my building</a>` +
-    `<p style="margin:0"><a class="alt" href="/brokers">Are you a broker? Send this worksheet to a client &rarr;</a></p></div>` +
+    `<p style="margin:0"><a class="alt" href="/brokers-firms">Are you a broker? Send this worksheet to a client &rarr;</a></p></div>` +
 
     `<p class="disc">This page is educational only. It is not tax, legal, or investment ` +
     `advice, and CompNinja is not a brokerage, a qualified intermediary, or a tax advisor. ` +

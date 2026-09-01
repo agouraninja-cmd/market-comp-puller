@@ -2703,59 +2703,38 @@ test("redeeming from Settings reports the outcome instead of closing a modal", (
 // modal could be left out of the Escape lists — where the cost is not a stuck
 // modal but the REPORT underneath being closed and the typed feedback lost.
 
-test("the tester badge ships hidden and is revealed only by the tester grant", () => {
-  const badge = html.match(/<button id="testerBadge"[\s\S]{0,400}?>/);
-  assert.ok(badge, "#testerBadge not found");
-  assert.match(badge[0], /class="[^"]*\bhidden\b/,
-    "this file is one set of bytes served to everybody, so hidden is the pre-paint default");
-  assert.match(badge[0], /class="[^"]*\bno-print\b/, "chrome, not report content");
-  assert.match(badge[0], /class="[^"]*\bno-capture\b/, "and it must stay out of the PNG export");
+test("the badge is injected from one source, never hand-copied into this file", () => {
+  // The markup, its CSS and its handlers live in server.js's TESTER_BADGE_*
+  // constants, because /vault and /bulk emit the SAME block through
+  // marketShell. A copy here would be the drift test/nav-parity.test.js
+  // exists for: two ninjas, one of which quietly stops matching the other.
+  assert.equal(html.split("<!--TESTER_BADGE-->").length - 1, 1,
+    "exactly one marker, which server.js replaces at serve time");
+  assert.ok(!html.includes('id="testerBadge"'),
+    "the badge markup must come from server.js, not from a copy in this file");
+  assert.ok(!html.includes(".tninja{"),
+    "the badge CSS moved to server.js with the markup it styles");
+  assert.ok(!html.includes("function sendTesterFeedback"),
+    "the submit handler ships with the injected markup, so /vault behaves identically");
+});
 
+test("this file still owns the reveal, and cannot throw if the injection is missing", () => {
   const script = appScript();
-  // The TOGGLE specifically — a loose match lands on the click listener,
-  // which is the first mention of this id in the file.
-  const reveal = script.match(/getElementById\("testerBadge"\)\s*\.classList\.toggle\([^;]*;/);
-  assert.ok(reveal, "nothing reveals the badge");
+  // From the declaration THROUGH the toggle — stopping at the first semicolon
+  // lands on the getElementById line and proves nothing about what gates it.
+  const reveal = script.match(/const testerBadgeEl[\s\S]{0,260}?toggle\([^;]*;/);
+  assert.ok(reveal, "the reveal is gone — nothing would ever show the badge in the app");
   assert.match(reveal[0], /isTesterPro\(\)/,
-    "reveal on the tester grant, through the existing helper rather than a second copy of the flag test");
-  assert.ok(!/proConfig\.tester\s*===?/.test(reveal[0]),
-    "do not re-implement isTesterPro() here — proConfig can be null before /api/config lands");
-});
+    "reveal on the tester grant, through the existing helper");
 
-test("the badge's hidden state cannot lose the cascade to its own display rule", () => {
-  // .tninja sets display:grid. Tailwind's .hidden sets display:none, and both
-  // are single-class selectors, so whichever stylesheet comes last would win —
-  // the trap vault-page.js's .deck.hide rule documents. The two-class rule is
-  // what makes the outcome independent of that order.
-  assert.match(html, /\.tninja\.hidden\s*\{[^}]*display\s*:\s*none/,
-    ".tninja.hidden must restate display:none at two-class specificity");
-});
-
-test("the tester modal joins every list that decides what Escape closes", () => {
-  const script = appScript();
-  const cancels = script.match(/const MODAL_CANCELS = \[[\s\S]*?\];/);
-  assert.ok(cancels, "MODAL_CANCELS not found");
-  assert.match(cancels[0], /\["testerModal", "testerCancel"\]/,
-    "Escape must close this modal through its own cancel control, like every other");
-
-  // Both report-close and desk-close handlers carry an "is any modal open?"
-  // list. Missing from either, Escape over this modal closes the report
-  // underneath it and takes the half-typed bug report with it.
-  const guards = script.match(/\["leadModal", "acctModal"[^\]]*\]/g) || [];
-  assert.equal(guards.length, 2, "expected the two open-modal guard lists");
-  for (const g of guards) {
-    assert.ok(g.includes('"testerModal"'),
-      "testerModal must count as an open modal in both Escape guards: " + g);
-  }
-});
-
-test("a failed send keeps the tester's words on screen", () => {
-  const script = appScript();
-  const start = script.indexOf("async function sendTesterFeedback");
-  assert.ok(start > 0, "sendTesterFeedback not found");
-  const body = script.slice(start, start + 2600);
-  const clear = body.indexOf('box.value = ""');
-  const ok = body.indexOf("if (!r.ok) throw");
-  assert.ok(ok > 0 && clear > ok,
-    "the box may only be cleared after a confirmed success — retyping a bug report is how a tester stops sending them");
+  // Everything that reaches for the injected ids must tolerate their absence:
+  // this file's script aborts WHOLE on a throw, so a failed injection would
+  // take the entire front end down rather than merely lose a badge.
+  assert.match(script, /const testerBadgeEl = document\.getElementById\("testerBadge"\);\s*\n\s*if \(testerBadgeEl\)/,
+    "the reveal must null-check the injected element");
+  assert.match(script, /const modalEl = document\.getElementById\(modalId\);\s*\n\s*if \(!modalEl\) continue;/,
+    "the Escape registry must skip a modal that is not on the page");
+  const guards = script.match(/\.some\(\(id\) => \{ const el = document\.getElementById\(id\); return el && !el\.classList\.contains\("hidden"\); \}\)/g) || [];
+  assert.equal(guards.length, 2,
+    "both open-modal guards must tolerate an absent modal");
 });

@@ -17268,13 +17268,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     menuUpgrade.classList.toggle("hidden", !live || pro);
     menuBilling.classList.toggle("hidden", !live || !hasBillingHistory());
 
-    // The vault link, off canUseVault rather than any plan test — the entitlement
-    // is the only sanctioned way to ask, and /api/vault re-checks it server-side
-    // anyway, so unhiding this by hand reveals a link and nothing behind it.
-    // Deliberately NOT gated on `live`: comped admins get the vault on a
-    // deployment with no Stripe keys, the same exception the billing card makes.
+    // canUseVault still decides what the vault SHOWS, and /api/vault re-checks
+    // it server-side, so nothing here unlocks anything. It no longer decides
+    // whether the door is visible: since 2026-09-01 ("Three Spaces") /vault is
+    // the member's own space and holds their portfolio and watchlist, which
+    // moved there off the workspace and were never part of Pro. A free member
+    // whose only route to their own saved properties is typing the URL is the
+    // navigation's version of the failure the page's per-deck gate prevents.
+    // Signed-in, not entitled: ACCOUNT_NAV_JS says the same thing in one word
+    // (`true`, under its own members-only guard) and nav-parity reads both.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
-    document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
+    document.getElementById("menuVaultLink").classList.toggle("hidden", !currentUser);
     // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
     // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
     // so unhiding this by hand reveals a link and a 403 behind it -- and

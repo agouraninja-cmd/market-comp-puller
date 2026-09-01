@@ -8566,7 +8566,16 @@ const ACCOUNT_NAV_JS =
   `else{ini.className="ini";ini.style.backgroundImage="";ini.textContent=lab.slice(0,1).toUpperCase();}` +
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
-  `show($("navVault"),Boolean(pro.canUseVault));` +
+  // Every signed-in member, not just canUseVault (2026-09-01, "Three Spaces").
+  // /vault stopped being only the comp book that day: it is the member's own
+  // space, and their portfolio and watchlist moved into it off /desk. Gating
+  // the only door to it on Pro would leave a free member's own saved
+  // properties reachable by typing the URL and no other way -- which is the
+  // same failure the page's per-deck gate exists to prevent, moved into the
+  // navigation. The page itself still refuses the book, the pipeline and the
+  // hubs; see vaultReadPayload and #vaultLocked.
+  // This line is under `if(!me)return;` already, so it is members-only.
+  `show($("navVault"),true);` +
   // Same shape as the vault's rule, against the entitlement /api/config
   // already carries. Both links ship hidden and appear together once the
   // account resolves, which is why the rail is a fixed width — an item
@@ -15890,11 +15899,28 @@ async function vaultReadPayload(req, params) {
     return { status: 403, body: {
       error: "The private vault is part of Pro.",
       code: "broker_required",
+      // Not every deck on /vault is behind this refusal, and that is the
+      // whole point of it being a per-deck gate (2026-09-01, "Three
+      // Spaces"). "Your properties" and "Your markets" are a members own
+      // portfolio and watchlist, which moved off /desk and were never Pro:
+      // a free member must not open their own space and find their own
+      // saved properties behind a paywall.
+      //
+      // So the personal half of the page needs one fact, and it has to
+      // survive the 403 or there is no payload at all to carry it. Free My
+      // Desk is an address list, Pro is the book of values -- this is which.
+      // Presentation only, exactly as on /api/config: every limit behind it
+      // is enforced by /api/portfolio itself.
+      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
       error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+      // Carried for the reason above. The personal decks read from their own
+      // endpoints, which keep their file fallback, so they can still render
+      // against a database this page refuses without.
+      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (compsR.status === "rejected") throw compsR.reason;
@@ -15955,6 +15981,9 @@ async function vaultReadPayload(req, params) {
     // contract (vault-api.js's allowlist) and a shelf membership is not a
     // property of the comp, it is a property of the relationship.
     sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
+    // Stated on all three exits (200 / 403 / 503) so the personal decks read
+    // one field wherever they land. See the note on the 403 above.
+    portfolioValues: Boolean(ent && ent.portfolioValues),
   } };
 }
 

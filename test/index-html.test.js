@@ -942,11 +942,18 @@ test("the vault is a nav item, not a row inside the account menu", () => {
   assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
   const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
   assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
-  // One link, one toggle: refreshBillingUI still owns it off canUseVault, so
-  // moving it cannot have widened who sees it.
+  // One link, one toggle: refreshBillingUI still owns it.
   assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
-  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !canVault)`),
-    "still shown from canUseVault and nothing else");
+  // Shown to every signed-in member since 2026-09-01 ("Three Spaces"), where
+  // it was canUseVault before. /vault stopped being only the comp book that
+  // day: the member's portfolio and watchlist moved into it off the
+  // workspace, and neither was ever part of Pro. Gating the only door on the
+  // entitlement would leave a free member's own saved properties reachable by
+  // typing the URL and no other way. The PAGE still refuses the book, the
+  // pipeline and the hubs -- vaultReadPayload's 403 and #vaultLocked -- so
+  // this widened who can see the door, never what is behind it.
+  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !currentUser)`),
+    "shown to any signed-in member, not gated on the vault entitlement");
 });
 
 // The workspace header's profile cluster is pinned by "the workspace header

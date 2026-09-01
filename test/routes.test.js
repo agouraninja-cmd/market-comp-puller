@@ -735,12 +735,22 @@ test("bare environment", async (t) => {
       "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
     assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
       "the bulk link is not toggled from canBulkValue");
-    // The vault's flag is read into `canVault` a line earlier (the My Desk
-    // card shares it), so this pins the definition rather than the toggle.
+    // canUseVault still exists and still gates something -- the My Desk vault
+    // card -- so this test can still prove the two flags are separate rather
+    // than one shared answer, which is the thing it is really here for.
     assert.match(app, /canVault = Boolean\(proConfig && proConfig\.canUseVault\)/,
-      "the vault link is not toggled from canUseVault");
-    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/,
-      "the vault link stopped reading canVault");
+      "the vault's own flag stopped being read at all");
+    assert.match(app, /getElementById\("vaultCard"\)[\s\S]{0,120}canVault/,
+      "the desk's vault card stopped reading canUseVault");
+    // The LINK is a different question since 2026-09-01 ("Three Spaces"): it
+    // opens to every signed-in member, because /vault now holds their own
+    // portfolio and watchlist and those were never Pro. Widened who sees the
+    // door, never what is behind it -- vaultReadPayload still answers 403 and
+    // the page renders #vaultLocked in place of the three gated decks.
+    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}!currentUser/,
+      "the vault link must open to any signed-in member");
+    assert.ok(!/getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/.test(app),
+      "and must not go back to being gated on the entitlement");
   });
 
   // The Market Explorer's example, rotated per page load (2026-08-24).

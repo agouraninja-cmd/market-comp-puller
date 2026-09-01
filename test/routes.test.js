@@ -1083,6 +1083,9 @@ test("bare environment", async (t) => {
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.
       ["POST",   "/api/vault/identity"],
+      // The batch push to a firm: fifty comps in one request, so a missing
+      // gate here would be the biggest single leak the vault could have.
+      ["POST",   "/api/vault/firm-many"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {

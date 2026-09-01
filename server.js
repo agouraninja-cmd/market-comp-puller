@@ -3330,6 +3330,12 @@ const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || 
 // publishes what it can and reports how many are left, and running it again is
 // safe because an already-published comp is skipped rather than re-submitted.
 const VAULT_PUBLISH_BATCH = 100;
+// One bulk firm-share request's ceiling. Higher than the publish cap because
+// a share is ONE upsert for the whole batch, not an insert plus a patch per
+// comp; the bound is the in.() list in the URL and the body, not round trips.
+// Over it the route shares what fits and reports `remaining` — the upsert
+// makes a re-run a no-op, so "run it again" is safe advice.
+const VAULT_FIRM_BATCH = 200;
 // One expression, three call sites (inbox, intro gate, new-lead alert), so the
 // flag cannot end up half-applied and show a broker a lead they may not act on.
 const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
@@ -16436,9 +16442,11 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 //      `user_id=eq.` filter to an org. Migration 013's rule, third time of
 //      asking; test/org-routes.test.js fails the build if the widened form
 //      appears anywhere in this file.
-//   2. Sharing is per comp and OPT-IN. There is no bulk "share my vault", no
-//      default, and nothing an admin can set on a member's behalf. A broker's
-//      book is theirs.
+//   2. Sharing is OPT-IN, by the comp's owner, and never a default. It is one
+//      comp per click or a batch the broker chose from the view in front of
+//      them (POST /api/vault/firm-many, 2026-09-01) — there is still no
+//      "always share my vault" and nothing an admin can set on a member's
+//      behalf. A broker's book is theirs.
 //   3. It returns [] on ANY failure, like vaultCompsForReport — a firm read is
 //      an enrichment, never a reason to fail a search someone is waiting on,
 //      and an error must never widen what comes back.
@@ -16453,13 +16461,17 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 // race. The rows are read back scoped by user_id FIRST, so a comp id from
 // somebody else's vault cannot be shared by naming it.
 async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
-  if (!DB_CONFIGURED || !orgId || !compIds.length) return { count: 0, undatedSkipped: 0 };
+  if (!DB_CONFIGURED || !orgId || !compIds.length) return { count: 0, undatedSkipped: 0, skipped: [] };
   const rows = await sbRequest("GET",
     `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
     `&id=in.(${pgInList(compIds)})&limit=${compIds.length}`);
   const located = await attachPropertyCoords(user.id, Array.isArray(rows) ? rows : []);
   const payload = [];
   let undatedSkipped = 0;
+  // Per-row reasons, for the batch route: "3 of 50 were undated" is the
+  // NORMAL answer to a bulk share and it has to name which three. The single
+  // route keeps reading `count`/`undatedSkipped` and is untouched.
+  const skipped = [];
   for (const row of located) {
     const comp = BLEND.firmCompPayload(row);
     // A comp with no address cannot render — broker-vault.js refuses that at
@@ -16471,7 +16483,12 @@ async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
     // refuse by name instead of answering ok while the toggle shows "Shared"
     // for a comp no colleague will ever receive.
     if (!comp) {
-      if (row && row.deal_date == null) undatedSkipped++;
+      const undated = Boolean(row) && row.deal_date == null;
+      if (undated) undatedSkipped++;
+      skipped.push({
+        id: row && row.id, address: (row && row.address) || "",
+        reason: undated ? "no deal date" : "no address",
+      });
       continue;
     }
     payload.push({
@@ -16486,10 +16503,10 @@ async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
       updated_at: new Date().toISOString(),
     });
   }
-  if (!payload.length) return { count: 0, undatedSkipped };
+  if (!payload.length) return { count: 0, undatedSkipped, skipped };
   await sbRequest("POST", "org_comps?on_conflict=org_id,source_comp_id", payload,
     { prefer: "resolution=merge-duplicates,return=minimal" });
-  return { count: payload.length, undatedSkipped };
+  return { count: payload.length, undatedSkipped, skipped };
 }
 
 // Pull a comp back off every firm shelf it is on. Scoped by the SHARER, not by
@@ -20822,6 +20839,85 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // Share a batch with the firm, from the filter the broker is already
+    // looking at (2026-09-01). The Vault's promise is "your space, pushed to
+    // the firm when you are comfortable", and until this the push was one
+    // click and one confirm per comp — a per-row chore, so in practice a
+    // broker shared a comp, never a book.
+    //
+    // Its own route rather than an `ids` array on POST /api/vault/firm, for
+    // publish-many's exact reason one block up: that route's contract (200
+    // means "Shared", 400 for an undated comp) is right for one comp and
+    // wrong for fifty, where "three of these are undated" is the normal
+    // answer and a 400 would refuse forty-seven good rows to report three
+    // bad ones. Same openVault gate, same user_id scoping (inside
+    // shareVaultCompsToOrg), same membership check, same credit name — a
+    // second set of rules would be a second place a broker's book can leak.
+    //
+    // Smaller than publish-many on purpose: shareVaultCompsToOrg already
+    // takes an array and does ONE upsert on (org_id, source_comp_id), so
+    // there is no insert+PATCH pair to unwind and no worker pool. Bulk
+    // UNSHARE needs no twin — DELETE /api/vault/firm already takes up to 200
+    // compIds and deliberately checks no membership, because taking your own
+    // comp back is always yours to do.
+    if (req.method === "POST" && path === "/api/vault/firm-many") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultfirmmany:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = JSON.parse(body || "{}");
+          // Shape-filtered and deduped before the query, the single route's
+          // rule: one malformed entry would make PostgREST reject the whole
+          // in.() list and take the batch down with it.
+          const ids = [...new Set((Array.isArray(parsed.ids) ? parsed.ids : [])
+            .map((v) => String(v || "").trim()).filter((v) => VAULT.isUuid(v)))];
+          if (!ids.length) return sendJson(res, 400, { error: "Which comps?" });
+          // Over the cap: share what fits and say how many are left. The
+          // upsert makes a re-run a no-op, which is what makes "run it again"
+          // safe advice rather than a way to double anything.
+          const batch = ids.slice(0, VAULT_FIRM_BATCH);
+          const remaining = ids.length - batch.length;
+
+          const memberships = await orgMembershipsFor(user.email);
+          const orgId = String(parsed.orgId || "").trim();
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          // The same name the single share puts on the badge, decided the
+          // same way, so one broker is named one way across the product.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const sharedByName = VAULT.creditName(profile) || user.name || "";
+          const r = await shareVaultCompsToOrg(user, orgId, batch, sharedByName);
+          const org = (await orgsByIds([orgId])).get(String(orgId));
+          if (r.count > 0) logEvent("vault_firm_share", {});
+          console.log(`🤝 Vault bulk firm share: ${r.count} of ${batch.length} to org ${orgId} (user ${user.id})`);
+          // No 400 for an all-skipped batch, unlike the single route: the
+          // page asked "share what is on screen", and "none of these could
+          // be" is an answer with the reasons attached, not a failure.
+          return sendJson(res, 200, {
+            ok: true,
+            shared: r.count,
+            firm: (org && org.name) || "your firm",
+            skipped: r.skipped.slice(0, 50),
+            skippedCount: r.skipped.length,
+            remaining,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault bulk firm share failed:", err.message);
+          return sendJson(res, 502, { error: "Could not update firm sharing. Please try again." });
+        }
+      });
+      return;
+    }
+
     // --- The credit identity a published comp carries -----------------------
     //
     // A vault route, not a /api/broker/* one, because it exists FOR publishing
@@ -21066,10 +21162,10 @@ const server = http.createServer((req, res) =>
 
     // --- POST|DELETE /api/vault/firm — opt a comp in to your firm ----------
     //
-    // Spec §7, and the whole of it is opt-in: per comp, by the comp's owner,
-    // never by an admin, never in bulk over a whole vault, and never a
-    // default. A broker's book is theirs; this is the one door out of it, and
-    // it is one comp at a time by construction.
+    // Spec §7, and the whole of it is opt-in: by the comp's owner, never by
+    // an admin, and never a default. A broker's book is theirs. This is the
+    // one-comp door out of it; the batch door is /api/vault/firm-many above,
+    // and both are the broker choosing from the view in front of them.
     //
     // It goes through openVault() (401 / 403 canUseVault / 503) and THEN
     // checks membership, so a broker with no firm is told the truth in the

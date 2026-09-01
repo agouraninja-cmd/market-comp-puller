@@ -419,6 +419,13 @@ async function runPage(comps, benchResult, opts, identity) {
   const calls = [];
   const bootPayload = boot(comps, identity);
   if (opts.uploads) bootPayload.j.uploads = opts.uploads;
+  // A firm and the shelf lookup, in the shape vaultReadPayload serves them,
+  // so the push button and the Firm filter can be EXECUTED here rather than
+  // only source-scanned like the older firm-column tests below.
+  if (opts.firm) {
+    bootPayload.j.firm = opts.firm;
+    bootPayload.j.sharedWithFirm = opts.sharedIds || [];
+  }
   const html = renderVaultHTML(bootPayload, CHROME);
   const script = pageScript(html);
   const doc = stubDocument();
@@ -477,6 +484,13 @@ async function runPage(comps, benchResult, opts, identity) {
             identity: { display_name: "", company: "Hawkins Ridge CRE" },
             creditedTo: "Hawkins Ridge CRE",
           }));
+    }
+    // The batch push. Checked before any single-share stub could swallow it
+    // — the same prefix trap publish-many documents above.
+    if (u.indexOf("/api/vault/firm-many") === 0) {
+      return opts.firmMany
+        ? opts.firmMany(init)
+        : Promise.resolve(jsonResponse(200, { ok: true, shared: 0, firm: "Colliers Boise", skipped: [], skippedCount: 0, remaining: 0 }));
     }
     if (u.indexOf("/api/vault/comp") === 0) {
       return opts.comp
@@ -3086,6 +3100,221 @@ test("a broker in no firm gets no firm toggle at all", () => {
   assert.match(js, /closest\("button\[data-firm\]"\);\s*if\(!b\|\|!myFirm\)return;/);
   const html = renderVaultHTML(firmBoot([comp({})], null), CHROME);
   assert.match(html, /"firm":null|firm":null/, "the boot payload should carry an explicit null firm");
+});
+
+// ---------------------------------------------------------------------------
+// The push — bulk firm share (2026-09-01)
+//
+// The vault is "your space, pushed to the firm when you are comfortable", and
+// the push was one click and one confirm per comp. #firmAll follows
+// refreshPublishAll's three rules: it counts the CURRENT VIEW, it does not
+// decide eligibility (firmCompPayload is the rule; the route reports what it
+// skipped), and it is hidden at zero. #fFirm is the question the Firm column
+// could not answer — what have I not pushed yet.
+// ---------------------------------------------------------------------------
+
+test("the push button counts the unshared comps in view and names the firm", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" }), comp({ id: "c3", address: "300 Elm St" }),
+  ], null, { firm: FIRM, sharedIds: ["c1"] });
+  const b = doc.getElementById("firmAll");
+  assert.equal(b.textContent, "Share 2 with Colliers Boise",
+    "the label names the firm — this is the one control whose whole meaning is who sees it");
+  assert.ok(!b.classList.contains("hide"));
+});
+
+test("a broker in no firm gets neither the button nor the filter", async () => {
+  const { doc } = await runPage([comp({ id: "c1" })]);
+  assert.ok(doc.getElementById("firmAll").classList.contains("hide"));
+  assert.ok(doc.getElementById("fFirmLab").classList.contains("hide"),
+    "a filter over a relationship the broker does not have is furniture");
+});
+
+test("the Firm filter answers what have I not pushed yet", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St" }),
+    comp({ id: "c2", address: "200 Oak Ave" }),
+    comp({ id: "c3", address: "300 Elm St" }),
+  ], null, { firm: FIRM, sharedIds: ["c1"] });
+  assert.ok(!doc.getElementById("fFirmLab").classList.contains("hide"));
+  doc.getElementById("fFirm").value = "unshared";
+  doc.getElementById("fFirm").fire("change", {});
+  await tick();
+  const rows = doc.getElementById("tbody").innerHTML;
+  assert.doesNotMatch(rows, /100 Main St/, "the shared comp is out of a Not-shared view");
+  assert.match(rows, /200 Oak Ave/);
+  assert.match(rows, /300 Elm St/);
+  assert.equal(doc.getElementById("shown").textContent, "2 of 3 shown");
+  assert.ok(!doc.getElementById("fClear").classList.contains("hide"), "Clear appears for this filter like any other");
+
+  doc.getElementById("fFirm").value = "shared";
+  doc.getElementById("fFirm").fire("change", {});
+  await tick();
+  assert.match(doc.getElementById("tbody").innerHTML, /100 Main St/);
+  assert.doesNotMatch(doc.getElementById("tbody").innerHTML, /200 Oak Ave/);
+  // A view of already-shared comps has nothing to push: hidden, not greyed.
+  assert.ok(doc.getElementById("firmAll").classList.contains("hide"));
+});
+
+test("Clear filters puts the Firm filter back too", async () => {
+  const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })],
+    null, { firm: FIRM, sharedIds: ["c1"] });
+  doc.getElementById("fFirm").value = "unshared";
+  doc.getElementById("fFirm").fire("change", {});
+  await tick();
+  doc.getElementById("fClear").fire("click", {});
+  await tick();
+  assert.equal(doc.getElementById("fFirm").value, "");
+  assert.equal(doc.getElementById("shown").textContent, "2 shown");
+});
+
+test("the push follows every other filter, so it means what is on screen", async () => {
+  const { doc } = await runPage([
+    comp({ id: "c1", address: "100 Main St" }), comp({ id: "c2", address: "200 Oak Ave" }),
+  ], null, { firm: FIRM });
+  doc.getElementById("fText").value = "main";
+  doc.getElementById("fText").fire("input", {});
+  await tick();
+  assert.equal(doc.getElementById("firmAll").textContent, "Share 1 with Colliers Boise");
+});
+
+test("it posts every unshared id in view with the firm, once confirmed", async () => {
+  let sent = null;
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([
+      comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" }), comp({ id: "c3", address: "300 Elm St" }),
+    ], null, {
+      firm: FIRM, sharedIds: ["c1"],
+      firmMany: (init) => {
+        sent = JSON.parse(init.body);
+        return Promise.resolve(jsonResponse(200, { ok: true, shared: 2, firm: "Colliers Boise", skipped: [], skippedCount: 0, remaining: 0 }));
+      },
+    });
+    doc.getElementById("firmAll").fire("click", {});
+    await tick();
+    assert.deepEqual(sent, { orgId: "o1", ids: ["c2", "c3"] },
+      "the shared comp is not re-sent; the firm is the one the page was booted with");
+    assert.match(doc.getElementById("compMsg").textContent, /^2 shared$/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("the confirm makes the four promises, and the third is what makes it a push", async () => {
+  let text = "";
+  let called = 0;
+  const realConfirm = global.confirm;
+  global.confirm = (t) => { text = t; return false; };
+  try {
+    const { doc } = await runPage([comp({ id: "c1" }), comp({ id: "c2", address: "200 Oak Ave" })], null, {
+      firm: FIRM, firmMany: () => { called += 1; return Promise.resolve(jsonResponse(200, { ok: true })); },
+    });
+    doc.getElementById("firmAll").fire("click", {});
+    await tick();
+    assert.equal(called, 0, "declining the confirm shares nothing");
+    assert.match(text, /^Share 2 comps with Colliers Boise\?/);
+    assert.match(text, /Colleagues at Colliers Boise will see them inside their own reports, with your name on them/);
+    assert.match(text, /do NOT go into CompNinja's public records/);
+    assert.match(text, /left out of every export, PNG, print and client link/);
+    assert.match(text, /take any of them back at any time/,
+      "unlike publishing, this is reversible, and the dialog must say so");
+    assert.match(text, /no deal date/);
+    assert.match(text, /skipped and named afterwards/);
+    // Never the publish dialog's words: that is the one-confirm-covering-both
+    // trap the single toggle's tests already guard.
+    assert.doesNotMatch(text, /public records, credited to/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("skips are reported with the first reason, and leftovers with the advice", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1" })], null, {
+      firm: FIRM,
+      firmMany: () => Promise.resolve(jsonResponse(200, {
+        ok: true, shared: 23, firm: "Colliers Boise", skippedCount: 2, remaining: 40,
+        skipped: [{ id: "c8", address: "8 Undated Ln", reason: "no deal date" }, { id: "c9", address: "", reason: "no address" }],
+      })),
+    });
+    doc.getElementById("firmAll").fire("click", {});
+    await tick();
+    const msg = doc.getElementById("compMsg").textContent;
+    assert.match(msg, /23 shared/);
+    assert.match(msg, /2 skipped/);
+    assert.match(msg, /no deal date/, "the FIRST reason is named — they repeat, so one explains the rest");
+    assert.match(msg, /40 left/);
+    assert.match(msg, /run it again/);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("a refusal is shown and the button comes back", async () => {
+  const realConfirm = global.confirm;
+  global.confirm = () => true;
+  try {
+    const { doc } = await runPage([comp({ id: "c1" })], null, {
+      firm: FIRM,
+      firmMany: () => Promise.resolve(jsonResponse(403, { error: "You are not a member of that firm." })),
+    });
+    doc.getElementById("firmAll").fire("click", {});
+    await tick();
+    assert.match(doc.getElementById("compMsg").textContent, /not a member/);
+    const b = doc.getElementById("firmAll");
+    assert.equal(b.disabled, false);
+    assert.equal(b.textContent, "Share 1 with Colliers Boise", "re-rendered, not left reading Sharing…");
+  } finally { global.confirm = realConfirm; }
+});
+
+// Pushing a whole import is not a second path. The line under the import
+// result sets the view to that import and runs the SAME function the button
+// runs — confirm included — and never calls the route itself. The moment
+// somebody has just poured their book in is when they are least careful.
+test("an import offers the push as the same act, through the same confirm", async () => {
+  let confirms = 0;
+  let sent = null;
+  const realConfirm = global.confirm;
+  global.confirm = () => { confirms += 1; return true; };
+  try {
+    const { doc, calls } = await runPage([comp({ id: "c0", upload_id: "u1", address: "1 Old St" })], null, {
+      firm: FIRM,
+      upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 2, skipped: 0, uploadId: "u9" })),
+      reloadComps: [
+        comp({ id: "c0", upload_id: "u1", address: "1 Old St" }),
+        comp({ id: "c1", upload_id: "u9", address: "100 Main St" }),
+        comp({ id: "c2", upload_id: "u9", address: "200 Oak Ave" }),
+      ],
+      firmMany: (init) => {
+        sent = JSON.parse(init.body);
+        return Promise.resolve(jsonResponse(200, { ok: true, shared: 2, firm: "Colliers Boise", skipped: [], skippedCount: 0, remaining: 0 }));
+      },
+    });
+    await chooseFile(doc, MAPPABLE_CSV);
+    doc.getElementById("mapGo").fire("click");
+    await tick();
+    const res = doc.getElementById("res").innerHTML;
+    assert.match(res, /Imported 2 comps/);
+    assert.match(res, /id="resFirm" data-upload="u9">Share this import with Colliers Boise</);
+
+    doc.getElementById("res").fire("click", {
+      target: { id: "resFirm", getAttribute: (a) => (a === "data-upload" ? "u9" : null) },
+    });
+    await tick();
+    assert.equal(confirms, 1, "the import line goes through the button's own confirm");
+    assert.deepEqual(sent, { orgId: "o1", ids: ["c1", "c2"] },
+      "exactly that import — the older comp on the desk is not swept up");
+    assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/firm-many") === 0).length, 1);
+  } finally { global.confirm = realConfirm; }
+});
+
+test("an import offers no push to a broker in no firm", async () => {
+  const { doc } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, skipped: 0, uploadId: "u9" })),
+    reloadComps: [comp({ id: "c1", upload_id: "u9" })],
+  });
+  await chooseFile(doc, MAPPABLE_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  assert.doesNotMatch(doc.getElementById("res").innerHTML, /resFirm/);
 });
 
 // ---------------------------------------------------------------------------

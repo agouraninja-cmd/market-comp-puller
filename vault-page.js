@@ -790,6 +790,13 @@ a.btn.ghost:hover{color:var(--ink)}
              single median to seal the table with, and this is how a broker
              resolves that into a figure. -->
         <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
+        <!-- Shown only to a broker who is in a firm (apply() unhides it). The
+             one question the Firm column could not answer: a broker could
+             see THAT a comp was shared but could not ask what they have not
+             pushed yet, which is exactly the question a vault that is "yours,
+             pushed to the firm when you are comfortable" produces. One clause
+             in view(), nothing on the wire: sharedIds is already here. -->
+        <label id="fFirmLab" class="hide">Firm <select id="fFirm"><option value="">All</option><option value="shared">Shared with firm</option><option value="unshared">Not shared</option></select></label>
         <!-- Two dropdowns narrow to a SLICE of the book; this finds one deal
              in it. A broker hunting the Fairview comp among 400 rows had only
              scrolling, and the market/type pair they would have to guess at is
@@ -806,6 +813,14 @@ a.btn.ghost:hover{color:var(--ink)}
              exactly the kind of pair this repo already carries warnings about.
              The server reports what it skipped and why. -->
         <button class="btn ghost hide" type="button" id="pubAll"></button>
+        <!-- The push. refreshPublishAll's three rules verbatim: it counts the
+             comps in the CURRENT VIEW that are not on the firm's shelf, it
+             does not decide eligibility (firmCompPayload in blend-comps.js
+             is the rule, and the route reports what it skipped and why), and
+             it is hidden at zero rather than disabled. Only for a broker in a
+             firm, and the label names the firm, because this is the one
+             control whose entire meaning is who sees it. -->
+        <button class="btn ghost hide" type="button" id="firmAll"></button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -1175,8 +1190,13 @@ a.btn.ghost:hover{color:var(--ink)}
   }
   function view(){
     var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
+    var f=$("fFirm").value;
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
+      // "shared" keeps what is on the firm's shelf, "unshared" what is not;
+      // an empty value is every comp. sharedIds is the lookup the Firm
+      // column already reads, so the filter and the column cannot disagree.
+      if(f&&(f==="shared")!==Boolean(sharedIds[c.id]))return false;
       return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x)&&
         matchesText(c,q);
     });
@@ -1414,6 +1434,11 @@ a.btn.ghost:hover{color:var(--ink)}
     myFirm=o.j.firm||null;
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
+    // The firm filter is furniture for a broker in no firm, so it is not
+    // there at all — and a value left in it by a broker who has since left
+    // their firm would be narrowing the book from behind a hidden control.
+    $("fFirmLab").className=myFirm?"":"hide";
+    if(!myFirm)$("fFirm").value="";
     renderFirmPrivacy();
     renderIdentity(o.j.identity);
     renderRollup();
@@ -1654,7 +1679,7 @@ a.btn.ghost:hover{color:var(--ink)}
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1702,6 +1727,13 @@ a.btn.ghost:hover{color:var(--ink)}
     renderChart(rows);
     renderRepeats(rows);
     setSheetChrome();
+    // The two batch buttons count the CURRENT VIEW, and the spreadsheet is a
+    // view too — an import opens as one. They sit above the sheet branch
+    // because that branch returns early, and below it they went stale the
+    // moment a broker opened the spreadsheet: the push offered under an
+    // import result counted the compact table from before the upload.
+    refreshPublishAll(rows);
+    refreshFirmAll(rows);
     if(sheetMode){
       renderSheet(rows);
       // The strip summarises whatever is on screen, in whichever unit that
@@ -1772,7 +1804,6 @@ a.btn.ghost:hover{color:var(--ink)}
     // it can never name different measures.
     var foot=footFigure(unit);
     renderStrip(rows,unit,foot);
-    refreshPublishAll(rows);
     // ONE row template with the label and the number varying, deliberately
     // not a branch per case emitting its own <tr>: the footer's column count
     // is checked by finding a single label cell with a colspan in this file
@@ -1828,6 +1859,22 @@ a.btn.ghost:hover{color:var(--ink)}
     if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
     b.className="btn ghost";
     b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
+  }
+
+  // The push's candidates: what is on screen and not yet on the firm's
+  // shelf. refreshPublishAll's three rules, for the same reasons, plus a
+  // fourth: for a broker in no firm the control does not exist at all,
+  // since a control that can only fail is worse than no control. The label
+  // names the firm — this is the one button whose whole meaning is who sees
+  // the comps.
+  var firmCandidates=[];
+  function refreshFirmAll(rows){
+    var b=$("firmAll");
+    if(!b)return;
+    firmCandidates=myFirm?(rows||[]).filter(function(c){return !sharedIds[c.id]}):[];
+    if(!firmCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
+    b.className="btn ghost";
+    b.textContent="Share "+firmCandidates.length+" with "+myFirm.name;
   }
 
   function renderSheet(rows){
@@ -2815,6 +2862,13 @@ a.btn.ghost:hover{color:var(--ink)}
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
         $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
+        // Offered only where there is a firm to push to and something new
+        // landed. The button carries the import's id so the click can put
+        // exactly that import on screen before the ordinary Share-N path
+        // runs; see the #res click handler.
+        if(myFirm&&j.uploadId&&j.imported>0){
+          $("res").innerHTML+='<p class="note"><button type="button" class="lnk" id="resFirm" data-upload="'+escA(j.uploadId)+'">Share this import with '+esc(myFirm.name)+'</button></p>';
+        }
         // Open the imported book as a spreadsheet so the next step is
         // fixing a cell, not hunting for Edit on each row. uploadId is
         // already on the upload response; imported:0 means nothing new
@@ -3548,13 +3602,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fText").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fFirm").value||$("fText").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
   $("fTrans").addEventListener("change",redraw);
+  $("fFirm").addEventListener("change",redraw);
   // "input", not "change": filtering as they type is the whole point, and the
   // work is a substring scan over at most 1000 rows the page already holds.
   // Escape clears, which is the one thing every search box on the web does.
@@ -3563,14 +3618,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // bound to the button itself would be lost on the next draw.
   $("none").addEventListener("click",function(e){
     if(!e.target||e.target.id!=="noneClear")return;
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value="";
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
     redraw();
   });
   $("fText").addEventListener("keydown",function(e){
     if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
   });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; redraw();
   });
   // Bulk publish. The confirm is the single-comp one's promise, scaled: it
   // names the count, the credit, and the one thing that cannot be taken back.
@@ -3614,6 +3669,62 @@ a.btn.ghost:hover{color:var(--ink)}
         b.disabled=false;
         compMsg("That didn't reach the server. Nothing was changed.",true);
       });
+  });
+  // Bulk firm share — the push. ONE function, reached from the button in
+  // the filter row and from the line under an import result, so there is
+  // exactly one confirm on the way to the route and no second path. The
+  // confirm is the single-comp one scaled, and it says four things. The
+  // third is what makes this a push rather than a release: unlike
+  // publishing, whose dialog rightly says reports keep what they used,
+  // every one of these can be taken back.
+  function shareAllWithFirm(){
+    var ids=firmCandidates.map(function(c){return c.id}),n=ids.length;
+    if(!n||!myFirm)return;
+    if(!confirm("Share "+n+" comp"+(n===1?"":"s")+" with "+myFirm.name+"?\\n\\n"+
+      "Colleagues at "+myFirm.name+" will see them inside their own reports, with your name on them.\\n\\n"+
+      "They do NOT go into CompNinja's public records, and they are left out of every export, PNG, print and client link.\\n\\n"+
+      "You can take any of them back at any time.\\n\\n"+
+      "Comps with no deal date can't be shared \\u2014 colleagues' reports pick comps by date, so one would never reach a report. Those are skipped and named afterwards."))return;
+    var b=$("firmAll");
+    b.disabled=true; b.textContent="Sharing\\u2026";
+    fetch("/api/vault/firm-many",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({orgId:myFirm.id,ids:ids})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){ compMsg(o.j.error||"That didn't go through.",true); render(); return; }
+        var parts=[o.j.shared+" shared"];
+        if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
+        if(o.j.remaining)parts.push(o.j.remaining+" left \\u2014 run it again");
+        // The first reason, not a bare count, pubAll's rule: the reasons
+        // repeat, so one example usually explains all of them.
+        var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
+        compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.shared);
+        // The shelf lookup, the Firm column, the filter and the privacy line
+        // all read sharedIds, so it is re-read from the server rather than
+        // patched here from what the page believes it sent.
+        load();
+      })
+      .catch(function(){
+        b.disabled=false;
+        compMsg("That didn't reach the server. Nothing was changed.",true);
+        render();
+      });
+  }
+  $("firmAll").addEventListener("click",shareAllWithFirm);
+  // The follow-on line under an import result. It sets the view to that
+  // import and runs the button's own function — confirm included — and it
+  // never calls the route itself. The moment somebody has just poured their
+  // book in is when they are least careful, so the path must be the one
+  // with the confirm on it.
+  $("res").addEventListener("click",function(e){
+    var t=e.target;
+    if(!t||t.id!=="resFirm"||!myFirm)return;
+    sheetMode=true;
+    sheetUploadId=t.getAttribute("data-upload")||null;
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
+    render();
+    shareAllWithFirm();
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);

@@ -2578,7 +2578,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Tenant contacts</span>
           <span id="contactsStats" class="dk-note"></span>
         </div>
-        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a CSV — nothing here is ever filled in from CompNinja enquiries.</p>
+        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
 
         <form id="contactAddForm" class="mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
@@ -2599,14 +2599,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
           <!-- A second door for a list somebody already keeps in a
                spreadsheet. It posts to the same route the Add button does. -->
-          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a CSV</button>
+          <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
           <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
         </form>
         <p id="contactMsg" class="hidden text-sm mt-2"></p>
         <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a CSV with a name column.</p>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet, saved as CSV, with a name column.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.

@@ -137,33 +137,37 @@ test("the caps refuse rather than truncate", () => {
   assert.equal(MSG.validateMessage({ body: "x", compIds: many }).ok, false);
 });
 
-test("ONE other person is always a direct message, and a title is ignored", () => {
+test("the shape follows from the count, and NOTHING gets a name", () => {
   // THE BUG THIS FIXES. The owner typed "Test" as a label for a conversation
   // with one colleague and got a CHANNEL called Test, because the shape used
-  // to be inferred from whether a name had been typed. The count decides now,
-  // so a named room holding one person is unreachable rather than merely
-  // discouraged.
-  const dm = MSG.validateThread({ title: "Test", memberIds: ["u2"] });
+  // to be inferred from whether a name had been typed. Names are gone
+  // entirely now (owner's, 2026-09-01), so there is no input anywhere that
+  // can produce that outcome.
+  const dm = MSG.validateThread({ memberIds: ["u2"] });
   assert.equal(dm.ok, true);
   assert.equal(dm.kind, "dm");
-  assert.equal(dm.title, "", "a title on a one-person pick is ignored, not stored");
+  assert.equal(dm.title, "");
+
+  const group = MSG.validateThread({ memberIds: ["u2", "u3"] });
+  assert.equal(group.ok, true);
+  assert.equal(group.kind, "channel");
+  assert.equal(group.title, "", "a group is called after its people, never a stored string");
 });
 
-test("two or more is a group, and its name is optional", () => {
-  const unnamed = MSG.validateThread({ memberIds: ["u2", "u3"] });
-  assert.equal(unnamed.ok, true);
-  assert.equal(unnamed.kind, "channel");
-  assert.equal(unnamed.title, "", "a group does not have to be named");
-
-  const named = MSG.validateThread({ title: "Boise industrial", memberIds: ["u2", "u3"] });
-  assert.equal(named.kind, "channel");
-  assert.equal(named.title, "Boise industrial");
+test("a title sent anyway is discarded, not refused", () => {
+  // An old browser still posting one should get a conversation rather than an
+  // error, and it must not be able to name anything by doing so.
+  const one = MSG.validateThread({ title: "Test", memberIds: ["u2"] });
+  assert.equal(one.ok, true);
+  assert.equal(one.title, "");
+  const many = MSG.validateThread({ title: "Boise industrial", memberIds: ["u2", "u3"] });
+  assert.equal(many.ok, true);
+  assert.equal(many.title, "");
 });
 
-test("a conversation needs somebody in it, and the caps refuse", () => {
+test("a conversation needs somebody in it, and the cap refuses", () => {
   assert.equal(MSG.validateThread({ memberIds: [] }).ok, false);
   assert.equal(MSG.validateThread({}).ok, false);
-  assert.equal(MSG.validateThread({ title: "x".repeat(MSG.MAX_TITLE + 1), memberIds: ["u2", "u3"] }).ok, false);
   const many = Array.from({ length: MSG.MAX_THREAD_MEMBERS + 1 }, (_, i) => "u" + i);
   assert.equal(MSG.validateThread({ memberIds: many }).ok, false);
 });
@@ -298,7 +302,8 @@ test("an unnamed group is named by the people in it, per reader", () => {
   assert.equal(MSG.threadLabel({ kind: "channel" }, four, "u1"), "Dana, Mike and 1 other",
     "the count is singular at one");
 
-  // A name, once given, is the same for everybody. That is the difference.
+  // A STORED title still renders, because rows created before names were
+  // dropped have one. Nothing writes another.
   assert.equal(MSG.threadLabel({ kind: "channel", title: "Boise" }, three, "u1"), "Boise");
   assert.equal(MSG.threadLabel({ kind: "channel", title: "Boise" }, three, "u2"), "Boise");
 });

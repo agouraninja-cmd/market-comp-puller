@@ -235,15 +235,15 @@ function renderMessagesBody(boot) {
          name with "leave blank for a direct message" under it, so typing a
          label for a conversation with one person silently made a CHANNEL
          called that. What you get now follows from how many people you pick:
-         one is a direct message, two or more is a group. The name field does
-         not exist until there are two, so the input that caused that bug is
-         unreachable. -->
+         one is a direct message, two or more is a group. THERE IS NO NAME
+         FIELD AT ALL now (owner's, 2026-09-01): every conversation is called
+         after the people in it, so the input that caused that bug does not
+         exist anywhere to be typed into. -->
     <div class="msg-panel msg-hide" id="msgNewPanel">
       <h3>New conversation</h3>
       <input id="msgNewSearch" type="text" placeholder="Search people" autocomplete="off">
       <div id="msgNewChips" class="msg-chips"></div>
       <div id="msgNewPeople"></div>
-      <input id="msgNewTitle" class="msg-hide" type="text" placeholder="Group name (optional)" maxlength="80">
       <div class="msg-panelfoot">
         <button class="msg-btn primary sm" id="msgNewGo" type="button">Start</button>
         <button class="msg-btn sm" id="msgNewCancel" type="button">Cancel</button>
@@ -820,14 +820,11 @@ function renderMessagesBody(boot) {
         '<button type="button" data-unpick="' + esc(state.picked[i]) + '" aria-label="Remove">×</button></span>';
     }
     $("msgNewChips").innerHTML = html;
-    // The name field only exists once this is a GROUP. That is what makes the
-    // old failure unreachable rather than merely discouraged.
-    var group = state.picked.length > 1;
-    $("msgNewTitle").className = group ? "" : "msg-hide";
-    if (!group) $("msgNewTitle").value = "";
+    // The button says which of the two this is about to be, since that is the
+    // only thing the number of picks decides.
     $("msgNewGo").textContent = state.picked.length === 1
       ? "Message " + pickedName(state.picked[0])
-      : (group ? "Start group" : "Start");
+      : (state.picked.length > 1 ? "Start group" : "Start");
   }
   function renderNewPeople(){
     var people = joinedPeople();
@@ -857,7 +854,6 @@ function renderMessagesBody(boot) {
   function openNewPanel(){
     state.picked = [];
     $("msgNewSearch").value = "";
-    $("msgNewTitle").value = "";
     $("msgNewMsg").textContent = "";
     $("msgNewPanel").className = "msg-panel";
     renderNewChips();
@@ -866,12 +862,9 @@ function renderMessagesBody(boot) {
   }
   function startThread(){
     if (!state.picked.length) { $("msgNewMsg").textContent = "Pick somebody to message."; return; }
-    // The title rides along only when it exists; the server ignores one on a
-    // single-person pick anyway, so the two cannot disagree.
-    var title = state.picked.length > 1 ? ($("msgNewTitle").value || "").trim() : "";
     $("msgNewGo").disabled = true;
     $("msgNewMsg").textContent = "";
-    api("POST", "/api/messages/thread", { title: title, memberIds: state.picked }).then(function(o){
+    api("POST", "/api/messages/thread", { memberIds: state.picked }).then(function(o){
       $("msgNewGo").disabled = false;
       if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
       $("msgNewPanel").className = "msg-panel msg-hide";

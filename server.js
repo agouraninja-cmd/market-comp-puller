@@ -24042,14 +24042,12 @@ const server = http.createServer((req, res) =>
         const g = await openMessaging();
         if (!g) return;
         const body = await readMsgBody();
-        // No `kind` from the browser (2026-09-01). The shape follows from who
-        // was picked and nothing else — see validateThread's header for why
-        // letting the caller say made a direct message into a channel called
-        // "Test".
-        const want = MSG.validateThread({
-          title: body && body.title,
-          memberIds: body && body.memberIds,
-        });
+        // Neither a `kind` nor a `title` from the browser (2026-09-01). The
+        // shape follows from who was picked and nothing else — see
+        // validateThread's header for why letting the caller say turned a
+        // direct message into a channel called "Test", and why names went
+        // altogether.
+        const want = MSG.validateThread({ memberIds: body && body.memberIds });
         if (!want.ok) return sendJson(res, 400, { error: want.error });
 
         // Every named member must be a JOINED member of THIS firm. The ids
@@ -24077,12 +24075,16 @@ const server = http.createServer((req, res) =>
         // ONE creation path for a direct message and a group, because they
         // are the same act with a different number of people.
         //
-        // An UNNAMED conversation is identified by who is in it, so it is
-        // looked up before it is made and picking the same people twice
-        // reopens the one room. A NAMED group is always new — a named room is
-        // a place somebody decided to make, and two of them with the same
-        // people are a legitimate thing to want.
-        const key = want.title ? "" : MSG.participantKey([me, ...others]);
+        // A conversation is identified by WHO IS IN IT, so it is looked up
+        // before it is made and picking the same people twice reopens the one
+        // room they already share. With no names anywhere (owner's,
+        // 2026-09-01) that is the only consistent answer: two rooms holding
+        // the same people would be two identical rows in the list.
+        const key = MSG.participantKey([me, ...others]);
+        // "" cannot happen here (others is non-empty and excludes the caller),
+        // but a stored "" would collide with every other unkeyable set under
+        // the partial unique index, so it is refused rather than trusted.
+        if (!key) return sendJson(res, 400, { error: "Pick somebody to message." });
         const findByKey = async () => {
           const rows = await sbRequest("GET",
             `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
@@ -24090,18 +24092,15 @@ const server = http.createServer((req, res) =>
           return (rows && rows[0]) || null;
         };
 
-        let thread = key ? await findByKey() : null;
+        let thread = await findByKey();
         if (!thread) {
           try {
             const made = await sbRequest("POST", `msg_threads?select=${COLS}`,
               [{
                 org_id: g.orgId,
                 kind: want.kind,
-                title: want.title || "",
-                // "" is a refusal, never a value to store: stored, it would
-                // collide with every other unkeyable set under the partial
-                // unique index. A named group stores null and never collides.
-                dm_key: key || null,
+                title: "",
+                dm_key: key,
                 created_by: g.user.id,
                 created_at: now,
                 last_message_at: now,
@@ -24114,7 +24113,7 @@ const server = http.createServer((req, res) =>
             // partial index (42P10 — the bug that once made every hub vault
             // send fail, 100%). Two colleagues pressing "message" at the same
             // moment is exactly the race this catches.
-            if (!key || !/23505|409/.test(String(err.message))) throw err;
+            if (!/23505|409/.test(String(err.message))) throw err;
             thread = await findByKey();
           }
         }

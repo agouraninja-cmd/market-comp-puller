@@ -335,60 +335,38 @@ test("firm messaging, end to end", async (t) => {
     assert.equal(o.j.comps[0].snapshot.price, 2500000);
   });
 
-  await t.test("a channel carries a name and everybody who was named", async () => {
-    const o = await post(BRAD, "/api/messages/thread", {
-      title: "Boise industrial", memberIds: [MIKE.id, DANA.id],
-    });
-    assert.equal(o.s, 201);
-    assert.equal(o.j.thread.kind, "channel");
-    assert.equal(o.j.thread.label, "Boise industrial");
-    const seen = await get(MIKE, "/api/messages");
-    assert.ok(seen.j.threads.some((th) => th.label === "Boise industrial"),
-      "the colleague named in a channel cannot see it");
-  });
-
-  await t.test("a group needs no name, and is labelled by the people in it", async () => {
+  await t.test("a group is called after the people in it, per reader", async () => {
     const o = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id, DANA.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.kind, "channel");
-    assert.equal(o.j.thread.title, "");
+    assert.equal(o.j.thread.title, "", "nothing stores a name any more");
     assert.equal(o.j.thread.label, "Mike, Dana");
-    // ...and per reader, which is why no title is stored.
+    // ...and from each side, which is why no title is stored: a stored one
+    // would be one person's label on everybody else's thread.
     const hers = await get(DANA, "/api/messages");
     const seen = hers.j.threads.filter((th) => th.id === o.j.thread.id)[0];
-    assert.equal(seen.label, "Brad, Mike", "an unnamed group is named from the reader's side");
+    assert.equal(seen.label, "Brad, Mike");
   });
 
-  await t.test("picking the same people again reopens the one unnamed group", async () => {
-    // participantKey widened past pairs for exactly this: an unnamed
-    // conversation is identified by who is in it, so it cannot be duplicated
-    // the way a direct message never could.
+  await t.test("picking the same people again always reopens the one room", async () => {
+    // participantKey widened past pairs for exactly this. With no names
+    // anywhere it is the only consistent answer: two rooms holding the same
+    // people would be two identical rows in the list.
     const before = ctx.tables.msg_threads.length;
     const o = await post(BRAD, "/api/messages/thread", { memberIds: [DANA.id, MIKE.id] });
     assert.equal(o.s, 201);
-    assert.equal(ctx.tables.msg_threads.length, before, "a second unnamed group was created");
+    assert.equal(ctx.tables.msg_threads.length, before, "a second group with the same people was created");
   });
 
-  await t.test("a NAMED group is always a new room", async () => {
-    // A named room is a place somebody decided to make, and two of them with
-    // the same people ("Boise deal", "Q4 pipeline") are a legitimate want.
-    const before = ctx.tables.msg_threads.length;
-    const a = await post(BRAD, "/api/messages/thread", { title: "Q4 pipeline", memberIds: [MIKE.id, DANA.id] });
-    const b = await post(BRAD, "/api/messages/thread", { title: "Q4 pipeline", memberIds: [MIKE.id, DANA.id] });
-    assert.equal(a.s, 201);
-    assert.equal(b.s, 201);
-    assert.notEqual(a.j.thread.id, b.j.thread.id);
-    assert.equal(ctx.tables.msg_threads.length, before + 2);
-  });
-
-  await t.test("a title on a ONE-person pick is ignored, not stored", async () => {
-    // The owner's bug, at the route. Typing a label for a conversation with
-    // one colleague used to make a channel called that.
+  await t.test("a title sent anyway names nothing", async () => {
+    // The owner's bug, at the route. An old browser still posting a title
+    // must get a conversation rather than an error, and must not be able to
+    // name anything by doing so.
     const o = await post(BRAD, "/api/messages/thread", { title: "Test", memberIds: [MIKE.id] });
     assert.equal(o.s, 201);
-    assert.equal(o.j.thread.kind, "dm", "a one-person pick is a direct message whatever was typed");
+    assert.equal(o.j.thread.kind, "dm");
     assert.equal(o.j.thread.title, "");
-    assert.equal(o.j.thread.id, threadId, "and it reopened the DM that already existed");
+    assert.equal(o.j.thread.id, threadId, "and it reopened the direct message that already existed");
   });
 
   await t.test("the poll's cursor returns only what is new", async () => {

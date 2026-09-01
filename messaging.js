@@ -238,12 +238,19 @@ function validateMessage({ body, compIds } = {}) {
 // count and nothing else. It costs the ability to name a two-person chat,
 // which nobody has asked for and which is exactly the input that broke.
 //
-// TWO OR MORE is a group, and its name is OPTIONAL. An unnamed group is
-// labelled by the people in it (threadLabel) and is identified by them
-// (participantKey), so picking the same three colleagues twice reopens one
-// room. A named group is a place somebody decided to make, so it is always
-// new.
-function validateThread({ title, memberIds } = {}) {
+// TWO OR MORE is a group. THERE ARE NO NAMES AT ALL (owner's, 2026-09-01):
+// every conversation, of every size, is labelled by the people in it
+// (threadLabel) and identified by them (participantKey). Nothing writes a
+// title, so picking the same people always reopens the one room they already
+// share — which is the only consistent answer once naming is gone, since two
+// rooms holding the same people would otherwise be two identical rows in the
+// list with no way to tell them apart.
+//
+// A `title` is accepted and DISCARDED rather than refused, so an old browser
+// still posting one gets a conversation rather than an error. `msg_threads
+// .title` stays in the schema and threadLabel still reads it, because rows
+// created before this do have one; nothing creates another.
+function validateThread({ memberIds } = {}) {
   const ids = Array.isArray(memberIds)
     ? [...new Set(memberIds.map((v) => str(v).trim()).filter(Boolean))]
     : [];
@@ -251,12 +258,7 @@ function validateThread({ title, memberIds } = {}) {
   if (ids.length + 1 > MAX_THREAD_MEMBERS) {
     return { ok: false, error: `A conversation holds up to ${MAX_THREAD_MEMBERS} people.` };
   }
-  const name = cleanText(title).trim();
-  if (name.length > MAX_TITLE) {
-    return { ok: false, error: `A group name is at most ${MAX_TITLE} characters.` };
-  }
-  if (ids.length === 1) return { ok: true, kind: "dm", title: "", memberIds: ids };
-  return { ok: true, kind: "channel", title: name, memberIds: ids };
+  return { ok: true, kind: ids.length === 1 ? "dm" : "channel", title: "", memberIds: ids };
 }
 
 // ---------------------------------------------------------------------------

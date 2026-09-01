@@ -755,10 +755,12 @@ test("a firm share still refuses to carry whole vault comps", async (t) => {
 // Mail is fire-and-forget on purpose — a provider having a bad minute must
 // never turn a written invitation into an error — so the route answers before
 // the post lands.
-async function settleMail(db, want) {
-  for (let i = 0; i < 80 && db.sent.length < want; i++) await new Promise((r) => setTimeout(r, 25));
-  return db.sent;
-}
+//
+// The loop lives in the fake now, beside the `sent` array it waits on; this
+// copy budgeted 2 seconds with no settling beat after the mail landed, and the
+// `db.sent.length === before` assertions below are exactly the "and nobody
+// else was mailed" claim that beat exists to make real.
+const settleMail = fake.waitForMail;
 
 test("what an invited colleague actually receives", async (t) => {
   // Booted by hand rather than through bootWithDb: the fake's Resend url is

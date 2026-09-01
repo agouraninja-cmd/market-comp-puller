@@ -325,4 +325,36 @@ function start({ tables = {}, resendStatus = 200, missingTables = [] } = {}) {
   });
 }
 
-module.exports = { start };
+// Waiting for a fire-and-forget send.
+//
+// Several routes hand a message to sendOutboundEmail and answer WITHOUT
+// awaiting it, deliberately: a mail provider having a bad afternoon must never
+// turn a saved note, a written invitation or a finished digest into an error.
+// That makes `sent` a thing which arrives after the response, so a test that
+// reads it on the next line is asserting on a race it usually wins.
+//
+// One helper, here, because `sent` lives here. There were four hand-copied
+// loops across the suites with three different budgets — 1.5s, 1.5s, 2s and
+// 10s — and the short ones were simply the ones written first rather than a
+// decision anybody made about those routes. The 10s came last, after a
+// full-suite run on 2026-08-26 pushed a send past two seconds and reported
+// "nobody was mailed" for a notifier that was working perfectly.
+//
+// `tail` is the beat AFTER the wanted mail lands, and it is what makes "and
+// nobody else was mailed" a claim rather than a race the test happens to win.
+// It is the only thing `want: 0` waits for — which is honest about what such a
+// call can prove: that nothing arrived within the quiet period, never that
+// nothing ever will.
+//
+// It does not assert. A send that never arrives leaves `sent` short and the
+// caller's own assertion says so, in the caller's own words.
+async function waitForMail(db, want, { tail = 150, timeoutMs = 10000 } = {}) {
+  const step = 25;
+  for (let waited = 0; waited < timeoutMs && db.sent.length < want; waited += step) {
+    await new Promise((r) => setTimeout(r, step));
+  }
+  await new Promise((r) => setTimeout(r, tail));
+  return db.sent;
+}
+
+module.exports = { start, waitForMail };

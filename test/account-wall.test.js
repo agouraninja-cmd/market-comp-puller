@@ -116,44 +116,46 @@ test("the wall serves the landing page at the root", async (t) => {
     assert.match(html, /"@type":"WebApplication"/, "the crawler-facing product entity now lives at /");
   });
 
-  await t.test("/how-it-works canonicalizes to / while the wall is up", async () => {
-    // Same content at two URLs; the signals must consolidate on ONE.
+  // REVERSED 2026-09-01, and the reversal is the point of the change. This
+  // page canonicalized to `/` for the whole life of the wall because `/`
+  // served its exact bytes, and consolidating two URLs' signals onto one is
+  // right when they are one page. `/` is design 3a now — a different document
+  // — so a canonical pointing there would be telling Google that the
+  // methodology page is a duplicate of a page that does not contain it.
+  await t.test("/how-it-works canonicalizes to ITSELF now that / is its own page", async () => {
     const html = await (await get("/how-it-works")).text();
-    assert.match(html, /<link rel="canonical" href="[^"]*\/"\/>/,
-      "under the wall this page is a duplicate of / and must say so");
+    assert.match(html, /<link rel="canonical" href="[^"]*\/how-it-works"\/>/,
+      "this page is no longer a duplicate of / and must stop saying it is");
+    // And the two really are different documents. A regression that pointed
+    // /how-it-works back at renderHomeHTML would still pass the line above.
+    const home = await (await get("/")).text();
+    assert.ok(isLanding(home), "/ is the home page");
+    assert.ok(!isLanding(html), "/how-it-works must not be a second copy of it");
   });
 
   // The header's Home link (2026-08-28) must not point at the page drawing it.
-  // Under the wall `/` and /how-it-works are the SAME render, so a link that
-  // is right on /markets is a self-link on both of these.
-  await t.test("neither home URL offers a Home link back to itself", async () => {
-    for (const p of ["/", "/how-it-works"]) {
-      const html = await (await get(p)).text();
-      assert.ok(!html.includes(`<a href="/">Home</a>`),
-        p + " is the home page under the wall and must not link back to it");
-    }
+  // `/` is the only page that rule reaches now: until 2026-09-01 /how-it-works
+  // WAS this render, so it was a self-link there too, and it no longer is.
+  await t.test("the anonymous root offers no Home link back to itself", async () => {
+    const html = await (await get("/")).text();
+    assert.ok(!html.includes(`<a href="/">Home</a>`),
+      "/ is the home page under the wall and must not link back to it");
     // The link is not simply missing everywhere: a page that is not home has it.
     const markets = await (await get("/markets")).text();
     assert.ok(markets.includes(`<nav><a href="/">Home</a><details>`),
       "/markets is where a walled visitor most needs the way back");
   });
 
-  // Neither visitor gets Home here, for two DIFFERENT reasons, and the page
-  // cannot tell you which one is doing the work — so both are pinned.
-  //
-  // Anonymously, under the wall, /how-it-works and `/` are one render, so a
-  // Home link would point at the page being read. That has always been true.
-  //
-  // For a member it is the 2026-08-29 rule: their `/` is the workspace and
-  // the nav carries Workspace instead. Before that call, this same URL was
-  // the sharpest illustration of the old behaviour — same page, same wall,
-  // opposite answers. Now the answers agree by coincidence, which is exactly
-  // why the member case needs its own assertion: if the suppression were
-  // reverted, the anonymous half would still pass and hide the change.
-  await t.test("neither a visitor nor a member gets Home on /how-it-works", async () => {
+  // The two visitors get OPPOSITE answers here, and they always should have.
+  // Until 2026-09-01 they agreed by coincidence: anonymously this page WAS
+  // `/`, so Home self-linked, and for a member the 2026-08-29 rule replaces
+  // Home with Workspace. The first reason is gone — this is a page of its own
+  // now — so the anonymous visitor is owed the link like any other page, and
+  // the member is still owed Workspace instead.
+  await t.test("a visitor gets Home on /how-it-works, a member gets Workspace", async () => {
     const anon = await (await get("/how-it-works")).text();
-    assert.ok(!anon.includes(`<a href="/">Home</a>`),
-      "anonymously this page IS `/`, so Home would link to itself");
+    assert.ok(anon.includes(`<nav><a href="/">Home</a><details>`),
+      "this page is no longer `/`, so a visitor is owed the way back to it");
 
     const member = await (await get("/how-it-works", FAKE_SESSION)).text();
     assert.ok(!member.includes(`<a href="/">Home</a>`),
@@ -233,11 +235,15 @@ test("the wall serves the landing page at the root", async (t) => {
     }
   });
 
-  await t.test("the sitemap lists / and not its duplicate", async () => {
+  // /how-it-works is listed under the wall since 2026-09-01. It was omitted
+  // for the wall's whole life because it canonicalized to `/`, and a
+  // self-declared duplicate in a sitemap is a Search Console soft error. `/`
+  // is design 3a now and this is a different document, so both belong.
+  await t.test("the sitemap lists / and /how-it-works, which are two pages now", async () => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
     assert.match(xml, /<loc>[^<]*\/<\/loc>/, "/ is a real 200 now and the strongest URL the site has");
-    assert.ok(!/how-it-works/.test(xml),
-      "under the wall /how-it-works canonicalizes to /; listing a self-declared duplicate is a soft error");
+    assert.match(xml, /how-it-works/, "the methodology page is its own indexable URL again");
+    assert.match(xml, /<loc>[^<]*\/faq<\/loc>/, "and so is the FAQ that left it");
   });
 });
 
@@ -326,6 +332,13 @@ test("/how-it-works carries the signup controls", async (t) => {
     const html = await (await fetch(srv.base + "/how-it-works")).text();
     // It moved off index.html, which no crawler reaches under the wall.
     assert.match(html, /"@type":"WebApplication"/);
-    assert.match(html, /"@type":"FAQPage"/, "the FAQ markup that was already here must survive");
+    // The FAQPage node LEFT with the accordions on 2026-09-01. Emitting FAQ
+    // structured data on a page that shows no FAQ is the mismatch Google
+    // flags, so this is pinned in both directions: gone from here, present
+    // on the page that actually shows the questions.
+    assert.ok(!/"@type":"FAQPage"/.test(html),
+      "this page no longer shows an FAQ and must not claim one in its markup");
+    const faq = await (await fetch(srv.base + "/faq")).text();
+    assert.match(faq, /"@type":"FAQPage"/, "the FAQ markup went with the questions");
   });
 });

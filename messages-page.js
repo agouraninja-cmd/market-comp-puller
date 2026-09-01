@@ -76,6 +76,16 @@ function renderMessagesBody(boot) {
 .msg-btn.sm{padding:4px 9px;font-size:12px}
 
 /* --- the thread list --------------------------------------------------- */
+/* Internal / External group labels. Labels, not tabs: both groups are always
+   on screen, and the label exists so you always know which side of the wall a
+   row is on before you click it. */
+.msg-sect{padding:12px 14px 4px;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+.msg-sect+.msg-row{border-top:1px solid var(--hair)}
+/* A note written about one specific comp, tagged with the building it is
+   about. */
+.msg-about{font-size:11px;color:var(--ink-faint);margin-bottom:1px}
+
 /* The firm, quietly, at the foot of the column. */
 .msg-firm{border-top:1px solid var(--hair);padding:9px 14px;font-size:11.5px;
   color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -196,9 +206,9 @@ function renderMessagesBody(boot) {
        h1 saying Messages, under a rail row saying Messages. -->
   <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.01em">Messages</h1>
   <p style="margin:0;color:var(--ink-2);max-width:62ch;font-size:14px;line-height:1.6">
-    Message the people you work with, and send them comps straight from your
-    vault. Anything you send is kept in the conversation, so a deal you talk
-    about stays on the record instead of in somebody's text messages.
+    Message the people you work with, and the people outside your firm you
+    share comps with. Anything you send is kept in the conversation, so a deal
+    you talk about stays on the record instead of in somebody's text messages.
   </p>
 </section>
 
@@ -266,6 +276,7 @@ function renderMessagesBody(boot) {
       <textarea id="msgInput" rows="1" placeholder="Write a message" maxlength="4000"></textarea>
       <div class="msg-actions">
         <button class="msg-btn sm msg-hide" id="msgAttach" type="button">Attach a comp</button>
+        <span class="msg-hint msg-hide" id="msgMailNote">They get an email about new messages</span>
         <span class="msg-grow"></span>
         <span class="msg-hint" id="msgSendMsg"></span>
         <button class="msg-btn primary sm" id="msgSend" type="button">Send</button>
@@ -282,7 +293,8 @@ function renderMessagesBody(boot) {
   var $ = function(id){ return document.getElementById(id); };
   var state = {
     me: "", firm: null, people: [], threads: [], canAttach: false,
-    openId: "", cursor: "", messages: [], tab: "chat", picked: [],
+    openId: "", openKind: "internal", cursor: "", messages: [], tab: "chat", picked: [],
+    external: [], extItems: [], extPeople: {}, canWriteExt: false,
     attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
   };
 
@@ -357,35 +369,244 @@ function renderMessagesBody(boot) {
     }
     return String(t.preview || "").toLowerCase().indexOf(q) >= 0;
   }
+  // --- External conversations (deal rooms) --------------------------------
+  // A deal room is read and written through the hub API that already runs the
+  // client's own page, so the two sides can never disagree about what was
+  // said. This page is a second WINDOW onto that room, not a second room.
+  function extRow(){
+    for (var i = 0; i < state.external.length; i++) {
+      if (state.external[i].id === state.openId) return state.external[i];
+    }
+    return null;
+  }
+  function extName(email){
+    var e = String(email || "").toLowerCase();
+    if (state.me2 && e === state.me2) return "You";
+    var row = extRow();
+    if (row) {
+      for (var i = 0; i < (row.people || []).length; i++) {
+        if (row.people[i].email === e) return row.people[i].name;
+      }
+    }
+    return e.split("@")[0] || "Someone";
+  }
+  function openExternal(id, push, jump){
+    state.openKind = "external";
+    state.openId = id;
+    state.cursor = "";
+    state.messages = [];
+    state.extItems = [];
+    state.attach = [];
+    state.canWriteExt = false;
+    renderTray();
+    setTab("chat");
+    if (jump !== false) $("msgPage").className = "msg-page on-thread";
+    renderThreads();
+    if (push) {
+      try { history.replaceState({}, "", "/messages?x=" + encodeURIComponent(id)); } catch (e) {}
+    }
+    var row = extRow();
+    $("msgTitle").textContent = row ? row.label : "Conversation";
+    $("msgSub").textContent = row ? (row.title + (row.closed ? " · closed" : "")) : "";
+    $("msgStream").innerHTML = '<div class="msg-empty">Loading…</div>';
+    applyComposerMode();
+    readExternal(true);
+  }
+  function readExternal(first){
+    if (state.openKind !== "external" || !state.openId) return Promise.resolve();
+    var url = "/api/hub?id=" + encodeURIComponent(state.openId) +
+      (state.cursor ? "&since=" + encodeURIComponent(state.cursor) : "");
+    return api("GET", url).then(function(o){
+      if (state.openKind !== "external") return;
+      if (o.s !== 200) {
+        if (first) {
+          note((o.j && o.j.error) || "Couldn't load that conversation.", true);
+          $("msgStream").innerHTML = "";
+        }
+        return;
+      }
+      note("");
+      var j = o.j || {};
+      // Items arrive WHOLE on every read (the hub route's own rule), so they
+      // replace; messages arrive incrementally past the cursor, so they
+      // append, deduped by id against an optimistic double-read.
+      state.extItems = j.items || [];
+      state.canWriteExt = j.canWrite === true;
+      var fresh = j.messages || [];
+      if (fresh.length) {
+        var have = {};
+        for (var i = 0; i < state.messages.length; i++) have[state.messages[i].id] = true;
+        for (var k = 0; k < fresh.length; k++) if (!have[fresh[k].id]) state.messages.push(fresh[k]);
+      }
+      if (j.cursor) state.cursor = j.cursor;
+      if (state.tab === "chat") renderExternalStream();
+      applyComposerMode();
+      // The server stamped this read as seen, so the badge is already off on
+      // its side; this clears the local copy without waiting for the poll.
+      var row = extRow();
+      if (row) { row.unread = 0; renderThreads(); }
+    });
+  }
+  function extCompCard(item){
+    var s = item.snapshot || {};
+    var facts = [];
+    if (s.transaction) facts.push('<span>' + esc(String(s.transaction).charAt(0).toUpperCase() + String(s.transaction).slice(1)) + '</span>');
+    if (s.deal_date) facts.push('<span>' + esc(s.deal_date) + '</span>');
+    if (s.price) facts.push('<span><b>' + esc(money(s.price)) + '</b></span>');
+    if (s.size_sqft) facts.push('<span>' + esc(num(s.size_sqft)) + ' SF</span>');
+    if (s.price_per_sqft) facts.push('<span>' + esc(money(s.price_per_sqft)) + '/SF</span>');
+    else if (s.rent_psf_yr) facts.push('<span>' + esc(money(s.rent_psf_yr)) + '/SF/yr</span>');
+    var who = extName(item.addedBy);
+    var foot = who === "You"
+      ? '<span class="msg-hint">You sent this from your vault</span>'
+      : '<span class="msg-hint">Added by ' + esc(who) + '</span>';
+    return '<div class="msg-comp">' +
+      '<h4>' + esc(s.address || "Untitled comp") + '</h4>' +
+      '<div class="facts">' +
+        (s.property_type ? '<span class="msg-chip">' + esc(s.property_type) + '</span>' : "") +
+        facts.join("") +
+      '</div>' +
+      '<div class="foot">' + foot + '</div>' +
+    '</div>';
+  }
+  function renderExternalStream(){
+    if (!state.messages.length && !state.extItems.length) {
+      $("msgStream").innerHTML = '<div class="msg-empty"><h3>Nothing here yet</h3>' +
+        '<p>Say something, or send a comp across.</p></div>';
+      return;
+    }
+    // One stream: what was said AND what was sent, in the order it happened.
+    // The deal room's own page draws comps as a list above the notes; an
+    // inbox reads top to bottom, so a comp lands inline at the moment it was
+    // added.
+    var entries = [];
+    for (var i = 0; i < state.messages.length; i++) {
+      var m = state.messages[i];
+      entries.push({ at: m.createdAt, kind: "msg", m: m });
+    }
+    for (var k = 0; k < state.extItems.length; k++) {
+      var it = state.extItems[k];
+      if (it.kind !== "comp") continue;
+      entries.push({ at: it.addedAt, kind: "comp", it: it });
+    }
+    entries.sort(function(a, b){ return String(a.at || "").localeCompare(String(b.at || "")); });
+
+    var byId = {};
+    for (var q = 0; q < state.extItems.length; q++) byId[state.extItems[q].id] = state.extItems[q];
+
+    var html = "", lastDay = "", lastWho = "", lastAt = 0;
+    for (var e = 0; e < entries.length; e++) {
+      var it2 = entries[e];
+      var day = dayLabel(it2.at);
+      if (day && day !== lastDay) {
+        html += '<div class="msg-day">' + esc(day) + '</div>';
+        lastDay = day;
+        lastWho = "";
+      }
+      var t = Date.parse(it2.at || "") || 0;
+      var authorEmail = it2.kind === "msg" ? it2.m.author : it2.it.addedBy;
+      var name = extName(authorEmail);
+      var cont = authorEmail === lastWho && t - lastAt < 5 * 60 * 1000;
+      lastWho = authorEmail; lastAt = t;
+      var body = "";
+      if (it2.kind === "msg") {
+        // A note written on one specific comp says which one, so the thread
+        // reads whole without opening the deal room.
+        var about = it2.m.itemId && byId[it2.m.itemId] && byId[it2.m.itemId].snapshot
+          ? '<div class="msg-about">about ' + esc(byId[it2.m.itemId].snapshot.address || "a comp") + '</div>'
+          : "";
+        body = about + (it2.m.body ? '<div class="msg-text">' + esc(it2.m.body) + '</div>' : "");
+      } else {
+        body = extCompCard(it2.it);
+      }
+      html += '<div class="msg-line' + (cont ? " cont" : "") + '">' +
+        '<span class="msg-av">' + esc(initial(name)) + '</span>' +
+        '<div class="msg-body">' +
+          (cont ? "" : '<div class="msg-meta"><span class="msg-author">' + esc(name) + '</span>' +
+            '<span class="msg-time">' + esc(when(it2.at)) + '</span></div>') +
+          body +
+        '</div></div>';
+    }
+    var el = $("msgStream");
+    el.innerHTML = html;
+    el.scrollTop = el.scrollHeight;
+  }
+  // What the composer is allowed to do depends on which side of the wall the
+  // open conversation is on, and — outside it — on whether the room is
+  // closed. One writer, so a closed room and an internal thread cannot
+  // disagree about what shows.
+  function applyComposerMode(){
+    var external = state.openKind === "external";
+    var row = external ? extRow() : null;
+    var closed = external && (!state.canWriteExt || (row && row.closed));
+    $("msgInput").disabled = closed;
+    $("msgInput").placeholder = closed ? "This conversation is closed" : "Write a message";
+    $("msgSend").disabled = closed;
+    $("msgMailNote").className = external && !closed ? "msg-hint" : "msg-hint msg-hide";
+    $("msgAttach").className = state.canAttach && !closed ? "msg-btn sm" : "msg-btn sm msg-hide";
+    if (closed) { $("msgPicker").className = "msg-panel msg-hide"; }
+  }
+
+  function threadRowHtml(t, attr, current, sub){
+    var chan = t.kind === "channel";
+    return '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
+      ' ' + attr + '="' + esc(t.id) + '"' + (current ? ' aria-current="true"' : "") + '>' +
+      '<span class="msg-av' + (chan ? " chan" : "") + '">' + esc(chan ? "#" : initial(t.label)) + '</span>' +
+      '<span class="msg-rowbody">' +
+        '<span class="msg-rowtop">' +
+          '<span class="msg-name">' + esc(t.label) + '</span>' +
+          '<span class="msg-when">' + esc(when(t.lastMessageAt)) + '</span>' +
+        '</span>' +
+        '<span class="msg-prev">' + esc(sub) + '</span>' +
+      '</span>' +
+      (t.unread ? '<span class="msg-unread">' + (t.unread > 99 ? "99+" : t.unread) + '</span>' : "") +
+      '</button>';
+  }
+  function externalMatches(t, q){
+    if (!q) return true;
+    q = q.toLowerCase();
+    if (String(t.label || "").toLowerCase().indexOf(q) >= 0) return true;
+    if (String(t.title || "").toLowerCase().indexOf(q) >= 0) return true;
+    for (var i = 0; i < (t.people || []).length; i++) {
+      if (String(t.people[i].email || "").toLowerCase().indexOf(q) >= 0) return true;
+    }
+    return String(t.preview || "").toLowerCase().indexOf(q) >= 0;
+  }
   function renderThreads(){
     var q = ($("msgFilter").value || "").trim();
     var list = state.threads.filter(function(t){ return threadMatches(t, q); });
-    if (!state.threads.length) {
+    var ext = state.external.filter(function(t){ return externalMatches(t, q); });
+    if (!state.threads.length && !state.external.length) {
       $("msgThreads").innerHTML =
         '<div class="msg-empty"><h3>No conversations yet</h3>' +
         '<p>Start one with somebody at your firm. Everything you send stays here.</p></div>';
       return;
     }
-    if (!list.length) {
+    if (!list.length && !ext.length) {
       $("msgThreads").innerHTML = '<div class="msg-empty">Nothing matches that.</div>';
       return;
     }
     var html = "";
+    // The group labels exist only once there are two groups: a member with no
+    // deal rooms sees exactly the list they saw yesterday, and the labels are
+    // what says which side of the wall a row is on. Internal is the firm;
+    // External is the people outside it that this member shares comps with.
+    var both = state.external.length > 0;
+    if (both && list.length) html += '<div class="msg-sect">Internal</div>';
     for (var i = 0; i < list.length; i++) {
       var t = list[i];
-      var chan = t.kind === "channel";
-      html += '<button class="msg-row' + (t.unread ? " is-unread" : "") + '" type="button"' +
-        ' data-thread="' + esc(t.id) + '"' + (t.id === state.openId ? ' aria-current="true"' : "") + '>' +
-        '<span class="msg-av' + (chan ? " chan" : "") + '">' + esc(chan ? "#" : initial(t.label)) + '</span>' +
-        '<span class="msg-rowbody">' +
-          '<span class="msg-rowtop">' +
-            '<span class="msg-name">' + esc(t.label) + '</span>' +
-            '<span class="msg-when">' + esc(when(t.lastMessageAt)) + '</span>' +
-          '</span>' +
-          '<span class="msg-prev">' + esc(t.preview || "No messages yet") + '</span>' +
-        '</span>' +
-        (t.unread ? '<span class="msg-unread">' + (t.unread > 99 ? "99+" : t.unread) + '</span>' : "") +
-        '</button>';
+      html += threadRowHtml(t, "data-thread",
+        state.openKind === "internal" && t.id === state.openId,
+        t.preview || "No messages yet");
+    }
+    if (ext.length) html += '<div class="msg-sect">External</div>';
+    for (var k = 0; k < ext.length; k++) {
+      var x = ext[k];
+      // The deal's title is the second line when nothing has been said yet;
+      // once there is a conversation, the conversation wins the row.
+      html += threadRowHtml(x, "data-external",
+        state.openKind === "external" && x.id === state.openId,
+        x.preview || x.title || "No messages yet");
     }
     $("msgThreads").innerHTML = html;
   }
@@ -491,7 +712,27 @@ function renderMessagesBody(boot) {
     $("msgTabComps").setAttribute("aria-pressed", tab === "comps" ? "true" : "false");
     $("msgComposer").className = tab === "chat" ? "msg-composer" : "msg-composer msg-hide";
     $("msgTray").className = tab === "chat" ? "msg-comp-tray" : "msg-comp-tray msg-hide";
-    if (tab === "chat") { renderStream(); return; }
+    if (tab === "chat") {
+      if (state.openKind === "external") renderExternalStream(); else renderStream();
+      return;
+    }
+    if (state.openKind === "external") {
+      // A deal room's comps are already in hand — the hub read carries its
+      // items whole on every poll — so the tab renders from state rather than
+      // fetching.
+      var live = state.extItems.filter(function(it){ return it.kind === "comp"; });
+      if (!live.length) {
+        $("msgStream").innerHTML = '<div class="msg-empty"><h3>No comps in this conversation</h3>' +
+          '<p>Anything sent here is kept for good.</p></div>';
+        return;
+      }
+      var html = '<div class="msg-note">' + live.length + (live.length === 1 ? " comp has" : " comps have") +
+        ' been sent in this conversation.</div>';
+      for (var i = 0; i < live.length; i++) html += extCompCard(live[i]);
+      $("msgStream").innerHTML = html;
+      $("msgStream").scrollTop = 0;
+      return;
+    }
     $("msgStream").innerHTML = '<div class="msg-empty">Loading…</div>';
     api("GET", "/api/messages/comps?thread=" + encodeURIComponent(state.openId)).then(function(o){
       if (state.tab !== "comps") return;
@@ -509,11 +750,14 @@ function renderMessagesBody(boot) {
   // conversation" while a reload worked. Nothing now asks the viewport a
   // question the stylesheet already answers.
   function openThread(id, push, jump){
+    state.openKind = "internal";
     state.openId = id;
     state.cursor = "";
     state.messages = [];
+    state.extItems = [];
     state.attach = [];
     renderTray();
+    applyComposerMode();
     setTab("chat");
     if (jump !== false) $("msgPage").className = "msg-page on-thread";
     renderThreads();
@@ -525,7 +769,7 @@ function renderMessagesBody(boot) {
   }
 
   function readThread(first){
-    if (!state.openId) return Promise.resolve();
+    if (state.openKind !== "internal" || !state.openId) return Promise.resolve();
     var url = "/api/messages/thread?id=" + encodeURIComponent(state.openId) +
       (state.cursor ? "&since=" + encodeURIComponent(state.cursor) : "");
     return api("GET", url).then(function(o){
@@ -583,7 +827,7 @@ function renderMessagesBody(boot) {
     if (document.hidden) return;
     if (Date.now() - state.lastActive > IDLE_MS) return;
     if (state.tab !== "chat") return;
-    readThread(false);
+    if (state.openKind === "external") readExternal(false); else readThread(false);
     refreshList(true);
   }
   function markActive(){
@@ -609,7 +853,9 @@ function renderMessagesBody(boot) {
       }
       var j = o.j || {};
       state.me = (j.me && j.me.id) || "";
+      state.me2 = String((j.me && j.me.email) || "").toLowerCase();
       state.firm = j.firm || null;
+      state.external = j.external || [];
       // Everyone at the firm except the reader. Pending invitees ride along
       // and are marked; the New panel filters them out, because everything
       // that needs a real account filters on userId.
@@ -625,7 +871,7 @@ function renderMessagesBody(boot) {
       $("msgFirmLine").textContent = ((state.firm && state.firm.name) || "Your firm") + " · " +
         joined + (joined === 1 ? " colleague" : " colleagues") +
         (waiting ? ", " + waiting + " invited" : "");
-      $("msgAttach").className = state.canAttach ? "msg-btn sm" : "msg-btn sm msg-hide";
+      applyComposerMode();
       renderThreads();
     });
   }
@@ -639,6 +885,44 @@ function renderMessagesBody(boot) {
     }
     $("msgTray").innerHTML = html;
   }
+  function afterSend(){
+    $("msgInput").value = "";
+    $("msgInput").style.height = "auto";
+    state.attach = [];
+    renderTray();
+    $("msgPicker").className = "msg-panel msg-hide";
+    $("msgPickMsg").textContent = "";
+    if (state.vault) renderPicker();
+    try { $("msgInput").focus(); } catch (e) {}
+  }
+  // A deal room is written through the hub's own routes — comps as items,
+  // words as a note — so what this sends is byte-identical to what the deal
+  // room's own page would have sent, and the client's page, their email
+  // nudge and the audit trail all fire exactly as they always have.
+  function sendExternal(text, ids){
+    var id = state.openId;
+    var sendItems = ids.length
+      ? api("POST", "/api/hub/items", { id: id, items: ids.map(function(ref){ return { source: "vault", ref: ref }; }) })
+      : Promise.resolve({ s: 201, j: {} });
+    sendItems.then(function(o){
+      if (o.s !== 201) {
+        state.sending = false;
+        $("msgSend").disabled = false;
+        $("msgSendMsg").textContent = (o.j && o.j.error) || "Couldn't send those comps.";
+        return;
+      }
+      var sendNote = text.trim()
+        ? api("POST", "/api/hub/message", { id: id, body: text })
+        : Promise.resolve({ s: 201, j: {} });
+      sendNote.then(function(o2){
+        state.sending = false;
+        $("msgSend").disabled = false;
+        if (o2.s !== 201) { $("msgSendMsg").textContent = (o2.j && o2.j.error) || "Couldn't send that."; return; }
+        afterSend();
+        readExternal(false).then(function(){ refreshList(true); });
+      });
+    });
+  }
   function send(){
     if (state.sending || !state.openId) return;
     var text = $("msgInput").value;
@@ -647,30 +931,16 @@ function renderMessagesBody(boot) {
     state.sending = true;
     $("msgSend").disabled = true;
     $("msgSendMsg").textContent = "";
+    if (state.openKind === "external") { sendExternal(text, ids); return; }
     api("POST", "/api/messages/send", { threadId: state.openId, body: text, compIds: ids })
       .then(function(o){
         state.sending = false;
         $("msgSend").disabled = false;
         if (o.s !== 201) { $("msgSendMsg").textContent = (o.j && o.j.error) || "Couldn't send that."; return; }
-        $("msgInput").value = "";
-        $("msgInput").style.height = "auto";
-        state.attach = [];
-        renderTray();
-        // Close the vault picker and clear its ticks. It stayed open over the
-        // message that had just been sent, with the comp still ticked while
-        // the tray below it was empty, so the page showed a comp as selected
-        // and as already gone at the same time. It also buried the composer,
-        // which is what made a comp and the sentence about it land as two
-        // messages instead of one.
-        $("msgPicker").className = "msg-panel msg-hide";
-        $("msgPickMsg").textContent = "";
-        // Guarded: with no vault loaded yet renderPicker writes its empty-vault
-        // invitation, and leaving that sitting inside a hidden panel would show
-        // it to somebody who opens the picker before the fetch lands.
-        if (state.vault) renderPicker();
-        // Back to the box, so the next thing typed goes where the reader is
-        // already looking.
-        try { $("msgInput").focus(); } catch (e) {}
+        // afterSend owns the cleanup — the box, the tray, the picker and its
+        // ticks (which once stayed open over the message they had just sent),
+        // and the focus. One copy, shared with the deal-room path.
+        afterSend();
         // Read straight back rather than echoing locally: the server owns the
         // cursor, and one source for what is in a thread means an optimistic
         // bubble can never disagree with what everybody else sees.
@@ -803,6 +1073,8 @@ function renderMessagesBody(boot) {
 
   // --- wiring -------------------------------------------------------------
   $("msgThreads").addEventListener("click", function(e){
+    var ext = e.target.closest("[data-external]");
+    if (ext) { openExternal(ext.getAttribute("data-external"), true); return; }
     var row = e.target.closest("[data-thread]");
     if (row) openThread(row.getAttribute("data-thread"), true);
   });
@@ -854,6 +1126,7 @@ function renderMessagesBody(boot) {
   $("msgBack").addEventListener("click", function(){
     $("msgPage").className = "msg-page";
     state.openId = "";
+    state.openKind = "internal";
     renderThreads();
     try { history.replaceState({}, "", "/messages"); } catch (e) {}
   });
@@ -906,16 +1179,24 @@ function renderMessagesBody(boot) {
   // paints without a round trip; the fetch below is what keeps it current and
   // is also the whole path when BOOT is null.
   function start(){
-    var wanted = "";
-    try { wanted = new URL(location.href).searchParams.get("t") || ""; } catch (e) {}
+    var wanted = "", wantedX = "";
+    try {
+      var qp = new URL(location.href).searchParams;
+      wanted = qp.get("t") || "";
+      wantedX = qp.get("x") || "";
+    } catch (e) {}
     refreshList(false).then(function(){
-      if (!state.threads.length) return;
       // The newest conversation is always LOADED, on every width — the two
       // panes are one stylesheet decision and the data costs one request. What
       // the width decides is which pane a phone shows, and only a link that
-      // named a thread (?t=) jumps straight into it; arriving at /messages on
-      // a phone leaves the reader on the list they came for.
-      openThread(wanted || state.threads[0].id, Boolean(wanted), Boolean(wanted));
+      // named a conversation (?t= internal, ?x= a deal room) jumps straight
+      // into it; arriving bare on a phone leaves the reader on the list.
+      if (wantedX) { openExternal(wantedX, true, true); return; }
+      if (wanted) { openThread(wanted, true, true); return; }
+      if (state.threads.length) { openThread(state.threads[0].id, false, false); return; }
+      // A broker whose only conversations are deal rooms still gets one open
+      // rather than an empty pane telling them to select something.
+      if (state.external.length) openExternal(state.external[0].id, false, false);
     });
     startPolling();
   }

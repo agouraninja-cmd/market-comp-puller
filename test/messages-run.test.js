@@ -88,6 +88,29 @@ function seedTables() {
     broker_properties: [],
     msg_threads: [], msg_thread_members: [], msg_messages: [],
     msg_comps: [], msg_comp_saves: [],
+    // One deal room Brad OWNS, shared with a client who has NO account — the
+    // normal case, and the reason External rows are named by email when there
+    // is no user row to borrow a name from.
+    hubs: [{
+      id: "hubAAA111", owner_user_id: BRAD.id, title: "Warehouse hunt",
+      market: "Boise, ID", property_type: "Industrial", subject_address: null,
+      status: "active", closed_at: null,
+      created_at: "2026-08-30T00:00:00.000Z", updated_at: "2026-08-30T12:00:00.000Z",
+    }],
+    hub_participants: [{
+      id: "hp1", hub_id: "hubAAA111", email: "jason@client.com", role: "tenant",
+      user_id: null, token_hash: "not-a-real-hash",
+      invited_at: "2026-08-30T00:00:00.000Z", first_viewed_at: null,
+      last_seen_at: null, removed_at: null,
+    }],
+    hub_items: [],
+    hub_messages: [{
+      id: "hm1", hub_id: "hubAAA111", item_id: null,
+      author_email: "jason@client.com", author_user_id: null,
+      body: "Thanks for these. Any others near the airport?",
+      created_at: "2026-08-30T12:00:00.000Z", deleted_at: null,
+    }],
+    hub_notify: [], hub_email_prefs: [],
     analytics_events: [], export_usage: [], report_purchases: [],
   };
 }
@@ -140,6 +163,45 @@ test("firm messaging, end to end", async (t) => {
     assert.deepEqual(o.j.people.map((p) => p.email).sort(),
       [BRAD.email, DANA.email, MIKE.email].sort());
     assert.equal(o.j.canAttachComps, true, "Brad pays, so he has a vault to send from");
+  });
+
+  await t.test("the deal room Brad owns shows up as an External conversation", async () => {
+    // Step 1 of absorbing the broker side of the hub into Messages: the rooms
+    // a member OWNS appear as rows under External, named after the people in
+    // them, with the client's last note as the preview and an unread badge
+    // because Brad has never opened it.
+    const o = await get(BRAD, "/api/messages");
+    assert.equal(o.s, 200);
+    assert.equal(o.j.external.length, 1);
+    const x = o.j.external[0];
+    assert.equal(x.id, "hubAAA111");
+    assert.equal(x.label, "jason", "the row is named after the person, from their email");
+    assert.equal(x.title, "Warehouse hunt");
+    assert.equal(x.preview, "Thanks for these. Any others near the airport?");
+    assert.equal(x.unread, 1, "the client's note is unread until Brad opens the room");
+    assert.equal(x.closed, false);
+  });
+
+  await t.test("External is the OWNER'S list — a colleague sees none of it", async () => {
+    // Mike is at the same firm and is not in that deal. A deal room is the
+    // broker's client relationship, not the firm's, and the hub's own owner
+    // wall carries straight through to the inbox view.
+    const o = await get(MIKE, "/api/messages");
+    assert.equal(o.s, 200);
+    assert.deepEqual(o.j.external, []);
+  });
+
+  await t.test("opening the deal room through the hub API clears its unread", async () => {
+    // GET /api/hub stamps the reader's seen mark on every read — the inbox
+    // opens rooms through that same route, so reading IS marking, the same
+    // contract the internal side has.
+    const r = await fetch(B + "/api/hub?id=hubAAA111", as(BRAD));
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.equal(j.messages.length, 1, "the conversation reads through the hub route");
+    assert.equal(j.canWrite, true);
+    const again = await get(BRAD, "/api/messages");
+    assert.equal(again.j.external[0].unread, 0, "reading did not clear the badge");
   });
 
   await t.test("a colleague on a free seat gets messaging and not the vault", async () => {

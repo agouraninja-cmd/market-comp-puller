@@ -403,33 +403,34 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
-      // The SECOND place a tester is deliberately not equal to Pro, and for a
-      // sharper version of the vault's argument below. TESTER_PASSKEY is one
-      // string handed to a group; bulk valuation turns one holder of it into
-      // fifty billed searches per click, with no upper bound on how often.
-      // "Try Pro's reports" is what the code is for, and a report at a time
-      // is what it grants. A tester who should have this is a tester who
-      // should have a subscription.
-      canBulkValue: false,
-      bulkMaxAddresses: 0,
-      // A tester gets this one: it is a read of aggregate counts, not a
-      // private data store with an upload endpoint, so the argument that
-      // holds the vault back does not reach it.
+      // A tester is Pro, full stop (owner's call, 2026-09-01). Until then this
+      // branch withheld three things — bulk valuation (a spend fan-out), the
+      // vault (a private-data store with an upload endpoint) and firms (an
+      // endpoint that emails any address typed in) — on the argument that one
+      // TESTER_PASSKEY string handed to a group is a bigger surface than "try
+      // Pro's reports". The owner weighed that against what it actually
+      // produced: testers opening /vault and /bulk and reading the product as
+      // the free tier. The people holding the code are friends, family and
+      // invited testers, and a tester who cannot see the whole product cannot
+      // test it. So the grant now mirrors the Pro branch above, capability for
+      // capability.
+      //
+      // What still bounds it, and why the reversal is safe to make:
+      //   - PRO_ENABLED still wins (the !enabled branch returned above), and a
+      //     real subscription still wins (the `!pro` guard on this branch).
+      //   - Bulk spend is still capped per member per day by
+      //     BULK_DAILY_ADDRESSES in server.js, which is the backstop that was
+      //     always doing the real work; the per-job cap below is Pro's own.
+      //   - Revoking one tester is still a one-row UPDATE on users.pro_tester.
+      //   - VAULT_PASSKEY / users.vault_beta keep their meaning: they are the
+      //     door for handing a broker the vault WITHOUT comping Pro, and that
+      //     direction is unchanged and still tested.
+      canBulkValue: true,
+      bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       canSeeSearchDemand: true,
-      // The ONE place a tester is deliberately not equal to Pro. The vault is
-      // a private-data workspace with an upload endpoint; a passkey shared
-      // with a wider group is a bigger surface than "try Pro's reports", so
-      // vault access stays admin/paid-only — unless this account ALSO holds
-      // the per-account vault_beta grant (migration 023), which is exactly
-      // the narrow, one-row-at-a-time door the passkey exclusion points
-      // people toward.
-      broker: vaultBeta === true,
-      canUseVault: vaultBeta === true,
-      // Tracks `broker` here too, and the vault's argument covers it twice
-      // over: a passkey handed to a wider group must not also hand out an
-      // endpoint that sends email to any address typed into it. A tester who
-      // holds the vault_beta grant gets both.
-      canUseOrg: vaultBeta === true,
+      broker: true,
+      canUseVault: true,
+      canUseOrg: true,
       graceUntil: null,
       admin: false,
       tester: true,

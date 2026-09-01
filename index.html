@@ -4382,7 +4382,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
         <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
         <span class="text-[#9AA2AD]">·</span>
-        <a href="/brokers" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers</a>
+        <a href="/brokers-firms" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers &amp; firms</a>
       </div>
     </div>
 
@@ -4426,8 +4426,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <div class="rd-lab">Explore</div>
             <ul class="mt-3 space-y-2" aria-label="Explore">
               <li><a href="/markets" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Markets</a></li>
-              <li><a href="/brokers" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Brokers</a></li>
-              <li><a href="/firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For firms</a></li>
+              <li><a href="/brokers-firms" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">For brokers &amp; firms</a></li>
               <!-- Every server-rendered footer has carried /pricing since the
                    page existed; this one had not, which did not matter while
                    the nav had a Pricing row. It does now (2026-08-30): that
@@ -4438,7 +4437,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    reader needs. -->
               <li><a href="/pricing" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Pricing</a></li>
               <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
-              <li><a href="/how-it-works#faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
+              <li><a href="/faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><a href="/1031-exchange" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">1031 exchange guide</a></li>
               <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
               <!-- Hidden until the browser fires beforeinstallprompt: an
@@ -13032,6 +13031,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         var addrEl = document.getElementById("address");
         if (addrEl && pendingAddr.trim()) addrEl.value = pendingAddr;
       }
+      // The property type rides beside the address since 2026-09-01: the home
+      // page's comp finder (home-page.js) offers a type picker, and without
+      // this the visitor's choice was dropped at the door. Written only when
+      // one was CHOSEN — its placeholder option submits an empty value on
+      // purpose, so "Property type" never arrives here as Industrial.
+      //
+      // setTypeProgrammatic, not `propertyTypeSel.value = …`: assigning the
+      // select does not fire "change", so the subject fields and the lookback
+      // hint would keep the previous type's shape. Guarded against a value
+      // the app does not know, which is what a stale key from an older tab
+      // would be.
+      var pendingType = sessionStorage.getItem("pendingLandingType.v1");
+      if (pendingType) {
+        sessionStorage.removeItem("pendingLandingType.v1");
+        var known = [...propertyTypeSel.options].some((o) => o.value === pendingType);
+        if (known) setTypeProgrammatic(pendingType);
+      }
     } catch (err) {}
     // ?property=<id> opens one saved property straight into the report view.
     // Signed-in only, by construction — the id names a row in this member's
@@ -17014,7 +17030,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (p.tester) {
       return {
         title: "Pro — comped (beta tester)",
-        detail: "Full Pro access as a beta tester. Nothing is billed, and there's no subscription behind it. The private broker vault isn't included.",
+        detail: "Full Pro access as a beta tester — vault, firms and bulk valuation included. Nothing is billed, and there's no subscription behind it.",
       };
     }
     // Before the Stripe states, like the two comped branches above it and for

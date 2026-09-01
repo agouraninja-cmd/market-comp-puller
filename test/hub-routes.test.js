@@ -104,9 +104,9 @@ test("hub routes on a bare server (no database)", async (t) => {
   });
 
   await t.test("the hub page is not reachable at the connection hub's URL", async () => {
-    // /brokers is the connection hub and predates this feature by weeks.
+    // /brokers-firms is the connection hub and predates this feature by weeks.
     // If these two ever collide, the naming warning stopped being enough.
-    const r = await fetch(srv.base + "/brokers");
+    const r = await fetch(srv.base + "/brokers-firms");
     const html = await r.text();
     assert.doesNotMatch(html, /Comps in this hub/);
   });

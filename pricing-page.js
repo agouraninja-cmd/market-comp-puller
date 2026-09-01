@@ -101,7 +101,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     fig: `$${firmSeat}`,
     per: `per seat, per month &middot; minimum ${minSeatsWord} seats`,
     sum: `Every seat gets Pro, plus the shared shelf: every report anyone shares lands on every colleague's workspace, attributed and searchable. One bill, held by the firm's owner.`,
-    cta: `<p><a href="/firms">How a firm works &rarr;</a></p>`,
+    cta: `<p><a href="/brokers-firms">How a firm works &rarr;</a></p>`,
   });
 
   return (
@@ -128,7 +128,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     `colleague's workspace &mdash; attributed, searchable, and still there for whoever joins next ` +
     `month. Colleagues see only what someone shares: your own reports, portfolio, watchlist and ` +
     `private vault stay yours.</p>` +
-    `<p><a href="/firms">Read how firm accounts work &rarr;</a></p>` +
+    `<p><a href="/brokers-firms">Read how firm accounts work &rarr;</a></p>` +
     `</div>` +
 
     `<p class="disc">Prices in US dollars, billed through Stripe; cancel any time from your own ` +

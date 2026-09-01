@@ -57,16 +57,23 @@ test("the price a visitor reads is the one the FAQ has been quoting", async (t) 
   t.after(() => srv.stop());
 
   const pricing = await (await fetch(srv.base + "/pricing")).text();
-  const how = await (await fetch(srv.base + "/how-it-works")).text();
+  // The FAQ moved to a page of its own on 2026-09-01; it used to be nine
+  // accordions on /how-it-works, which is why this read that URL. The home
+  // page joined it as a third public statement of the seat price, since
+  // design 3a closes its For-firms band on the figure.
+  const faq = await (await fetch(srv.base + "/faq")).text();
+  const home = await (await fetch(srv.base + "/")).text();
 
-  // Both surfaces read the same constant. Before this page existed the FAQ was
+  // Every surface reads the same constant. Before /pricing existed the FAQ was
   // the only public statement of the seat price; two prose copies of a number
   // is how a site ends up quoting two prices for one plan.
   for (const figure of ["$100", "$79", "$840"]) {
     assert.ok(pricing.includes(figure), `/pricing states ${figure}`);
   }
-  assert.ok(how.includes("$100"), "the FAQ still states the monthly price");
-  assert.ok(how.includes("$79"), "the FAQ still states the seat price");
+  assert.ok(faq.includes("$100"), "the FAQ still states the monthly price");
+  assert.ok(faq.includes("$79"), "the FAQ still states the seat price");
+  assert.ok(home.includes("$100"), "the home page states the monthly price");
+  assert.ok(home.includes("$79"), "the home page states the seat price");
 });
 
 test("the seat minimum on the page is the one checkout actually enforces", async (t) => {
@@ -155,7 +162,7 @@ test("/pricing is reachable from the footer of every public page", async (t) => 
   const srv = await boot({});
   t.after(() => srv.stop());
 
-  for (const p of ["/", "/brokers", "/markets", "/firms"]) {
+  for (const p of ["/", "/brokers-firms", "/markets"]) {
     const html = await (await fetch(srv.base + p)).text();
     assert.ok(html.includes('href="/pricing"'), `${p} links to /pricing`);
   }

@@ -68,7 +68,7 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // The shared footer, with links in it. Before the fold this page's footer
   // was four lines of prose and not one anchor.
   const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
-  for (const href of ["/markets", "/brokers", "/firms", "/pricing", "/terms", "/download"]) {
+  for (const href of ["/markets", "/brokers-firms", "/pricing", "/terms", "/download"]) {
     assert.ok(footer.includes('href="' + href + '"'), "/vault's footer cannot reach " + href);
   }
 });

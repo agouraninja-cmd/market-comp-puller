@@ -849,7 +849,7 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
 
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
   assert.match(home, /href="\/how-it-works"/);
-  assert.match(home, /href="\/brokers"/);
+  assert.match(home, /href="\/brokers-firms"/);
   // gap-x-3 was never in the vendored tailwind.css, so the middle dot sat
   // on the F in "For brokers". gap-x-4 is already generated.
   assert.match(home, /gap-x-4/);

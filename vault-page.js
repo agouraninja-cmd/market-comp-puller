@@ -4330,6 +4330,21 @@ a.btn.ghost:hover{color:var(--ink)}
         if(o.s===401){mktItems=[];mktOk=true;renderMarkets();return;}
         if(o.s!==200){mktOk=false;renderMarkets();return;}
         mktOk=true;mktItems=o.j.items||[];renderMarkets();
+        // Mark the feed read, exactly as the workspace does when a member
+        // opens it. This is not cosmetic: last_seen_at is one of the two
+        // high-water marks the watchlist digest takes its cutoff from (the
+        // later of last_digest_at and last_seen_at), so without it somebody
+        // who reads their new comps here would still be MAILED about them.
+        // That is the one thing this product sends on its own initiative, and
+        // its bar is "is this worth interrupting a person for".
+        //
+        // Guarded on unseen, so a page visit with no news writes nothing, and
+        // fire-and-forget: a failed stamp costs one duplicate line in the next
+        // digest, where letting it fail the deck would cost the feed itself.
+        if(o.j.unseen){
+          fetch("/api/watchlist/seen",{method:"POST",credentials:"same-origin"})
+            .catch(function(){});
+        }
       })
       .catch(function(){mktOk=false;renderMarkets();});
   }

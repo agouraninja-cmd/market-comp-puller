@@ -13081,12 +13081,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // own portfolio and openPortfolioItem's read is user-scoped, so a guessed
     // id answers 404 rather than opening somebody else's building. Cleared
     // after use like ?submit=comp, so a refresh does not reopen it.
+    // &refresh=1 asks for a fresh billed search rather than the saved report.
+    // It exists because /vault's properties deck lists a member's portfolio
+    // now (2026-09-01, "Three Spaces") and its rows are links: that page can
+    // neither render a report nor replay a search, because both need the real
+    // #compForm and every rule hanging off it, all of which live here. So
+    // Refresh there is this door with one more parameter on it, rather than a
+    // second search path nobody would keep in step.
     const propParam = new URLSearchParams(location.search).get("property");
     if (currentUser && propParam) {
       const qs = new URLSearchParams(location.search);
+      const wantsRefresh = qs.get("refresh") === "1";
       qs.delete("property");
+      qs.delete("refresh");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
-      openPortfolioItem(propParam);
+      if (wantsRefresh) refreshPortfolioItemById(propParam);
+      else openPortfolioItem(propParam);
     }
     // ?recent=<id> is the same door onto a recent search, and it is the one
     // /bulk needs: a run writes its valuations there rather than onto the desk
@@ -13182,6 +13192,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // portfolioId lets assumption edits PATCH back onto this exact item.
       renderResults(item.payload.data, { ...item.payload.meta, fromHistory: true, portfolioId: item.id, generatedAt: Date.parse(item.updated_at) });
     } catch (ex) { showStatus(ex.message, "error"); }
+  }
+
+  // listPortfolio deliberately never selects `payload`, so a row from the list
+  // cannot be replayed — refreshPortfolioItem needs the stored inputs. Both
+  // doors onto Refresh go through here: the desk's own button, and /vault's
+  // link, which arrives as ?property=<id>&refresh=1 on a cold load because the
+  // report engine and #compForm live in this file and nowhere else.
+  async function refreshPortfolioItemById(id) {
+    const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id))
+      .catch(() => null);
+    if (full) refreshPortfolioItem(full);
+    else showStatus("Couldn't open that property just now. Nothing has been lost.", "error");
   }
 
   function refreshPortfolioItem(item) {
@@ -13457,10 +13479,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2";
         refresh.textContent = "Refresh";
         refresh.title = "Runs a new live search for this property";
-        refresh.addEventListener("click", async () => {
-          const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
-          if (full) refreshPortfolioItem(full);
-        });
+        refresh.addEventListener("click", () => refreshPortfolioItemById(item.id));
         // Removing is a quiet trash icon, not the word "Remove" — the same
         // control the broker vault's comp rows use (`.lnk.trash` in
         // vault-page.js): ink that goes red on hover, so the destructive

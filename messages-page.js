@@ -602,7 +602,7 @@ function renderMessagesBody(boot) {
       if (o.s === 401) { gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s workspace.</p>' +
         '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>'); return; }
       if (o.s === 403) { gate('<h3>Messages are for your firm</h3><p>' + esc((o.j && o.j.error) || "") + '</p>' +
-        '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/firms">How firms work</a></p>'); return; }
+        '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>'); return; }
       if (o.s !== 200) {
         if (!quiet) gate('<h3>Messages are unavailable</h3><p>' + esc((o.j && o.j.error) || "Please try again in a minute.") + '</p>');
         return;
@@ -927,7 +927,7 @@ function renderMessagesBody(boot) {
       '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>');
     else if (BOOT.s === 403) gate('<h3>Messages are for your firm</h3>' +
       '<p>' + esc((BOOT.j && BOOT.j.error) || "") + '</p>' +
-      '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/firms">How firms work</a></p>');
+      '<p><a class="msg-btn" href="/desk">Go to your workspace</a> <a class="msg-btn" href="/brokers-firms">How firms work</a></p>');
     else gate('<h3>Messages are unavailable</h3><p>' + esc((BOOT.j && BOOT.j.error) || "Please try again in a minute.") + '</p>');
   } else {
     start();

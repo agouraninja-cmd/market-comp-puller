@@ -34,7 +34,7 @@
 //
 // Usage:
 //   node scripts/shot.js /how-it-works
-//   node scripts/shot.js / /markets /brokers          several pages in one boot
+//   node scripts/shot.js / /markets /brokers-firms    several pages in one boot
 //   node scripts/shot.js /how-it-works --before       vs origin/main
 //   node scripts/shot.js /how-it-works --before HEAD~1
 //   node scripts/shot.js / --size 390x844             a phone-width capture
@@ -422,7 +422,7 @@ async function captureViaCdp(dt, url, size, fullPage, settleMs, expand, dark) {
     if (expand) {
       // Collapsed content is invisible to a screenshot, and this site puts
       // real copy inside <details>: the FAQ accordions on / and /how-it-works
-      // and /brokers, the vault's three `dbox` panels, the uploader's
+      // and /brokers-firms, the vault's three `dbox` panels, the uploader's
       // "Required columns & privacy details". A change to any of it produces
       // two identical pictures otherwise — which reads as "nothing changed"
       // rather than "you photographed a closed drawer". Kept off by default,
@@ -559,7 +559,7 @@ Screenshot a CompNinja page, before and after a design change.
   node scripts/shot.js <path> [<path>...] [options]
 
   node scripts/shot.js /how-it-works
-  node scripts/shot.js / /markets /brokers
+  node scripts/shot.js / /markets /brokers-firms
   node scripts/shot.js /how-it-works --before            compare against ${DEFAULT_REF}
   node scripts/shot.js /how-it-works --before HEAD~1
   node scripts/shot.js / --size 390x844                  phone width

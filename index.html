@@ -1683,7 +1683,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </form>
       <div id="acctImport" class="hidden">
-        <p class="text-sm text-[#4C5665] mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Import them into your portfolio?</p>
+        <p class="text-sm text-[#4C5665] mt-1">You're in. <span id="acctImportCount"></span> saved report(s) live only in this browser. Keep them in your account?</p>
         <div class="flex gap-2 mt-3">
           <button id="acctImportYes" type="button" class="btn-live flex-1 bg-brand-600 hover:bg-brand-700 text-white font-semibold px-4 py-2 rounded-lg">Import</button>
           <button id="acctImportNo" type="button" class="flex-1 text-sm text-[#68707E] hover:text-[#374253] border border-[#E4E2DA] rounded-lg">Skip</button>
@@ -1852,24 +1852,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
-      <!-- Comped access for beta testers. Hidden until /api/config resolves,
-           and shown only to a signed-in non-Pro visitor: the grant is stored
-           on an account, so there is nothing to attach it to signed out. -->
-      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
-        <button id="passkeyToggle" type="button" aria-expanded="false"
-          class="text-sm text-[#68707E] hover:text-[#374253] underline">
-          Have a code?
-        </button>
-        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
-          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
-            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <button id="passkeySubmit" type="button"
-            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
-            Redeem
-          </button>
-        </div>
-        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
-      </div>
+      <!-- The "Have a code?" disclosure lived here until 2026-08-31, when the
+           tester-code box MOVED into the Settings panel (#passkeyRow, owner's
+           call). One code, one control — the theme toggle's precedent from
+           2026-08-30, and the Plan row's: a second copy here would be a second
+           input, a second message element and a second visibility rule to keep
+           in step, for a box that is typed into once per person, ever. The
+           door is the account menu's Settings row (/desk?settings=1). -->
 
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
@@ -2094,6 +2083,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
         </div>
         <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
+      </div>
+      <!-- Tester code. Moved here from the pricing modal's "Have a code?"
+           disclosure on 2026-08-31 (owner's call): the codes go to friends,
+           family and people testing the site, so the place to type one is the
+           panel you open to look at your own account — not a modal you open to
+           look at prices. One code, one control, on the theme toggle's
+           precedent from the day before; the pricing modal keeps no copy.
+           Sits directly under Plan because that is what it changes.
+
+           It is a row, not a disclosure: every other row in this panel shows
+           its control, and hiding an input behind a toggle inside a panel that
+           is itself behind a menu is one door too many.
+
+           Visibility is refreshBillingUI()'s, unchanged by the move — signed
+           in, a code configured on this deployment, and something still left
+           to redeem. Not gated on billing being live: a code is exactly what
+           someone uses on a deployment with no Stripe keys. VAULT_PASSKEY
+           redeems through this same input, by design (whoever was handed a
+           code should not also have to know which kind it is). -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <div class="text-sm font-medium text-[#1A2433]">Tester code</div>
+        <p class="text-xs text-[#68707E] mt-0.5">Got a code from us? Enter it here to unlock the paid features on this account.</p>
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Tester code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
       </div>
       <!-- Watchlist digest email. Signed-in only; state is
            currentUser.digestOptout, written through POST /api/account/digest.
@@ -2448,8 +2468,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            only their inputs (Re-run is a fresh billed search). The filter input
            is static markup on purpose: a search completing re-renders the rows
            three times over, and regenerating the input would eat what the user
-           is typing. Deliberately OUTSIDE #myDesk: it is browser-local and
-           still renders signed out (the account wall permitting). -->
+           is typing. Deliberately OUTSIDE #myDesk: it still renders signed
+           out (the account wall permitting).
+
+           Since 2026-08-31 it is the list a search actually lands in — the
+           portfolio holds only what a member says they OWN — and it has two
+           sources: this browser's propertyHistory.v1, which carries the
+           reports and works signed out, plus /api/recents for a signed-in
+           member, which carries rows run on their other devices. See
+           mergedHistory(). -->
       <div id="historyWrap" class="hidden mt-6">
         <div class="dk-rule flex-wrap">
           <span class="rd-lab">Recent searches</span>
@@ -2600,13 +2627,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <!-- A second door for a list somebody already keeps in a
                spreadsheet. It posts to the same route the Add button does. -->
           <button type="button" id="contactImportBtn" class="text-sm font-medium text-[#4C5665] border border-[#D8D4C9] rounded-lg px-3 py-1.5">Import a spreadsheet</button>
-          <input id="contactCsvFile" type="file" accept=".csv,text/csv" class="hidden" />
+          <!-- .xls is accepted INTO the dialog on purpose, so the server can
+               answer "that is an older .xls, save it as .xlsx" by name. Left
+               out, the broker's own file is greyed out with nothing on screen
+               saying why — the vault's HEIC rule. -->
+          <input id="contactCsvFile" type="file" class="hidden"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
         </form>
         <p id="contactMsg" class="hidden text-sm mt-2"></p>
         <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet, saved as CSV, with a name column.</p>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -2640,7 +2672,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <option value="">Choose one</option>
               <option value="broker">Broker shop</option>
               <option value="development">Development shop</option>
-              <option value="tenant_rep">Tenant rep shop</option>
             </select>
           </div>
           <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
@@ -2683,7 +2714,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
                 <option value="broker">Broker shop</option>
                 <option value="development">Development shop</option>
-                <option value="tenant_rep">Tenant rep shop</option>
               </select>
               <span id="firmShopState" class="text-xs text-[#68707E]"></span>
             </div>
@@ -2723,7 +2753,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Portfolio</span>
           <span id="deskCount" class="dk-note"></span>
         </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Run a report and it will show up here.</p>
+        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nothing here yet. Your portfolio holds the properties you own. Run a report and use <span class="font-medium">Save to portfolio</span>, or add one from your recent searches.</p>
         <!-- The other empty state, and the reason they are two elements: a
              failed read used to render as the invitation above, which tells
              somebody with a book of sixteen properties that it is gone. Same
@@ -11576,6 +11606,86 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // against tens of KB for a report, so history now reaches back much further
   // than the old 5/10 caps did at no extra storage cost.
   // ----------------------------------------------------------------------------
+  // --- server-side recent searches -------------------------------------------
+  //
+  // ⚠ DECLARED HERE, ABOVE THE HISTORY STORE, AND IT HAS TO BE. renderHistory()
+  // is called at module load (bottom of this section), it now reads through
+  // mergedHistory(), and serverRecents/recentIds are let/const — so with these
+  // left down in the account block where the rest of the account state lives,
+  // every load threw "Cannot access 'serverRecents' before initialization" and
+  // the whole front end aborted: no search form, no history, no report
+  // rendering, on a page that still looked completely normal. Same
+  // temporal-dead-zone trap the Address Explorer's proConfig comment
+  // describes. Moving these back down beside the other account state reads as
+  // tidying and breaks the app.
+  //
+  // The portfolio stopped being written on every search on 2026-08-31, which
+  // took cross-device search history with it — the desk had been doing that
+  // job by accident. /api/recents does it on purpose now.
+  //
+  // localStorage stays the primary store and is NOT replaced by this: it holds
+  // the REPORTS, so reopening one is free and works signed out, offline, and
+  // before this fetch lands. The server list contributes rows this browser has
+  // never seen (a search run on the member's other machine) and the id each
+  // row needs in order to be added to the portfolio later.
+  let serverRecents = [];           // [{id, address, property_type, updated_at, ...}] — meta only
+  const recentIds = new Map();      // "address\0type" -> server row id
+  // `currentUser` is a `let` in the account block BELOW, and renderHistory()
+  // runs at module load — so reading it directly from historyRow() throws
+  // "Cannot access 'currentUser' before initialization" and takes the whole
+  // front end down. A function declaration is hoisted, and `typeof` does not
+  // help here (it throws on a TDZ binding too, unlike an undeclared name), so
+  // the try/catch is the guard. The first paint therefore draws history as
+  // signed-out; refreshAccountUI() -> refreshRecents() re-renders it a moment
+  // later with the member's own rows and their Add controls.
+  function currentUserSafe() {
+    try { return currentUser; } catch (_) { return null; }
+  }
+  function markRecentSaved(address, type, id) {
+    if (id) recentIds.set(portfolioKey(address, type), id);
+  }
+  async function refreshRecents() {
+    if (!currentUser) { serverRecents = []; recentIds.clear(); return; }
+    try {
+      const r = await acctApi("GET", "/api/recents");
+      serverRecents = Array.isArray(r.items) ? r.items : [];
+      serverRecents.forEach((it) => markRecentSaved(it.address, it.property_type, it.id));
+    } catch (_) {
+      // Soft, like every other read of this list: a member who cannot reach
+      // the server still has their own browser's history on screen. Leaving
+      // the previous answer in place beats blanking a list that is correct.
+    }
+    renderHistory();
+  }
+  // Local rows unioned with the server's, newest first, one row per property.
+  //
+  // The LOCAL row wins a tie, because only it can carry `data` — the report
+  // that makes Open free. The server row contributes its id (so the row can be
+  // added to the portfolio) and, for a property this browser has never seen,
+  // the row itself.
+  function mergedHistory() {
+    const out = [];
+    const seen = new Set();
+    loadHistory().forEach((r) => {
+      const k = portfolioKey(r.meta.address, r.meta.type);
+      seen.add(k);
+      out.push({ ...r, recentId: recentIds.get(k) || null });
+    });
+    serverRecents.forEach((it) => {
+      const k = portfolioKey(it.address, it.property_type);
+      if (seen.has(k)) return;
+      seen.add(k);
+      out.push({
+        ts: Date.parse(it.updated_at) || 0,
+        meta: { address: it.address, type: it.property_type },
+        data: null,           // the report lives on the server; Open re-fetches it
+        recentId: it.id,
+        remote: true,
+      });
+    });
+    return out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }
+
   const HISTORY_KEY = "propertyHistory.v1";
   const HISTORY_MAX = 25;   // rows kept at all
   const PAYLOAD_MAX = 10;   // newest N rows that keep their full report
@@ -11632,10 +11742,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       });
       writeHistory(trimHistory(list));
     } catch (_) { /* private mode etc. — history is a nicety */ }
-    // A pending "Refresh valuation" also updates the portfolio item — but only
-    // when THIS report matches the item that requested the refresh (address +
+    // A pending "Refresh valuation" updates the portfolio item — but only when
+    // THIS report matches the item that requested the refresh (address +
     // type), so an unrelated save (subject-input edit, a different search) can
-    // never overwrite the portfolio item with the wrong report. Deliberately
+    // never overwrite the portfolio item with the wrong report. This is the
+    // ONLY path that still writes to the portfolio without being asked, and it
+    // is not an exception to the ownership rule: the member already claimed
+    // that property, and clicking Refresh on it is the ask. Deliberately
     // outside the try above: it must still fire when localStorage is
     // unavailable. Deferred a tick so renderOwnerHero (called during the same
     // render pass) has already computed lastValuation.
@@ -11655,6 +11768,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }).catch(() => {});
       }, 0);
     } else if (currentUser) {
+      // Every completed search USED to land here as a portfolio item, which
+      // made "your properties" a log of everything the account had ever looked
+      // up. A portfolio is what you own, so a search now files itself under
+      // recent searches and the member adds what is theirs from the report.
+      //
+      // The write is silent on failure, unlike the portfolio save it replaces.
+      // Nobody asked for this row: the local copy in propertyHistory.v1 has
+      // already been written above, so the only thing a failure costs is
+      // seeing this search on another device — not worth a red banner over a
+      // report that just succeeded. The portfolio's own save still reports its
+      // errors, because there somebody clicked a button and is owed an answer.
       const payloadMeta = {
         address: meta.address, type: meta.type, note: meta.note || "",
         months: meta.months, txFocus: meta.txFocus, subject: meta.subject || null,
@@ -11662,16 +11786,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         curation: meta.curation || null,
       };
       setTimeout(() => {
-        acctApi("POST", "/api/portfolio", {
-          payload: { meta: payloadMeta, data }, snapshot: lastValuation,
+        acctApi("POST", "/api/recents", {
+          payload: { meta: payloadMeta, data },
           verifiedKey: verifiedKeyForSave(meta.address),
-        }).then(() => {
-          markPortfolioSaved(meta.address, meta.type);
-          syncPortfolioButton();
-          if (typeof renderMyDesk === "function") renderMyDesk();
-        }).catch((ex) => {
-          showStatus(ex.message, "error");
-        });
+        }).then((r) => {
+          if (r && r.id) markRecentSaved(meta.address, meta.type, r.id);
+          renderHistory();
+        }).catch(() => {});
       }, 0);
     }
     renderHistory();
@@ -11732,16 +11853,38 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     });
   }
 
-  function openHistoryReport(r) {
+  // Fetch a row's report when this browser does not hold it. Returns the row
+  // with `data` filled, or null. A row that has aged past the server's payload
+  // window comes back with a null payload — genuinely nothing to reopen, so
+  // the caller re-runs instead.
+  async function hydrateHistoryRow(r) {
+    if (r.data) return r;
+    if (!r.recentId || !currentUser) return null;
+    try {
+      const item = await acctApi("GET", "/api/recents?id=" + encodeURIComponent(r.recentId));
+      const p = item && item.payload;
+      if (!p || !p.data || !Array.isArray(p.data.comps)) return null;
+      // The stored meta is the one the report was RUN with; the row's own meta
+      // is a summary rebuilt from columns, so the payload's wins.
+      return { ...r, meta: p.meta || r.meta, data: p.data };
+    } catch (_) { return null; }
+  }
+
+  async function openHistoryReport(r) {
+    const full = await hydrateHistoryRow(r);
+    if (!full) {
+      showStatus("That report is no longer stored. Re-run the search to get a fresh one.", "info");
+      return;
+    }
     leaveDesk();
     hideLoadingCard();
     // BEFORE renderResults, not after: the hero reads the live inputs whenever
     // this report's meta carries no figure of its own, so anything left in the
     // form from the last search would multiply this report's $/SF.
-    restoreFormFromMeta(r.meta);
-    const when = r.ts ? ` generated ${histDate(r.ts)}` : "";
+    restoreFormFromMeta(full.meta);
+    const when = full.ts ? ` generated ${histDate(full.ts)}` : "";
     showStatus(`Reopened a saved report${when}. Run a new search for fresh data.`, "info");
-    renderResults(r.data, { ...r.meta, fromHistory: true, generatedAt: r.ts || Date.now() });
+    renderResults(full.data, { ...full.meta, fromHistory: true, generatedAt: full.ts || Date.now() });
   }
 
   // Put the search form back to the report being shown.
@@ -11813,27 +11956,73 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // saved" would read as two unrelated features.
   const histDate = (ts) => (ts ? new Date(ts).toLocaleDateString() : "");
 
+  // Add one recent search to the portfolio. THE door into the desk, alongside
+  // the report's own "Save to portfolio" button — since 2026-08-31 nothing
+  // else puts a property there, so this has to work for a row whose report
+  // this browser no longer holds.
+  async function addRecentToPortfolio(r, btn) {
+    if (!currentUser) {
+      openAcctModal("signup", "Create a free account to keep properties in your portfolio.");
+      return;
+    }
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Adding…";
+    const full = await hydrateHistoryRow(r);
+    if (!full) {
+      btn.disabled = false;
+      btn.textContent = label;
+      showStatus("That report is no longer stored. Re-run the search, then add it.", "info");
+      return;
+    }
+    try {
+      // No snapshot: this report was not necessarily valued in THIS page's
+      // lastValuation, and a wrong opening figure is worse than none — the
+      // property's value history starts on its next run.
+      await acctApi("POST", "/api/portfolio", {
+        payload: { meta: full.meta, data: full.data },
+        snapshot: null,
+        verifiedKey: verifiedKeyForSave(full.meta.address),
+      });
+      markPortfolioSaved(full.meta.address, full.meta.type);
+      syncPortfolioButton();
+      showStatus("Added to your portfolio.", "info");
+      if (typeof renderMyDesk === "function") renderMyDesk();
+      renderHistory();
+    } catch (ex) {
+      btn.disabled = false;
+      btn.textContent = label;
+      showStatus(ex.message, "error");
+    }
+  }
+
   function historyRow(r) {
     const row = document.createElement("div");
     row.className = "flex items-baseline justify-between gap-3 py-2";
     const left = document.createElement("div");
     left.className = "min-w-0 flex-1";
-    // Only a row that still holds its report is clickable; once it has aged out
-    // of the payload window the address is plain text and Re-run is the only
+    // Clickable when the report can still be reached — held here, or held on
+    // the server for a row this browser has never seen. Once it has aged out
+    // of both payload windows the address is plain text and Re-run is the only
     // way back to it.
-    const addr = document.createElement(r.data ? "button" : "div");
-    addr.className = r.data
+    const openable = Boolean(r.data || (r.recentId && currentUserSafe()));
+    const addr = document.createElement(openable ? "button" : "div");
+    addr.className = openable
       ? "text-left text-sm font-medium text-[#1A2433] hover:text-[#B91C1C] truncate"
       : "text-sm font-medium text-[#1A2433] truncate";
     addr.textContent = r.meta.address;
-    if (r.data) {
+    if (openable) {
       addr.type = "button";
       addr.title = "Reopen this report (no new search, no cost)";
       addr.addEventListener("click", () => openHistoryReport(r));
     }
     const sub = document.createElement("div");
     sub.className = "text-xs text-[#68707E]";
-    sub.textContent = [r.meta.type, histDate(r.ts)].filter(Boolean).join(" · ");
+    // "Other device" earns its place: this row has no local report, so Open
+    // costs a round trip and Re-run is the only option once it has aged out.
+    // Saying where it came from explains both.
+    sub.textContent = [r.meta.type, histDate(r.ts), r.remote ? "another device" : ""]
+      .filter(Boolean).join(" · ");
     left.append(addr, sub);
 
     const actions = document.createElement("div");
@@ -11844,10 +12033,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       b.className = "text-[#5A6473] hover:text-[#1A2433] underline decoration-[#D8D4C9]";
       b.textContent = text;
       b.title = title;
-      b.addEventListener("click", fn);
+      b.addEventListener("click", () => fn(b));
       return b;
     };
-    if (r.data) actions.appendChild(action("Open", "Reopen this report (no new search, no cost)", () => openHistoryReport(r)));
+    if (openable) actions.appendChild(action("Open", "Reopen this report (no new search, no cost)", () => openHistoryReport(r)));
+    // Offered only to a signed-in member, and only for a property not already
+    // on the desk — an "Add" that silently does nothing is worse than no Add.
+    // The portfolio is opt-in from here on, so this is how a searched property
+    // becomes an owned one.
+    if (currentUserSafe() && !portfolioKeys.has(portfolioKey(r.meta.address, r.meta.type))) {
+      actions.appendChild(action("Add to portfolio", "Keep this property on your desk and track its value", (b) => addRecentToPortfolio(r, b)));
+    }
     actions.appendChild(action("Re-run", "Run this search again", () => rerunHistory(r.meta)));
     row.append(left, actions);
     return row;
@@ -11861,7 +12057,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const wrap = document.getElementById("historyWrap");
     const rows = document.getElementById("historyRows");
     const filterEl = document.getElementById("historyFilter");
-    const list = loadHistory();
+    // Local rows plus anything this member ran on another device. Signed out,
+    // mergedHistory() is loadHistory() with a null recentId on each row.
+    const list = mergedHistory();
     wrap.classList.toggle("hidden", list.length === 0);
     filterEl.classList.toggle("hidden", list.length <= FILTER_AT);
     if (list.length <= FILTER_AT) filterEl.value = "";
@@ -11917,6 +12115,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     btn.textContent = "clear";
     try { localStorage.removeItem(HISTORY_KEY); } catch (_) {}
     dropLegacyHistoryKeys();
+    // The server's copy goes too, or "clear" would empty this browser and
+    // leave the list intact on the member's other devices — and repopulate
+    // itself here on the next refreshRecents(). Fire-and-forget: the local
+    // clear has already happened and is what the reader asked for.
+    if (currentUser) {
+      serverRecents = [];
+      recentIds.clear();
+      acctApi("DELETE", "/api/recents").catch(() => {});
+    }
     historyExpanded = false;
     document.getElementById("historyFilter").value = "";
     renderHistory();
@@ -12181,6 +12388,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
+    // Recent searches follow identity for the same reason the desk does: the
+    // list is per-account, so signing out must drop the previous member's
+    // rows from it and signing in must fetch this one's. refreshRecents()
+    // clears and re-renders on its own when there is no user.
+    refreshRecents();
     // Signing in or out changes who the plan card is about, and signing out
     // must not leave a "Manage billing" link pointing at nobody.
     if (typeof refreshBillingUI === "function") refreshBillingUI();
@@ -12345,6 +12557,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     resetSettingsDeleteConfirm();
     document.getElementById("settingsDigestErr").classList.add("hidden");
     document.getElementById("settingsPlanError").classList.add("hidden");
+    document.getElementById("passkeyMsg").classList.add("hidden");
     showAvatarMsg("");
     applySettingsAccountUI();
     document.getElementById("settingsModal").classList.remove("hidden");
@@ -12795,19 +13008,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       }
     } catch (err) {}
     // ?property=<id> opens one saved property straight into the report view.
-    // The door /bulk needs: a bulk run writes every valuation onto the desk,
-    // and each of its fifty rows has to lead to the comps behind its own
-    // number rather than all fifty landing on the same desk page. Signed-in
-    // only, by construction — the id names a row in this member's own
-    // portfolio and openPortfolioItem's read is user-scoped, so a guessed id
-    // answers 404 rather than opening somebody else's building. Cleared after
-    // use like ?submit=comp, so a refresh does not reopen it.
+    // Signed-in only, by construction — the id names a row in this member's
+    // own portfolio and openPortfolioItem's read is user-scoped, so a guessed
+    // id answers 404 rather than opening somebody else's building. Cleared
+    // after use like ?submit=comp, so a refresh does not reopen it.
     const propParam = new URLSearchParams(location.search).get("property");
     if (currentUser && propParam) {
       const qs = new URLSearchParams(location.search);
       qs.delete("property");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
       openPortfolioItem(propParam);
+    }
+    // ?recent=<id> is the same door onto a recent search, and it is the one
+    // /bulk needs: a run writes its valuations there rather than onto the desk
+    // (2026-08-31 — a portfolio is what you own), and each of its fifty rows
+    // has to lead to the comps behind its own number. User-scoped for the same
+    // reason and cleared the same way. ?property= is still honoured because
+    // runs finished before that date filed their reports on the desk.
+    const recentParam = new URLSearchParams(location.search).get("recent");
+    if (currentUser && recentParam) {
+      const qs = new URLSearchParams(location.search);
+      qs.delete("recent");
+      history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
+      openHistoryReport({ meta: {}, data: null, ts: 0, recentId: recentParam });
     }
     // Both run after the user is known, because their whole job is to wait for
     // THIS user's entitlements to catch up with their payment. They key off
@@ -12853,13 +13076,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   document.getElementById("acctImportYes").addEventListener("click", async () => {
     const btn = document.getElementById("acctImportYes");
     btn.disabled = true; btn.textContent = "Importing…";
+    // Imports into RECENT SEARCHES, not the portfolio. These are reports the
+    // browser happens to be holding, which says nothing about what the new
+    // member owns — mass-adding them to a desk headed "Your properties" is
+    // the exact thing the 2026-08-31 change exists to stop, and it would be
+    // the worst instance of it because it happens before anybody has seen the
+    // product. They land where they can be added from, one at a time.
     for (const r of historyWithReports()) {
       try {
-        await acctApi("POST", "/api/portfolio", { payload: { meta: r.meta, data: r.data }, snapshot: null });
+        await acctApi("POST", "/api/recents", { payload: { meta: r.meta, data: r.data } });
       } catch (_) { /* duplicates/failures — keep going */ }
     }
     btn.disabled = false; btn.textContent = "Import";
     closeAcctModal();
+    refreshRecents();
     if (typeof renderMyDesk === "function") renderMyDesk();
   });
   document.getElementById("acctImportNo").addEventListener("click", closeAcctModal);
@@ -13762,7 +13992,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // ---------------------------------------------------------------------------
   let firmShelfItems = [];
 
-  // The three shops (migrations 036 and 037), Transition Plan v2 §6.
+  // The two shops (migration 036), Transition Plan v2 §6. A tenant rep shop
+  // was a third between 2026-08-21 and 2026-08-31 and was withdrawn.
   //
   // A DELIBERATE MIRROR of org-access.js SHOP_COPY, which this page cannot
   // require. test/index-html.test.js pins the two together, which is the
@@ -13779,13 +14010,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       label: "Development shop",
       arrivals: "land comps, rent comps, absorption studies and feasibility packets",
       shelfType: "Land",
-    },
-    tenant_rep: {
-      label: "Tenant rep shop",
-      arrivals: "lease abstracts, rent comps and market surveys",
-      // Empty on purpose, not an oversight: no property type names a tenant
-      // rep's subject the way Land names a development shop's.
-      shelfType: "",
     },
   };
   // Unrecognized reads as broker, for org-access.js kindOf's reason: it is the
@@ -14192,14 +14416,43 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (!file) return;
     contactsMsg("Reading " + file.name + "...");
     try {
-      const csv = await file.text();
-      const out = await postContacts({ csv });
+      // THE BYTES DECIDE which door this file takes, never its name and never
+      // the browser's declared type — xlsx.js's sniff rule, mirrored here so a
+      // spreadsheet saved with a .csv extension still imports. The server
+      // sniffs again and is the one that counts; this only chooses transport.
+      const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+      const isZip = head[0] === 0x50 && head[1] === 0x4b;
+      const isOle = head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0;
+
+      let out;
+      if (isZip || isOle) {
+        // An .xls (OLE2) is sent rather than refused here, so the refusal a
+        // person reads is the server's specific one about saving it as .xlsx.
+        out = await postContacts({ filename: file.name, xlsx: toBase64(await file.arrayBuffer()) });
+      } else {
+        // Unchanged: file.text() decodes as UTF-8 and parseCsv strips the BOM
+        // Excel writes on Save As CSV.
+        out = await postContacts({ csv: await file.text() });
+      }
       contactsMsg(importSummary(out), out.imported === 0);
       await renderContacts();
     } catch (err) {
       contactsMsg(err.message || "That file couldn't be imported.", true);
     }
   });
+
+  // Chunked because String.fromCharCode.apply on a whole megabyte-long array
+  // overflows the argument stack and throws — on a big file only, which is
+  // exactly the case a quick test never covers.
+  function toBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+  }
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.
@@ -14430,10 +14683,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const sel = document.getElementById("firmShopSelect");
     const state = document.getElementById("firmShopState");
     const copy = shopCopy(firm.kind);
-    // Was a two-way ternary until 037. Reading the kind back through the
-    // same map the words come from means a fourth shop is a map entry and an
-    // <option>, not a third branch somebody forgets: an unrecognized kind
-    // lands on broker here for exactly the reason shopCopy() does.
+    // Reading the kind back through the same map the words come from means a
+    // shop is a map entry and an <option>, never a branch somebody forgets in
+    // one place: an unrecognized kind lands on broker here for exactly the
+    // reason shopCopy() does. That is what makes WITHDRAWING a kind safe as
+    // well as adding one — a firm still holding the retired 'tenant_rep'
+    // reads as a broker shop instead of showing an empty select.
     sel.value = SHOP_COPY[firm.kind] ? firm.kind : "broker";
     sel.disabled = !firm.canManage;
     state.textContent = firm.canManage
@@ -14613,7 +14868,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // arrive as a sentence under the name box about a question further up the
     // form. Same words either way (org-access.js validateShopKind owns them).
     if (!kind) {
-      err.textContent = "Choose whether this is a broker shop, a development shop or a tenant rep shop.";
+      err.textContent = "Choose whether this is a broker shop or a development shop.";
       err.classList.remove("hidden");
       return;
     }
@@ -16799,7 +17054,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The nav's Pricing row is gone (2026-08-30); #settingsUpgradeBtn below
     // carries this same `!live || pro` rule, and is the one control now.
 
-    // The redeem row: signed-in, this deployment has a passkey configured, AND
+    // The tester-code row, in the SETTINGS panel since 2026-08-31 (it was the
+    // pricing modal's "Have a code?" disclosure before that; one code, one
+    // control). This rule did not move with it: signed-in, this deployment has
+    // a passkey configured, AND
     // there is still something this account could redeem. Deliberately NOT
     // gated on billingLive() — a code is exactly what someone uses on a
     // deployment with no Stripe keys, the same exception the vault link makes.
@@ -17138,13 +17396,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
 
-  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
-    const form = document.getElementById("passkeyForm");
-    const open = form.classList.toggle("hidden");
-    e.currentTarget.setAttribute("aria-expanded", String(!open));
-    if (!open) document.getElementById("passkeyInput").focus();
-  });
-
   async function submitPasskey() {
     const input = document.getElementById("passkeyInput");
     const btn = document.getElementById("passkeySubmit");
@@ -17176,13 +17427,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // modal silently, which is right for a Pro code (the plan card behind it
       // already says Pro), would leave them with no idea what just happened.
       // So name it and point at it, and let them close the modal themselves.
+      // Say what happened, and leave the panel open. This used to close the
+      // pricing modal on a Pro grant, which was right there — the plan card
+      // behind it already said Pro. In Settings the Plan row is directly
+      // above this one and refreshProConfig() has just repainted it, so
+      // closing would hide the very confirmation the redemption earned.
+      //
+      // A vault code still names its destination: it lands somebody on a
+      // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
         msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
         msg.className = "mt-2 text-sm text-emerald-700";
         msg.classList.remove("hidden");
         return;
       }
-      closePricingModal();
+      // `already` is the route's answer to a code this account has already
+      // redeemed. It is a 200, so it must not read as a failure.
+      msg.textContent = data.already
+        ? "This account already has everything that code unlocks."
+        : "You're all set — your code is applied to this account.";
+      msg.className = "mt-2 text-sm text-emerald-700";
+      msg.classList.remove("hidden");
     } catch (ex) {
       msg.textContent = ex.message;
       msg.className = "mt-2 text-sm text-red-700";

@@ -7,7 +7,7 @@
 //
 // The firm feature has been fully built on the backend since migration 030 —
 // orgs, the shared shelf, invites, auto-share, shared vault comps, per-seat
-// billing, three shop kinds — and until this page existed it had NO public
+// billing, the shop kinds — and until this page existed it had NO public
 // surface at all: nothing in the nav, nothing in the footer, nothing on the
 // pricing modal. The only door was an invite email. So the assertions here
 // are written against what a VISITOR receives, the way public-pages.test.js
@@ -39,19 +39,28 @@ test("/firms is reachable and indexable", async (t) => {
   assert.ok(sitemap.includes("/firms</loc>"), "sitemap lists /firms");
 });
 
-test("the three shop kinds are quoted from org-access, never retyped", async (t) => {
+test("the shop kinds are quoted from org-access, never retyped", async (t) => {
   const srv = await boot({});
   t.after(() => srv.stop());
   const html = await (await fetch(srv.base + "/firms")).text();
 
-  // The page speaks to all three shops, and each one's sentence is the SAME
-  // string the invite email and the create box use. A hand-typed variant here
-  // would be a fourth copy to keep in step, and the first to go stale.
+  // The page speaks to every shop, and each one's sentence is the SAME string
+  // the invite email and the create box use. A hand-typed variant here would
+  // be a fourth copy to keep in step, and the first to go stale.
   for (const kind of ORG.SHOP_KINDS) {
     const copy = ORG.SHOP_COPY[kind];
     assert.ok(html.includes(copy.label), `names the ${kind} shop`);
     assert.ok(html.includes(copy.arrivals), `quotes ${kind}'s arrivals verbatim`);
   }
+
+  // And it counts them rather than saying a number. A kind was added and
+  // withdrawn inside ten days (tenant rep, 2026-08-21 to 2026-08-31), and a
+  // heading promising three shops over two cards is the drift a typed numeral
+  // guarantees. Only the shops that exist may be named here.
+  const words = ["no", "one", "two", "three", "four"];
+  assert.ok(html.includes(`One shelf, ${words[ORG.SHOP_KINDS.length]} kinds of shop`),
+    "the heading over the cards counts the cards");
+  assert.ok(!/Tenant rep/i.test(html), "the withdrawn shop is not still advertised");
 });
 
 test("the shop-kind copy on the page is the module's, character for character", () => {

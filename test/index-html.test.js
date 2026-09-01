@@ -673,12 +673,26 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
   }
 });
 
-test("empty desk copy no longer tells them to press Save", () => {
-  // The em dash came out on 2026-08-22 (owner's standing copy rule), which is
-  // why this pins the new wording. The assertion below it is the one carrying
-  // the test's actual name and must outlive any future rewording.
-  assert.match(html, /id="deskEmpty"[^>]*>Run a report and it will show up here\./);
-  assert.doesNotMatch(html, /press "Save to portfolio"/);
+test("empty desk copy names the way properties actually get there", () => {
+  // THIS TEST'S PREMISE REVERSED ON 2026-08-31, and the reversal is the point.
+  //
+  // It used to assert that the copy did NOT mention Save, because every
+  // signed-in search auto-saved itself and telling somebody to press a button
+  // that had already fired was the bug. The portfolio is opt-in now — it holds
+  // what a member says they OWN — so Save IS the mechanism and naming it is
+  // correct. "Run a report and it will show up here" became untrue the same
+  // day, which is why the old wording is pinned as FORBIDDEN rather than
+  // simply dropped: it reads perfectly well and would quietly promise the old
+  // behaviour back.
+  assert.doesNotMatch(html, /Run a report and it will show up here/,
+    "a report does not land on the desk by itself any more");
+  const m = html.match(/id="deskEmpty"[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(m, "#deskEmpty must still exist");
+  const copy = m[1];
+  assert.match(copy, /Save to portfolio/, "it has to name the control that does it");
+  assert.match(copy, /recent searches/i, "and the other door, for a report already run");
+  // Owner's standing copy rule (2026-08-22): no em dashes in copy.
+  assert.ok(!copy.includes("\u2014"), "no em dashes in copy");
 });
 
 test("a failed desk read says nothing has been lost, not just that it failed", () => {
@@ -2551,4 +2565,130 @@ test("stripping the state and ZIP does not cost a real unit designator", () => {
     "200 United Nations Plaza, New York, NY 10017", "500 Lot Ave, Dallas, TX 75201"]) {
     assert.equal(unitOf(address), null, address);
   }
+});
+
+// ---------------------------------------------------------------------------
+// A portfolio holds what you OWN (2026-08-31)
+//
+// Every signed-in search used to auto-save itself into the portfolio, which
+// made "Your properties" a log of everything the account had ever looked up.
+// saveHistory() now writes to /api/recents instead, and the ONLY portfolio
+// write left on that path is the pending "Refresh valuation" branch — which is
+// not an exception: the member already claimed that property, and clicking
+// Refresh on it is the ask.
+//
+// Source-scanned rather than executed, because the failure is a single line
+// coming back in a 20,000-line file and it would look entirely reasonable in a
+// diff. The route-level half of this rule lives in test/recents-run.test.js.
+// ---------------------------------------------------------------------------
+test("a search files itself under recents, never onto the desk", () => {
+  const body = html.match(/function saveHistory\(meta, data\)[\s\S]*?\n  \}\n/);
+  assert.ok(body, "saveHistory must still exist");
+  const src = body[0];
+
+  assert.match(src, /acctApi\("POST", "\/api\/recents"/,
+    "a completed search has to be recorded somewhere the member can reach it");
+
+  // The one surviving portfolio write, and the guard that keeps it honest.
+  const portfolioWrites = src.match(/acctApi\("POST", "\/api\/portfolio"/g) || [];
+  assert.equal(portfolioWrites.length, 1,
+    "exactly one portfolio write may remain in saveHistory: the Refresh branch");
+  assert.match(src, /pendingPortfolioRefresh &&\s*\n\s*pendingPortfolioRefresh\.address === meta\.address/,
+    "and it must stay gated on the member having asked to refresh THAT property");
+  assert.match(src, /id: refreshId/,
+    "the Refresh branch updates an existing item by id; it never creates one");
+});
+
+test("the signup import lands in recents, not on a new member's desk", () => {
+  // The worst instance of the old behaviour: whatever reports the browser
+  // happened to be holding became a portfolio, before anybody had seen the
+  // product or claimed anything.
+  const handler = html.match(/acctImportYes"\)\.addEventListener\("click"[\s\S]*?\n  \}\);/);
+  assert.ok(handler, "the import handler must still exist");
+  assert.match(handler[0], /acctApi\("POST", "\/api\/recents"/);
+  assert.doesNotMatch(handler[0], /\/api\/portfolio/,
+    "importing browser history must never fill a desk");
+});
+
+test("clearing recent searches clears the server copy too", () => {
+  // Otherwise "clear" empties this browser, leaves the list standing on the
+  // member's other devices, and repopulates itself here on the next fetch.
+  const handler = html.match(/clearHistoryBtn"\)\.addEventListener\("click"[\s\S]*?\n  \}\);/);
+  assert.ok(handler, "the clear handler must still exist");
+  assert.match(handler[0], /acctApi\("DELETE", "\/api\/recents"\)/);
+});
+
+// --- The tester code, in Settings -------------------------------------------
+//
+// TESTER_PASSKEY (and VAULT_PASSKEY, which shares the input) is redeemed from
+// ONE box, and on 2026-08-31 that box moved out of the pricing modal's "Have
+// a code?" disclosure into the Settings panel — the codes go to friends,
+// family and testers, so the place to type one is the panel you open to look
+// at your own account. These pin the move, because the two ways to undo it are
+// both invisible on screen: a second copy put back in the modal (two inputs,
+// two message elements, two visibility rules, and whichever one a person finds
+// first), and a handler left pointing at an element that no longer exists —
+// index.html's script aborts WHOLE on a throw, so a stale
+// getElementById(...).addEventListener takes the entire front end down while
+// the page still renders its HTML and CSS.
+
+// The one big inline block — the whole front end. Picked as the longest real
+// JS block rather than by index, so a new small inline script above it (an
+// analytics shim, a boot guard) cannot silently point these at the wrong one.
+function appScript() {
+  const real = extractScriptBlocks(html).filter(isRealJsBlock);
+  assert.ok(real.length > 0, "no real inline script blocks found");
+  return real.reduce((a, b) => (b.body.length > a.body.length ? b : a)).body;
+}
+
+test("the tester-code box lives in the Settings panel, and only there", () => {
+  const inputs = html.split('id="passkeyInput"').length - 1;
+  assert.equal(inputs, 1,
+    "exactly one tester-code input — a second copy is a second thing to keep in step");
+
+  const settings = html.indexOf('id="settingsModal"');
+  const close = html.indexOf('id="settingsClose"');
+  const row = html.indexOf('id="passkeyRow"');
+  assert.ok(settings > 0 && close > settings, "settings modal brackets not found");
+  assert.ok(row > settings && row < close,
+    "#passkeyRow must sit inside the settings modal, between #settingsModal and #settingsClose");
+
+  // The pricing modal is earlier in the document and must carry no copy.
+  const pricing = html.indexOf('id="pricingModal"');
+  assert.ok(pricing > 0 && pricing < settings, "pricing modal is expected before the settings modal");
+  const pricingMarkup = html.slice(pricing, settings);
+  assert.ok(!/id="passkey/.test(pricingMarkup),
+    "the pricing modal must not carry a second tester-code box");
+});
+
+test("nothing still reaches for the disclosure the settings row replaced", () => {
+  // The row shows its input directly, so #passkeyToggle and #passkeyForm are
+  // gone. A handler outliving its element throws on load and kills the app.
+  for (const dead of ["passkeyToggle", "passkeyForm"]) {
+    assert.ok(!html.includes(dead),
+      dead + " is gone from the markup, so no script may still name it");
+  }
+});
+
+test("every element the tester-code handlers address exists in the markup", () => {
+  const script = appScript();
+  for (const id of ["passkeyRow", "passkeyInput", "passkeySubmit", "passkeyMsg"]) {
+    assert.ok(script.includes('"' + id + '"'), id + " must still be wired up");
+    assert.ok(html.includes('id="' + id + '"'), id + " must exist in the markup");
+  }
+});
+
+test("redeeming from Settings reports the outcome instead of closing a modal", () => {
+  const script = appScript();
+  const start = script.indexOf("async function submitPasskey");
+  assert.ok(start > 0, "submitPasskey not found");
+  const body = script.slice(start, start + 3000);
+  assert.ok(!body.includes("closePricingModal()"),
+    "the box is in Settings now; closing the pricing modal would hide the Plan row that just repainted");
+  assert.ok(body.includes("refreshProConfig()"),
+    "a grant must re-read /api/config so the Plan row above it updates in place");
+  // The route answers a re-redemption with a 200 and `already`. Reported as
+  // an error it would read as a code that stopped working.
+  assert.ok(body.includes("data.already"),
+    "an already-redeemed code must read as success, not failure");
 });

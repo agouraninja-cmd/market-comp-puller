@@ -163,7 +163,7 @@ test("firm messaging, end to end", async (t) => {
   });
 
   await t.test("Brad opens a direct message with Mike", async () => {
-    const o = await post(BRAD, "/api/messages/thread", { kind: "dm", memberIds: [MIKE.id] });
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.kind, "dm");
     threadId = o.j.thread.id;
@@ -175,14 +175,35 @@ test("firm messaging, end to end", async (t) => {
     // The whole reason dmKey is sorted and stored under a unique index. Asked
     // from the OTHER side, because the failure this prevents is each colleague
     // typing into a room the other cannot see.
-    const o = await post(MIKE, "/api/messages/thread", { kind: "dm", memberIds: [BRAD.id] });
+    const o = await post(MIKE, "/api/messages/thread", { memberIds: [BRAD.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.id, threadId);
     assert.equal(ctx.tables.msg_threads.length, 1, "a second DM row was created");
   });
 
+  await t.test("an invited colleague is listed but cannot be put in a thread", async () => {
+    // Two rules meeting. The People list SHOWS somebody who has been invited
+    // and has not accepted, so their absence from a conversation is legible
+    // rather than mysterious. And an invitation is still not a membership
+    // (030's rule), so naming them cannot put them in a thread — which
+    // matters because an invited address may already have an account.
+    ctx.tables.users.push({ id: "u-pat", email: "pat@colliers.com", name: "Pat",
+      pro_tester: false, vault_beta: false, digest_optout: false });
+    ctx.tables.org_members.push({
+      id: "m-pat", org_id: OURS, email: "pat@colliers.com", user_id: null, role: "member",
+      invited_at: "2026-08-30T00:00:00.000Z", joined_at: null, removed_at: null });
+
+    const list = await get(BRAD, "/api/messages");
+    const pat = list.j.people.filter((p) => p.email === "pat@colliers.com")[0];
+    assert.ok(pat, "an invited colleague is missing from the People list");
+    assert.equal(pat.pending, true, "she is not marked as still invited");
+
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [pat.userId] });
+    assert.equal(o.s, 400, "an invitation is not a membership");
+  });
+
   await t.test("a rival at another shop cannot open a thread with our people", async () => {
-    const o = await post(RIVAL, "/api/messages/thread", { kind: "dm", memberIds: [BRAD.id] });
+    const o = await post(RIVAL, "/api/messages/thread", { memberIds: [BRAD.id] });
     assert.equal(o.s, 400, "the ids came from the browser and prove nothing");
     assert.equal(ctx.tables.msg_threads.length, 1);
   });
@@ -226,6 +247,16 @@ test("firm messaging, end to end", async (t) => {
       "another broker's comp reached a thread");
   });
 
+  await t.test("the sender is not offered a Save button for his own comp", async () => {
+    // It came out of his vault, so saving it back can only answer "already".
+    // The card says "you sent this" instead. Buy-button rule.
+    const o = await get(BRAD, "/api/messages/thread?id=" + encodeURIComponent(threadId));
+    const c = o.j.messages.filter((m) => m.comps.length)[0].comps[0];
+    assert.equal(c.mine, true, "the sender is not told the comp is his own");
+    const tab = await get(BRAD, "/api/messages/comps?thread=" + encodeURIComponent(threadId));
+    assert.equal(tab.j.comps[0].mine, true, "the Comps tab disagrees with the thread");
+  });
+
   await t.test("Mike reads the thread and sees the comp", async () => {
     const o = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(threadId));
     assert.equal(o.s, 200);
@@ -233,6 +264,7 @@ test("firm messaging, end to end", async (t) => {
     assert.ok(withComp, "the comp did not reach the reader");
     assert.equal(withComp.comps[0].address, BRADS_COMP.address);
     assert.equal(withComp.comps[0].savedByMe, false);
+    assert.equal(withComp.comps[0].mine, false, "the recipient must still be offered the save");
     assert.equal(withComp.mine, false, "authorship is decided by the session, not the body");
     assert.ok(o.j.cursor, "a server-issued cursor came back");
   });
@@ -303,21 +335,38 @@ test("firm messaging, end to end", async (t) => {
     assert.equal(o.j.comps[0].snapshot.price, 2500000);
   });
 
-  await t.test("a channel carries a name and everybody who was named", async () => {
-    const o = await post(BRAD, "/api/messages/thread", {
-      kind: "channel", title: "Boise industrial", memberIds: [MIKE.id],
-    });
+  await t.test("a group is called after the people in it, per reader", async () => {
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id, DANA.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.kind, "channel");
-    assert.equal(o.j.thread.label, "Boise industrial");
-    const seen = await get(MIKE, "/api/messages");
-    assert.ok(seen.j.threads.some((th) => th.label === "Boise industrial"),
-      "the colleague named in a channel cannot see it");
+    assert.equal(o.j.thread.title, "", "nothing stores a name any more");
+    assert.equal(o.j.thread.label, "Mike, Dana");
+    // ...and from each side, which is why no title is stored: a stored one
+    // would be one person's label on everybody else's thread.
+    const hers = await get(DANA, "/api/messages");
+    const seen = hers.j.threads.filter((th) => th.id === o.j.thread.id)[0];
+    assert.equal(seen.label, "Brad, Mike");
   });
 
-  await t.test("an unnamed channel is refused rather than stored nameless", async () => {
-    const o = await post(BRAD, "/api/messages/thread", { kind: "channel", memberIds: [MIKE.id] });
-    assert.equal(o.s, 400);
+  await t.test("picking the same people again always reopens the one room", async () => {
+    // participantKey widened past pairs for exactly this. With no names
+    // anywhere it is the only consistent answer: two rooms holding the same
+    // people would be two identical rows in the list.
+    const before = ctx.tables.msg_threads.length;
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [DANA.id, MIKE.id] });
+    assert.equal(o.s, 201);
+    assert.equal(ctx.tables.msg_threads.length, before, "a second group with the same people was created");
+  });
+
+  await t.test("a title sent anyway names nothing", async () => {
+    // The owner's bug, at the route. An old browser still posting a title
+    // must get a conversation rather than an error, and must not be able to
+    // name anything by doing so.
+    const o = await post(BRAD, "/api/messages/thread", { title: "Test", memberIds: [MIKE.id] });
+    assert.equal(o.s, 201);
+    assert.equal(o.j.thread.kind, "dm");
+    assert.equal(o.j.thread.title, "");
+    assert.equal(o.j.thread.id, threadId, "and it reopened the direct message that already existed");
   });
 
   await t.test("the poll's cursor returns only what is new", async () => {

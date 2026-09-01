@@ -15,23 +15,28 @@ const MSG = require("../messaging");
 // The DM identity
 // ---------------------------------------------------------------------------
 
-test("a DM key does not depend on who started it", () => {
+test("a participant key does not depend on who started it, or on order", () => {
   // The whole reason this function exists: two colleagues who both press
   // "message" at the same moment must land in ONE thread. Without a sorted key
   // the unique index sees two different strings and lets both through, and
   // then each of them is typing into a room the other cannot see.
-  assert.equal(MSG.dmKey("b", "a"), MSG.dmKey("a", "b"));
-  assert.equal(MSG.dmKey("a", "b"), "a|b");
+  assert.equal(MSG.participantKey(["b", "a"]), MSG.participantKey(["a", "b"]));
+  assert.equal(MSG.participantKey(["a", "b"]), "a|b");
+  // And the same for a GROUP, which is the point of widening it past pairs:
+  // picking the same three people twice reopens one room.
+  assert.equal(MSG.participantKey(["c", "a", "b"]), "a|b|c");
+  assert.equal(MSG.participantKey(["b", "c", "a"]), MSG.participantKey(["a", "b", "c"]));
 });
 
-test("an unkeyable pair returns \"\", never a value to store", () => {
+test("an unkeyable set returns \"\", never a value to store", () => {
   // "" must be treated as a refusal by the caller. Stored, it would collide
-  // with every other unkeyable pair under msg_threads_dm_uidx — so two
-  // unrelated broken threads would be "the same DM".
-  assert.equal(MSG.dmKey("a", "a"), "", "there is no DM with yourself");
-  assert.equal(MSG.dmKey("", "b"), "");
-  assert.equal(MSG.dmKey("a", null), "");
-  assert.equal(MSG.dmKey(undefined, undefined), "");
+  // with every other unkeyable set under msg_threads_dm_uidx — so two
+  // unrelated broken threads would be "the same conversation".
+  assert.equal(MSG.participantKey(["a", "a"]), "", "there is no conversation with yourself");
+  assert.equal(MSG.participantKey(["a"]), "");
+  assert.equal(MSG.participantKey([]), "");
+  assert.equal(MSG.participantKey(["", "b"]), "");
+  assert.equal(MSG.participantKey(null), "");
 });
 
 // ---------------------------------------------------------------------------
@@ -132,20 +137,39 @@ test("the caps refuse rather than truncate", () => {
   assert.equal(MSG.validateMessage({ body: "x", compIds: many }).ok, false);
 });
 
-test("a channel needs a name and a DM must not have one", () => {
-  // A DM's name is the other person, decided by each reader's own page. A
-  // stored title would be one person's label on somebody else's thread.
-  const dm = MSG.validateThread({ kind: "dm", title: "not this", memberIds: ["u2"] });
+test("the shape follows from the count, and NOTHING gets a name", () => {
+  // THE BUG THIS FIXES. The owner typed "Test" as a label for a conversation
+  // with one colleague and got a CHANNEL called Test, because the shape used
+  // to be inferred from whether a name had been typed. Names are gone
+  // entirely now (owner's, 2026-09-01), so there is no input anywhere that
+  // can produce that outcome.
+  const dm = MSG.validateThread({ memberIds: ["u2"] });
   assert.equal(dm.ok, true);
+  assert.equal(dm.kind, "dm");
   assert.equal(dm.title, "");
 
-  assert.equal(MSG.validateThread({ kind: "channel", memberIds: ["u2"] }).ok, false,
-    "an unnamed channel is unnameable on the list");
-  assert.equal(MSG.validateThread({ kind: "channel", title: "Boise", memberIds: [] }).ok, false);
-  assert.equal(MSG.validateThread({ kind: "dm", memberIds: ["u2", "u3"] }).ok, false,
-    "a DM is exactly two people");
-  assert.equal(MSG.validateThread({ kind: "group", memberIds: ["u2"] }).ok, false,
-    "an unrecognized kind is refused, never defaulted");
+  const group = MSG.validateThread({ memberIds: ["u2", "u3"] });
+  assert.equal(group.ok, true);
+  assert.equal(group.kind, "channel");
+  assert.equal(group.title, "", "a group is called after its people, never a stored string");
+});
+
+test("a title sent anyway is discarded, not refused", () => {
+  // An old browser still posting one should get a conversation rather than an
+  // error, and it must not be able to name anything by doing so.
+  const one = MSG.validateThread({ title: "Test", memberIds: ["u2"] });
+  assert.equal(one.ok, true);
+  assert.equal(one.title, "");
+  const many = MSG.validateThread({ title: "Boise industrial", memberIds: ["u2", "u3"] });
+  assert.equal(many.ok, true);
+  assert.equal(many.title, "");
+});
+
+test("a conversation needs somebody in it, and the cap refuses", () => {
+  assert.equal(MSG.validateThread({ memberIds: [] }).ok, false);
+  assert.equal(MSG.validateThread({}).ok, false);
+  const many = Array.from({ length: MSG.MAX_THREAD_MEMBERS + 1 }, (_, i) => "u" + i);
+  assert.equal(MSG.validateThread({ memberIds: many }).ok, false);
 });
 
 // ---------------------------------------------------------------------------
@@ -249,13 +273,39 @@ test("a thread is named for its reader", () => {
     "Boise industrial");
 });
 
-test("a DM whose other member is gone still has a name", () => {
+test("a thread whose other members are gone still has a name", () => {
   // The correspondence outlives the employment. A thread that suddenly had no
   // name would read as data loss.
   const members = [{ user_id: "u1", email: "owen@compninja.co" }];
   assert.equal(MSG.threadLabel({ kind: "dm" }, members, "u1"), "A colleague");
-  assert.equal(MSG.threadLabel({ kind: "channel", title: "  " }, members, "u1"),
-    "Untitled channel");
+  assert.equal(MSG.threadLabel({ kind: "channel", title: "  " }, members, "u1"), "Group");
+});
+
+test("an unnamed group is named by the people in it, per reader", () => {
+  // Two names in full, then a count: the list row is one line, and four names
+  // in it would be an ellipsis rather than an answer.
+  const three = [
+    { user_id: "u1", email: "owen@x.co", name: "Owen" },
+    { user_id: "u2", email: "dana@x.co", name: "Dana" },
+    { user_id: "u3", email: "mike@x.co", name: "Mike" },
+  ];
+  assert.equal(MSG.threadLabel({ kind: "channel" }, three, "u1"), "Dana, Mike");
+  assert.equal(MSG.threadLabel({ kind: "channel" }, three, "u2"), "Owen, Mike");
+
+  const five = three.concat([
+    { user_id: "u4", email: "pat@x.co", name: "Pat" },
+    { user_id: "u5", email: "sam@x.co", name: "Sam" },
+  ]);
+  assert.equal(MSG.threadLabel({ kind: "channel" }, five, "u1"), "Dana, Mike and 2 others");
+
+  const four = three.concat([{ user_id: "u4", email: "pat@x.co", name: "Pat" }]);
+  assert.equal(MSG.threadLabel({ kind: "channel" }, four, "u1"), "Dana, Mike and 1 other",
+    "the count is singular at one");
+
+  // A STORED title still renders, because rows created before names were
+  // dropped have one. Nothing writes another.
+  assert.equal(MSG.threadLabel({ kind: "channel", title: "Boise" }, three, "u1"), "Boise");
+  assert.equal(MSG.threadLabel({ kind: "channel", title: "Boise" }, three, "u2"), "Boise");
 });
 
 test("a name falls back through the email, because the roster carries no names", () => {

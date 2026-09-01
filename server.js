@@ -23893,7 +23893,16 @@ const server = http.createServer((req, res) =>
     // message. The users read resolves BOTH that and the display name, which
     // the roster route deliberately does not carry.
     const rosterFor = async (orgId) => {
-      const rows = (await orgMemberRows(orgId)).filter((r) => ORG.isActive(r));
+      // Joined members AND people who have been invited and have not accepted
+      // yet (2026-09-01). Showing the pending ones is what turns "why isn't
+      // Sarah here" from a bug report into a legible state: the firm knows
+      // about her, she has not accepted. They are marked and everything that
+      // needs a real account filters on userId, so a pending row can never
+      // become a thread member.
+      //
+      // Removed people are excluded outright — that is a decision somebody
+      // made, not a state anybody is waiting on.
+      const rows = (await orgMemberRows(orgId)).filter((r) => ORG.isActive(r) || ORG.isPending(r));
       const emails = rows.map((r) => ORG.normalizeEmail(r.email)).filter(Boolean);
       const byEmail = new Map();
       if (emails.length) {
@@ -23910,11 +23919,13 @@ const server = http.createServer((req, res) =>
         const email = ORG.normalizeEmail(r.email);
         const u = byEmail.get(email) || null;
         const userId = String((u && u.id) || r.user_id || "");
-        // Somebody invited and accepted but with no resolvable account cannot
-        // be a thread member — the key would be "". Dropped rather than shown
-        // as an unmessageable row, which would read as a broken button.
-        if (!userId) continue;
-        out.push({ userId, email, name: MSG.displayName({ name: u && u.name, email }) });
+        const pending = !ORG.isActive(r);
+        // A JOINED member with no resolvable account cannot be a thread member
+        // — the key would be "". Dropped rather than shown as a row whose
+        // button could only fail. A PENDING one is expected to have no account
+        // yet (that is what the invitation is for), so it stays and is marked.
+        if (!pending && !userId) continue;
+        out.push({ userId, email, name: MSG.displayName({ name: u && u.name, email }), pending });
       }
       return out;
     };
@@ -24031,17 +24042,26 @@ const server = http.createServer((req, res) =>
         const g = await openMessaging();
         if (!g) return;
         const body = await readMsgBody();
-        const want = MSG.validateThread({
-          kind: body && body.kind,
-          title: body && body.title,
-          memberIds: body && body.memberIds,
-        });
+        // Neither a `kind` nor a `title` from the browser (2026-09-01). The
+        // shape follows from who was picked and nothing else — see
+        // validateThread's header for why letting the caller say turned a
+        // direct message into a channel called "Test", and why names went
+        // altogether.
+        const want = MSG.validateThread({ memberIds: body && body.memberIds });
         if (!want.ok) return sendJson(res, 400, { error: want.error });
 
-        // Every named member must be in THIS firm. The ids came from the
-        // browser, so this is the check that keeps a thread from being opened
-        // with somebody at another shop.
-        const people = await rosterFor(g.orgId);
+        // Every named member must be a JOINED member of THIS firm. The ids
+        // came from the browser, so this is the check that keeps a thread from
+        // being opened with somebody at another shop.
+        //
+        // The `pending` filter is load-bearing and was added with them
+        // (2026-09-01): rosterFor now returns invited-but-not-accepted people
+        // so the People list can explain their absence, and an invitation is
+        // NOT a membership — 030's rule, and the reason joined_at exists at
+        // all. Without this line, inviting an address that already has an
+        // account would be enough to put that account in a thread before they
+        // ever agreed to join the firm.
+        const people = (await rosterFor(g.orgId)).filter((p) => !p.pending && p.userId);
         const allowed = new Map(people.map((p) => [p.userId, p]));
         const me = String(g.user.id);
         const others = want.memberIds.filter((id) => id !== me);
@@ -24050,42 +24070,52 @@ const server = http.createServer((req, res) =>
         }
 
         const now = new Date().toISOString();
-        let thread = null;
-        if (want.kind === "dm") {
-          const key = MSG.dmKey(me, others[0]);
-          // "" is a refusal, never a value to store: stored, it would collide
-          // with every other unkeyable pair under msg_threads_dm_uidx.
-          if (!key) return sendJson(res, 400, { error: "Pick a colleague to message." });
-          const existing = await sbRequest("GET",
+        const COLS = "id,org_id,kind,title,dm_key,created_at,last_message_at";
+
+        // ONE creation path for a direct message and a group, because they
+        // are the same act with a different number of people.
+        //
+        // A conversation is identified by WHO IS IN IT, so it is looked up
+        // before it is made and picking the same people twice reopens the one
+        // room they already share. With no names anywhere (owner's,
+        // 2026-09-01) that is the only consistent answer: two rooms holding
+        // the same people would be two identical rows in the list.
+        const key = MSG.participantKey([me, ...others]);
+        // "" cannot happen here (others is non-empty and excludes the caller),
+        // but a stored "" would collide with every other unkeyable set under
+        // the partial unique index, so it is refused rather than trusted.
+        if (!key) return sendJson(res, 400, { error: "Pick somebody to message." });
+        const findByKey = async () => {
+          const rows = await sbRequest("GET",
             `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
-            `&dm_key=eq.${encodeURIComponent(key)}` +
-            `&select=id,org_id,kind,title,dm_key,created_at,last_message_at&limit=1`);
-          thread = (existing && existing[0]) || null;
-          if (!thread) {
-            try {
-              const made = await sbRequest("POST", "msg_threads?select=id,org_id,kind,title,dm_key,created_at,last_message_at",
-                [{ org_id: g.orgId, kind: "dm", dm_key: key, created_by: g.user.id, created_at: now, last_message_at: now }],
-                { prefer: "return=representation" });
-              thread = (made && made[0]) || null;
-            } catch (err) {
-              // READ-THEN-INSERT with a race catch, never on_conflict:
-              // msg_threads_dm_uidx is PARTIAL and PostgREST cannot infer a
-              // partial index (42P10 — the bug that once made every hub vault
-              // send fail, 100%). Both colleagues pressing "message" at the
-              // same moment is exactly the race this catches.
-              if (!/23505|409/.test(String(err.message))) throw err;
-              const again = await sbRequest("GET",
-                `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
-                `&dm_key=eq.${encodeURIComponent(key)}` +
-                `&select=id,org_id,kind,title,dm_key,created_at,last_message_at&limit=1`);
-              thread = (again && again[0]) || null;
-            }
+            `&dm_key=eq.${encodeURIComponent(key)}&select=${COLS}&limit=1`);
+          return (rows && rows[0]) || null;
+        };
+
+        let thread = await findByKey();
+        if (!thread) {
+          try {
+            const made = await sbRequest("POST", `msg_threads?select=${COLS}`,
+              [{
+                org_id: g.orgId,
+                kind: want.kind,
+                title: "",
+                dm_key: key,
+                created_by: g.user.id,
+                created_at: now,
+                last_message_at: now,
+              }],
+              { prefer: "return=representation" });
+            thread = (made && made[0]) || null;
+          } catch (err) {
+            // READ-THEN-INSERT with a race catch, never on_conflict:
+            // msg_threads_dm_uidx is PARTIAL and PostgREST cannot infer a
+            // partial index (42P10 — the bug that once made every hub vault
+            // send fail, 100%). Two colleagues pressing "message" at the same
+            // moment is exactly the race this catches.
+            if (!/23505|409/.test(String(err.message))) throw err;
+            thread = await findByKey();
           }
-        } else {
-          const made = await sbRequest("POST", "msg_threads?select=id,org_id,kind,title,dm_key,created_at,last_message_at",
-            [{ org_id: g.orgId, kind: "channel", title: want.title, created_by: g.user.id, created_at: now, last_message_at: now }],
-            { prefer: "return=representation" });
-          thread = (made && made[0]) || null;
         }
         if (!thread) return sendJson(res, 502, { error: "Couldn't open that conversation. Please try again." });
 
@@ -24171,6 +24201,11 @@ const server = http.createServer((req, res) =>
             sharedBy: String(c.shared_by_name || ""),
             snapshot: c.snapshot || {},
             savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
           });
         }
         const names = await namesFor(rows);
@@ -24233,6 +24268,11 @@ const server = http.createServer((req, res) =>
             sharedAt: c.created_at,
             snapshot: c.snapshot || {},
             savedByMe: saved.has(String(c.id)),
+            // Did the READER send this one? A comp you sent came out of your
+            // own vault, so offering you a Save button is a control that can
+            // only be a no-op (the dedupe check answers "already"). The card
+            // says so instead. Buy-button rule.
+            mine: String(c.shared_by || "") === String(g.user.id),
           })),
         });
       })().catch((err) => {

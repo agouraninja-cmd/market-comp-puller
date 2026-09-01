@@ -115,5 +115,5 @@ test("a refusal the server already knows is rendered before any fetch", () => {
   const html = renderMessagesBody({ s: 403, j: { error: "Messages are for your firm.", code: "no_firm" } });
   assert.match(html, /Messages are for your firm/);
   // ...and the door out of it is a real page, not a dead end.
-  assert.match(html, /href="\/firms"/);
+  assert.match(html, /href="\/brokers-firms"/);
 });

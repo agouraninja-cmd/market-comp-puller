@@ -162,7 +162,7 @@ test("/pricing is reachable from the footer of every public page", async (t) => 
   const srv = await boot({});
   t.after(() => srv.stop());
 
-  for (const p of ["/", "/brokers", "/markets", "/firms"]) {
+  for (const p of ["/", "/brokers-firms", "/markets"]) {
     const html = await (await fetch(srv.base + p)).text();
     assert.ok(html.includes('href="/pricing"'), `${p} links to /pricing`);
   }

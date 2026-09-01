@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // /faq — the questions a stranger asks before they sign up.
 //
-// Pure, like firms-page.js, bulk-page.js and guide-1031.js: it takes its
+// Pure, like brokers-firms-page.js, bulk-page.js and guide-1031.js: it takes its
 // inputs and returns a string. No I/O, no requires, no clock reads. server.js
 // owns the route, the SEO metadata and the shell; this file decides what is
 // asked and how it is drawn.
@@ -28,7 +28,8 @@
 //      never hand-write a question into the markup below.
 //   2. EVERY ANSWER IS A PROMISE THE CODE KEEPS. These reach search engines
 //      as structured data. Check each against the code before editing one,
-//      exactly as BROKERS_FAQ's and HOW_FAQ's answers are checked — and see
+//      the way BROKERS_FAQ's and HOW_FAQ's answers were before both were
+//      retired into this one array (2026-09-01) — and see
 //      the notes on the four answers that were corrected off the design
 //      before they shipped. `pricing` is passed IN rather than typed, for the
 //      reason HOW_FAQ records: the monthly figure has been caught stale

@@ -211,10 +211,12 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
-// /firms — the public pitch for firm accounts. A marketShell BODY, like
-// bulk-page.js. The shop-kind sentences are PASSED IN from ORG rather than
-// required there, so this page can never become a second copy of them.
-const { renderFirmsPageBody } = require("./firms-page");
+// /brokers-firms — the one public pitch to the professional audience, which
+// replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
+// like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
+// from ORG and PRICING rather than required there, so this page can never
+// become a second copy of either.
+const { renderBrokersFirmsPageBody } = require("./brokers-firms-page");
 // /pricing — the linkable rate card. Same body-only shape; the figures are
 // handed in from PRICING so the page and the FAQ cannot quote different ones.
 const { renderPricingPageBody } = require("./pricing-page");
@@ -421,9 +423,9 @@ function proEnabledFor(user) {
 // Redeeming sets users.pro_tester, so the grant follows the ACCOUNT across
 // devices and survives a passkey rotation — and revoking one tester is a
 // one-row UPDATE, without changing the passkey for everyone else. See the
-// comped-tester branch in entitlements.js for what it grants (everything Pro
-// except the broker vault) and what it cannot override (PRO_ENABLED, and a
-// real paid subscription).
+// comped-tester branch in entitlements.js for what it grants (everything Pro,
+// vault and bulk included since 2026-09-01) and what it cannot override
+// (PRO_ENABLED, and a real paid subscription).
 const TESTER_PASSKEY = (process.env.TESTER_PASSKEY || "").trim();
 
 // The vault's own shared passkey — the broker-onboarding door, and the reason
@@ -8872,10 +8874,14 @@ const ACCOUNT_NAV_JS =
   `var pro=(res[0]||{}).pro||{},me=res[1];` +
   `var live=Boolean(pro.billing),isPro=Boolean(pro.isPro);` +
   `show($("navPricing"),live&&!isPro);` +
-  // Page-level upgrade links (e.g. /brokers' Pro card) share Pricing's rule
-  // but default VISIBLE in the markup: most visitors are not Pro, so the
-  // common case never waits on this fetch. A member (or a dark deployment)
-  // sees it wink out once entitlements land.
+  // Page-level upgrade links share Pricing's rule but default VISIBLE in the
+  // markup: most visitors are not Pro, so the common case never waits on this
+  // fetch. A member (or a dark deployment) sees it wink out once entitlements
+  // land. NO PAGE RENDERS THIS ID TODAY — /brokers' Pro card was the only
+  // one, and it went with that page on 2026-09-01 (/brokers-firms sends every
+  // reader to /pricing instead, which navPricing above already governs). The
+  // hook is kept, guarded, because the rule is about a shape of link rather
+  // than about that one card; delete it if a year passes with no consumer.
   `var upl=$("upgradeProLink");if(upl)upl.hidden=!live||isPro;` +
   `show($("navDesk"),Boolean(me));show($("navSignIn"),!me);show($("navAcct"),Boolean(me));` +
   // The shell follows identity too (2026-08-30), matching what index.html's
@@ -9597,6 +9603,12 @@ ${ACCOUNT_NAV_CSS}`;
 // by "For firms": the two audience pages are what a stranger is browsing for,
 // and a footer link is not where they look. They lead the list; the 1031 guide
 // and the download keep their order behind them.
+// The two of them became ONE entry on 2026-09-01 (design 4a): /brokers and
+// /firms were two pitches to the same reader — a broker deciding whether to
+// bring their book, and the same broker deciding whether to bring their
+// office — sharing an audience, a price answer and a privacy argument while
+// spending two of the four slots in the one menu that has to sell the product
+// to a stranger. Both paths 301 to /brokers-firms, so an old link still lands.
 // "1031 guide" left this list 2026-08-29 (owner's call) and became a
 // top-level row in every nav, for the reason Pricing and Markets left before
 // it: the rail HIDES this dropdown outright (`nav>details{display:none}` --
@@ -9606,13 +9618,12 @@ ${ACCOUNT_NAV_CSS}`;
 // not a browse link, so it is promoted rather than left to the footer. The
 // three that remain are for strangers, which is who still opens Explore.
 const NAV_LINKS = [
-  ["/brokers", "Brokers"],
-  ["/firms", "For firms"],
+  ["/brokers-firms", "For brokers &amp; firms"],
   // The FAQ, a page of its own since 2026-09-01 (design 3b). It was nine
   // accordions at the foot of the landing page, reachable only by scrolling
   // the page a stranger arrives on to the bottom, and linked from the footers
-  // as an anchor into it. It sits with Brokers and For firms because it
-  // answers the same reader: somebody deciding, before they have an account.
+  // as an anchor into it. It sits beside the audience page because it answers
+  // the same reader: somebody deciding, before they have an account.
   // Not anonOnly — a member asks "what does a shared report expose" too, and
   // unlike the 1031 guide this is not a surface worth a top-level row.
   ["/faq", "FAQ"],
@@ -10248,11 +10259,12 @@ const FOOTER_LINK_COLS =
   `<div class="cols">` +
   `<div><div class="ch">Explore</div>` +
   `<ul aria-label="Explore"><li><a href="/markets">Markets</a></li>` +
-  `<li><a href="/brokers">Brokers</a></li>` +
-  // /firms sits beside /brokers: the two are the same kind of page (a pitch to
-  // a professional audience) and the footer is the only surface every public
-  // page shares, so a page missing from it is a page nothing links to.
-  `<li><a href="/firms">For firms</a></li>` +
+  // One entry, not the two that stood here until 2026-09-01: /brokers and
+  // /firms were the same kind of page (a pitch to a professional audience) to
+  // the same reader, and they merged into /brokers-firms. The footer is the
+  // only surface every public page shares, so a page missing from it is a page
+  // nothing links to.
+  `<li><a href="/brokers-firms">For brokers &amp; firms</a></li>` +
   // Pricing had no URL at all until 2026-08-28 — only a modal inside
   // index.html, which cannot be linked, indexed, or sent in an email.
   `<li><a href="/pricing">Pricing</a></li>` +
@@ -12349,25 +12361,9 @@ ${ACCOUNT_NAV_CSS}`;
 // results). Four of its ten answers were NOT carried over, on the owner's
 // call that /faq ships the ten questions the design specifies: "What is a
 // comp in commercial real estate?", the broker-submission answer (still
-// answered at length by BROKERS_FAQ below), "Can I find out what my building
+// answered at length by /brokers-firms), "Can I find out what my building
 // is worth?" and "How accurate are the reports?". If any of those turns out
 // to have been earning traffic, /faq is where it goes back.
-
-// One Q/A array feeds both the /brokers FAQ block and its FAQPage JSON-LD, so
-// the two can never drift. Broker-specific: do not copy HOW_FAQ, which answers
-// owners. No em dashes. Never "appraisal". Never claim CompNinja is a broker.
-const BROKERS_FAQ = [
-  ["Do I have to pay to submit a comp?",
-   "No. Submitting is free. Pro is the private vault, the pipeline, and the rest of the paid product."],
-  ["Who sees an owner's contact details?",
-   "Nobody but our team. Introductions are made by hand. We never pass your details to an owner, or theirs to you, without asking first."],
-  ["What does the Verified badge mean?",
-   "A named broker vouched for this deal and our team reviewed it. It is the strongest provenance a report shows."],
-  ["Is my vault private?",
-   "Yes. Uploaded comps are visible only to you until you choose otherwise, and there are exactly two ways to choose: publishing one to CompNinja's records, or sharing one with your own firm. Both are per-comp, both are explicit, and both are reversible. Nothing else is ever read out of your vault."],
-  ["How long does review take?",
-   "We review every submission by hand. Approved comps start appearing on matching reports after that."],
-];
 
 // ---------------------------------------------------------------------------
 // /download — where users get the standalone desktop app (desktop-app/, an
@@ -12436,172 +12432,6 @@ function renderDownloadPageHTML(signedIn) {
 }
 
 // ---------------------------------------------------------------------------
-// /brokers — the broker side of the product on its own indexable URL. This
-// content used to be a two-card section low on the landing page reachable only
-// by a scroll-to button ("For Brokers"); it moved here so it has a title, a
-// canonical URL, and room to grow into a real contributor hub.
-// Rendered through marketShell (MARKET_CSS/BAR/FOOTER) like /markets and
-// /broker/<slug>, so it does NOT depend on the purged tailwind.css.
-// The "Submit a comp" CTA points at /?submit=comp: the submission form is the
-// modal that lives in index.html, and one form beats two copies of it. It is a
-// QUERY, not the /#submit-comp fragment it used to be, because ACCOUNT_WALL
-// decides what "/" serves on the server and a fragment never reaches it, so
-// the hash link left every logged-out broker on the landing page with no modal
-// and no anchor. See the wall's door list in the static handler.
-// ---------------------------------------------------------------------------
-function renderBrokersPageHTML(signedIn) {
-  const title = "For Commercial Real Estate Brokers | CompNinja";
-  const canonical = `${SITE_URL}/brokers`;
-  // Trimmed to the ~160 characters Google renders; it was 180.
-  const description =
-    "Submit a comp and it carries your firm's name on every report that uses it. " +
-    "Contributing brokers also get introduced to owners weighing a sale.";
-
-  const jsonLd = JSON.stringify({
-    "@context": "https://schema.org",
-    "@graph": [
-      ...brandGraph(),
-      {
-        "@type": "WebPage",
-        name: "Brokers",
-        description,
-        url: canonical,
-        isPartOf: { "@id": WEBSITE_ID },
-        publisher: { "@id": ORG_ID },
-        breadcrumb: {
-          "@type": "BreadcrumbList",
-          itemListElement: [
-            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
-            { "@type": "ListItem", position: 2, name: "Brokers", item: canonical },
-          ],
-        },
-      },
-      {
-        "@type": "FAQPage",
-        mainEntity: BROKERS_FAQ.map(([q, a]) => ({
-          "@type": "Question",
-          name: q,
-          acceptedAnswer: { "@type": "Answer", text: a },
-        })),
-      },
-    ],
-  });
-
-  // Reworked 2026-08-14 (hero exhibit + path + FAQ around the two ledgers).
-  // Standing rules:
-  //   - ONE submit door: the bottom CTA. Nothing above it links to the form.
-  //   - Compliance line stays: we connect, we never broker.
-  //   - The Verified chip is SHOWN (inline green on span.badge — NOT
-  //     class="badge v", whose .v collides with .tile .v in MARKET_CSS).
-  //   - Contribute and Pro are two ledgers, not one list, so the vault does
-  //     not read as free. Proof line is real MARKET_CREDIT or nothing.
-  //   - The path is .bkpath/.bkbeat, never .steps (Method's sequence).
-  //   - BROKERS_FAQ feeds both the accordions and the FAQPage JSON-LD.
-
-  // Proof: up to four real firm · market credits. byMarket keys are
-  // lowercased "city, st"; re-case for display (title-case city, upper state).
-  const credits = [];
-  for (const [market, firms] of Object.entries(MARKET_CREDIT.byMarket)) {
-    const [city = "", st = ""] = market.split(", ");
-    const display = city.replace(/\b\w/g, (c) => c.toUpperCase()) + (st ? ", " + st.toUpperCase() : "");
-    for (const firm of firms) credits.push(`${escHtml(firm)} &middot; ${escHtml(display)}`);
-    if (credits.length >= 4) break;
-  }
-  const proof = credits.length
-    ? `<p class="disc" style="margin:22px 0 0">Recently credited: ${credits.slice(0, 4).join(" &ensp;&bull;&ensp; ")}</p>`
-    : "";
-
-  const contributeRows = [
-    ["CREDIT", "Submitted comps carry your name",
-     "Every report that uses one of your comps shows a green Verified badge and your firm's name.",
-     `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span>`],
-    ["INTROS", "Owners in your markets",
-     "When an owner in your market wants a broker's opinion of value, we introduce them to you.",
-     ""],
-    ["PROFILE", "A public page with your comps",
-     "A public profile page with your verified comps.",
-     ""],
-  ];
-  const proRows = [
-    ["BOOK", "Upload and organize your book",
-     "Upload and organize your comp book.", ""],
-    ["PIPELINE", "Watch your markets",
-     "Watch your markets for leads.", ""],
-    ["PRIVATE", "Exclusively yours",
-     "Exclusively private to you.", ""],
-  ];
-  const ledgerHtml = (rows) => rows.map(([lab, h, p, chip]) =>
-    `<div class="bkrow"><div class="bklag">${lab}</div><div>` +
-    `<h3>${escHtml(h)}</h3>` +
-    (chip ? chip : "") +
-    `<p>${escHtml(p)}</p></div></div>`).join("");
-
-  const faqBlock = BROKERS_FAQ.map(([q, a]) =>
-    `<details class="q"><summary>${escHtml(q)}</summary><p>${escHtml(a)}</p></details>`).join("");
-
-  const body =
-    `<div class="bkhero">` +
-    `<div><div class="kicker">For brokers</div>` +
-    `<h1>Your comps, your name, on every report that uses them.</h1>` +
-    `<p class="sub">We build valuation reports from public data. Comps confirmed by a local ` +
-    `broker rank highest, and they carry that broker's name.</p></div>` +
-    `<div class="bkex">` +
-    `<div class="bkexcap"><span>On a live report</span><span>Illustrative</span></div>` +
-    `<div class="bkexbody">` +
-    `<div class="bkexaddr">9020 Center Ave, Rancho Cucamonga, CA</div>` +
-    `<div class="bkexmeta">Industrial &middot; 21,600 SF &middot; 5 comparables</div>` +
-    `<div class="bkexlab">Comparable properties</div>` +
-    `<div class="bkexrow on"><div class="bkexline"><span>9020 Center Ave</span><span>$238</span></div>` +
-    `<span class="badge" style="color:var(--ok-text);background:var(--ok-bg)">Verified &middot; via Your Firm</span></div>` +
-    `<div class="bkexrow"><div class="bkexline"><span>11215 4th St</span><span>$226</span></div></div>` +
-    `<div class="bkexrow"><div class="bkexline"><span>8933 Utica Ave</span><span>$219</span></div></div>` +
-    `</div></div></div>` +
-
-    `<h2 class="bkhead">For submitting a comp.</h2>` +
-    `<div class="bk">${ledgerHtml(contributeRows)}</div>` +
-    proof +
-
-    `<div class="kicker">How a submission works</div>` +
-    `<h2 class="bkhead">Four facts. We review. Your name stays on it.</h2>` +
-    `<div class="bkpath">` +
-    `<div class="bkbeat"><div class="bknum">I.</div><h3>Four facts</h3>` +
-    `<p>Address, date, price, and size. About a minute.</p></div>` +
-    `<div class="bkbeat"><div class="bknum">II.</div><h3>We review</h3>` +
-    `<p>Our team checks the deal before it can carry the Verified badge.</p></div>` +
-    `<div class="bkbeat"><div class="bknum">III.</div><h3>Your name</h3>` +
-    `<p>Every report that uses it shows Verified &middot; via your firm.</p></div>` +
-    `</div>` +
-
-    `<h2 class="bkhead">With Pro.</h2>` +
-    `<div class="bk">${ledgerHtml(proRows)}</div>` +
-    `<p class="bklinks"><a href="/vault">Open your vault &rarr;</a>` +
-    `<span id="upgradeProLink"> &nbsp;&middot;&nbsp; ` +
-    `<a href="/?pricing=1">Upgrade to Pro &rarr;</a></span></p>` +
-
-    `<div class="kicker">Questions</div>` +
-    `<h2 class="bkhead faqhead">FAQ</h2>` +
-    `<div id="faq">${faqBlock}</div>` +
-
-    `<div class="cta"><h2>Have a comp we should know about?</h2>` +
-    `<p>It takes about a minute: the address, date, price, and size. We handle the review.</p>` +
-    `<a class="btn" href="/?submit=comp">Submit a comp</a></div>` +
-
-    // The 1031 guide in its own card, below the submit CTA (owner
-    // 2026-08-10) — a broker mid-exchange is a different reader than one
-    // holding a comp. Bordered button, not .btn: the red button stays the
-    // submit door's alone.
-    `<div class="card"><h2>Working a 1031 exchange?</h2>` +
-    `<p>An identification worksheet for the 45 and 180 day deadlines. Send it to your client.</p>` +
-    `<a href="/1031-exchange" style="display:inline-block;background:var(--paper);border:1px solid var(--edge);` +
-    `color:var(--ink);font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px">` +
-    `Open the worksheet</a></div>` +
-    `<p class="disc">CompNinja is not a licensed brokerage. Introductions are made by our team, and ` +
-    `broker contact details are never passed on without asking first.</p>`;
-
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/brokers" });
-}
-
-// ---------------------------------------------------------------------------
 // /leadership — who is behind the product. Rendered through marketShell like
 // /brokers, so it carries no CSS of its own and does NOT depend on the purged
 // tailwind.css; its classes live in MARKET_CSS beside the .bk* rules it was
@@ -12642,27 +12472,42 @@ const TEAM = [
 ];
 
 // ---------------------------------------------------------------------------
-// /firms — the public front door for firm accounts.
+// /brokers-firms — the one public pitch to the professional audience.
 //
-// Rendered through marketShell like /brokers and /leadership, so it carries no
-// CSS of its own and does NOT depend on the purged tailwind.css. The body
-// lives in firms-page.js; this function owns only the SEO metadata and the
-// shell, which is where every other page's metadata lives too.
+// It REPLACED /brokers and /firms on 2026-09-01 (design 4a); both 301 here.
+// Those were two pages selling to the same reader — a broker deciding whether
+// to bring their comp book, and the same broker deciding whether to bring
+// their office — with one price answer and one privacy argument between them,
+// and they spent two of the four Explore slots saying it twice.
 //
-// ORG.SHOP_KINDS / ORG.SHOP_COPY are handed IN rather than required by the
-// page module, which keeps that module pure and — more to the point — keeps
-// the shop sentences single-sourced. They are read here by the invite
-// email, the create box in index.html and now this page; a fourth hand-typed
-// copy is the one that goes stale, so test/firms-page.test.js fails the build
-// if any of them appears as a literal in firms-page.js.
+// Rendered through marketShell like /leadership and /pricing. Unlike those the
+// body brings its OWN stylesheet, in the body rather than through the shell's
+// `head`: the design is full-bleed alternating bands, which needs
+// `main.wrap{max-width:none}` to win against MARKET_CSS, and `head` is emitted
+// BEFORE it. That is /faq's and /bulk's rule, for the same reason.
+//
+// ORG.SHOP_KINDS / ORG.SHOP_COPY and PRICING are handed IN rather than
+// required by the page module, which keeps that module pure and — more to the
+// point — keeps the shop sentences and the figures single-sourced. The shop
+// copy is read by the invite email, the create box in index.html and this
+// page; the prices by /pricing and the FAQ. A hand-typed copy is the one that
+// goes stale, so test/brokers-firms-page.test.js fails the build if any
+// `arrivals` string appears as a literal in brokers-firms-page.js.
+//
+// WHAT DID NOT SURVIVE THE MERGE, deliberately: BROKERS_FAQ and its FAQPage
+// JSON-LD (owner's call — the questions belong on /faq, and only one page
+// should carry FAQ structured data) and the /brokers proof line off
+// MARKET_CREDIT. What DID survive is the /?submit=comp door, in the closing
+// band: it is the site's only public entrance to the comp-submission modal,
+// and broker-contributed comps are the whole verified-comp layer.
 // ---------------------------------------------------------------------------
-function renderFirmsPageHTML(signedIn) {
-  const title = "Firm Accounts for Brokerages and Development Shops | CompNinja";
-  const canonical = `${SITE_URL}/firms`;
+function renderBrokersFirmsPageHTML(signedIn) {
+  const title = "For Commercial Real Estate Brokers and Firms | CompNinja";
+  const canonical = `${SITE_URL}/brokers-firms`;
   // Kept under the ~160 characters Google renders.
   const description =
-    "One shared shelf for your whole shop. Every valuation anyone runs lands on " +
-    "every colleague's workspace, attributed and searchable.";
+    "Upload the comp book you already keep. It stays private, your deals show up in " +
+    "every report you run, and a firm account puts the whole office on one shelf.";
 
   const jsonLd = JSON.stringify({
     "@context": "https://schema.org",
@@ -12670,7 +12515,7 @@ function renderFirmsPageHTML(signedIn) {
       ...brandGraph(),
       {
         "@type": "WebPage",
-        name: "Firm accounts",
+        name: "For brokers & firms",
         description,
         url: canonical,
         isPartOf: { "@id": WEBSITE_ID },
@@ -12679,20 +12524,24 @@ function renderFirmsPageHTML(signedIn) {
           "@type": "BreadcrumbList",
           itemListElement: [
             { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
-            { "@type": "ListItem", position: 2, name: "Firms", item: canonical },
+            { "@type": "ListItem", position: 2, name: "For brokers & firms", item: canonical },
           ],
         },
       },
     ],
   });
 
-  const body = renderFirmsPageBody({
+  const body = renderBrokersFirmsPageBody({
     signedIn,
     shopKinds: ORG.SHOP_KINDS,
     shopCopy: ORG.SHOP_COPY,
+    pricing: PRICING,
+    esc: escHtml,
   });
 
-  return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/firms" });
+  return marketShell({
+    title, description, canonical, body, jsonLd, signedIn, current: "/brokers-firms",
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -13138,10 +12987,11 @@ function renderHowItWorksHTML({ signedIn = false } = {}) {
   // because it is no longer a self-declared duplicate of anything.
   //
   // What left with the split, and where it went: the vault hero and the firm
-  // shelf are the home page's intro and For-firms bands plus /firms; the
-  // sharing panes are /firms; the FAQ accordions are /faq; the brokers ledger
-  // is /brokers. What stayed is the part named on the tin — the three Method
-  // steps and the sample-report anatomy with its badge legend.
+  // shelf are the home page's intro and For-firms bands plus /brokers-firms;
+  // the sharing panes are /brokers-firms; the FAQ accordions are /faq; the
+  // brokers ledger is /brokers-firms. What stayed is the part named on the tin
+  // — the three Method steps and the sample-report anatomy with its badge
+  // legend.
   //
   // The title matches a question people actually type. Description trimmed to
   // the ~160 characters Google renders. No brand suffix here — this page's
@@ -13382,10 +13232,10 @@ ${marketBar(signedIn, "/how-it-works")}
     <!-- The FAQ accordions and the brokers ledger left this page on
          2026-09-01. The questions are /faq now, a URL that can be linked and
          indexed; the three broker trades were always a shorter restatement of
-         /brokers, which is where a broker is sent from here and from the
-         footer of every surface. Neither was methodology. -->
+         /brokers-firms, which is where a broker is sent from here and from
+         the footer of every surface. Neither was methodology. -->
     <p class="bkmore"><a href="/faq">Questions people ask before signing up &rarr;</a>
-      &nbsp;&middot;&nbsp; <a href="/brokers">See the broker side &rarr;</a></p>
+      &nbsp;&middot;&nbsp; <a href="/brokers-firms">See the broker side &rarr;</a></p>
 
     <div class="cta rv" data-rv>
       <h2 class="h" style="font-size:22px">Start with a free account.</h2>
@@ -25722,31 +25572,40 @@ const server = http.createServer((req, res) =>
     }));
   }
 
-  // --- Brokers — the contributor-facing page (header + footer nav). Same
-  // hour-long cache as /how-it-works. Sits above the /broker/<slug> profile
-  // matcher below so the two stay adjacent. ---
-  // Path-only match (split at "?" like /terms), or /brokers?utm_source=x
-  // 404s — found 2026-08-10 when a cache-busting query string hit a 404.
-  // --- Download the desktop app. Path-only match like /brokers below, so a
+  // --- Download the desktop app. Path-only match like the pages below, so a
   // campaign link's query string can't 404 it. ---
   if (req.method === "GET" && pagePath === "/download") {
     return sendShellPage(req, res, (signedIn) => renderDownloadPageHTML(signedIn));
   }
 
-  if (req.method === "GET" && pagePath === "/brokers") {
-    // The proof line reads MARKET_CREDIT; same stale-while-revalidate kick
-    // as the market pages, so the render never waits on the DB and the line
-    // simply doesn't appear until the cache has filled once.
-    if (Date.now() - MARKET_CREDIT.fetchedAt > MARKET_CREDIT_TTL_MS) refreshMarketCredit();
-    return sendShellPage(req, res, (signedIn) => renderBrokersPageHTML(signedIn));
+  // --- For brokers & firms — the merged professional pitch (header + footer
+  // nav). Same hour-long cache as /how-it-works. Sits above the
+  // /broker/<slug> profile matcher below so the two stay adjacent. ---
+  // Path-only match (split at "?" like /terms), or
+  // /brokers-firms?utm_source=x 404s — found 2026-08-10 on the page this
+  // replaced, when a cache-busting query string hit a 404.
+  if (req.method === "GET" && pagePath === "/brokers-firms") {
+    return sendShellPage(req, res, (signedIn) => renderBrokersFirmsPageHTML(signedIn));
+  }
+
+  // The two pages it replaced (2026-09-01). 301, not 302: these URLs were
+  // indexed, linked from outside, and sent in invite emails, and a permanent
+  // redirect is what hands their ranking to the page that answers now.
+  // pagePath is already split at "?", so the query string is dropped along
+  // with the old path — every door on the merged page is a link, not a
+  // parameter, and forwarding a stale ?submit=comp to a page that no longer
+  // reads it would be worse than dropping it. Cached for an hour like the
+  // page itself, so a crawler is not re-asking on every pass.
+  if (req.method === "GET" && (pagePath === "/brokers" || pagePath === "/firms")) {
+    res.writeHead(301, {
+      location: "/brokers-firms",
+      "cache-control": "public, max-age=3600",
+    });
+    return res.end();
   }
 
   if (req.method === "GET" && pagePath === "/leadership") {
     return sendShellPage(req, res, (signedIn) => renderLeadershipPageHTML(signedIn));
-  }
-
-  if (req.method === "GET" && pagePath === "/firms") {
-    return sendShellPage(req, res, (signedIn) => renderFirmsPageHTML(signedIn));
   }
 
   if (req.method === "GET" && pagePath === "/pricing") {
@@ -26357,8 +26216,9 @@ const server = http.createServer((req, res) =>
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
       `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/faq</loc></url>\n` +
-      `  <url><loc>${SITE_URL}/brokers</loc></url>\n` +
-      `  <url><loc>${SITE_URL}/firms</loc></url>\n` +
+      // One entry since 2026-09-01: /brokers and /firms merged here and now
+      // 301, and a sitemap must never list a URL that redirects.
+      `  <url><loc>${SITE_URL}/brokers-firms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
       `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +

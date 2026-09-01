@@ -39,7 +39,7 @@ const htmlTag = (doc) => (doc.match(/<html[^>]*>/) || [""])[0];
 const hasRail = (doc) => /\bnav-rail\b/.test(htmlTag(doc));
 
 // Every page that renders through marketShell and should wear the shell.
-const SHELL_PAGES = ["/markets", "/brokers", "/firms", "/pricing", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", "/brokers-firms", "/pricing", "/1031-exchange", "/terms", "/privacy"];
 
 test("a signed-in visitor gets the rail; an anonymous one never does", async (t) => {
   const srv = await boot({ NAV_SHELL: "rail" });
@@ -275,7 +275,7 @@ test("the rail hides Explore without taking the account cluster with it", () => 
   // #navAcct is a <details> TOO, so a bare `nav>details{display:none}` matched
   // both. That took the email, Upgrade to Pro, Manage billing and Sign out off
   // EVERY server-rendered page in rail mode: there was no way to sign out of
-  // /markets, /brokers, /pricing, /bulk or a market page without navigating
+  // /markets, /brokers-firms, /pricing, /bulk or a market page without navigating
   // back to the app first. No existing test saw it, because the MARKUP stayed
   // correct — only the computed style was wrong, which is the failure mode a
   // byte-identical-markup design is most exposed to.

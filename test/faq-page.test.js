@@ -48,7 +48,7 @@ test("the FAQ is reachable from every surface a stranger uses", async (t) => {
     // NAV_LINKS is one list with three consumers, so a link added there
     // reaches all of them. That is exactly what makes a missing one easy to
     // ship: nothing in any single file looks wrong.
-    for (const p of ["/", "/how-it-works", "/markets", "/brokers", "/firms", "/pricing"]) {
+    for (const p of ["/", "/how-it-works", "/markets", "/brokers-firms", "/pricing"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(html.includes('<a href="/faq">FAQ</a>'), p + " cannot reach the FAQ from its Explore menu");
     }
@@ -66,7 +66,7 @@ test("the FAQ is reachable from every surface a stranger uses", async (t) => {
     // It was href="/how-it-works#faq" until 2026-09-01, which still resolved
     // and landed a reader who asked a question at the top of a page whose FAQ
     // had moved out from under them.
-    for (const p of ["/", "/brokers"]) {
+    for (const p of ["/", "/brokers-firms"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/how-it-works#faq/.test(html), p + " still points the footer at the old anchor");
     }

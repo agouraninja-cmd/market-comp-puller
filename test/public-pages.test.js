@@ -35,7 +35,7 @@ const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
-const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/1031-exchange", "/terms", "/privacy"];
 
 test("the public pages let a visitor sign in", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
@@ -86,98 +86,23 @@ test("the broker contribution path is not a dead end", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });
   t.after(() => srv.stop());
 
-  await t.test("/brokers points its CTA at a door the wall actually opens", async () => {
+  await t.test("/brokers-firms points its submit door at a door the wall opens", async () => {
     // It used to link /#submit-comp. Under the wall an anonymous visitor at /
     // gets the landing page, which has no comp-submission modal and no such
-    // anchor, so the broker page's single most important button did nothing
-    // at all. Broker-contributed comps are the whole verified-comp layer.
-    const html = await (await fetch(srv.base + "/brokers")).text();
+    // anchor, so the broker page's single most important link did nothing at
+    // all. Broker-contributed comps are the whole verified-comp layer.
+    //
+    // The door SURVIVED the 2026-09-01 merge on purpose. Design 4a drew no
+    // submission link, and /brokers-firms is the only public page that offers
+    // one, so implementing the design literally would have retired the
+    // funnel's only public entrance. It moved into the closing band instead
+    // (owner's call) — smaller, but present.
+    const html = await (await fetch(srv.base + "/brokers-firms")).text();
     assert.ok(!/href="\/#submit-comp"/.test(html),
       "a bare hash link cannot survive the wall, which decides before the fragment is ever sent");
-    assert.match(html, /href="\/\?submit=comp"/, "the CTA needs a query the wall can see");
-  });
-
-  await t.test("/brokers is two stacked ledgers, not two cards", async () => {
-    // Spec: docs/superpowers/specs/2026-08-13-brokers-page-ledger-design.md
-    // Contribute vs Pro must stay two statements. One list makes the vault
-    // look like it comes with a submitted comp.
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    const offer = html.split("<h1>")[1].split('class="cta"')[0];
-    assert.equal((offer.match(/class="bk"/g) || []).length, 2,
-      "/brokers should show two ledgers");
-    const contribute = offer.split("For submitting a comp.")[1].split("With Pro.")[0];
-    const pro = offer.split("With Pro.")[1];
-    assert.ok(contribute && pro, "both ledger headings must exist");
-    assert.equal((contribute.match(/class="bkrow"/g) || []).length, 3,
-      "contribute ledger is three trades");
-    assert.match(contribute, /class="bklag">CREDIT</);
-    assert.match(contribute, /class="bklag">INTROS</);
-    assert.match(contribute, /class="bklag">PROFILE</);
-    assert.equal((contribute.match(/Verified &middot; via Your Firm/g) || []).length, 1,
-      "the credit chip is shown on Credit, once");
-    assert.ok(!/class="badge v"/.test(contribute),
-      "MARKET_CSS .v collides with .tile .v; the chip stays inline-styled");
-    assert.equal((pro.match(/class="bkrow"/g) || []).length, 3,
-      "Pro ledger is three trades");
-    assert.match(pro, /class="bklag">BOOK</);
-    assert.match(pro, /class="bklag">PIPELINE</);
-    assert.match(pro, /class="bklag">PRIVATE</);
-    assert.ok(!/Verified &middot; via Your Firm/.test(pro),
-      "the chip belongs on Credit, not on the vault");
+    assert.match(html, /href="\/\?submit=comp"/, "the door needs a query the wall can see");
     assert.equal((html.match(/href="\/\?submit=comp"/g) || []).length, 1,
       "exactly one Submit door");
-    assert.ok(!/class="steps"/.test(html), "do not reuse Method's 3-up");
-    assert.ok(!/class="grid"/.test(offer), "the offer is not a two-card grid");
-    assert.match(html, /Working a 1031 exchange\?/);
-    assert.match(html, /CompNinja is not a licensed brokerage/);
-    assert.match(html, /id="upgradeProLink"/);
-    assert.match(html, /class="bkhero"/, "the claim sits beside a report exhibit");
-    assert.match(html, /class="bkex"/, "the exhibit shows the Verified chip in situ");
-    assert.match(offer, /Illustrative/, "the exhibit must not read as a live pull");
-    assert.equal((html.match(/class="bkpath"/g) || []).length, 1,
-      "how a submission works is one path, not Method");
-    assert.equal((html.match(/class="bkbeat"/g) || []).length, 3,
-      "the path is three beats");
-    const pathChunk = html.split('class="bkpath"')[1].split('class="cta"')[0];
-    assert.ok(!/href="\/\?submit=comp"/.test(pathChunk),
-      "the path is not a second Submit door");
-  });
-
-  await t.test("/brokers FAQ matches its JSON-LD, and does not claim we are a broker", async () => {
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    const visible = (html.match(/<details class="q">/g) || []).length;
-    assert.equal(visible, 5, "five broker questions");
-    const ldBlocks = [...html.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/gs)];
-    const faq = ldBlocks.map((m) => JSON.parse(m[1])).map((doc) => {
-      const graph = doc["@graph"] || (doc["@type"] === "FAQPage" ? [doc] : []);
-      return graph.find((n) => n && n["@type"] === "FAQPage");
-    }).find(Boolean);
-    assert.ok(faq, "FAQPage node must ride the brokers page");
-    assert.equal(faq.mainEntity.length, visible,
-      "accordions and JSON-LD must both render every FAQ entry");
-    const answers = faq.mainEntity.map((q) => q.acceptedAnswer.text).join(" ");
-    assert.ok(!/\bwe are (a )?brokers?\b/i.test(answers),
-      "FAQ must not claim CompNinja is a brokerage");
-    assert.ok(!/\bappraisal\b/i.test(answers),
-      "FAQ must not call a report an appraisal");
-    assert.match(answers, /Submitting is free/,
-      "the first question has to stay the honest price answer");
-
-    // The vault-privacy answer is a PUBLIC promise about a broker's own book,
-    // and it rides into FAQPage JSON-LD, so search engines quote it back. It
-    // must name every way a comp can leave the vault. When this page was
-    // written publishing was the only one; sharing a comp with your firm
-    // (migration 032) landed before it merged, and the vault page itself
-    // stops saying "visible only to you" the moment something is shared
-    // (renderFirmPrivacy). A flat "never appears in anyone else's report
-    // unless you publish" would deny a sharing path that exists.
-    const vault = faq.mainEntity.find((q) => /vault private/i.test(q.name));
-    assert.ok(vault, "the vault-privacy question must stay on the page");
-    assert.match(vault.acceptedAnswer.text, /firm/i,
-      "the privacy answer must name firm sharing, not just publishing");
-    assert.ok(!/never appear in anyone else's report unless you publish one/i
-      .test(vault.acceptedAnswer.text),
-      "that phrasing denies firm sharing, which exists");
   });
 
   await t.test("that door serves the app, not the landing page", async () => {
@@ -284,18 +209,18 @@ test("the cost answer matches what the product actually sells", async (t) => {
   //
   // Design 3a keeps that and changes who it addresses: the home page's third
   // band is For firms rather than For brokers, and it closes on a link to
-  // /firms. The broker path is the Explore menu and the footer, which is what
-  // the 08-12 change was reacting against — WORTH RAISING WITH THE OWNER if
-  // broker acquisition is still the lever, because this is the one promise
-  // from that day the redesign does not keep in the body of the page.
+  // /brokers-firms — which since design 2a landed (2026-09-01) is the ONE page
+  // both audiences share, so that link is the broker path as well as the firm
+  // one. The 08-12 concern is answered by the band being in the body of the
+  // page rather than only in a closed dropdown.
   //
   // The two concrete promises it pinned are both still public and both still
-  // pinned: the privacy trade is /faq's answer below and BROKERS_FAQ's, and
-  // the Verified credit is /brokers' CREDIT row and the home page's tile.
+  // pinned below: the privacy trade in /faq's answer, and the Verified credit
+  // on /brokers-firms and in the home page's own tile.
   await t.test("a professional arriving at the home page has a path, not just a dropdown", async () => {
     const html = await (await fetch(srv.base + "/")).text();
     assert.match(html, /For firms — Pro version/, "the home page should address a firm directly");
-    assert.match(html, /href="\/firms"/, "and link to the page that sells to one");
+    assert.match(html, /href="\/brokers-firms"/, "and link to the page that sells to one");
     assert.match(html, /class="hmvault"/, "showing the vault it is selling, not only naming it");
   });
 
@@ -303,34 +228,32 @@ test("the cost answer matches what the product actually sells", async (t) => {
     const faq = await (await fetch(srv.base + "/faq")).text();
     assert.match(faq, /visible only to you[\s\S]{0,80}publish/i,
       "/faq should state the privacy trade plainly");
-    const brokers = await (await fetch(srv.base + "/brokers")).text();
-    assert.match(brokers, /Verified badge and your firm\S{0,6}s name/i,
-      "/brokers should name the credit a broker actually receives");
+    // Wording changed with design 4a (2026-09-01) — /brokers and /firms merged
+    // into /brokers-firms, which states the credit as one of exactly two exits
+    // from the vault rather than as a ledger row. The PROMISE is the same and
+    // is what is pinned: a published comp carries the green badge and the
+    // firm's name on every report that uses it.
+    const brokers = await (await fetch(srv.base + "/brokers-firms")).text();
+    assert.match(brokers, /badge with your firm\S{0,6}s name on every report/i,
+      "/brokers-firms should name the credit a broker actually receives");
     const home = await (await fetch(srv.base + "/")).text();
     assert.match(home, /carries your firm\S{0,6}s name on every report/i,
       "and the home page's Verified credit tile says the same thing");
   });
 
-  // Moved with the ledger it describes (2026-09-01). Private / Credit / Leads
-  // was the LANDING page's three-row statement of the broker trade; design 3a
-  // has no brokers band, so the rows that survive are /brokers' own —
-  // CREDIT / INTROS / PROFILE above BOOK / PIPELINE / PRIVATE. What is pinned
-  // is unchanged: the trades are a ledger of hairline rows, not a paragraph
-  // and not a clone of Method's three-up, and Credit SHOWS the chip rather
-  // than only describing it.
-  await t.test("the broker trades are a ledger, not a paragraph or a Method clone", async () => {
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    assert.equal((html.match(/class="bkrow"/g) || []).length, 6,
-      "/brokers should show two ledgers of three trades each");
-    assert.match(html, /class="bklag">CREDIT</, "the credit trade must keep its label");
-    assert.match(html, /class="bklag">INTROS</, "and the introductions trade");
-    assert.match(html, /class="bklag">PRIVATE</, "and the privacy trade");
-    assert.match(html, /Verified &middot; via Your Firm/,
-      "Credit should show the chip, not only describe it");
-    assert.ok(!/class="steps"/.test(html), "/brokers must not reuse Method's three-up");
-    // Method's own three-up is still where it belongs.
+  // What is left of the old "brokers is not a Method clone" pin. The ledger it
+  // guarded was the LANDING page's, and design 3a has no brokers band; the
+  // shape of /brokers-firms is owned by test/brokers-firms-page.test.js, which
+  // landed with that page. What still belongs here is the one cross-page fact
+  // neither file would otherwise assert: Method's three-up is the methodology
+  // page's and nothing else reuses it as a layout.
+  await t.test("Method's three-up belongs to the methodology page alone", async () => {
     const how = await (await fetch(srv.base + "/how-it-works")).text();
     assert.match(how, /class="steps"/, "Method still uses .steps, on the methodology page");
+    for (const p of ["/", "/faq", "/brokers-firms"]) {
+      const html = await (await fetch(srv.base + p)).text();
+      assert.ok(!/class="steps"/.test(html), p + " must not reuse Method's three-up");
+    }
   });
 
   await t.test("it still leads with the free tier, because that is true", async () => {

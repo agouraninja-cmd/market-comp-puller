@@ -455,7 +455,7 @@ test("bare environment", async (t) => {
   // page shipping without the chrome: accountNavSlots() is one call, so
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
       "/1031-exchange", "/how-it-works", "/faq", "/terms", "/privacy", "/vault", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
@@ -486,7 +486,7 @@ test("bare environment", async (t) => {
   // door must sit under ACCOUNT_NAV_JS's `if(!me)return;`, because that single
   // line is the whole guarantee that a signed-out visitor is never handed it.
   await t.test("the header's Pricing link is the rate card for a signed-out reader", async () => {
-    const pages = ["/markets", "/brokers", "/how-it-works", "/faq", "/leadership", "/pricing"];
+    const pages = ["/markets", "/brokers-firms", "/how-it-works", "/faq", "/leadership", "/pricing"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /<a id="navPricing" href="\/pricing"/,
@@ -522,7 +522,7 @@ test("bare environment", async (t) => {
     // /how-it-works is in this list because THIS file boots with the wall off,
     // which makes it a page of its own rather than the render `/` is serving.
     // Its walled behavior — no self-link — is pinned in account-wall.test.js.
-    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers",
+    const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
       "/1031-exchange", "/download", "/terms", "/privacy", "/leadership",
       // /how-it-works joined this list unconditionally on 2026-09-01. It was
       // already here because THIS file boots with the wall off; it now also
@@ -545,10 +545,10 @@ test("bare environment", async (t) => {
   // reasoning was right and is unchanged. What replaces Home is Workspace: a
   // destination, in the same position, one row down. (The CTA itself comes
   // off four pages as of 2026-08-30 — see the next test — which is why the
-  // page checked here is /brokers, where it stays. Checking it on /markets
+  // page checked here is /brokers-firms, where it stays. Checking it on /markets
   // would tie this test to a decision it is not about.)
   await t.test("a signed-in member gets Workspace where a visitor gets Home", async () => {
-    const html = await (await fetch(srv.base + "/brokers", {
+    const html = await (await fetch(srv.base + "/brokers-firms", {
       headers: { cookie: "cn_session=irrelevant-presence-only" },
     })).text();
     assert.ok(!html.includes(`<a href="/">Home</a>`),
@@ -590,7 +590,7 @@ test("bare environment", async (t) => {
     // widened set would go unnoticed. A market DETAIL page is deliberately in
     // here: it is reached FROM the explorer and passes no `current`.
     const member = { cookie: "cn_session=irrelevant-presence-only" };
-    for (const p of ["/brokers", "/pricing", "/firms", "/market/industrial-ontario-ca"]) {
+    for (const p of ["/brokers-firms", "/pricing", "/market/industrial-ontario-ca"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
       assert.match(nav, /class="btn sm" href="\/">Run a report/,
@@ -610,9 +610,9 @@ test("bare environment", async (t) => {
     assert.ok(!app.includes("<!--NAV_LINKS-->"),
       "the NAV_LINKS marker must be replaced at serve time, never shipped raw");
     const markets = await (await fetch(srv.base + "/markets")).text();
-    // The list itself, not a superset: /brokers and /how-it-works left the
-    // menu 2026-08-25 and both still appear in every footer, so a check for
-    // their mere presence in the HTML would pass either way and pin nothing.
+    // The list itself, not a superset: /how-it-works left the menu
+    // 2026-08-25 and still appears in every footer, so a check for its mere
+    // presence in the HTML would pass either way and pin nothing.
     // /1031-exchange left it 2026-08-29 and is pinned by the test below
     // instead, as a top-level row rather than a menu item.
     for (const href of ["/download"]) {
@@ -698,7 +698,7 @@ test("bare environment", async (t) => {
       return { menu, rows: nav.replace(/<details[\s\S]*?<\/details>/g, "") };
     };
 
-    for (const page of ["/markets", "/brokers", "/1031-exchange"]) {
+    for (const page of ["/markets", "/brokers-firms", "/1031-exchange"]) {
       const anon = split(await (await fetch(srv.base + page)).text());
       assert.match(anon.menu, GUIDE, page + ": a stranger's Explore menu lost the guide");
       assert.doesNotMatch(anon.rows, GUIDE,
@@ -825,23 +825,34 @@ test("bare environment", async (t) => {
       "ACCOUNT_NAV_JS's navBilling must also require billing to be live, as index.html does");
   });
 
-  // /brokers' "Upgrade to Pro" link hides itself for members via the shared
-  // hydration script. Two halves that must both exist or the link either
-  // never hides (id missing from the script) or never renders (id missing
-  // from the page); each alone passes a glance.
-  await t.test("/brokers upgrade link is wired to the entitlements hydration", async () => {
-    const html = await (await fetch(srv.base + "/brokers")).text();
-    assert.match(html, /id="upgradeProLink"/, "the link lost its id");
-    assert.match(html, /\$\("upgradeProLink"\)/,
-      "ACCOUNT_NAV_JS no longer decides this link's visibility");
-  });
-
   // The route matched req.url without stripping the query, so
   // /brokers?utm_source=x 404'd — the exact regression this file pins for
-  // every other page, found on /brokers 2026-08-10.
-  await t.test("/brokers survives a query string", async () => {
-    const r = await fetch(srv.base + "/brokers?utm_source=newsletter");
-    assert.equal(r.status, 200, "a campaign link to /brokers must not 404");
+  // every other page, found on the page /brokers-firms replaced, 2026-08-10.
+  await t.test("/brokers-firms survives a query string", async () => {
+    const r = await fetch(srv.base + "/brokers-firms?utm_source=newsletter");
+    assert.equal(r.status, 200, "a campaign link to /brokers-firms must not 404");
+  });
+
+  // /brokers and /firms merged into /brokers-firms on 2026-09-01. Both were
+  // indexed, both were linked from outside, and /firms was the URL in every
+  // invite email, so neither may 404 — and the redirect must be PERMANENT or
+  // the ranking they earned is not handed on. Checked with redirect:"manual",
+  // because fetch follows a 301 by default and a followed redirect looks
+  // exactly like a page that never moved.
+  await t.test("the two pages it replaced 301 here, tag and all", async () => {
+    for (const old of ["/brokers", "/firms"]) {
+      const r = await fetch(srv.base + old, { redirect: "manual" });
+      assert.equal(r.status, 301, old + " must redirect permanently, not 302 or 404");
+      assert.equal(r.headers.get("location"), "/brokers-firms",
+        old + " points somewhere other than the page that answers now");
+
+      // A campaign link carries a query string; pagePath is split at "?"
+      // before the match, so the tagged form redirects too rather than 404ing
+      // the way the untagged /brokers once did.
+      const tagged = await fetch(srv.base + old + "?utm_source=newsletter",
+        { redirect: "manual" });
+      assert.equal(tagged.status, 301, old + "?utm_source=x must redirect, not 404");
+    }
   });
 
   // Every public page, not just the two that happened to get a test
@@ -863,7 +874,7 @@ test("bare environment", async (t) => {
       ["/markets", /Market Snapshots/],
       ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
       ["/how-it-works", /<title>/],
-      ["/brokers", /For Commercial Real Estate Brokers/],
+      ["/brokers-firms", /For Commercial Real Estate Brokers and Firms/],
       ["/1031-exchange", /1031/],
       ["/download", /<title>/],
       ["/leadership", /<title>/],
@@ -896,7 +907,7 @@ test("bare environment", async (t) => {
   // the canonical has to keep pointing at the clean one -- otherwise this fix
   // trades a dead link for a pile of duplicate URLs in Search Console.
   await t.test("a tagged page canonicalizes to its clean URL", async () => {
-    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers"]) {
+    for (const p of ["/markets", "/market/industrial-ontario-ca", "/brokers-firms"]) {
       const html = await (await fetch(srv.base + p + "?utm_source=newsletter")).text();
       assert.match(html, new RegExp(`<link rel="canonical" href="[^"]*${p}"`),
         p + " canonicalizes a tagged link to something other than its clean URL");
@@ -978,7 +989,7 @@ test("bare environment", async (t) => {
       const i = html.indexOf('aria-label="Company"');
       return i < 0 ? "" : html.slice(i, html.indexOf("</ul>", i));
     };
-    for (const p of ["/", "/brokers", "/markets", "/1031-exchange", "/leadership"]) {
+    for (const p of ["/", "/brokers-firms", "/markets", "/1031-exchange", "/leadership"]) {
       const html = await (await fetch(srv.base + p)).text();
       const col = companyList(html);
       assert.ok(col, p + " has no Company column in its footer at all");
@@ -2077,8 +2088,10 @@ test("tester passkey", async (t) => {
     assert.equal(after.pro.tester, true);
     assert.equal(after.pro.isPro, true);
     assert.equal(after.pro.status, "tester");
-    // The one capability a tester is deliberately denied.
-    assert.equal(after.pro.canUseVault, false);
+    // Since 2026-09-01 a tester is Pro outright, vault included (owner's
+    // call); the redeem route is unchanged, this is entitlements.js reporting
+    // the wider grant through /api/config.
+    assert.equal(after.pro.canUseVault, true);
 
     // Redeeming twice is idempotent, not an error.
     const again = await redeem(PASSKEY, cookie);
@@ -2280,17 +2293,19 @@ test("vault passkey", async (t) => {
     t.after(() => srv.stop());
     const redeem = redeemer(srv);
 
-    // A tester code must not open the vault — that exclusion is the reason
-    // this second secret exists at all.
+    // Since 2026-09-01 a tester code DOES open the vault (owner's call), so
+    // the separation this test guards is now one-directional: the vault code
+    // must still not comp Pro, which the second half below still asserts.
     const testerCookie = await signUp(srv, "tester-only");
     assert.equal((await redeem(TESTER, testerCookie)).status, 200);
     const t1 = await (await fetch(srv.base + "/api/config", { headers: { cookie: testerCookie } })).json();
     assert.equal(t1.pro.isPro, true);
-    assert.equal(t1.pro.canUseVault, false, "the tester grant must still exclude the vault");
+    assert.equal(t1.pro.canUseVault, true, "a tester is Pro, vault included");
 
-    // ...and a tester still holding no vault grant is told a wrong code is
-    // wrong, rather than "already": there IS something left for them to
-    // redeem on this deployment.
+    // ...and a tester still holding no vault_beta ROW is told a wrong code is
+    // wrong, rather than "already": the redeem route's idempotency reads the
+    // stored flags, not the capabilities they resolve to, and this account
+    // does not hold the vault_beta grant even though it can use the vault.
     const wrong = await redeem("neither-of-them", testerCookie);
     assert.equal(wrong.status, 401);
 

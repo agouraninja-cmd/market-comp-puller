@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // The home page — what an anonymous visitor gets at `/` under ACCOUNT_WALL.
 //
-// Pure, like firms-page.js, faq-page.js and guide-1031.js: it takes its inputs
+// Pure, like brokers-firms-page.js, faq-page.js and guide-1031.js: it takes its inputs
 // and returns a string. No I/O, no requires, no clock reads. server.js owns
 // the route, the SEO metadata and the shell.
 //
@@ -437,7 +437,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     // monthly figure has been caught stale twice.
     `<div class="hmprice"><div>Put the whole office on one plan — <b>$${pricing.firmSeat} a seat</b>, ` +
     `minimum ${minSeats}. Individual Pro is $${pricing.monthly} a month.</div>` +
-    `<a href="/firms">For firms &rarr;</a></div>` +
+    `<a href="/brokers-firms">For firms &rarr;</a></div>` +
     `</div></section>` +
 
     // --- Closing band, its own section, NOT inside For firms ---------------

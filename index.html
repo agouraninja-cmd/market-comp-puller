@@ -1852,24 +1852,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
       <p id="pricingError" class="hidden mt-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
 
-      <!-- Comped access for beta testers. Hidden until /api/config resolves,
-           and shown only to a signed-in non-Pro visitor: the grant is stored
-           on an account, so there is nothing to attach it to signed out. -->
-      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
-        <button id="passkeyToggle" type="button" aria-expanded="false"
-          class="text-sm text-[#68707E] hover:text-[#374253] underline">
-          Have a code?
-        </button>
-        <div id="passkeyForm" class="hidden mt-3 flex flex-col sm:flex-row gap-2">
-          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Access code"
-            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <button id="passkeySubmit" type="button"
-            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
-            Redeem
-          </button>
-        </div>
-        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
-      </div>
+      <!-- The "Have a code?" disclosure lived here until 2026-08-31, when the
+           tester-code box MOVED into the Settings panel (#passkeyRow, owner's
+           call). One code, one control — the theme toggle's precedent from
+           2026-08-30, and the Plan row's: a second copy here would be a second
+           input, a second message element and a second visibility rule to keep
+           in step, for a box that is typed into once per person, ever. The
+           door is the account menu's Settings row (/desk?settings=1). -->
 
       <p class="text-xs text-[#68707E] mt-4">
         Prices in USD. Subscriptions are governed by our <a href="/terms" target="_blank" class="underline text-[#68707E] hover:text-[#374253]">Terms</a>.
@@ -2094,6 +2083,37 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
         </div>
         <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
+      </div>
+      <!-- Tester code. Moved here from the pricing modal's "Have a code?"
+           disclosure on 2026-08-31 (owner's call): the codes go to friends,
+           family and people testing the site, so the place to type one is the
+           panel you open to look at your own account — not a modal you open to
+           look at prices. One code, one control, on the theme toggle's
+           precedent from the day before; the pricing modal keeps no copy.
+           Sits directly under Plan because that is what it changes.
+
+           It is a row, not a disclosure: every other row in this panel shows
+           its control, and hiding an input behind a toggle inside a panel that
+           is itself behind a menu is one door too many.
+
+           Visibility is refreshBillingUI()'s, unchanged by the move — signed
+           in, a code configured on this deployment, and something still left
+           to redeem. Not gated on billing being live: a code is exactly what
+           someone uses on a deployment with no Stripe keys. VAULT_PASSKEY
+           redeems through this same input, by design (whoever was handed a
+           code should not also have to know which kind it is). -->
+      <div id="passkeyRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
+        <div class="text-sm font-medium text-[#1A2433]">Tester code</div>
+        <p class="text-xs text-[#68707E] mt-0.5">Got a code from us? Enter it here to unlock the paid features on this account.</p>
+        <div class="mt-3 flex flex-col sm:flex-row gap-2">
+          <input id="passkeyInput" type="text" autocomplete="off" placeholder="Enter your code" aria-label="Tester code"
+            class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          <button id="passkeySubmit" type="button"
+            class="shrink-0 w-full sm:w-auto bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Redeem
+          </button>
+        </div>
+        <p id="passkeyMsg" class="hidden mt-2 text-sm"></p>
       </div>
       <!-- Watchlist digest email. Signed-in only; state is
            currentUser.digestOptout, written through POST /api/account/digest.
@@ -12345,6 +12365,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     resetSettingsDeleteConfirm();
     document.getElementById("settingsDigestErr").classList.add("hidden");
     document.getElementById("settingsPlanError").classList.add("hidden");
+    document.getElementById("passkeyMsg").classList.add("hidden");
     showAvatarMsg("");
     applySettingsAccountUI();
     document.getElementById("settingsModal").classList.remove("hidden");
@@ -16799,7 +16820,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The nav's Pricing row is gone (2026-08-30); #settingsUpgradeBtn below
     // carries this same `!live || pro` rule, and is the one control now.
 
-    // The redeem row: signed-in, this deployment has a passkey configured, AND
+    // The tester-code row, in the SETTINGS panel since 2026-08-31 (it was the
+    // pricing modal's "Have a code?" disclosure before that; one code, one
+    // control). This rule did not move with it: signed-in, this deployment has
+    // a passkey configured, AND
     // there is still something this account could redeem. Deliberately NOT
     // gated on billingLive() — a code is exactly what someone uses on a
     // deployment with no Stripe keys, the same exception the vault link makes.
@@ -17138,13 +17162,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
   document.getElementById("pricingCancel").addEventListener("click", closePricingModal);
 
-  document.getElementById("passkeyToggle").addEventListener("click", (e) => {
-    const form = document.getElementById("passkeyForm");
-    const open = form.classList.toggle("hidden");
-    e.currentTarget.setAttribute("aria-expanded", String(!open));
-    if (!open) document.getElementById("passkeyInput").focus();
-  });
-
   async function submitPasskey() {
     const input = document.getElementById("passkeyInput");
     const btn = document.getElementById("passkeySubmit");
@@ -17176,13 +17193,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       // modal silently, which is right for a Pro code (the plan card behind it
       // already says Pro), would leave them with no idea what just happened.
       // So name it and point at it, and let them close the modal themselves.
+      // Say what happened, and leave the panel open. This used to close the
+      // pricing modal on a Pro grant, which was right there — the plan card
+      // behind it already said Pro. In Settings the Plan row is directly
+      // above this one and refreshProConfig() has just repainted it, so
+      // closing would hide the very confirmation the redemption earned.
+      //
+      // A vault code still names its destination: it lands somebody on a
+      // workspace they have never seen and were not looking for.
       if (Array.isArray(data.granted) && data.granted.indexOf("vault") !== -1) {
         msg.innerHTML = 'Your comp vault is open. <a href="/vault" class="underline font-semibold">Go to the vault</a>.';
         msg.className = "mt-2 text-sm text-emerald-700";
         msg.classList.remove("hidden");
         return;
       }
-      closePricingModal();
+      // `already` is the route's answer to a code this account has already
+      // redeemed. It is a 200, so it must not read as a failure.
+      msg.textContent = data.already
+        ? "This account already has everything that code unlocks."
+        : "You're all set — your code is applied to this account.";
+      msg.className = "mt-2 text-sm text-emerald-700";
+      msg.classList.remove("hidden");
     } catch (ex) {
       msg.textContent = ex.message;
       msg.className = "mt-2 text-sm text-red-700";

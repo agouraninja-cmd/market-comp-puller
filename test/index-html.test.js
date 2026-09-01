@@ -2692,3 +2692,70 @@ test("redeeming from Settings reports the outcome instead of closing a modal", (
   assert.ok(body.includes("data.already"),
     "an already-redeemed code must read as success, not failure");
 });
+
+// --- The tester feedback badge ----------------------------------------------
+//
+// The ninja in the corner is the beta channel, and it is the one control in
+// this file gated on holding the TESTER grant rather than on Pro. Three ways
+// to break it are invisible on screen, so each gets a test: it could ship
+// visible to everybody (a support inbox nobody promised to answer), its
+// hidden state could lose the cascade to .tninja's own display rule, and its
+// modal could be left out of the Escape lists — where the cost is not a stuck
+// modal but the REPORT underneath being closed and the typed feedback lost.
+
+test("the tester badge ships hidden and is revealed only by the tester grant", () => {
+  const badge = html.match(/<button id="testerBadge"[\s\S]{0,400}?>/);
+  assert.ok(badge, "#testerBadge not found");
+  assert.match(badge[0], /class="[^"]*\bhidden\b/,
+    "this file is one set of bytes served to everybody, so hidden is the pre-paint default");
+  assert.match(badge[0], /class="[^"]*\bno-print\b/, "chrome, not report content");
+  assert.match(badge[0], /class="[^"]*\bno-capture\b/, "and it must stay out of the PNG export");
+
+  const script = appScript();
+  // The TOGGLE specifically — a loose match lands on the click listener,
+  // which is the first mention of this id in the file.
+  const reveal = script.match(/getElementById\("testerBadge"\)\s*\.classList\.toggle\([^;]*;/);
+  assert.ok(reveal, "nothing reveals the badge");
+  assert.match(reveal[0], /isTesterPro\(\)/,
+    "reveal on the tester grant, through the existing helper rather than a second copy of the flag test");
+  assert.ok(!/proConfig\.tester\s*===?/.test(reveal[0]),
+    "do not re-implement isTesterPro() here — proConfig can be null before /api/config lands");
+});
+
+test("the badge's hidden state cannot lose the cascade to its own display rule", () => {
+  // .tninja sets display:grid. Tailwind's .hidden sets display:none, and both
+  // are single-class selectors, so whichever stylesheet comes last would win —
+  // the trap vault-page.js's .deck.hide rule documents. The two-class rule is
+  // what makes the outcome independent of that order.
+  assert.match(html, /\.tninja\.hidden\s*\{[^}]*display\s*:\s*none/,
+    ".tninja.hidden must restate display:none at two-class specificity");
+});
+
+test("the tester modal joins every list that decides what Escape closes", () => {
+  const script = appScript();
+  const cancels = script.match(/const MODAL_CANCELS = \[[\s\S]*?\];/);
+  assert.ok(cancels, "MODAL_CANCELS not found");
+  assert.match(cancels[0], /\["testerModal", "testerCancel"\]/,
+    "Escape must close this modal through its own cancel control, like every other");
+
+  // Both report-close and desk-close handlers carry an "is any modal open?"
+  // list. Missing from either, Escape over this modal closes the report
+  // underneath it and takes the half-typed bug report with it.
+  const guards = script.match(/\["leadModal", "acctModal"[^\]]*\]/g) || [];
+  assert.equal(guards.length, 2, "expected the two open-modal guard lists");
+  for (const g of guards) {
+    assert.ok(g.includes('"testerModal"'),
+      "testerModal must count as an open modal in both Escape guards: " + g);
+  }
+});
+
+test("a failed send keeps the tester's words on screen", () => {
+  const script = appScript();
+  const start = script.indexOf("async function sendTesterFeedback");
+  assert.ok(start > 0, "sendTesterFeedback not found");
+  const body = script.slice(start, start + 2600);
+  const clear = body.indexOf('box.value = ""');
+  const ok = body.indexOf("if (!r.ok) throw");
+  assert.ok(ok > 0 && clear > ok,
+    "the box may only be cleared after a confirmed success — retyping a bug report is how a tester stops sending them");
+});

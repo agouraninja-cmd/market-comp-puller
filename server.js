@@ -677,6 +677,28 @@ const LEAD_NOTIFY_EMAIL = (process.env.LEAD_NOTIFY_EMAIL || "agouraninja@gmail.c
 // delivers to the account owner, so outbound mail silently no-ops without it.
 const EMAIL_FROM = (process.env.EMAIL_FROM || "").trim();
 
+// Where a tester's feedback goes -- the ninja badge in the app's corner, which
+// only an account holding the tester grant can see.
+//
+// THREE people rather than one, because this is the beta channel: a bug report
+// that lands in a single inbox waits on that person being about, and a tester
+// who hears nothing back stops sending them. One message per address (sendEmail
+// wraps `to` in an array of its own, so an array here would post a nested one),
+// which also means one bad address cannot sink the other two.
+//
+// Env-overridable so a change of team is a Render edit rather than a deploy,
+// and split the way PRO_AUDIENCE is, so a stray space or a trailing comma
+// cannot leave "" in the recipient list.
+const TESTER_FEEDBACK_TO = (process.env.TESTER_FEEDBACK_EMAIL ||
+  "jacobadler@compninja.co,chuckdickinson@compninja.co,owenbarnes@compninja.co")
+  .split(",").map((a) => a.trim()).filter(Boolean);
+
+// What the badge offers, and the only values the route accepts. An unknown
+// kind is a 400 rather than a silent coercion to "other": the front end and
+// this list live in one repo, so a value that is not here is a bug in one of
+// them, and quietly relabelling it would hide that from both.
+const TESTER_FEEDBACK_KINDS = ["problem", "idea", "other"];
+
 // Public URL of this deployment, used in robots.txt/sitemap.xml. index.html's
 // canonical/og:url tags are written against DEFAULT_SITE_URL and rewritten to
 // SITE_URL at serve time, so moving to a custom domain is a single env change.
@@ -17737,6 +17759,105 @@ const server = http.createServer((req, res) =>
         // report success for a grant that did not land.
         console.error("redeem-passkey error:", err);
         return sendJson(res, 500, { error: "Could not redeem that code. Please try again." });
+      }
+    });
+    return;
+  }
+
+  // --- Tester feedback: the ninja badge in the app's corner ----------------
+  //
+  // The beta channel. Only an account carrying the tester grant sees the badge
+  // (index.html reveals it from /api/config's `pro.tester`), and this route
+  // re-checks the same entitlement server-side -- that flag is presentation
+  // only, like every field in that block.
+  //
+  // Refusal order mirrors openVault() and requireBroker(): the caller, then
+  // the caller's grant, then the deployment. Deliberately NOT open to admins
+  // or to ordinary Pro: the owner asked for the people using the site under a
+  // tester code, and a feedback button that everybody sees is a support inbox,
+  // which is a different product with different promises about answering.
+  if (req.method === "POST" && req.url === "/api/tester-feedback") {
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 2e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        // Per IP, and loose enough that a tester filing three bugs in a row is
+        // never told to wait -- the thing being protected is our own outbound
+        // mail reputation, not a secret, so this is nothing like the passkey's 5.
+        if (rateLimited("feedback:" + clientIp(req), 12, 60 * 60 * 1000)) {
+          return sendJson(res, 429, { error: "That is a lot of feedback in one hour. Please try again shortly." });
+        }
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Sign in first." });
+        const ent = await entitlementsFor(req);
+        if (ent.tester !== true) return sendJson(res, 403, { error: "This is for accounts on a tester code." });
+
+        const payload = JSON.parse(body || "{}");
+        const kind = String(payload.kind || "other").trim().toLowerCase();
+        if (!TESTER_FEEDBACK_KINDS.includes(kind)) return sendJson(res, 400, { error: "Unknown feedback kind." });
+        const message = String(payload.message || "").trim();
+        if (!message) return sendJson(res, 400, { error: "Please say what happened." });
+        if (message.length > 4000) return sendJson(res, 400, { error: "That is longer than we can send. Please trim it a little." });
+
+        // Context the tester did not have to type, and the three things that
+        // actually shorten a repro: where they were, how big their window is,
+        // and what they were browsing in. All client-supplied, so all capped
+        // and stringified -- this text is pasted into an email we send.
+        const ctx = payload.context && typeof payload.context === "object" ? payload.context : {};
+        const clip = (v, n) => String(v == null ? "" : v).replace(/[\r\n]+/g, " ").trim().slice(0, n);
+        const where = clip(ctx.url, 300);
+        const viewport = clip(ctx.viewport, 40);
+        const ua = clip(ctx.ua, 300);
+
+        const label = kind === "problem" ? "Problem" : kind === "idea" ? "Idea" : "Feedback";
+        const subject = `CompNinja tester ${label.toLowerCase()} from ${user.email}`;
+        const text = [
+          `${label} reported by a tester.`,
+          "",
+          message,
+          "",
+          "---",
+          `From:     ${user.email}`,
+          where ? `Page:     ${where}` : "",
+          viewport ? `Viewport: ${viewport}` : "",
+          ua ? `Browser:  ${ua}` : "",
+          `Build:    ${BUILD_COMMIT || "unknown"}`,
+          "",
+          "Reply to this email to answer the tester directly.",
+        ].filter(Boolean).join("\n");
+
+        // Logged BEFORE the send, always. sendOutboundEmail is a silent no-op
+        // without EMAIL_FROM/RESEND_API_KEY, and the whole point of this route
+        // is that somebody hears about the problem -- so the words land in the
+        // deploy log first, where they survive a mail outage, a bad address and
+        // a provider having a bad minute. The watchlist digest's rule, from the
+        // other end: it refuses to run blind, this one refuses to lose the text.
+        console.log(`Tester feedback (${kind}) from ${user.email}: ${message.replace(/\s+/g, " ").slice(0, 500)}`);
+
+        // One message per recipient, never one with three in `to`: sendEmail
+        // wraps its `to` in an array, so an array argument posts a nested one.
+        // reply_to is the TESTER, so answering the mail answers the person --
+        // the single thing most likely to keep a beta channel alive.
+        const results = await Promise.all(TESTER_FEEDBACK_TO.map((to) =>
+          sendOutboundEmail(to, subject, text, { replyTo: user.email })));
+        const delivered = results.filter(Boolean).length;
+
+        logEvent("tester_feedback", { source: kind });
+
+        if (!delivered) {
+          // Never report a send that did not happen. The text is in the log, so
+          // say that plainly and name a human address rather than leaving a
+          // tester to wonder whether the report went anywhere.
+          return sendJson(res, 503, {
+            error: "Saved, but the email did not go out. Please send it to " +
+              (TESTER_FEEDBACK_TO[0] || "the team") + " so it is not missed.",
+          });
+        }
+        return sendJson(res, 200, { ok: true, delivered });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("tester-feedback error:", err);
+        return sendJson(res, 500, { error: "Could not send that. Please try again." });
       }
     });
     return;

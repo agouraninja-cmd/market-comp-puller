@@ -103,12 +103,25 @@ function displayName(person) {
 }
 
 // ---------------------------------------------------------------------------
-// The DM identity
+// Who a conversation is with
 // ---------------------------------------------------------------------------
 
-// The canonical key for the direct message between two people, so that two
-// colleagues who both press "message" at the same moment end up in one thread
-// rather than two.
+// The canonical key for an UNNAMED conversation: the people in it.
+//
+// THE RULE IT ENCODES (2026-09-01): an unnamed conversation is identified by
+// WHO IS IN IT, and a named one is identified by its NAME. So picking the same
+// two colleagues twice reopens the one direct message you already had, picking
+// the same three reopens the one group, and deliberately naming a group makes
+// a new room every time — because a named room is a place somebody decided to
+// make, and two of them with the same people ("Boise deal", "Q4 pipeline") are
+// a legitimate thing to want.
+//
+// It began life as dmKey, for pairs only. Widening it to any number is what
+// stops an unnamed group being duplicated the way a direct message never
+// could. THE COLUMN IS STILL CALLED dm_key (044) and is now slightly
+// misnamed; it is nullable with a partial unique index, which is exactly the
+// shape this needs, so it was widened in meaning rather than renamed in a
+// migration.
 //
 // SORTED, because the key must not depend on who started it. Keyed on USER
 // IDS, not emails, which is the one deliberate departure from 018's
@@ -118,15 +131,15 @@ function displayName(person) {
 // member of the firm, so the account exists, and a user id is what keeps this
 // key stable when somebody changes the case or the plus-tag of their email.
 //
-// Returns "" for anything it cannot key — a missing id, or the same person
-// twice. A caller must treat "" as a refusal and never as a value to store,
-// because "" would collide with every other unkeyable pair under the unique
-// index. There is no such thing as a DM with yourself here.
-function dmKey(a, b) {
-  const x = str(a).trim();
-  const y = str(b).trim();
-  if (!x || !y || x === y) return "";
-  return [x, y].sort().join("|");
+// Returns "" for anything it cannot key — a missing id, or fewer than two
+// distinct people. A caller must treat "" as a refusal and never as a value to
+// store, because "" would collide with every other unkeyable set under the
+// unique index. There is no such thing as a conversation with yourself here.
+function participantKey(ids) {
+  const list = (Array.isArray(ids) ? ids : []).map((v) => str(v).trim()).filter(Boolean);
+  const unique = [...new Set(list)];
+  if (unique.length < 2) return "";
+  return unique.sort().join("|");
 }
 
 // ---------------------------------------------------------------------------
@@ -212,28 +225,37 @@ function validateMessage({ body, compIds } = {}) {
   return { ok: true, body: clean, compIds: comps };
 }
 
-// A channel needs a name. A DM must not have one — its name is the other
-// person, which is a thing the reader's own page decides and not a string
-// somebody typed.
-function validateThread({ kind, title, memberIds } = {}) {
-  const k = KINDS.includes(kind) ? kind : "";
-  if (!k) return { ok: false, error: "Pick a direct message or a channel." };
+// WHAT YOU GET FOLLOWS FROM WHO YOU PICKED, and the caller does not get to
+// say (2026-09-01). It used to take a `kind` from the browser and require a
+// title for a channel, with the browser inferring which was meant from
+// whether a name had been typed — so the owner typed "Test" as a label for a
+// conversation with one colleague and got a CHANNEL called Test, which is
+// what a channel is, and not at all what he meant.
+//
+// ONE other person is always a direct message, and a title is IGNORED rather
+// than refused. That is the whole fix: there is no longer any way to end up
+// with a named room holding one person, because the shape is decided by the
+// count and nothing else. It costs the ability to name a two-person chat,
+// which nobody has asked for and which is exactly the input that broke.
+//
+// TWO OR MORE is a group, and its name is OPTIONAL. An unnamed group is
+// labelled by the people in it (threadLabel) and is identified by them
+// (participantKey), so picking the same three colleagues twice reopens one
+// room. A named group is a place somebody decided to make, so it is always
+// new.
+function validateThread({ title, memberIds } = {}) {
   const ids = Array.isArray(memberIds)
     ? [...new Set(memberIds.map((v) => str(v).trim()).filter(Boolean))]
     : [];
-  if (k === "dm") {
-    if (ids.length !== 1) return { ok: false, error: "Pick one colleague to message." };
-    return { ok: true, kind: "dm", title: "", memberIds: ids };
+  if (!ids.length) return { ok: false, error: "Pick somebody to message." };
+  if (ids.length + 1 > MAX_THREAD_MEMBERS) {
+    return { ok: false, error: `A conversation holds up to ${MAX_THREAD_MEMBERS} people.` };
   }
   const name = cleanText(title).trim();
-  if (!name) return { ok: false, error: "Give the channel a name." };
   if (name.length > MAX_TITLE) {
-    return { ok: false, error: `A channel name is at most ${MAX_TITLE} characters.` };
+    return { ok: false, error: `A group name is at most ${MAX_TITLE} characters.` };
   }
-  if (!ids.length) return { ok: false, error: "Add at least one colleague." };
-  if (ids.length + 1 > MAX_THREAD_MEMBERS) {
-    return { ok: false, error: `A channel holds up to ${MAX_THREAD_MEMBERS} people.` };
-  }
+  if (ids.length === 1) return { ok: true, kind: "dm", title: "", memberIds: ids };
   return { ok: true, kind: "channel", title: name, memberIds: ids };
 }
 
@@ -308,27 +330,38 @@ function previewOf(message) {
   return "";
 }
 
-// What a thread is CALLED for one particular reader. A channel is its title. A
-// direct message is the other person — which is why this takes the reader:
-// the same row is "Dana Reed" on one desk and "Owen Barnes" on the other.
+// What a thread is CALLED for one particular reader.
 //
-// A DM whose other member has been removed from the firm still renders, as "A
+// This takes the reader because most threads have no stored name and are named
+// by WHO ELSE IS IN THEM: the same row is "Dana Reed" on one desk and "Owen
+// Barnes" on the other, and a group is "Dana, Mike" to a third person and
+// "Owen, Mike" to Dana. Only a deliberately named group has one name for
+// everybody.
+//
+// A thread whose other members have all left the firm still renders, as "A
 // colleague". The correspondence outlives the employment, and a thread that
 // suddenly had no name would read as data loss.
 function threadLabel(thread, members, userId) {
+  const me = str(userId).trim();
+  const others = activeMembers(members).filter((m) => str(m.user_id) !== me);
   if (kindOf(thread) === "channel") {
     const t = cleanText(thread && thread.title).trim();
-    return t || "Untitled channel";
+    if (t) return t;
+    // An unnamed group. Two names in full, then a count — the list row is one
+    // line, and four names in it would be an ellipsis rather than an answer.
+    const names = others.map(displayName);
+    if (!names.length) return "Group";
+    if (names.length <= 2) return names.join(", ");
+    return `${names[0]}, ${names[1]} and ${names.length - 2} other` +
+      (names.length - 2 === 1 ? "" : "s");
   }
-  const me = str(userId).trim();
-  const other = activeMembers(members).find((m) => str(m.user_id) !== me);
-  return displayName(other);
+  return displayName(others[0]);
 }
 
 module.exports = {
   KINDS, MAX_BODY, MAX_TITLE, MAX_COMPS_PER_MESSAGE, MAX_THREAD_MEMBERS, PAGE_SIZE,
   normalizeEmail, cleanText, kindOf, displayName,
-  dmKey,
+  participantKey,
   inThread, activeMembers, memberRowOf,
   canReadThread, canPostToThread,
   validateMessage, validateThread,

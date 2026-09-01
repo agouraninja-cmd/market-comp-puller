@@ -163,7 +163,7 @@ test("firm messaging, end to end", async (t) => {
   });
 
   await t.test("Brad opens a direct message with Mike", async () => {
-    const o = await post(BRAD, "/api/messages/thread", { kind: "dm", memberIds: [MIKE.id] });
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.kind, "dm");
     threadId = o.j.thread.id;
@@ -175,7 +175,7 @@ test("firm messaging, end to end", async (t) => {
     // The whole reason dmKey is sorted and stored under a unique index. Asked
     // from the OTHER side, because the failure this prevents is each colleague
     // typing into a room the other cannot see.
-    const o = await post(MIKE, "/api/messages/thread", { kind: "dm", memberIds: [BRAD.id] });
+    const o = await post(MIKE, "/api/messages/thread", { memberIds: [BRAD.id] });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.id, threadId);
     assert.equal(ctx.tables.msg_threads.length, 1, "a second DM row was created");
@@ -198,12 +198,12 @@ test("firm messaging, end to end", async (t) => {
     assert.ok(pat, "an invited colleague is missing from the People list");
     assert.equal(pat.pending, true, "she is not marked as still invited");
 
-    const o = await post(BRAD, "/api/messages/thread", { kind: "dm", memberIds: [pat.userId] });
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [pat.userId] });
     assert.equal(o.s, 400, "an invitation is not a membership");
   });
 
   await t.test("a rival at another shop cannot open a thread with our people", async () => {
-    const o = await post(RIVAL, "/api/messages/thread", { kind: "dm", memberIds: [BRAD.id] });
+    const o = await post(RIVAL, "/api/messages/thread", { memberIds: [BRAD.id] });
     assert.equal(o.s, 400, "the ids came from the browser and prove nothing");
     assert.equal(ctx.tables.msg_threads.length, 1);
   });
@@ -337,7 +337,7 @@ test("firm messaging, end to end", async (t) => {
 
   await t.test("a channel carries a name and everybody who was named", async () => {
     const o = await post(BRAD, "/api/messages/thread", {
-      kind: "channel", title: "Boise industrial", memberIds: [MIKE.id],
+      title: "Boise industrial", memberIds: [MIKE.id, DANA.id],
     });
     assert.equal(o.s, 201);
     assert.equal(o.j.thread.kind, "channel");
@@ -347,9 +347,48 @@ test("firm messaging, end to end", async (t) => {
       "the colleague named in a channel cannot see it");
   });
 
-  await t.test("an unnamed channel is refused rather than stored nameless", async () => {
-    const o = await post(BRAD, "/api/messages/thread", { kind: "channel", memberIds: [MIKE.id] });
-    assert.equal(o.s, 400);
+  await t.test("a group needs no name, and is labelled by the people in it", async () => {
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id, DANA.id] });
+    assert.equal(o.s, 201);
+    assert.equal(o.j.thread.kind, "channel");
+    assert.equal(o.j.thread.title, "");
+    assert.equal(o.j.thread.label, "Mike, Dana");
+    // ...and per reader, which is why no title is stored.
+    const hers = await get(DANA, "/api/messages");
+    const seen = hers.j.threads.filter((th) => th.id === o.j.thread.id)[0];
+    assert.equal(seen.label, "Brad, Mike", "an unnamed group is named from the reader's side");
+  });
+
+  await t.test("picking the same people again reopens the one unnamed group", async () => {
+    // participantKey widened past pairs for exactly this: an unnamed
+    // conversation is identified by who is in it, so it cannot be duplicated
+    // the way a direct message never could.
+    const before = ctx.tables.msg_threads.length;
+    const o = await post(BRAD, "/api/messages/thread", { memberIds: [DANA.id, MIKE.id] });
+    assert.equal(o.s, 201);
+    assert.equal(ctx.tables.msg_threads.length, before, "a second unnamed group was created");
+  });
+
+  await t.test("a NAMED group is always a new room", async () => {
+    // A named room is a place somebody decided to make, and two of them with
+    // the same people ("Boise deal", "Q4 pipeline") are a legitimate want.
+    const before = ctx.tables.msg_threads.length;
+    const a = await post(BRAD, "/api/messages/thread", { title: "Q4 pipeline", memberIds: [MIKE.id, DANA.id] });
+    const b = await post(BRAD, "/api/messages/thread", { title: "Q4 pipeline", memberIds: [MIKE.id, DANA.id] });
+    assert.equal(a.s, 201);
+    assert.equal(b.s, 201);
+    assert.notEqual(a.j.thread.id, b.j.thread.id);
+    assert.equal(ctx.tables.msg_threads.length, before + 2);
+  });
+
+  await t.test("a title on a ONE-person pick is ignored, not stored", async () => {
+    // The owner's bug, at the route. Typing a label for a conversation with
+    // one colleague used to make a channel called that.
+    const o = await post(BRAD, "/api/messages/thread", { title: "Test", memberIds: [MIKE.id] });
+    assert.equal(o.s, 201);
+    assert.equal(o.j.thread.kind, "dm", "a one-person pick is a direct message whatever was typed");
+    assert.equal(o.j.thread.title, "");
+    assert.equal(o.j.thread.id, threadId, "and it reopened the DM that already existed");
   });
 
   await t.test("the poll's cursor returns only what is new", async () => {

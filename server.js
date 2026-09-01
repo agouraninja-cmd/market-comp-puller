@@ -24042,8 +24042,11 @@ const server = http.createServer((req, res) =>
         const g = await openMessaging();
         if (!g) return;
         const body = await readMsgBody();
+        // No `kind` from the browser (2026-09-01). The shape follows from who
+        // was picked and nothing else — see validateThread's header for why
+        // letting the caller say made a direct message into a channel called
+        // "Test".
         const want = MSG.validateThread({
-          kind: body && body.kind,
           title: body && body.title,
           memberIds: body && body.memberIds,
         });
@@ -24069,42 +24072,51 @@ const server = http.createServer((req, res) =>
         }
 
         const now = new Date().toISOString();
-        let thread = null;
-        if (want.kind === "dm") {
-          const key = MSG.dmKey(me, others[0]);
-          // "" is a refusal, never a value to store: stored, it would collide
-          // with every other unkeyable pair under msg_threads_dm_uidx.
-          if (!key) return sendJson(res, 400, { error: "Pick a colleague to message." });
-          const existing = await sbRequest("GET",
+        const COLS = "id,org_id,kind,title,dm_key,created_at,last_message_at";
+
+        // ONE creation path for a direct message and a group, because they
+        // are the same act with a different number of people.
+        //
+        // An UNNAMED conversation is identified by who is in it, so it is
+        // looked up before it is made and picking the same people twice
+        // reopens the one room. A NAMED group is always new — a named room is
+        // a place somebody decided to make, and two of them with the same
+        // people are a legitimate thing to want.
+        const key = want.title ? "" : MSG.participantKey([me, ...others]);
+        const findByKey = async () => {
+          const rows = await sbRequest("GET",
             `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
-            `&dm_key=eq.${encodeURIComponent(key)}` +
-            `&select=id,org_id,kind,title,dm_key,created_at,last_message_at&limit=1`);
-          thread = (existing && existing[0]) || null;
-          if (!thread) {
-            try {
-              const made = await sbRequest("POST", "msg_threads?select=id,org_id,kind,title,dm_key,created_at,last_message_at",
-                [{ org_id: g.orgId, kind: "dm", dm_key: key, created_by: g.user.id, created_at: now, last_message_at: now }],
-                { prefer: "return=representation" });
-              thread = (made && made[0]) || null;
-            } catch (err) {
-              // READ-THEN-INSERT with a race catch, never on_conflict:
-              // msg_threads_dm_uidx is PARTIAL and PostgREST cannot infer a
-              // partial index (42P10 — the bug that once made every hub vault
-              // send fail, 100%). Both colleagues pressing "message" at the
-              // same moment is exactly the race this catches.
-              if (!/23505|409/.test(String(err.message))) throw err;
-              const again = await sbRequest("GET",
-                `msg_threads?org_id=eq.${encodeURIComponent(g.orgId)}` +
-                `&dm_key=eq.${encodeURIComponent(key)}` +
-                `&select=id,org_id,kind,title,dm_key,created_at,last_message_at&limit=1`);
-              thread = (again && again[0]) || null;
-            }
+            `&dm_key=eq.${encodeURIComponent(key)}&select=${COLS}&limit=1`);
+          return (rows && rows[0]) || null;
+        };
+
+        let thread = key ? await findByKey() : null;
+        if (!thread) {
+          try {
+            const made = await sbRequest("POST", `msg_threads?select=${COLS}`,
+              [{
+                org_id: g.orgId,
+                kind: want.kind,
+                title: want.title || "",
+                // "" is a refusal, never a value to store: stored, it would
+                // collide with every other unkeyable set under the partial
+                // unique index. A named group stores null and never collides.
+                dm_key: key || null,
+                created_by: g.user.id,
+                created_at: now,
+                last_message_at: now,
+              }],
+              { prefer: "return=representation" });
+            thread = (made && made[0]) || null;
+          } catch (err) {
+            // READ-THEN-INSERT with a race catch, never on_conflict:
+            // msg_threads_dm_uidx is PARTIAL and PostgREST cannot infer a
+            // partial index (42P10 — the bug that once made every hub vault
+            // send fail, 100%). Two colleagues pressing "message" at the same
+            // moment is exactly the race this catches.
+            if (!key || !/23505|409/.test(String(err.message))) throw err;
+            thread = await findByKey();
           }
-        } else {
-          const made = await sbRequest("POST", "msg_threads?select=id,org_id,kind,title,dm_key,created_at,last_message_at",
-            [{ org_id: g.orgId, kind: "channel", title: want.title, created_by: g.user.id, created_at: now, last_message_at: now }],
-            { prefer: "return=representation" });
-          thread = (made && made[0]) || null;
         }
         if (!thread) return sendJson(res, 502, { error: "Couldn't open that conversation. Please try again." });
 

@@ -179,6 +179,9 @@ function renderMessagesBody(boot) {
 .msg-pick label{display:flex;gap:8px;align-items:center;cursor:pointer;min-width:0;flex:1}
 .msg-pick .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-pick .sub{color:var(--ink-faint);font-size:11.5px}
+/* Selected people, as removable chips above the list. */
+.msg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.msg-chips:empty{margin-bottom:0}
 .msg-panel input[type=text]{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
   padding:7px 10px;font:inherit;font-size:13px;margin-bottom:8px;background:var(--card);color:var(--ink)}
 .msg-panelfoot{display:flex;gap:8px;align-items:center;margin-top:10px}
@@ -223,19 +226,26 @@ function renderMessagesBody(boot) {
       <button class="msg-tab" id="msgSideChats" type="button" aria-pressed="true">Chats</button>
       <button class="msg-tab" id="msgSidePeople" type="button" aria-pressed="false">People</button>
       <span class="msg-grow"></span>
-      <button class="msg-btn sm" id="msgNewBtn" type="button">New channel</button>
+      <button class="msg-btn sm" id="msgNewBtn" type="button">New</button>
     </div>
     <div class="msg-search"><input id="msgFilter" type="search" placeholder="Search" autocomplete="off"></div>
     <div class="msg-threads" id="msgThreads"></div>
     <div class="msg-threads msg-hide" id="msgPeople"></div>
-    <!-- Channels only. A direct message is started by clicking a person under
-         People, which is where somebody looking for a person already is. -->
+    <!-- PEOPLE FIRST. The box searches colleagues; it used to be a channel
+         name with "leave blank for a direct message" under it, so typing a
+         label for a conversation with one person silently made a CHANNEL
+         called that. What you get now follows from how many people you pick:
+         one is a direct message, two or more is a group. The name field does
+         not exist until there are two, so the input that caused that bug is
+         unreachable. -->
     <div class="msg-panel msg-hide" id="msgNewPanel">
-      <h3>New channel</h3>
-      <input id="msgNewTitle" type="text" placeholder="Channel name" maxlength="80">
+      <h3>New conversation</h3>
+      <input id="msgNewSearch" type="text" placeholder="Search people" autocomplete="off">
+      <div id="msgNewChips" class="msg-chips"></div>
       <div id="msgNewPeople"></div>
+      <input id="msgNewTitle" class="msg-hide" type="text" placeholder="Group name (optional)" maxlength="80">
       <div class="msg-panelfoot">
-        <button class="msg-btn primary sm" id="msgNewGo" type="button">Create</button>
+        <button class="msg-btn primary sm" id="msgNewGo" type="button">Start</button>
         <button class="msg-btn sm" id="msgNewCancel" type="button">Cancel</button>
         <span class="msg-hint" id="msgNewMsg"></span>
       </div>
@@ -287,7 +297,7 @@ function renderMessagesBody(boot) {
   var $ = function(id){ return document.getElementById(id); };
   var state = {
     me: "", firm: null, people: [], threads: [], canAttach: false,
-    openId: "", cursor: "", messages: [], tab: "chat", side: "chats",
+    openId: "", cursor: "", messages: [], tab: "chat", side: "chats", picked: [],
     attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
   };
 
@@ -795,38 +805,77 @@ function renderMessagesBody(boot) {
   function joinedPeople(){
     return state.people.filter(function(p){ return !p.pending && p.userId; });
   }
+  function pickedName(id){
+    var p = joinedPeople().filter(function(x){ return x.userId === id; })[0];
+    return p ? p.name : "Someone";
+  }
+  // Who is selected so far, as removable chips. Selection lives in state
+  // rather than in the checkboxes, because the list below is FILTERED as you
+  // type and a checkbox that scrolls out of the filter would take the
+  // selection with it.
+  function renderNewChips(){
+    var html = "";
+    for (var i = 0; i < state.picked.length; i++) {
+      html += '<span class="msg-tag"><span>' + esc(pickedName(state.picked[i])) + '</span>' +
+        '<button type="button" data-unpick="' + esc(state.picked[i]) + '" aria-label="Remove">×</button></span>';
+    }
+    $("msgNewChips").innerHTML = html;
+    // The name field only exists once this is a GROUP. That is what makes the
+    // old failure unreachable rather than merely discouraged.
+    var group = state.picked.length > 1;
+    $("msgNewTitle").className = group ? "" : "msg-hide";
+    if (!group) $("msgNewTitle").value = "";
+    $("msgNewGo").textContent = state.picked.length === 1
+      ? "Message " + pickedName(state.picked[0])
+      : (group ? "Start group" : "Start");
+  }
   function renderNewPeople(){
     var people = joinedPeople();
     if (!people.length) {
       $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet, ' +
-        'so there is no one to add. Invitations are managed on your ' +
+        'so there is no one to message. Invitations are managed on your ' +
         '<a href="/desk">workspace</a>.</div>';
       return;
     }
+    var q = ($("msgNewSearch").value || "").trim().toLowerCase();
+    var list = people.filter(function(p){
+      if (!q) return true;
+      return (p.name + " " + p.email).toLowerCase().indexOf(q) >= 0;
+    });
+    if (!list.length) { $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody matches that.</div>'; return; }
     var html = "";
-    for (var i = 0; i < people.length; i++) {
-      var p = people[i];
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      var on = state.picked.indexOf(p.userId) >= 0;
       html += '<div class="msg-pick"><label>' +
-        '<input type="checkbox" data-person="' + esc(p.userId) + '">' +
+        '<input type="checkbox" data-person="' + esc(p.userId) + '"' + (on ? " checked" : "") + '>' +
         '<span class="who">' + esc(p.name) + '<span class="sub"> · ' + esc(p.email) + '</span></span>' +
         '</label></div>';
     }
     $("msgNewPeople").innerHTML = html;
   }
+  function openNewPanel(){
+    state.picked = [];
+    $("msgNewSearch").value = "";
+    $("msgNewTitle").value = "";
+    $("msgNewMsg").textContent = "";
+    $("msgNewPanel").className = "msg-panel";
+    renderNewChips();
+    renderNewPeople();
+    try { $("msgNewSearch").focus(); } catch (e) {}
+  }
   function startThread(){
-    var picked = [];
-    var boxes = $("msgNewPeople").querySelectorAll("input[data-person]");
-    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) picked.push(boxes[i].getAttribute("data-person"));
-    var title = ($("msgNewTitle").value || "").trim();
-    if (!title) { $("msgNewMsg").textContent = "Name the channel."; return; }
-    if (!picked.length) { $("msgNewMsg").textContent = "Pick at least one colleague."; return; }
+    if (!state.picked.length) { $("msgNewMsg").textContent = "Pick somebody to message."; return; }
+    // The title rides along only when it exists; the server ignores one on a
+    // single-person pick anyway, so the two cannot disagree.
+    var title = state.picked.length > 1 ? ($("msgNewTitle").value || "").trim() : "";
     $("msgNewGo").disabled = true;
     $("msgNewMsg").textContent = "";
-    api("POST", "/api/messages/thread", { kind: "channel", title: title, memberIds: picked }).then(function(o){
+    api("POST", "/api/messages/thread", { title: title, memberIds: state.picked }).then(function(o){
       $("msgNewGo").disabled = false;
-      if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't create that."; return; }
+      if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
       $("msgNewPanel").className = "msg-panel msg-hide";
-      $("msgNewTitle").value = "";
+      state.picked = [];
       refreshList(true).then(function(){ setSide("chats"); openThread(o.j.thread.id, true); });
     });
   }
@@ -895,9 +944,29 @@ function renderMessagesBody(boot) {
   });
   $("msgNewBtn").addEventListener("click", function(){
     var open = $("msgNewPanel").className.indexOf("msg-hide") < 0;
-    $("msgNewPanel").className = open ? "msg-panel msg-hide" : "msg-panel";
+    if (open) { $("msgNewPanel").className = "msg-panel msg-hide"; return; }
+    openNewPanel();
+  });
+  $("msgNewSearch").addEventListener("input", renderNewPeople);
+  // Selection lives in state, not in the checkboxes: the list is filtered as
+  // you type, so a box that leaves the filter would take its tick with it.
+  $("msgNewPeople").addEventListener("change", function(e){
+    var box = e.target.closest("input[data-person]");
+    if (!box) return;
+    var id = box.getAttribute("data-person");
+    var at = state.picked.indexOf(id);
+    if (box.checked && at < 0) state.picked.push(id);
+    if (!box.checked && at >= 0) state.picked.splice(at, 1);
     $("msgNewMsg").textContent = "";
-    if (!open) renderNewPeople();
+    renderNewChips();
+  });
+  $("msgNewChips").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-unpick]");
+    if (!btn) return;
+    var at = state.picked.indexOf(btn.getAttribute("data-unpick"));
+    if (at >= 0) state.picked.splice(at, 1);
+    renderNewChips();
+    renderNewPeople();
   });
   $("msgNewCancel").addEventListener("click", function(){ $("msgNewPanel").className = "msg-panel msg-hide"; });
   $("msgNewGo").addEventListener("click", startThread);

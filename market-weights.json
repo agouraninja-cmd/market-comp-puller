@@ -1,0 +1,188 @@
+{
+  "_comment": "score = macro * macro_score + class * class_score + narrative * narrative_score. Every block here sums to 1.0 and test/market-ranking-config.test.js enforces it. These are STARTING weights and are expected to change as the model is refined; they live in a committed file rather than a table so a change arrives through a pull request somebody reads.",
+  "generated": "2026-09-01",
+  "by_asset_class": {
+    "industrial": {
+      "macro": 0.3,
+      "class": 0.45,
+      "narrative": 0.25,
+      "why": "Warehouse demand tracks trade/transport employment far more closely than headline metro employment, so class data carries the most."
+    },
+    "office": {
+      "macro": 0.35,
+      "class": 0.4,
+      "narrative": 0.25,
+      "why": "Professional-services employment IS most of the macro picture in an office metro, so the two halves overlap and the split evens out."
+    },
+    "retail": {
+      "macro": 0.4,
+      "class": 0.35,
+      "narrative": 0.25,
+      "why": "Retail follows households and their income - which is macro data - more than any sector-specific series."
+    },
+    "multifamily": {
+      "macro": 0.35,
+      "class": 0.4,
+      "narrative": 0.25,
+      "why": "Household formation is macro; the 5+ unit permit pipeline is the class-specific half and is unusually good public data."
+    },
+    "land": {
+      "macro": 0.25,
+      "class": 0.3,
+      "narrative": 0.45,
+      "why": "Highest narrative weight of any class. Entitlement difficulty and municipal posture decide land value and appear in NO public dataset."
+    },
+    "residential": {
+      "macro": 0.45,
+      "class": 0.35,
+      "narrative": 0.2,
+      "why": "Lowest narrative weight: residential has the richest public data of any class (HPI, permits, population, migration), so judgment adds least."
+    }
+  },
+  "macro": {
+    "Job growth (total nonfarm, YoY)": {
+      "weight": 0.3,
+      "source": "BLS CES via FRED",
+      "note": "Monthly. The single most responsive macro signal."
+    },
+    "Population growth (YoY)": {
+      "weight": 0.25,
+      "source": "Census PEP",
+      "note": "Annual, lags ~1 year. Slow but the most durable driver."
+    },
+    "Net domestic migration": {
+      "weight": 0.15,
+      "source": "Census PEP components",
+      "note": "Separates people choosing to move from natural increase."
+    },
+    "House price index change (YoY)": {
+      "weight": 0.15,
+      "source": "FHFA HPI",
+      "note": "SEE READ ME - an index, not a price level. No free government source publishes metro median house PRICE."
+    },
+    "Real personal income per capita growth": {
+      "weight": 0.1,
+      "source": "BEA",
+      "note": "Annual. Purchasing power behind every asset class."
+    },
+    "Unemployment rate (level and direction)": {
+      "weight": 0.05,
+      "source": "BLS LAUS via FRED",
+      "note": "Low weight: a lagging confirmer, not a leading signal."
+    }
+  },
+  "class_specific": {
+    "industrial": {
+      "Trade, transport & utilities employment growth": {
+        "weight": 0.35,
+        "source": "BLS CES via FRED"
+      },
+      "Warehousing & storage employment (NAICS 493)": {
+        "weight": 0.2,
+        "source": "BLS - suppressed in small metros"
+      },
+      "Manufacturing employment growth": {
+        "weight": 0.15,
+        "source": "BLS CES via FRED"
+      },
+      "Industrial/commercial permit valuation": {
+        "weight": 0.15,
+        "source": "Census Building Permits Survey"
+      },
+      "Port or air-freight volume (where applicable)": {
+        "weight": 0.15,
+        "source": "Port authority / BTS - not uniform"
+      }
+    },
+    "office": {
+      "Professional & business services employment growth": {
+        "weight": 0.4,
+        "source": "BLS CES via FRED"
+      },
+      "Information sector employment growth": {
+        "weight": 0.25,
+        "source": "BLS CES via FRED"
+      },
+      "Financial activities employment growth": {
+        "weight": 0.2,
+        "source": "BLS CES via FRED"
+      },
+      "Educational attainment (bachelor's or higher)": {
+        "weight": 0.15,
+        "source": "Census ACS"
+      }
+    },
+    "retail": {
+      "Household count growth": {
+        "weight": 0.35,
+        "source": "Census ACS / PEP"
+      },
+      "Median household income growth": {
+        "weight": 0.3,
+        "source": "Census ACS"
+      },
+      "Retail trade employment growth": {
+        "weight": 0.2,
+        "source": "BLS CES via FRED"
+      },
+      "Leisure & hospitality employment growth": {
+        "weight": 0.15,
+        "source": "BLS CES via FRED"
+      }
+    },
+    "multifamily": {
+      "Building permits, 5+ units (supply pipeline)": {
+        "weight": 0.35,
+        "source": "Census Building Permits Survey"
+      },
+      "Household formation": {
+        "weight": 0.25,
+        "source": "Census ACS / PEP"
+      },
+      "Renter-occupied share and median gross rent": {
+        "weight": 0.2,
+        "source": "Census ACS"
+      },
+      "Net domestic migration": {
+        "weight": 0.2,
+        "source": "Census PEP components"
+      }
+    },
+    "land": {
+      "Total building permits, all types": {
+        "weight": 0.4,
+        "source": "Census Building Permits Survey"
+      },
+      "Total permit valuation": {
+        "weight": 0.3,
+        "source": "Census Building Permits Survey"
+      },
+      "Population growth": {
+        "weight": 0.2,
+        "source": "Census PEP"
+      },
+      "Housing units authorized per 1,000 residents": {
+        "weight": 0.1,
+        "source": "Census BPS / PEP"
+      }
+    },
+    "residential": {
+      "House price index change": {
+        "weight": 0.3,
+        "source": "FHFA HPI"
+      },
+      "Single-family permits": {
+        "weight": 0.25,
+        "source": "Census Building Permits Survey"
+      },
+      "Net domestic migration": {
+        "weight": 0.25,
+        "source": "Census PEP components"
+      },
+      "Median household income growth": {
+        "weight": 0.2,
+        "source": "Census ACS"
+      }
+    }
+  }
+}

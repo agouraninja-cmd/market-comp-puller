@@ -1583,7 +1583,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   decision the plan defers. The run test asserts the mail stand-in stayed
   empty.
   **Discovery, unread, contacts, reports** (slice 8, 2026-09-02, no
-  migration; spec §12 of the firm-messaging design). Four **Discuss** doors
+  migration; spec §13 of the firm-messaging design). Four **Discuss** doors
   (a SHARED comp in the Vault's Firm column, a shelf report, a building
   sheet, a contact row) all land on `/messages?say=&comp=`, which seeds the
   composer and posts NOTHING by arriving. `GET /api/messages/unread` counts

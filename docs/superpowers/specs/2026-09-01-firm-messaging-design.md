@@ -256,8 +256,53 @@ a solo broker with deal rooms and no firm cannot reach the inbox view of them.
 Their deal rooms are unaffected (the vault still lists them). Worth revisiting
 when a real solo broker exists.
 
+## 12. Steps 2-3 — shipped later the same day (step 4 held)
 
-## 12. Discovery, unread, contacts, reports — Three Spaces slice 8 (2026-09-02)
+Messages learned to do every job the vault's hubs deck did:
+
+- **Create + invite live in Messages.** Typing a full email address into the
+  New panel's search offers "Invite <email> — outside your firm, by email"
+  (only when the member has a vault, since POST /api/hubs refuses without
+  one). Any outside email makes the whole selection an external conversation;
+  colleagues picked alongside become participants by their email. One optional
+  client-facing field appears for external creation — "What's this about?" —
+  which is NOT a name for the member (the no-names rule stands internally):
+  it is the subject the CLIENT sees in their invite email and on their page,
+  and left empty the email says "shared a set of comps with you".
+- **People and closing live on the conversation.** A People button on every
+  external thread opens the guest list: who is in it, whether they have
+  opened it, invite by email (a wholesale PUT of the full list — the route
+  re-mails nobody already on it), remove (confirm; their link dies at once),
+  and Close (confirm; read stays, writes stop, and the panel disables its own
+  write controls). One-time invite links that could not be emailed render
+  here with copy buttons, guarded so one room's links can never display
+  inside another room's panel.
+- **The vault's hubs deck STAYS, for now** (owner's call, 2026-09-02). Step 4
+  was written and then withdrawn before it shipped. The vault was restructured
+  into three spaces the same week (PR #246), which gives hubs a deliberate home
+  there rather than the leftover section this spec was written against, so
+  removing the deck would now be undoing somebody else's design rather than
+  finishing this one. Messages and the vault are two doors onto the same rooms
+  until that is decided; nothing about the rooms differs by which door was
+  used, because both drive the same hub routes.
+
+  One archaeology note survives from the attempt, because it was a real bug
+  either way: the vault-page test "each import offers Open" was matching the
+  HUB table's Open link, one deck further down the page, and would have passed
+  on a build that shipped no imports list at all. It now pins the imports
+  renderer's own label expression.
+
+This gets as far as the owner's "get rid of the hub in the vault and make it
+only the messages feature" as one PR safely can: every JOB has moved, and only
+the second door remains. What is deliberately untouched throughout is the
+CLIENT's own page at /hub/<id> and its token door — the client experience
+never changed through any of this.
+
+**What is left, when somebody picks this up:** decide with whoever owns the
+Three Spaces vault whether its hubs space becomes a pointer at Messages or
+comes out altogether, then do that. Nothing in Messages depends on the answer.
+
+## 13. Discovery, unread, contacts, reports — Three Spaces slice 8 (2026-09-02)
 
 *No migration.* The Three Spaces plan wrote this slice against its own thread
 tables and route names before §5 shipped; this is the same four intents on

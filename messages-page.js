@@ -239,6 +239,13 @@ function renderMessagesBody(boot) {
       <input id="msgNewSearch" type="text" placeholder="Search people" autocomplete="off">
       <div id="msgNewChips" class="msg-chips"></div>
       <div id="msgNewPeople"></div>
+      <!-- Only for an EXTERNAL conversation, and optional. Internal
+           conversations have no names (owner's rule) and that stands; this is
+           not a name for you, it is the subject line the CLIENT sees in their
+           invite email and on their page. Left empty, the email says "shared a
+           set of comps with you", which reads fine. -->
+      <input id="msgNewAbout" class="msg-hide" type="text" maxlength="200"
+        placeholder="What's this about? Optional. They see it.">
       <div class="msg-panelfoot">
         <button class="msg-btn primary sm" id="msgNewGo" type="button">Start</button>
         <button class="msg-btn sm" id="msgNewCancel" type="button">Cancel</button>
@@ -259,9 +266,27 @@ function renderMessagesBody(boot) {
       </div>
       <button class="msg-btn sm" id="msgTabChat" type="button" aria-pressed="true">Conversation</button>
       <button class="msg-btn sm" id="msgTabComps" type="button" aria-pressed="false">Comps</button>
+      <button class="msg-btn sm msg-hide" id="msgPeopleBtn" type="button">People</button>
     </div>
     <div class="msg-note msg-hide" id="msgNote"></div>
     <div class="msg-stream" id="msgStream"></div>
+    <!-- The guest list of an EXTERNAL conversation: who is in it, whether
+         they have opened it, inviting somebody, removing somebody, and closing
+         the deal out. This panel is what lets the vault's hubs deck retire —
+         every job that deck did is reachable from the conversation itself. -->
+    <div class="msg-panel msg-hide" id="msgPeoplePanel">
+      <h3>People in this conversation</h3>
+      <div id="msgPeopleList"></div>
+      <input id="msgPeopleAdd" type="text" placeholder="Invite somebody by email" autocomplete="off">
+      <div class="msg-panelfoot">
+        <button class="msg-btn primary sm" id="msgPeopleGo" type="button">Send invite</button>
+        <button class="msg-btn sm" id="msgPeopleDone" type="button">Done</button>
+        <span class="msg-hint" id="msgPeopleMsg"></span>
+        <span class="msg-grow"></span>
+        <button class="msg-btn sm" id="msgCloseHub" type="button">Close conversation</button>
+      </div>
+      <div id="msgLinks"></div>
+    </div>
     <div class="msg-panel msg-hide" id="msgPicker">
       <h3>Send a comp from your vault</h3>
       <input id="msgPickFilter" type="text" placeholder="Filter by address, market or type" autocomplete="off">
@@ -294,7 +319,8 @@ function renderMessagesBody(boot) {
   var state = {
     me: "", firm: null, people: [], threads: [], canAttach: false,
     openId: "", openKind: "internal", cursor: "", messages: [], tab: "chat", picked: [],
-    external: [], extItems: [], extPeople: {}, canWriteExt: false,
+    external: [], extItems: [], extPeopleList: [], canWriteExt: false,
+    pickedExt: [], extLinks: null,
     attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
   };
 
@@ -396,8 +422,10 @@ function renderMessagesBody(boot) {
     state.cursor = "";
     state.messages = [];
     state.extItems = [];
+    state.extPeopleList = [];
     state.attach = [];
     state.canWriteExt = false;
+    $("msgPeoplePanel").className = "msg-panel msg-hide";
     renderTray();
     setTab("chat");
     if (jump !== false) $("msgPage").className = "msg-page on-thread";
@@ -431,7 +459,9 @@ function renderMessagesBody(boot) {
       // replace; messages arrive incrementally past the cursor, so they
       // append, deduped by id against an optimistic double-read.
       state.extItems = j.items || [];
+      state.extPeopleList = j.people || [];
       state.canWriteExt = j.canWrite === true;
+      if ($("msgPeoplePanel").className.indexOf("msg-hide") < 0) renderPeoplePanel();
       var fresh = j.messages || [];
       if (fresh.length) {
         var have = {};
@@ -531,6 +561,105 @@ function renderMessagesBody(boot) {
     el.innerHTML = html;
     el.scrollTop = el.scrollHeight;
   }
+  // --- The guest list ------------------------------------------------------
+  function currentPeopleEmails(){
+    return state.extPeopleList.map(function(p){ return String(p.email || "").toLowerCase(); }).filter(Boolean);
+  }
+  function renderPeoplePanel(){
+    var row = extRow();
+    var closed = !state.canWriteExt || (row && row.closed);
+    var html = "";
+    if (!state.extPeopleList.length) {
+      html = '<div class="msg-hint" style="margin-bottom:8px">Nobody has been invited yet. ' +
+        'Add an email below and they get a private link — no account needed.</div>';
+    }
+    for (var i = 0; i < state.extPeopleList.length; i++) {
+      var p = state.extPeopleList[i];
+      html += '<div class="msg-pick"><span class="who">' + esc(p.email) +
+        '<span class="sub"> · ' + (p.opened ? "has opened it" : "hasn't opened it yet") + '</span></span>' +
+        (closed ? "" : '<button class="msg-btn sm" type="button" data-remove-person="' + esc(p.email) + '">Remove</button>') +
+        '</div>';
+    }
+    $("msgPeopleList").innerHTML = html;
+    $("msgPeopleAdd").disabled = closed;
+    $("msgPeopleGo").disabled = closed;
+    $("msgCloseHub").className = closed ? "msg-btn sm msg-hide" : "msg-btn sm";
+    renderInviteLinks();
+  }
+  // Links that could not be emailed, shown ONCE: only the hash of each token
+  // is stored, so a link not copied out of this panel reaches nobody and can
+  // never be shown again. The vault's old panel made the same promise; it
+  // moved here with the job.
+  function renderInviteLinks(){
+    var l = state.extLinks;
+    // One-time links belong to the room whose create or invite produced them.
+    // Rendering them inside any other room would hand one client's private
+    // door to a different conversation's panel.
+    if (l && l.id && l.id !== state.openId) l = null;
+    var failed = l ? (l.emailFailed || []) : [];
+    var show = l && (l.invites || []).filter(function(i){
+      return !l.emailed && (failed.length === 0 || failed.indexOf(i.email) >= 0);
+    });
+    if (!l || !show || !show.length) { $("msgLinks").innerHTML = ""; return; }
+    var html = '<div class="msg-hint" style="margin:8px 0 6px">' +
+      (failed.length ? esc(failed.join(", ")) + ' could not be emailed. ' : '') +
+      'Copy each link and send it yourself — these cannot be shown again.</div>';
+    for (var i = 0; i < show.length; i++) {
+      html += '<div class="msg-pick" style="gap:6px">' +
+        '<span class="sub" style="flex:0 0 auto">' + esc(show[i].email) + '</span>' +
+        '<input type="text" readonly value="' + esc(show[i].url) + '" id="msgLnk' + i + '" style="flex:1;min-width:200px;margin:0">' +
+        '<button class="msg-btn sm" type="button" data-copy-link="msgLnk' + i + '">Copy</button></div>';
+    }
+    $("msgLinks").innerHTML = html;
+  }
+  function openPeoplePanel(){
+    $("msgPicker").className = "msg-panel msg-hide";
+    $("msgPeoplePanel").className = "msg-panel";
+    $("msgPeopleMsg").textContent = "";
+    renderPeoplePanel();
+  }
+  function invitePerson(){
+    var email = ($("msgPeopleAdd").value || "").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { $("msgPeopleMsg").textContent = "That doesn't look like an email address."; return; }
+    if (currentPeopleEmails().indexOf(email) >= 0) { $("msgPeopleMsg").textContent = "They're already in this conversation."; return; }
+    $("msgPeopleGo").disabled = true;
+    $("msgPeopleMsg").textContent = "";
+    // WHOLESALE, the route's contract: the full list plus the newcomer.
+    // Re-sending the people already on it re-mails nobody (the route's own
+    // rule), so add costs exactly one invitation.
+    api("PUT", "/api/hub/participants", { id: state.openId, emails: currentPeopleEmails().concat([email]) })
+      .then(function(o){
+        $("msgPeopleGo").disabled = false;
+        if (o.s !== 200) { $("msgPeopleMsg").textContent = (o.j && o.j.error) || "Couldn't invite them."; return; }
+        $("msgPeopleAdd").value = "";
+        state.extLinks = o.j;
+        state.extLinks.id = state.openId;
+        $("msgPeopleMsg").textContent = o.j.emailed ? "Invited — they've been emailed their link." : "";
+        readExternal(false).then(function(){ renderPeoplePanel(); refreshList(true); });
+      });
+  }
+  function removePerson(email){
+    api("PUT", "/api/hub/participants", { id: state.openId, emails: currentPeopleEmails().filter(function(e){ return e !== email; }) })
+      .then(function(o){
+        if (o.s !== 200) { $("msgPeopleMsg").textContent = (o.j && o.j.error) || "Couldn't remove them."; return; }
+        // Removal revokes their link immediately, server-side; the panel just
+        // has to catch up.
+        readExternal(false).then(function(){ renderPeoplePanel(); refreshList(true); });
+      });
+  }
+  function closeConversation(){
+    api("POST", "/api/hub/close", { id: state.openId }).then(function(o){
+      if (o.s !== 200) { $("msgPeopleMsg").textContent = (o.j && o.j.error) || "Couldn't close it."; return; }
+      var row = extRow();
+      if (row) row.closed = true;
+      state.canWriteExt = false;
+      applyComposerMode();
+      renderPeoplePanel();
+      renderThreads();
+      $("msgSub").textContent = row ? (row.title ? row.title + " · closed" : "closed") : "closed";
+    });
+  }
+
   // What the composer is allowed to do depends on which side of the wall the
   // open conversation is on, and — outside it — on whether the room is
   // closed. One writer, so a closed room and an internal thread cannot
@@ -544,6 +673,12 @@ function renderMessagesBody(boot) {
     $("msgSend").disabled = closed;
     $("msgMailNote").className = external && !closed ? "msg-hint" : "msg-hint msg-hide";
     $("msgAttach").className = state.canAttach && !closed ? "msg-btn sm" : "msg-btn sm msg-hide";
+    // The guest list is the OWNER'S panel and every External row is owned, so
+    // it shows for every external conversation — closed included, since who
+    // was in a closed deal is still worth reading; the panel disables its own
+    // write controls.
+    $("msgPeopleBtn").className = external ? "msg-btn sm" : "msg-btn sm msg-hide";
+    if (!external) $("msgPeoplePanel").className = "msg-panel msg-hide";
     if (closed) { $("msgPicker").className = "msg-panel msg-hide"; }
   }
 
@@ -1057,12 +1192,23 @@ function renderMessagesBody(boot) {
       html += '<span class="msg-tag"><span>' + esc(pickedName(state.picked[i])) + '</span>' +
         '<button type="button" data-unpick="' + esc(state.picked[i]) + '" aria-label="Remove">×</button></span>';
     }
+    for (var k = 0; k < state.pickedExt.length; k++) {
+      html += '<span class="msg-tag" title="Outside your firm — invited by email">' +
+        '<span>' + esc(state.pickedExt[k]) + '</span>' +
+        '<button type="button" data-unpick-ext="' + esc(state.pickedExt[k]) + '" aria-label="Remove">×</button></span>';
+    }
     $("msgNewChips").innerHTML = html;
-    // The button says which of the two this is about to be, since that is the
-    // only thing the number of picks decides.
-    $("msgNewGo").textContent = state.picked.length === 1
-      ? "Message " + pickedName(state.picked[0])
-      : (state.picked.length > 1 ? "Start group" : "Start");
+    // The button says what this is about to be, since that is the only thing
+    // the selection decides: any outside email makes the whole thing an
+    // external conversation, because a room holding a client is a client
+    // room whoever else is in it.
+    var external = state.pickedExt.length > 0;
+    $("msgNewAbout").className = external ? "" : "msg-hide";
+    $("msgNewGo").textContent = external
+      ? "Start external conversation"
+      : (state.picked.length === 1
+          ? "Message " + pickedName(state.picked[0])
+          : (state.picked.length > 1 ? "Start group" : "Start"));
   }
   function renderNewPeople(){
     var people = joinedPeople();
@@ -1077,7 +1223,6 @@ function renderMessagesBody(boot) {
       if (!q) return true;
       return (p.name + " " + p.email).toLowerCase().indexOf(q) >= 0;
     });
-    if (!list.length) { $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody matches that.</div>'; return; }
     var html = "";
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
@@ -1087,11 +1232,31 @@ function renderMessagesBody(boot) {
         '<span class="who">' + esc(p.name) + '<span class="sub"> · ' + esc(p.email) + '</span></span>' +
         '</label></div>';
     }
+    // Typed something shaped like an email that is not a colleague? That is
+    // the door OUT of the firm: offer to invite them to an external
+    // conversation. Only when the member has a vault, because a deal room is
+    // a broker surface and the create route refuses without one — a row that
+    // can only fail must not render.
+    var typed = q.trim();
+    var emailish = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed);
+    var isColleague = joinedPeople().some(function(p){ return p.email === typed; });
+    if (emailish && !isColleague && state.canAttach) {
+      var on2 = state.pickedExt.indexOf(typed) >= 0;
+      html += '<div class="msg-pick"><label>' +
+        '<input type="checkbox" data-extpick="' + esc(typed) + '"' + (on2 ? " checked" : "") + '>' +
+        '<span class="who">Invite ' + esc(typed) +
+        '<span class="sub"> · outside your firm, by email</span></span>' +
+        '</label></div>';
+    }
+    if (!html) { $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody matches that.' +
+      (state.canAttach ? ' Type a full email address to invite somebody outside your firm.' : '') + '</div>'; return; }
     $("msgNewPeople").innerHTML = html;
   }
   function openNewPanel(){
     state.picked = [];
+    state.pickedExt = [];
     $("msgNewSearch").value = "";
+    $("msgNewAbout").value = "";
     $("msgNewMsg").textContent = "";
     $("msgNewPanel").className = "msg-panel";
     renderNewChips();
@@ -1099,9 +1264,39 @@ function renderMessagesBody(boot) {
     try { $("msgNewSearch").focus(); } catch (e) {}
   }
   function startThread(){
-    if (!state.picked.length) { $("msgNewMsg").textContent = "Pick somebody to message."; return; }
+    if (!state.picked.length && !state.pickedExt.length) { $("msgNewMsg").textContent = "Pick somebody to message."; return; }
     $("msgNewGo").disabled = true;
     $("msgNewMsg").textContent = "";
+    if (state.pickedExt.length) {
+      // ANY outside email makes the whole selection a deal room, colleagues
+      // included — they become participants by their email, exactly as if
+      // they had been invited from the room itself. The create route mints
+      // the tokens and sends the invites; this page only names the people.
+      var emails = state.pickedExt.slice();
+      for (var i = 0; i < state.picked.length; i++) {
+        var pplList = joinedPeople();
+        for (var k = 0; k < pplList.length; k++) {
+          if (pplList[k].userId === state.picked[i] && emails.indexOf(pplList[k].email) < 0) emails.push(pplList[k].email);
+        }
+      }
+      api("POST", "/api/hubs", { title: ($("msgNewAbout").value || "").trim(), participants: emails })
+        .then(function(o){
+          $("msgNewGo").disabled = false;
+          if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
+          $("msgNewPanel").className = "msg-panel msg-hide";
+          state.picked = [];
+          state.pickedExt = [];
+          // The links in this response exist NOWHERE else. Kept so the People
+          // panel can show them if the emails did not go.
+          state.extLinks = o.j;
+          var failed = !o.j.emailed;
+          refreshList(true).then(function(){
+            openExternal(o.j.id, true, true);
+            if (failed) openPeoplePanel();
+          });
+        });
+      return;
+    }
     api("POST", "/api/messages/thread", { memberIds: state.picked }).then(function(o){
       $("msgNewGo").disabled = false;
       if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
@@ -1160,6 +1355,46 @@ function renderMessagesBody(boot) {
   $("msgPickFilter").addEventListener("input", renderPicker);
   $("msgAttach").addEventListener("click", openPicker);
   $("msgPickDone").addEventListener("click", function(){ $("msgPicker").className = "msg-panel msg-hide"; });
+  $("msgPeopleBtn").addEventListener("click", function(){
+    var open = $("msgPeoplePanel").className.indexOf("msg-hide") < 0;
+    if (open) { $("msgPeoplePanel").className = "msg-panel msg-hide"; return; }
+    openPeoplePanel();
+  });
+  $("msgPeopleDone").addEventListener("click", function(){ $("msgPeoplePanel").className = "msg-panel msg-hide"; });
+  $("msgPeopleGo").addEventListener("click", invitePerson);
+  $("msgPeopleAdd").addEventListener("keydown", function(e){
+    if (e.key === "Enter") { e.preventDefault(); invitePerson(); }
+  });
+  $("msgPeopleList").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-remove-person]");
+    if (!btn) return;
+    var email = btn.getAttribute("data-remove-person");
+    // Their link stops working the moment this lands — worth a confirm.
+    if (!window.confirm("Remove " + email + "? Their link stops working immediately.")) return;
+    removePerson(email);
+  });
+  $("msgCloseHub").addEventListener("click", function(){
+    if (!window.confirm("Close this conversation? Everyone keeps reading it, and nobody can post. This cannot be reopened.")) return;
+    closeConversation();
+  });
+  $("msgLinks").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-copy-link]");
+    if (!b) return;
+    var inp = $(b.getAttribute("data-copy-link"));
+    if (!inp) return;
+    // select() first and as the fallback, the vault panel's own reasoning:
+    // clipboard.writeText needs a secure context and a grantable permission,
+    // and a broker who cannot copy the link cannot send it at all.
+    inp.focus(); inp.select();
+    var done = function(){ b.textContent = "Copied"; setTimeout(function(){ b.textContent = "Copy"; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(inp.value).then(done).catch(function(){
+        try { document.execCommand("copy"); done(); } catch (err) {}
+      });
+    } else {
+      try { document.execCommand("copy"); done(); } catch (err) {}
+    }
+  });
   $("msgSend").addEventListener("click", send);
   $("msgTabChat").addEventListener("click", function(){ setTab("chat"); });
   $("msgTabComps").addEventListener("click", function(){ if (state.openId) setTab("comps"); });
@@ -1179,6 +1414,16 @@ function renderMessagesBody(boot) {
   // Selection lives in state, not in the checkboxes: the list is filtered as
   // you type, so a box that leaves the filter would take its tick with it.
   $("msgNewPeople").addEventListener("change", function(e){
+    var extBox = e.target.closest("input[data-extpick]");
+    if (extBox) {
+      var email = extBox.getAttribute("data-extpick");
+      var atx = state.pickedExt.indexOf(email);
+      if (extBox.checked && atx < 0) state.pickedExt.push(email);
+      if (!extBox.checked && atx >= 0) state.pickedExt.splice(atx, 1);
+      $("msgNewMsg").textContent = "";
+      renderNewChips();
+      return;
+    }
     var box = e.target.closest("input[data-person]");
     if (!box) return;
     var id = box.getAttribute("data-person");
@@ -1189,6 +1434,14 @@ function renderMessagesBody(boot) {
     renderNewChips();
   });
   $("msgNewChips").addEventListener("click", function(e){
+    var ext = e.target.closest("[data-unpick-ext]");
+    if (ext) {
+      var atx = state.pickedExt.indexOf(ext.getAttribute("data-unpick-ext"));
+      if (atx >= 0) state.pickedExt.splice(atx, 1);
+      renderNewChips();
+      renderNewPeople();
+      return;
+    }
     var btn = e.target.closest("[data-unpick]");
     if (!btn) return;
     var at = state.picked.indexOf(btn.getAttribute("data-unpick"));

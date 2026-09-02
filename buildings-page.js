@@ -148,7 +148,7 @@ function renderBuildingsBody(boot) {
     $("blShown").textContent=filtering?shown.length+" of "+items.length:"";
     $("blNone").className=(items.length&&!shown.length)?"bl-note":"bl-note hide";
     $("blRows").innerHTML=shown.map(function(b){
-      return '<div class="bl-row"><span class="bl-addr">'+esc(b.address)+'</span>'+
+      return '<div class="bl-row"><a class="bl-addr" href="/building/'+esc(encodeURIComponent(b.id))+'">'+esc(b.address)+'</a>'+
         '<span class="bl-meta">'+esc(meta(b))+'</span>'+
         '<button type="button" class="bl-rm" data-rm="'+esc(b.id)+'" data-addr="'+esc(b.address)+'">Remove</button></div>';
     }).join("");
@@ -184,4 +184,284 @@ function renderBuildingsBody(boot) {
 </script>`;
 }
 
-module.exports = { renderBuildingsBody, FILTER_AT };
+// ---------------------------------------------------------------------------
+// /building/<id> — one building's sheet (Three Spaces, slice 5).
+//
+// The same body pattern as the list above, and the same single-value boot:
+// server.js composes everything through org-buildings.js's composeSheet and
+// this file only draws it. Every composed row is read-only and attributed;
+// the only editable things are the building's three descriptive fields and
+// the notes. The "spreadsheet" convention is /vault's: a formatted figure for
+// reading, the raw value on data-raw, swapped in on focus, saved on blur.
+//
+// This literal too contains exactly ONE backtick and interpolates the boot
+// JSON alone; test/buildings-page.test.js guards both.
+// ---------------------------------------------------------------------------
+function renderBuildingSheetBody(boot) {
+  const bootJson = boot ? JSON.stringify(boot).replace(/</g, "\\u003c") : "null";
+  return `<style>
+.bs-page,.bs-page *{box-sizing:border-box}
+.bs-page{margin:24px 0 48px}
+.bs-page .kicker{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.bs-page .kicker a{color:var(--ink-3)}
+.bs-head{border-bottom:1.5px solid var(--ink);padding-bottom:8px;margin-bottom:6px}
+.bs-head h1{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:26px;color:var(--ink)}
+.bs-sub{font-size:12.5px;color:var(--ink-3);margin:0 0 18px}
+.bs-id{display:flex;flex-wrap:wrap;gap:14px 28px;margin:0 0 22px}
+.bs-id label{display:flex;flex-direction:column;gap:4px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.bs-id input,.bs-id select{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--edge);border-radius:6px;
+  background:var(--card);color:var(--ink);min-width:9rem}
+.bs-id .ro{font-size:14px;color:var(--ink);padding:6px 0;text-transform:none;letter-spacing:0}
+.bs-sec{margin:0 0 26px}
+.bs-rule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;
+  border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:6px}
+.bs-rule .lab{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600}
+.bs-rule .n{font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.bs-row{display:flex;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px solid var(--hair);font-size:13px}
+.bs-row:last-child{border-bottom:0}
+.bs-row .a{flex:1 1 auto;min-width:0;color:var(--ink)}
+.bs-row .m{flex:0 0 auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bs-row .fig{font-variant-numeric:tabular-nums;color:var(--ink)}
+.bs-note{font-size:12.5px;color:var(--ink-3);margin:6px 0 0}
+.bs-lnk{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:11px;color:var(--ink-3);text-decoration:underline;cursor:pointer}
+.bs-lnk:hover{color:var(--red)}
+.bs-lnk.on{color:var(--ok-text);text-decoration:none}
+.bs-notes .body{white-space:pre-wrap;font-size:13.5px;color:var(--ink-body);margin:0}
+.bs-notes form{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
+.bs-notes textarea{font:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--edge);border-radius:8px;
+  background:var(--card);color:var(--ink);min-height:64px;resize:vertical}
+.bs-btn{appearance:none;align-self:flex-start;border:0;border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;font-weight:600;
+  color:#fff;background:var(--red-fill);cursor:pointer}
+.bs-btn:hover{background:var(--red-fill-hover)}
+.bs-msg{font-size:13px;color:var(--ink-2);margin:8px 0 0}
+.bs-msg.bad{color:var(--err-text)}
+.bs-wall{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;margin:18px 0}
+.bs-wall p{margin:0 0 8px;font-size:14px;color:var(--ink-body)}
+.bs-wall a{color:var(--red);text-decoration:underline}
+.hide{display:none}
+</style>
+<main class="wrap bs-page">
+  <div class="kicker"><a href="/desk">Your firm</a> \u00b7 <a href="/buildings">Buildings</a></div>
+  <div class="bs-wall hide" id="bsWall"></div>
+  <div id="bsSheet" class="hide">
+    <div class="bs-head" id="bsHead"><h1 id="bsAddr"></h1></div>
+    <p class="bs-sub" id="bsSub"></p>
+    <div class="bs-id">
+      <label>Type <select id="bsType"><option value="">Any type</option><option>Industrial</option><option>Office</option><option>Retail</option><option>Multifamily</option><option>Land</option><option>Residential</option></select></label>
+      <label>Size (SF) <input id="bsSize" type="text" inputmode="numeric" placeholder="12,500"/></label>
+      <label>Year built <input id="bsYear" type="text" inputmode="numeric" placeholder="1994"/></label>
+      <label>Market <span class="ro" id="bsMarket"></span></label>
+    </div>
+    <p class="bs-msg hide" id="bsMsg" aria-live="polite"></p>
+
+    <section class="bs-sec" id="bsTxFirm">
+      <div class="bs-rule"><span class="lab">Transactions \u00b7 the firm\u2019s</span><span class="n" id="bsTxFirmN"></span></div>
+      <div id="bsTxFirmRows"></div>
+      <p class="bs-note hide" id="bsTxFirmNone">No colleague has shared a comp on this building yet.</p>
+    </section>
+
+    <section class="bs-sec" id="bsTxMine">
+      <div class="bs-rule"><span class="lab">Transactions \u00b7 yours</span><span class="n" id="bsTxMineN"></span></div>
+      <div id="bsTxMineRows"></div>
+      <p class="bs-note hide" id="bsTxMineNone">Nothing in your vault on this building. Comps you add to your vault at this address show up here, and you can share each one with the firm from here.</p>
+    </section>
+
+    <section class="bs-sec" id="bsReports">
+      <div class="bs-rule"><span class="lab">Reports</span><span class="n" id="bsReportsN"></span></div>
+      <div id="bsReportsRows"></div>
+      <p class="bs-note hide" id="bsReportsNone">No report on the firm\u2019s shelf is about this building yet.</p>
+    </section>
+
+    <section class="bs-sec" id="bsValues">
+      <div class="bs-rule"><span class="lab">Valuations</span><span class="n" id="bsValuesN"></span></div>
+      <div id="bsValuesRows"></div>
+      <p class="bs-note hide" id="bsValuesNone">No valuation yet \u2014 your own portfolio checks and the firm\u2019s shared reports land here. A colleague\u2019s portfolio never does.</p>
+    </section>
+
+    <section class="bs-sec" id="bsContacts">
+      <div class="bs-rule"><span class="lab">Contacts</span><span class="n" id="bsContactsN"></span></div>
+      <div id="bsContactsRows"></div>
+      <p class="bs-note hide" id="bsContactsNone">No contact is attached to this building yet.</p>
+    </section>
+
+    <section class="bs-sec bs-notes" id="bsNotes">
+      <div class="bs-rule"><span class="lab">Notes</span><span class="n" id="bsNotesN"></span></div>
+      <form id="bsNoteForm">
+        <textarea id="bsNoteBody" maxlength="2000" placeholder="Something the next colleague to open this building should know"></textarea>
+        <button type="submit" class="bs-btn">Add note</button>
+      </form>
+      <div id="bsNotesRows"></div>
+      <p class="bs-note hide" id="bsNotesNone">No notes yet. Everyone at the firm reads what is written here, with the writer\u2019s name on it.</p>
+    </section>
+  </div>
+</main>
+<script>
+(function(){
+  var BOOT = ${bootJson};
+  function $(id){return document.getElementById(id)}
+  function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  var money=function(n){return n==null?"":"$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
+  var num=function(n){return n==null?"":Number(n).toLocaleString("en-US",{maximumFractionDigits:0})};
+  var when=function(ts){
+    if(!ts)return "";
+    var m=/^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(String(ts));
+    var d=m?new Date(Number(m[1]),Number(m[2])-1,Number(m[3])):new Date(ts);
+    return isNaN(d)?String(ts).slice(0,10):d.toLocaleDateString();
+  };
+  var org=null,sheet=null,building=null;
+
+  function wall(html){
+    var w=$("bsWall"); w.innerHTML=html; w.className="bs-wall"; $("bsSheet").className="hide";
+  }
+  function apply(o){
+    if(!o||o.s===503){ wall("<p>Couldn't load this building just now. Nothing has been lost. Refresh in a moment.</p>"); return; }
+    if(o.s===401){ wall('<p>Sign in to see this building.</p><p><a href="/?auth=signin">Sign in</a></p>'); return; }
+    if(o.s===404){ wall('<p>That building is not on your firm\u2019s list \u2014 it may have been removed, or it belongs to another firm.</p><p><a href="/buildings">Back to your firm\u2019s buildings</a></p>'); return; }
+    if(o.s!==200||!o.j||!o.j.building){ wall('<p>Buildings belong to a firm, and this account is not in one yet.</p><p><a href="/desk">Create a firm or accept an invitation on the Workspace</a>.</p>'); return; }
+    $("bsWall").className="bs-wall hide"; $("bsSheet").className="";
+    org=o.j.org||null; sheet=o.j; building=o.j.building;
+    render();
+  }
+  function msg(text,bad){ var el=$("bsMsg"); el.textContent=text||""; el.className="bs-msg"+(bad?" bad":"")+(text?"":" hide"); }
+  function count(id,n,word){ $(id).textContent=n?n+" "+(n===1?word:word+"s"):""; }
+  function none(id,show){ $(id).className=show?"bs-note":"bs-note hide"; }
+
+  function render(){
+    var b=building;
+    $("bsAddr").textContent=b.address;
+    $("bsSub").textContent=[org&&org.name?org.name+"\u2019s board":"",b.mine?"added by you":(b.addedBy?"added by "+b.addedBy:"")].filter(Boolean).join(" \u00b7 ");
+    $("bsType").value=b.type||"";
+    // /vault's cell convention: the formatted figure for reading, the raw one
+    // on data-raw and swapped in on focus, the server's normalized value put
+    // back after a save.
+    $("bsSize").value=b.sizeSqft?num(b.sizeSqft):""; $("bsSize").setAttribute("data-raw",b.sizeSqft==null?"":String(b.sizeSqft));
+    $("bsYear").value=b.yearBuilt?String(b.yearBuilt):""; $("bsYear").setAttribute("data-raw",b.yearBuilt==null?"":String(b.yearBuilt));
+    $("bsMarket").textContent=b.market||"\u2014";
+
+    var firm=sheet.firmComps||[];
+    count("bsTxFirmN",firm.length,"comp"); none("bsTxFirmNone",!firm.length);
+    $("bsTxFirmRows").innerHTML=firm.map(function(c){
+      return '<div class="bs-row"><span class="a">'+esc(when(c.date)||"undated")+' \u00b7 '+esc(c.transaction||"")+
+        (c.price!=null?' \u00b7 <span class="fig">'+esc(money(c.price))+"</span>":"")+
+        (c.sizeSqft?' \u00b7 '+esc(num(c.sizeSqft))+" SF":"")+
+        (c.pricePerSqft!=null?' \u00b7 $'+esc(Number(c.pricePerSqft).toFixed(2))+"/SF":"")+
+        '</span><span class="m">shared by '+esc(c.sharedBy)+"</span></div>";
+    }).join("");
+
+    var mine=sheet.mineComps||[];
+    count("bsTxMineN",mine.length,"comp"); none("bsTxMineNone",!mine.length);
+    $("bsTxMineRows").innerHTML=mine.map(function(c){
+      return '<div class="bs-row"><span class="a">'+esc(when(c.date)||"undated")+' \u00b7 '+esc(c.transaction||"")+
+        (c.price!=null?' \u00b7 <span class="fig">'+esc(money(c.price))+"</span>":"")+
+        (c.rentPsfYr!=null?' \u00b7 $'+esc(Number(c.rentPsfYr).toFixed(2))+"/SF/yr":"")+
+        (c.sizeSqft?' \u00b7 '+esc(num(c.sizeSqft))+" SF":"")+
+        (c.pricePerSqft!=null?' \u00b7 $'+esc(Number(c.pricePerSqft).toFixed(2))+"/SF":"")+
+        '</span><span class="m">'+(c.published?"published \u00b7 ":"")+'from your vault \u00b7 '+
+        '<button type="button" class="bs-lnk'+(c.shared?" on":"")+'" data-firm="'+esc(c.id)+'" data-on="'+(c.shared?"1":"0")+'">'+
+        (c.shared?"Shared with the firm":"Share with the firm")+"</button></span></div>";
+    }).join("");
+
+    var reps=sheet.reports||[];
+    count("bsReportsN",reps.length,"report"); none("bsReportsNone",!reps.length);
+    $("bsReportsRows").innerHTML=reps.map(function(r){
+      return '<div class="bs-row"><a class="a" href="'+esc(r.url)+'" target="_blank" rel="noopener noreferrer">'+esc(r.type||"Report")+" report</a>"+
+        '<span class="m">'+(r.mine?"shared by you":"shared by "+esc(r.sharedBy))+(r.createdAt?" \u00b7 "+esc(when(r.createdAt)):"")+"</span></div>";
+    }).join("");
+
+    var vals=sheet.valuations||[];
+    count("bsValuesN",vals.length,"valuation"); none("bsValuesNone",!vals.length);
+    $("bsValuesRows").innerHTML=vals.map(function(v){
+      var band=(v.low!=null&&v.high!=null)?esc(money(v.low))+" \u2013 "+esc(money(v.high)):"";
+      return '<div class="bs-row"><span class="a"><span class="fig">'+esc(money(v.likely))+"</span> likely"+(band?" \u00b7 "+band:"")+"</span>"+
+        '<span class="m">'+(v.source==="yours"?"your portfolio":"from "+(v.sharedBy?esc(v.sharedBy)+"\u2019s":"a colleague\u2019s")+" shared report")+
+        (v.ts?" \u00b7 "+esc(when(v.ts)):"")+"</span></div>";
+    }).join("");
+
+    var cons=sheet.contacts||[];
+    count("bsContactsN",cons.length,"contact"); none("bsContactsNone",!cons.length);
+    $("bsContactsRows").innerHTML=cons.map(function(c){
+      return '<div class="bs-row"><span class="a">'+esc(c.name)+(c.company?" \u00b7 "+esc(c.company):"")+(c.email?" \u00b7 "+esc(c.email):"")+"</span>"+
+        '<span class="m">'+(c.mine?"added by you":(c.addedBy?"added by "+esc(c.addedBy):"added by a colleague"))+"</span></div>";
+    }).join("");
+
+    var notes=sheet.notes||[];
+    count("bsNotesN",notes.length,"note"); none("bsNotesNone",!notes.length);
+    $("bsNotesRows").innerHTML=notes.map(function(n){
+      return '<div class="bs-row"><p class="body a">'+esc(n.body)+"</p>"+
+        '<span class="m">'+(n.mine?"you":esc(n.addedBy))+(n.createdAt?" \u00b7 "+esc(when(n.createdAt)):"")+
+        (n.mine?' \u00b7 <button type="button" class="bs-lnk" data-note-rm="'+esc(n.id)+'">Remove</button>':"")+"</span></div>";
+    }).join("");
+  }
+
+  function reload(){
+    if(!org||!building)return Promise.resolve();
+    return fetch("/api/org/buildings/sheet?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id),{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ apply(o); })
+      .catch(function(){});
+  }
+
+  // Identity cells: focus shows the raw figure, blur saves the whole edit.
+  function saveIdentity(patch){
+    if(!org||!building)return;
+    fetch("/api/org/buildings?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id),{
+      method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(patch)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){ msg(o.j.error||"That didn't go through.",true); return; }
+        msg("Saved."); building=o.j.building||building; render();
+      })
+      .catch(function(){ msg("That didn't reach the server. Nothing was changed.",true); });
+  }
+  $("bsType").addEventListener("change",function(){ saveIdentity({propertyType:$("bsType").value}); });
+  ["bsSize","bsYear"].forEach(function(id){
+    var el=$(id);
+    el.addEventListener("focus",function(){ el.value=el.getAttribute("data-raw")||""; });
+    el.addEventListener("blur",function(){
+      var raw=el.getAttribute("data-raw")||"",v=el.value.trim();
+      if(v===raw){ render(); return; }
+      saveIdentity(id==="bsSize"?{sizeSqft:v}:{yearBuilt:v});
+    });
+    el.addEventListener("keydown",function(e){ if(e.key==="Enter"){e.preventDefault();el.blur();} if(e.key==="Escape"){el.value=el.getAttribute("data-raw")||"";el.blur();} });
+  });
+
+  // The firm-share toggle on your own comps: the SAME route /vault's toggle
+  // posts to, one comp per click, taking it back needs no confirm.
+  $("bsTxMineRows").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button[data-firm]"):null; if(!b||!org)return;
+    var on=b.getAttribute("data-on")==="1",id=b.getAttribute("data-firm");
+    if(!on&&!confirm("Share this comp with "+org.name+"?\\n\\nColleagues at your firm will see it inside their own reports, with your name on it. It does NOT go into CompNinja's public records, it is left out of every download and client link, and you can take it back at any time."))return;
+    b.disabled=true;
+    fetch("/api/vault/firm",{method:on?"DELETE":"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+      body:JSON.stringify({orgId:org.id,compIds:[id]})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){b.disabled=false;msg(o.j.error||"That didn't go through.",true);return;} reload(); })
+      .catch(function(){ b.disabled=false; msg("That didn't go through.",true); });
+  });
+
+  $("bsNoteForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    if(!org||!building)return;
+    var body=$("bsNoteBody").value;
+    fetch("/api/org/buildings/notes?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id),{
+      method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({body:body})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){msg(o.j.error||"That didn't go through.",true);return;} $("bsNoteBody").value=""; msg(""); reload(); })
+      .catch(function(){ msg("That didn't reach the server. Nothing was changed.",true); });
+  });
+  $("bsNotesRows").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button[data-note-rm]"):null; if(!b||!org)return;
+    b.disabled=true;
+    fetch("/api/org/buildings/notes?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id)+"&note="+encodeURIComponent(b.getAttribute("data-note-rm")),
+      {method:"DELETE",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){b.disabled=false;msg(o.j.error||"That didn't go through.",true);return;} reload(); })
+      .catch(function(){ b.disabled=false; msg("That didn't go through.",true); });
+  });
+
+  apply(BOOT);
+})();
+</script>`;
+}
+
+module.exports = { renderBuildingsBody, renderBuildingSheetBody, FILTER_AT };

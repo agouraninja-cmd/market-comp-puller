@@ -59,7 +59,7 @@ test("the page's own client script actually parses, in every boot state", () => 
 test("the page literal contains exactly one backtick — its own opener", () => {
   const at = SOURCE.indexOf("return `<style>");
   assert.notEqual(at, -1, "the page literal has moved; this guard now checks nothing");
-  const literal = SOURCE.slice(at, SOURCE.lastIndexOf("`;"));
+  const literal = SOURCE.slice(at, SOURCE.indexOf("`;", at));
   assert.equal((literal.match(/`/g) || []).length, 1,
     "a backtick inside the page literal closes it early — the page will render and do nothing");
 });
@@ -164,4 +164,96 @@ test("addresses are escaped — a building name is text a person typed", () => {
   const dom = run(OK([BLDG({ address: '<img src=x onerror=alert(1)> "Main" St, Boise, ID' })]));
   assert.doesNotMatch(dom.el("blRows").innerHTML, /<img/);
   assert.match(dom.el("blRows").innerHTML, /&lt;img/);
+});
+
+
+// ---------------------------------------------------------------------------
+// The sheet (slice 5)
+// ---------------------------------------------------------------------------
+const { renderBuildingSheetBody } = require("../buildings-page");
+const SHEET = (over) => ({ s: 200, j: Object.assign({
+  org: { id: "o1", name: "Colliers Boise" },
+  building: { id: "b1", address: "1210 N 17th St, Boise, ID", market: "Boise, ID", type: "Industrial", sizeSqft: 12500, yearBuilt: 1994, addedBy: "Brad", mine: true },
+  firmComps: [{ id: "f1", date: "2026-01-09", transaction: "sale", price: 1250000, sizeSqft: 12500, pricePerSqft: 100, sharedBy: "Mike" }],
+  mineComps: [{ id: "m1", date: "2025-11-20", transaction: "lease", price: null, rentPsfYr: 9.5, sizeSqft: 12500, pricePerSqft: null, published: false, shared: false }],
+  reports: [{ id: "r1", url: "/r/r1", type: "Industrial", sharedBy: "Mike", mine: false, createdAt: "2026-02-01T00:00:00Z" }],
+  valuations: [{ ts: "2026-03-01T00:00:00Z", low: 1100000, likely: 1250000, high: 1400000, source: "yours" },
+               { ts: "2026-02-01T00:00:00Z", low: 1000000, likely: 1200000, high: 1300000, source: "report", sharedBy: "Mike" }],
+  contacts: [{ id: "c1", name: "Dana Wu", company: "Acme", email: "", addedBy: "Mike", mine: false }],
+  notes: [{ id: "n1", body: "Roof replaced 2021", addedBy: "Brad", mine: true, createdAt: "2026-04-01T00:00:00Z" }],
+}, over || {}) });
+function runSheet(boot) {
+  const dom = makeDom();
+  // The identity cells call setAttribute/getAttribute; the stand-in grows them.
+  const real = dom.document.getElementById;
+  dom.document.getElementById = (id) => {
+    const el = real(id);
+    if (!el.setAttribute) { el._attrs = {}; el.setAttribute = (k, v) => { el._attrs[k] = String(v); }; el.getAttribute = (k) => (k in el._attrs ? el._attrs[k] : null); }
+    return el;
+  };
+  const ctx = vm.createContext({ document: dom.document, console, fetch: () => Promise.reject(new Error("no fetch in this test")), confirm: () => true });
+  new vm.Script(scriptOf(renderBuildingSheetBody(boot)), { filename: "buildings-page.js#sheet" }).runInContext(ctx);
+  return dom;
+}
+
+test("the sheet's script parses in every boot state, and its literal holds one backtick", () => {
+  for (const boot of [SHEET(), { s: 401, j: {} }, { s: 403, j: {} }, { s: 404, j: {} }, { s: 503, j: {} }, null]) {
+    new vm.Script(scriptOf(renderBuildingSheetBody(boot)));
+  }
+  const at = SOURCE.indexOf("function renderBuildingSheetBody");
+  const lit = SOURCE.slice(SOURCE.indexOf("return `<style>", at), SOURCE.indexOf("`;", SOURCE.indexOf("return `<style>", at)));
+  assert.equal((lit.match(/`/g) || []).length, 1);
+  assert.equal((lit.match(/\$\{/g) || []).length, 1, "the boot JSON is the only interpolation");
+  const html = renderBuildingSheetBody({ s: 200, j: { building: { address: "</script><img onerror=alert(1)>" } } });
+  assert.ok(!html.includes("</script><img"));
+});
+
+test("every section the plan names is on the sheet, with its rows attributed", () => {
+  const dom = runSheet(SHEET());
+  for (const id of ["bsHead", "bsTxFirm", "bsTxMine", "bsReports", "bsValues", "bsContacts", "bsNotes"]) {
+    assert.ok(renderBuildingSheetBody(SHEET()).includes(`id="${id}"`), id + " is missing from the sheet");
+  }
+  assert.equal(dom.el("bsAddr").textContent, "1210 N 17th St, Boise, ID");
+  assert.match(dom.el("bsSub").textContent, /Colliers Boise’s board · added by you/);
+  assert.match(dom.el("bsTxFirmRows").innerHTML, /\$1,250,000.*shared by Mike/);
+  assert.match(dom.el("bsTxMineRows").innerHTML, /\$9\.50\/SF\/yr.*from your vault/);
+  assert.match(dom.el("bsTxMineRows").innerHTML, /data-firm="m1" data-on="0">Share with the firm/);
+  assert.match(dom.el("bsReportsRows").innerHTML, /href="\/r\/r1".*shared by Mike/);
+  assert.match(dom.el("bsValuesRows").innerHTML, /\$1,250,000<\/span> likely · \$1,100,000 – \$1,400,000.*your portfolio/);
+  assert.match(dom.el("bsValuesRows").innerHTML, /from Mike’s shared report/);
+  assert.match(dom.el("bsContactsRows").innerHTML, /Dana Wu · Acme.*added by Mike/);
+  assert.match(dom.el("bsNotesRows").innerHTML, /Roof replaced 2021.*data-note-rm="n1"/, "the author's own note carries Remove");
+  assert.equal(dom.el("bsTxFirmN").textContent, "1 comp");
+  assert.equal(dom.el("bsValuesN").textContent, "2 valuations");
+});
+
+test("the identity cells hold the raw figure and show the formatted one — /vault's convention", () => {
+  const dom = runSheet(SHEET());
+  assert.equal(dom.el("bsSize").value, "12,500");
+  assert.equal(dom.el("bsSize").getAttribute("data-raw"), "12500");
+  assert.equal(dom.el("bsYear").value, "1994");
+  assert.equal(dom.el("bsType").value, "Industrial");
+  assert.equal(dom.el("bsMarket").textContent, "Boise, ID");
+});
+
+test("an empty sheet says so section by section, never as a blank page", () => {
+  const dom = runSheet(SHEET({ firmComps: [], mineComps: [], reports: [], valuations: [], contacts: [], notes: [] }));
+  for (const id of ["bsTxFirmNone", "bsTxMineNone", "bsReportsNone", "bsValuesNone", "bsContactsNone", "bsNotesNone"]) {
+    assert.equal(dom.hidden(id), false, id + " should show");
+  }
+  assert.match(renderBuildingSheetBody(SHEET()), /colleague’s portfolio never does/, "the sheet states rule 2 to the reader");
+});
+
+test("the sheet's own refusals: signed out, no firm, not on the board, outage", () => {
+  assert.match(runSheet({ s: 401, j: {} }).el("bsWall").innerHTML, /Sign in/);
+  assert.match(runSheet({ s: 403, j: {} }).el("bsWall").innerHTML, /not in one yet/);
+  assert.match(runSheet({ s: 404, j: {} }).el("bsWall").innerHTML, /not on your firm’s list.*Back to your firm’s buildings/);
+  assert.match(runSheet(null).el("bsWall").innerHTML, /Nothing has been lost/);
+  assert.match(runSheet({ s: 503, j: {} }).el("bsWall").innerHTML, /Nothing has been lost/);
+});
+
+test("the sheet escapes everything a person typed", () => {
+  const dom = runSheet(SHEET({ notes: [{ id: "n1", body: "<img src=x onerror=alert(1)>", addedBy: "Brad", mine: false }] }));
+  assert.doesNotMatch(dom.el("bsNotesRows").innerHTML, /<img/);
+  assert.match(dom.el("bsNotesRows").innerHTML, /&lt;img/);
 });

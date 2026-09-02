@@ -161,3 +161,114 @@ test("the two thresholds are the plan's, and the module starts nothing", () => {
   assert.doesNotMatch(src, /require\(/, "pure: no requires, the keys are injected");
   assert.doesNotMatch(src, /Date\.now|new Date/, "pure: no clock — the caller passes the year");
 });
+
+
+// ---------------------------------------------------------------------------
+// The sheet (slice 5): composeSheet is the privacy wall's last line.
+// ---------------------------------------------------------------------------
+
+const KEY = VAULT.addressKey("1210 N 17th St, Boise, ID");
+const BUILDING = {
+  id: "b1", org_id: "o1", address: "1210 N 17th St, Boise, ID", address_key: KEY,
+  verified_key: "1210 n 17th st boise id 83702", market: "Boise, ID", property_type: "Industrial",
+  size_sqft: 12500, year_built: 1994, added_by_user_id: "u1", added_by_name: "Brad",
+};
+const firmRow = (o) => Object.assign({ id: "f1", shared_by_user_id: "u2", shared_by_name: "Mike", deal_date: "2026-01-09",
+  comp: { address: "1210 N 17th St, Boise, ID", transaction: "sale", price_or_rate: 1250000, size_sqft: 12500, price_per_sqft: 100 } }, o);
+const mineRow = (o) => Object.assign({ id: "m1", user_id: "u1", address_key: KEY, deal_date: "2025-11-20", transaction: "lease",
+  price: null, rent_psf_yr: 9.5, size_sqft: 12500, price_per_sqft: null, published: false }, o);
+
+test("the sheet composes each section from the viewer's OWN rows and the firm's SHARED rows, on the key", () => {
+  const s = B.composeSheet({
+    building: BUILDING, viewerId: "u1", addressKey: VAULT.addressKey,
+    firmComps: [firmRow({}), firmRow({ id: "f2", comp: { address: "9 Other St, Boise, ID", transaction: "sale", price_or_rate: 1 } })],
+    mineComps: [mineRow({}), mineRow({ id: "m2", address_key: "9 other st boise id" })],
+    sharedIds: ["m1"],
+    shelf: [{ id: "r1", user_id: "u2", shared_by_name: "Mike", created_at: "2026-02-01T00:00:00Z", meta: { address: "1210 N. 17th St, Boise, ID", type: "Industrial" } },
+            { id: "r2", user_id: "u2", shared_by_name: "Mike", created_at: "2026-02-01T00:00:00Z", meta: { address: "9 Other St, Boise, ID", type: "Retail" } }],
+    portfolio: [{ user_id: "u1", address: "1210 N 17th St Boise Idaho 83702", verified_key: "1210 n 17th st boise id 83702",
+      snapshots: [{ ts: "2026-03-01T00:00:00Z", low: 1.1e6, likely: 1.25e6, high: 1.4e6 }, { ts: "2026-01-01T00:00:00Z", likely: null }] }],
+    reportValues: [{ reportId: "r1", ts: "2026-02-01T00:00:00Z", low: 1.0e6, likely: 1.2e6, high: 1.3e6, sharedBy: "Mike" }],
+    contacts: [{ id: "c1", name: "Dana Wu", company: "Acme", email: "", added_by_user_id: "u2", added_by_name: "Mike" }],
+    notes: [{ id: "n1", body: "Roof replaced 2021", added_by_user_id: "u1", added_by_name: "Brad", created_at: "2026-04-01T00:00:00Z" }],
+  });
+  assert.equal(s.building.id, "b1");
+  assert.equal(s.building.mine, true);
+  assert.deepEqual(s.firmComps.map((c) => c.id), ["f1"], "only the firm comp on this key");
+  assert.equal(s.firmComps[0].sharedBy, "Mike");
+  assert.equal(s.firmComps[0].price, 1250000);
+  assert.deepEqual(s.mineComps.map((c) => c.id), ["m1"], "only my comp on this key");
+  assert.equal(s.mineComps[0].shared, true, "the firm-share toggle state rides on my row");
+  assert.equal(s.mineComps[0].rentPsfYr, 9.5);
+  assert.deepEqual(s.reports.map((r) => r.id), ["r1"], "the report whose address keys to this building — punctuation and all");
+  assert.equal(s.reports[0].url, "/r/r1");
+  assert.equal(s.valuations.length, 2, "one portfolio snapshot (the likely-less one dropped) and one report value");
+  assert.equal(s.valuations[0].source, "yours", "newest first");
+  assert.equal(s.valuations[1].source, "report");
+  assert.equal(s.valuations[1].sharedBy, "Mike");
+  assert.equal(s.contacts[0].name, "Dana Wu");
+  assert.equal(s.notes[0].mine, true);
+  assert.equal(s.notes[0].addedBy, "Brad");
+});
+
+test("rule 1: a colleague's private vault comp can never appear, whatever the caller handed over", () => {
+  // The caller is supposed to pass a user_id-scoped read. If it ever did not,
+  // the composer drops the foreign rows itself — this is the test the plan
+  // asked for, fed rows it must drop.
+  const s = B.composeSheet({
+    building: BUILDING, viewerId: "u1", addressKey: VAULT.addressKey,
+    mineComps: [mineRow({}), mineRow({ id: "theirs", user_id: "u2" }), mineRow({ id: "nobody", user_id: null })],
+  });
+  assert.deepEqual(s.mineComps.map((c) => c.id), ["m1"]);
+});
+
+test("rule 1, the other side: my own shared comp is under 'yours', never listed twice under the firm", () => {
+  const s = B.composeSheet({
+    building: BUILDING, viewerId: "u1", addressKey: VAULT.addressKey,
+    firmComps: [firmRow({ id: "f-mine", shared_by_user_id: "u1", shared_by_name: "Brad" }), firmRow({})],
+    mineComps: [mineRow({})], sharedIds: ["m1"],
+  });
+  assert.deepEqual(s.firmComps.map((c) => c.id), ["f1"]);
+  assert.equal(s.mineComps[0].shared, true);
+});
+
+test("rule 2: valuations are mine plus the firm's shared reports — never a colleague's portfolio", () => {
+  const s = B.composeSheet({
+    building: BUILDING, viewerId: "u1", addressKey: VAULT.addressKey,
+    portfolio: [
+      { user_id: "u2", address: "1210 N 17th St, Boise, ID", verified_key: "1210 n 17th st boise id 83702", snapshots: [{ ts: "2026-05-01T00:00:00Z", likely: 9e6 }] },
+      { user_id: "u1", address: "1210 N 17th St, Boise, ID", snapshots: [{ ts: "2026-03-01T00:00:00Z", likely: 1.25e6 }] },
+    ],
+    reportValues: [{ reportId: "r1", ts: "2026-02-01T00:00:00Z", likely: 1.2e6 }],
+  });
+  assert.deepEqual(s.valuations.map((v) => v.likely), [1.25e6, 1.2e6], "the colleague's 9,000,000 snapshot is gone");
+});
+
+test("a sheet needs a building and the key function, and nothing else", () => {
+  assert.equal(B.composeSheet({ viewerId: "u1", addressKey: VAULT.addressKey }), null);
+  assert.equal(B.composeSheet({ building: BUILDING, viewerId: "u1" }), null, "no key function, no sheet — never a guessed key");
+  const s = B.composeSheet({ building: BUILDING, viewerId: "u1", addressKey: VAULT.addressKey });
+  assert.deepEqual([s.firmComps, s.mineComps, s.reports, s.valuations, s.contacts, s.notes].map((a) => a.length), [0, 0, 0, 0, 0, 0]);
+});
+
+test("an edit changes the three descriptive fields and never the address", () => {
+  const r = B.validateBuildingEdit(BUILDING, { sizeSqft: "14,000 SF", yearBuilt: "" }, deps);
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.row, { property_type: "Industrial", size_sqft: 14000, year_built: null }, "untouched fields keep their stored value; a blank clears");
+  const t = B.validateBuildingEdit(BUILDING, { propertyType: "retail" }, deps);
+  assert.equal(t.row.property_type, "Retail");
+  const bad = B.validateBuildingEdit(BUILDING, { sizeSqft: "1.2M" }, deps);
+  assert.equal(bad.row, null);
+  assert.match(bad.errors[0], /square feet/, "an edit cannot accept what an add refuses");
+  const addr = B.validateBuildingEdit(BUILDING, { address: "2 Elsewhere St, Boise, ID" }, deps);
+  assert.equal(addr.row, null);
+  assert.match(addr.errors[0], /address is the building's identity/);
+});
+
+test("a note is typed text, capped, and never empty", () => {
+  assert.deepEqual(B.validateNote("  Roof   replaced\t2021 "), { body: "Roof replaced 2021", errors: [] });
+  assert.equal(B.validateNote("   ").body, null);
+  assert.equal(B.validateNote(null).body, null);
+  assert.equal(B.validateNote("x".repeat(B.MAX_NOTE)).errors.length, 0);
+  assert.match(B.validateNote("x".repeat(B.MAX_NOTE + 1)).errors[0], /up to 2000/);
+});

@@ -81,6 +81,7 @@ const TABLES = [
   ["msg_messages",        "044-firm-messaging.sql"],
   ["msg_comps",           "044-firm-messaging.sql"],
   ["org_buildings",       "045-org-buildings.sql"],
+  ["org_building_notes",  "046-org-building-notes.sql"],
   ["msg_comp_saves",      "044-firm-messaging.sql"],
 ];
 
@@ -158,6 +159,7 @@ const COLUMNS = [
   // desk can never match to a portfolio property, with reads looking fine.
   ["org_buildings",     ["verified_key", "lat", "lng"],         "045-org-buildings.sql"],
   ["org_contacts",      ["building_id"],                        "045-org-buildings.sql"],
+  ["org_building_notes", ["building_id", "body"],                "046-org-building-notes.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

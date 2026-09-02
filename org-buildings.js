@@ -225,11 +225,171 @@ function findBuilding(buildings, { addressKey, verifiedKey } = {}) {
   return list.find((b) => b && b.addressKey === ak) || null;
 }
 
+// ---------------------------------------------------------------------------
+// The building sheet (slice 5, migration 046).
+// ---------------------------------------------------------------------------
+
+// Editing a building on the board: the three descriptive fields, and never
+// the address. The address IS the key — changing it would be a different
+// building, and every comp, report, note and (slice 6) lease hangs off the
+// key. Validated as the WHOLE row it would become, through normalizeBuilding
+// with the stored address, broker-vault.js's validateEdit rule: an edit
+// cannot accept what an add refuses.
+const EDITABLE_FIELDS = ["propertyType", "sizeSqft", "yearBuilt"];
+function validateBuildingEdit(existing, patch, deps) {
+  const cur = existing && typeof existing === "object" ? existing : {};
+  const p = patch && typeof patch === "object" ? patch : {};
+  const merged = {
+    address: cur.address,
+    propertyType: Object.prototype.hasOwnProperty.call(p, "propertyType") ? p.propertyType : cur.property_type,
+    sizeSqft: Object.prototype.hasOwnProperty.call(p, "sizeSqft") ? p.sizeSqft : cur.size_sqft,
+    yearBuilt: Object.prototype.hasOwnProperty.call(p, "yearBuilt") ? p.yearBuilt : cur.year_built,
+  };
+  const unknown = Object.keys(p).filter((k) => EDITABLE_FIELDS.indexOf(k) < 0);
+  if (unknown.length) {
+    return { row: null, errors: [`Only ${EDITABLE_FIELDS.join(", ")} can be changed here; the address is the building's identity.`] };
+  }
+  const r = normalizeBuilding(merged, deps);
+  if (!r.row) return { row: null, errors: r.errors };
+  return {
+    row: { property_type: r.row.property_type, size_sqft: r.row.size_sqft, year_built: r.row.year_built },
+    errors: [],
+  };
+}
+
+// A note is typed, and it is text a colleague will read on a shared sheet.
+const MAX_NOTE = 2000;
+function validateNote(body) {
+  const text = cleanText(body, MAX_NOTE + 1);
+  if (!text) return { body: null, errors: ["Write something first."] };
+  if (text.length > MAX_NOTE) return { body: null, errors: [`A note can be up to ${MAX_NOTE} characters.`] };
+  return { body: text, errors: [] };
+}
+
+function keyOf(addressKey, address) {
+  return addressKey(str(address));
+}
+
+// Everything a sheet shows, composed from reads server.js made SEPARATELY.
+//
+// This function is the privacy wall's last line and it is tested on exactly
+// that: it is handed the firm's shared comps and the viewer's OWN vault comps
+// as two different arrays from two different reads, it never merges them,
+// and it DROPS anything in the viewer's arrays that is not the viewer's — so
+// a caller bug that handed it another member's rows would show nothing
+// rather than something. Two rules from the plan, both enforced here:
+//
+//   1. A colleague's private vault comp can never appear. mineComps rows
+//      must carry the viewer's user_id; the firm's comps are the org_comps
+//      rows the colleague chose to share, attributed.
+//   2. Valuations are the viewer's own portfolio snapshots plus values read
+//      off the firm's SHARED reports — never a colleague's portfolio.
+//      portfolio rows must carry the viewer's user_id.
+//
+// Read-only rows carry attribution; the only editable things on a sheet are
+// the building's own three fields and the notes.
+function composeSheet(parts) {
+  const p = parts && typeof parts === "object" ? parts : {};
+  const addressKey = typeof p.addressKey === "function" ? p.addressKey : null;
+  const building = p.building && typeof p.building === "object" ? p.building : null;
+  if (!addressKey || !building) return null;
+  const viewerId = str(p.viewerId);
+  const key = str(building.address_key);
+  const vkey = str(building.verified_key);
+  const mine = (row, col) => Boolean(viewerId) && row && String(row[col] || "") === viewerId;
+  const shared = new Set((Array.isArray(p.sharedIds) ? p.sharedIds : []).map(String));
+  const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+
+  // The firm's transactions: org_comps the colleagues shared, on this key.
+  // The viewer's own shared comps are left OUT of this list — they appear
+  // under "yours" with the share toggle, and a deal listed twice reads as two
+  // deals.
+  const firm = (Array.isArray(p.firmComps) ? p.firmComps : [])
+    .filter((r) => r && r.comp && typeof r.comp === "object")
+    .filter((r) => keyOf(addressKey, r.comp.address) === key)
+    .filter((r) => !mine(r, "shared_by_user_id"))
+    .map((r) => ({
+      id: r.id,
+      date: r.deal_date || r.comp.date || null,
+      transaction: str(r.comp.transaction),
+      price: num(r.comp.price_or_rate),
+      sizeSqft: num(r.comp.size_sqft),
+      pricePerSqft: num(r.comp.price_per_sqft),
+      sharedBy: str(r.shared_by_name) || "a colleague",
+    }));
+
+  // The viewer's own vault comps on this key. Rule 1: anything not theirs is
+  // dropped here, whatever the caller did.
+  const own = (Array.isArray(p.mineComps) ? p.mineComps : [])
+    .filter((r) => r && mine(r, "user_id"))
+    .filter((r) => str(r.address_key) === key)
+    .map((r) => ({
+      id: r.id,
+      date: r.deal_date || null,
+      transaction: str(r.transaction),
+      price: num(r.price),
+      sizeSqft: num(r.size_sqft),
+      pricePerSqft: num(r.price_per_sqft),
+      rentPsfYr: num(r.rent_psf_yr),
+      published: r.published === true,
+      shared: shared.has(String(r.id)),
+    }));
+
+  // Reports on the firm's shelf about this building.
+  const reports = (Array.isArray(p.shelf) ? p.shelf : [])
+    .filter((r) => r && r.meta && keyOf(addressKey, r.meta.address) === key)
+    .map((r) => ({
+      id: r.id,
+      url: "/r/" + r.id,
+      type: str(r.meta.type),
+      sharedBy: str(r.shared_by_name) || "a colleague",
+      mine: mine(r, "user_id"),
+      createdAt: r.created_at || null,
+    }));
+
+  // Valuations. Rule 2: the viewer's own snapshots (their portfolio row must
+  // be theirs), plus whatever the caller valued off the firm's shared
+  // reports. A colleague's portfolio never reaches this function.
+  const valuations = [];
+  for (const row of Array.isArray(p.portfolio) ? p.portfolio : []) {
+    if (!row || !mine(row, "user_id")) continue;
+    const hit = (vkey && str(row.verified_key) === vkey) || keyOf(addressKey, row.address) === key;
+    if (!hit) continue;
+    for (const snap of Array.isArray(row.snapshots) ? row.snapshots : []) {
+      if (!snap || !num(snap.likely)) continue;
+      valuations.push({ ts: snap.ts || null, low: num(snap.low), likely: num(snap.likely), high: num(snap.high), source: "yours" });
+    }
+  }
+  for (const v of Array.isArray(p.reportValues) ? p.reportValues : []) {
+    if (!v || !num(v.likely)) continue;
+    valuations.push({ ts: v.ts || null, low: num(v.low), likely: num(v.likely), high: num(v.high),
+      source: "report", reportId: v.reportId || null, sharedBy: str(v.sharedBy) || "a colleague" });
+  }
+  valuations.sort((a, b) => String(b.ts || "").localeCompare(String(a.ts || "")));
+
+  const contacts = (Array.isArray(p.contacts) ? p.contacts : [])
+    .filter((c) => c && c.name)
+    .map((c) => ({ id: c.id, name: str(c.name), company: str(c.company), email: str(c.email),
+      addedBy: str(c.added_by_name), mine: mine(c, "added_by_user_id") }));
+
+  const notes = (Array.isArray(p.notes) ? p.notes : [])
+    .filter((n) => n && n.body)
+    .map((n) => ({ id: n.id, body: str(n.body), addedBy: str(n.added_by_name) || "a colleague",
+      mine: mine(n, "added_by_user_id"), createdAt: n.created_at || null }));
+
+  return { building: toBuilding(building, viewerId), firmComps: firm, mineComps: own, reports, valuations, contacts, notes };
+}
+
 module.exports = {
   normalizeBuilding,
   summarize,
   toBuilding,
   findBuilding,
+  validateBuildingEdit,
+  validateNote,
+  composeSheet,
+  EDITABLE_FIELDS,
+  MAX_NOTE,
   OVERFLOW_AT,
   MAX_BUILDINGS,
   MAX_ADDRESS,

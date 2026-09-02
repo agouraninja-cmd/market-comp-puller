@@ -102,8 +102,12 @@ test("firm routes on a bare server (no database)", async (t) => {
     // Comment lines are blanked rather than removed, so every offset below
     // is taken on the same string the matches are found in.
     const code = SERVER.split("\n").map((l) => (/^\s*\/\//.test(l) ? "" : l)).join("\n");
+    // Two regions may name the table: the READS (orgBuildingRows through the
+    // sheet's buildingSheetPayload, slice 5 — one contiguous block beside
+    // orgCompRowsForBoard) and the ROUTES (the buildings block through the
+    // sheet and notes routes, up to the invite route).
     const readStart = code.indexOf("async function orgBuildingRows(");
-    const readEnd = code.indexOf("\n}\n", readStart) + 3;
+    const readEnd = code.indexOf("async function orgCompRowsForBoard(", readStart);
     const routeStart = code.indexOf('orgPath === "/api/org/buildings"');
     const routeEnd = code.indexOf('orgPath === "/api/org/invite"', routeStart);
     assert.ok(readStart > 0 && routeStart > 0 && routeEnd > routeStart, "could not isolate the buildings code");

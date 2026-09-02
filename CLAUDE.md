@@ -1551,6 +1551,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   the header count always describing the whole set. `CTA_FREE_PAGES` gains
   `/buildings`. `org-buildings.js`'s `OVERFLOW_AT` mirrors index.html's
   `COLLAPSE_AT` and `test/org-desk.test.js` holds them together.
+  **Each building has a sheet** (slice 5, 2026-09-02; migration
+  `046-org-building-notes.sql`, **run before deploying**): `GET /building/<id>`
+  (`renderBuildingSheetBody`), composed by the pure `composeSheet` from reads
+  `buildingSheetPayload` makes SEPARATELY — the firm's `org_comps` filtered on
+  the vault's address key, the viewer's own `broker_comps` through a
+  user-scoped read, the shelf as metadata (`orgShelfMetaRows`, a
+  `payload->meta` projection that falls back to the full read on any error),
+  the viewer's own portfolio snapshots plus the firm's matching shared reports
+  priced with `BULK.valueFromReport`, contacts by `building_id`, and notes.
+  Two rules, tested: a colleague's private vault comp can never appear
+  (composeSheet drops anything in the viewer's arrays not carrying their
+  user_id), and valuations are the viewer's own plus the firm's shared reports,
+  never a colleague's portfolio. `PATCH /api/org/buildings` edits type, size and
+  year and never the address; `POST|DELETE /api/org/buildings/notes` are
+  appended, attributed, author-deletable, and a note counts as activity.
+  `test/building-sheet-run.test.js` runs the two-account isolation case.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

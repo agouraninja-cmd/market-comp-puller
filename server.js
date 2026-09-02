@@ -212,7 +212,7 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
-const { renderBuildingsBody } = require("./buildings-page");
+const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -4414,6 +4414,148 @@ async function orgBuildingRows(orgId) {
     `org_buildings?org_id=eq.${encodeURIComponent(orgId)}` +
     `&select=id,address,address_key,verified_key,market,property_type,size_sqft,year_built,lat,lng,added_by_user_id,added_by_name,created_at,updated_at` +
     `&order=updated_at.desc&limit=${BUILDINGS.MAX_BUILDINGS}`)) || [];
+}
+
+// The sheet's reads (Three Spaces, slice 5). Each is its own scoped query
+// and composeSheet in org-buildings.js is handed them as separate arrays —
+// never merged here, never widened. The viewer's own vault comps come from
+// a user_id-scoped read that no firm id can reach into.
+
+async function findOrgBuilding(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return null;
+  const rows = await sbRequest("GET",
+    `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+  return (rows || [])[0] || null;
+}
+
+// Every comp the firm's members have shared, with the address inside the
+// comp jsonb — the reason the plan wanted a buildings table: without one,
+// "this building's comps" is this whole read filtered in memory, which is
+// what composeSheet does with it, keyed on the vault's addressKey.
+async function orgCompRowsForSheet(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,shared_by_user_id,shared_by_name,deal_date,comp&order=deal_date.desc&limit=1000`)) || [];
+}
+
+// The viewer's OWN vault comps on one building. user_id in the filter,
+// always, and a SEPARATE function from the firm read above — migration
+// 013's rule, the sheet's whole privacy argument.
+async function myCompsForBuilding(userId, addressKey) {
+  if (!DB_CONFIGURED || !userId || !addressKey) return [];
+  return (await sbRequest("GET",
+    `broker_comps?user_id=eq.${encodeURIComponent(userId)}&address_key=eq.${encodeURIComponent(addressKey)}` +
+    `&order=deal_date.desc&limit=200`)) || [];
+}
+
+// The shelf as METADATA — one row per shared report with its meta only.
+// orgShelfRows selects the whole payload, tens of KB a report, up to a
+// thousand of them: the desk pays that once per render, a per-building page
+// would pay it on every open. PostgREST's JSON projection (payload->meta)
+// keeps the wire to a few hundred bytes a row. FAIL-OPEN, cachedAddressKeys'
+// shape: a projection the live PostgREST refuses falls back to the full read
+// rather than an empty sheet, and says so in the log.
+async function orgShelfMetaRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const slim = (r) => ({ id: r.id, created_at: r.created_at, user_id: r.user_id,
+    shared_by_name: r.shared_by_name, meta: r.meta || (r.payload && r.payload.meta) || null });
+  try {
+    const rows = await sbRequest("GET",
+      `shared_reports?org_id=eq.${encodeURIComponent(orgId)}&visibility=eq.org&revoked_at=is.null` +
+      `&select=id,created_at,user_id,shared_by_name,meta:payload->meta&order=created_at.desc&limit=1000`);
+    return (rows || []).map(slim);
+  } catch (err) {
+    console.error("Shelf meta projection failed, reading whole payloads instead:", err.message);
+    return (await orgShelfRows(orgId)).map(slim);
+  }
+}
+
+// Values for the firm's shared reports about ONE building: the whole payload
+// is read only for the handful of matching rows, then priced with the same
+// function bulk valuation uses, so a value on a sheet and a value on a bulk
+// row come from one piece of arithmetic. An enrichment: any failure is an
+// empty list, never a failed sheet.
+async function valueShelfReports(rows) {
+  const ids = (rows || []).map((r) => r.id).filter(isUuidish).slice(0, 12);
+  if (!DB_CONFIGURED || !ids.length) return [];
+  try {
+    const full = (await sbRequest("GET",
+      `shared_reports?id=in.(${pgInList(ids)})&select=id,payload,created_at&limit=${ids.length}`)) || [];
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    const out = [];
+    for (const r of full) {
+      const meta = (r.payload && r.payload.meta) || {};
+      const data = (r.payload && r.payload.data) || {};
+      const subject = meta.subject || {};
+      const v = BULK.valueFromReport(data, {
+        subjectSizeSqft: subject.sizeMin || subject.size || null,
+        propertyType: meta.type,
+        note: meta.note,
+        asOf: Date.parse(r.created_at) || Date.now(),
+      });
+      if (!v || !v.value_likely) continue;
+      const src = byId.get(String(r.id)) || {};
+      out.push({ reportId: r.id, ts: r.created_at, low: v.value_low, likely: v.value_likely, high: v.value_high,
+        sharedBy: src.shared_by_name || "" });
+    }
+    return out;
+  } catch (err) {
+    console.error("Shelf report valuation failed:", err.message);
+    return [];
+  }
+}
+
+async function buildingContacts(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
+  // Its own select, deliberately NOT orgContactRows' — that one must not name
+  // building_id until 045 has run everywhere, and this read only ever runs
+  // for a building that exists, which proves 045 did.
+  return (await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+    `&select=id,name,email,company,added_by_user_id,added_by_name&order=created_at.desc&limit=200`)) || [];
+}
+
+async function buildingNotes(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
+  return (await sbRequest("GET",
+    `org_building_notes?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+    `&order=created_at.desc&limit=200`)) || [];
+}
+
+// Everything one sheet shows, for one viewer. The reads run in parallel and
+// are handed to composeSheet as SEPARATE arrays; the only thing this function
+// adds is the valuation of the matching shared reports and the live names of
+// the colleagues who shared them.
+async function buildingSheetPayload(user, orgId, buildingId) {
+  const building = await findOrgBuilding(orgId, buildingId);
+  if (!building) return null;
+  const [firmComps, mineComps, shelf, portfolio, sharedIds, contacts, notes, org] = await Promise.all([
+    orgCompRowsForSheet(orgId),
+    myCompsForBuilding(user.id, building.address_key),
+    orgShelfMetaRows(orgId),
+    listPortfolio(user.id),
+    sharedCompIdsFor(user.id),
+    buildingContacts(orgId, buildingId),
+    buildingNotes(orgId, buildingId),
+    orgsByIds([orgId]).then((m) => m.get(String(orgId)) || null),
+  ]);
+  const matching = shelf.filter((r) => r.meta && VAULT.addressKey(String(r.meta.address || "")) === building.address_key);
+  const people = await usersByIds(matching.map((r) => r.user_id));
+  for (const r of matching) {
+    const who = r.user_id ? people.get(String(r.user_id)) : null;
+    r.shared_by_name = (who && (who.name || who.email)) || r.shared_by_name || "";
+  }
+  const reportValues = await valueShelfReports(matching);
+  const sheet = BUILDINGS.composeSheet({
+    building, viewerId: user.id, addressKey: VAULT.addressKey,
+    firmComps, mineComps, shelf: matching,
+    // listPortfolio is user-scoped by construction; the id rides along so
+    // composeSheet's own rule (rule 2) can see whose rows these are.
+    portfolio: (portfolio || []).map((r) => ({ ...r, user_id: user.id })),
+    reportValues, sharedIds, contacts, notes,
+  });
+  return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet };
 }
 
 async function orgCompRowsForBoard(orgId) {
@@ -9905,7 +10047,7 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -23689,6 +23831,38 @@ const server = http.createServer((req, res) =>
         return;
       }
 
+      // PATCH edits the three descriptive fields (slice 5). Never the address:
+      // that is the key, and everything on the sheet hangs off it. Validated
+      // as the whole row it would become, so an edit cannot accept what an
+      // add refuses.
+      if (req.method === "PATCH") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!buildingId || !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const existing = await findOrgBuilding(ctx.orgId, buildingId);
+          if (!existing) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          const { row, errors } = BUILDINGS.validateBuildingEdit(existing, body, {
+            addressKey: VAULT.addressKey, verifiedKeyFor: PFMATCH.verifiedKeyFor, marketOf,
+            hasMarket: addressHasMarket, types: VAULT.PROPERTY_TYPES, year: new Date().getUTCFullYear(),
+          });
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          const scope = `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          const after = await findOrgBuilding(ctx.orgId, buildingId);
+          logEvent("org_buildings", { source: "edit" });
+          return sendJson(res, 200, { ok: true, building: BUILDINGS.toBuilding(after || { ...existing, ...row }, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm building edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
+
       if (req.method === "DELETE") {
         (async () => {
           const ctx = await buildingsFor();
@@ -23712,6 +23886,86 @@ const server = http.createServer((req, res) =>
         });
         return;
       }
+    }
+
+    // --- GET /api/org/buildings/sheet — one building's sheet, for one viewer
+    //
+    // Everything the /building/<id> page shows, as JSON, so the page can
+    // re-read after an edit, a share toggle or a note. Same gate; the reads
+    // live in buildingSheetPayload and the composition in org-buildings.js.
+    if (req.method === "GET" && orgPath === "/api/org/buildings/sheet") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const payload = await buildingSheetPayload(user, orgId, buildingId);
+        if (!payload) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+        return sendJson(res, 200, payload);
+      })().catch((err) => {
+        console.error("Building sheet read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load that building just now. Nothing has been lost. Refresh in a moment." });
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/org/buildings/notes — notes on a building (046) --
+    //
+    // Firm-wide, appended, attributed. No edit route: a note is a record of
+    // what somebody said when they said it. The author may delete their own,
+    // and the delete is scoped by author as well as firm and building.
+    if (orgPath === "/api/org/buildings/notes" && (req.method === "POST" || req.method === "DELETE")) {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const building = await findOrgBuilding(orgId, buildingId);
+        if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+
+        if (req.method === "DELETE") {
+          const noteId = (url.searchParams.get("note") || "").trim();
+          if (!isUuidish(noteId)) return sendJson(res, 400, { error: "Which note?" });
+          const scope = `org_building_notes?id=eq.${encodeURIComponent(noteId)}` +
+            `&org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+            `&added_by_user_id=eq.${encodeURIComponent(user.id)}`;
+          const found = await sbRequest("GET", `${scope}&select=id&limit=1`);
+          if (!((found || [])[0])) return sendJson(res, 404, { error: "That note is not yours to remove, or is already gone." });
+          await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, deleted: noteId });
+        }
+
+        let body;
+        try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const { body: text, errors } = BUILDINGS.validateNote(body && body.body);
+        if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+        const stored = await sbRequest("POST", "org_building_notes", [{
+          org_id: orgId, building_id: buildingId, body: text,
+          added_by_user_id: user.id,
+          added_by_name: String(user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+        }], { prefer: "return=representation" });
+        // A note is activity: the building rises to the top of the desk's
+        // eight. Best-effort, the desk's order is a courtesy and not a record.
+        await sbRequest("PATCH",
+          `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+          { updated_at: new Date().toISOString() }, { prefer: "return=minimal" }).catch(() => {});
+        logEvent("org_buildings", { source: "note" });
+        const note = (stored || [])[0] || {};
+        return sendJson(res, 200, { ok: true, note: { id: note.id, body: text, addedBy: note.added_by_name || "", mine: true, createdAt: note.created_at || null } });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Building note write failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that note. Please try again in a minute." });
+      });
+      return;
     }
 
     // --- POST /api/org/invite ----------------------------------------------
@@ -26494,6 +26748,53 @@ const server = http.createServer((req, res) =>
   // The messages route's boot pattern: the first answer rides down with the
   // page, so a member of no firm is told so rather than watching a spinner
   // turn into a wall. pagePath, never req.url — the ?fbclid= lesson.
+  // /building/<id> — one building's sheet (Three Spaces, slice 5). The
+  // /buildings route's boot pattern, plus a 404 state for an id that is not
+  // on this firm's board: a colleague's link from another firm, or a
+  // building since removed.
+  const sheetMatch = req.method === "GET" ? /^\/building\/([0-9a-f-]{36})$/i.exec(pagePath) : null;
+  if (sheetMatch) {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Buildings are unavailable right now. Please try again in a minute." } };
+        else {
+          const firm = await messagingFirmOf(user);
+          if (!firm) boot = { s: 403, j: { error: "This account is not in a firm.", code: "no_firm" } };
+          else {
+            const payload = await buildingSheetPayload(user, firm.orgId, sheetMatch[1]);
+            boot = payload ? { s: 200, j: payload } : { s: 404, j: { error: "That building is not on your firm's list." } };
+          }
+        }
+      } catch (err) {
+        console.error("building sheet boot failed:", err.message);
+      }
+      logEvent("building_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "nofirm" : boot.s === 404 ? "gone" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      const addr = boot && boot.s === 200 && boot.j.building ? boot.j.building.address : "Building";
+      res.end(marketShell({
+        title: `${addr} \u00b7 CompNinja`,
+        description: "A building on your firm's board.",
+        canonical: `${SITE_URL}/building/${sheetMatch[1]}`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/building",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderBuildingSheetBody(boot),
+      }));
+    })();
+    return;
+  }
+
   if (req.method === "GET" && pagePath === "/buildings") {
     (async () => {
       let boot = null;

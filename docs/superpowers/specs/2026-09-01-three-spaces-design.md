@@ -146,9 +146,63 @@ idiom, the history list's fold. A firm's buildings are a shared record with
 search needs and earn a page; one member's portfolio is a short personal
 list and earns a fold.
 
+## Each building has a sheet (slice 5, migration 046)
+
+`GET /building/<id>` (`renderBuildingSheetBody` in `buildings-page.js`),
+composed by `org-buildings.js`'s pure **`composeSheet(parts)`**; `server.js`
+owns every read (`buildingSheetPayload`). The sections and their sources:
+
+| Section | Source | Editable? |
+|---|---|---|
+| Identity (`#bsHead`) | the `org_buildings` row | type, size, year — never the address, which is the key |
+| Transactions, the firm's (`#bsTxFirm`) | `org_comps`, filtered in memory on the vault's `addressKey` of the comp's address, attributed `shared_by_name` | read-only |
+| Transactions, yours (`#bsTxMine`) | your own `broker_comps` on the key, through a **separate user-scoped read** (`myCompsForBuilding`); each row carries the firm-share toggle | read-only rows, the toggle posts to `/api/vault/firm` |
+| Reports (`#bsReports`) | firm shelf rows whose `meta.address` keys to the building → `/r/<id>` | read-only |
+| Valuations (`#bsValues`) | your own `portfolio_items.snapshots` + the firm's matching shared reports, priced with `bulk.js`'s `valueFromReport` (one piece of arithmetic for a sheet and a bulk row) | read-only |
+| Contacts (`#bsContacts`) | `org_contacts` where `building_id` = this building, through its own select | read-only (attaching is later) |
+| Notes (`#bsNotes`) | `org_building_notes` (**new**, 046) | appended, attributed, author may delete |
+
+**Two rules `composeSheet` enforces and is tested on.** (1) A colleague's
+private vault comp can never appear: the composer is handed the firm's shared
+comps and the viewer's own comps as two arrays from two reads, never merges
+them, and drops anything in the viewer's arrays whose `user_id` is not the
+viewer's — so a caller bug would show nothing rather than something. The
+viewer's own shared comps are listed under "yours" with the toggle, never
+twice. (2) Valuations are the viewer's own snapshots plus values read off the
+firm's SHARED reports — never a colleague's portfolio; `portfolio_items` stays
+`user_id=eq.` scoped. `test/building-sheet-run.test.js` runs the two-account
+case against the fake PostgREST: B's unshared comp and B's snapshot are absent
+from A's sheet, and vice versa.
+
+**The shelf as metadata.** `orgShelfRows` selects whole payloads, tens of KB
+a report, up to a thousand of them; a per-building page would pay that on
+every open. `orgShelfMetaRows` uses PostgREST's JSON projection
+(`meta:payload->meta`) and **falls back to the full read on any error**
+(`cachedAddressKeys`' shape). The whole payload is then read only for the
+handful of reports that match the building, to price them. ⚠ The projection
+has not yet been tried against the live PostgREST — the stand-in ignores
+`select` — so the fallback is what stands between a refused projection and
+an empty sheet until somebody runs one curl.
+
+The "spreadsheet" convention is `/vault`'s: the identity cells show the
+formatted figure, hold the raw one on `data-raw`, swap on focus, save on blur
+through `PATCH /api/org/buildings`, validated as the whole row it would become
+(`validateBuildingEdit`, so an edit cannot accept what an add refuses).
+Notes go through `POST|DELETE /api/org/buildings/notes`; a note is activity
+and moves the building to the top of the desk's eight. `CTA_FREE_PAGES` gains
+`/building`. The desk's and `/buildings`' rows link to the sheet.
+
+### Deliberately not in slice 5
+
+- Attaching a contact to a building (the column exists; the sheet lists what
+  is attached).
+- Leases (`#bsLeases`) — slice 6.
+- Editing a comp from the sheet; a comp is edited where it lives, in the vault.
+
 ### Deliberately not in slice 3
 
 - ~~The overflow rule and the subpage~~ — shipped as slice 4, above.
+- ~~The sheet and notes~~ — shipped as slice 5, above.
 - The building sheet (`composeSheet`) and building notes (046) — slice 5.
 - An "Add to firm" door on a **comp row** inside a report — deferred with the
   sheet, where a comp's building becomes something to look at.

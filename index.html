@@ -13968,9 +13968,12 @@ async function renderMyDesk() {
     firmBuildings.slice(0, COLLAPSE_AT).forEach((b) => {
       const row = document.createElement("div");
       row.className = "db-row";
-      const name = document.createElement("span");
-      name.className = "db-name";
-      // textContent throughout: every address here is text a person typed.
+      // The address is the door to the building's sheet (slice 5). An <a>,
+      // so a middle click and a copied link both work; textContent throughout,
+      // since every address here is text a person typed.
+      const name = document.createElement("a");
+      name.className = "db-name underline hover:text-[#1A2433]";
+      name.href = "/building/" + encodeURIComponent(b.id);
       name.textContent = b.address;
       row.appendChild(name);
       const meta = document.createElement("span");

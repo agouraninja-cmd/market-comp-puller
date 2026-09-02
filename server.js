@@ -101,6 +101,11 @@ const { renderMessagesBody } = require("./messages-page");
 // The 1031 identification worksheet. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
+// The market ranking. RANKPAGE renders, MARKETSCORE does the arithmetic — the
+// same split guide-1031.js and valuation.js keep, and the reason the whole
+// ranking can be tested with no server and no database.
+const RANKPAGE = require("./market-rank-page.js");
+const MARKETSCORE = require("./market-score.js");
 // The vault API's comp shape — the seam between how comps are STORED and how
 // the dashboard READS them. It exists so broker_comps can be restructured into
 // the star schema without the dashboard moving. A pass-through today, on
@@ -567,6 +572,108 @@ try {
   MARKET_PAGES = JSON.parse(fs.readFileSync(path.join(__dirname, "market-seed.json"), "utf8"));
 } catch (_) {
   MARKET_PAGES = {}; // no seed file yet — /markets simply lists nothing
+}
+
+// --- The market ranking's committed inputs -------------------------------
+//
+// Four files, all generated or hand-tuned and all committed, for the same
+// reason market-seed.json is: they survive a redeploy, serve instantly, and a
+// change to any of them arrives as a pull request somebody read. Weights are a
+// METHODOLOGY, and a methodology should not be editable from a form.
+//
+// Each load fails soft and independently. A missing readings file leaves the
+// ranking scoring nothing and saying so, which is the same degradation
+// market-score.js already performs per metric — it must never be the
+// difference between a page and a 500.
+function loadRankFile(name) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, name), "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+const RANK_TIERS = loadRankFile("market-tiers.json");
+const RANK_WEIGHTS = loadRankFile("market-weights.json");
+const RANK_THRESHOLDS = loadRankFile("market-thresholds.json");
+const RANK_READINGS = loadRankFile("macro-readings.json");
+const RANK_CONFIGURED = Boolean(RANK_TIERS && RANK_WEIGHTS && RANK_THRESHOLDS);
+
+// cbsa -> { metric: number }. A LEVEL metric (unemployment rate, renter share,
+// educational attainment) carries its level in yoy_pct too, because the
+// threshold for it is written against a level; taking yoy_pct unconditionally
+// is therefore correct for every metric and needs no per-metric branch here.
+const RANK_BY_MARKET = (() => {
+  const m = new Map();
+  for (const r of (RANK_READINGS && RANK_READINGS.readings) || []) {
+    if (!m.has(r.cbsa_code)) m.set(r.cbsa_code, {});
+    m.get(r.cbsa_code)[r.metric] = (r.yoy_pct === null || r.yoy_pct === undefined) ? r.value : r.yoy_pct;
+  }
+  return m;
+})();
+
+// Same map again, but keeping the whole reading, so the card can show every
+// figure with its date and its series id. That audit trail is the point: a
+// number a reader cannot trace to a published series is one they must take on
+// trust, and taking a number on trust is exactly what this replaced.
+const RANK_DETAIL = (() => {
+  const m = new Map();
+  for (const r of (RANK_READINGS && RANK_READINGS.readings) || []) {
+    if (!m.has(r.cbsa_code)) m.set(r.cbsa_code, {});
+    m.get(r.cbsa_code)[r.metric] = r;
+  }
+  return m;
+})();
+
+// Split a market's readings into the two blocks the scorer wants. Membership is
+// decided by the WEIGHTS file rather than by a list here, so adding a metric is
+// one edit rather than two that can disagree.
+function rankReadingsFor(cbsa, assetClass) {
+  const all = RANK_BY_MARKET.get(cbsa) || {};
+  const macroKeys = Object.keys((RANK_WEIGHTS && RANK_WEIGHTS.macro) || {});
+  const classKeys = Object.keys(
+    (RANK_WEIGHTS && RANK_WEIGHTS.class_specific && RANK_WEIGHTS.class_specific[assetClass]) || {});
+  const pick = (keys) => {
+    const out = {};
+    for (const k of keys) if (all[k] !== undefined) out[k] = all[k];
+    return out;
+  };
+  return { macroReadings: pick(macroKeys), classReadings: pick(classKeys) };
+}
+
+// Every market scored for one asset class, best first. Markets that could not
+// be scored sort last rather than being dropped — a member looking for a market
+// must find it and be told it has no data, not fail to find it at all.
+function rankRowsFor(assetClass) {
+  if (!RANK_CONFIGURED) return [];
+  const rows = (RANK_TIERS.markets || []).map((mk) => {
+    const input = rankReadingsFor(mk.cbsa.code, assetClass);
+    // narrative stays null until market_context ships; the scorer renormalises
+    // the two public weights when it is absent, which is the spec's
+    // "absence is never a penalty" rule.
+    const r = MARKETSCORE.scoreMarket({ ...input, narrative: null },
+      { assetClass, weights: RANK_WEIGHTS, thresholds: RANK_THRESHOLDS });
+    return {
+      market: mk.market, state: mk.state, tier: mk.tier, cbsa: mk.cbsa.code,
+      cbsaName: mk.cbsa.name, population: mk.cbsa.population,
+      macro: r && r.macro ? r.macro.score : null,
+      class: r && r.class ? r.class.score : null,
+      narrative: r ? r.narrative : null,
+      score: r ? r.score : null,
+      publicScore: r ? r.publicScore : null,
+      band: r ? r.band : null,
+      publicBand: r ? r.publicBand : null,
+      coverage: r ? r.coverage : 0,
+      bandMovedByNarrative: r ? r.bandMovedByNarrative : false,
+      _blocks: r,
+    };
+  });
+  rows.sort((a, b) => {
+    const av = typeof a.score === "number", bv = typeof b.score === "number";
+    if (av !== bv) return av ? -1 : 1;      // unscored last
+    if (!av) return a.market.localeCompare(b.market);
+    return b.score - a.score;
+  });
+  return rows;
 }
 
 // Visitor-generated market pages (the Market Explorer). Same payload shape as
@@ -25888,6 +25995,65 @@ const server = http.createServer((req, res) =>
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && pagePath === "/markets") {
     return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
+  }
+
+  // --- Market rankings ---------------------------------------------------
+  //
+  // /rankings              -> industrial, the deepest-seeded class
+  // /rankings/<class>      -> the ledger for one asset class
+  // /rankings/<class>/<cbsa> -> one market's card
+  //
+  // Server-rendered with links rather than a client-side switcher, so the
+  // asset class is in the URL: a member can send "look at Boise for office" as
+  // a link, and a crawler sees six real pages instead of one that needs script.
+  const rankMatch = req.method === "GET"
+    && pagePath.match(/^\/rankings(?:\/([a-z]+))?(?:\/(\d{5}))?$/);
+  if (rankMatch) {
+    if (!RANK_CONFIGURED) {
+      return sendNotFound(req, res, "Market rankings aren't available yet.");
+    }
+    const cls = RANKPAGE.ASSET_CLASSES.includes(rankMatch[1]) ? rankMatch[1] : "industrial";
+    // An unknown class in the URL redirects rather than silently rendering
+    // industrial under an office heading — the page would look right and be
+    // about something else.
+    if (rankMatch[1] && !RANKPAGE.ASSET_CLASSES.includes(rankMatch[1])) {
+      res.writeHead(302, { location: "/rankings/industrial" });
+      return res.end();
+    }
+    const rows = rankRowsFor(cls);
+    const weights = (RANK_WEIGHTS.by_asset_class && RANK_WEIGHTS.by_asset_class[cls]) || {};
+    const generated = (RANK_READINGS && RANK_READINGS.generated) || "";
+
+    if (rankMatch[2]) {
+      const row = rows.find((r) => r.cbsa === rankMatch[2]);
+      if (!row) return sendNotFound(req, res, "That market isn't in the rankings.");
+      const blocks = row._blocks || {};
+      const body = RANKPAGE.renderMarketCardBody({
+        ...row, assetClass: cls, weights,
+        macro: blocks.macro || { score: null, coverage: 0 },
+        class: blocks.class || { score: null, coverage: 0 },
+        lens: null,
+        readings: RANK_DETAIL.get(row.cbsa) || {},
+      });
+      return sendShellPage(req, res, (signedIn) => marketShell({
+        title: `${row.market}, ${row.state} — ${RANKPAGE.CLASS_LABEL[cls]} market ranking | CompNinja`,
+        description: `How ${row.market} scores for ${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, `
+          + `built from public government data with every input shown.`,
+        canonical: `${SITE_URL}/rankings/${cls}/${row.cbsa}`,
+        head: `<style>${RANKPAGE.RANK_CSS}</style>`,
+        body, signedIn, current: "/markets",
+      }), { maxAge: 300 });
+    }
+
+    const body = RANKPAGE.renderRankingsBody(cls, rows, { weights, generated });
+    return sendShellPage(req, res, (signedIn) => marketShell({
+      title: `${RANKPAGE.CLASS_LABEL[cls]} market rankings | CompNinja`,
+      description: `${rows.filter((r) => typeof r.score === "number").length} US markets ranked for `
+        + `${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, from public government data. Every score shows its parts.`,
+      canonical: `${SITE_URL}/rankings/${cls}`,
+      head: `<style>${RANKPAGE.RANK_CSS}</style>`,
+      body, signedIn, current: "/markets",
+    }), { maxAge: 300 });
   }
   const marketMatch = req.method === "GET" && pagePath.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {

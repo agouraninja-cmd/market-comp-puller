@@ -20,6 +20,7 @@ const path = require("node:path");
 const ROOT = path.join(__dirname, "..");
 const weights = JSON.parse(fs.readFileSync(path.join(ROOT, "market-weights.json"), "utf8"));
 const tiers = JSON.parse(fs.readFileSync(path.join(ROOT, "market-tiers.json"), "utf8"));
+const thresholds = JSON.parse(fs.readFileSync(path.join(ROOT, "market-thresholds.json"), "utf8"));
 
 const ASSET_CLASSES = ["industrial", "office", "retail", "multifamily", "land", "residential"];
 const TIERS = ["primary", "secondary", "tertiary"];
@@ -49,11 +50,37 @@ test("by_asset_class holds exactly the six classes, no more", () => {
   assert.deepStrictEqual(Object.keys(weights.by_asset_class).sort(), [...ASSET_CLASSES].sort());
 });
 
+// The floor was 5 until 2026-09-02, when the block went from six metrics to
+// four. Both removals are recorded in market-weights.json's
+// `_removed_2026_09_02`, and neither was a preference:
+//
+//   * Net domestic migration — Census PEP components is not exposed for a
+//     metropolitan geography through the API; /pep/components 404s for an MSA.
+//   * Real per-capita personal income — BEA's MSA series on FRED (RPIPC<code>)
+//     resolves for every market and is DISCONTINUED, ending 2023-01-01. For a
+//     growth metric, three and a half years stale is dead.
+//
+// Their weight moved to metrics that measure something adjacent: migration's
+// to population growth, because migration is most of what moves a metro's
+// population and they were never independent; income's to job growth.
+//
+// The floor stays as a tripwire against a block being emptied by accident, not
+// as a claim about how many metrics there ought to be.
 test("the macro sub-weights sum to one", () => {
   const vals = Object.values(weights.macro).map((m) => m.weight);
-  assert.ok(vals.length >= 5, "macro block looks truncated");
+  assert.ok(vals.length >= 3, "macro block looks truncated");
   const total = vals.reduce((a, b) => a + b, 0);
   assert.ok(sumsToOne(total), `macro sub-weights sum to ${total}, not 1`);
+});
+
+// A metric that was removed for being unavailable must be removed from BOTH
+// files, or the thresholds file grows a table of entries nothing can ever use
+// and the next reader has to work out which list is authoritative.
+test("nothing removed from the weights lingers in the thresholds", () => {
+  const removed = Object.keys(weights._removed_2026_09_02 || {});
+  const stillThere = removed.filter((k) => thresholds.macro && thresholds.macro[k]);
+  assert.deepStrictEqual(stillThere, [],
+    "a metric removed from market-weights.json still has a threshold");
 });
 
 test("each class-specific sub-weight block sums to one", () => {

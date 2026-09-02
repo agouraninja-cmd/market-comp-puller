@@ -37,12 +37,17 @@ test("normalize is linear between the stated points, on both sides", () => {
 });
 
 test("mid is not assumed to be zero", () => {
-  // Population growth of exactly 0% must NOT read as flat: the country grows
-  // near 0.5%, so a market at 0 is losing ground. This is the single most
+  // Wage growth of 0% must NOT read as flat. Nominal wages almost always rise,
+  // so a metro holding earnings flat is losing ground to inflation and to every
+  // other metro — its neutral point is 3%, not 0. This is the single most
   // likely threshold mistake and the reason the config says so out loud.
-  const t = THRESHOLDS.macro["Population growth (YoY)"];
-  assert.ok(t.mid > 0, "population growth's neutral point should be above zero");
-  assert.ok(S.normalize(0, t) < 0, "0% population growth must score below flat");
+  //
+  // The example used to be population growth, which was removed on 2026-09-02
+  // for being two and a half years stale beside monthly employment.
+  const t = THRESHOLDS.macro["Average hourly earnings growth (YoY)"];
+  assert.ok(t, "expected a wage-growth threshold");
+  assert.ok(t.mid > 0, "wage growth's neutral point should be well above zero");
+  assert.ok(S.normalize(0, t) < 0, "0% wage growth must score below flat");
 });
 
 test("invert flips the sense for indicators where lower is better", () => {

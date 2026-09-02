@@ -81,11 +81,56 @@ test("every weighted metric names a source", () => {
 // Tiers
 // ---------------------------------------------------------------------------
 
-test("the tier list is 25 primary, 50 secondary, 100 tertiary", () => {
+test("the tier list is 50 primary, 50 secondary, and every remaining metro", () => {
   const counts = { primary: 0, secondary: 0, tertiary: 0 };
   for (const m of tiers.markets) counts[m.tier]++;
-  assert.deepStrictEqual(counts, { primary: 25, secondary: 50, tertiary: 100 });
-  assert.strictEqual(tiers.markets.length, 175);
+  assert.strictEqual(counts.primary, 50);
+  assert.strictEqual(counts.secondary, 50);
+  // Tertiary is "the rest above the population floor", so it is not pinned to a
+  // number — the count moves when Census redraws a delineation or the floor is
+  // retuned, and both are correct rather than a break.
+  assert.ok(counts.tertiary > 50, "expected a real tail of tertiary markets");
+  assert.strictEqual(tiers.markets.length, counts.primary + counts.secondary + counts.tertiary);
+});
+
+// The floor is a PRODUCT judgement, not a data limit — every metro has an
+// employment series, including Eagle Pass TX at 57,770. Below roughly a quarter
+// of a million people a metro has no institutional CRE market: few arms-length
+// trades in a year, and a comp set one owner-user sale wide. Ranking one
+// implies a precision the transaction volume cannot support, whatever the macro
+// series say about it.
+test("no market falls below the commercial-activity floor", () => {
+  const floor = 250000;
+  const under = tiers.markets.filter((m) => m.cbsa.population < floor);
+  assert.deepStrictEqual(under.map((m) => `${m.market} (${m.cbsa.population})`), [],
+    `below ${floor.toLocaleString()} the transaction volume cannot support a ranking`);
+});
+
+// Micropolitan areas are excluded, and this holds the line because the reason
+// is easy to forget and the temptation to "just add the rest" is obvious.
+// MEASURED 2026-09-02: BLS publishes no metro employment series for micros at
+// all. Seaford DE (247,799, micropolitan) returns zero seasonally adjusted
+// total-nonfarm series; Eagle Pass TX (57,770, the smallest METRO in the
+// country) returns two. The cutoff is the statistical designation, not size —
+// so adding the 542 micros would add 542 rows that can never score on the
+// macro block.
+test("no micropolitan area is in the list", () => {
+  const micro = tiers.markets.filter((m) => /Micro Area/i.test(m.cbsa.name || ""));
+  assert.deepStrictEqual(micro.map((m) => m.market), [],
+    "a micropolitan area cannot score on the macro block — BLS publishes no employment series for one");
+});
+
+test("population is present, positive, and orders the tiers", () => {
+  for (const m of tiers.markets) {
+    assert.ok(Number.isFinite(m.cbsa.population) && m.cbsa.population > 0,
+      `${m.market} has no population from Census`);
+  }
+  const primary = tiers.markets.filter((m) => m.tier === "primary");
+  const tertiary = tiers.markets.filter((m) => m.tier === "tertiary");
+  const smallestPrimary = Math.min(...primary.map((m) => m.cbsa.population));
+  const largestTertiary = Math.max(...tertiary.map((m) => m.cbsa.population));
+  assert.ok(smallestPrimary > largestTertiary,
+    "tiers are population rank, so no tertiary market may be larger than a primary one");
 });
 
 test("every market row is complete and carries a known tier", () => {
@@ -115,18 +160,33 @@ test("no two markets claim the same CBSA code", () => {
 // A wrong CBSA code does not throw. FRED answers it with real, well-formed
 // employment for whichever city actually owns that code, every downstream
 // number is confidently wrong, and no test of the arithmetic can detect it.
-// So the flag gates the read: until scripts/resolve-fred-series.js has
-// confirmed a code against the Census delineation files and set this true,
-// nothing may pull data for that market.
-test("no CBSA code is marked verified until a resolver has checked it", () => {
-  const claimed = tiers.markets.filter((m) => m.cbsa.verified === true);
-  assert.deepStrictEqual(claimed.map((m) => m.market), [],
-    "a CBSA code is flagged verified, but the resolver script does not exist yet — " +
-    "verified:true must be set BY that script, never by hand");
+//
+// This test USED to assert that nothing was verified, because nothing had
+// checked. That has been done: scripts/build-market-tiers.js generates the
+// file from the Census Bureau, which is the body that defines CBSAs, so the
+// codes are not merely checked but sourced. The invariant therefore inverts —
+// a verified row must carry the EVIDENCE of its verification, so that a
+// hand-edited `verified: true` is still caught.
+//
+// What that check found on the hand-written list it replaced: Cleveland was
+// recorded as 17460, which is not a CBSA at all (17410 is Cleveland, OH), and
+// 32 of 175 names were from an older delineation vintage.
+test("every verified code carries the evidence of its verification", () => {
+  for (const m of tiers.markets) {
+    assert.strictEqual(m.cbsa.verified, true, `${m.market} is not verified`);
+    assert.match(String(m.cbsa.verified_on || ""), /^\d{4}-\d{2}-\d{2}$/,
+      `${m.market} claims verified with no date — a hand-set flag`);
+    assert.match(String(m.cbsa.verified_by || ""), /scripts\/[a-z-]+\.js/,
+      `${m.market} claims verified with no script named — only a script may set this`);
+    assert.match(String(m.cbsa.verified_by || ""), /Census/,
+      `${m.market}: only the Census Bureau defines a CBSA`);
+  }
 });
 
-test("the unverified warning survives in the file itself", () => {
+test("the file says it is derived, so nobody hand-edits it", () => {
   const note = String(tiers._comment || "").toLowerCase();
-  assert.ok(note.includes("unverified"),
-    "market-tiers.json must keep its own warning — the next reader may never see this test");
+  assert.ok(note.includes("derived") && note.includes("regenerate"),
+    "market-tiers.json must say it is generated — the next reader may never see this test");
+  assert.ok(note.includes("different city"),
+    "and must keep the reason the codes matter: a wrong code returns real data for a different city");
 });

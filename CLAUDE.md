@@ -1540,8 +1540,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   list); **POST is idempotent** on the key and a repeat add only ever FILLS a
   missing `verified_key`, never rewrites (035's rule); **the whole set is
   returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
-  in the browser); and **`org_contacts.building_id` is WRITTEN by no code yet** (slice 5's sheet
-  reads it; nothing attaches a contact to a building) —
+  in the browser); and **`org_contacts.building_id` is written ONLY by
+  `POST|DELETE /api/org/buildings/contacts`** (2026-09-02, see below) —
   naming it in `orgContactRows`' `select=` before 046 has run 400s every
   contacts read. The plan numbered this migration 044; messaging took it.
   **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
@@ -1625,6 +1625,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "needs attention" band (lease critical dates + unread conversations —
   `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
   page for the fold's "See all".
+  **Contacts attach to buildings (2026-09-02).** The write half of
+  `org_contacts.building_id`: slice 5 shipped the sheet's read
+  (`buildingContacts`) with nothing filling it, so every sheet's Contacts
+  section was permanently empty. `POST|DELETE /api/org/buildings/contacts?id=
+  &building=&contact=` attaches and detaches, and it lives in the BUILDINGS
+  route block rather than the contacts one because it must prove the building
+  is on this firm's board with `findOrgBuilding` and
+  `test/org-routes.test.js` refuses `org_buildings` anywhere else. Rules,
+  all run against a real server in `test/building-sheet-run.test.js`: both
+  halves are scoped by `org_id` (a contact from another firm and a building
+  on another firm's board are both 404); a contact belongs to at most ONE
+  building, so attaching elsewhere moves it and the answer says `moved`;
+  DELETE detaches only from the building named and never deletes the contact;
+  the ordinary contact PATCH cannot touch the column (it writes only
+  `FIELDS`), so a name edit cannot silently detach; and attaching is
+  activity (the building's `updated_at` moves). `orgContactRows` now names
+  `building_id` and the list carries `buildingId`, which the desk row maps
+  to an address off its own buildings read (awaited BEFORE contacts in
+  `renderShares`). The sheet's Attach door reads the firm's list only when
+  opened, leaves out what is already attached, and groups first the contacts
+  whose company matches a lease's tenant on that building — the same match
+  that marks a row "tenant" — which is where the lease record and the contact
+  list meet. `org-contacts.js` is unchanged: `building_id` is a link the
+  buildings routes own, not a contact field.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

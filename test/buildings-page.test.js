@@ -229,6 +229,18 @@ test("every section the plan names is on the sheet, with its rows attributed", (
   assert.equal(dom.el("bsValuesN").textContent, "2 valuations");
 });
 
+test("a contact whose company holds a lease here is marked as the tenant, and every contact can be detached", () => {
+  const dom = runSheet(SHEET({ leases: [{ id: "l1", tenant: "acme", status: "active", leaseExpiry: "2027-06-30", addedBy: "Brad", mine: true }] }));
+  assert.match(dom.el("bsContactsRows").innerHTML, /Dana Wu · Acme · tenant/, "matched on the company, case-insensitively");
+  assert.match(dom.el("bsContactsRows").innerHTML, /data-contact-rm="c1">Detach/);
+  const plain = runSheet(SHEET());
+  assert.doesNotMatch(plain.el("bsContactsRows").innerHTML, /tenant/, "no lease, no claim");
+  const html = renderBuildingSheetBody(SHEET());
+  assert.ok(html.includes('id="bsAttachAdd"'), "the attach door");
+  assert.match(html, /id="bsAttachForm" class="bs-attach hide"/, "ships closed; the firm's list is read only when it opens");
+  assert.match(html, /"\/api\/org\/buildings\/contacts\?id="/, "attaching goes through the buildings block's own route");
+});
+
 test("the identity cells hold the raw figure and show the formatted one — /vault's convention", () => {
   const dom = runSheet(SHEET());
   assert.equal(dom.el("bsSize").value, "12,500");

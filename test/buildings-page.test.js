@@ -214,7 +214,9 @@ test("every section the plan names is on the sheet, with its rows attributed", (
     assert.ok(renderBuildingSheetBody(SHEET()).includes(`id="${id}"`), id + " is missing from the sheet");
   }
   assert.equal(dom.el("bsAddr").textContent, "1210 N 17th St, Boise, ID");
-  assert.match(dom.el("bsSub").textContent, /Colliers Boise’s board · added by you/);
+  assert.match(dom.el("bsSub").innerHTML, /Colliers Boise’s board · added by you/);
+  assert.match(dom.el("bsSub").innerHTML, /href="\/messages\?say=About%201210%20N%2017th%20St%2C%20Boise%2C%20ID%3A%20%2Fbuilding%2Fb1">Discuss this building</,
+    "the sheet seeds a conversation with its own link as the opening line");
   assert.match(dom.el("bsTxFirmRows").innerHTML, /\$1,250,000.*shared by Mike/);
   assert.match(dom.el("bsTxMineRows").innerHTML, /\$9\.50\/SF\/yr.*from your vault/);
   assert.match(dom.el("bsTxMineRows").innerHTML, /data-firm="m1" data-on="0">Share with the firm/);

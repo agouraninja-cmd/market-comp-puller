@@ -749,6 +749,37 @@ function renderMessagesBody(boot) {
   // measuring, so a desktop reader intermittently landed on "Select a
   // conversation" while a reload worked. Nothing now asks the viewport a
   // question the stylesheet already answers.
+  // A discovery door (slice 8) lands here with ?say=<text>&comp=<id>: the
+  // Vault's Firm column, a shelf row, a building sheet or a contact row
+  // seeding a conversation. The draft is held until a thread is open and
+  // then put in the composer — text into the box, the comp into the tray —
+  // and the person still picks who to say it to and still presses Send.
+  // Nothing is posted by arriving. The comp goes through the same picker
+  // rule as a hand-picked one (it must be in the sender's own vault), so a
+  // comp id in a URL buys nothing that the button could not.
+  state.draft = null;
+  function applyDraft(){
+    var d = state.draft;
+    if (!d) return;
+    state.draft = null;
+    if (d.text) $("msgInput").value = d.text;
+    if (d.compId && state.canAttach) {
+      var seed = function(){
+        var comp = (state.vault || []).filter(function(c){ return String(c.id) === d.compId; })[0];
+        if (!comp) { $("msgSendMsg").textContent = "That comp isn't in your vault, so it wasn't attached."; return; }
+        if (!state.attach.some(function(c){ return c.id === String(comp.id); })) {
+          state.attach.push({ id: String(comp.id), address: comp.address });
+        }
+        renderTray();
+      };
+      if (state.vault) { seed(); return; }
+      api("GET", "/api/vault?limit=1000").then(function(o){
+        if (o.s !== 200) return;
+        state.vault = (o.j && o.j.comps) || [];
+        seed();
+      });
+    }
+  }
   function openThread(id, push, jump){
     state.openKind = "internal";
     state.openId = id;
@@ -758,6 +789,7 @@ function renderMessagesBody(boot) {
     state.attach = [];
     renderTray();
     applyComposerMode();
+    applyDraft();
     setTab("chat");
     if (jump !== false) $("msgPage").className = "msg-page on-thread";
     renderThreads();
@@ -862,6 +894,14 @@ function renderMessagesBody(boot) {
       state.people = (j.people || []).filter(function(p){ return p.userId !== state.me; });
       state.canAttach = j.canAttachComps === true;
       state.threads = j.threads || [];
+      // Unread first, then most recent (slice 8): a conversation with
+      // something new is the one the reader came for. A boolean per thread —
+      // the count is the badge, never the sort key.
+      state.threads.sort(function(a, b){
+        var ua = a.unread ? 1 : 0, ub = b.unread ? 1 : 0;
+        if (ua !== ub) return ub - ua;
+        return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
+      });
       ungate();
       // The firm as a quiet line at the foot of the column, not as the
       // headline. Counts only people who have actually joined, because a
@@ -1184,6 +1224,13 @@ function renderMessagesBody(boot) {
       var qp = new URL(location.href).searchParams;
       wanted = qp.get("t") || "";
       wantedX = qp.get("x") || "";
+      var say = (qp.get("say") || "").slice(0, 4000), compId = (qp.get("comp") || "").trim();
+      if (say || compId) {
+        state.draft = { text: say, compId: compId };
+        // The seed is consumed on arrival: a reload must not re-seed a
+        // message somebody already sent or discarded.
+        try { history.replaceState({}, "", wanted ? "/messages?t=" + encodeURIComponent(wanted) : "/messages"); } catch (e) {}
+      }
     } catch (e) {}
     refreshList(false).then(function(){
       // The newest conversation is always LOADED, on every width — the two
@@ -1193,6 +1240,14 @@ function renderMessagesBody(boot) {
       // into it; arriving bare on a phone leaves the reader on the list.
       if (wantedX) { openExternal(wantedX, true, true); return; }
       if (wanted) { openThread(wanted, true, true); return; }
+      if (state.draft) {
+        // A draft with nobody to say it to yet (a discovery door, slice 8):
+        // pick the colleague first. The draft survives into the thread that
+        // opens, and the person still presses Send.
+        openNewPanel();
+        $("msgNewMsg").textContent = "Pick who to tell \u2014 your message is ready to send.";
+        return;
+      }
       if (state.threads.length) { openThread(state.threads[0].id, false, false); return; }
       // A broker whose only conversations are deal rooms still gets one open
       // rather than an empty pane telling them to select something.

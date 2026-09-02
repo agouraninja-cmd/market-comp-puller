@@ -3661,3 +3661,16 @@ test("a checkbox the broker set by hand survives the selector's re-render", asyn
     "the re-render must not resurrect a row the broker unchecked by hand");
   assert.equal(after[1].checked, true, "while the cured row still checks in");
 });
+
+
+// ---------------------------------------------------------------------------
+// Discuss, from the Firm column (Three Spaces, slice 8)
+// ---------------------------------------------------------------------------
+test("a shared comp offers Discuss with itself attached; an unshared one offers only Share", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" }), comp({ id: "c2", address: "200 Oak Ave" })],
+    null, { firm: FIRM, sharedIds: ["c1"] });
+  const rows = doc.getElementById("tbody").innerHTML;
+  assert.match(rows, /data-firm="c1" data-on="1">Shared<\/button> <a class="lnk" href="\/messages\?say=About%20100%20Main%20St&amp;comp=c1"/,
+    "the shared comp's Discuss seeds the message with the comp attached");
+  assert.doesNotMatch(rows, /comp=c2/, "an unshared comp is not discussed — discussing it would be sending it, which is Share's act");
+});

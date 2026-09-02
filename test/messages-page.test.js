@@ -117,3 +117,37 @@ test("a refusal the server already knows is rendered before any fetch", () => {
   // ...and the door out of it is a real page, not a dead end.
   assert.match(html, /href="\/brokers-firms"/);
 });
+
+
+// ---------------------------------------------------------------------------
+// Discovery and unread (Three Spaces, slice 8)
+// ---------------------------------------------------------------------------
+test("a discovery door seeds the composer through the URL, and nothing is posted by arriving", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  assert.match(js, /qp\.get\("say"\)/, "the page does not read ?say=");
+  assert.match(js, /qp\.get\("comp"\)/, "the page does not read ?comp=");
+  assert.match(js, /state\.draft = \{ text: say, compId: compId \}/);
+  // The seed is consumed on arrival, so a reload cannot re-seed a message
+  // somebody already sent or discarded.
+  assert.match(js, /history\.replaceState\(\{\}, "", wanted \? "\/messages\?t=" \+ encodeURIComponent\(wanted\) : "\/messages"\)/);
+  // Applied when a thread opens — text into the box, the comp into the tray
+  // — and only through the picker's own rule (the comp must be in the
+  // sender's vault), so a comp id in a URL buys nothing the button could not.
+  const open = js.slice(js.indexOf("function openThread(id, push, jump){"), js.indexOf("function openThread(id, push, jump){") + 600);
+  assert.match(open, /applyComposerMode\(\);\s*applyDraft\(\);/, "the draft is not applied when a thread opens");
+  const apply = js.slice(js.indexOf("function applyDraft(){"), js.indexOf("function openThread("));
+  assert.match(apply, /\$\("msgInput"\)\.value = d\.text/);
+  assert.match(apply, /state\.canAttach/);
+  assert.match(apply, /That comp isn't in your vault, so it wasn't attached\./);
+  assert.doesNotMatch(apply, /\/api\/messages\/send/, "arriving with a draft must never send it");
+  // With nobody to say it to yet, the New panel opens first.
+  assert.match(js, /if \(state\.draft\) \{[\s\S]{0,400}openNewPanel\(\);/);
+});
+
+test("the list is sorted unread first, then most recent, after every read", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const at = js.indexOf("state.threads = j.threads || [];");
+  assert.ok(at > 0);
+  assert.match(js.slice(at, at + 500), /state\.threads\.sort\(function\(a, b\)\{\s*var ua = a\.unread \? 1 : 0, ub = b\.unread \? 1 : 0;/,
+    "unread first is not applied where the list is read");
+});

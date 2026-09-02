@@ -88,6 +88,7 @@ test("messaging routes on a bare server (no database)", async (t) => {
       ["POST", "/api/messages/send"],
       ["POST", "/api/messages/read"],
       ["POST", "/api/messages/comp/save"],
+          ["GET", "/api/messages/unread"],
     ];
     for (const [method, url] of calls) {
       const r = await fetch(srv.base + url, {
@@ -199,7 +200,9 @@ test("Messages is a row on both rails, in the same place", () => {
   // clicking between them feel like leaving the product.
   const SERVER_JS = read("server.js");
   const INDEX_HTML = read("index.html");
-  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>Messages<\/a>/,
+  // The row's text may carry the unread dot after it (slice 8); the word is
+  // what both authors must agree on.
+  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>Messages(?:<span id="navMsgDot"[^>]*><\/span>)?<\/a>/,
     "the shared rail has no Messages row");
   assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*>Messages</,
     "the app's rail has no Messages row");
@@ -232,4 +235,35 @@ test("a member reading their messages is not sold a report", () => {
   const SERVER_JS = read("server.js");
   assert.match(SERVER_JS, /CTA_FREE_PAGES = new Set\(\[[^\]]*"\/messages"/,
     "/messages still carries the Run a report CTA");
+});
+
+
+// ---------------------------------------------------------------------------
+// Unread, in-app only (Three Spaces, slice 8)
+// ---------------------------------------------------------------------------
+
+test("the unread dot sits beside Messages on BOTH rails, hidden until asked, and is hydrated from its own endpoint", () => {
+  const SERVER_JS = read("server.js");
+  const INDEX_HTML = read("index.html");
+  assert.match(SERVER_JS, /<a href="\/messages"[^>]*>Messages<span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
+    "the shared rail has no unread dot inside its Messages row");
+  assert.match(INDEX_HTML, /id="navMessagesLink" href="\/messages"[^>]*>Messages<span id="navMsgDot" class="navdot" hidden[^>]*><\/span><\/a>/,
+    "the app's rail has no unread dot inside its Messages row");
+  // Fetched in the after-paint pass on both sides — never on /api/config,
+  // which runs on every page load and is under a standing rule against DB
+  // reads.
+  const navJs = SERVER_JS.slice(SERVER_JS.indexOf("const ACCOUNT_NAV_JS"), SERVER_JS.indexOf("const ACCOUNT_NAV_JS") + 12000);
+  assert.match(navJs, /fetch\("\/api\/messages\/unread"/, "ACCOUNT_NAV_JS does not ask for the count");
+  assert.match(INDEX_HTML, /fetch\("\/api\/messages\/unread"/, "index.html does not ask for the count");
+  const configAt = SERVER_JS.indexOf('req.url === "/api/config"');
+  assert.ok(configAt > 0);
+  assert.doesNotMatch(SERVER_JS.slice(configAt, configAt + 6000), /msg_|unread/, "/api/config grew a messaging read");
+});
+
+test("the author stamps their own cursor after posting, so a thread is never unread to the person who last wrote in it", () => {
+  const SERVER_JS = read("server.js");
+  const sendAt = SERVER_JS.indexOf('msgPath === "/api/messages/send"');
+  const block = SERVER_JS.slice(sendAt, SERVER_JS.indexOf('msgPath === "/api/messages/unread"', sendAt));
+  assert.match(block, /touchMsgThread\(id, now\);[\s\S]{0,600}msg_thread_members\?thread_id=eq\.[\s\S]{0,120}\{ last_read_at: now \}/,
+    "the send route no longer stamps the author's last_read_at");
 });

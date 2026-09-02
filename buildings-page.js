@@ -389,7 +389,8 @@ function renderBuildingSheetBody(boot) {
   function render(){
     var b=building;
     $("bsAddr").textContent=b.address;
-    $("bsSub").textContent=[org&&org.name?org.name+"\u2019s board":"",b.mine?"added by you":(b.addedBy?"added by "+b.addedBy:"")].filter(Boolean).join(" \u00b7 ");
+    $("bsSub").innerHTML=esc([org&&org.name?org.name+"\u2019s board":"",b.mine?"added by you":(b.addedBy?"added by "+b.addedBy:"")].filter(Boolean).join(" \u00b7 "))+
+      ' \u00b7 <a href="/messages?say='+esc(encodeURIComponent("About "+b.address+": "+((typeof location!=="undefined"&&location.origin)||"")+"/building/"+b.id))+'">Discuss this building</a>';
     $("bsType").value=b.type||"";
     // /vault's cell convention: the formatted figure for reading, the raw one
     // on data-raw and swapped in on focus, the server's normalized value put

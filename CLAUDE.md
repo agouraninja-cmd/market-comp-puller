@@ -1582,6 +1582,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   this surface, and which member at a firm would get a reminder is an owner
   decision the plan defers. The run test asserts the mail stand-in stayed
   empty.
+  **Discovery, unread, contacts, reports** (slice 8, 2026-09-02, no
+  migration; spec §12 of the firm-messaging design). Four **Discuss** doors
+  (a SHARED comp in the Vault's Firm column, a shelf report, a building
+  sheet, a contact row) all land on `/messages?say=&comp=`, which seeds the
+  composer and posts NOTHING by arriving. `GET /api/messages/unread` counts
+  THREADS with something new (a boolean per thread; the member's `added_at`
+  is the baseline for a never-opened thread) and feeds `#navMsgDot` on both
+  rails from the after-paint hydration — never from `/api/config`; the send
+  route stamps the author's own `last_read_at`. `#deskThreads` on the
+  Workspace shows five, unread first; `/messages` sorts unread first. The
+  contact door composes name and company and **never the email** (039), and
+  the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
+  `report-access.js` stays the sole decider.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

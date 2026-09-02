@@ -1784,7 +1784,9 @@ a.btn.ghost:hover{color:var(--ink)}
       var firm="";
       if(myFirm){
         firm=sharedIds[c.id]
-          ? '<td><button class="pubbtn on" data-firm="'+esc(c.id)+'" data-on="1">Shared</button></td>'
+          ? '<td><button class="pubbtn on" data-firm="'+esc(c.id)+'" data-on="1">Shared</button> '+
+            '<a class="lnk" href="/messages?say='+escA(encodeURIComponent("About "+c.address))+'&amp;comp='+escA(encodeURIComponent(c.id))+
+            '" title="Start a conversation about this comp, with it attached">Discuss</a></td>'
           : '<td><button class="pubbtn" data-firm="'+esc(c.id)+'">Share</button></td>';
       }
       // Six typed cells, two derived ones, then the public toggle, the firm

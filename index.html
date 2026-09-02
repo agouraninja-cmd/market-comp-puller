@@ -892,6 +892,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        so the two front doors now behave the same on a phone: brand on one
        line, controls beneath it, no label broken mid-word. */
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
+    /* The unread dot beside Messages — the twin of ACCOUNT_NAV_CSS's .navdot. */
+    .rd-appbar .navdot { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red-fill); color: #fff; font-size: 11px; font-weight: 600; line-height: 18px; text-align: center; vertical-align: middle; margin-left: 6px; }
+    .rd-appbar .navdot[hidden] { display: none; }
     .rd-appbar > nav { flex-wrap: wrap; }
     .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
     /* The tools label is rail-only. Declared here rather than in the rail
@@ -1400,6 +1403,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-shelf-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
     .dk-shelf-row:last-child { border-bottom: 0; }
     .dk-shelf-meta { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* A second control on a shelf row keeps the meta's face but not its auto
+       margin — two auto margins on one row split the space and pull the
+       attribution off the right edge. */
+    .dk-shelf-meta.dk-shelf-act { margin-left: 0; }
     .dk-person { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
     .dk-person:last-child { border-bottom: 0; }
     .dk-person .who { font-weight: 500; color: var(--ink); }
@@ -2288,7 +2295,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              missing row. The consequence is that when the vault row is hidden
              this one closes up under Workspace, exactly as Bulk valuation
              already does, which is why the order is pinned as a sequence. -->
-        <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium">Messages</a>
+        <!-- The unread dot (Three Spaces, slice 8) rides INSIDE the row: the
+             rail lays every nav child out as a full-width row, so a sibling
+             badge would be a red bar. Ships hidden; refreshAccountUI fills it
+             from GET /api/messages/unread for a signed-in member, the same
+             pass that reveals the vault row. marketBar carries the twin. -->
+        <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium">Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>
         <!-- The tools group's label. Rail-only, and present for every visitor
              so the two nav authors keep emitting the same shape -- see
              server.js's marketBar and RAIL_CSS for the twin. -->
@@ -2568,6 +2580,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="buildingsMore" class="hidden text-sm mt-2"><a id="buildingsMoreLink" href="/buildings" class="underline hover:text-[#1A2433]"></a></p>
         <p id="buildingsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No buildings yet. Add one from a property below, from a report on the shelf, or type an address above.</p>
       </div>
+      <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
+           first, from the same list /messages reads. Rendered only for a
+           member of a firm, the shelf's rule; a failed read hides it. -->
+      <div id="deskThreads" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Conversations</span>
+          <span id="deskThreadsStats" class="dk-note"></span>
+        </div>
+        <div id="deskThreadRows" class="mt-2"></div>
+        <p id="deskThreadsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
+        <p class="text-xs text-[#68707E] mt-2"><a href="/messages" class="underline">All conversations</a></p>
+      </div>
+
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
            below follows, and the opposite of the two lists above: those teach
@@ -13574,6 +13599,7 @@ async function renderMyDesk() {
     // shelf's rows offer "Add to firm" only for addresses not already listed,
     // so the list has to be in memory before those rows are drawn.
     await renderBuildings();
+    await renderDeskThreads();
     await renderFirmShelf();
     // Last, and for renderFirmShelf's own reason: the board reads myFirm() too,
     // so it has to come after the membership load. Its own read is independent
@@ -13724,7 +13750,14 @@ async function renderMyDesk() {
       const door = buildingDoor({ address: r.address, propertyType: r.type });
       // Same face as the meta, but WITHOUT its auto margin: two auto margins on
       // one row split the space and pull the attribution off the right edge.
-      if (door) { door.className = "dk-shelf-meta underline"; door.style.marginLeft = "0"; row.appendChild(door); }
+      if (door) { door.className = "dk-shelf-meta dk-shelf-act underline"; row.appendChild(door); }
+      // "Discuss" (slice 8): the report travels as its LINK, so report-access.js
+      // stays the sole decider of who may read it. Never a copy of the payload.
+      const talk = document.createElement("a");
+      talk.className = "dk-shelf-meta dk-shelf-act underline";
+      talk.textContent = "Discuss";
+      talk.href = "/messages?say=" + encodeURIComponent("About the " + (r.type ? r.type + " " : "") + "report on " + r.address + ": " + r.url);
+      row.appendChild(talk);
       wrap.appendChild(row);
     });
   }
@@ -14013,6 +14046,51 @@ async function renderMyDesk() {
 
   // ONE writer for every door — the form, a property row, a shelf row — so
   // there is one POST and one set of refusals behind all of them.
+  // Conversations on the Workspace (slice 8). Reads the SAME list /messages
+  // reads, takes the first five, unread first. Presentation only — the
+  // unread rule lives server-side in messaging.js's unreadCount.
+  const DESK_THREADS = 5;
+  async function renderDeskThreads() {
+    const box = document.getElementById("deskThreads");
+    const firm = currentUser ? myFirm() : null;
+    if (!firm) { box.classList.add("hidden"); return; }
+    let data = null;
+    try {
+      const res = await fetch("/api/messages", { credentials: "same-origin" });
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    if (!data) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const threads = (Array.isArray(data.threads) ? data.threads : []).slice().sort((a, b) => {
+      const ua = a.unread ? 1 : 0, ub = b.unread ? 1 : 0;
+      if (ua !== ub) return ub - ua;
+      return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
+    });
+    const unread = threads.filter((t) => t.unread).length;
+    document.getElementById("deskThreadsStats").textContent = threads.length
+      ? `${threads.length} ${threads.length === 1 ? "conversation" : "conversations"}` + (unread ? ` \u00b7 ${unread} unread` : "")
+      : "";
+    document.getElementById("deskThreadsEmpty").classList.toggle("hidden", threads.length > 0);
+    const wrap = document.getElementById("deskThreadRows");
+    wrap.innerHTML = "";
+    threads.slice(0, DESK_THREADS).forEach((t) => {
+      const row = document.createElement("div");
+      row.className = "db-row";
+      const name = document.createElement("a");
+      name.className = "db-name underline hover:text-[#1A2433]" + (t.unread ? " font-medium" : "");
+      name.href = "/messages?t=" + encodeURIComponent(t.id);
+      // textContent throughout: labels are people's names and previews are
+      // what somebody typed.
+      name.textContent = (t.unread ? "\u25cf " : "") + t.label;
+      row.appendChild(name);
+      const meta = document.createElement("span");
+      meta.className = "db-split";
+      meta.textContent = [t.preview, t.unread ? `${t.unread} new` : ""].filter(Boolean).join(" \u00b7 ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+  }
+
   async function addBuildingToFirm(input) {
     const firm = myFirm();
     if (!firm) return null;
@@ -14092,6 +14170,35 @@ async function renderMyDesk() {
     }
   });
 
+  // The unread dot's one writer (slice 8). Removed, never added, without a
+  // signed-in member: a stale dot after sign-out would be a badge on a door
+  // the reader no longer has.
+  async function refreshMessagesDot() {
+    const dot = document.getElementById("navMsgDot");
+    if (!dot) return;
+    if (!currentUser) { dot.hidden = true; return; }
+    try {
+      const res = await fetch("/api/messages/unread", { credentials: "same-origin" });
+      if (!res.ok) { dot.hidden = true; return; }
+      const j = await res.json();
+      const n = Number(j && j.count) || 0;
+      dot.textContent = n > 9 ? "9+" : String(n);
+      dot.hidden = !(n > 0);
+    } catch (_) { /* the dot stays as it was */ }
+  }
+
+  // "Discuss" from a contact row (slice 8): points at a person in the context
+  // of a deal. NAME AND COMPANY ONLY — never the email. Migration 039's header
+  // is a long argument that tenant PII must not spread by accident: a message
+  // is a record of what was said and outlives the contact row, so an address
+  // copied into one would survive that person being removed from the firm's
+  // list. The link says who; the firm's list is where the address lives.
+  function contactDiscussHref(c) {
+    const who = [String((c && c.name) || "").trim(), String((c && c.company) || "").trim()].filter(Boolean).join(" \u00b7 ");
+    if (!who) return "";
+    return "/messages?say=" + encodeURIComponent("Contact: " + who + " \u2014 see the firm\u2019s contacts on the Workspace.");
+  }
+
   function contactsMsg(text, bad) {
     const el = document.getElementById("contactMsg");
     el.textContent = text || "";
@@ -14141,6 +14248,13 @@ async function renderMyDesk() {
       bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
       meta.textContent = bits.join(" · ");
       row.appendChild(meta);
+
+      const talk = document.createElement("a");
+      talk.className = "db-total text-xs underline mr-2";
+      talk.textContent = "Discuss";
+      talk.title = "Start a conversation about this contact — by name, never their address";
+      talk.href = contactDiscussHref(c);
+      row.appendChild(talk);
 
       const del = document.createElement("button");
       del.type = "button";
@@ -16953,6 +17067,11 @@ async function renderMyDesk() {
     // (`true`, under its own members-only guard) and nav-parity reads both.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("menuVaultLink").classList.toggle("hidden", !currentUser);
+    // The unread dot (slice 8): its own endpoint, never a field on /api/config.
+    // A member with no firm gets a 403 here, which leaves the dot hidden —
+    // the same answer as nothing waiting. Never awaited: the rest of this
+    // function must not wait on a count.
+    refreshMessagesDot();
     // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
     // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
     // so unhiding this by hand reveals a link and a 403 behind it -- and

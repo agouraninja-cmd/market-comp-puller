@@ -455,3 +455,42 @@ test("firm messaging, end to end", async (t) => {
     assert.equal((ctx.tables.org_comps || []).length, 0);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Unread, in-app only (Three Spaces, slice 8): a boolean per thread, counted.
+// ---------------------------------------------------------------------------
+test("the unread count is per thread, clears on read, and never counts your own message", async (t) => {
+  const tables = seedTables();
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  const count = async (who) => (await (await fetch(srv.base + "/api/messages/unread", as(who))).json()).count;
+  assert.equal(await count(BRAD), 0, "nothing yet");
+
+  const opened = await fetch(srv.base + "/api/messages/thread", as(BRAD, { method: "POST", body: JSON.stringify({ memberIds: [MIKE.id] }) }));
+  assert.equal(opened.status, 201);
+  const threadId = (await opened.json()).thread.id;
+  assert.equal(await count(BRAD), 0, "an empty thread is not unread");
+  assert.equal(await count(MIKE), 0);
+
+  const sent = await fetch(srv.base + "/api/messages/send", as(BRAD, { method: "POST", body: JSON.stringify({ threadId, body: "Seen the Fairview comp?" }) }));
+  assert.equal(sent.status, 201);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(await count(BRAD), 0, "the author is not unread on their own message");
+  assert.equal(await count(MIKE), 1, "one THREAD with something new — a boolean per thread, counted");
+
+  const again = await fetch(srv.base + "/api/messages/send", as(BRAD, { method: "POST", body: JSON.stringify({ threadId, body: "And the Linder one." }) }));
+  assert.equal(again.status, 201);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(await count(MIKE), 1, "two messages in one thread are still one unread conversation");
+
+  const read = await fetch(srv.base + "/api/messages/thread?id=" + encodeURIComponent(threadId), as(MIKE));
+  assert.equal(read.status, 200);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(await count(MIKE), 0, "reading the thread clears it");
+
+  assert.equal(await count(RIVAL), 0, "another firm's member never sees our thread in their count");
+  assert.equal((await fetch(srv.base + "/api/messages/unread")).status, 401);
+});

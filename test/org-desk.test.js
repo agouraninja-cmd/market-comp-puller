@@ -672,6 +672,75 @@ test("the door posts the identity the row already holds and then re-reads the bo
   assert.match(ctx.dom.text("buildingMsg"), /Added 500 Warehouse Way, Boise, ID to Colliers Boise's buildings/);
 });
 
+// ---------------------------------------------------------------------------
+// Conversations on the Workspace, and the contact door (slice 8)
+// ---------------------------------------------------------------------------
+const THREADS_RE = /  const DESK_THREADS = 5;[\s\S]*?\n  async function renderDeskThreads\(\) \{[\s\S]*?\n  \}/;
+function loadDeskThreads(opts) {
+  const o = opts || {};
+  const fetch = makeFetch([["/api/messages", { status: o.status || 200, body: o.body }]]);
+  return load(THREADS_RE,
+    "this.render = renderDeskThreads;",
+    "let currentUser = __user; function myFirm() { return __firm; }",
+    { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
+}
+const TH = (o) => Object.assign({ id: "t1", label: "Mike", unread: 0, lastMessageAt: "2026-09-01T00:00:00Z", preview: "Seen the comp?" }, o);
+
+test("the Workspace shows at most five conversations, unread first, each a door into /messages", async () => {
+  const body = { threads: [
+    TH({ id: "old", label: "Old", lastMessageAt: "2026-01-01T00:00:00Z" }),
+    TH({ id: "u", label: "Dana", unread: 2, lastMessageAt: "2026-02-01T00:00:00Z" }),
+    TH({ id: "n1", label: "N1", lastMessageAt: "2026-09-01T00:00:00Z" }),
+    TH({ id: "n2", label: "N2", lastMessageAt: "2026-08-01T00:00:00Z" }),
+    TH({ id: "n3", label: "N3", lastMessageAt: "2026-07-01T00:00:00Z" }),
+    TH({ id: "n4", label: "N4", lastMessageAt: "2026-06-01T00:00:00Z" }),
+  ] };
+  const ctx = loadDeskThreads({ body });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskThreads"), false);
+  assert.match(ctx.dom.text("deskThreadsStats"), /6 conversations · 1 unread/, "the count describes the whole list");
+  const rows = ctx.dom.el("deskThreadRows").children;
+  assert.equal(rows.length, 5, "five, never more");
+  assert.match(rows[0].textContent, /● Dana/, "unread first, marked");
+  assert.match(rows[0].textContent, /2 new/);
+  assert.match(rows[1].textContent, /N1/, "then most recent");
+  assert.doesNotMatch(ctx.dom.text("deskThreadRows"), /Old/, "the oldest fell off the five");
+  assert.equal(rows[0].children[0].href, "/messages?t=u");
+});
+
+test("no firm, a failed read, or a signed-out page: no conversations section, no fetch where there is no member", async () => {
+  let ctx = loadDeskThreads({ firm: null, body: { threads: [TH({})] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskThreads"), true);
+  ctx = loadDeskThreads({ status: 503, body: { error: "down" } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskThreads"), true, "'could not read' is not 'no conversations'");
+  ctx = loadDeskThreads({ body: { threads: [] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskThreadsEmpty"), false);
+});
+
+test("the contact door names the person and the company, and NEVER their email", () => {
+  const src = html.match(/  function contactDiscussHref\(c\) \{[\s\S]*?\n  \}/);
+  assert.ok(src, "contactDiscussHref is gone from index.html");
+  const fn = new Function(src[0] + "\nreturn contactDiscussHref;")();
+  const href = fn({ name: "Dana Wu", company: "Acme Logistics", email: "dana@acme.com", notes: "call after 3" });
+  assert.match(href, /^\/messages\?say=/);
+  const said = decodeURIComponent(href.slice("/messages?say=".length));
+  assert.match(said, /^Contact: Dana Wu · Acme Logistics/);
+  assert.doesNotMatch(said, /dana@acme\.com|@/, "the email must not spread into a message — 039's rule");
+  assert.doesNotMatch(said, /call after 3/, "nor the notes");
+  assert.equal(fn({ name: "", company: "" }), "", "nobody to name, no door");
+  // And the row builder uses it, with nothing else on the href.
+  assert.match(html, /talk\.href = contactDiscussHref\(c\);/);
+});
+
+test("the shelf row's Discuss sends the report as a LINK, never a copy of it", () => {
+  assert.match(html, /talk\.href = "\/messages\?say=" \+ encodeURIComponent\("About the " \+ \(r\.type \? r\.type \+ " " : ""\) \+ "report on " \+ r\.address \+ ": " \+ r\.url\);/,
+    "the shelf's Discuss must carry the report's URL, so report-access.js stays the sole decider of who may read it");
+});
+
 test("the shelf's header count describes the WHOLE shelf, never the filtered view", async () => {
   // /vault's rule, for its reasons: a count that shrinks with the search box
   // is how a record stops being trusted as a record.

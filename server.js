@@ -4655,7 +4655,7 @@ async function msgThreadIdsFor(userId) {
   if (!DB_CONFIGURED || !userId) return [];
   const rows = await sbRequest("GET",
     `msg_thread_members?user_id=eq.${encodeURIComponent(userId)}` +
-    `&left_at=is.null&select=thread_id,last_read_at&limit=500`);
+    `&left_at=is.null&select=thread_id,last_read_at,added_at&limit=500`);
   return rows || [];
 }
 
@@ -8894,6 +8894,12 @@ const ACCOUNT_NAV_CSS = `
    [hidden] attribute's UA display:none, so every slot below would render
    signed-out chrome and signed-in chrome at once without this line. */
 .hdr nav [hidden]{display:none!important}
+/* The unread dot inside the Messages row (Three Spaces, slice 8). Ships
+   hidden; ACCOUNT_NAV_JS fills it from GET /api/messages/unread in the same
+   after-paint pass that reveals the vault row, so it never blinks for a
+   member with nothing waiting. Inline, so the rail's row layout leaves it
+   after the word rather than making it a row of its own. */
+.hdr nav .navdot{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;vertical-align:middle;margin-left:6px}
 .hdr nav .acct summary{display:flex;align-items:center}
 .hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
   font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block;
@@ -9194,6 +9200,10 @@ const ACCOUNT_NAV_JS =
   // hubs; see vaultReadPayload and #vaultLocked.
   // This line is under `if(!me)return;` already, so it is members-only.
   `show($("navVault"),true);` +
+  // The unread dot (slice 8): its own endpoint, never a field on /api/config
+  // (which runs on every page load and is under a standing rule against DB
+  // reads). A 403 (no firm) or any failure leaves the dot hidden.
+  `fetch("/api/messages/unread",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){var d=$("navMsgDot");if(!d||!j||!(j.count>0))return;d.textContent=j.count>9?"9+":String(j.count);d.hidden=false;}).catch(function(){});` +
   // The tester badge, where the page asked for one. Same read, same pass:
   // this script has already paid for /api/config, and the badge ships
   // hidden so a non-tester never sees it blink. classList, not the hidden
@@ -10177,7 +10187,10 @@ const marketBar = (signedIn = false, current = "") =>
       // Messages closes up directly under Workspace. That is the same thing
       // that already happens to Bulk valuation, and it is why the order is
       // pinned as a SEQUENCE rather than by position.
-      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages</a>`
+      // The unread dot (slice 8) rides INSIDE the row: the rail lays every nav
+      // child out as a full-width row, so a sibling badge would be a red bar.
+      // Hidden until ACCOUNT_NAV_JS asks. index.html carries the twin.
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
     : "") +
   // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
   // visitor and shown only in the rail, so the markup stays identical in both
@@ -24970,6 +24983,14 @@ const server = http.createServer((req, res) =>
             { prefer: "return=minimal" });
         }
         touchMsgThread(id, now);
+        // The author stamps their OWN cursor after posting (slice 8). Without
+        // it the thread reads as unread to the person who just wrote in it
+        // — the bug stampHubSeen exists to prevent on the hub. Fire-and-
+        // forget: a failed stamp must never cost the send.
+        sbRequest("PATCH",
+          `msg_thread_members?thread_id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(g.user.id)}`,
+          { last_read_at: now }, { prefer: "return=minimal" }
+        ).catch((err) => console.error("Author read stamp failed (the message is fine):", err.message));
         // PII-free, and MARKET-free as well: a firm's markets are their
         // private book, so unlike a search event nothing here may carry one.
         // The vault_visit precedent.
@@ -24987,6 +25008,41 @@ const server = http.createServer((req, res) =>
     }
 
     // --- POST /api/messages/read — stamp how far I have read ----------------
+    // --- GET /api/messages/unread — how many conversations have something
+    // new (Three Spaces, slice 8). A BOOLEAN PER THREAD counted up, never a
+    // message count: 024 refused per-message receipts as three tables of
+    // state to answer a question nobody asked. Decided off two columns the
+    // list already carries — the thread's last_message_at against my own
+    // last_read_at — so it costs one membership read and one thread read,
+    // which is what lets it ride every page's after-paint hydration. The
+    // author's own send stamps their cursor, so a thread is never unread to
+    // the person who last wrote in it. In-app only; nothing here mails.
+    if (req.method === "GET" && msgPath === "/api/messages/unread") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const mine = await msgThreadIdsFor(g.user.id);
+        const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+        const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
+        let count = 0;
+        for (const m of mine) {
+          const last = lastAt.get(String(m.thread_id));
+          if (!last) continue;
+          // The baseline is the last read, or — for a member who has never
+          // opened it — the moment they were added. A thread's
+          // last_message_at is set at creation, so without the second half
+          // every freshly opened, still-empty conversation would count.
+          const since = m.last_read_at || m.added_at || "";
+          if (!since || String(last) > String(since)) count += 1;
+        }
+        return sendJson(res, 200, { count });
+      })().catch((err) => {
+        console.error("Unread count failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't count your unread conversations." });
+      });
+      return;
+    }
+
     if (req.method === "POST" && msgPath === "/api/messages/read") {
       (async () => {
         const g = await openMessaging();

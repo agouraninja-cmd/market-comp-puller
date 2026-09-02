@@ -174,6 +174,15 @@ function renderMessagesBody(boot) {
 .msg-pick label{display:flex;gap:8px;align-items:center;cursor:pointer;min-width:0;flex:1}
 .msg-pick .who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .msg-pick .sub{color:var(--ink-faint);font-size:11.5px}
+.msg-door{margin:4px 0 8px}
+/* The always-there invite row. Muted until a real email is typed, at which
+   point renderNewPeople replaces it with the ordinary checkbox row. It is a
+   button because it does something (focuses the box and says what to type),
+   not because it is a link somewhere. */
+.msg-invite{display:block;width:100%;text-align:left;background:none;border:0;
+  border-top:1px solid var(--hair);padding:8px 4px;margin-top:2px;
+  color:var(--ink-faint);font:inherit;font-size:12.5px;cursor:pointer}
+.msg-invite:hover{color:var(--ink)}
 /* Selected people, as removable chips above the list. */
 .msg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .msg-chips:empty{margin-bottom:0}
@@ -237,6 +246,14 @@ function renderMessagesBody(boot) {
     <div class="msg-panel msg-hide" id="msgNewPanel">
       <h3>New conversation</h3>
       <input id="msgNewSearch" type="text" placeholder="Search people" autocomplete="off">
+      <!-- The panel does TWO jobs and only ever advertised one. The invite
+           row below appears only once a COMPLETE email has been typed, so
+           until this line existed the only way to learn the door was there
+           was to already know, or to type something that matched nobody and
+           read the failure. Owner found it by hunting, 2026-09-02.
+           Written by JS (setNewDoorCopy) rather than here, because the
+           second half of it is only true for a member with a vault. -->
+      <div class="msg-hint msg-door" id="msgNewDoor"></div>
       <div id="msgNewChips" class="msg-chips"></div>
       <div id="msgNewPeople"></div>
       <!-- Only for an EXTERNAL conversation, and optional. Internal
@@ -620,7 +637,7 @@ function renderMessagesBody(boot) {
   }
   function invitePerson(){
     var email = ($("msgPeopleAdd").value || "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { $("msgPeopleMsg").textContent = "That doesn't look like an email address."; return; }
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) { $("msgPeopleMsg").textContent = "That doesn't look like an email address."; return; }
     if (currentPeopleEmails().indexOf(email) >= 0) { $("msgPeopleMsg").textContent = "They're already in this conversation."; return; }
     $("msgPeopleGo").disabled = true;
     $("msgPeopleMsg").textContent = "";
@@ -1210,12 +1227,35 @@ function renderMessagesBody(boot) {
           ? "Message " + pickedName(state.picked[0])
           : (state.picked.length > 1 ? "Start group" : "Start"));
   }
+  // The panel's standing line, and the placeholder above it. Both name BOTH
+  // jobs the box does, and the second half is stated only for a member who
+  // has a vault — POST /api/hubs refuses without one, so promising the door
+  // to somebody who cannot walk through it is the Buy-button rule inverted.
+  function setNewDoorCopy(){
+    var ext = state.canAttach === true;
+    $("msgNewSearch").placeholder = ext
+      ? "Search colleagues, or type an email address"
+      : "Search people";
+    $("msgNewDoor").textContent = ext
+      ? "Search your firm, or type an email address to invite someone outside it."
+      : "";
+  }
+  // The invite row, always present once a member has a vault. It is the same
+  // door the typed-email row opens; this is what tells you the door is there
+  // before you have typed anything at all.
+  function inviteRowHtml(){
+    return '<button type="button" class="msg-invite" id="msgInviteRow">' +
+      '+ Invite someone outside your firm by email</button>';
+  }
   function renderNewPeople(){
     var people = joinedPeople();
     if (!people.length) {
-      $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet, ' +
-        'so there is no one to message. Invitations are managed on your ' +
-        '<a href="/desk">workspace</a>.</div>';
+      // A firm of one still has clients. This used to end at "there is no one
+      // to message", which is the wrong sentence for the broker who most
+      // wants a deal room.
+      $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet. ' +
+        'Invitations to colleagues are managed on your <a href="/desk">workspace</a>.</div>' +
+        (state.canAttach ? inviteRowHtml() : "");
       return;
     }
     var q = ($("msgNewSearch").value || "").trim().toLowerCase();
@@ -1223,6 +1263,10 @@ function renderMessagesBody(boot) {
       if (!q) return true;
       return (p.name + " " + p.email).toLowerCase().indexOf(q) >= 0;
     });
+    // Colleague rows and the invite row are built SEPARATELY, because the
+    // "nobody matches that" line is about the colleague half alone. Summed
+    // into one string, the always-present invite row would make the search
+    // look like it had found something every time.
     var html = "";
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
@@ -1232,25 +1276,33 @@ function renderMessagesBody(boot) {
         '<span class="who">' + esc(p.name) + '<span class="sub"> · ' + esc(p.email) + '</span></span>' +
         '</label></div>';
     }
+    var door = "";
     // Typed something shaped like an email that is not a colleague? That is
     // the door OUT of the firm: offer to invite them to an external
     // conversation. Only when the member has a vault, because a deal room is
     // a broker surface and the create route refuses without one — a row that
     // can only fail must not render.
     var typed = q.trim();
-    var emailish = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(typed);
+    var emailish = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(typed);
     var isColleague = joinedPeople().some(function(p){ return p.email === typed; });
     if (emailish && !isColleague && state.canAttach) {
       var on2 = state.pickedExt.indexOf(typed) >= 0;
-      html += '<div class="msg-pick"><label>' +
+      door = '<div class="msg-pick"><label>' +
         '<input type="checkbox" data-extpick="' + esc(typed) + '"' + (on2 ? " checked" : "") + '>' +
         '<span class="who">Invite ' + esc(typed) +
         '<span class="sub"> · outside your firm, by email</span></span>' +
         '</label></div>';
+    } else if (state.canAttach) {
+      // Nothing invitable typed yet, so the row stands in its muted form.
+      // One row, two states, ONE input: an invite box of its own would be a
+      // second place to type the same thing.
+      door = inviteRowHtml();
     }
-    if (!html) { $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody matches that.' +
-      (state.canAttach ? ' Type a full email address to invite somebody outside your firm.' : '') + '</div>'; return; }
-    $("msgNewPeople").innerHTML = html;
+    if (!html) {
+      html = '<div class="msg-hint">Nobody in your firm matches that.' +
+        (state.canAttach ? ' A full email address invites somebody outside it.' : '') + '</div>';
+    }
+    $("msgNewPeople").innerHTML = html + door;
   }
   function openNewPanel(){
     state.picked = [];
@@ -1259,6 +1311,7 @@ function renderMessagesBody(boot) {
     $("msgNewAbout").value = "";
     $("msgNewMsg").textContent = "";
     $("msgNewPanel").className = "msg-panel";
+    setNewDoorCopy();
     renderNewChips();
     renderNewPeople();
     try { $("msgNewSearch").focus(); } catch (e) {}
@@ -1410,7 +1463,20 @@ function renderMessagesBody(boot) {
     if (open) { $("msgNewPanel").className = "msg-panel msg-hide"; return; }
     openNewPanel();
   });
-  $("msgNewSearch").addEventListener("input", renderNewPeople);
+  // Typing restores the standing line, so the row's "type their email above"
+  // prompt lasts exactly as long as it is still the instruction.
+  $("msgNewSearch").addEventListener("input", function(){
+    setNewDoorCopy();
+    renderNewPeople();
+  });
+  // The muted invite row does not open anything of its own — it points at the
+  // box that is already there and says what to put in it. A second input for
+  // the same job is the trap the vault's ONE file input rule names.
+  $("msgNewPeople").addEventListener("click", function(e){
+    if (!e.target.closest("#msgInviteRow")) return;
+    $("msgNewDoor").textContent = "Type their email address above, then tick the row that appears.";
+    try { $("msgNewSearch").focus(); } catch (err) {}
+  });
   // Selection lives in state, not in the checkboxes: the list is filtered as
   // you type, so a box that leaves the filter would take its tick with it.
   $("msgNewPeople").addEventListener("change", function(e){

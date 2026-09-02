@@ -894,6 +894,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .rd-appbar { flex-wrap: wrap; row-gap: 12px; }
     .rd-appbar > nav { flex-wrap: wrap; }
     .rd-appbar > nav > a, .rd-appbar > nav > button, .rd-appbar > nav #exploreMenuBtn { white-space: nowrap; }
+    /* The tools label is rail-only. Declared here rather than in the rail
+       block below, because everything in there is guarded at 900px and a
+       display rule written inside it could only ever turn the label ON --
+       leaving a section heading sitting between two links in the wrapping
+       horizontal bar a phone gets. Same split as server.js RAIL_CSS. */
+    .rd-appbar > nav > .navsec { display: none; }
     /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
        The app's half of the shell server.js gives every other page. Same
        geometry, same one class on <html> -- stamped by authBoot before first
@@ -948,6 +954,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       /* Explore has nowhere to open in a 224px column; its links live in the
          footer, exactly as on the server-rendered pages. */
       html.nav-rail #exploreMenuWrap { display: none; }
+      /* The tools group's label — the twin of RAIL_CSS's .navsec rule in
+         server.js. Workspace and Vault are the member's two spaces; the rows
+         under this are tools reached from either. Written by hand rather than
+         as utilities, like every other rule in this block: tailwind.css is a
+         vendored purged build and a new utility here would silently not
+         style. The default (display:none) is outside this media query, with
+         the other always-on rules. */
+      html.nav-rail .rd-appbar > nav > .navsec {
+        display: block; margin: 14px 0 2px; padding: 14px 20px 0;
+        border-top: 1px solid var(--hair); font-size: 10px; letter-spacing: .14em;
+        text-transform: uppercase; font-weight: 600; color: var(--ink-3);
+      }
       /* The account cluster sits at the foot, and its menu opens UPWARD: the
          default top-9 would put it off the bottom of the viewport from there.
          (No #themeToggleApp rule above it any more -- the switch went back
@@ -1300,15 +1318,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-rule { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1.5px solid var(--ink); padding-bottom: 4px; }
     .dk-rule .rd-lab { margin-bottom: 0; color: var(--ink); letter-spacing: .12em; }
     .dk-note { font-size: 10.5px; color: var(--ink-3); text-align: right; }
-    .dk-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); }
     .dk-stmt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; min-width: 560px; }
     .dk-stmt th { text-align: left; color: var(--ink-3); font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--hair); }
     .dk-stmt td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--hair); color: var(--ink-body); vertical-align: middle; }
     .dk-stmt th.num, .dk-stmt td.num { text-align: right; }
     .dk-stmt tfoot td { border-top: 1px solid var(--ink); border-bottom: 3px double var(--ink); font-weight: 600; color: var(--ink); }
     .dk-stmt tfoot .tl { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-mute); }
-    .dk-up { color: var(--ok-text); font-size: 11px; font-weight: 500; }
-    .dk-down { color: var(--red); font-size: 11px; font-weight: 500; }
     /* Feed entries read as briefing cards since 2026-08-29, not ruled rows:
        each watched market is a self-contained "what changed" note, and the
        card edge is what keeps its comp list from reading as the next
@@ -1367,23 +1382,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     #searchDeckHead { margin: 44px 0 14px; }
     #searchDeckHead.hidden { display: none; }
     /* The workspace ledger, promoted a full step (2026-08-29): with the
-       workspace leading the page, this strip is its opening statement, so the
-       figures go Georgia and the cells get room. dk-lfig/dk-lnote replace the
-       old dk-fig text-[21px] pairing so the scale lives here, in the style
-       block, not in a Tailwind utility the vendored build may not carry.
-       rd-lcell/rd-lab are kept underneath so the dark-theme overrides that
-       target them keep working. */
-    .dk-ledger .rd-lcell { padding: 18px 20px 16px; }
-    .dk-lfig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 30px; line-height: 1.1; letter-spacing: -.01em; color: var(--ink); font-variant-numeric: tabular-nums; }
-    .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 34px; }
-    .dk-lnote { font-size: 11px; color: var(--ink-3); margin-top: 5px; text-align: left; }
-    /* The attention line under the ledger. A left rule in brand red rather
-       than a filled banner: it is worth noticing once, not worth shouting,
-       and it appears directly beneath a strip this page wants read first. */
-    .dk-attn { margin-top: 10px; padding: 8px 0 8px 12px; border-left: 2px solid var(--red); font-size: 12.5px; color: var(--ink-body); }
-    @media (max-width: 639.98px) {
-      .dk-lfig, .dk-ledger .rd-lcell.mid .dk-lfig { font-size: 24px; }
-    }
+       workspace leading the page, this strip was its opening statement.
+       It went to /vault on 2026-09-01 ("Three Spaces") with the portfolio it
+       summed, and so did .dk-ledger/.dk-lfig/.dk-lnote/.dk-attn and their
+       phone rules. The vault draws the same three figures in its own .strip,
+       which needed no new CSS. A FIRM-level strip belongs on this page
+       eventually; it is not this one with the labels changed, so it is gone
+       rather than left standing empty. */
     /* Deck interiors (2026-08-29). One family: addresses go Georgia
        (.dk-addr), people and shelf entries go hairline rows, and the two
        static cards stop hard-coding bg-white (which was wrong in dark mode
@@ -1457,17 +1462,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .rd-ledger { flex-direction: column; }
       .rd-ledger .rd-lcell { border-right: 0; border-bottom: 1px solid var(--hair); }
       .rd-ledger .rd-lcell:last-child { border-bottom: 0; }
-      /* The WORKSPACE ledger goes 2x2 rather than stacking four deep: at
-         375px the single column filled the entire first screen, so a member
-         scrolled past a full phone of statistics before reaching a property
-         they own. Scoped to .dk-ledger, because every other .rd-ledger on the
-         site is a two- or three-cell strip that stacks fine. */
-      .dk-ledger { flex-direction: row; flex-wrap: wrap; }
-      .dk-ledger .rd-lcell { flex: 1 1 50%; min-width: 0; border-bottom: 1px solid var(--hair); }
-      .dk-ledger .rd-lcell:nth-child(odd) { border-right: 1px solid var(--hair); }
-      /* The bottom row owns the last rule; :last-child alone left a hairline
-         under cell 3 when the row it sits in is the final one. */
-      .dk-ledger .rd-lcell:nth-last-child(-n+2) { border-bottom: 0; }
     }
     /* Squared chip (meta chips, comp count, sale/lease pill) — replaces rounded-full. */
     .rd-chip { display: inline-flex; align-items: center; font-size: 11.5px; font-weight: 500; color: var(--ink-2); background: var(--wash); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
@@ -2295,6 +2289,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              this one closes up under Workspace, exactly as Bulk valuation
              already does, which is why the order is pinned as a sequence. -->
         <a id="navMessagesLink" href="/messages" class="hover:text-[#1A2433] font-medium">Messages</a>
+        <!-- The tools group's label. Rail-only, and present for every visitor
+             so the two nav authors keep emitting the same shape -- see
+             server.js's marketBar and RAIL_CSS for the twin. -->
+        <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
         <!-- The guide is a bar row for a MEMBER and a menu item for a stranger
              (owner's, 2026-08-30). The row above it earns its slot for both
@@ -2457,7 +2455,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            has since grown the firm shelf, the deal board, shares, the vault and
            the report runner, so the old line described about a fifth of the
            page it introduces. -->
-      <p class="text-sm text-[#5A6473] mt-3">Your properties, your firm's shelf, and everything you have shared.</p>
+      <p class="text-sm text-[#5A6473] mt-3">Your firm's shelf, and everything you have shared.</p>
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -2465,26 +2463,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            handleCheckoutReturn(). -->
       <div id="checkoutNotice" class="hidden mt-4 rounded-lg border px-4 py-3 text-sm"></div>
 
-      <!-- The desk-level reading strip (Direction K, owner-approved
-           2026-08-09; promoted from the Portfolio section 2026-08-21):
-           combined value on the warm cell, markets cell filled by
-           renderWatchFeed once the feed answers. Rendered and toggled by
-           renderMyDesk() — hidden with 0 properties (a 0-0 scoreboard over
-           an empty desk is the vault first-run lesson) and on sign-out. -->
-      <div id="deskLedger" class="hidden rd-ledger dk-ledger mt-4 bg-white"></div>
-      <!-- The one thing on this page that is waiting on the member. It says
-           nothing at all when nothing is waiting, which is most days: a
-           standing "you're all caught up" banner is the 0-0 scoreboard the
-           vault's first run already taught us not to draw.
-           Deliberately NOT a general notifications strip. New comps are the
-           ledger's fourth cell one line above, a pending firm invitation is
-           the first deck one line below, and repeating either here would be
-           the same mistake the header just had removed from it. -->
-      <p id="deskAttention" class="hidden dk-attn"></p>
+      <!-- The desk-level reading strip and the attention line beside it went
+           with the portfolio on 2026-09-01 ("Three Spaces"). Every figure in
+           them was a portfolio figure -- combined value, the change between
+           checks, how many properties had gone a year unchecked -- and the
+           fourth cell was the watchlist's new-comp count. All of it reads on
+           /vault now, where the properties are. A firm-level strip belongs
+           here eventually; it is not this one with the labels changed. -->
 
       <!-- Signed-out prompt for the account-backed areas -->
       <div id="deskSignIn" class="hidden mt-8 dk-card">
-        <p class="text-sm text-[#4C5665]">Sign in to track a portfolio of properties and watch markets for new comps, free.</p>
+        <p class="text-sm text-[#4C5665]">Sign in to work with your firm, share reports, and keep your own book of properties.</p>
         <button id="deskSignInBtn" type="button"
           class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
       </div>
@@ -2772,53 +2761,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
       </div><!-- /deckFirm -->
 
-      <div class="dk-deck" data-deck id="deckProperties">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Your properties</span><span class="dk-deck-ln"></span></div>
-      <div class="mt-4">
-        <div class="dk-rule">
-          <span class="rd-lab">Portfolio</span>
-          <span id="deskCount" class="dk-note"></span>
-        </div>
-        <p id="deskEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nothing here yet. Your portfolio holds the properties you own. Run a report and use <span class="font-medium">Save to portfolio</span>, or add one from your recent searches.</p>
-        <!-- The other empty state, and the reason they are two elements: a
-             failed read used to render as the invitation above, which tells
-             somebody with a book of sixteen properties that it is gone. Same
-             rule the vault's comps table, the lead inbox and the hub list
-             each had to learn: an outage must never be reported as an
-             absence. Shown by renderMyDesk(); the rows and the count are left
-             exactly as they were rather than wiped.
-             ⚠ This wording is the MODEL for every other failed read on the
-             desk, and the reassurance is the load-bearing half: a bare
-             "couldn't load" on a section that holds saved work reads as data
-             loss to the person most likely to be looking at it. Keep the two
-             sentences (what failed, then that nothing is gone) on any new
-             one. -->
-        <p id="deskLoadError" class="hidden text-sm text-red-600 mt-2">Couldn't load your portfolio just now. Nothing has been lost. Refresh in a moment.</p>
-        <!-- Statement table container (was a 3-col card grid). The id keeps
-             every existing reference; renderMyDesk builds the table inside.
-             The book line (#deskLedger) that used to sit above it is now the
-             desk-level reading strip under the page header. -->
-        <div id="portfolioGrid" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-      <div id="deskWatch" class="mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Watchlist</span>
-          <span id="deskWatchNote" class="dk-note"></span>
-        </div>
-        <form id="watchForm" class="mt-3 flex flex-wrap items-center gap-2">
-          <input id="watchCity" type="text" placeholder="City" aria-label="City"
-            class="w-40 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <input id="watchState" type="text" placeholder="ST" maxlength="2" aria-label="State (two letters)"
-            class="w-14 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          <select id="watchType" aria-label="Property type"
-            class="rounded-lg border border-[#D8D4C9] px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></select>
-          <button type="submit"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Watch market</button>
-          <span id="watchError" class="hidden text-sm text-red-600"></span>
-        </form>
-        <div id="feedWrap" class="mt-3 space-y-4"></div>
-      </div>
-      </div><!-- /deckProperties -->
+      <!-- "Your properties" and "Your watchlist" used to be a deck here.
+           They moved to /vault on 2026-09-01 ("Three Spaces"): this page is
+           the FIRM's record now -- its shelf, its deal board, its contacts,
+           its roster -- and a portfolio and a watchlist are one member's own.
+           Nothing about the data moved. portfolio_items and watchlist_items
+           are still user-scoped and still read through the same routes; only
+           the surface did. renderMyDesk still READS the portfolio, because
+           portfolioKeys is what tells a report whether it is already saved.
+           -->
 
       <div class="dk-deck" data-deck id="deckSharing">
         <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
@@ -5360,10 +5311,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
 
     leadCaptureEnabled = Boolean(cfg.leadCapture);
     streetviewEnabled = Boolean(cfg.streetview);
-    // Missing `pro` is the Pro-off default. Do not plant portfolioValues
-    // here: an old config body with no such key must fall through
-    // portfolioValuesOn()'s `!enabled || isPro` branch, not a hardcoded false
-    // that would blank today's desk.
+    // Missing `pro` is the Pro-off default. Nothing here reads
+    // portfolioValues any more — /vault is told which desk it is by its own
+    // boot payload, computed from entitlements in the same process that
+    // renders the page, so there is no stale body to fall through.
     proConfig = cfg.pro || { enabled: false };
     guestSearch = cfg.guestSearch || null;
     accountWall = Boolean(cfg.accountWall);
@@ -12197,14 +12148,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     const saved = Boolean(currentUser && currentMeta && portfolioKeys.has(portfolioKey(currentMeta.address, currentMeta.type)));
     btn.classList.toggle("hidden", saved);
   }
-  // Presentation only — snapshots still arrive on GET so upgrading reveals
-  // history. Missing/old config falls through to "Pro-off desk shows dollars"
-  // (`!enabled`) or the visitor's isPro, never a blank Free desk by accident.
-  function portfolioValuesOn() {
-    if (!proConfig) return false;
-    if (typeof proConfig.portfolioValues === "boolean") return proConfig.portfolioValues;
-    return !proConfig.enabled || Boolean(proConfig.isPro);
-  }
+  // portfolioValuesOn() lived here until 2026-09-01 ("Three Spaces"). The
+  // portfolio it decided the shape of renders on /vault now, and that page is
+  // told which desk it is by its own boot payload, which vaultReadPayload
+  // states on all three of its exits (200, 403 and 503) precisely so the
+  // refusal carries it too. One computation, server-side, where the
+  // entitlement already is.
+  // /api/config still carries pro.portfolioValues; nothing in this file reads
+  // it any more.
   // An address typed into the shared-report lock card while signed out. Same
   // shape as pendingPortfolioSave, cleared by the same cancel path.
   let pendingSharedAddress = "";
@@ -12993,9 +12944,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // report already on screen once this resolves, and dedupes against
     // renderMyDesk()'s own call, so kicking it from both places is safe.
     if (currentUser) loadBranding();
-    // A direct /desk load is an explicit visit, so it marks the feed seen —
-    // same as clicking the header link.
-    if (currentUser && location.pathname === "/desk") renderWatchFeed({ markSeen: true });
+    // A direct /desk load used to mark the watch feed seen. The feed reads on
+    // /vault now (2026-09-01), and vault-page.js stamps it there — opening a
+    // page that no longer shows the comps must not claim they have been read.
     const m = location.hash.match(/^#reset=([A-Za-z0-9_-]{20,})$/);
     if (m) { resetToken = m[1]; openAcctModal("reset"); }
     // The auth door from /how-it-works. Skipped for a signed-in visitor, who
@@ -13054,12 +13005,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // own portfolio and openPortfolioItem's read is user-scoped, so a guessed
     // id answers 404 rather than opening somebody else's building. Cleared
     // after use like ?submit=comp, so a refresh does not reopen it.
+    // &refresh=1 asks for a fresh billed search rather than the saved report.
+    // It exists because /vault's properties deck lists a member's portfolio
+    // now (2026-09-01, "Three Spaces") and its rows are links: that page can
+    // neither render a report nor replay a search, because both need the real
+    // #compForm and every rule hanging off it, all of which live here. So
+    // Refresh there is this door with one more parameter on it, rather than a
+    // second search path nobody would keep in step.
     const propParam = new URLSearchParams(location.search).get("property");
     if (currentUser && propParam) {
       const qs = new URLSearchParams(location.search);
+      const wantsRefresh = qs.get("refresh") === "1";
       qs.delete("property");
+      qs.delete("refresh");
       history.replaceState({}, "", location.pathname + (qs.toString() ? "?" + qs : ""));
-      openPortfolioItem(propParam);
+      if (wantsRefresh) refreshPortfolioItemById(propParam);
+      else openPortfolioItem(propParam);
     }
     // ?recent=<id> is the same door onto a recent search, and it is the one
     // /bulk needs: a run writes its valuations there rather than onto the desk
@@ -13157,6 +13118,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     } catch (ex) { showStatus(ex.message, "error"); }
   }
 
+  // listPortfolio deliberately never selects `payload`, so a row from the list
+  // cannot be replayed — refreshPortfolioItem needs the stored inputs. Both
+  // doors onto Refresh go through here: the desk's own button, and /vault's
+  // link, which arrives as ?property=<id>&refresh=1 on a cold load because the
+  // report engine and #compForm live in this file and nowhere else.
+  async function refreshPortfolioItemById(id) {
+    const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(id))
+      .catch(() => null);
+    if (!full) {
+      showStatus("Couldn't open that property just now. Nothing has been lost.", "error");
+      return;
+    }
+    // refreshPortfolioItem replays item.payload.meta, and a row whose payload
+    // never landed would throw on that read. That was only ever reachable from
+    // a button on a row this page had just drawn; it is reachable from a URL
+    // now (/vault's Refresh link), so the missing case gets an answer rather
+    // than an unhandled rejection and a page that visibly does nothing.
+    if (full.payload && full.payload.meta) refreshPortfolioItem(full);
+    else showStatus("That property has no saved report to re-run. Search its address to value it again.", "error");
+  }
+
   function refreshPortfolioItem(item) {
     // Replay the stored inputs through the real form so every rule (validation,
     // cache, caps, type-specific columns) applies; saveHistory's guarded hook
@@ -13188,305 +13170,40 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("compForm").requestSubmit();
   }
 
-  async function renderMyDesk() {
+async function renderMyDesk() {
     const desk = document.getElementById("myDesk");
-    if (!currentUser) {
-      desk.classList.add("hidden");
-      // The reading strip sits outside #myDesk (under the page header), so
-      // sign-out must drop it here or it would outlive the account it sums.
-      document.getElementById("deskLedger").classList.add("hidden");
-      // Same for the attention line beside it, for the sharper version of the
-      // same reason: it is a statement about somebody's own properties.
-      document.getElementById("deskAttention").classList.add("hidden");
-      return;
-    }
+    if (!currentUser) { desk.classList.add("hidden"); return; }
     desk.classList.remove("hidden");
-    // No "Signed in as {name}" line any more: the account menu in the nav
-    // carries the identity and the same photo, and a workspace only ever has
-    // one owner, so saying it a second time above their own book was telling
-    // them something they could not not know. The #avatar jump went with it —
-    // it scrolled to the header circle, which no longer exists, and nothing
-    // has linked to that hash since the dropdown item that did was removed.
     applyAvatarUI(currentUser);
-    let items = [];
-    let loadFailed = false;
-    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) { loadFailed = true; }
-    document.getElementById("deskLoadError").classList.toggle("hidden", !loadFailed);
-    if (loadFailed) {
-      // Everything below this line describes a portfolio we could not read.
-      // The count would say "0 properties", the invitation would say the
-      // book is empty, and portfolioKeys.clear() would make "Save to
-      // portfolio" offer to re-save a property that is already in it — three
-      // confident statements about data we do not have. The rest of the desk
-      // does not depend on this read, so it still renders.
-      document.getElementById("deskEmpty").classList.add("hidden");
-      document.getElementById("deskCount").textContent = "";
-      renderDeskRest();
-      return;
-    }
-    portfolioKeys.clear();
-    items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
-    syncPortfolioButton();
-    const showValues = portfolioValuesOn();
-    document.getElementById("deskCount").textContent = items.length ? `${items.length} propert${items.length === 1 ? "y" : "ies"}` : "";
-    document.getElementById("deskEmpty").classList.toggle("hidden", items.length > 0);
-    // Direction K (owner-approved 2026-08-09): the portfolio is a book. A
-    // ledger strip answers "what is everything worth" first; the statement
-    // table below closes on the SAME sum under the double rule — one figure,
-    // computed once, so the two can never disagree. The sparkline finally
-    // renders the snapshot history every re-run has been saving: a bare gray
-    // polyline with the latest point in red — no axes, no animation.
-    const sparkline = (snaps) => {
-      const vals = snaps.map((s) => Number(s.likely)).filter((v) => v > 0).slice(-12);
-      if (vals.length < 2) return null;
-      const w = 72, h = 18, pad = 3;
-      const lo = Math.min(...vals), hi = Math.max(...vals);
-      const x = (i) => pad + (i * (w - 2 * pad)) / (vals.length - 1);
-      const y = (v) => (hi === lo ? h / 2 : h - pad - ((v - lo) * (h - 2 * pad)) / (hi - lo));
-      const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.setAttribute("width", w); svg.setAttribute("height", h);
-      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      svg.setAttribute("aria-label", `${vals.length} valuations tracked`);
-      // The polyline's #8A93A0 has no matching token (same allowance as
-      // .rd-scat-tick in the CSS bridge) but reads fine unlit against both
-      // card colours; the endpoint dot has an exact one and gets it, so its
-      // dark value stays vivid rather than fading with the line.
-      svg.innerHTML = `<polyline points="${pts}" fill="none" stroke="#8A93A0" stroke-width="1.4"/>` +
-        `<circle cx="${x(vals.length - 1).toFixed(1)}" cy="${y(vals[vals.length - 1]).toFixed(1)}" r="2.2" fill="var(--red-fill)"/>`;
-      return svg;
-    };
-    // A year, and not a number picked here. portfolio-delta.js draws the same
-    // line for the same reason (MAX_WINDOW_YEARS = 1): "a window wider than
-    // this stops being 'since you last looked' and becomes market history."
-    // Past it, this property's figure is not a stale-ish reading of the
-    // market, it is a different question.
-    // ⚠ MIRRORED CONSTANT: portfolio-delta.js is a server module and cannot be
-    // required here. If that one moves, move this with it.
-    const STALE_MS = 365 * 24 * 60 * 60 * 1000;
-    let combined = 0, curOfPaired = 0, prevOfPaired = 0, pairedN = 0, staleN = 0;
-    const typeCounts = {};
-    const nowMs = Date.now();
-    items.forEach((item) => {
-      const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
-      const last = snaps[snaps.length - 1] || null;
-      const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
-      if (last && last.likely) combined += Number(last.likely);
-      if (last && prev && last.likely && prev.likely) { curOfPaired += Number(last.likely); prevOfPaired += Number(prev.likely); pairedN += 1; }
-      // Counted off the last CHECK, not off updated_at: a row can be touched
-      // by a rename or a re-save without anybody re-running the search that
-      // produced its number. An unparseable or missing timestamp is not
-      // counted — silence beats calling a property stale on a bad date.
-      const ts = last && last.ts ? Date.parse(last.ts) : NaN;
-      if (Number.isFinite(ts) && nowMs - ts > STALE_MS) staleN += 1;
-      const t = String(item.property_type || "").toLowerCase();
-      if (t) typeCounts[t] = (typeCounts[t] || 0) + 1;
-    });
-    const ledger = document.getElementById("deskLedger");
-    ledger.classList.toggle("hidden", items.length === 0 || !showValues);
-    // Gated on showValues with the ledger above it: a free desk is an address
-    // list with no figures on it, and telling somebody their values are a year
-    // out when the page never showed them a value would be answering a
-    // question they were not asked. textContent, and no member-authored text
-    // in it either way.
-    const attn = document.getElementById("deskAttention");
-    const showAttn = showValues && staleN > 0;
-    attn.classList.toggle("hidden", !showAttn);
-    if (showAttn) {
-      attn.textContent = staleN === 1
-        ? "1 property was last checked over a year ago. Refresh it below to bring its value up to date."
-        : `${staleN} properties were last checked over a year ago. Refresh them below to bring their values up to date.`;
-    }
-    const bookPct = prevOfPaired > 0 ? ((curOfPaired - prevOfPaired) / prevOfPaired) * 100 : null;
-    // "Between checks", and the note names its own sample. The old label,
-    // "Since last checks", read as a portfolio return — and the number is
-    // not one: it compares each property's last two check-ins, over ONLY the
-    // properties checked at least twice, with no time window at all (one
-    // pair may be a day apart and another eight months). Arithmetic
-    // unchanged; the caption stops over-claiming. Everything interpolated
-    // here is a number or our own copy, so innerHTML stays legitimate.
-    const betweenTitle = "Change in combined likely value between the last two checks of each " +
-      "property checked at least twice. Checks happen when you re-run a report, " +
-      "so this is not a return over any period of time.";
-    const betweenNote = pairedN === items.length
-      ? `all ${items.length} properties, last check vs the check before`
-      : `${pairedN} of ${items.length} properties, last check vs the check before`;
-    const cell = (k, v, n, mid, title) =>
-      `<div class="rd-lcell${mid ? " mid" : ""}"${title ? ` title="${title}"` : ""}><span class="rd-lab">${k}</span><div class="dk-lfig">${v}</div><div class="dk-lnote">${n}</div></div>`;
-    if (showValues) {
-      ledger.innerHTML =
-        cell("Properties", String(items.length), Object.entries(typeCounts).map(([t, n]) => `${n} ${t}`).join(" · ") || "&nbsp;", false) +
-        cell("Combined likely value", combined ? fmtDeskUsd(combined) : "—", "from each property's last run", true) +
-        cell("Between checks", bookPct == null ? "—" : `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" style="font-size:inherit">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`,
-          bookPct == null ? "re-run a property to start the trail" : betweenNote, false, bookPct == null ? "" : betweenTitle) +
-        // Placeholder only: renderWatchFeed fills this in from a second
-        // request. Label and anatomy match what it writes, so the cell never
-        // changes shape when the feed lands.
-        `<div id="deskLedgerMarkets" class="rd-lcell"><span class="rd-lab">New comps</span><div class="dk-lfig">—</div><div class="dk-lnote">&nbsp;</div></div>`;
-    }
-    const grid = document.getElementById("portfolioGrid");
-    grid.innerHTML = "";
-    if (items.length) {
-      const table = document.createElement("table");
-      table.className = "dk-stmt";
-      table.innerHTML = showValues
-        ? `<thead><tr><th>Property</th><th>History</th><th class="num">Likely value</th><th class="num">Change</th><th></th></tr></thead>`
-        : `<thead><tr><th>Property</th><th></th></tr></thead>`;
-      const tbody = document.createElement("tbody");
-      items.forEach((item) => {
-        const snaps = Array.isArray(item.snapshots) ? item.snapshots : [];
-        const last = snaps[snaps.length - 1] || null;
-        const prev = snaps.length > 1 ? snaps[snaps.length - 2] : null;
-        const tr = document.createElement("tr");
-        const tdA = document.createElement("td");
-        const addr = document.createElement("button");
-        addr.type = "button";
-        // dk-addr: Georgia, like every address a member owns on this page —
-        // the statement table, the shelf and the shares all read as one book.
-        addr.className = "text-left dk-addr hover:text-[#B91C1C]";
-        addr.textContent = item.address;
-        addr.title = "Open this report (no new search, no cost)";
-        addr.addEventListener("click", () => openPortfolioItem(item.id));
-        tdA.appendChild(addr);
-        const sub = document.createElement("div");
-        sub.className = "text-[10.5px] text-[#68707E]";
-        // "Checked" is the last time a VALUE was produced, so it reads the
-        // last snapshot and falls back to updated_at only when there is none.
-        // It read updated_at outright until 2026-08-29, which is when the row
-        // was last written by anything: a save that produced no valuation
-        // (cleanSnapshot drops one with no likely value) moved this date
-        // without anybody having checked the property. It also has to agree
-        // with the attention line above the table, which counts the same
-        // fact; two dates for one word, thirty pixels apart, is worse than
-        // either of them being slightly off.
-        const lastTs = last && last.ts ? last.ts : item.updated_at;
-        sub.textContent = `${item.property_type} · checked ${new Date(lastTs).toLocaleDateString()}`;
-        // Door to the standing market page for this property's market + type.
-        // The server attaches `market_page` only when such a page exists
-        // (marketPageInfo), so absence renders nothing — same contract as
-        // `movement` below. Slug is shape-checked before it becomes an href,
-        // like the report's own market-page link.
-        if (item.market_page && typeof item.market_page.slug === "string"
-            && /^[a-z0-9-]{1,120}$/.test(item.market_page.slug)) {
-          sub.appendChild(document.createTextNode(" · "));
-          const mk = document.createElement("a");
-          mk.href = "/market/" + item.market_page.slug;
-          mk.className = "underline hover:text-[#1A2433]";
-          mk.textContent = "market page";
-          mk.title = `The standing ${item.market_page.market || ""} ${String(item.property_type || "").toLowerCase()} market page — medians, cap rates, recent comps`;
-          sub.appendChild(mk);
-        }
-        tdA.appendChild(sub);
-        // What the MARKET did since this property was last checked, which is
-        // the one number on this page that moves without the owner re-running
-        // anything. The server omits `movement` entirely when the corpus
-        // cannot support a claim, so absence renders nothing.
-        //
-        // Deliberately NOT styled with dk-up/dk-down: those colour the
-        // property's own valuation change in the Change column, and painting a
-        // market statistic the same green would read as this building being
-        // worth more, which is a search nobody has run.
-        //
-        // Gated on showValues: the line is market median $/SF, a dollar
-        // figure. The GET still carries `movement` so upgrading reveals it.
-        if (showValues && item.movement && item.movement.line) {
-          const mv = document.createElement("div");
-          // Inline margin rather than mt-0.5: that utility is not in the
-          // vendored tailwind.css, and a class missing from that build styles
-          // nothing at all, silently.
-          mv.className = "text-[10.5px] text-[#68707E]";
-          mv.style.marginTop = "2px";
-          mv.textContent = item.movement.line;
-          mv.title = "Market median $/SF from comps others have searched. Not a new valuation of this property.";
-          tdA.appendChild(mv);
-        }
-        tr.appendChild(tdA);
-        if (showValues) {
-          const tdS = document.createElement("td");
-          const spark = sparkline(snaps);
-          if (spark) tdS.appendChild(spark);
-          else { tdS.className = "text-[10.5px] text-[#9AA2AD]"; tdS.textContent = "—"; }
-          tr.appendChild(tdS);
-          const tdV = document.createElement("td");
-          tdV.className = "num dk-fig text-[14.5px]";
-          tdV.textContent = last && last.likely ? fmtDeskUsd(last.likely) : "—";
-          tr.appendChild(tdV);
-          const tdC = document.createElement("td");
-          tdC.className = "num";
-          if (last && prev && last.likely && prev.likely) {
-            const pct = ((last.likely - prev.likely) / prev.likely) * 100;
-            const d = document.createElement("span");
-            d.className = pct >= 0 ? "dk-up" : "dk-down";
-            d.title = `since ${new Date(prev.ts).toLocaleDateString()}`;
-            d.textContent = `${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}%`;
-            tdC.appendChild(d);
-          } else tdC.textContent = "—";
-          tr.appendChild(tdC);
-        }
-        const tdX = document.createElement("td");
-        tdX.className = "num text-[10.5px] whitespace-nowrap";
-        const refresh = document.createElement("button");
-        refresh.type = "button";
-        refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2";
-        refresh.textContent = "Refresh";
-        refresh.title = "Runs a new live search for this property";
-        refresh.addEventListener("click", async () => {
-          const full = await acctApi("GET", "/api/portfolio?id=" + encodeURIComponent(item.id)).catch(() => null);
-          if (full) refreshPortfolioItem(full);
-        });
-        // Removing is a quiet trash icon, not the word "Remove" — the same
-        // control the broker vault's comp rows use (`.lnk.trash` in
-        // vault-page.js): ink that goes red on hover, so the destructive
-        // action doesn't shout as loudly as the one beside it.
-        // Styled inline rather than with new Tailwind utilities: a class
-        // missing from the vendored tailwind.css silently styles nothing,
-        // and `hover:text-red-700` is the only hover this needs (already in
-        // the build). The padding + offsetting negative margin is a real tap
-        // target that moves no pixel of the row.
-        const del = document.createElement("button");
-        del.type = "button";
-        del.className = "text-[#68707E] hover:text-red-700 align-middle";
-        del.style.cssText = "padding:8px;margin:-8px 0 -8px 2px;display:inline-flex;" +
-          "align-items:center;justify-content:center;line-height:0";
-        del.setAttribute("aria-label", `Remove ${item.address} from your portfolio`);
-        del.title = "Remove from your portfolio";
-        del.innerHTML = '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" style="display:block">' +
-          '<path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" ' +
-          'd="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg>';
-        del.addEventListener("click", async () => {
-          if (!confirm(`Remove ${item.address} from your portfolio?`)) return;
-          try { await acctApi("DELETE", "/api/portfolio?id=" + encodeURIComponent(item.id)); } catch (_) {}
-          renderMyDesk();
-        });
-        tdX.appendChild(refresh); tdX.appendChild(del);
-        tr.appendChild(tdX);
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      // The closing total only earns its double rule with something to sum.
-      if (showValues && items.length > 1 && combined) {
-        const tfoot = document.createElement("tfoot");
-        // Same bookPct and the same title as the ledger's Between-checks cell
-        // — one figure, computed once, so the two can never disagree, and one
-        // explanation of what it is not.
-        const pctCell = bookPct == null ? "" :
-          `<span class="${bookPct >= 0 ? "dk-up" : "dk-down"}" title="${betweenTitle}">${bookPct >= 0 ? "▲" : "▼"} ${Math.abs(bookPct).toFixed(1)}%</span>`;
-        tfoot.innerHTML = `<tr><td class="tl" colspan="2">Combined · ${items.length} properties</td>` +
-          `<td class="num dk-fig text-[16px]">${fmtDeskUsd(combined)}</td><td class="num">${pctCell}</td><td></td></tr>`;
-        table.appendChild(tfoot);
-      }
-      grid.appendChild(table);
+
+    // The portfolio is STILL READ here, and the read is the whole reason this
+    // survived the move to /vault (2026-09-01, "Three Spaces"). It is not for
+    // anything on this page: portfolioKeys is what tells a report whether it
+    // is already saved, so without it "Save to portfolio" would offer to
+    // re-save a property that is already in the book, on every report a
+    // member opens. The rows themselves render on /vault.
+    //
+    // A failed read must NOT clear the set. An empty portfolioKeys is a
+    // positive claim -- "none of your properties are saved" -- and making it
+    // from a read that did not happen turns an outage into an invitation to
+    // create duplicates. Same rule the rows used to follow when they were
+    // here: an outage is never reported as an absence.
+    let items = null;
+    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+    if (items) {
+      portfolioKeys.clear();
+      items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
+      syncPortfolioButton();
     }
     renderDeskRest();
   }
 
   // The rest of the desk, which does not depend on the portfolio read — so a
-  // failed one must not take the watchlist, the shares table and the firm
-  // sections down with it. Extracted rather than duplicated at the two exits
-  // of renderMyDesk, so a future section added here cannot be added to only
-  // one of them.
+  // failed one must not take the shares table and the firm sections down with
+  // it. Kept as its own function after the portfolio rows left, because it is
+  // still reached from renderMyDesk's one exit and a future section added
+  // here should not have to know that.
   function renderDeskRest() {
-    renderWatchFeed();
     renderBrokerDesk();
     renderShares();
     renderDeskHubs();
@@ -13611,7 +13328,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // what stops is rewriting one into the other for no reason.
     if (!atWorkspaceUrl()) history.pushState({}, "", "/desk");
     showDeskView();
-    if (markSeen) renderWatchFeed({ markSeen: true });
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
   }
@@ -13655,219 +13371,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   });
 
   // ----------------------------------------------------------------------------
-  // Watchlist + updates feed. Opening My Desk marks the feed seen, so each
-  // market's "N new comps since your last visit" line resets on the next visit;
-  // a passive re-render never marks seen.
-  // ----------------------------------------------------------------------------
-  (function initWatchTypeOptions() {
-    const src = document.getElementById("propertyType");
-    const dst = document.getElementById("watchType");
-    [...src.options].forEach((o) => { if (o.value) dst.appendChild(new Option(o.textContent, o.value)); });
-  })();
-
-  async function renderWatchFeed({ markSeen } = {}) {
-    if (!currentUser) return;
-    let feed = null;
-    try { feed = await acctApi("GET", "/api/watchlist/feed"); } catch (_) { return; }
-    const wrap = document.getElementById("feedWrap");
-    wrap.innerHTML = "";
-    // Direction L (owner-approved 2026-08-09): the feed is a briefing. Each
-    // watched market is a ruled section — market name in the display face,
-    // median + trend as the note beside it — with new comps as quiet
-    // statement mini-rows. The red "N new" micro-label is the only accent,
-    // so a desk with news reads differently from a desk without.
-    if (!feed.items.length) {
-      const p = document.createElement("p");
-      p.className = "text-sm text-[#5A6473]";
-      p.textContent = "Watch a market above and new comps will show up here as they're found.";
-      wrap.appendChild(p);
-    }
-    let totalNew = 0;
-    feed.items.forEach((w) => {
-      totalNew += Number(w.new_count) || 0;
-      const box = document.createElement("div");
-      box.className = "dk-mkt";
-      const head = document.createElement("div");
-      head.className = "flex items-baseline justify-between gap-3 flex-wrap";
-      // The market's name links to its standing /market/<slug> page when one
-      // exists (the server attaches `market_page` via the same marketPageInfo
-      // the portfolio rows use); a market with no page keeps the plain div.
-      const hasPage = w.market_page && typeof w.market_page.slug === "string"
-        && /^[a-z0-9-]{1,120}$/.test(w.market_page.slug);
-      const title = document.createElement(hasPage ? "a" : "div");
-      title.className = "dk-mname";
-      title.textContent = `${w.property_type} · ${w.market}`;
-      if (hasPage) {
-        title.href = "/market/" + w.market_page.slug;
-        title.classList.add("hover:text-[#B91C1C]");
-        title.title = "Open this market's page — medians, cap rates, recent comps";
-      }
-      const right = document.createElement("div");
-      right.className = "flex items-baseline gap-3 text-[11px] text-[#68707E]";
-      if (w.median_psf) {
-        const m = document.createElement("span");
-        m.textContent = `median $${w.median_psf}/SF`;
-        m.title = "Median of recently collected sale comps";
-        right.appendChild(m);
-      }
-      // Direction suffix — only when the server had >=3 dated sale comps in
-      // BOTH six-month deal windows (median_trend is omitted otherwise).
-      if (w.median_trend) {
-        const up = w.median_trend.current >= w.median_trend.prior;
-        const t = document.createElement("span");
-        t.className = up ? "dk-up" : "text-[#8A6D1A]";
-        t.textContent = `${up ? "▲" : "▼"} from $${w.median_trend.prior} (deals 6–12 mo ago)`;
-        right.appendChild(t);
-      }
-      const un = document.createElement("button");
-      un.type = "button";
-      un.className = "hover:text-red-700 underline decoration-[#D8D4C9]";
-      un.textContent = "Unwatch";
-      un.addEventListener("click", async () => {
-        try { await acctApi("DELETE", "/api/watchlist?id=" + encodeURIComponent(w.id)); } catch (_) {}
-        renderWatchFeed();
-      });
-      right.appendChild(un);
-      head.appendChild(title); head.appendChild(right);
-      box.appendChild(head);
-      // --- Search demand ----------------------------------------------------
-      // How many people looked at this market lately. Pro only, and the server
-      // decides that: `demand` is the figure, `demand_locked` is what a free
-      // account gets instead, and neither is present unless the feed offered
-      // one. Never compute or infer this from anything else on the page.
-      //
-      // Two copy rules the server's rules force onto this line: it says
-      // "people" from `viewers` and "searches" from `searches` and never
-      // swaps them, and it says nothing about WHO — the payload carries counts
-      // and no identity, by design.
-      if (w.demand) {
-        const d = document.createElement("div");
-        d.className = "dk-dem";
-        d.title = "Searches of this market by other people over the last "
-          + w.demand.window_days + " days. Your own searches are not counted.";
-        const people = Number(w.demand.viewers) || 0;
-        const runs = Number(w.demand.searches) || 0;
-        const inType = Number(w.demand.in_type) || 0;
-        if (!runs) {
-          d.textContent = "No one searched this market in the last " + w.demand.window_days + " days.";
-        } else {
-          const noun = people === 1 ? "person" : "people";
-          d.innerHTML = runs === people
-            ? `<strong>${people}</strong> ${noun} searched this market in the last ${w.demand.window_days} days`
-            : `<strong>${people}</strong> ${noun} ran <strong>${runs}</strong> searches here in the last ${w.demand.window_days} days`;
-          // Only when it is a real subset. "6 of them Industrial" on a card
-          // that is already Industrial and where every search was Industrial
-          // is a sentence that tells the reader nothing.
-          if (inType > 0 && inType < runs) {
-            d.innerHTML += `, ${inType} of them ${w.property_type}`;
-          }
-          d.innerHTML += ".";
-        }
-        box.appendChild(d);
-      } else if (w.demand_locked) {
-        const d = document.createElement("div");
-        d.className = "dk-dem";
-        // .unlock-comps-btn is the one sanctioned door to the pricing modal.
-        // Do not add a second prompt here.
-        d.innerHTML = "Pro shows how many people searched this market. "
-          + '<button type="button" class="unlock-comps-btn underline font-semibold text-[#B91C1C]">See Pro plans</button>';
-        box.appendChild(d);
-      }
-      if (w.comps.length) {
-        const label = document.createElement("div");
-        label.className = "dk-new";
-        label.textContent = `${w.new_count} new comp${w.new_count === 1 ? "" : "s"} since your last visit`;
-        box.appendChild(label);
-        const rows = document.createElement("div");
-        rows.className = "mt-1";
-        w.comps.forEach((c) => {
-          const row = document.createElement("div");
-          row.className = "dk-crow";
-          const a = document.createElement("span");
-          a.className = "font-medium text-[#1A2433]";
-          a.textContent = c.address;
-          row.appendChild(a);
-          const r = document.createElement("span");
-          r.className = "text-[#68707E]";
-          const bits = [c.transaction, c.deal_date, c.price_or_rate,
-            c.price_per_sqft ? c.price_per_sqft + "/SF" : "", c.cap_rate].filter(Boolean);
-          r.textContent = bits.join(" · ");
-          if (/^https?:\/\//i.test(String(c.source_url || ""))) {
-            const link = document.createElement("a");
-            link.href = c.source_url;
-            link.target = "_blank";
-            link.rel = "noopener noreferrer";
-            link.className = "text-[#68707E] underline hover:text-[#1A2433] ml-1";
-            link.textContent = "source";
-            r.appendChild(link);
-          }
-          row.appendChild(r);
-          rows.appendChild(row);
-        });
-        box.appendChild(rows);
-      } else {
-        const q = document.createElement("div");
-        q.className = "text-[11px] text-[#68707E] mt-2";
-        q.textContent = "Quiet since your last visit.";
-        box.appendChild(q);
-      }
-      wrap.appendChild(box);
-    });
-    if (feed.items.length) {
-      const done = document.createElement("p");
-      done.className = "text-[11px] text-[#68707E] pt-2";
-      done.textContent = "You're caught up. Watching finds new comps as our records grow; nothing here costs a search.";
-      wrap.appendChild(done);
-    }
-    // The Watchlist rule's note and the book line's Markets cell — one
-    // computation, two surfaces, so they cannot disagree.
-    const note = document.getElementById("deskWatchNote");
-    if (note) note.textContent = feed.items.length
-      ? (totalNew ? `${totalNew} new comp${totalNew === 1 ? "" : "s"} across ${feed.items.length} market${feed.items.length === 1 ? "" : "s"}` : `${feed.items.length} market${feed.items.length === 1 ? "" : "s"} watched · quiet`)
-      : "";
-    const mk = document.getElementById("deskLedgerMarkets");
-    // The fourth cell counts NEW COMPS, not watched markets (2026-08-29). The
-    // other three are facts about the book; this one was a count of a
-    // preference, with the only live thing on the whole strip — "N new comps
-    // waiting" — demoted to the 11px note beneath it. The signal is the figure
-    // now and the markets are the context, which is the way round that makes
-    // the cell worth looking at.
-    //
-    // Same anatomy as renderMyDesk's placeholder (dk-lfig/dk-lnote): a test
-    // pins the two writers together, because a cell that changes shape when
-    // the feed fills it in reads as a glitch.
-    const mkts = feed.items.length;
-    const mkNote = !mkts
-      ? "watch a market to see new comps here"
-      : totalNew
-        ? `across ${mkts} market${mkts === 1 ? "" : "s"} you watch`
-        : `${mkts} market${mkts === 1 ? "" : "s"} watched · quiet`;
-    if (mk) mk.innerHTML = `<span class="rd-lab">New comps</span><div class="dk-lfig">${mkts ? totalNew : "—"}</div>` +
-      `<div class="dk-lnote">${mkNote}</div>`;
-    if (markSeen && feed.unseen) {
-      try { await acctApi("POST", "/api/watchlist/seen"); } catch (_) {}
-    }
-  }
-
-  document.getElementById("watchForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const errEl = document.getElementById("watchError");
-    errEl.classList.add("hidden");
-    const city = document.getElementById("watchCity").value.trim().replace(/[‘’]/g, "'");
-    const st = document.getElementById("watchState").value.trim().toUpperCase();
-    try {
-      await acctApi("POST", "/api/watchlist", {
-        market: `${city}, ${st}`,
-        property_type: document.getElementById("watchType").value,
-      });
-      document.getElementById("watchCity").value = "";
-      document.getElementById("watchState").value = "";
-      renderWatchFeed();
-    } catch (ex) {
-      errEl.textContent = ex.message;
-      errEl.classList.remove("hidden");
-    }
-  });
+  // renderWatchFeed and the watch-market form moved to /vault on 2026-09-01
+  // ("Three Spaces") -- the watchlist is one member's own, and this page is
+  // the firm's record. The feed READ did not change: it is still
+  // GET /api/watchlist/feed, still the same shape, and buildWatchlistFeed is
+  // still shared with the digest so the page and the email cannot quote
+  // different numbers.
+  //
+  // The one thing that had to travel with it is marking the feed SEEN.
+  // last_seen_at is one of the two high-water marks the digest takes its
+  // cutoff from, so a member reading their new comps somewhere that did not
+  // stamp it would be mailed about them anyway. vault-page.js's loadMarkets
+  // does that now, on the same unseen guard this did.
 
 
   // ----------------------------------------------------------------------------
@@ -17176,13 +16691,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     menuUpgrade.classList.toggle("hidden", !live || pro);
     menuBilling.classList.toggle("hidden", !live || !hasBillingHistory());
 
-    // The vault link, off canUseVault rather than any plan test — the entitlement
-    // is the only sanctioned way to ask, and /api/vault re-checks it server-side
-    // anyway, so unhiding this by hand reveals a link and nothing behind it.
-    // Deliberately NOT gated on `live`: comped admins get the vault on a
-    // deployment with no Stripe keys, the same exception the billing card makes.
+    // canUseVault still decides what the vault SHOWS, and /api/vault re-checks
+    // it server-side, so nothing here unlocks anything. It no longer decides
+    // whether the door is visible: since 2026-09-01 ("Three Spaces") /vault is
+    // the member's own space and holds their portfolio and watchlist, which
+    // moved there off the workspace and were never part of Pro. A free member
+    // whose only route to their own saved properties is typing the URL is the
+    // navigation's version of the failure the page's per-deck gate prevents.
+    // Signed-in, not entitled: ACCOUNT_NAV_JS says the same thing in one word
+    // (`true`, under its own members-only guard) and nav-parity reads both.
     const canVault = Boolean(proConfig && proConfig.canUseVault);
-    document.getElementById("menuVaultLink").classList.toggle("hidden", !canVault);
+    document.getElementById("menuVaultLink").classList.toggle("hidden", !currentUser);
     // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
     // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
     // so unhiding this by hand reveals a link and a 403 behind it -- and

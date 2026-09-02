@@ -305,6 +305,14 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .lnk.trash:hover,.lnk.trash:focus{color:var(--red)}
 .lnk.trash svg{display:block}
 td.rowact{white-space:nowrap}
+/* Addresses in the properties table. a{} paints this page's links red, and a
+   column of red rows reads as a list of warnings -- red is this page's accent
+   and is spent on the one thing that matters per surface. Ink at rest, red on
+   hover, which is the desk's rule for the same table stated in this page's
+   own tokens. Inter, not the desk's Georgia: every other table here is Inter,
+   and consistency within one page beats consistency with another one. */
+.paddr{color:var(--ink);font-weight:500}
+.paddr:hover,.paddr:focus{color:var(--red)}
 /* Editable cells in the compact table. There is no Edit button: a broker
    fixing a typo types over it, exactly as they would in the spreadsheet they
    exported this book from.
@@ -540,6 +548,25 @@ a.btn.ghost:hover{color:var(--ink)}
     <p class="empty" style="padding:0">Loading your vault&hellip;</p></div></div>
 
   <div id="app" class="hide">
+    <!-- Shown in place of the three decks that ARE the vault -- the book, the
+         pipeline, the hubs -- when this page's own read refuses. The other two
+         decks below it ("Your properties", "Your watchlist") are a member's own
+         portfolio and watchlist, which moved here off /desk on 2026-09-01 and
+         were never part of Pro, so they render regardless. A member must not
+         open their own space and find their own saved properties behind a
+         paywall.
+
+         "Part of Pro", never "part of the broker plan". There is one
+         subscription and the vault is a capability of it; naming a broker plan
+         sends somebody off to look for a product that cannot be bought. This
+         string is one of three that have to agree -- the other two are the Pro
+         tile's bullets and the plan-card copy in index.html. -->
+    <div id="vaultLocked" class="invite hide">
+      <p><strong>Your book, your pipeline and your hubs are part of Pro.</strong>
+        Upload closed deals, keep them private, and see them inside your own reports.</p>
+      <p>Your properties and your watchlist are below either way &mdash; those are yours.</p>
+      <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
+    </div>
     <!-- The trust line's job is to prove a number stays at zero, including
          on day one. Hidden until 2026-08-13 because a 0-0 scoreboard over
          numbered onboarding cards read as broken; the empty vault is now
@@ -763,6 +790,13 @@ a.btn.ghost:hover{color:var(--ink)}
              single median to seal the table with, and this is how a broker
              resolves that into a figure. -->
         <label>Deal <select id="fTrans"><option value="">All</option><option value="sale">Sales</option><option value="lease">Leases</option></select></label>
+        <!-- Shown only to a broker who is in a firm (apply() unhides it). The
+             one question the Firm column could not answer: a broker could
+             see THAT a comp was shared but could not ask what they have not
+             pushed yet, which is exactly the question a vault that is "yours,
+             pushed to the firm when you are comfortable" produces. One clause
+             in view(), nothing on the wire: sharedIds is already here. -->
+        <label id="fFirmLab" class="hide">Firm <select id="fFirm"><option value="">All</option><option value="shared">Shared with firm</option><option value="unshared">Not shared</option></select></label>
         <!-- Two dropdowns narrow to a SLICE of the book; this finds one deal
              in it. A broker hunting the Fairview comp among 400 rows had only
              scrolling, and the market/type pair they would have to guess at is
@@ -779,6 +813,14 @@ a.btn.ghost:hover{color:var(--ink)}
              exactly the kind of pair this repo already carries warnings about.
              The server reports what it skipped and why. -->
         <button class="btn ghost hide" type="button" id="pubAll"></button>
+        <!-- The push. refreshPublishAll's three rules verbatim: it counts the
+             comps in the CURRENT VIEW that are not on the firm's shelf, it
+             does not decide eligibility (firmCompPayload in blend-comps.js
+             is the rule, and the route reports what it skipped and why), and
+             it is hidden at zero rather than disabled. Only for a broker in a
+             firm, and the label names the firm, because this is the one
+             control whose entire meaning is who sees it. -->
+        <button class="btn ghost hide" type="button" id="firmAll"></button>
         <a class="btn ghost exp" href="/api/vault/export.csv">Export all comps (CSV)</a>
       </div>
       <!-- Three readings, then the data. Each cell that has a panel behind it
@@ -825,6 +867,96 @@ a.btn.ghost:hover{color:var(--ink)}
         <summary>Imports</summary>
         <div id="ups"></div>
       </details>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         Your properties, and Your watchlist. Moved off /desk on 2026-09-01
+         ("Three Spaces"): the workspace is the FIRM's record, and a
+         portfolio and a watchlist are yours, so they belong in the space
+         that is yours.
+
+         Three things are deliberately different from the desk versions.
+
+         They are NOT gated on canUseVault. The page's own read -- the book,
+         the pipeline, the hubs -- still is, and apply() locks those three
+         decks alone. A member must never open their own space and find
+         their own saved properties behind a paywall.
+
+         A property row is a LINK to /?property=<id>, not a button that opens
+         the report in place. The whole report engine lives in index.html;
+         this page cannot render one, and a row that silently did nothing
+         would be worse than a row that navigates. Refresh is the same door
+         with &amp;refresh=1 on it, for the same reason: replaying a search
+         needs the real form.
+
+         And they are drawn in this page's own idiom -- .strip, .tw, table,
+         .lnk -- never the desk's dk-* classes or its Tailwind utilities.
+         tailwind.css is purged against index.html alone, so a utility used
+         only in a server-side string silently stops styling.
+         ------------------------------------------------------------------ -->
+    <div class="deck" id="deckProps">
+      <span class="dlab">Your properties</span><span class="dln"></span>
+      <a class="dact" href="/">+ Run a report</a>
+    </div>
+
+    <section id="propsSec">
+      <p class="sub hide" id="propsIntro" style="margin-top:0">The buildings you own or track.
+        Each keeps the value from every report you have run on it. Only you can see this.</p>
+      <div class="strip hide" id="propsStrip"></div>
+      <p class="note hide" id="propsAttn"></p>
+      <!-- Two empty states, two elements, on purpose -- and the wording of the
+           failure one is the desk's model: a bare "couldn't load" on a section
+           holding saved work reads as data loss to the person most likely to
+           be looking at it. What failed, then that nothing is gone. -->
+      <div class="msg bad hide" id="propsErr">Couldn&rsquo;t load your properties just now.
+        Nothing has been lost. Refresh in a moment.</div>
+      <div class="invite hide" id="propsEmpty">
+        <p>Nothing here yet. Your portfolio holds the properties you own. Run a report and
+          use <strong>Save to portfolio</strong>, or add one from your recent searches.</p>
+      </div>
+      <div class="tw hide" id="propsWrap"><table id="propsTbl">
+        <thead><tr id="propsHead"></tr></thead>
+        <tbody id="propsRows"></tbody><tfoot id="propsFoot"></tfoot>
+      </table></div>
+    </section>
+
+    <!-- ------------------------------------------------------------------
+         Your watchlist. Same move, same rules.
+
+         NOT "Your markets": that heading is already taken on this page by
+         #rollupSec, which breaks a broker's own COMPS down by market, and
+         #covBox's "Markets you watch" is a third thing again (the markets
+         they want LEADS from). Three market-ish labels is what this page has
+         and two of them are pre-existing; naming this one after either would
+         put two identical headings on one screen meaning different things.
+
+         The feed is
+         read from /api/watchlist/feed, which gates ITEMISED comps on the
+         plan but leaves the market-level figures (new count, median, trend)
+         free, so a free member sees a real feed rather than a locked one.
+         ------------------------------------------------------------------ -->
+    <div class="deck" id="deckMarkets">
+      <span class="dlab">Your watchlist</span><span class="dln"></span>
+    </div>
+
+    <section id="mktSec">
+      <p class="sub hide" id="mktIntro" style="margin-top:0">Markets you follow for new deals.
+        Comps other people search turn up here first.</p>
+      <div class="form" id="watchForm" style="margin-top:var(--s4)">
+        <label>City <input id="wCity" type="text" placeholder="Boise"/></label>
+        <label>State <input id="wState" type="text" maxlength="2" placeholder="ID"/></label>
+        <label>Type <select id="wType"></select></label>
+        <div class="formact">
+          <button class="btn" id="wAdd">Watch market</button>
+        </div>
+      </div>
+      <div id="mktMsg"></div>
+      <div class="msg bad hide" id="mktErr">Couldn&rsquo;t load your markets just now.
+        Nothing has been lost. Refresh in a moment.</div>
+      <div class="invite hide" id="mktEmpty">
+        <p>You are not watching any markets yet. Add one above and new comps in it will show up here.</p>
+      </div>
+      <div id="mktRows"></div>
     </section>
 
     <!-- ------------------------------------------------------------------
@@ -1058,8 +1190,13 @@ a.btn.ghost:hover{color:var(--ink)}
   }
   function view(){
     var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,q=searchTerms();
+    var f=$("fFirm").value;
     return comps.filter(function(c){
       if(sheetUploadId&&String(c.upload_id)!==String(sheetUploadId))return false;
+      // "shared" keeps what is on the firm's shelf, "unshared" what is not;
+      // an empty value is every comp. sharedIds is the lookup the Firm
+      // column already reads, so the filter and the column cannot disagree.
+      if(f&&(f==="shared")!==Boolean(sharedIds[c.id]))return false;
       return (!m||c.market===m)&&(!t||c.property_type===t)&&(!x||c.transaction===x)&&
         matchesText(c,q);
     });
@@ -1189,18 +1326,56 @@ a.btn.ghost:hover{color:var(--ink)}
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
+  // The three decks that ARE the vault. Hidden, not emptied: an upsell where a
+  // comps table should be is a table that is not there, and #vaultLocked above
+  // says the same thing once, in one place.
+  var VAULT_DECKS=["trustLine","deckBook","bookEmpty","addSec","rollupSec","compsSec",
+    "deckPipe","pipeSec","deckHubs","hubSec"];
+
+  function lockVaultDecks(msg){
+    VAULT_DECKS.forEach(function(id){
+      var el=$(id); if(!el) return;
+      // Appended rather than assigned: .deck and .strip each restate .hide
+      // below their own display rule, and a class list rebuilt from scratch
+      // would drop whatever else the element was carrying.
+      if(el.className.indexOf("hide")<0) el.className=(el.className+" hide").trim();
+    });
+    $("vaultLocked").className="invite";
+    // The page subtitle describes the book, the pipeline and the hubs. With
+    // all three locked it would be describing a page that is not on screen.
+    $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
+    if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
+      '<p class="note">'+esc(msg)+"</p>");
+  }
+
   function apply(o){
+    // The one whole-page refusal left: with nobody signed in there is no
+    // portfolio, no watchlist and no book to show, so the gate still stands.
     if(o.s===401) return gate('<div class="msg bad">Please <a href="/desk">sign in</a> to open your vault.</div>');
-    // "Part of Pro", not "part of the broker plan". There is one subscription
-    // as of 2026-08-05 and the vault is a capability of it, so naming a broker
-    // plan sends someone off to look for a product that cannot be bought.
-    // The link goes to the plan card on /desk rather than /brokers: /brokers
-    // explains contributing comps for a Verified badge, which is a different
-    // thing entirely and is free.
-    if(o.s===403) return gate('<div class="msg bad">The private vault is part of Pro. '+
-      '<a href="/desk">See your plan</a></div>');
-    if(o.s!==200) return gate('<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not load your vault.")+'</div>');
+
+    // Everything past this line renders the workspace. A refusal from this
+    // page's own read locks THREE decks and leaves the two personal ones
+    // alone -- see #vaultLocked's comment for why that asymmetry exists.
     $("gate").className="hide"; $("app").className="";
+
+    // Free My Desk is an address list, Pro is the book of values. Stated on
+    // all three of vaultReadPayload's exits so it survives the 403, which is
+    // exactly the case that needs it. Presentation only: /api/portfolio
+    // enforces its own caps.
+    showValues=Boolean(o.j&&o.j.portfolioValues);
+    // Once per page visit, not on every filter change or post-import refresh
+    // that re-runs load() -- those hit /api/vault, a different endpoint, and
+    // re-reading the portfolio on each would be work with no new information.
+    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); }
+    else { renderProps(); }
+
+    // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
+    // says which it was, because "unavailable right now" and "part of Pro"
+    // are different problems with different fixes.
+    if(o.s===403) return lockVaultDecks("");
+    if(o.s!==200) return lockVaultDecks((o.j&&o.j.error)||"Could not load your vault.");
+    // A read that succeeds after one that failed has to put them back.
+    $("vaultLocked").className="invite hide";
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
@@ -1259,6 +1434,11 @@ a.btn.ghost:hover{color:var(--ink)}
     myFirm=o.j.firm||null;
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
+    // The firm filter is furniture for a broker in no firm, so it is not
+    // there at all — and a value left in it by a broker who has since left
+    // their firm would be narrowing the book from behind a hidden control.
+    $("fFirmLab").className=myFirm?"":"hide";
+    if(!myFirm)$("fFirm").value="";
     renderFirmPrivacy();
     renderIdentity(o.j.identity);
     renderRollup();
@@ -1499,7 +1679,7 @@ a.btn.ghost:hover{color:var(--ink)}
   function openSheet(uploadId){
     sheetMode=true;
     sheetUploadId=uploadId||null;
-    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; }
+    if(uploadId){ $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; }
     render();
     $("tbl").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -1511,9 +1691,10 @@ a.btn.ghost:hover{color:var(--ink)}
 
   // Quiet trash, not a red "Delete" word. Same control in the compact table
   // and the spreadsheet. The confirm still names the action.
+  var TRASH_SVG='<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg>';
   function trashBtn(id){
     return '<button type="button" class="lnk trash" data-del-comp="'+esc(id)+
-      '" aria-label="Delete this comp" title="Delete"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M3.5 4.2h9M6.2 4.2V3h3.6v1.2M5.2 4.2l.55 9.1h4.5l.55-9.1M7.2 6.4v5M8.8 6.4v5"/></svg></button>';
+      '" aria-label="Delete this comp" title="Delete">'+TRASH_SVG+'</button>';
   }
 
   function render(){
@@ -1546,6 +1727,13 @@ a.btn.ghost:hover{color:var(--ink)}
     renderChart(rows);
     renderRepeats(rows);
     setSheetChrome();
+    // The two batch buttons count the CURRENT VIEW, and the spreadsheet is a
+    // view too — an import opens as one. They sit above the sheet branch
+    // because that branch returns early, and below it they went stale the
+    // moment a broker opened the spreadsheet: the push offered under an
+    // import result counted the compact table from before the upload.
+    refreshPublishAll(rows);
+    refreshFirmAll(rows);
     if(sheetMode){
       renderSheet(rows);
       // The strip summarises whatever is on screen, in whichever unit that
@@ -1616,7 +1804,6 @@ a.btn.ghost:hover{color:var(--ink)}
     // it can never name different measures.
     var foot=footFigure(unit);
     renderStrip(rows,unit,foot);
-    refreshPublishAll(rows);
     // ONE row template with the label and the number varying, deliberately
     // not a branch per case emitting its own <tr>: the footer's column count
     // is checked by finding a single label cell with a colspan in this file
@@ -1672,6 +1859,22 @@ a.btn.ghost:hover{color:var(--ink)}
     if(!pubCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
     b.className="btn ghost";
     b.textContent="Publish "+pubCandidates.length+" comp"+(pubCandidates.length===1?"":"s");
+  }
+
+  // The push's candidates: what is on screen and not yet on the firm's
+  // shelf. refreshPublishAll's three rules, for the same reasons, plus a
+  // fourth: for a broker in no firm the control does not exist at all,
+  // since a control that can only fail is worse than no control. The label
+  // names the firm — this is the one button whose whole meaning is who sees
+  // the comps.
+  var firmCandidates=[];
+  function refreshFirmAll(rows){
+    var b=$("firmAll");
+    if(!b)return;
+    firmCandidates=myFirm?(rows||[]).filter(function(c){return !sharedIds[c.id]}):[];
+    if(!firmCandidates.length){ b.className="btn ghost hide"; b.textContent=""; return; }
+    b.className="btn ghost";
+    b.textContent="Share "+firmCandidates.length+" with "+myFirm.name;
   }
 
   function renderSheet(rows){
@@ -1953,10 +2156,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // A cell is a BUTTON only when there is a panel behind it to open. Rendering
   // an affordance over a hidden panel would be a control that does nothing,
   // which is worse than a plain figure.
-  function stripCell(lab,fig,sub,target,ok){
+  // The title argument is optional and only the properties strip passes one.
+  // because "Between checks" needs to say outright what the figure is not --
+  // see the call site.
+  function stripCell(lab,fig,sub,target,ok,title){
     var tag=target?"button":"div",
         cls="scell"+(target?" act":""),
-        attr=target?' type="button" data-open="'+target+'"':"";
+        attr=(target?' type="button" data-open="'+target+'"':"")+
+             (title?' title="'+escA(title)+'"':"");
     return "<"+tag+' class="'+cls+'"'+attr+'><span class="slab">'+lab+"</span>"+
       '<div class="sfig'+(ok?" ok":"")+'">'+fig+"</div>"+
       (sub?'<div class="ssub">'+sub+"</div>":"")+"</"+tag+">";
@@ -2655,6 +2862,13 @@ a.btn.ghost:hover{color:var(--ink)}
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
         $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
+        // Offered only where there is a firm to push to and something new
+        // landed. The button carries the import's id so the click can put
+        // exactly that import on screen before the ordinary Share-N path
+        // runs; see the #res click handler.
+        if(myFirm&&j.uploadId&&j.imported>0){
+          $("res").innerHTML+='<p class="note"><button type="button" class="lnk" id="resFirm" data-upload="'+escA(j.uploadId)+'">Share this import with '+esc(myFirm.name)+'</button></p>';
+        }
         // Open the imported book as a spreadsheet so the next step is
         // fixing a cell, not hunting for Edit on each row. uploadId is
         // already on the upload response; imported:0 means nothing new
@@ -3388,13 +3602,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // is included only to move the selected ring; its numbers are whole-book and
   // do not change with the filter.
   function redraw(){
-    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fText").value)?"btn ghost":"btn ghost hide";
+    $("fClear").className=($("fMarket").value||$("fType").value||$("fTrans").value||$("fFirm").value||$("fText").value)?"btn ghost":"btn ghost hide";
     renderRollup();
     render();
   }
   $("fMarket").addEventListener("change",redraw);
   $("fType").addEventListener("change",redraw);
   $("fTrans").addEventListener("change",redraw);
+  $("fFirm").addEventListener("change",redraw);
   // "input", not "change": filtering as they type is the whole point, and the
   // work is a substring scan over at most 1000 rows the page already holds.
   // Escape clears, which is the one thing every search box on the web does.
@@ -3403,14 +3618,14 @@ a.btn.ghost:hover{color:var(--ink)}
   // bound to the button itself would be lost on the next draw.
   $("none").addEventListener("click",function(e){
     if(!e.target||e.target.id!=="noneClear")return;
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value="";
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
     redraw();
   });
   $("fText").addEventListener("keydown",function(e){
     if(e.key==="Escape"&&$("fText").value){ $("fText").value=""; redraw(); }
   });
   $("fClear").addEventListener("click",function(){
-    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fText").value=""; redraw();
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value=""; redraw();
   });
   // Bulk publish. The confirm is the single-comp one's promise, scaled: it
   // names the count, the credit, and the one thing that cannot be taken back.
@@ -3454,6 +3669,62 @@ a.btn.ghost:hover{color:var(--ink)}
         b.disabled=false;
         compMsg("That didn't reach the server. Nothing was changed.",true);
       });
+  });
+  // Bulk firm share — the push. ONE function, reached from the button in
+  // the filter row and from the line under an import result, so there is
+  // exactly one confirm on the way to the route and no second path. The
+  // confirm is the single-comp one scaled, and it says four things. The
+  // third is what makes this a push rather than a release: unlike
+  // publishing, whose dialog rightly says reports keep what they used,
+  // every one of these can be taken back.
+  function shareAllWithFirm(){
+    var ids=firmCandidates.map(function(c){return c.id}),n=ids.length;
+    if(!n||!myFirm)return;
+    if(!confirm("Share "+n+" comp"+(n===1?"":"s")+" with "+myFirm.name+"?\\n\\n"+
+      "Colleagues at "+myFirm.name+" will see them inside their own reports, with your name on them.\\n\\n"+
+      "They do NOT go into CompNinja's public records, and they are left out of every export, PNG, print and client link.\\n\\n"+
+      "You can take any of them back at any time.\\n\\n"+
+      "Comps with no deal date can't be shared \\u2014 colleagues' reports pick comps by date, so one would never reach a report. Those are skipped and named afterwards."))return;
+    var b=$("firmAll");
+    b.disabled=true; b.textContent="Sharing\\u2026";
+    fetch("/api/vault/firm-many",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({orgId:myFirm.id,ids:ids})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        b.disabled=false;
+        if(o.s!==200){ compMsg(o.j.error||"That didn't go through.",true); render(); return; }
+        var parts=[o.j.shared+" shared"];
+        if(o.j.skippedCount)parts.push(o.j.skippedCount+" skipped");
+        if(o.j.remaining)parts.push(o.j.remaining+" left \\u2014 run it again");
+        // The first reason, not a bare count, pubAll's rule: the reasons
+        // repeat, so one example usually explains all of them.
+        var why=(o.j.skipped&&o.j.skipped.length)?o.j.skipped[0].reason:"";
+        compMsg(parts.join(" \\u00b7 ")+(why?" \\u00b7 "+why:""),!o.j.shared);
+        // The shelf lookup, the Firm column, the filter and the privacy line
+        // all read sharedIds, so it is re-read from the server rather than
+        // patched here from what the page believes it sent.
+        load();
+      })
+      .catch(function(){
+        b.disabled=false;
+        compMsg("That didn't reach the server. Nothing was changed.",true);
+        render();
+      });
+  }
+  $("firmAll").addEventListener("click",shareAllWithFirm);
+  // The follow-on line under an import result. It sets the view to that
+  // import and runs the button's own function — confirm included — and it
+  // never calls the route itself. The moment somebody has just poured their
+  // book in is when they are least careful, so the path must be the one
+  // with the confirm on it.
+  $("res").addEventListener("click",function(e){
+    var t=e.target;
+    if(!t||t.id!=="resFirm"||!myFirm)return;
+    sheetMode=true;
+    sheetUploadId=t.getAttribute("data-upload")||null;
+    $("fMarket").value=""; $("fType").value=""; $("fTrans").value=""; $("fFirm").value=""; $("fText").value="";
+    render();
+    shareAllWithFirm();
   });
   $("sheetToggle").addEventListener("click",function(){
     if(sheetMode)closeSheet(); else openSheet(null);
@@ -4033,6 +4304,367 @@ a.btn.ghost:hover{color:var(--ink)}
     }else{
       try{document.execCommand("copy");done();}catch(_){}
     }
+  });
+
+  // ---------------------------------------------------------------------
+  // YOUR PROPERTIES -- the portfolio, moved off /desk on 2026-09-01.
+  //
+  // Not a port of renderMyDesk(): that one is built out of the desk's dk-*
+  // classes and Tailwind utilities, neither of which exists on this page
+  // (tailwind.css is purged against index.html alone, so a utility used
+  // only in a server-side string silently stops styling). This is the same
+  // RULES in this page's own idiom -- .strip, .tw, table, .lnk.
+  //
+  // Four of those rules are load-bearing and were each earned on the desk:
+  //   * A failed read renders as a FAILURE, never as an empty portfolio.
+  //     Two elements, never one. "Nothing here yet" shown to somebody with
+  //     sixteen properties reads as their book having been thrown away.
+  //   * "Checked" is the last time a VALUE was produced -- the last
+  //     snapshot's ts, falling back to updated_at only when there is none.
+  //     A save that produced no valuation moves updated_at without anybody
+  //     having checked the property, and this date has to agree with the
+  //     attention line above the table.
+  //   * Figures are gated on portfolioValues. A free portfolio is an address
+  //     list; every number here, the market-movement line included, is a
+  //     dollar figure and stays out of it.
+  //   * The strip and the table footer close on the SAME combined figure and
+  //     the SAME between-checks percentage, computed once, so the two can
+  //     never disagree.
+  // ---------------------------------------------------------------------
+
+  // A year, and not a number picked here. portfolio-delta.js draws the same
+  // line for the same reason (MAX_WINDOW_YEARS = 1): past it, a property's
+  // figure is not a stale-ish reading of the market, it is a different
+  // question.
+  // MIRRORED CONSTANT: portfolio-delta.js is a server module and cannot be
+  // required here, and index.html keeps its own copy too. If that one moves,
+  // move both.
+  var STALE_MS=365*24*60*60*1000;
+  var propItems=[],propsOk=false,showValues=false;
+  var personalLoaded=false;
+
+  function loadProps(){
+    fetch("/api/portfolio",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        // A 401 is silent: the whole page is already gated behind a sign-in
+        // and a second refusal under the deck would only repeat it.
+        if(o.s===401){propItems=[];propsOk=true;renderProps();return;}
+        if(o.s!==200){propsOk=false;renderProps();return;}
+        propsOk=true;propItems=o.j.items||[];renderProps();
+      })
+      .catch(function(){propsOk=false;renderProps();});
+  }
+
+  function sparkline(snaps){
+    var vals=snaps.map(function(s){return Number(s.likely)}).filter(function(v){return v>0}).slice(-12);
+    if(vals.length<2)return "";
+    var w=72,h=18,pad=3;
+    var lo=Math.min.apply(null,vals),hi=Math.max.apply(null,vals);
+    var x=function(i){return pad+(i*(w-2*pad))/(vals.length-1)};
+    var y=function(v){return hi===lo?h/2:h-pad-((v-lo)*(h-2*pad))/(hi-lo)};
+    var pts=vals.map(function(v,i){return x(i).toFixed(1)+","+y(v).toFixed(1)}).join(" ");
+    // --ink-4 and --red-fill, this page's own tokens, so the line follows the
+    // theme. The desk's copy of this sparkline hard-codes a grey for the
+    // polyline because that file has no token for it; the reading is the same.
+    // No literal colour value in this comment either -- it ships inside the
+    // emitted script, and test/theme.test.js scans the generated markup, not
+    // only the stylesheet.
+    return '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+" "+h+'" aria-label="'+
+      vals.length+' valuations tracked" style="display:block">'+
+      '<polyline points="'+pts+'" fill="none" stroke="var(--ink-4)" stroke-width="1.4"/>'+
+      '<circle cx="'+x(vals.length-1).toFixed(1)+'" cy="'+y(vals[vals.length-1]).toFixed(1)+
+      '" r="2.2" fill="var(--red-fill)"/></svg>';
+  }
+
+  function pctSpan(p){
+    return '<span style="color:var(--'+(p>=0?"green":"red")+')">'+
+      (p>=0?"▲":"▼")+" "+Math.abs(p).toFixed(1)+"%</span>";
+  }
+
+  function renderProps(){
+    var err=$("propsErr"),empty=$("propsEmpty"),wrap=$("propsWrap"),
+        strip=$("propsStrip"),attn=$("propsAttn"),intro=$("propsIntro");
+    err.className=propsOk?"msg bad hide":"msg bad";
+    if(!propsOk){
+      // Everything below this line describes a portfolio we could not read.
+      // The count would say zero and the invitation would say the book is
+      // empty -- two confident statements about data we do not have. The
+      // rows and the strip are left exactly as they were rather than wiped.
+      empty.className="invite hide";
+      return;
+    }
+    var items=propItems;
+    intro.className=items.length?"sub":"sub hide";
+    empty.className=items.length?"invite hide":"invite";
+    wrap.className=items.length?"tw":"tw hide";
+    if(!items.length){strip.className="strip hide";attn.className="note hide";return;}
+
+    var combined=0,curPaired=0,prevPaired=0,pairedN=0,staleN=0,nowMs=Date.now();
+    var typeCounts={};
+    items.forEach(function(item){
+      var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
+      var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
+      if(last&&last.likely)combined+=Number(last.likely);
+      if(last&&prev&&last.likely&&prev.likely){
+        curPaired+=Number(last.likely);prevPaired+=Number(prev.likely);pairedN+=1;
+      }
+      // Off the last CHECK, not off updated_at -- see the header note. An
+      // unparseable or missing timestamp is not counted: silence beats
+      // calling a property stale on a bad date.
+      var ts=last&&last.ts?Date.parse(last.ts):NaN;
+      if(isFinite(ts)&&nowMs-ts>STALE_MS)staleN+=1;
+      var t=String(item.property_type||"").toLowerCase();
+      if(t)typeCounts[t]=(typeCounts[t]||0)+1;
+    });
+    var bookPct=prevPaired>0?((curPaired-prevPaired)/prevPaired)*100:null;
+
+    // Three cells, which is exactly .strip's own grid -- no new CSS. The
+    // desk's version is four because it lends one to the watchlist; here the
+    // watchlist is its own deck below and needs no room borrowed.
+    if(showValues){
+      var typeNote=Object.keys(typeCounts).map(function(t){
+        return typeCounts[t]+" "+t;
+      }).join(" · ")||"&nbsp;";
+      // "Between checks", and the note names its own sample. This is not a
+      // return: it compares each property's last two check-ins, over only
+      // the properties checked at least twice, with no time window at all.
+      // Said outright, because the label alone reads as a portfolio return and
+      // the figure is not one: it compares each property's last two check-ins,
+      // over only the properties checked at least twice, with no time window at
+      // all -- one pair may be a day apart and another eight months.
+      var BETWEEN_TITLE="Change in combined likely value between the last two checks of each "+
+        "property checked at least twice. Checks happen when you re-run a report, "+
+        "so this is not a return over any period of time.";
+      var betweenNote=bookPct==null?"re-run a property to start the trail"
+        :(pairedN===items.length?"all "+items.length+" properties"
+          :pairedN+" of "+items.length+" properties")+", last check vs the one before";
+      strip.className="strip";
+      strip.innerHTML=
+        stripCell("Properties",String(items.length),typeNote,"")+
+        stripCell("Combined likely value",combined?money(combined):"&mdash;",
+          "from each property's last run","")+
+        stripCell("Between checks",bookPct==null?"&mdash;":pctSpan(bookPct),betweenNote,"",false,
+          bookPct==null?"":BETWEEN_TITLE);
+    }else{
+      strip.className="strip hide";strip.innerHTML="";
+    }
+
+    // Gated on showValues along with the strip above it: a free portfolio is
+    // an address list with no figures on it, so telling somebody their values
+    // are a year out would answer a question they were never asked.
+    var showAttn=showValues&&staleN>0;
+    attn.className=showAttn?"note":"note hide";
+    if(showAttn){
+      attn.textContent=staleN===1
+        ? "1 property was last checked over a year ago. Refresh it below to bring its value up to date."
+        : staleN+" properties were last checked over a year ago. Refresh them below to bring their values up to date.";
+    }
+
+    $("propsHead").innerHTML=showValues
+      ? '<th>Property</th><th>History</th><th class="num">Likely value</th>'+
+        '<th class="num">Change</th><th></th>'
+      : "<th>Property</th><th></th>";
+
+    $("propsRows").innerHTML=items.map(function(item){
+      var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
+      var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
+      var href="/?property="+encodeURIComponent(item.id);
+      var lastTs=last&&last.ts?last.ts:item.updated_at;
+      var sub=esc(item.property_type||"")+" · checked "+
+        esc(new Date(lastTs).toLocaleDateString());
+      // The standing market page for this property's market + type. The
+      // server attaches market_page only when one exists, so absence renders
+      // nothing; the slug is shape-checked before it becomes an href, like
+      // the report's own market-page link.
+      if(item.market_page&&typeof item.market_page.slug==="string"
+         &&/^[a-z0-9-]{1,120}$/.test(item.market_page.slug)){
+        sub+=' · <a href="/market/'+escA(item.market_page.slug)+'">market page</a>';
+      }
+      var cells='<td><a class="paddr" href="'+escA(href)+
+        '" title="Open this report (no new search, no cost)">'+
+        esc(item.address)+'</a><div class="note" style="margin-top:2px">'+sub+"</div>";
+      // What the MARKET did since this property was last checked -- the one
+      // number here that moves without the owner re-running anything.
+      // Deliberately NOT coloured like the Change column: painting a market
+      // statistic green would read as this building being worth more, which
+      // is a search nobody has run.
+      if(showValues&&item.movement&&item.movement.line){
+        cells+='<div class="note" style="margin-top:2px" title="Market median $/SF from '+
+          'comps others have searched. Not a new valuation of this property.">'+
+          esc(item.movement.line)+"</div>";
+      }
+      cells+="</td>";
+      if(showValues){
+        cells+="<td>"+sparkline(snaps)+"</td>";
+        cells+='<td class="num">'+(last&&last.likely?money(last.likely):"&mdash;")+"</td>";
+        var chg="&mdash;";
+        if(last&&prev&&last.likely&&prev.likely){
+          chg=pctSpan(((last.likely-prev.likely)/prev.likely)*100);
+        }
+        cells+='<td class="num">'+chg+"</td>";
+      }
+      // Refresh is the same door with refresh=1 on it. Replaying a search
+      // needs the real #compForm, and every rule that hangs off it
+      // (validation, the cache, the caps, the per-type columns) -- all of
+      // which live in index.html and nowhere else. So this navigates rather
+      // than pretending to run a search here.
+      cells+='<td class="rowact num"><a href="'+escA(href+"&refresh=1")+
+        '" title="Runs a new live search for this property">Refresh</a> '+
+        '<button class="lnk trash" type="button" data-prop-del="'+escA(item.id)+
+        '" data-prop-addr="'+escA(item.address)+
+        '" aria-label="Remove '+escA(item.address)+' from your portfolio" '+
+        'title="Remove from your portfolio">'+TRASH_SVG+"</button></td>";
+      return "<tr>"+cells+"</tr>";
+    }).join("");
+
+    // The closing total only earns its rule with something to sum, and it
+    // repeats the strip's own two figures rather than recomputing them.
+    $("propsFoot").innerHTML=(showValues&&items.length>1&&combined)
+      ? '<tr><td colspan="2">Combined · '+items.length+" properties</td>"+
+        '<td class="num">'+money(combined)+"</td>"+
+        '<td class="num">'+(bookPct==null?"":pctSpan(bookPct))+"</td><td></td></tr>"
+      : "";
+  }
+
+  // Delegated, because #propsRows is rewritten on every render.
+  $("propsRows").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-prop-del]");if(!b)return;
+    var id=b.getAttribute("data-prop-del"),addr=b.getAttribute("data-prop-addr")||"this property";
+    if(!confirm("Remove "+addr+" from your portfolio?"))return;
+    fetch("/api/portfolio?id="+encodeURIComponent(id),
+      {method:"DELETE",credentials:"same-origin"})
+      .then(function(){loadProps()})
+      .catch(function(){loadProps()});
+  });
+
+  // ---------------------------------------------------------------------
+  // YOUR MARKETS -- the watchlist, moved off /desk the same day.
+  //
+  // The feed's own route already draws the line this deck needs: the
+  // market-level figures (new count, median, trend) are free, and only the
+  // ITEMISED comp rows are gated, arriving as locked_count instead. So a
+  // free member sees a real feed here rather than a locked one, and nothing
+  // in this file has to decide that.
+  // ---------------------------------------------------------------------
+  var mktItems=[],mktOk=false;
+
+  function loadMarkets(){
+    fetch("/api/watchlist/feed",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s===401){mktItems=[];mktOk=true;renderMarkets();return;}
+        if(o.s!==200){mktOk=false;renderMarkets();return;}
+        mktOk=true;mktItems=o.j.items||[];renderMarkets();
+        // Mark the feed read, exactly as the workspace does when a member
+        // opens it. This is not cosmetic: last_seen_at is one of the two
+        // high-water marks the watchlist digest takes its cutoff from (the
+        // later of last_digest_at and last_seen_at), so without it somebody
+        // who reads their new comps here would still be MAILED about them.
+        // That is the one thing this product sends on its own initiative, and
+        // its bar is "is this worth interrupting a person for".
+        //
+        // Guarded on unseen, so a page visit with no news writes nothing, and
+        // fire-and-forget: a failed stamp costs one duplicate line in the next
+        // digest, where letting it fail the deck would cost the feed itself.
+        if(o.j.unseen){
+          fetch("/api/watchlist/seen",{method:"POST",credentials:"same-origin"})
+            .catch(function(){});
+        }
+      })
+      .catch(function(){mktOk=false;renderMarkets();});
+  }
+
+  function renderMarkets(){
+    $("mktErr").className=mktOk?"msg bad hide":"msg bad";
+    if(!mktOk){$("mktEmpty").className="invite hide";return;}
+    var items=mktItems;
+    $("mktIntro").className=items.length?"sub":"sub hide";
+    $("mktEmpty").className=items.length?"invite hide":"invite";
+    $("mktRows").innerHTML=items.map(function(it){
+      var title=esc(it.market)+" · "+esc(it.property_type);
+      if(it.market_page&&typeof it.market_page.slug==="string"
+         &&/^[a-z0-9-]{1,120}$/.test(it.market_page.slug)){
+        title='<a href="/market/'+escA(it.market_page.slug)+'">'+title+"</a>";
+      }
+      var facts=[];
+      facts.push((it.new_count||0)+" new comp"+((it.new_count||0)===1?"":"s"));
+      if(it.median_psf!=null)facts.push("median "+psf0(it.median_psf)+"/SF");
+      if(it.median_trend&&it.median_trend.current!=null&&it.median_trend.prior!=null
+         &&Number(it.median_trend.prior)>0){
+        var d=((it.median_trend.current-it.median_trend.prior)/it.median_trend.prior)*100;
+        facts.push((d>=0?"▲":"▼")+" "+Math.abs(d).toFixed(1)+"% vs the six months before");
+      }
+      // Aggregate only -- the payload carries no address, email or visitor
+      // id, and the member's own searches are excluded server-side, so this
+      // is other people's interest and never their own reflected back.
+      if(it.demand&&it.demand.viewers){
+        facts.push(it.demand.viewers+" "+(it.demand.viewers===1?"person":"people")+
+          " searched here in "+(it.demand.window_days||30)+" days");
+      }
+      var rows="";
+      if(it.comps&&it.comps.length){
+        rows='<div class="tw" style="margin-top:8px"><table>'+
+          "<thead><tr><th>Address</th><th>Deal</th><th>Date</th>"+
+          '<th class="num">Price or rate</th><th class="num">$/SF</th></tr></thead><tbody>'+
+          it.comps.map(function(c){
+            var a=esc(c.address||"");
+            if(c.source_url&&/^https?:\\/\\//.test(c.source_url)){
+              a='<a href="'+escA(c.source_url)+'" rel="nofollow noopener" target="_blank">'+a+"</a>";
+            }
+            return "<tr><td>"+a+"</td><td>"+esc(c.transaction||"")+"</td><td>"+
+              esc(c.deal_date||"")+'</td><td class="num">'+esc(c.price_or_rate||"")+
+              '</td><td class="num">'+esc(c.price_per_sqft==null?"":psf(c.price_per_sqft))+
+              "</td></tr>";
+          }).join("")+"</tbody></table></div>";
+      }
+      // The gated remainder, said out loud rather than silently dropped.
+      if(it.locked_count){
+        rows+='<p class="note" style="margin-top:8px">'+it.locked_count+" more comp"+
+          (it.locked_count===1?"":"s")+" in this market. "+
+          '<a href="/desk">See your plan</a> to itemise them.</p>';
+      }
+      return '<div class="dbox" style="margin-top:var(--s4);padding:14px 16px">'+
+        '<div style="font-family:var(--serif);font-size:17px">'+title+"</div>"+
+        '<p class="note" style="margin:4px 0 0">'+facts.join(" · ")+"</p>"+rows+
+        '<p style="margin:10px 0 0"><button class="lnk" type="button" data-unwatch="'+
+        escA(it.id)+'" data-mkt="'+escA(it.market+" "+it.property_type)+
+        '">Stop watching</button></p></div>';
+    }).join("");
+  }
+
+  $("mktRows").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-unwatch]");if(!b)return;
+    if(!confirm("Stop watching "+(b.getAttribute("data-mkt")||"this market")+"?"))return;
+    fetch("/api/watchlist?id="+encodeURIComponent(b.getAttribute("data-unwatch")),
+      {method:"DELETE",credentials:"same-origin"})
+      .then(function(){loadMarkets()}).catch(function(){loadMarkets()});
+  });
+
+  $("wType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
+  $("wAdd").addEventListener("click",function(){
+    var city=$("wCity").value.trim(),st=$("wState").value.trim().toUpperCase();
+    var msg=$("mktMsg");
+    if(!city||!/^[A-Z]{2}$/.test(st)){
+      msg.innerHTML='<div class="msg bad">Enter a city and a two-letter state.</div>';return;
+    }
+    msg.innerHTML="";
+    fetch("/api/watchlist",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:city+", "+st,property_type:$("wType").value})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200&&o.s!==201){
+          msg.innerHTML='<div class="msg bad">'+
+            esc((o.j&&o.j.error)||"Couldn’t add that market.")+"</div>";
+          return;
+        }
+        $("wCity").value="";$("wState").value="";
+        loadMarkets();
+      })
+      .catch(function(){
+        msg.innerHTML='<div class="msg bad">Couldn’t reach the server. Please try again.</div>';
+      });
   });
 
   loadHubs();

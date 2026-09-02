@@ -1647,7 +1647,13 @@ test("the comps toolbar offers to open a spreadsheet", () => {
 test("each import offers Open, next to Remove", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /data-open-sheet/);
-  assert.match(html, />Open</);
+  // The label lives in the list renderer's own ternary — the imports list is
+  // drawn client-side, so the static page never contains a literal >Open<.
+  // The old assertion (/>Open</) was in fact matching the HUB table's Open
+  // link, one deck further down the same page: it passed for a month while
+  // proving nothing about the imports list it names, and it would have gone
+  // green on a build that shipped no imports list at all.
+  assert.match(html, /\(editing\?"Editing":"Open"\)/);
 });
 
 test("Open spreadsheet turns the current view into editable cells", async () => {

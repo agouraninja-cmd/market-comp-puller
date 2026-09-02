@@ -204,6 +204,42 @@ test("firm messaging, end to end", async (t) => {
     assert.equal(again.j.external[0].unread, 0, "reading did not clear the badge");
   });
 
+  await t.test("a deal room created through the hub route appears in External at once", async () => {
+    // The New panel's third act is client-side sugar over POST /api/hubs; the
+    // contract that matters is that the room it creates lands in the inbox
+    // list immediately, named after the person invited.
+    const made = await post(BRAD, "/api/hubs", { title: "", participants: ["newclient@somewhere.com"] });
+    assert.equal(made.s, 201);
+    assert.ok(made.j.id, "the create returned no id");
+    assert.equal(made.j.invites.length, 1, "one invite link per person, minted once");
+    // No outbound mail is configured on this test server, so the send's own
+    // answer must be honest: not emailed, and the links are the delivery.
+    assert.equal(made.j.emailed, false);
+
+    const list = await get(BRAD, "/api/messages");
+    const row = list.j.external.filter((x) => x.id === made.j.id)[0];
+    assert.ok(row, "the new room is missing from External");
+    assert.equal(row.label, "newclient", "named after the person, from their email");
+    assert.equal(row.closed, false);
+
+    // The guest list machinery the People panel drives: add somebody
+    // (wholesale PUT, existing people re-mailed never), then close.
+    const put = await fetch(B + "/api/hub/participants", as(BRAD, {
+      method: "PUT",
+      body: JSON.stringify({ id: made.j.id, emails: ["newclient@somewhere.com", "second@somewhere.com"] }),
+    }));
+    assert.equal(put.status, 200);
+    const pj = await put.json();
+    assert.equal(pj.invites.length, 1, "only the newcomer gets a token; re-saving re-mails nobody");
+    assert.equal(pj.invites[0].email, "second@somewhere.com");
+
+    const closed = await post(BRAD, "/api/hub/close", { id: made.j.id });
+    assert.equal(closed.s, 200);
+    const after = await get(BRAD, "/api/messages");
+    const row2 = after.j.external.filter((x) => x.id === made.j.id)[0];
+    assert.equal(row2.closed, true, "the closed room must say so in the list");
+  });
+
   await t.test("a colleague on a free seat gets messaging and not the vault", async () => {
     // canUseOrg's rule one surface over: reading and taking part needs no
     // entitlement at all. A firm whose junior broker cannot be messaged does

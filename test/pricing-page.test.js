@@ -67,9 +67,18 @@ test("the price a visitor reads is the one the FAQ has been quoting", async (t) 
   // Every surface reads the same constant. Before /pricing existed the FAQ was
   // the only public statement of the seat price; two prose copies of a number
   // is how a site ends up quoting two prices for one plan.
-  for (const figure of ["$100", "$79", "$840"]) {
+  // $840 left this loop on 2026-09-02. The founding rate is no longer an
+  // unconditional footnote: it is a BAND, and the band is not rendered at all
+  // unless Stripe is configured, because a "Claim a seat" button on a
+  // deployment whose checkout 503s is an offer that cannot be taken. The
+  // standing prices are still unconditional and still checked here; the
+  // founding figure is checked in the founding-band test below, which boots a
+  // server that can actually sell it.
+  for (const figure of ["$100", "$79"]) {
     assert.ok(pricing.includes(figure), `/pricing states ${figure}`);
   }
+  assert.ok(!pricing.includes("$840"),
+    "with no Stripe configured the founding band must not be advertised");
   assert.ok(faq.includes("$100"), "the FAQ still states the monthly price");
   assert.ok(faq.includes("$79"), "the FAQ still states the seat price");
   assert.ok(home.includes("$100"), "the home page states the monthly price");
@@ -166,4 +175,81 @@ test("/pricing is reachable from the footer of every public page", async (t) => 
     const html = await (await fetch(srv.base + p)).text();
     assert.ok(html.includes('href="/pricing"'), `${p} links to /pricing`);
   }
+});
+
+// --- The founding band ------------------------------------------------------
+//
+// It replaced the `.disc` footnote on 2026-09-02. The footnote was rendered
+// whenever `foundingAnnual` was set and said nothing about whether a seat
+// could actually be bought; the band is louder — a dark panel with a live
+// counter and its own button — so the bar for showing it went up with it.
+test("the founding band is only shown where a seat can actually be bought", async (t) => {
+  await t.test("no Stripe, no band", async (tt) => {
+    const srv = await boot({});
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.ok(!/id="prcFm"/.test(html), "the band must not render without billing");
+    assert.ok(!/Claim a seat/.test(html), "nor its button");
+  });
+
+  await t.test("with Stripe, the band renders and quotes PRICING's own figure", async (tt) => {
+    const srv = await boot({
+      STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+      STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+    });
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.match(html, /id="prcFm"/, "the band renders once billing is configured");
+
+    const priceBlock = SERVER_JS.match(/const PRICING = \{[\s\S]*?\};/)[0];
+    const monthly = Number(priceBlock.match(/monthly:\s*(\d+)/)[1]);
+    const founding = Number(priceBlock.match(/foundingAnnual:\s*(\d+)/)[1]);
+    assert.ok(html.includes(`$${founding}`), "the band quotes PRICING.foundingAnnual");
+
+    // The saving is COMPUTED, never typed. The design file wrote "$360 per
+    // year", which is correct at $100/mo against $840/yr and silently wrong
+    // the moment either figure moves — so this asserts the arithmetic rather
+    // than the numeral, and moving either price keeps it true.
+    const saving = monthly * 12 - founding;
+    assert.ok(html.includes(`Saves you $${saving}`),
+      `the band must compute the saving; expected $${saving}`);
+  });
+});
+
+test("the founding counter is never server-rendered", async (t) => {
+  const srv = await boot({
+    STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+    STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+  });
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + "/pricing")).text();
+
+  // THE RULE THIS FILE EXISTS FOR, second edition. `foundingLeft` is a
+  // database read memoized 60s, and this page is served from an hour-long
+  // public cache to anonymous visitors — so a number baked into these bytes
+  // would still be claiming "12 seats left" long after the last one sold.
+  // The count block therefore ships EMPTY and hidden, and a tiny client fetch
+  // to /api/pricing fills it in after paint (or takes the whole band down).
+  const countBlock = html.match(/<div class="prc-fm-count"[^>]*>[\s\S]*?<\/div>/);
+  assert.ok(countBlock, "the counter block must exist");
+  assert.match(countBlock[0], /hidden/, "it must ship hidden");
+  assert.ok(!/\d/.test(countBlock[0].replace(/prc-fm-[a-z]+|id="[^"]*"/g, "")),
+    "no seat count may be server-rendered: " + countBlock[0]);
+  assert.match(html, /fetch\("\/api\/pricing"/, "the counter is filled in after paint");
+  // And still no second checkout, which is rule 2 of the page.
+  assert.doesNotMatch(html, /\/api\/checkout/, "the band must not buy anything");
+});
+
+test("the redundant top kicker is gone", async (t) => {
+  const srv = await boot({});
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + "/pricing")).text();
+
+  // The handoff drew a "Pricing" eyebrow above the H1 and then said it was
+  // redundant against it; the owner dropped it (2026-09-02). The word is
+  // already in the nav, the URL, the tab title and the heading itself.
+  assert.match(html, /<h1>What CompNinja Costs\.<\/h1>/, "the H1 carries the header alone");
+  const beforeH1 = html.slice(0, html.indexOf("<h1>"));
+  assert.ok(!/class="kicker"/.test(beforeH1.slice(-400)),
+    "the kicker was dropped and must not come back above the H1");
 });

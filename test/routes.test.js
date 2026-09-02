@@ -691,45 +691,76 @@ test("bare environment", async (t) => {
   // Both halves are asserted together and in both directions, because the
   // failure is not "it is missing" but "it is in both places at once", which
   // reads as a duplicated link rather than as a bug.
-  await t.test("a stranger finds the 1031 guide in Explore; a member finds it as a row", async () => {
+  await t.test("a stranger finds the 1031 guide in Tools; a member finds it as a row", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
     const GUIDE = /<a [^>]*href="\/1031-exchange"/;
+    // TWO menus since 2026-09-02, so this collects EVERY dropdown rather than
+    // the first one. The guide moved out of Explore into the new Tools menu;
+    // what the assertion is actually about is unchanged and is the reason it
+    // is written in both directions — the failure worth catching is not "the
+    // link is missing" but "it is in a menu AND a row at once", which reads as
+    // a duplicated link rather than as a bug.
     const split = (html) => {
       const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
-      const menu = (nav.match(/<div class="dd">[\s\S]*?<\/div>/) || [""])[0];
-      return { menu, rows: nav.replace(/<details[\s\S]*?<\/details>/g, "") };
+      const menus = (nav.match(/<div class="dd">[\s\S]*?<\/div>/g) || []).join("");
+      return { menu: menus, rows: nav.replace(/<details[\s\S]*?<\/details>/g, "") };
     };
 
     for (const page of ["/markets", "/brokers-firms", "/1031-exchange"]) {
       const anon = split(await (await fetch(srv.base + page)).text());
-      assert.match(anon.menu, GUIDE, page + ": a stranger's Explore menu lost the guide");
+      assert.match(anon.menu, GUIDE, page + ": a stranger's Tools menu lost the guide");
       assert.doesNotMatch(anon.rows, GUIDE,
         page + ": the guide is a row AND a menu item for a stranger -- one link, two places");
 
       const member = split(await (await fetch(srv.base + page, { headers: SESSION })).text());
       assert.match(member.rows, GUIDE, page + ": a member lost the top-level row the rail needs");
       assert.doesNotMatch(member.menu, GUIDE,
-        page + ": the guide is back in the menu the rail hides, as well as in the bar");
+        page + ": the guide is back in a menu the rail hides, as well as in the bar");
     }
+
+    // The same one-link-two-places rule now applies to Market explorer, which
+    // made the same move on the same day and for the same reason.
+    const EXPLORER = /<a [^>]*href="\/markets"/;
+    const anonBf = split(await (await fetch(srv.base + "/brokers-firms")).text());
+    assert.match(anonBf.menu, EXPLORER, "a stranger's Tools menu lost Market explorer");
+    assert.doesNotMatch(anonBf.rows, EXPLORER,
+      "Market explorer is a row AND a menu item for a stranger");
+    const memberBf = split(await (await fetch(srv.base + "/brokers-firms", { headers: SESSION })).text());
+    assert.match(memberBf.rows, EXPLORER, "a member lost the Market explorer row");
+    assert.doesNotMatch(memberBf.menu, EXPLORER,
+      "Market explorer is back in a menu the rail hides, as well as in the bar");
+
+    // And the rail never gets a dropdown at all, which is WHY the two links
+    // are rows for a member. This is the assertion the whole arrangement
+    // rests on: if Tools were ever rendered for a signed-in visitor, both
+    // links above would be unreachable on desktop.
+    const memberNav = (await (await fetch(srv.base + "/markets", { headers: SESSION })).text());
+    assert.ok(!/Tools<span class="car">/.test(memberNav),
+      "the Tools dropdown must never render for a member -- the rail hides dropdowns");
+    assert.match(memberNav, /<span class="navsec">Tools<\/span>/,
+      "a member gets the rail's Tools section label instead");
   });
 
   // The app cannot make that choice at serve time.
-  await t.test("the app ships both halves of the guide and swaps them after paint", async () => {
+  await t.test("the app renders the guide as one row for every reader", async () => {
     const app = await (await fetch(srv.base + "/")).text();
-    // One set of bytes for everybody, so anonymous is the pre-paint default:
-    // the menu entry renders and the bar row ships hidden. The reverse would
-    // hide the link from the stranger it is now there for.
-    assert.match(app, /<a href="\/1031-exchange"[^>]*class="[^"]*nav-anon"/,
-      "the app's Explore menu lost the anonOnly guide entry");
-    assert.match(app, /id="nav1031Link"[^>]*class="hidden/,
-      "the app's bar row must ship hidden -- a stranger sees it in the menu instead");
-    // Toggled, never one-way: this page signs in and out without reloading,
-    // so a row added and never removed would outlive the session that earned
-    // it, and the menu entry would stay gone for the next anonymous reader.
-    assert.match(app, /getElementById\("nav1031Link"\)\.classList\.toggle\("hidden", !on\)/,
-      "the bar row is not toggled from the account state");
-    assert.match(app, /querySelectorAll\("\.nav-anon"\)[\s\S]{0,140}toggle\("hidden", on\)/,
-      "the anonOnly entries are not toggled from the account state");
+    // The app used to ship BOTH halves and swap them after paint, because this
+    // file is one set of bytes served to everybody. It has one half now: the
+    // menu entry left NAV_LINKS for the Tools dropdown on 2026-09-02, and this
+    // file has no dropdown to receive it, so the bar row simply always renders
+    // rather than leaving an anonymous reader (a shared report, a signup in
+    // progress) with the guide in neither place.
+    assert.match(app, /id="nav1031Link" href="\/1031-exchange" class="hover:/,
+      "the app's 1031 row must render unconditionally now");
+    assert.ok(!/id="nav1031Link"[^>]*class="hidden/.test(app),
+      "it must not still ship hidden -- nothing reveals it any more");
+    assert.ok(!/getElementById\("nav1031Link"\)\.classList\.toggle/.test(app),
+      "the toggle is gone; a toggle with no second state is a hidden link");
+    // The .nav-anon mechanism is deliberately KEPT even with no entry using
+    // it, so a future anonymous-only link has somewhere to go. Pinned so it
+    // is not tidied away as dead code.
+    assert.match(app, /querySelectorAll\("\.nav-anon"\)[\s\S]{0,200}toggle\("hidden", on\)/,
+      "the nav-anon sweep must survive for the next anonymous-only entry");
   });
 
   // Both Pro tools ship hidden and are revealed by their OWN entitlement.

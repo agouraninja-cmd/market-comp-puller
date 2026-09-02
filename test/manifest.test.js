@@ -73,13 +73,18 @@ test("index.html links the manifest and wires the footer Install button", () => 
 });
 
 test("the landing render and marketShell both carry the manifest link", () => {
-  // Under the account wall an ANONYMOUS visitor at / gets the landing render,
-  // not index.html — if only the app page links the manifest, Chrome/Edge
-  // never offer Install to the people who haven't signed up yet, which is
-  // the exact audience a download door exists for. Two head builders serve
-  // every public page (marketShell + renderHowItWorksHTML); both must link it.
+  // Under the account wall an ANONYMOUS visitor at / gets a server-rendered
+  // page, not index.html — if only the app page links the manifest, Chrome
+  // and Edge never offer Install to the people who haven't signed up yet,
+  // which is the exact audience a download door exists for.
+  //
+  // ONE head builder since 2026-09-02: marketShell. It was two until
+  // renderHowItWorksHTML was deleted with /how-it-works, and `/` reaches
+  // marketShell like every other page (renderHomeHTML is a BODY). Asserted as
+  // an exact count, so a second head builder cannot appear without somebody
+  // coming here to give it the link too.
   const linkCount = serverSrc.split('rel="manifest"').length - 1;
-  assert.ok(linkCount >= 2, `server.js renders the manifest link ${linkCount} time(s); expected marketShell AND the landing render`);
+  assert.equal(linkCount, 1, `server.js renders the manifest link ${linkCount} time(s); expected marketShell only`);
 });
 
 test("no service worker — the app must never cache /valuation.js itself", () => {

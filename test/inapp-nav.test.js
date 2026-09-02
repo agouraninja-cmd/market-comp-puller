@@ -56,12 +56,15 @@ test("the download link carries the class the rule targets", () => {
     "NAV_LINKS' /download entry lost its nav-dl class");
 });
 
-test("every surface gets the boot: both server head builders and the app", () => {
-  // Two head builders serve every server-rendered page; index.html gets it by
-  // marker replacement rather than a hand-copy (THEME_BOOT is the cautionary
-  // tale of the other approach).
+test("every surface gets the boot: the server head builder and the app", () => {
+  // ONE head builder since 2026-09-02. It was two — marketShell and
+  // renderHowItWorksHTML — until /how-it-works was retired and its shell
+  // deleted with it. index.html still gets the boot by MARKER REPLACEMENT
+  // rather than a hand-copy (THEME_BOOT is the cautionary tale of the other
+  // approach). Asserted as an exact count rather than `>= 1`, so a second
+  // head builder cannot appear without someone coming here to say so.
   const bootUses = serverSrc.split("INAPP_BOOT +").length - 1;
-  assert.ok(bootUses >= 2, `INAPP_BOOT is used in ${bootUses} head builder(s); expected 2`);
+  assert.equal(bootUses, 1, `INAPP_BOOT is used in ${bootUses} head builder(s); expected 1`);
   assert.ok(indexSrc.includes("<!--INAPP_BOOT-->"), "index.html lost the INAPP_BOOT marker");
   assert.ok(serverSrc.includes("INAPP_BOOT_MARKER, INAPP_BOOT"),
     "the / handler no longer replaces the marker");

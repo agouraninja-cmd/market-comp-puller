@@ -836,8 +836,14 @@ test("signed-in desk is Mock A: split rd-form, explorer outside #compForm", () =
   assert.match(html, /^\s*select\.rd-in \{[^}]*appearance:\s*none/m);
 
   const home = html.slice(html.indexOf('id="homeInfo"'), html.indexOf("Site footer"));
-  assert.match(home, /href="\/how-it-works"/);
+  // "How it works" was the first of these two until 2026-09-02, when that page
+  // was retired and 301'd to /brokers-firms — which was already the second
+  // link, so keeping it would have been two links to one destination. /faq
+  // took the empty slot: it is the other page a reader on the desk with a
+  // question actually wants.
+  assert.ok(!/href="\/how-it-works"/.test(home), "the retired page must not be linked here");
   assert.match(home, /href="\/brokers-firms"/);
+  assert.match(home, /href="\/faq"/);
   // gap-x-3 was never in the vendored tailwind.css, so the middle dot sat
   // on the F in "For brokers". gap-x-4 is already generated.
   assert.match(home, /gap-x-4/);

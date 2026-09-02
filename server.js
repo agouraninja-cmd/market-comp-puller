@@ -8739,7 +8739,7 @@ function usd2(n) {
 // designed for, but the SAME near-black on the near-black header MARKET_CSS's
 // dark block gives it,
 // measured ~1.27:1 against --paper dark. class="cn-logo" plus a rule in
-// MARKET_CSS/HOW_CSS (`.cn-logo rect{fill:var(--ink)}`,
+// MARKET_CSS (`.cn-logo rect{fill:var(--ink)}`,
 // `.cn-logo polygon{fill:var(--red-fill)}`) is the structural fix Task 6 used
 // for the vault's chart and this branch's own index.html fix used for the
 // same icon there: a stylesheet rule, not a fill="var(...)" attribute
@@ -9031,7 +9031,7 @@ const ACCOUNT_NAV_CSS = `
 }
 `;
 
-// The nav slots. `desk: false` for /how-it-works, which already renders its own
+// The nav slots. `desk: false` was for /how-it-works, which rendered its own
 // My Desk / Log in server-side and would otherwise show two of each.
 function accountNavSlots({ desk = true, upsell = true } = {}) {
   // `upsell` exists for ONE surface: a hub. A client reading their broker's
@@ -9420,7 +9420,7 @@ const FOOTER_DARK_CSS = `
 // --- The footer's link columns, defined ONCE -------------------------------
 //
 // RAIL_CSS's argument, one block over: these rules were pasted into MARKET_CSS
-// and HOW_CSS under a "Mirrored in HOW_CSS and in index.html's footer; keep
+// and (until 2026-09-02) HOW_CSS, under a "Mirrored in HOW_CSS and in index.html's footer; keep
 // the three in step" comment that the file itself records having failed to
 // keep in step. Extracting them is what lets /vault have footer links at all
 // without becoming a third copy — its stylesheet is its own, and its global
@@ -9447,7 +9447,8 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 
 // --- The rail's stylesheet, defined ONCE -----------------------------------
 //
-// This block used to be pasted verbatim into MARKET_CSS and HOW_CSS, under a
+// This block used to be pasted verbatim into MARKET_CSS and HOW_CSS (deleted
+// with /how-it-works on 2026-09-02), under a
 // comment telling the next person to edit both together. That is the drift
 // this repo has been bitten by before, and it bit here: the Explore hide had
 // to be corrected in two places, and vault-page.js -- which draws its own
@@ -9479,7 +9480,7 @@ const RAIL_CSS = `
    224px is a literal on purpose. A rail-width custom property would fail
    theme.test.js's rule that every custom property in these stylesheets names a
    theme.js token, and a width is not a colour anyway.
-   This block is IDENTICAL in MARKET_CSS and HOW_CSS, which are twins by
+   This block WAS identical in MARKET_CSS and HOW_CSS, which were twins by
    design; edit them together or the two front doors drift. */
 @media (min-width:900px){
   html.nav-rail body{padding-left:224px}
@@ -9563,7 +9564,7 @@ a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
    from before the market pages carried 3840px photographs and before the comp
    tables grew their per-type columns, and it is narrow enough on a modern
    laptop to read as a site that has not been touched in a while. Kept in step
-   with HOW_CSS's copy below; the four dashboards and /bulk keep their own
+   with HOW_CSS's copy (deleted 2026-09-02); the four dashboards and /bulk keep their own
    widths deliberately. */
 .wrap{max-width:1120px;margin:0 auto;padding:0 16px;width:100%}
 main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
@@ -9599,6 +9600,17 @@ main.wrap{flex:1;padding-top:32px;padding-bottom:64px}
 .hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
 .hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
 .hdr nav .dd a.on{color:var(--ink);font-weight:500}
+/* The Explore menu's lead row (2026-09-02): the audience page, drawn as the
+   thing it is rather than as the first of three identical links. --wash is
+   the token for #F5F4EF; the handoff calls it --paper-alt, which is not a
+   token this codebase has (theme.js names it --wash and theme.test.js fails
+   the build on a custom property it does not define).
+   The min-width goes up with it, or the sub wraps to three lines. */
+.hdr nav .dd{min-width:176px}
+.hdr nav .dd a.nav-lead{background:var(--wash);color:var(--ink);font-weight:500}
+.hdr nav .dd a.nav-lead:hover{background:var(--wash-2)}
+.hdr nav .dd a .nav-sub{display:block;font-weight:400;font-size:11.5px;line-height:1.35;
+  color:var(--ink-3);margin-top:2px;white-space:normal;max-width:22ch}
 /* Touch targets. A bare 13.5px nav link measures ~20px tall, under the 24px
    minimum. The hit area is extended by an absolutely-positioned overlay
    rather than by padding: padding grew the header 5px (measured — the
@@ -9755,7 +9767,7 @@ details.q summary{list-style:none;display:flex;align-items:center;justify-conten
   cursor:pointer;font-weight:600;color:var(--ink)}
 details.q summary::-webkit-details-marker{display:none}
 /* /brokers FAQ chevron. Stroke is %2394a3b8 (#94A3B8 URL-encoded) -- the same
-   marker HOW_CSS uses. var() cannot reach a data URI; this is --ink-3's dark
+   marker HOW_CSS used. var() cannot reach a data URI; this is --ink-3's dark
    value and happens to read in both themes. Keep the two in step. */
 details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
@@ -9884,7 +9896,8 @@ button.btn{border:0;cursor:pointer;font-family:inherit}
 table.stmt th[data-k]{cursor:pointer;user-select:none}
 table.stmt th[data-k]:hover{color:var(--ink)}
 /* Header-sized variant, for the auth controls in the market bar. Mirrors the
-   same rule in HOW_CSS so the two site headers sit at the same height. The nav
+   same rule HOW_CSS carried, so the two site headers sat at the same height
+   (HOW_CSS was deleted 2026-09-02; MARKET_CSS is the only header now). The nav
    rule below it exists because .hdr nav a would otherwise grey the button out.
    No backticks in here: this whole block is a template literal. */
 .btn.sm{padding:7px 14px;font-size:13px}
@@ -10043,8 +10056,16 @@ ${ACCOUNT_NAV_CSS}`;
 // member on desktop. The guide is a product surface a member goes back to,
 // not a browse link, so it is promoted rather than left to the footer. The
 // three that remain are for strangers, which is who still opens Explore.
+// RESTRUCTURED 2026-09-02 (the FAQ/pricing handoff). Explore is now three
+// entries in a fixed order — the audience page, the download, the FAQ — and
+// the 1031 guide LEFT it for the new Tools menu below marketBar's Explore.
+// The fifth element is that entry's SUB, and only the lead entry has one.
 const NAV_LINKS = [
-  ["/brokers-firms", "For brokers &amp; firms"],
+  // The lead item, highlighted on --wash with a line saying what is behind
+  // it. It is the one link in this menu that has to sell, so it is drawn
+  // differently rather than merely placed first — a first row that looks
+  // like the second and third is a first row nobody reads as one.
+  ["/brokers-firms", "For brokers &amp; firms", "nav-lead", false, "Your comp book, and your firm&rsquo;s"],
   // The FAQ, a page of its own since 2026-09-01 (design 3b). It was nine
   // accordions at the foot of the landing page, reachable only by scrolling
   // the page a stranger arrives on to the bottom, and linked from the footers
@@ -10052,27 +10073,50 @@ const NAV_LINKS = [
   // the same reader: somebody deciding, before they have an account.
   // Not anonOnly — a member asks "what does a shared report expose" too, and
   // unlike the 1031 guide this is not a surface worth a top-level row.
-  ["/faq", "FAQ"],
-  // Back in the menu for a SIGNED-OUT reader only (owner's, 2026-08-30).
-  // The promotion above was justified by the rail hiding this dropdown --
-  // and the rail is a signed-in shell. An anonymous visitor never gets it,
-  // so for them the dropdown still opens, the guide was never unreachable,
-  // and a top-level row spent a slot in the one header that has to sell the
-  // product to a stranger. The fourth element is that rule: anonOnly.
-  //
-  // A member keeps the top-level row marketBar renders below, so nothing
-  // regresses for the reader the promotion was for. The two facts are one
-  // decision -- a link belongs where its reader can reach it -- which is why
-  // this is a flag on the shared list rather than a second list.
-  ["/1031-exchange", "1031 guide", "", true],
-  // Appended 2026-08-20 (the links above keep the owner's 2026-08-09 order):
-  // the desktop app's download page has to be findable from every surface,
+  // The desktop app's download page has to be findable from every surface,
   // or "where do I download it" gets answered by a support email.
-  // The third element is a class, and only this entry has one: `nav-dl` is
-  // what INAPP_BOOT's rule hides when the page is already being viewed
-  // inside the app. Keep it in step with that rule.
+  // The third element is a class: `nav-dl` is what INAPP_BOOT's rule hides
+  // when the page is already being viewed inside the app. Keep it in step
+  // with that rule (test/inapp-nav.test.js pins the spelling).
   ["/download", "Download the app", "nav-dl"],
+  // The FAQ, a page of its own since 2026-09-01 (design 3b). It closes the
+  // menu rather than opening it (2026-09-02): it is what a reader falls back
+  // to, not what they are being sold.
+  ["/faq", "FAQ"],
 ];
+// --- The Tools menu (2026-09-02) -------------------------------------------
+//
+// SIGNED-OUT ONLY, and that is the whole of the design decision the handoff
+// left open. The handoff asked for a top-level "Tools" dropdown holding the
+// market explorer and the 1031 guide. Read literally on both shells that
+// REVERSES the fix of 2026-08-29/08-30: `html.nav-rail .hdr nav>details`
+// hides every dropdown in the rail, because a menu has nowhere to open in a
+// 224px column, and those two links were promoted OUT of Explore into
+// top-level rows for exactly that reason. A Tools dropdown for everybody
+// would make both of them unreachable for a signed-in member on desktop.
+//
+// So the menu is the STRANGER's shape and the rail keeps its rows. That is
+// not a compromise invented here, it is the rule this list already carries
+// one entry of ("a link belongs where its reader can reach it" — the reason
+// the 1031 guide had an `anonOnly` flag from 2026-08-30 until today, when
+// that flag became this menu). A member still reads Market explorer and
+// 1031 guide as rows under the rail's own "Tools" section label, which is
+// what test/nav-parity.test.js pins and what this must not disturb.
+//
+// "Markets" is deliberately NOT here (owner's call, 2026-09-02). The design
+// parked it as "confirm: Tools or gone", and it is the same destination as
+// Market explorer — /markets is labelled "Market explorer" in every nav and
+// "Markets" in every footer. Two rows to one URL is the drift a single list
+// exists to prevent.
+const TOOL_LINKS = [
+  ["/markets", "Market explorer"],
+  ["/1031-exchange", "1031 exchange guide"],
+];
+const toolLinksHtml = (current = "") =>
+  TOOL_LINKS.map(([href, label]) => {
+    const on = href === current;
+    return `<a href="${href}"${on ? ' class="on" aria-current="page"' : ""}>${label}</a>`;
+  }).join("");
 // `current` is the path of the page being rendered: its own link gets the
 // `.on` style and aria-current so the menu shows where the reader already is.
 const navLinksHtml = (current = "", signedIn = false) =>
@@ -10084,10 +10128,15 @@ const navLinksHtml = (current = "", signedIn = false) =>
   // refreshAccountUI hides it. Same rule, two mechanisms, because the two
   // surfaces learn who is reading at different times.
   NAV_LINKS.filter(([, , , anonOnly]) => !(anonOnly && signedIn))
-    .map(([href, label, cls]) => {
+    .map(([href, label, cls, , sub]) => {
     const classes = [cls, href === current ? "on" : ""].filter(Boolean).join(" ");
     return `<a href="${href}"${classes ? ` class="${classes}"` : ""}` +
-      `${href === current ? ' aria-current="page"' : ""}>${label}</a>`;
+      `${href === current ? ' aria-current="page"' : ""}>${label}` +
+      // The sub is a SPAN inside the anchor, never a sibling: `.hdr nav .dd a`
+      // is the row, so a sibling would be a second row that does not link
+      // anywhere and does not highlight with the one above it.
+      (sub ? `<span class="nav-sub">${sub}</span>` : "") +
+      `</a>`;
   }).join("");
 // index.html's rendering of the same list. The class string must be made of
 // classes index.html ALREADY uses (#pricingLink, one line above the marker,
@@ -10103,9 +10152,15 @@ const NAV_LINKS_MARKER = "<!--NAV_LINKS-->";
 // Anonymous is the pre-paint default because it is the safe one -- a member
 // briefly has one extra row inside a dropdown that is closed, while the
 // reverse would hide a link from the stranger it exists for.
-const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls, anonOnly]) => {
+const APP_NAV_LINKS_HTML = NAV_LINKS.map(([href, label, cls, anonOnly, sub]) => {
   const classes = `${APP_NAV_LINK_CLASS}${cls ? ` ${cls}` : ""}${anonOnly ? " nav-anon" : ""}`;
-  return `<a href="${href}" class="${classes}">${label}</a>`;
+  // The lead entry's sub rides here too, so the app's Explore menu is the
+  // same three rows in the same shape. `nav-sub` is a plain class, not a
+  // Tailwind utility, so it is immune to the purge that APP_NAV_LINK_CLASS
+  // has to be so careful about — index.html carries the rule alongside the
+  // server's copy, and test/nav-parity.test.js holds the two together.
+  return `<a href="${href}" class="${classes}">${label}` +
+    (sub ? `<span class="nav-sub">${sub}</span>` : "") + `</a>`;
 }).join("");
 
 // --- The Market Explorer's example, rotated per page load (2026-08-24) ------
@@ -10201,7 +10256,7 @@ const marketBar = (signedIn = false, current = "") =>
   // The suppression is only ever "this page IS your home page", and whose
   // home page `/` is depends on the visitor: under ACCOUNT_WALL an anonymous
   // visitor's `/` is this very render, while a signed-in member's `/` is the
-  // app. So renderHowItWorksHTML passes `current` as "/" for the home flavor
+  // app. So the home render passed `current` as "/" for the home flavor
   // ONLY when signed out — a member reading /how-it-works is not at home and
   // is owed the link.
   `<nav>` +
@@ -10244,6 +10299,20 @@ const marketBar = (signedIn = false, current = "") =>
   `<details><summary${NAV_LINKS.some(([href]) => href === current) ? ' class="on"' : ""}>` +
   `Explore<span class="car">▾</span></summary>` +
   `<div class="dd">${navLinksHtml(current, signedIn)}</div></details>` +
+  // Tools, for a SIGNED-OUT visitor only (2026-09-02). See TOOL_LINKS for
+  // why it cannot be rendered for a member: the rail hides every dropdown,
+  // and these two links are rows there. A stranger never gets the rail, so
+  // for them the menu opens and it is the shape the design asks for.
+  //
+  // Marked active by the same rule Explore uses, on the SUMMARY rather than
+  // the <details> — routes.test.js pins the literal string
+  // `<nav><a href="/">Home</a><details>` on every signed-out page, and a
+  // class on the element would break it.
+  (!signedIn
+    ? `<details><summary${TOOL_LINKS.some(([href]) => href === current) ? ' class="on"' : ""}>` +
+      `Tools<span class="car">▾</span></summary>` +
+      `<div class="dd">${toolLinksHtml(current)}</div></details>`
+    : "") +
   // Pricing sits in the bar itself rather than one click inside Explore. It is
   // the question a prospect arrives with, and a B2B site that hides its price
   // behind a browse menu reads as one that would rather not say. The
@@ -10302,8 +10371,15 @@ const marketBar = (signedIn = false, current = "") =>
   // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
   // visitor and shown only in the rail, so the markup stays identical in both
   // modes and a stranger's horizontal bar never grows a section heading.
+  // MEMBER-only below since 2026-09-02: a stranger reads Market explorer
+  // inside the Tools dropdown above instead, and rendering both would put
+  // two rows on one URL in the same bar. The comment sits ABOVE the label
+  // rather than between it and the row, because test/nav-parity.test.js
+  // measures the SOURCE distance from the label to `<a href="/markets"`.
   `<span class="navsec">Tools</span>` +
-  `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
+  (signedIn
+    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
+    : "") +
   // The 1031 guide, a bar row for a MEMBER only (2026-08-29, narrowed
   // 2026-08-30). See NAV_LINKS for why: the rail hides the Explore dropdown,
   // so for a signed-in member this was the only link in it they actually
@@ -10701,7 +10777,6 @@ const FOOTER_LINK_COLS =
   // Pricing had no URL at all until 2026-08-28 — only a modal inside
   // index.html, which cannot be linked, indexed, or sent in an email.
   `<li><a href="/pricing">Pricing</a></li>` +
-  `<li><a href="/how-it-works">How it works</a></li>` +
   // The FAQ is a page, not an anchor into the landing page, since
   // 2026-09-01. The old href still resolved but landed a reader who
   // asked a question at the top of a page whose FAQ had moved.
@@ -12409,383 +12484,22 @@ function renderMarketDirectoryHTML(signedIn) {
     head: mapUi ? LEAFLET_HEAD : "", current: "/markets",
   });
 }
-
-
-// ---------------------------------------------------------------------------
-// How It Works — the standalone proof page. The landing page sells; this page
-// explains. It holds the four blocks that used to live below the fold on the
-// home page (stat strip, sample report exhibit, the three-step method, FAQ),
-// reached from the header nav and the footer.
+// How It Works — RETIRED 2026-09-02.
 //
-// Server-rendered and SELF-CONTAINED like the market pages: its own inline
-// <style>, so it does NOT depend on the purged tailwind.css and never breaks
-// when a utility class is missing from that build. The CSS below is the
-// Research Desk system copied from index.html's rd-* block, so the page reads
-// as the same site rather than the older market-page skin.
-// ---------------------------------------------------------------------------
-const HOW_CSS = `
-${THEME_CSS}
-*{box-sizing:border-box}
-body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;
-  font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  -webkit-font-smoothing:antialiased}
-a{color:var(--red);text-decoration:none}a:hover{color:var(--red-deep)}
-/* Matches MARKET_CSS's .wrap exactly; the reasoning is on that copy. */
-.wrap{max-width:1120px;margin:0 auto;padding:0 16px}
-/* Header — mirrors index.html's bar so navigating here feels continuous. */
-.hdr{border-bottom:1px solid var(--line);background:var(--paper)}
-/* Wraps on narrow screens: the nav drops to its own row rather than squeezing
-   each link into a two-line column (which overflowed the viewport at 375px). */
-.hdr .wrap{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;row-gap:10px;padding-top:16px;padding-bottom:16px}
-.hleft{display:flex;align-items:center;gap:18px}
-.brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
-.brand svg{height:28px;width:28px;flex-shrink:0}
-/* The header CN_LOGO mark (never the footer's CN_LOGO_LIGHT, which has no
-   .cn-logo class and stays literal white on purpose -- see its declaration
-   in server.js). Overrides the SVG's literal fill= fallback: a stylesheet
-   rule beats a presentation attribute regardless of selector specificity. */
-.cn-logo rect{fill:var(--ink)}
-.cn-logo polygon{fill:var(--red-fill)}
-.wordmark{font-size:15px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink)}
-.wordmark b{color:var(--red);font-weight:600}
-.hdr nav{display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;font-size:13.5px}
-.hdr nav a{color:var(--ink-mute);white-space:nowrap}.hdr nav a:hover{color:var(--ink)}
-.hdr nav a.on{color:var(--ink);font-weight:500}
-/* Explore dropdown — same pattern as MARKET_CSS; keep the two in step. The
-   FAQ accordions below are also <details>, which is why every rule (and the
-   close-on-outside-click script) is scoped to ".hdr nav". */
-.hdr nav details{position:relative}
-.hdr nav summary{list-style:none;cursor:pointer;color:var(--ink-mute);white-space:nowrap;user-select:none}
-.hdr nav summary::-webkit-details-marker{display:none}
-.hdr nav summary:hover,.hdr nav details[open] summary{color:var(--ink)}
-/* The reader is on a page inside this menu. box-shadow, not border-bottom:
-   a border adds 2px of height to one nav item and jogs the whole row. */
-.hdr nav summary.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--red)}
-.hdr nav summary .car{display:inline-block;font-size:9px;margin-left:3px;color:var(--ink-faint)}
-.hdr nav .dd{position:absolute;right:0;top:calc(100% + 10px);z-index:1100;background:var(--card);
-  border:1px solid var(--line);border-radius:8px;box-shadow:0 10px 15px -3px rgba(0,0,0,.1),0 4px 6px -4px rgba(0,0,0,.1);
-  padding:4px 0;min-width:176px}
-.hdr nav .dd a{display:block;padding:8px 12px;color:var(--ink-body)}
-.hdr nav .dd a:hover{background:var(--wash);color:var(--ink)}
-.hdr nav .dd a.on{color:var(--ink);font-weight:500}
-/* Touch targets and the phone menu anchor — see the matching block in
-   MARKET_CSS for why each line is the way it is; keep the two in step. */
-.hdr nav>a,.hdr nav>details>summary,.hdr nav>button{position:relative}
-.hdr nav>a::after,.hdr nav>details>summary::after,.hdr nav>button::after{
-  content:"";position:absolute;left:0;right:0;top:-5px;bottom:-5px}
-${RAIL_CSS}
-@media (max-width:639.98px){
-  .hdr .wrap{position:relative}
-  .hdr nav details{position:static}
-  .hdr nav .dd{left:16px;right:16px;min-width:0}
-  .hdr nav .dd .em{max-width:none}
-}
-/* Type + section furniture */
-.kicker{font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--red);font-weight:600}
-.h{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.005em;color:var(--ink);margin:0}
-h1.h{font-size:38px;line-height:1.12;margin:12px 0 0;max-width:20ch}
-h2.h{font-size:27px;margin:8px 0 0}
-h3{font-size:15px;font-weight:600;color:var(--ink);margin:0 0 6px}
-.lead{color:var(--ink-2);font-size:16.5px;max-width:58ch;margin:16px 0 0}
-.sub{color:var(--ink-2);font-size:14px;max-width:60ch;margin:4px 0 20px}
-section{padding:48px 0}
-.band{background:var(--wash);box-shadow:0 0 0 100vmax var(--wash);clip-path:inset(0 -100vmax)}
-.lab{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600;margin-bottom:2px}
-/* Sample-report exhibit (Directions E+F, owner-approved 2026-08-09). This is
-   the ONLY place a visitor sees the product before signing up, so it is built
-   as a faithful miniature of the real report rather than a layout of its own:
-   title block, ink-ruled sections, the value ledger, and the comp table
-   closing on its double-ruled median. Keep it in step with index.html's
-   .rd-ledger and #compsTable rules — when the report changes shape, this
-   exhibit is what tells visitors it did. */
-.exhibit{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
-.cap{padding:12px 20px;border-bottom:1px solid var(--hair);font-size:11.5px;color:var(--ink-3);letter-spacing:.06em;text-transform:uppercase;display:flex;justify-content:space-between;gap:12px}
-.exbody{padding:20px}
-/* The vault sheet: the hero's exhibit since 2026-08-29. Same shell recipe as
-   .exhibit deliberately — a broker should read them as two views of one
-   product — but a DIFFERENT class, because the landing page is allowed
-   exactly one .exhibit (a test counts them; the mini-plus-full pair was a
-   real bug) and because this one is a book, not a report.
-   It is NOT animated and carries no data-rv: it is above the fold, where a
-   reveal costs LCP and buys nothing, and where a missing reduced-motion
-   reset would photograph as a blank band. */
-.vault{border:1px solid var(--edge);background:var(--card);border-radius:6px;overflow:hidden;box-shadow:var(--lift)}
-.vrow{display:grid;grid-template-columns:1fr auto;gap:4px 16px;padding:11px 0;border-top:1px solid var(--hair);align-items:baseline}
-.vrow:first-child{border-top:0}
-.vaddr{font-size:13.5px;color:var(--ink)}
-.vsub{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;grid-column:1}
-.vpsf{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;grid-column:2;grid-row:1/3}
-/* Below 480px the rate drops under the address rather than squeezing it. */
-@media(max-width:479.98px){
-  .vrow{grid-template-columns:1fr}
-  .vpsf{grid-column:1;grid-row:auto;text-align:left}
-}
-/* "What leaves it" — the one thing about a private vault a broker actually
-   wants answered, drawn as a foot strip rather than said in prose. */
-.vout{margin-top:14px;padding:12px 14px;background:var(--wash-2);border-radius:5px;border-top:1.5px solid var(--ink)}
-.vout p{font-size:12.5px;color:var(--ink-body);margin:6px 0 0;font-variant-numeric:tabular-nums;line-height:1.55}
-/* Three panes: one comp, redacted by who is looking. */
-.three{display:grid;grid-template-columns:1fr;gap:14px;margin-top:20px}
-@media(min-width:760px){.three{grid-template-columns:repeat(3,1fr)}}
-.pane{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:16px 18px;box-shadow:var(--lift)}
-/* The redacted pane sits on --wash-2, the one token that darkens in light and
-   lightens in dark, so "less is shown here" reads at a glance in both themes. */
-.pane.r{background:var(--wash-2)}
-.pnl{font-family:Georgia,'Times New Roman',serif;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:6px}
-.pnn{font-size:12.5px;color:var(--ink-3);margin:8px 0 0;line-height:1.55}
-.exaddr{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:19px;color:var(--ink);letter-spacing:-.005em}
-.exmeta{display:flex;flex-wrap:wrap;font-size:11px;color:var(--ink-mute);margin-top:6px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
-.exmeta span{padding-right:12px;margin-right:12px;border-right:1px solid var(--hair)}
-.exmeta span:last-child{border-right:0;margin-right:0;padding-right:0}
-.exmeta.plain{display:block;border-bottom:0;padding-bottom:0;margin-bottom:12px;font-size:10.5px;color:var(--ink-3)}
-.exsec{margin-top:16px}
-.secrule{display:flex;align-items:baseline;justify-content:space-between;gap:12px;border-bottom:1.5px solid var(--ink);padding-bottom:4px;margin-bottom:9px}
-.seclab{font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--ink)}
-.secnote{font-size:9.5px;color:var(--ink-3);text-align:right}
-.ledger{display:flex;border:1px solid var(--edge);border-radius:5px;overflow:hidden}
-.lcell{flex:1;min-width:0;padding:10px 14px;border-right:1px solid var(--hair)}
-.lcell:last-child{border-right:0}
-/* LIKELY sets its figure at 22px against its neighbours' 18px, so it is the
-   cell that runs out of room first: eight digits measure 115px inside the
-   108px an even three-way split leaves at 1280px. Widen the cell rather than
-   shrink the type -- the size difference IS the emphasis this ledger exists
-   to give the middle number. */
-.lcell.mid{background:var(--wash-2);flex:1.15}
-.lcell.mid .lab{color:var(--red)}
-/* Same --wash-2 step-up as MARKET_CSS above, for the landing page's sample
-   exhibit. Its ledger uses .lab and .psf where the market pages' uses .k
-   and .n, which is why the rule cannot be shared. Dark only. */
-[data-theme="dark"] .lcell.mid .psf{color:var(--ink-2)}
-[data-theme="dark"] .lcell.mid .lab{color:var(--red-deep)}
-/* white-space:nowrap here is load-bearing, not cosmetic. The scroll
-   choreography below splits "$4,730,000" into a "$" text node plus an
-   inline-block .cu span, so the numeral can tick without shoving its cell
-   around on every frame -- and that split MANUFACTURES a line-break
-   opportunity the plain string never had. The HTML as served wraps nowhere;
-   the scripted DOM broke the LIKELY figure across two lines with the "$"
-   stranded alone above it, on the one number a visitor came to see. The rule
-   belongs on .fig rather than on .cu because the break is BETWEEN the two
-   boxes, not inside either one. */
-.fig{font-family:Georgia,'Times New Roman',serif;font-weight:500;color:var(--ink);font-size:18px;margin-top:2px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.lcell.mid .fig{font-size:22px}
-.psf{font-size:10.5px;color:var(--ink-3);margin-top:2px}
-/* Three cells side by side need ~430px before the figures stop fitting, and
-   this sheet had no rule to stack them, so every phone drew all three values
-   broken across three lines each. Matches index.html's .rd-ledger breakpoint
-   (639.98px) rather than MARKET_CSS's 700px on purpose: this exhibit is a
-   miniature of the REPORT, so it should fold where the report folds. */
-@media (max-width:639.98px){
-  .ledger{flex-direction:column}
-  .lcell{border-right:0;border-bottom:1px solid var(--hair)}
-  .lcell:last-child{border-bottom:0}
-}
-.drv{font-size:13px;color:var(--ink-body);padding:7px 0;border-top:1px solid var(--hair);display:flex;gap:8px}
-.drv:first-of-type{border-top:0}
-.drv b{color:var(--red);font-weight:700}
-.exscroll{overflow-x:auto}
-table.comps{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
-table.comps th{text-align:left;color:var(--ink-3);font-weight:600;padding:7px 8px 7px 0;border-bottom:2px solid var(--ink);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase}
-table.comps td{padding:9px 8px 9px 0;border-bottom:1px solid var(--hair);white-space:nowrap}
-table.comps th.n,table.comps td.n{text-align:right}
-table.comps tfoot td{border-top:1px solid var(--ink);border-bottom:3px double var(--ink);font-weight:600}
-table.comps tfoot .tl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-mute)}
-/* The two-column band: a claim on the left, an exhibit on the right.
-   Used TWICE since 2026-08-29 — the hero, and the proof section the address
-   search moved down into — which is why it is no longer called .hero2. One
-   grid, one name: two names for one grid is how .bk came to be declared in
-   both MARKET_CSS and here.
-   Stacks claim-first below 900px, so a phone loses nothing but the order. */
-.split{display:grid;grid-template-columns:1fr;gap:28px}
-.split h1.h{max-width:none}
-.split .lead{max-width:48ch}
-/* The exhibit takes the WIDER half (was 1.05fr .95fr, claim-first). The claim
-   is four short lines and a search row; the exhibit is a five-comp table that
-   was overflowing its scroller by 26px and cutting "Ridgeline CRE" off
-   mid-word, next to a left column sitting on 300px of dead air. Handing the
-   26px across costs the headline nothing and buys the table its last column. */
-@media(min-width:900px){.split{grid-template-columns:.95fr 1.05fr;gap:36px;align-items:start}}
-/* The hero's action row. The address field used to BE the hero CTA; the hero
-   now sells the vault, so the primary action is an account and this is a
-   button beside a text link rather than a form. */
-.hcta{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin-top:24px}
-.hcta .lnk{font-size:13.5px;color:var(--red);text-decoration:none;border-bottom:1px solid transparent}
-.hcta .lnk:hover{border-bottom-color:var(--red)}
-.badge{display:inline-block;font-size:10.5px;font-weight:600;border-radius:3px;padding:1.5px 7px;white-space:nowrap;line-height:1.4}
-.badge.v{color:var(--ok-text);background:var(--ok-bg)}
-.badge.p{color:var(--ink-body);background:var(--wash)}
-.badge.li{color:var(--warn-text);background:var(--warn-bg)}
-/* "From your vault" — an OWNERSHIP statement, never provenance. It must never
-   be .badge.v: green Verified is a public claim the server awards when a named
-   broker vouches, and a private row has not earned it. Same tokens the app's
-   own vault chip uses (index.html), so the landing page and the product agree. */
-.badge.bv{color:var(--bv-text);background:var(--bv-bg)}
-.legend{display:flex;flex-wrap:wrap;gap:8px 24px;margin-top:16px;font-size:13px;color:var(--ink-2);align-items:center}
-/* The badge key sits under the exhibit it decodes, in the proof section. It
-   spent 2026-08-21 to 08-29 stacked vertically inside the hero's claim column,
-   filling dead air beside the exhibit; the hero no longer has that column and
-   the key no longer has that job, so the vertical variant is gone and a
-   wrapping row is the shape at every width. */
-.legend span.i{display:flex;align-items:center;gap:8px}
-/* Method steps */
-.steps{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr;margin-top:20px;box-shadow:var(--lift)}
-.step{padding:22px 24px;border-bottom:1px solid var(--hair)}
-.step:last-child{border-bottom:0}
-.num{font-family:Georgia,serif;font-size:13px;color:var(--red);margin-bottom:8px}
-.step p{font-size:13.5px;color:var(--ink-mute);margin:0}
-/* Brokers ledger — three trades as a statement, not a process. Do not reuse
-   .steps: Method's 3-up encodes sequence; Private / Credit / Leads do not. */
-.bk{border:1px solid var(--edge);border-radius:6px;overflow:hidden;background:var(--card);margin-top:20px;box-shadow:var(--lift)}
-.bkrow{display:grid;grid-template-columns:1fr;gap:8px;padding:22px 24px;border-bottom:1px solid var(--hair)}
-.bkrow:last-child{border-bottom:0}
-.bklag{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--red);padding-top:2px}
-.bk p{font-size:13.5px;color:var(--ink-mute);margin:0}
-.bk .badge{margin:0 0 8px}
-.bkmore{margin:18px 0 40px}
-/* FAQ accordions — chevron marker, matching the home page's disclosure style */
-details.q{background:var(--card);border:1px solid var(--edge);border-radius:6px;padding:16px 20px;margin-bottom:12px;box-shadow:var(--lift)}
-details.q summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:16px;cursor:pointer;font-weight:600;color:var(--ink)}
-details.q summary::-webkit-details-marker{display:none}
-/* This chevron's stroke color is %2394a3b8 -- #94A3B8 URL-encoded inside an
-   inline SVG data URI. It stands in for --ink-3 and can't be tokenized:
-   var() cannot reach inside a data: URI. It happens to be exactly --ink-3's
-   DARK value (theme.js), which is a coincidence, not a fix -- it's why this
-   chevron reads correctly in both themes today. If --ink-3's dark value
-   ever changes, this literal silently stops matching and needs updating by
-   hand; it will not error, just drift. */
-details.q summary::after{content:"";width:16px;height:16px;flex-shrink:0;transition:transform .25s ease;
-  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center/contain no-repeat}
-details.q[open] summary::after{transform:rotate(180deg)}
-details.q p{font-size:14px;color:var(--ink-mute);margin:8px 0 0;max-width:80ch}
-/* Closing CTA */
-.cta{border:1px solid var(--edge);background:var(--card);border-radius:6px;padding:28px;text-align:center;margin:8px 0 48px;box-shadow:var(--lift)}
-.cta p{color:var(--ink-2);font-size:14px;margin:8px auto 20px;max-width:52ch}
-.btn{display:inline-block;background:var(--red-fill);color:#fff;font-weight:600;padding:11px 26px;border-radius:4px;font-size:14.5px}
-.btn:hover{background:var(--red-fill-hover);color:#fff}
-/* Header signup control. .hdr nav a already sets a colour and out-specifies
-   .btn, so the white has to be restated at that specificity. */
-.hdr nav a.btn,.hdr nav a.btn:hover{color:#fff}
-.btn.sm{padding:7px 14px;font-size:13px}
-.band section{padding:72px 0}
-.landForm{margin-top:0}
-.landRow{display:flex;align-items:stretch;border:1px solid var(--edge);border-radius:6px;background:var(--card);overflow:hidden;box-shadow:var(--lift)}
-/* 16px, not 14.5: iOS Safari zooms the page when a field smaller than that
-   takes focus, and this is the one field the landing page exists to get
-   typed into — so the reward for tapping it was a zoomed, sideways-scrolled
-   page (2026-08-23). The .vform input on the market pages is already 16px
-   for the same reason; keep any new public field at or above it. */
-.landRow input{flex:1;min-width:0;border:0;background:transparent;padding:12px 14px;font:inherit;font-size:16px;color:var(--ink);outline:none}
-.landRow input::placeholder{color:var(--ink-3)}
-button.btn{border:0;cursor:pointer;font-family:inherit}
-.landRow .btn{border-radius:0;flex-shrink:0}
-.landFine,.landProof{font-size:13px;color:var(--ink-mute);margin:10px 0 0}
-.landProof{color:var(--ink-2)}
-.heroCta{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin-top:24px}
-/* align-items:flex-start shrink-wraps every child, which left the search row
-   at 326px of a 502px column and the field at 187px -- narrow enough that its
-   own placeholder truncated to "e.g. 1200 W Industrial B". The row is the
-   page's primary action; it gets the column. */
-.heroCta .landForm{align-self:stretch;width:100%}
-.heroCta .alt{font-size:13.5px;color:var(--ink-mute)}
-/* Footer — the navy ink footer from the home page */
-footer{background:var(--slab);color:var(--ink-4);font-size:13px}
-footer .wrap{padding:40px 16px;display:flex;flex-direction:column;justify-content:space-between;gap:32px}
-footer .wordmark{color:#fff}
-footer p{color:var(--ink-faint);margin:12px 0 0;max-width:68ch;line-height:1.6}
-${FOOTER_LINKS_CSS}
-${FOOTER_DARK_CSS}
-@media (min-width:640px){
-  .hdr nav{gap:24px}
-  .steps{grid-template-columns:repeat(3,1fr)}
-  .step{border-bottom:0;border-right:1px solid var(--hair)}
-  .step:last-child{border-right:0}
-  .bkrow{grid-template-columns:7.5rem 1fr;gap:20px;align-items:start}
-  h1.h{font-size:42px}
-  footer .wrap{flex-direction:row}
-  footer .right{flex-shrink:0}
-}
-/* ---------------------------------------------------------------------------
-   Scroll choreography (owner-approved 2026-08-10). The page draws the report
-   as you reach it: blocks fade up, the exhibit's ink rules sweep out from the
-   left, the value ledger counts up to its figures, and the comp rows deal in.
-
-   THREE RULES HOLD THIS TOGETHER.
-
-   Every hiding rule is scoped under html.anim, and the only thing that sets
-   that class is the inline script in <head>. With JS off, broken, or still
-   arriving, the page renders whole. This is the site's SEO surface AND its
-   login door, so no content may strand itself invisible behind an animation
-   that never ran — the same reason the observer's fallback path reveals
-   everything at once rather than doing nothing.
-
-   The hero deliberately does NOT fade. Its h1 is the LCP element, so hiding
-   it for 450ms would trade a real page-speed metric for decoration nobody
-   has scrolled to yet. Above the fold, only the sample exhibit moves.
-
-   data-rv marks an element the observer watches; the rv CLASS additionally
-   fades it up. They are separate because the exhibits need the trigger
-   WITHOUT the fade — their own rules, rows and figures do the moving, and a
-   parent fading at the same time would just blur all of it. */
-.anim .rv{opacity:0;transform:translateY(12px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .rv.on{opacity:1;transform:none}
-/* Ink rules draw left to right. clip-path, not scaleX: scaling a 1.5px border
-   blurs it at fractional widths, and it would squash the label riding on the
-   same line instead of wiping it in beside the rule. */
-.anim .exhibit .secrule{clip-path:inset(0 100% 0 0);transition:clip-path .55s ease-out}
-.anim .exhibit.on .secrule{clip-path:inset(0 0 0 0)}
-/* Comp rows deal in behind the rules. The stagger is per-row CSS rather than
-   per-element JS, so it costs nothing at runtime. Their NUMBERS never animate:
-   this exhibit's whole pitch is that the arithmetic checks out, so every
-   figure in it appears correct and stays correct. */
-.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:0;transform:translateY(6px);transition:opacity .4s ease-out,transform .4s ease-out}
-/* The row separators fade WITH their row. A collapsed table's borders are
-   painted by the TABLE, not by the row, so a row at opacity 0 still drew its
-   own rule: the body sat there as an empty ruled grid while the text arrived,
-   which reads as a loading skeleton rather than as a report being written.
-   Transitioning the border COLOUR is what keeps this layout-neutral — a
-   border swapped for an inset box-shadow paints the same and gives up the 1px
-   of height it contributes, shortening the table as it animates. The thead
-   rule is deliberately NOT included: its header text never fades, so a rule
-   under it is correct from the first frame. */
-.anim .exhibit tbody td{border-bottom-color:transparent;transition:border-bottom-color .4s ease-out}
-.anim .exhibit tfoot td{border-top-color:transparent;border-bottom-color:transparent;transition:border-top-color .4s ease-out,border-bottom-color .4s ease-out}
-.anim .exhibit.on tbody tr,.anim .exhibit.on tfoot tr{opacity:1;transform:none}
-.anim .exhibit.on tbody td{border-bottom-color:var(--hair)}
-.anim .exhibit.on tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink)}
-/* The delays come LAST on purpose. A transition SHORTHAND resets
-   transition-delay to 0, and the tfoot rules above match at exactly the same
-   specificity as this one, so whichever is written later wins — put the
-   shorthands after these and the footer silently loses its stagger and
-   arrives with the first row. (Caught in the browser: the footer's rule was
-   99% opaque 300ms in, when it should not have started.) */
-.anim .exhibit tbody tr:nth-child(1),.anim .exhibit tbody tr:nth-child(1) td{transition-delay:.40s}
-.anim .exhibit tbody tr:nth-child(2),.anim .exhibit tbody tr:nth-child(2) td{transition-delay:.47s}
-.anim .exhibit tbody tr:nth-child(3),.anim .exhibit tbody tr:nth-child(3) td{transition-delay:.54s}
-.anim .exhibit tbody tr:nth-child(4),.anim .exhibit tbody tr:nth-child(4) td{transition-delay:.61s}
-.anim .exhibit tbody tr:nth-child(5),.anim .exhibit tbody tr:nth-child(5) td{transition-delay:.68s}
-.anim .exhibit tfoot tr,.anim .exhibit tfoot td{transition-delay:.75s}
-/* Method steps arrive one after another. */
-.anim .steps .step,.anim .bk .bkrow,.anim .three .pane{opacity:0;transform:translateY(8px);transition:opacity .45s ease-out,transform .45s ease-out}
-.anim .steps.on .step,.anim .bk.on .bkrow,.anim .three.on .pane{opacity:1;transform:none}
-.anim .steps .step:nth-child(2),.anim .bk .bkrow:nth-child(2),.anim .three .pane:nth-child(2){transition-delay:.07s}
-.anim .steps .step:nth-child(3),.anim .bk .bkrow:nth-child(3),.anim .three .pane:nth-child(3){transition-delay:.14s}
-/* A counting figure reserves its finished width before the first tick (the
-   script measures it and sets min-width), so a number growing from 0 to
-   $4,580,000 never reflows the cell it sits in. */
-.cu{display:inline-block}
-/* Motion is decoration. These two contexts get the finished page instead. */
-@media (prefers-reduced-motion:reduce){
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1;transform:none;transition:none}
-  .anim .exhibit .secrule{clip-path:none;transition:none}
-  .anim .exhibit tbody td{border-bottom-color:var(--hair);transition:none}
-  .anim .exhibit tfoot td{border-top-color:var(--ink);border-bottom-color:var(--ink);transition:none}
-}
-@media print{
-  .anim .rv,.anim .steps .step,.anim .bk .bkrow,.anim .three .pane,.anim .exhibit tbody tr,.anim .exhibit tfoot tr{opacity:1!important;transform:none!important}
-  .anim .exhibit .secrule{clip-path:none!important}
-  .anim .exhibit tbody td{border-bottom-color:var(--hair)!important}
-  .anim .exhibit tfoot td{border-top-color:var(--ink)!important;border-bottom-color:var(--ink)!important}
-}
-${ACCOUNT_NAV_CSS}`;
+// The page and its stylesheet (HOW_CSS) were deleted outright, and /how-it-works
+// now 301s to /brokers-firms. It was never in the top menu — only in the two
+// footers — and everything it held had already moved out from under it: its FAQ
+// went to /faq's array on 2026-09-01, its vault/firm/sharing bands went to the
+// home page and /brokers-firms, and its Method steps were the last thing left.
+// A page nothing links to is a page nobody reads, and it was still carrying a
+// ~360-line stylesheet that had to be kept in step with MARKET_CSS by hand.
+//
+// A REDIRECT, never a 404: the URL is in the wild (it was the account wall's
+// front door for four weeks, it is in Search Console, and old emails point at
+// it). 301 rather than 302 so the ranking it earned transfers to the audience
+// page that replaced it. It comes OUT of sitemap.xml in the same commit — a
+// sitemap must never list a URL that redirects, the rule /brokers and /firms
+// were removed under on 2026-09-01.
 
 // HOW_FAQ lived here until 2026-09-01. It was one array feeding both the
 // /how-it-works accordions and that page's FAQPage JSON-LD; the questions are
@@ -13406,409 +13120,6 @@ function renderHomeHTML({ signedIn = false } = {}) {
     // carried, restated because the argument is easy to lose.
     current: signedIn ? "" : "/",
   });
-}
-
-function renderHowItWorksHTML({ signedIn = false } = {}) {
-  // The methodology page, and ONLY that since 2026-09-01.
-  //
-  // It spent 2026-08-08 to 2026-09-01 doing two jobs: under ACCOUNT_WALL this
-  // same render also answered `/` for a logged-out visitor, with a `home`
-  // flag that swapped the title and canonicalized both URLs onto `/`. That
-  // existed because `/` had no page of its own and a 302 to this one was
-  // never crawled. `/` is design 3a now (renderHomeHTML), so the flag is gone
-  // and this page canonicalizes to itself again — and is back in the sitemap,
-  // because it is no longer a self-declared duplicate of anything.
-  //
-  // What left with the split, and where it went: the vault hero and the firm
-  // shelf are the home page's intro and For-firms bands plus /brokers-firms;
-  // the sharing panes are /brokers-firms; the FAQ accordions are /faq; the
-  // brokers ledger is /brokers-firms. What stayed is the part named on the tin
-  // — the three Method steps and the sample-report anatomy with its badge
-  // legend.
-  //
-  // The title matches a question people actually type. Description trimmed to
-  // the ~160 characters Google renders. No brand suffix here — this page's
-  // own shell appends " | CompNinja".
-  const title = "How Commercial Property Valuation Works";
-  const canonical = `${SITE_URL}/how-it-works`;
-  const description =
-    "How a CompNinja report is built: live searches of public records and listings, " +
-    "a source badge on every comp, and a value range for your building.";
-
-  // Illustrative sample, clearly captioned as such — the same exhibit that
-  // used to sit on the home page. Figures are representative, not a live pull.
-  // ONE illustrative comp set feeds the hero exhibit. The figures are
-  // internally honest, which the previous set was not: SAMPLE_MEDIAN is the
-  // real median of these five $/SF values, the "Likely" value equals that
-  // median x the subject size (21,600 SF), and Low and High are the size x
-  // the cheapest and dearest comp. A visitor who checks the arithmetic finds
-  // it holds, and that is the whole pitch of the page it sits on.
-  const SAMPLE_SIZE_SQFT = "21,600";
-  const SAMPLE_MEDIAN = "$219";
-  const SAMPLE_COMPS = [
-    { addr: "9020 Center Ave", sold: "May 26", sf: "21,400", psf: "$238",
-      badge: `<span class="badge v">Verified &middot; via Ridgeline CRE</span>`, short: `<span class="badge v">Verified</span>` },
-    { addr: "11215 4th St", sold: "Mar 26", sf: "18,750", psf: "$226",
-      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
-    { addr: "8933 Utica Ave", sold: "Feb 26", sf: "24,100", psf: "$219",
-      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
-    { addr: "10722 Arrow Route", sold: "Dec 25", sf: "19,900", psf: "$214",
-      badge: `<span class="badge p">Public record</span>`, short: `<span class="badge p">Public record</span>` },
-    { addr: "12190 6th St", sold: "Nov 25", sf: "26,300", psf: "$208",
-      badge: `<span class="badge li">Listing</span>`, short: `<span class="badge li">Listing</span>` },
-  ];
-  const sampleComps = SAMPLE_COMPS.map((c) =>
-    `<tr><td>${escHtml(c.addr)}</td><td>${escHtml(c.sold)}</td><td class="n">${escHtml(c.sf)}</td>` +
-    `<td class="n">${escHtml(c.psf)}</td><td>${c.badge}</td></tr>`).join("");
-  // Low / Likely / High, as the report itself renders them: Likely IS the
-  // comp median, which is why it carries that label in the sub-line.
-  const sampleLedger = [
-    ["Low", "$4,580,000", "at $212/SF"],
-    ["Likely", "$4,730,000", `at ${SAMPLE_MEDIAN}/SF`],
-    ["High", "$5,140,000", "at $238/SF"],
-  ];
-  // The dollar figure counts up on scroll. It names its numeral in an
-  // attribute and leaves the copy alone — the script does the splitting, so
-  // the served page still reads "$4,580,000" as one string. Derived from the
-  // display value rather than carried as a second numeric field, so the two
-  // can never disagree; a figure that stops matching this shape simply gets
-  // no counter rather than a broken one.
-  const countAttr = (fig) => {
-    const m = /^\$([\d,]+)$/.exec(fig);
-    return m ? ` data-count="${m[1]}"` : "";
-  };
-  const ledgerCells = (nameMedian) => sampleLedger.map(([lab, fig, sub], i) =>
-    `<div class="lcell${i === 1 ? " mid" : ""}"><span class="lab">${lab}</span><div class="fig"${countAttr(fig)}>${fig}</div>` +
-    `<div class="psf">${sub}${nameMedian && i === 1 ? " &middot; comp median" : ""}</div></div>`).join("");
-
-  const steps = [
-    // "not read from a stale database" was cut 2026-08-21. It was written when
-    // a live web search was the whole product, and it had become false: the
-    // corpus layer means every search DOES read what we already hold first
-    // (retrieveCorpusComps runs on a cache miss, before anything is billed,
-    // and its rows are offered to the model), and archive-first retrieval
-    // landed the same day. The line was telling visitors that reading stored
-    // comps is the shoddy way to do this, on a page selling a product whose
-    // stored comps are the asset. The heading stays "Search live" on the
-    // owner's call: the live search is still the front door and this is a
-    // correction, not a repositioning.
-    ["I.", "Search live",
-     "We check what we already hold, then search public records, listings and news for anything missing."],
-    ["II.", "Cite everything",
-     "Each comp carries its source and a confidence badge. Unknown provenance is labeled an estimate, never dressed up."],
-    ["III.", "Value the subject",
-     "Building size comes from public records; the range comes from sale comps. Your price and NOI stay in your browser."],
-  ].map(([n, h, p]) =>
-    `<div class="step"><div class="num">${n}</div><h3>${escHtml(h)}</h3><p>${escHtml(p)}</p></div>`).join("");
-
-  // The brokers ledger and the FAQ accordions that used to be built here went
-  // to /brokers and /faq on 2026-09-01 — see the note on this function. The
-  // three trades still exist, in BROKERS_FAQ's own page and in that page's
-  // ledger; the questions still exist, in faq-page.js.
-
-  const landingDest = signedIn ? "/" : "/?auth=signup";
-
-  const jsonLd = JSON.stringify({
-    "@context": "https://schema.org",
-    "@graph": [
-      ...brandGraph(),
-      {
-        "@type": "WebPage",
-        name: title,
-        description,
-        url: canonical,
-        isPartOf: { "@id": WEBSITE_ID },
-        publisher: { "@id": ORG_ID },
-        // Unconditional since 2026-09-01: this page is never the root any
-        // more, so there is always a `/` above it to breadcrumb back to.
-        breadcrumb: {
-          "@type": "BreadcrumbList",
-          itemListElement: [
-            { "@type": "ListItem", position: 1, name: "CompNinja", item: `${SITE_URL}/` },
-            { "@type": "ListItem", position: 2, name: title, item: canonical },
-          ],
-        },
-      },
-      // The FAQPage node left with the accordions that fed it. It is emitted
-      // by the /faq route now: FAQ structured data on a page showing no FAQ
-      // is the mismatch Google flags.
-      {
-        "@type": "WebApplication",
-        name: "CompNinja",
-        url: `${SITE_URL}/`,
-        applicationCategory: "BusinessApplication",
-        operatingSystem: "Web",
-        // Every head term this node already carried is kept verbatim; the
-        // vault clause is added, not substituted. This is the structured
-        // description of the PRODUCT, and it is what a crawler reads when the
-        // page's own prose leads with the archive.
-        description: "Free reports of recent comparable sales and lease transactions for any commercial property, " +
-          "with maps, price per square foot, and PDF export. Members can keep a private vault of their own " +
-          "closed deals, which appears only in their own reports.",
-        featureList: [
-          "Comparable sales and lease comps",
-          "Estimated value range",
-          "Source badge on every comp",
-          "Private comp vault",
-          "CSV and XLSX export",
-          "PDF report export",
-        ],
-        // Stays a free Offer: a free tier genuinely exists, and turning this
-        // into an AggregateOffer invites rich-result revalidation for no gain.
-        offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
-        provider: { "@id": ORG_ID },
-        publisher: { "@id": ORG_ID },
-      },
-    ],
-  });
-
-  // The header IS marketBar since 2026-08-20 — this page carried a hand-kept
-  // copy of the identical markup (the diff was one aria-current, now
-  // marketBar's `current` argument), and two copies of a nav drift.
-  // Everything recorded on marketBar holds here: auth chrome on cookie
-  // presence, desk:false slots so My Desk renders exactly once, and the
-  // caching split (no-store + vary: cookie) that keeps the signed-in
-  // variant honest.
-  // The vault sheet and the firm ledger that used to be built here went to
-  // the home page's For-firms band and to /firms on 2026-09-01 — see the note
-  // on this function. Their CSS (.vault/.vrow, .bk/.bkrow) stays in HOW_CSS:
-  // .bk is still used by /brokers through MARKET_CSS's own copy, and removing
-  // rules is a separate change from removing the markup that used them.
-
-  const body = `
-${marketBar(signedIn, "/how-it-works")}
-
-<main>
-  <div class="wrap">
-    <!-- No kicker on the opening section: the band below it is the Method
-         band and carries that word itself, and two "METHOD" eyebrows one
-         screen apart read as a rendering bug. The h1 is the label. -->
-    <section style="padding-bottom:24px">
-      <h1 class="h">How a comp report is built.</h1>
-      <p class="lead">Every figure on a CompNinja report can be traced back to where it came
-        from. This page is the whole of it: what we search, how a comp earns its badge, and
-        how the value range on the front is arrived at.</p>
-    </section>
-  </div>
-
-  <div class="band"><div class="wrap">
-    <section class="rv" data-rv>
-      <div class="kicker">Method</div>
-      <h2 class="h">How a report comes together.</h2>
-      <div class="steps" data-rv>${steps}</div>
-    </section>
-  </div></div>
-
-  <div class="wrap">
-    <section class="rv" data-rv>
-      <div class="split">
-        <div>
-          <div class="kicker">Proof</div>
-          <h2 class="h">See it on a building you know.</h2>
-          <p class="sub">Type any commercial address and we run the comps: an estimated value
-            range, the comparable sales behind it, and a source badge on every line. Your
-            price and NOI never leave your browser.</p>
-          <!-- Moved down out of the hero on 2026-08-29, markup intact. The input
-               still carries NO name attribute on purpose: a named field would put
-               a street address on GET /?auth=signup. The handoff is sessionStorage. -->
-          <form id="landingSearch" class="landForm" action="${signedIn ? "/" : "/?auth=signup"}" method="get">
-            <label class="lab" for="landingAddress">Address</label>
-            <div class="landRow">
-              <input id="landingAddress" type="text" required autocomplete="street-address"
-                placeholder="e.g. 1200 W Industrial Blvd, Dallas, TX">
-              <button class="btn" type="submit">Run a report</button>
-            </div>
-          </form>
-          <p class="landFine">Free account. An automated estimate, not an appraisal.</p>
-          <p class="landProof">Cited comps &middot; about a minute &middot; every source disclosed.</p>
-          <div class="legend">
-            <span class="i"><span class="badge v">Verified</span> confirmed by a local broker</span>
-            <span class="i"><span class="badge p">Public record</span> county recorder / assessor</span>
-            <span class="i"><span class="badge li">Listing</span> active or closed listing</span>
-            <!-- Dark-mode fix (2026-08-10, fix round 1): var(--ink-3), an exact
-                 match to the literal this used to carry -- a plain span's
-                 style="" attribute resolves var() reliably, unlike an SVG
-                 presentation attribute, so no class is needed. -->
-            <span style="color:var(--ink-3)">Badges under-claim, never over-claim.</span>
-          </div>
-        </div>
-        <div class="exhibit" data-rv>
-          <div class="cap"><span>Sample report &middot; Industrial &middot; Rancho Cucamonga, CA</span><span>Illustrative</span></div>
-          <div class="exbody">
-            <div class="exaddr">9020 Center Ave, Rancho Cucamonga, CA</div>
-            <div class="exmeta"><span>Industrial</span><span>${SAMPLE_SIZE_SQFT} SF (public record)</span><span>24-month lookback</span><span>5 comparables</span></div>
-            <div class="exsec">
-              <div class="secrule"><span class="seclab">What This Building Is Worth</span><span class="secnote">from 5 comparable sales</span></div>
-              <div class="ledger">${ledgerCells(true)}</div>
-            </div>
-            <div class="exsec">
-              <div class="secrule"><span class="seclab">What&#39;s Driving Prices Here</span></div>
-              <div class="drv"><b>&#9650;</b> Inland Empire vacancy tightening near the I-15 corridor</div>
-              <div class="drv"><b>&#9650;</b> Sub-25K SF buildings trade at a premium: scarce supply</div>
-              <div class="drv"><b>&ndash;</b> Rate environment holding cap rates near 5.9&ndash;6.4%</div>
-            </div>
-            <div class="exsec">
-              <div class="secrule"><span class="seclab">Comparable Properties</span><span class="secnote">source badged per comp</span></div>
-              <div class="exscroll">
-                <table class="comps">
-                  <thead><tr><th>Address</th><th>Sold</th><th class="n">SF</th><th class="n">$/SF</th><th>Source</th></tr></thead>
-                  <tbody>${sampleComps}</tbody>
-                  <tfoot><tr><td class="tl" colspan="3">Median of 5 sale comps &middot; ${SAMPLE_MEDIAN}/SF</td><td class="n">${SAMPLE_MEDIAN}</td><td></td></tr></tfoot>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- The FAQ accordions and the brokers ledger left this page on
-         2026-09-01. The questions are /faq now, a URL that can be linked and
-         indexed; the three broker trades were always a shorter restatement of
-         /brokers-firms, which is where a broker is sent from here and from
-         the footer of every surface. Neither was methodology. -->
-    <p class="bkmore"><a href="/faq">Questions people ask before signing up &rarr;</a>
-      &nbsp;&middot;&nbsp; <a href="/brokers-firms">See the broker side &rarr;</a></p>
-
-    <div class="cta rv" data-rv>
-      <h2 class="h" style="font-size:22px">Start with a free account.</h2>
-      <!-- The price comes from PRICING, never typed here. This page and
-           /pricing are two public statements of the same number, and the FAQ
-           answer above has already been caught stale twice. -->
-      <p>Reports are free and take about a minute. Pro, at $${PRICING.monthly} a month, adds the
-        vault, a ten-year lookback, unlimited exports and your branding on the report.</p>
-      <a class="btn" href="${signedIn ? "/vault" : "/?auth=signup"}">${signedIn ? "Open your vault" : "Create a free account"} &rarr;</a>
-    </div>
-  </div>
-</main>
-
-<!-- MARKET_FOOTER, not a copy of it. This page hand-kept markup that was
-     byte-identical to that constant once whitespace was normalised, which is
-     the third time this file has grown a second copy of the same footer and
-     the second time the copies drifted (see theme.test.js on the dark-ink
-     fix). One constant means the landing page cannot fall behind /brokers
-     again. -->
-${MARKET_FOOTER}
-<script>
-(function(){
-  var f=document.getElementById("landingSearch");
-  if(!f)return;
-  f.addEventListener("submit",function(e){
-    e.preventDefault();
-    var el=document.getElementById("landingAddress");
-    var addr=((el&&el.value)||"").trim();
-    if(!addr)return;
-    try{sessionStorage.setItem("pendingLandingAddress.v1",addr);}catch(err){}
-    location.href=${JSON.stringify(landingDest)};
-  });
-})();
-</script>
-<script>
-(function(){
-  if(!document.documentElement.classList.contains("anim"))return;
-  var targets=[].slice.call(document.querySelectorAll("[data-rv]"));
-  // Split each counting numeral into its own span HERE rather than in the
-  // served HTML, so the page as delivered still reads "$4,580,000" as a
-  // single string for crawlers, for anything grepping it, and for a visitor
-  // with no JS at all. data-count carries the numeral as it is displayed,
-  // commas and all, which is what makes it findable in the text.
-  var counters=[];
-  [].slice.call(document.querySelectorAll("[data-count]")).forEach(function(el){
-    var shown=el.getAttribute("data-count"),text=el.textContent,at=text.indexOf(shown);
-    if(at<0)return;
-    var span=document.createElement("span");
-    span.className="cu";
-    span.setAttribute("data-to",shown.replace(/,/g,""));
-    span.textContent=shown;
-    el.textContent="";
-    if(at)el.appendChild(document.createTextNode(text.slice(0,at)));
-    el.appendChild(span);
-    var tail=text.slice(at+shown.length);
-    if(tail)el.appendChild(document.createTextNode(tail));
-    counters.push(span);
-  });
-  // Measure every counter at its FINAL value first — the server rendered the
-  // real figure, and nothing has been hidden or ticked yet — then pin that
-  // width. Without this a figure counting up to $4,580,000 grows a character
-  // at a time and shoves the cell around it on every frame.
-  counters.forEach(function(el){
-    var w=el.getBoundingClientRect().width;
-    if(w)el.style.minWidth=w+"px";
-  });
-  function countUp(el){
-    var to=Number(el.getAttribute("data-to"));
-    if(!isFinite(to))return;
-    var t0=null;
-    function step(ts){
-      if(t0===null)t0=ts;
-      var p=Math.min(1,(ts-t0)/900);
-      el.textContent=Math.round(to*(1-Math.pow(1-p,3))).toLocaleString("en-US");
-      if(p<1)requestAnimationFrame(step);
-    }
-    requestAnimationFrame(step);
-  }
-  // A counter belongs to its NEAREST watched ancestor. Without this the
-  // section wrapping an exhibit would fire the exhibit's figures too, and
-  // they would count twice from two different scroll positions.
-  targets.forEach(function(el){el._cu=[];});
-  counters.forEach(function(el){
-    var owner=el.closest?el.closest("[data-rv]"):null;
-    if(owner&&owner._cu)owner._cu.push(el);else countUp(el);
-  });
-  var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  // Motion turned down, or a browser without the pieces: show the finished
-  // page at once. Never do nothing — that is the one outcome that leaves
-  // content hidden, and the CSS has already hidden it by this point.
-  if(reduce||!("IntersectionObserver" in window)||!window.requestAnimationFrame){
-    targets.forEach(function(el){el.classList.add("on");});
-    return;
-  }
-  var io=new IntersectionObserver(function(entries){
-    entries.forEach(function(en){
-      if(!en.isIntersecting)return;
-      en.target.classList.add("on");
-      (en.target._cu||[]).forEach(countUp);
-      io.unobserve(en.target);
-    });
-  },{threshold:.08,rootMargin:"0px 0px -40px 0px"});
-  targets.forEach(function(el){io.observe(el);});
-})();
-</script>`;
-
-  // Same rail stamp as marketShell. This page builds its own document rather
-  // than going through that helper, so it is the one most easily forgotten
-  // when the shell changes — test/nav-shell.test.js checks it by name.
-  return `<!DOCTYPE html>\n<html lang="en"${signedIn && NAV_SHELL_CLASS ? ` class="${NAV_SHELL_CLASS}"` : ""}>\n<head>\n` +
-    `<meta charset="UTF-8"/>\n<meta name="viewport" content="width=device-width, initial-scale=1.0"/>\n` +
-    `<title>${escHtml(title)} | CompNinja</title>\n` +
-    `<meta name="description" content="${escHtml(description)}"/>\n` +
-    `<meta name="robots" content="index, follow"/>\n<link rel="canonical" href="${canonical}"/>\n` +
-    `<meta property="og:type" content="website"/>\n<meta property="og:site_name" content="CompNinja"/>\n` +
-    `<meta property="og:title" content="${escHtml(title)}"/>\n` +
-    `<meta property="og:description" content="${escHtml(description)}"/>\n` +
-    `<meta property="og:url" content="${canonical}"/>\n` +
-    `<meta property="og:image" content="${SITE_URL}/og-image.png"/>\n` +
-    `<meta name="twitter:card" content="summary_large_image"/>\n` +
-    `<link rel="icon" href="/favicon.ico" sizes="48x48"/>\n` +
-    `<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>\n` +
-    `<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>\n` +
-    // Same manifest link as marketShell, same reason: this is the landing
-    // page anonymous visitors get at / under the wall, so it is where the
-    // browser must learn the site is installable.
-    `<link rel="manifest" href="/manifest.webmanifest"/>\n` +
-    `${THEME_META}` +
-    `<script type="application/ld+json">${jsonLd}</script>\n` +
-    `<style>${HOW_CSS}</style>\n` +
-    THEME_BOOT +
-    INAPP_BOOT +
-    // The ONE thing that arms the scroll choreography. Every rule that hides
-    // anything is scoped under html.anim, so a visitor with JS off — or a
-    // crawler, or anyone whose network drops this byte — gets the finished
-    // page rather than a blank one. It runs in <head>, before first paint, so
-    // the class is present for the very first frame and nothing flashes in
-    // and then hides itself.
-    `<script>document.documentElement.classList.add("anim")</script>\n` +
-    `</head>\n<body>\n${body}\n</body>\n</html>\n`;
 }
 
 
@@ -26396,36 +25707,21 @@ const server = http.createServer((req, res) =>
     res.writeHead(200, { "content-type": "application/json", "cache-control": "public, max-age=300" });
     return res.end(JSON.stringify(list));
   }
-
-  // --- How It Works — the methodology page (header + footer nav). Static
-  // content, so it caches for an hour like the market pages.
+  // --- /how-it-works — RETIRED 2026-09-02, permanently redirected. ---------
   //
-  // It is a page of its own again since 2026-09-01: it used to share this
-  // render with `/` under the wall and canonicalize there, and `/` has design
-  // 3a now. Own canonical, own title, back in the sitemap. ---
+  // The page is gone (see the note where HOW_CSS used to live). This is a 301
+  // and not a 404 because the URL is in the wild: it was the account wall's
+  // front door for four weeks, Search Console has crawled it, and it was in
+  // both footers until today. 301 so the ranking it earned transfers to the
+  // page that replaced it, which is the same treatment /brokers and /firms got
+  // when they merged into this target on 2026-09-01.
+  //
+  // pagePath, so /how-it-works?utm_source=… redirects too — the query is
+  // dropped deliberately: this is a permanent move to a different document,
+  // not a proxy, and nothing on /brokers-firms reads a param.
   if (req.method === "GET" && pagePath === "/how-it-works") {
-    // Cookie PRESENCE only, same rule as the wall at `/`: this runs on every
-    // view and getSessionUser() reads the database. A signed-in visitor gets
-    // app chrome (My Desk / Run a report) instead of the signup buttons —
-    // the static signed-out header here used to read as having been logged
-    // out mid-session. Presentation only; a forged cookie buys different
-    // buttons and nothing else.
-    const signedIn = Boolean(parseCookies(req)[SESSION_COOKIE]);
-    res.writeHead(200, {
-      "content-type": "text/html; charset=utf-8",
-      // The signed-in variant must never be cached (it would outlive a
-      // sign-out); the anonymous one keeps its hour cache for crawlers, with
-      // `vary: cookie` so a browser copy cached before signing in is not
-      // re-served after.
-      "cache-control": signedIn ? "no-store" : "public, max-age=3600",
-      vary: "cookie",
-    });
-    // No `home` flavor any more (2026-09-01). While `/` served these same
-    // bytes this page canonicalized there and stayed out of the sitemap;
-    // `/` is design 3a now, this is the methodology page it is named after,
-    // and the two are different documents that each canonicalize to
-    // themselves.
-    return res.end(renderHowItWorksHTML({ signedIn }));
+    res.writeHead(301, { location: "/brokers-firms", "cache-control": "public, max-age=3600" });
+    return res.end();
   }
 
   // --- /faq — the questions a stranger asks before signing up (design 3b,
@@ -27350,7 +26646,6 @@ const server = http.createServer((req, res) =>
       // Search Console soft error. `/` is design 3a now and this is the
       // methodology page: two documents, two canonicals, both indexable.
       `  <url><loc>${SITE_URL}/</loc></url>\n` +
-      `  <url><loc>${SITE_URL}/how-it-works</loc></url>\n` +
       `  <url><loc>${SITE_URL}/faq</loc></url>\n` +
       // One entry since 2026-09-01: /brokers and /firms merged here and now
       // 301, and a sitemap must never list a URL that redirects.

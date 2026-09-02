@@ -101,6 +101,11 @@ const { renderMessagesBody } = require("./messages-page");
 // The 1031 identification worksheet. A web page, so it is not server code —
 // the vault-page.js precedent; server.js only dresses it in marketShell.
 const G1031 = require("./guide-1031");
+// The market ranking. RANKPAGE renders, MARKETSCORE does the arithmetic — the
+// same split guide-1031.js and valuation.js keep, and the reason the whole
+// ranking can be tested with no server and no database.
+const RANKPAGE = require("./market-rank-page.js");
+const MARKETSCORE = require("./market-score.js");
 // The vault API's comp shape — the seam between how comps are STORED and how
 // the dashboard READS them. It exists so broker_comps can be restructured into
 // the star schema without the dashboard moving. A pass-through today, on
@@ -567,6 +572,108 @@ try {
   MARKET_PAGES = JSON.parse(fs.readFileSync(path.join(__dirname, "market-seed.json"), "utf8"));
 } catch (_) {
   MARKET_PAGES = {}; // no seed file yet — /markets simply lists nothing
+}
+
+// --- The market ranking's committed inputs -------------------------------
+//
+// Four files, all generated or hand-tuned and all committed, for the same
+// reason market-seed.json is: they survive a redeploy, serve instantly, and a
+// change to any of them arrives as a pull request somebody read. Weights are a
+// METHODOLOGY, and a methodology should not be editable from a form.
+//
+// Each load fails soft and independently. A missing readings file leaves the
+// ranking scoring nothing and saying so, which is the same degradation
+// market-score.js already performs per metric — it must never be the
+// difference between a page and a 500.
+function loadRankFile(name) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, name), "utf8"));
+  } catch (_) {
+    return null;
+  }
+}
+const RANK_TIERS = loadRankFile("market-tiers.json");
+const RANK_WEIGHTS = loadRankFile("market-weights.json");
+const RANK_THRESHOLDS = loadRankFile("market-thresholds.json");
+const RANK_READINGS = loadRankFile("macro-readings.json");
+const RANK_CONFIGURED = Boolean(RANK_TIERS && RANK_WEIGHTS && RANK_THRESHOLDS);
+
+// cbsa -> { metric: number }. A LEVEL metric (unemployment rate, renter share,
+// educational attainment) carries its level in yoy_pct too, because the
+// threshold for it is written against a level; taking yoy_pct unconditionally
+// is therefore correct for every metric and needs no per-metric branch here.
+const RANK_BY_MARKET = (() => {
+  const m = new Map();
+  for (const r of (RANK_READINGS && RANK_READINGS.readings) || []) {
+    if (!m.has(r.cbsa_code)) m.set(r.cbsa_code, {});
+    m.get(r.cbsa_code)[r.metric] = (r.yoy_pct === null || r.yoy_pct === undefined) ? r.value : r.yoy_pct;
+  }
+  return m;
+})();
+
+// Same map again, but keeping the whole reading, so the card can show every
+// figure with its date and its series id. That audit trail is the point: a
+// number a reader cannot trace to a published series is one they must take on
+// trust, and taking a number on trust is exactly what this replaced.
+const RANK_DETAIL = (() => {
+  const m = new Map();
+  for (const r of (RANK_READINGS && RANK_READINGS.readings) || []) {
+    if (!m.has(r.cbsa_code)) m.set(r.cbsa_code, {});
+    m.get(r.cbsa_code)[r.metric] = r;
+  }
+  return m;
+})();
+
+// Split a market's readings into the two blocks the scorer wants. Membership is
+// decided by the WEIGHTS file rather than by a list here, so adding a metric is
+// one edit rather than two that can disagree.
+function rankReadingsFor(cbsa, assetClass) {
+  const all = RANK_BY_MARKET.get(cbsa) || {};
+  const macroKeys = Object.keys((RANK_WEIGHTS && RANK_WEIGHTS.macro) || {});
+  const classKeys = Object.keys(
+    (RANK_WEIGHTS && RANK_WEIGHTS.class_specific && RANK_WEIGHTS.class_specific[assetClass]) || {});
+  const pick = (keys) => {
+    const out = {};
+    for (const k of keys) if (all[k] !== undefined) out[k] = all[k];
+    return out;
+  };
+  return { macroReadings: pick(macroKeys), classReadings: pick(classKeys) };
+}
+
+// Every market scored for one asset class, best first. Markets that could not
+// be scored sort last rather than being dropped — a member looking for a market
+// must find it and be told it has no data, not fail to find it at all.
+function rankRowsFor(assetClass) {
+  if (!RANK_CONFIGURED) return [];
+  const rows = (RANK_TIERS.markets || []).map((mk) => {
+    const input = rankReadingsFor(mk.cbsa.code, assetClass);
+    // narrative stays null until market_context ships; the scorer renormalises
+    // the two public weights when it is absent, which is the spec's
+    // "absence is never a penalty" rule.
+    const r = MARKETSCORE.scoreMarket({ ...input, narrative: null },
+      { assetClass, weights: RANK_WEIGHTS, thresholds: RANK_THRESHOLDS });
+    return {
+      market: mk.market, state: mk.state, tier: mk.tier, cbsa: mk.cbsa.code,
+      cbsaName: mk.cbsa.name, population: mk.cbsa.population,
+      macro: r && r.macro ? r.macro.score : null,
+      class: r && r.class ? r.class.score : null,
+      narrative: r ? r.narrative : null,
+      score: r ? r.score : null,
+      publicScore: r ? r.publicScore : null,
+      band: r ? r.band : null,
+      publicBand: r ? r.publicBand : null,
+      coverage: r ? r.coverage : 0,
+      bandMovedByNarrative: r ? r.bandMovedByNarrative : false,
+      _blocks: r,
+    };
+  });
+  rows.sort((a, b) => {
+    const av = typeof a.score === "number", bv = typeof b.score === "number";
+    if (av !== bv) return av ? -1 : 1;      // unscored last
+    if (!av) return a.market.localeCompare(b.market);
+    return b.score - a.score;
+  });
+  return rows;
 }
 
 // Visitor-generated market pages (the Market Explorer). Same payload shape as
@@ -3339,6 +3446,12 @@ const LEAD_METRO = !/^(0|off|false|no)$/i.test(String(process.env.LEAD_METRO || 
 // publishes what it can and reports how many are left, and running it again is
 // safe because an already-published comp is skipped rather than re-submitted.
 const VAULT_PUBLISH_BATCH = 100;
+// One bulk firm-share request's ceiling. Higher than the publish cap because
+// a share is ONE upsert for the whole batch, not an insert plus a patch per
+// comp; the bound is the in.() list in the URL and the body, not round trips.
+// Over it the route shares what fits and reports `remaining` — the upsert
+// makes a re-run a no-op, so "run it again" is safe advice.
+const VAULT_FIRM_BATCH = 200;
 // One expression, three call sites (inbox, intro gate, new-lead alert), so the
 // flag cannot end up half-applied and show a broker a lead they may not act on.
 const leadSiblings = () => (LEAD_METRO ? siblingMarkets : null);
@@ -9008,7 +9121,16 @@ const ACCOUNT_NAV_JS =
   `else{ini.className="ini";ini.style.backgroundImage="";ini.textContent=lab.slice(0,1).toUpperCase();}` +
   `}` +
   `var em=$("navAcctEmail");if(em)em.textContent=me.email||"";` +
-  `show($("navVault"),Boolean(pro.canUseVault));` +
+  // Every signed-in member, not just canUseVault (2026-09-01, "Three Spaces").
+  // /vault stopped being only the comp book that day: it is the member's own
+  // space, and their portfolio and watchlist moved into it off /desk. Gating
+  // the only door to it on Pro would leave a free member's own saved
+  // properties reachable by typing the URL and no other way -- which is the
+  // same failure the page's per-deck gate exists to prevent, moved into the
+  // navigation. The page itself still refuses the book, the pipeline and the
+  // hubs; see vaultReadPayload and #vaultLocked.
+  // This line is under `if(!me)return;` already, so it is members-only.
+  `show($("navVault"),true);` +
   // The tester badge, where the page asked for one. Same read, same pass:
   // this script has already paid for /api/config, and the badge ships
   // hidden so a non-tester never sees it blink. classList, not the hidden
@@ -9161,6 +9283,11 @@ footer .cols .ch{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;c
 // too. Lifting rules out of a checked block and into an unchecked one is the
 // quiet way to lose that guarantee.
 const RAIL_CSS = `
+/* The tools label is rail-only, and this is the line that makes it so. It sits
+   outside the media query below on purpose -- everything in that block is
+   guarded at 900px, so a display rule written in there could only ever turn
+   the label ON. */
+.hdr nav>.navsec{display:none}
 /* --- The rail (NAV_SHELL=rail, 2026-08-28) --------------------------------
    The header, stood on its end. Not a new component: the same element, the
    same markup, re-laid-out by one class on <html> that only a SIGNED-IN
@@ -9196,6 +9323,23 @@ const RAIL_CSS = `
     border-left-color:var(--red-fill);background:var(--wash)}
   /* The call to action is a button, not a nav row. */
   html.nav-rail .hdr nav>a.btn.sm{margin:14px 20px 0;border-left:0;text-align:center}
+  /* The rail's one grouping rule (2026-09-01). Workspace and Vault are the
+     member's two SPACES -- their firm's record and their own -- and the rows
+     under this label are tools they reach from either. Messages joins the
+     group above it when it ships.
+
+     A label, not a bare rule, because the rows underneath are not obviously
+     one kind of thing: a browse surface, a reference guide and a Pro tool
+     read as a list of leftovers without one.
+
+     It is rail-only. Below 900px the header is a wrapping horizontal bar and
+     a section label sitting between two links in it is noise -- so the span
+     ships in BOTH modes (nav-shell.test.js diffs the two renders and holds
+     the markup byte-identical) and is displayed in neither until the rail
+     turns on. An anonymous visitor never gets a rail, so they never see it. */
+  html.nav-rail .hdr nav>.navsec{display:block;margin:14px 0 2px;padding:14px 20px 0;
+    border-top:1px solid var(--hair);font-size:10px;letter-spacing:.14em;
+    text-transform:uppercase;font-weight:600;color:var(--ink-3)}
   /* Explore has nowhere to open in a 224px column, and its two links belong
      in the footer anyway -- where MARKET_FOOTER now carries both. Hidden
      rather than removed so the markup stays identical in both modes.
@@ -9972,6 +10116,10 @@ const marketBar = (signedIn = false, current = "") =>
       // pinned as a SEQUENCE rather than by position.
       `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages</a>`
     : "") +
+  // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
+  // visitor and shown only in the rail, so the markup stays identical in both
+  // modes and a stranger's horizontal bar never grows a section heading.
+  `<span class="navsec">Tools</span>` +
   `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
   // The 1031 guide, a bar row for a MEMBER only (2026-08-29, narrowed
   // 2026-08-30). See NAV_LINKS for why: the rail hides the Explore dropdown,
@@ -16152,11 +16300,28 @@ async function vaultReadPayload(req, params) {
     return { status: 403, body: {
       error: "The private vault is part of Pro.",
       code: "broker_required",
+      // Not every deck on /vault is behind this refusal, and that is the
+      // whole point of it being a per-deck gate (2026-09-01, "Three
+      // Spaces"). "Your properties" and "Your markets" are a members own
+      // portfolio and watchlist, which moved off /desk and were never Pro:
+      // a free member must not open their own space and find their own
+      // saved properties behind a paywall.
+      //
+      // So the personal half of the page needs one fact, and it has to
+      // survive the 403 or there is no payload at all to carry it. Free My
+      // Desk is an address list, Pro is the book of values -- this is which.
+      // Presentation only, exactly as on /api/config: every limit behind it
+      // is enforced by /api/portfolio itself.
+      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (!DB_CONFIGURED) {
     return { status: 503, body: {
       error: "The vault is unavailable right now — nothing was saved. Please try again in a minute.",
+      // Carried for the reason above. The personal decks read from their own
+      // endpoints, which keep their file fallback, so they can still render
+      // against a database this page refuses without.
+      portfolioValues: Boolean(ent && ent.portfolioValues),
     } };
   }
   if (compsR.status === "rejected") throw compsR.reason;
@@ -16217,6 +16382,9 @@ async function vaultReadPayload(req, params) {
     // contract (vault-api.js's allowlist) and a shelf membership is not a
     // property of the comp, it is a property of the relationship.
     sharedWithFirm: (sharedR.status === "fulfilled" && sharedR.value) || [],
+    // Stated on all three exits (200 / 403 / 503) so the personal decks read
+    // one field wherever they land. See the note on the 403 above.
+    portfolioValues: Boolean(ent && ent.portfolioValues),
   } };
 }
 
@@ -16291,9 +16459,11 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 //      `user_id=eq.` filter to an org. Migration 013's rule, third time of
 //      asking; test/org-routes.test.js fails the build if the widened form
 //      appears anywhere in this file.
-//   2. Sharing is per comp and OPT-IN. There is no bulk "share my vault", no
-//      default, and nothing an admin can set on a member's behalf. A broker's
-//      book is theirs.
+//   2. Sharing is OPT-IN, by the comp's owner, and never a default. It is one
+//      comp per click or a batch the broker chose from the view in front of
+//      them (POST /api/vault/firm-many, 2026-09-01) — there is still no
+//      "always share my vault" and nothing an admin can set on a member's
+//      behalf. A broker's book is theirs.
 //   3. It returns [] on ANY failure, like vaultCompsForReport — a firm read is
 //      an enrichment, never a reason to fail a search someone is waiting on,
 //      and an error must never widen what comes back.
@@ -16308,13 +16478,17 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 // race. The rows are read back scoped by user_id FIRST, so a comp id from
 // somebody else's vault cannot be shared by naming it.
 async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
-  if (!DB_CONFIGURED || !orgId || !compIds.length) return { count: 0, undatedSkipped: 0 };
+  if (!DB_CONFIGURED || !orgId || !compIds.length) return { count: 0, undatedSkipped: 0, skipped: [] };
   const rows = await sbRequest("GET",
     `broker_comps?user_id=eq.${encodeURIComponent(user.id)}` +
     `&id=in.(${pgInList(compIds)})&limit=${compIds.length}`);
   const located = await attachPropertyCoords(user.id, Array.isArray(rows) ? rows : []);
   const payload = [];
   let undatedSkipped = 0;
+  // Per-row reasons, for the batch route: "3 of 50 were undated" is the
+  // NORMAL answer to a bulk share and it has to name which three. The single
+  // route keeps reading `count`/`undatedSkipped` and is untouched.
+  const skipped = [];
   for (const row of located) {
     const comp = BLEND.firmCompPayload(row);
     // A comp with no address cannot render — broker-vault.js refuses that at
@@ -16326,7 +16500,12 @@ async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
     // refuse by name instead of answering ok while the toggle shows "Shared"
     // for a comp no colleague will ever receive.
     if (!comp) {
-      if (row && row.deal_date == null) undatedSkipped++;
+      const undated = Boolean(row) && row.deal_date == null;
+      if (undated) undatedSkipped++;
+      skipped.push({
+        id: row && row.id, address: (row && row.address) || "",
+        reason: undated ? "no deal date" : "no address",
+      });
       continue;
     }
     payload.push({
@@ -16341,10 +16520,10 @@ async function shareVaultCompsToOrg(user, orgId, compIds, sharedByName) {
       updated_at: new Date().toISOString(),
     });
   }
-  if (!payload.length) return { count: 0, undatedSkipped };
+  if (!payload.length) return { count: 0, undatedSkipped, skipped };
   await sbRequest("POST", "org_comps?on_conflict=org_id,source_comp_id", payload,
     { prefer: "resolution=merge-duplicates,return=minimal" });
-  return { count: payload.length, undatedSkipped };
+  return { count: payload.length, undatedSkipped, skipped };
 }
 
 // Pull a comp back off every firm shelf it is on. Scoped by the SHARER, not by
@@ -20677,6 +20856,85 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // Share a batch with the firm, from the filter the broker is already
+    // looking at (2026-09-01). The Vault's promise is "your space, pushed to
+    // the firm when you are comfortable", and until this the push was one
+    // click and one confirm per comp — a per-row chore, so in practice a
+    // broker shared a comp, never a book.
+    //
+    // Its own route rather than an `ids` array on POST /api/vault/firm, for
+    // publish-many's exact reason one block up: that route's contract (200
+    // means "Shared", 400 for an undated comp) is right for one comp and
+    // wrong for fifty, where "three of these are undated" is the normal
+    // answer and a 400 would refuse forty-seven good rows to report three
+    // bad ones. Same openVault gate, same user_id scoping (inside
+    // shareVaultCompsToOrg), same membership check, same credit name — a
+    // second set of rules would be a second place a broker's book can leak.
+    //
+    // Smaller than publish-many on purpose: shareVaultCompsToOrg already
+    // takes an array and does ONE upsert on (org_id, source_comp_id), so
+    // there is no insert+PATCH pair to unwind and no worker pool. Bulk
+    // UNSHARE needs no twin — DELETE /api/vault/firm already takes up to 200
+    // compIds and deliberately checks no membership, because taking your own
+    // comp back is always yours to do.
+    if (req.method === "POST" && path === "/api/vault/firm-many") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const user = await openVault();
+          if (!user) return;
+          if (rateLimited("vaultfirmmany:" + clientIp(req), 60)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          const parsed = JSON.parse(body || "{}");
+          // Shape-filtered and deduped before the query, the single route's
+          // rule: one malformed entry would make PostgREST reject the whole
+          // in.() list and take the batch down with it.
+          const ids = [...new Set((Array.isArray(parsed.ids) ? parsed.ids : [])
+            .map((v) => String(v || "").trim()).filter((v) => VAULT.isUuid(v)))];
+          if (!ids.length) return sendJson(res, 400, { error: "Which comps?" });
+          // Over the cap: share what fits and say how many are left. The
+          // upsert makes a re-run a no-op, which is what makes "run it again"
+          // safe advice rather than a way to double anything.
+          const batch = ids.slice(0, VAULT_FIRM_BATCH);
+          const remaining = ids.length - batch.length;
+
+          const memberships = await orgMembershipsFor(user.email);
+          const orgId = String(parsed.orgId || "").trim();
+          const membership = ORG.membershipOf(
+            memberships.filter((r) => String(r.org_id) === orgId), user.email);
+          if (!membership || !ORG.canPublishToOrg(membership)) {
+            return sendJson(res, 403, { error: "You are not a member of that firm." });
+          }
+          // The same name the single share puts on the badge, decided the
+          // same way, so one broker is named one way across the product.
+          const profile = await findBrokerProfile(user.email, user.id);
+          const sharedByName = VAULT.creditName(profile) || user.name || "";
+          const r = await shareVaultCompsToOrg(user, orgId, batch, sharedByName);
+          const org = (await orgsByIds([orgId])).get(String(orgId));
+          if (r.count > 0) logEvent("vault_firm_share", {});
+          console.log(`🤝 Vault bulk firm share: ${r.count} of ${batch.length} to org ${orgId} (user ${user.id})`);
+          // No 400 for an all-skipped batch, unlike the single route: the
+          // page asked "share what is on screen", and "none of these could
+          // be" is an answer with the reasons attached, not a failure.
+          return sendJson(res, 200, {
+            ok: true,
+            shared: r.count,
+            firm: (org && org.name) || "your firm",
+            skipped: r.skipped.slice(0, 50),
+            skippedCount: r.skipped.length,
+            remaining,
+          });
+        } catch (err) {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("vault bulk firm share failed:", err.message);
+          return sendJson(res, 502, { error: "Could not update firm sharing. Please try again." });
+        }
+      });
+      return;
+    }
+
     // --- The credit identity a published comp carries -----------------------
     //
     // A vault route, not a /api/broker/* one, because it exists FOR publishing
@@ -20921,10 +21179,10 @@ const server = http.createServer((req, res) =>
 
     // --- POST|DELETE /api/vault/firm — opt a comp in to your firm ----------
     //
-    // Spec §7, and the whole of it is opt-in: per comp, by the comp's owner,
-    // never by an admin, never in bulk over a whole vault, and never a
-    // default. A broker's book is theirs; this is the one door out of it, and
-    // it is one comp at a time by construction.
+    // Spec §7, and the whole of it is opt-in: by the comp's owner, never by
+    // an admin, and never a default. A broker's book is theirs. This is the
+    // one-comp door out of it; the batch door is /api/vault/firm-many above,
+    // and both are the broker choosing from the view in front of them.
     //
     // It goes through openVault() (401 / 403 canUseVault / 503) and THEN
     // checks membership, so a broker with no firm is told the truth in the
@@ -25737,6 +25995,65 @@ const server = http.createServer((req, res) =>
   // --- Market landing pages (programmatic SEO) ---
   if (req.method === "GET" && pagePath === "/markets") {
     return sendShellPage(req, res, (signedIn) => renderMarketDirectoryHTML(signedIn));
+  }
+
+  // --- Market rankings ---------------------------------------------------
+  //
+  // /rankings              -> industrial, the deepest-seeded class
+  // /rankings/<class>      -> the ledger for one asset class
+  // /rankings/<class>/<cbsa> -> one market's card
+  //
+  // Server-rendered with links rather than a client-side switcher, so the
+  // asset class is in the URL: a member can send "look at Boise for office" as
+  // a link, and a crawler sees six real pages instead of one that needs script.
+  const rankMatch = req.method === "GET"
+    && pagePath.match(/^\/rankings(?:\/([a-z]+))?(?:\/(\d{5}))?$/);
+  if (rankMatch) {
+    if (!RANK_CONFIGURED) {
+      return sendNotFound(req, res, "Market rankings aren't available yet.");
+    }
+    const cls = RANKPAGE.ASSET_CLASSES.includes(rankMatch[1]) ? rankMatch[1] : "industrial";
+    // An unknown class in the URL redirects rather than silently rendering
+    // industrial under an office heading — the page would look right and be
+    // about something else.
+    if (rankMatch[1] && !RANKPAGE.ASSET_CLASSES.includes(rankMatch[1])) {
+      res.writeHead(302, { location: "/rankings/industrial" });
+      return res.end();
+    }
+    const rows = rankRowsFor(cls);
+    const weights = (RANK_WEIGHTS.by_asset_class && RANK_WEIGHTS.by_asset_class[cls]) || {};
+    const generated = (RANK_READINGS && RANK_READINGS.generated) || "";
+
+    if (rankMatch[2]) {
+      const row = rows.find((r) => r.cbsa === rankMatch[2]);
+      if (!row) return sendNotFound(req, res, "That market isn't in the rankings.");
+      const blocks = row._blocks || {};
+      const body = RANKPAGE.renderMarketCardBody({
+        ...row, assetClass: cls, weights,
+        macro: blocks.macro || { score: null, coverage: 0 },
+        class: blocks.class || { score: null, coverage: 0 },
+        lens: null,
+        readings: RANK_DETAIL.get(row.cbsa) || {},
+      });
+      return sendShellPage(req, res, (signedIn) => marketShell({
+        title: `${row.market}, ${row.state} — ${RANKPAGE.CLASS_LABEL[cls]} market ranking | CompNinja`,
+        description: `How ${row.market} scores for ${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, `
+          + `built from public government data with every input shown.`,
+        canonical: `${SITE_URL}/rankings/${cls}/${row.cbsa}`,
+        head: `<style>${RANKPAGE.RANK_CSS}</style>`,
+        body, signedIn, current: "/markets",
+      }), { maxAge: 300 });
+    }
+
+    const body = RANKPAGE.renderRankingsBody(cls, rows, { weights, generated });
+    return sendShellPage(req, res, (signedIn) => marketShell({
+      title: `${RANKPAGE.CLASS_LABEL[cls]} market rankings | CompNinja`,
+      description: `${rows.filter((r) => typeof r.score === "number").length} US markets ranked for `
+        + `${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, from public government data. Every score shows its parts.`,
+      canonical: `${SITE_URL}/rankings/${cls}`,
+      head: `<style>${RANKPAGE.RANK_CSS}</style>`,
+      body, signedIn, current: "/markets",
+    }), { maxAge: 300 });
   }
   const marketMatch = req.method === "GET" && pagePath.match(/^\/market\/([a-z0-9-]{3,80})$/);
   if (marketMatch) {

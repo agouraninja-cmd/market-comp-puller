@@ -256,9 +256,9 @@ a solo broker with deal rooms and no firm cannot reach the inbox view of them.
 Their deal rooms are unaffected (the vault still lists them). Worth revisiting
 when a real solo broker exists.
 
-## 12. Steps 2-4 — shipped later the same day
+## 12. Steps 2-3 — shipped later the same day (step 4 held)
 
-The §11 migration finished in one round:
+Messages learned to do every job the vault's hubs deck did:
 
 - **Create + invite live in Messages.** Typing a full email address into the
   New panel's search offers "Invite <email> — outside your firm, by email"
@@ -277,14 +277,27 @@ The §11 migration finished in one round:
   write controls). One-time invite links that could not be emailed render
   here with copy buttons, guarded so one room's links can never display
   inside another room's panel.
-- **The vault's hubs deck is REMOVED** — markup and machinery deleted, not
-  hidden — and a pointer deck stands where it was ("Client conversations →
-  Open Messages") for the transition. Delete the pointer outright once the
-  move has settled. One archaeology note: the old vault-page test "each
-  import offers Open" was matching the HUB table's Open link the whole time;
-  it now pins the imports renderer's own label expression.
+- **The vault's hubs deck STAYS, for now** (owner's call, 2026-09-02). Step 4
+  was written and then withdrawn before it shipped. The vault was restructured
+  into three spaces the same week (PR #246), which gives hubs a deliberate home
+  there rather than the leftover section this spec was written against, so
+  removing the deck would now be undoing somebody else's design rather than
+  finishing this one. Messages and the vault are two doors onto the same rooms
+  until that is decided; nothing about the rooms differs by which door was
+  used, because both drive the same hub routes.
 
-This closes the owner's "get rid of the hub in the vault and make it only the
-messages feature." What remains hub-branded is the CLIENT's own page at
-/hub/<id> and its token door, which are deliberately untouched — the client
-experience never changed through any of this.
+  One archaeology note survives from the attempt, because it was a real bug
+  either way: the vault-page test "each import offers Open" was matching the
+  HUB table's Open link, one deck further down the page, and would have passed
+  on a build that shipped no imports list at all. It now pins the imports
+  renderer's own label expression.
+
+This gets as far as the owner's "get rid of the hub in the vault and make it
+only the messages feature" as one PR safely can: every JOB has moved, and only
+the second door remains. What is deliberately untouched throughout is the
+CLIENT's own page at /hub/<id> and its token door — the client experience
+never changed through any of this.
+
+**What is left, when somebody picks this up:** decide with whoever owns the
+Three Spaces vault whether its hubs space becomes a pointer at Messages or
+comes out altogether, then do that. Nothing in Messages depends on the answer.

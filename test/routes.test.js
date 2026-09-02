@@ -732,18 +732,59 @@ test("bare environment", async (t) => {
 
   // Both Pro tools ship hidden and are revealed by their OWN entitlement.
   // A link revealed by the wrong flag is a 403 with a nav row in front of it.
+  await t.test("every getElementById in the served app names an id the page has", async () => {
+    // Written 2026-09-01, after moving the portfolio to /vault left behind an
+    // IIFE that still populated a select which no longer existed. It ran at
+    // TOP LEVEL, so appendChild on null threw before anything below it was
+    // defined -- and the symptom was not a missing watch form, it was the
+    // ENTIRE workspace failing to render, under a cascade of "cannot access X
+    // before initialization" hiding the real error.
+    //
+    // Nothing else in the suite could catch it: index-html.test.js matches
+    // strings, and the one place the emitted script is compiled checks SYNTAX,
+    // which was fine. It took loading the page in a browser.
+    //
+    // Asserted against the SERVED page, never the file on disk. index.html is
+    // templated at serve time -- NAV_LINKS, INAPP_BOOT, AUTH_BOOT, BULK_RUN
+    // and TESTER_BADGE all inject markup -- so #testerBadge is a real element
+    // that exists in no static byte. Checking the file reports it missing,
+    // which is how this test found out where it belonged.
+    //
+    // Deliberately one-directional: an id with no getElementById is ordinary
+    // (CSS, anchors, aria-controls, labels), so only the dangling READ is an
+    // error.
+    const app = await (await fetch(srv.base + "/")).text();
+    const ids = new Set([...app.matchAll(/\bid="([A-Za-z0-9_-]+)"/g)].map((m) => m[1]));
+    const missing = [...new Set(
+      [...app.matchAll(/getElementById\("([A-Za-z0-9_-]+)"\)/g)].map((m) => m[1]),
+    )].filter((r) => !ids.has(r));
+    assert.deepEqual(missing, [],
+      "getElementById on an id the served page does not define — at top level this " +
+      "throws and takes the whole script with it: " + missing.join(", "));
+  });
+
   await t.test("the app reveals bulk valuation from canBulkValue, not from the vault's flag", async () => {
     const app = await (await fetch(srv.base + "/")).text();
     assert.match(app, /id="menuBulkLink"[^>]*class="hidden/,
       "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
     assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
       "the bulk link is not toggled from canBulkValue");
-    // The vault's flag is read into `canVault` a line earlier (the My Desk
-    // card shares it), so this pins the definition rather than the toggle.
+    // canUseVault still exists and still gates something -- the My Desk vault
+    // card -- so this test can still prove the two flags are separate rather
+    // than one shared answer, which is the thing it is really here for.
     assert.match(app, /canVault = Boolean\(proConfig && proConfig\.canUseVault\)/,
-      "the vault link is not toggled from canUseVault");
-    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/,
-      "the vault link stopped reading canVault");
+      "the vault's own flag stopped being read at all");
+    assert.match(app, /getElementById\("vaultCard"\)[\s\S]{0,120}canVault/,
+      "the desk's vault card stopped reading canUseVault");
+    // The LINK is a different question since 2026-09-01 ("Three Spaces"): it
+    // opens to every signed-in member, because /vault now holds their own
+    // portfolio and watchlist and those were never Pro. Widened who sees the
+    // door, never what is behind it -- vaultReadPayload still answers 403 and
+    // the page renders #vaultLocked in place of the three gated decks.
+    assert.match(app, /getElementById\("menuVaultLink"\)[\s\S]{0,80}!currentUser/,
+      "the vault link must open to any signed-in member");
+    assert.ok(!/getElementById\("menuVaultLink"\)[\s\S]{0,80}canVault/.test(app),
+      "and must not go back to being gated on the entitlement");
   });
 
   // The Market Explorer's example, rotated per page load (2026-08-24).
@@ -1056,6 +1097,9 @@ test("bare environment", async (t) => {
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.
       ["POST",   "/api/vault/identity"],
+      // The batch push to a firm: fifty comps in one request, so a missing
+      // gate here would be the biggest single leak the vault could have.
+      ["POST",   "/api/vault/firm-many"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {

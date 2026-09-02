@@ -1,5 +1,5 @@
 // The firm's buildings, actually run: GET|POST|DELETE /api/org/buildings
-// through the real server against the stand-in PostgREST (migration 045).
+// through the real server against the stand-in PostgREST (migration 046).
 //
 // A DB-only feature can only be proved this way — the routes refuse without a
 // database, so a bare boot stops at the 503. What is proved here and nowhere
@@ -194,7 +194,7 @@ test("the firm's buildings, end to end", async (t) => {
   });
 });
 
-test("before migration 045 runs, only the buildings routes are down", async (t) => {
+test("before migration 046 runs, only the buildings routes are down", async (t) => {
   // PGRST205 for the table: the shape a real PostgREST answers, which
   // schemaMismatch detection reads. These routes answer 503; nothing else on
   // the firm surface reads the table, so nothing else is touched.

@@ -1,0 +1,174 @@
+# The market ranking's public data, refreshed monthly.
+#
+# Pulls employment, labour force, wages, permits, house prices and unemployment
+# from FRED; fair market rents from HUD; the regional price deflator from BEA.
+# Then it opens a PULL REQUEST with the result rather than pushing to main.
+#
+# That review step is deliberate, and it is the same argument market-heroes.yml
+# makes for photographs: Render deploys main on every push, so a workflow that
+# committed straight to it would ship a data change nobody had looked at. A
+# ranking is a claim about somebody's market. The diff is worth ten seconds.
+#
+# It also makes the data legible over time. macro-readings.json is committed, so
+# `git log -p` shows exactly which markets moved and when — a history no
+# database view gives you for free, and the reason this runs here rather than as
+# a cron writing to Supabase.
+#
+# UNLIKE ci.yml, THIS WORKFLOW NEEDS SECRETS, and it is inert until they are set
+# (repository settings → Secrets and variables → Actions). All four are free,
+# read-only, public-data keys:
+#
+#   FRED_API_KEY     fredaccount.stlouisfed.org        employment, wages, permits, prices
+#   CENSUS_API_KEY   api.census.gov/data/key_signup    population, for sizing markets
+#   HUD_API_TOKEN    huduser.gov                        fair market rents (the most current number here)
+#   BEA_API_KEY      apps.bea.gov                       the deflator that makes wage growth real
+#
+# ci.yml deliberately holds no secrets because a fork PR could exfiltrate them.
+# This one holds four, and every one of them reads public government data and
+# can do nothing else — losing one costs a re-registration, not money.
+name: Macro refresh
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Only the first N markets (blank = all of them)'
+        required: false
+        default: ''
+  schedule:
+    # 06:00 UTC on the 3rd. BLS publishes metro employment around the middle of
+    # the following month, so the 3rd picks up the previous month's figure
+    # without racing the release.
+    - cron: '0 6 3 * *'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    # 90, not 45. The job makes ~3,300 sequential API calls — 196 markets by
+    # ~17 metrics — paced to stay inside FRED's 120-a-minute limit, which takes
+    # roughly 50 minutes. The first version of this file said 45 and would have
+    # timed out on its first scheduled run and every one after.
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check the secrets this job cannot work without
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          HUD_API_TOKEN: ${{ secrets.HUD_API_TOKEN }}
+          BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+        run: |
+          missing=""
+          [ -n "$FRED_API_KEY" ]   || missing="$missing FRED_API_KEY"
+          [ -n "$CENSUS_API_KEY" ] || missing="$missing CENSUS_API_KEY"
+          [ -n "$HUD_API_TOKEN" ]  || missing="$missing HUD_API_TOKEN"
+          [ -n "$BEA_API_KEY" ]    || missing="$missing BEA_API_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — see the header of this workflow file."
+            exit 1
+          fi
+
+      # The previous readings, kept so the PR body can say what MOVED rather
+      # than only what the numbers now are. A ranking that changed is the thing
+      # a reviewer wants to see; a ranking that did not is a diff to skim.
+      - name: Keep the previous readings for comparison
+        run: cp macro-readings.json /tmp/previous-readings.json || echo "{}" > /tmp/previous-readings.json
+
+      - name: Pull the data
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          CENSUS_API_KEY: ${{ secrets.CENSUS_API_KEY }}
+          HUD_API_TOKEN: ${{ secrets.HUD_API_TOKEN }}
+          BEA_API_KEY: ${{ secrets.BEA_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            node scripts/refresh-macro.js --write --limit "${{ github.event.inputs.limit }}"
+          else
+            node scripts/refresh-macro.js --write
+          fi
+
+      # A pull that succeeded but collected almost nothing is the failure this
+      # catches. Every source could be reachable and every series could still
+      # come back empty — a revised FRED endpoint, an expired key, a rate limit
+      # answered with 200 and no rows. The job must fail rather than open a
+      # pull request that silently guts the ranking.
+      - name: Refuse a suspiciously thin pull
+        run: |
+          node -e '
+            const r = require("./macro-readings.json");
+            const markets = new Set(r.readings.map(x => x.cbsa_code)).size;
+            const total = r.readings.length;
+            console.log(markets + " markets, " + total + " readings, " + r.problems.length + " problems");
+            if (markets < 100 || total < 400) {
+              console.error("::error::Only " + total + " readings across " + markets +
+                " markets. Something upstream changed; not opening a pull request.");
+              process.exit(1);
+            }
+          '
+
+      - name: Run the test suite against the new data
+        run: npm test
+
+      - name: Open a pull request if anything changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$(git status --porcelain macro-readings.json)" ]; then
+            echo "No change in the readings. Nothing to open."
+            exit 0
+          fi
+          branch="macro/refresh-$(date -u +%Y-%m)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add macro-readings.json
+
+          # What a reviewer actually needs: which markets changed BAND, not
+          # which numbers moved a decimal. Computed from the same scoring module
+          # the product uses, so the PR body cannot disagree with the app.
+          summary=$(node -e '
+            const S = require("./market-score.js");
+            const W = require("./market-weights.json"), T = require("./market-thresholds.json");
+            const now = require("./macro-readings.json");
+            let before = { readings: [] };
+            try { before = require("/tmp/previous-readings.json"); } catch (e) {}
+            const tiers = require("./market-tiers.json");
+            const fold = (rs) => {
+              const m = new Map();
+              for (const r of rs) {
+                if (!m.has(r.cbsa_code)) m.set(r.cbsa_code, {});
+                m.get(r.cbsa_code)[r.metric] = r.yoy_pct === null ? r.value : r.yoy_pct;
+              }
+              return m;
+            };
+            const a = fold(before.readings || []), b = fold(now.readings || []);
+            const band = (readings) => {
+              if (!readings) return null;
+              const r = S.scoreMarket({ macroReadings: readings, classReadings: {}, narrative: null },
+                { assetClass: "industrial", weights: W, thresholds: T });
+              return r && r.macro.score !== null ? S.band(r.macro.score) : null;
+            };
+            const moved = [];
+            for (const mk of tiers.markets) {
+              const was = band(a.get(mk.cbsa.code)), is = band(b.get(mk.cbsa.code));
+              if (was && is && was !== is) moved.push("- **" + mk.market + "** (" + mk.tier + "): " + was + " → " + is);
+            }
+            console.log(b.size + " markets, " + (now.readings || []).length + " readings.\n");
+            console.log(moved.length ? "Markets that changed band:\n" + moved.join("\n")
+                                     : "No market changed band this month.");
+          ')
+          git commit -q -m "Macro refresh $(date -u +%Y-%m)" -m "$summary"
+          git push -q origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Macro refresh $(date -u +%Y-%m)" \
+            --body "$(printf 'Monthly pull of the public data behind the market ranking.\n\n%s\n\n---\nGenerated by `.github/workflows/macro-refresh.yml`. Merging deploys, so read the band changes above before you do.\n' "$summary")"

@@ -1,5 +1,5 @@
 // The firm's leases, actually written and read (Three Spaces, slice 6;
-// migration 047), against the stand-in PostgREST. What is proved here and
+// migration 048), against the stand-in PostgREST. What is proved here and
 // nowhere else: the notice-after-expiry refusal against a REAL server (the
 // plan's named verify), that a lease needs a building on THIS firm's board,
 // that edits and deletes are scoped by the firm, that the sheet carries the

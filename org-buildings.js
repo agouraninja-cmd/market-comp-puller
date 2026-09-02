@@ -5,7 +5,7 @@
 //
 // Plan:   ~/.claude/plans/could-you-help-me-mighty-crane.md (Three Spaces, slice 3)
 // Spec:   docs/superpowers/specs/2026-09-01-three-spaces-design.md
-// Schema: migrations/045-org-buildings.sql
+// Schema: migrations/046-org-buildings.sql
 //
 // PURE, like org-access.js and org-contacts.js: no I/O, no requires, no
 // clock. server.js owns the reads and writes and hands rows in, which is what
@@ -226,7 +226,7 @@ function findBuilding(buildings, { addressKey, verifiedKey } = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// The building sheet (slice 5, migration 046).
+// The building sheet (slice 5, migration 047).
 // ---------------------------------------------------------------------------
 
 // Editing a building on the board: the three descriptive fields, and never

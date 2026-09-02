@@ -1,10 +1,11 @@
--- 047 — the firm's leases (Three Spaces, slice 6; 2026-09-02)
+-- 048 — the firm's leases (Three Spaces, slice 6; 2026-09-02)
+-- Renumbered 047 -> 048 on 2026-09-02 (see 046-org-buildings.sql's note).
 -- Plan:  ~/.claude/plans/could-you-help-me-mighty-crane.md ("Slice 6 — Leases, and the dates that matter")
 -- Spec:  docs/superpowers/specs/2026-09-01-three-spaces-design.md
 -- Rules: org-leases.js (what may be stored, the critical-dates window), org-access.js (membership)
 --
--- The plan numbered this 046; messaging took 044, so buildings became 045,
--- notes 046 and this is 047.
+-- The plan numbered this 046; messaging took 044, so buildings became 046,
+-- notes 047 and this is 047.
 --
 -- ---------------------------------------------------------------------------
 -- A LEASE THE FIRM MANAGES IS A DIFFERENT NOUN FROM A LEASE COMP

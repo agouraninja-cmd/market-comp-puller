@@ -437,6 +437,24 @@ test("a member who has not chosen reads as following the firm", () => {
   assert.equal(ctx.dom.el("firmDefaultToggle").checked, false);
 });
 
+test("the follow option names the firm's current setting, so it never reads as a copy of 'always'", () => {
+  // Owner's read of the control (2026-09-01): "Follow the firm" and "Always
+  // share with the firm" looked like one option twice. They ARE one outcome
+  // while the firm default is on; they part when it is off. So the follow
+  // label carries the firm's current setting, and "always" says what it
+  // survives. This pins that the label is written from shareDefault — the
+  // firm's own switch — in both states, and that the static markup no longer
+  // ships the two labels that read alike.
+  const ctx = load(AUTOSHARE_RE, "this.fn = renderFirmAutoShare;");
+  ctx.fn({ name: "Colliers Boise", canManage: false, shareDefault: "reports", autoShare: null, autoShareOn: true });
+  assert.match(ctx.dom.text("firmAutoShareFollow"), /Use the firm's setting \(currently on\)/);
+  ctx.fn({ name: "Colliers Boise", canManage: false, shareDefault: "none", autoShare: null, autoShareOn: false });
+  assert.match(ctx.dom.text("firmAutoShareFollow"), /Use the firm's setting \(currently off\)/);
+  assert.match(html, /<option value="always">Always share, even if the firm turns it off<\/option>/,
+    "the always option has to say what it survives, or it reads as follow-while-on");
+  assert.doesNotMatch(html, /Follow the firm</, "the old label read as a duplicate of 'always'");
+});
+
 // ---------------------------------------------------------------------------
 // Seats
 // ---------------------------------------------------------------------------
@@ -517,7 +535,7 @@ const ITEM = (o) => Object.assign({
 }, o);
 
 // ---------------------------------------------------------------------------
-// The firm's buildings (migration 045, Three Spaces slice 3) — the deck's
+// The firm's buildings (migration 046, Three Spaces slice 3) — the deck's
 // index. Presentation only; org-buildings.js decides what may be stored.
 // ---------------------------------------------------------------------------
 const BUILDINGS_RE = /  let firmBuildings = \[\];[\s\S]*?\n  document\.getElementById\("buildingAddForm"\)\.addEventListener\("submit"[\s\S]*?\n  \}\);/;

@@ -20,7 +20,7 @@ a **firm-scoped building entity** (this document) and a **firm-scoped lease
 record** (slice 6). Everything else is composition and relocation of things
 that already exist.
 
-## The building entity (migration 045, slice 3)
+## The building entity (migration 046, slice 3)
 
 ### Why a table and not a derived list
 
@@ -108,7 +108,7 @@ rule). A failed read hides the section rather than rendering an empty list —
 
 ### Deploy order
 
-Migration 045 must run **before** the code deploys. Every read names its
+Migration 046 must run **before** the code deploys. Every read names its
 columns in a PostgREST `select=`, so an unrun migration makes the buildings
 routes answer 503 — and *only* them; nothing else reads the table
 (`test/org-buildings-run.test.js` proves the blast radius). The migration
@@ -146,7 +146,7 @@ idiom, the history list's fold. A firm's buildings are a shared record with
 search needs and earn a page; one member's portfolio is a short personal
 list and earns a fold.
 
-## Each building has a sheet (slice 5, migration 046)
+## Each building has a sheet (slice 5, migration 047)
 
 `GET /building/<id>` (`renderBuildingSheetBody` in `buildings-page.js`),
 composed by `org-buildings.js`'s pure **`composeSheet(parts)`**; `server.js`
@@ -160,7 +160,7 @@ owns every read (`buildingSheetPayload`). The sections and their sources:
 | Reports (`#bsReports`) | firm shelf rows whose `meta.address` keys to the building → `/r/<id>` | read-only |
 | Valuations (`#bsValues`) | your own `portfolio_items.snapshots` + the firm's matching shared reports, priced with `bulk.js`'s `valueFromReport` (one piece of arithmetic for a sheet and a bulk row) | read-only |
 | Contacts (`#bsContacts`) | `org_contacts` where `building_id` = this building, through its own select | read-only (attaching is later) |
-| Notes (`#bsNotes`) | `org_building_notes` (**new**, 046) | appended, attributed, author may delete |
+| Notes (`#bsNotes`) | `org_building_notes` (**new**, 047) | appended, attributed, author may delete |
 
 **Two rules `composeSheet` enforces and is tested on.** (1) A colleague's
 private vault comp can never appear: the composer is handed the firm's shared
@@ -192,7 +192,7 @@ Notes go through `POST|DELETE /api/org/buildings/notes`; a note is activity
 and moves the building to the top of the desk's eight. `CTA_FREE_PAGES` gains
 `/building`. The desk's and `/buildings`' rows link to the sheet.
 
-## Leases, and the dates that matter (slice 6, migration 047)
+## Leases, and the dates that matter (slice 6, migration 048)
 
 **`org_leases`** is a firm-scoped lease record: tenant, suite, size, term,
 expiry, option notice, rent and its basis, lease type, status, notes, who
@@ -250,7 +250,7 @@ asserts that nothing was posted to the mail stand-in across the whole flow.
 
 - ~~The overflow rule and the subpage~~ — shipped as slice 4, above.
 - ~~The sheet and notes~~ — shipped as slice 5, above.
-- The building sheet (`composeSheet`) and building notes (046) — slice 5.
+- The building sheet (`composeSheet`) and building notes (047) — slice 5.
 - An "Add to firm" door on a **comp row** inside a report — deferred with the
   sheet, where a comp's building becomes something to look at.
 - Editing a building's fields after it is on the board — the sheet's job.

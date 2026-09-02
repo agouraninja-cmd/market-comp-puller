@@ -1,10 +1,11 @@
--- 046 — notes on a firm's building (Three Spaces, slice 5; 2026-09-02)
+-- 047 — notes on a firm's building (Three Spaces, slice 5; 2026-09-02)
+-- Renumbered 046 -> 047 on 2026-09-02 (see 046-org-buildings.sql's note).
 -- Plan:  ~/.claude/plans/could-you-help-me-mighty-crane.md ("Slice 5 — Each building has a sheet")
 -- Spec:  docs/superpowers/specs/2026-09-01-three-spaces-design.md
 -- Rules: org-buildings.js (validateNote, composeSheet), org-access.js (membership)
 --
 -- The plan numbered this 045; firm messaging took 044, so buildings became
--- 045 and this is 046.
+-- 046 and this is 046.
 --
 -- Firm-wide, appended, attributed. A note is a sentence a colleague left on a
 -- building's sheet — "owner says he'll consider offers after Q3", "roof

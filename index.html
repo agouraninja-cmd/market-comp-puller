@@ -2536,12 +2536,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <section id="myDesk" class="hidden mt-4">
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
-      <!-- The firm's buildings (migration 045; Three Spaces, slice 3). FIRST in
+      <!-- The firm's buildings (migration 046; Three Spaces, slice 3). FIRST in
            the deck on purpose: buildings are the firm's index and the shelf
            below is its output. Rendered only for a member of a firm, the
            shelf's rule. A building is added DELIBERATELY — from a property
            row, a shelf row, or this form — never derived from an upload;
-           see org-buildings.js's header and migration 045 for why that is
+           see org-buildings.js's header and migration 046 for why that is
            the privacy wall and not a convenience. -->
       <div id="deskBuildings" class="hidden mt-4">
         <div class="dk-rule">
@@ -2805,8 +2805,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-                <option value="follow">Follow the firm</option>
-                <option value="always">Always share with the firm</option>
+                <!-- The first two options produce the SAME outcome while the
+                     firm default is on, so each one says what it does rather
+                     than naming a mode: "follow" states the firm's current
+                     setting (renderFirmAutoShare writes it in), "always" says
+                     what it survives. Two labels that read as one choice were
+                     read as a redundant option (owner, 2026-09-01). -->
+                <option id="firmAutoShareFollow" value="follow">Use the firm's setting</option>
+                <option value="always">Always share, even if the firm turns it off</option>
                 <option value="never">Never share automatically</option>
               </select>
               <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
@@ -13929,7 +13935,7 @@ async function renderMyDesk() {
   // condition of the feature, and a button is how it would arrive by accident.
   // ---------------------------------------------------------------------------
   // ---------------------------------------------------------------------------
-  // The firm's buildings — the deck's index (migration 045, Three Spaces
+  // The firm's buildings — the deck's index (migration 046, Three Spaces
   // slice 3). Presentation only: what may be stored is org-buildings.js's
   // decision, made server-side, and this file draws what it is handed.
   //
@@ -14633,9 +14639,16 @@ async function renderMyDesk() {
     defWrap.classList.toggle("hidden", !firm.canManage);
     defToggle.checked = firm.shareDefault === "reports";
     sel.value = firm.autoShare || "follow";
+    // The follow option names the firm's CURRENT setting. It is the one option
+    // whose meaning moves under a member, and without the parenthetical it
+    // reads as the same choice as "always" whenever the firm default is on.
+    // Read off shareDefault — the firm's own switch, the same field the
+    // toggle above shows — never off autoShareOn, which is the resolved
+    // outcome of both and belongs to the sentence below.
+    document.getElementById("firmAutoShareFollow").textContent =
+      `Use the firm's setting (currently ${firm.shareDefault === "reports" ? "on" : "off"})`;
     // Says what will actually happen, in a sentence, because the two switches
-    // interact and "Follow the firm" alone does not tell a member which way
-    // the firm is currently set.
+    // interact and the option label alone does not say what the outcome is.
     state.textContent = firm.autoShareOn
       ? `On — new reports go to ${firm.name}`
       : "Off — nothing is shared unless you share it";

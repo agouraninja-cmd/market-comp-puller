@@ -90,7 +90,7 @@ test("firm routes on a bare server (no database)", async (t) => {
   });
 
   await t.test("a building is created only by its route, never as a side effect of an upload", () => {
-    // Migration 045's rule: an org_buildings row is a member CHOOSING to put a
+    // Migration 046's rule: an org_buildings row is a member CHOOSING to put a
     // building on the firm's board. If one appeared from linkVaultProperties
     // — or from anything else — a colleague could read another's book by
     // watching the list. So EVERY mention of the table in server.js must sit

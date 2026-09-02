@@ -1,5 +1,5 @@
 // The building sheet, actually served and actually written to (Three Spaces,
-// slice 5; migration 046). Against the stand-in PostgREST, because every read
+// slice 5; migration 047). Against the stand-in PostgREST, because every read
 // here is DB-only.
 //
 // The case the plan made a condition of shipping: TWO accounts in one firm,

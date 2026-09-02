@@ -1,0 +1,160 @@
+{
+  "_comment": "score = macro * macro_score + class * class_score + narrative * narrative_score. Every block here sums to 1.0 and test/market-ranking-config.test.js enforces it. These are STARTING weights and are expected to change as the model is refined; they live in a committed file rather than a table so a change arrives through a pull request somebody reads.",
+  "generated": "2026-09-01",
+  "by_asset_class": {
+    "industrial": {
+      "macro": 0.3,
+      "class": 0.45,
+      "narrative": 0.25,
+      "why": "Warehouse demand tracks trade/transport employment far more closely than headline metro employment, so class data carries the most."
+    },
+    "office": {
+      "macro": 0.35,
+      "class": 0.4,
+      "narrative": 0.25,
+      "why": "Professional-services employment IS most of the macro picture in an office metro, so the two halves overlap and the split evens out."
+    },
+    "retail": {
+      "macro": 0.4,
+      "class": 0.35,
+      "narrative": 0.25,
+      "why": "Retail follows households and their income - which is macro data - more than any sector-specific series."
+    },
+    "multifamily": {
+      "macro": 0.35,
+      "class": 0.4,
+      "narrative": 0.25,
+      "why": "Household formation is macro; the 5+ unit permit pipeline is the class-specific half and is unusually good public data."
+    },
+    "land": {
+      "macro": 0.2,
+      "class": 0.15,
+      "narrative": 0.65,
+      "why": "NARRATIVE IS THE MAJORITY, and land is the only class where that is true. Owner's call 2026-09-02, and the data earned it: entitlement difficulty, moratoria, utility capacity and council posture are what decide land value, and none of them appear in any public dataset at any price. Building permits was the one real public signal and reached 43% of markets; what remains - household and income growth - are weak proxies named as such. So a land ranking built on public data alone would be a confident number about the wrong thing. The narrative weight is filled by CompNinja's default context where a firm has written none of their own, and by the firm's own lens where they have."
+    },
+    "residential": {
+      "macro": 0.45,
+      "class": 0.35,
+      "narrative": 0.2,
+      "why": "Lowest narrative weight: residential has the richest public data of any class (HPI, permits, population, migration), so judgment adds least."
+    }
+  },
+  "macro": {
+    "Job growth (total nonfarm, YoY)": {
+      "weight": 0.35,
+      "source": "BLS CES via FRED",
+      "note": "Monthly, seasonally adjusted, two months' lag. The demand driver under every asset class and the freshest number in the block."
+    },
+    "Labor force growth (YoY)": {
+      "weight": 0.2,
+      "source": "BLS LAUS via FRED",
+      "note": "Monthly, two months' lag. REPLACED population growth on 2026-09-02. It measures working-age people actually present in the metro - which is what CRE demand tracks - and it is current, where ACS 5-year population is as-of 2023-12-31 and would have been the stalest input in the block by two years. Census population is still used to SIZE and TIER a market in market-tiers.json; it is no longer used to score momentum."
+    },
+    "Average hourly earnings growth (YoY)": {
+      "weight": 0.15,
+      "source": "BLS CES via FRED",
+      "note": "Monthly, two months' lag, not seasonally adjusted - a year-over-year comparison of the same month removes the season anyway. REPLACED real per-capita personal income, whose MSA series is discontinued and ends 2023-01-01."
+    },
+    "House price index change (YoY)": {
+      "weight": 0.15,
+      "source": "FHFA via FRED",
+      "note": "Quarterly, unadjusted; no adjusted version is published. Series ids embed the CBSA code (ATNHPIUS<code>Q) so this one is DERIVED rather than searched - safe precisely because the geography is in the id. The largest ~11 metros publish at Metropolitan DIVISION level and will be absent, reported as coverage rather than scored as zero."
+    },
+    "Unemployment rate (level and direction)": {
+      "weight": 0.15,
+      "source": "BLS LAUS via FRED",
+      "note": "Monthly, three months' lag. A lagging confirmer rather than a leading signal, and still the lightest of the five."
+    }
+  },
+  "class_specific": {
+    "industrial": {
+      "Mining, logging & construction employment growth": {
+        "weight": 0.25,
+        "source": "BLS/Census via FRED"
+      },
+      "Trade, transport & utilities employment growth": {
+        "weight": 0.45,
+        "source": "BLS/Census via FRED"
+      },
+      "Manufacturing employment growth": {
+        "weight": 0.3,
+        "source": "BLS/Census via FRED"
+      }
+    },
+    "office": {
+      "Professional & business services employment growth": {
+        "weight": 0.35,
+        "source": "BLS/Census via FRED"
+      },
+      "Information sector employment growth": {
+        "weight": 0.25,
+        "source": "BLS/Census via FRED"
+      },
+      "Financial activities employment growth": {
+        "weight": 0.2,
+        "source": "BLS/Census via FRED"
+      },
+      "Educational attainment (bachelor's or higher)": {
+        "weight": 0.2,
+        "source": "Census ACS 5-year",
+        "note": "Office demand tracks the STOCK of degree-holding workers, not this year's movement in it. A LEVEL, not a change. ACS lags about two and a half years, which is nearly irrelevant here: this is compositi"
+      }
+    },
+    "retail": {
+      "Retail trade employment growth": {
+        "weight": 0.3,
+        "source": "BLS/Census via FRED"
+      },
+      "Leisure & hospitality employment growth": {
+        "weight": 0.2,
+        "source": "BLS/Census via FRED"
+      },
+      "Household count growth (YoY)": {
+        "weight": 0.25,
+        "source": "Census ACS 5-year"
+      },
+      "Median household income growth (YoY)": {
+        "weight": 0.25,
+        "source": "Census ACS 5-year"
+      }
+    },
+    "multifamily": {
+      "Median gross rent growth (YoY)": {
+        "weight": 0.5,
+        "source": "Census ACS 5-year"
+      },
+      "Renter-occupied share": {
+        "weight": 0.5,
+        "source": "Census ACS 5-year",
+        "note": "A LEVEL. A metro where a third of households rent has a materially deeper multifamily market than one at a quarter, regardless of this year's movement. A LEVEL, not a change. ACS lags about two and a "
+      }
+    },
+    "land": {
+      "Household count growth (YoY)": {
+        "weight": 0.6,
+        "source": "Census ACS 5-year",
+        "note": "A WEAK PROXY, and named as one. Land value tracks development demand, which household formation and income growth only gesture at - the things that actually decide it are entitlement difficulty and municipal posture, which no public dataset carries. Building permits was the one real signal and reached 43% of markets; it was removed 2026-09-02 pending a better source. Land leans hardest on the narrative layer of any class, which is why its narrative weight is the highest in the model."
+      },
+      "Median household income growth (YoY)": {
+        "weight": 0.4,
+        "source": "Census ACS 5-year"
+      }
+    },
+    "residential": {
+      "Median household income growth (YoY)": {
+        "weight": 0.6,
+        "source": "Census ACS 5-year"
+      },
+      "Household count growth (YoY)": {
+        "weight": 0.4,
+        "source": "Census ACS 5-year"
+      }
+    }
+  },
+  "_removed_2026_09_02": {
+    "Population growth (YoY)": "ACS 5-year is as-of 2023-12-31 while employment is 2026-07-01 - two and a half years apart in the same weighted average. Replaced by labor force growth, which is monthly and measures the same arrival of people in a form CRE actually responds to. Population is still used to size and tier markets, just not to score momentum.",
+    "Net domestic migration": "Census PEP components is not exposed for a metropolitan geography through the API - /pep/components 404s for an MSA. Labor force growth absorbs the signal: a metro whose labour force is growing is a metro people are moving to.",
+    "Real personal income per capita growth": "BEA's MSA series on FRED (RPIPC<code>) resolves for every market and is DISCONTINUED, ending 2023-01-01. Replaced by average hourly earnings, which is monthly and current."
+  },
+  "_removed_permits_2026_09_02": "Building permits (total private, YoY) removed from every class block. FRED publishes metro-level MONTHLY permits for only ~85 of 196 markets; the rest have county-level ANNUAL series only (Fresno resolves to BPPRIV006019, Fresno County, annual). 43% coverage on a metric carrying 40-100% of three class blocks was worse than not having it. Census BPS publishes the metro monthly split but has no API. Revisit when a source is found."
+}

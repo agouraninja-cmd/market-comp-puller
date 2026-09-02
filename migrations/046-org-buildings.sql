@@ -1,10 +1,13 @@
--- 045 — the firm's buildings (Three Spaces, slice 3; 2026-09-01)
+-- 046 — the firm's buildings (Three Spaces, slice 3; 2026-09-01)
+-- Renumbered 045 -> 046 on 2026-09-02: main took 045 for macro_readings
+-- (PR #263) while this chain was open. Contents unchanged; the table was
+-- created in production from this file under its old number the same day.
 -- Plan:  ~/.claude/plans/could-you-help-me-mighty-crane.md ("Slice 3 — The firm's buildings")
 -- Spec:  docs/superpowers/specs/2026-09-01-three-spaces-design.md
 -- Rules: org-buildings.js (what may be stored), org-access.js (membership)
 --
 -- The plan numbered this 044. Firm messaging (slice 7) shipped ahead and took
--- 044, so the building entity is 045, its notes will be 046 and leases 047.
+-- 044, so the building entity is 046, its notes will be 047 and leases 047.
 --
 -- ---------------------------------------------------------------------------
 -- WHY A TABLE AND NOT A DERIVED LIST

@@ -1522,7 +1522,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     already mailed to property owners with no account — not just the new
     feature.
   **The firm's buildings** (Three Spaces slice 3, 2026-09-01; migration
-  `045-org-buildings.sql`, **run before deploying**; spec
+  `046-org-buildings.sql`, **run before deploying**; spec
   `docs/superpowers/specs/2026-09-01-three-spaces-design.md`). `org_buildings`
   is the firm's index: one row per building a member CHOSE to put on the board,
   keyed on `(org_id, address_key)` with a nullable `verified_key` so a
@@ -1541,7 +1541,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   missing `verified_key`, never rewrites (035's rule); **the whole set is
   returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
   in the browser); and **`org_contacts.building_id` is read by no code yet** —
-  naming it in `orgContactRows`' `select=` before 045 has run 400s every
+  naming it in `orgContactRows`' `select=` before 046 has run 400s every
   contacts read. The plan numbered this migration 044; messaging took it.
   **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
   the desk shows at most `COLLAPSE_AT` (8) rows and past that — only past
@@ -1552,7 +1552,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `/buildings`. `org-buildings.js`'s `OVERFLOW_AT` mirrors index.html's
   `COLLAPSE_AT` and `test/org-desk.test.js` holds them together.
   **Each building has a sheet** (slice 5, 2026-09-02; migration
-  `046-org-building-notes.sql`, **run before deploying**): `GET /building/<id>`
+  `047-org-building-notes.sql`, **run before deploying**): `GET /building/<id>`
   (`renderBuildingSheetBody`), composed by the pure `composeSheet` from reads
   `buildingSheetPayload` makes SEPARATELY — the firm's `org_comps` filtered on
   the vault's address key, the viewer's own `broker_comps` through a
@@ -1568,7 +1568,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   appended, attributed, author-deletable, and a note counts as activity.
   `test/building-sheet-run.test.js` runs the two-account isolation case.
   **Leases, and the dates that matter** (slice 6, 2026-09-02; migration
-  `047-org-leases.sql`, **run before deploying**, after 045): `org_leases` is
+  `048-org-leases.sql`, **run before deploying**, after 046): `org_leases` is
   the firm's lease record, a different noun from `broker_comps.lease_expiry`.
   Rules in the pure **`org-leases.js`**, RESTATED from broker-vault.js rather
   than shared (a different writer against a different table): a notice after

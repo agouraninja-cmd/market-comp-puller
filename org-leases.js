@@ -4,7 +4,7 @@
 //
 // Plan:   ~/.claude/plans/could-you-help-me-mighty-crane.md (Three Spaces, slice 6)
 // Spec:   docs/superpowers/specs/2026-09-01-three-spaces-design.md
-// Schema: migrations/047-org-leases.sql
+// Schema: migrations/048-org-leases.sql
 //
 // PURE, like org-buildings.js and org-access.js: no I/O, no requires, no
 // clock. server.js owns the reads and writes and hands rows in, which is what

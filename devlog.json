@@ -3949,5 +3949,11 @@
     "type": "feature",
     "title": "Upload several files into the vault at once",
     "details": "The vault's one file input and its drop zone now take many files. PDFs and screenshots are read one after another — each its own extract call, since that route is rate-limited — and land in one confirm table with a row naming each file above its rows, so a broker confirms a folder of comp sheets once. Spreadsheets queue through the ordinary path one at a time (the mapper is a screen a broker answers), the next starting only once the previous import has stored its rows; a refusal or a cancel drops the rest of the queue by name rather than carrying on past a message nobody has read. The result area keeps a running log during a batch, so each file's Imported line survives the next file's Reading line. One file behaves exactly as before. First slice of the owner's Make it easier to upload data theme."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "improvement",
+    "title": "The vault says what lat, lng and tenancy are",
+    "details": "Two questions from testers, answered where they are asked. The template's guidance now reads 'lat and lng are latitude and longitude' with a worked example (43.6187 and -116.2146) and says they are optional — leave them blank and CompNinja places the pin itself — and tenancy, which had no guidance line at all, gets one naming the three usual answers (Single tenant, Multi-tenant, Owner-user) and saying it is descriptive and never used in the math. On the page, a FIELD_HINTS map renders the same answers as hover titles on every header that names the column — the spreadsheet, the compact table and the extract confirm table — and on the add form, whose Lat and Lng labels now read Latitude and Longitude with example placeholders."
   }
 ]

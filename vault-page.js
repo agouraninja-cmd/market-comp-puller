@@ -686,11 +686,12 @@ a.btn.ghost:hover{color:var(--ink)}
           <label>Price <input id="addComp_price" type="text"/></label>
           <label>Size (SF) <input id="addComp_size_sqft" type="text"/></label>
           <label>Cap rate <input id="addComp_cap_rate" type="text" placeholder="optional"/></label>
-          <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
+          <label title="Who occupies the building: Single tenant, Multi-tenant or Owner-user. Optional.">Tenancy <input id="addComp_tenancy" type="text" placeholder="Single tenant, Multi-tenant or Owner-user"/></label>
           <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
           <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
-          <label>Lat <input id="addComp_lat" type="text" placeholder="optional"/></label>
-          <label>Lng <input id="addComp_lng" type="text" placeholder="optional"/></label>
+          <!-- Spelled out (2026-09-02): "Lat" and "Lng" were the question. -->
+          <label title="Latitude in decimal degrees. Optional; with longitude, it keeps this address off third-party geocoders.">Latitude <input id="addComp_lat" type="text" placeholder="43.6187 (optional)"/></label>
+          <label title="Longitude in decimal degrees. Optional; with latitude, it keeps this address off third-party geocoders.">Longitude <input id="addComp_lng" type="text" placeholder="-116.2146 (optional)"/></label>
           <div class="span-all" id="addTypeFields"></div>
           <div class="formact span-all">
             <button class="btn" id="addCompBtn" type="button">Add comp</button>
@@ -1520,6 +1521,22 @@ a.btn.ghost:hover{color:var(--ink)}
   function sheetLabel(k){
     return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
   }
+  // One-line hints for the columns brokers stall on (owner's wishlist,
+  // 2026-09-02: "what is lat and lng", "what does tenancy mean"). Rendered as
+  // title= on every header that names the column — the spreadsheet, the
+  // compact table, the confirm table — and on the add form's labels, so the
+  // answer is wherever the question is asked. Not a fourth label map: a hint
+  // explains a column, it never names one.
+  var FIELD_HINTS={
+    tenancy:"Who occupies the building: Single tenant, Multi-tenant or Owner-user. Free text, optional; never used in the math.",
+    lat:"Latitude in decimal degrees, e.g. 43.6187. Optional. With longitude, it keeps this address off third-party geocoders.",
+    lng:"Longitude in decimal degrees, e.g. -116.2146. Optional. With latitude, it keeps this address off third-party geocoders.",
+    cap_rate:"The sale cap rate as a percentage, e.g. 5.75.",
+    rent_basis:"Whether the rent is quoted per year or per month. Required with a rent; never guessed, because the wrong one is 12x off.",
+    lease_type:"NNN, FS (full service) or MG (modified gross).",
+    option_notice_date:"The date by which the tenant must give notice to renew \\u2014 the deadline that matters."
+  };
+  function fieldHint(k){ return FIELD_HINTS[k]||""; }
 
   // The compact table's editable columns: its own columns, minus the two it
   // derives. market is parsed from the address BY THE SERVER (marketOf, which
@@ -1660,7 +1677,7 @@ a.btn.ghost:hover{color:var(--ink)}
   function headCell(k,label,num){
     var on=k===sortK;
     var arrow=on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"";
-    return '<th data-k="'+k+'"'+(num?' class="num"':"")+">"+esc(label)+arrow+"</th>";
+    return '<th data-k="'+k+'"'+(num?' class="num"':"")+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(label)+arrow+"</th>";
   }
   // The bar is on in BOTH views now. Cells that can be typed into but look
   // like text need one line saying so — there is no Edit button left to make
@@ -3457,7 +3474,7 @@ a.btn.ghost:hover{color:var(--ink)}
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
     $("pdfName").textContent=pdfPending.filename||"";
-    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th>"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
     var multi=(pdfPending.files||0)>1, lastSrc=null;
     $("pdfBody").innerHTML=rows.map(function(r,i){
       // A merged batch names each file above its rows. Not a column: a cell

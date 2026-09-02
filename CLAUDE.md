@@ -3788,6 +3788,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the template names it. Keep the text TRUE: `parseMoney` strips `$` and
     commas, `parseNumber` accepts `45,000 SF`, `parsePercent` accepts
     `6.25%`; the old template said "no $ signs" and was simply wrong.
+    **Two columns get a sentence each because testers asked what they were
+    (2026-09-02)**: `lat and lng are latitude and longitude` with a worked
+    example, and a `tenancy:` line — it had NONE, only three example cells,
+    and it is free text (`"NNN"` is stored in it elsewhere), so the line
+    names the three usual answers and says it is never used in the math.
+    The same two answers ride `vault-page.js`'s `FIELD_HINTS` as `title=`
+    on every header that names the column (`headCell` and the confirm
+    table) and on the add form, whose labels now read Latitude and
+    Longitude; a hint explains a column and never names one, so it is not a
+    fourth label map. Pinned in both test files.
   - **The CSV column mapper** (2026-08-10; spec
     `docs/superpowers/specs/2026-08-10-vault-csv-column-mapper-design.md`).
     A broker uploads their own export and maps its columns once. `POST

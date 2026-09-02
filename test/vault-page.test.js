@@ -2004,6 +2004,20 @@ test("the page offers an add-one-comp form with the four required fields", () =>
   }
 });
 
+test("the columns brokers stall on carry a one-line hint wherever they are named", () => {
+  const page = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(page, /<label title="Latitude in decimal degrees[^"]*">Latitude <input id="addComp_lat"/);
+  assert.match(page, /<label title="Longitude in decimal degrees[^"]*">Longitude <input id="addComp_lng"/);
+  assert.match(page, /<label title="Who occupies the building[^"]*">Tenancy <input id="addComp_tenancy"/);
+  assert.doesNotMatch(page, /<label>Lat <input/, "the bare abbreviation was the question");
+  assert.doesNotMatch(page, /<label>Lng <input/);
+  // One hint map, read by every header renderer: the spreadsheet's and the
+  // compact table's headCell, and the confirm table's own header line.
+  assert.match(page, /var FIELD_HINTS=\{\s*tenancy:/);
+  assert.equal((page.match(/escA\(fieldHint\(k\)\)/g) || []).length, 2, "headCell and the confirm-table header both carry the hint as title=");
+  for (const k of ["tenancy", "lat", "lng"]) assert.match(page, new RegExp("\\b" + k + ':"'), k + " has a hint");
+});
+
 test("there is still exactly one file input on the page", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   const inputs = (html.match(/type=["']?file/g) || []).length;

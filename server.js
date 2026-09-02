@@ -55,6 +55,7 @@ const SHAREACCESS = require("./report-access.js");
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+const BUILDINGS = require("./org-buildings.js");
 // A firm's own tenant contacts: what may be stored and what a CSV of them
 // means (039). Pure and tested, and deliberately holding NO way to build a
 // contact from a lead or a hub participant — see its header.
@@ -4393,6 +4394,19 @@ async function orgContactEmails(orgId) {
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
     `&email=not.is.null&select=email&limit=5000`);
   return (rows || []).map((r) => r.email).filter(Boolean);
+}
+
+// The firm's buildings (migration 045) — every read names its columns, so
+// deploying before the migration 400s THESE routes and nothing else. Whole set,
+// capped at MAX_BUILDINGS: the desk states the count for everything and slices
+// for itself (slice 4), so a server-side ?limit=8 would leave the page unable
+// to say how much it was not showing — the shelf's rule.
+async function orgBuildingRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_buildings?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,address,address_key,verified_key,market,property_type,size_sqft,year_built,lat,lng,added_by_user_id,added_by_name,created_at,updated_at` +
+    `&order=updated_at.desc&limit=${BUILDINGS.MAX_BUILDINGS}`)) || [];
 }
 
 async function orgCompRowsForBoard(orgId) {
@@ -23306,6 +23320,141 @@ const server = http.createServer((req, res) =>
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("Firm contact edit failed:", err.message);
           return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
+    }
+
+    // --- GET|POST|DELETE /api/org/buildings — the firm's buildings ----------
+    //
+    // Three Spaces, slice 3 (migration 045). A building on the board is a
+    // member CHOOSING to put it there — the third opt-in of the same shape
+    // as a firm share and a firm comp. Nothing creates one as a side effect:
+    // linkVaultProperties() never touches org_buildings, and
+    // test/org-routes.test.js scans for exactly that, because a row that
+    // appeared from an upload would let a colleague read another's book by
+    // watching the list.
+    //
+    // Same gate as the shelf, the board and the contacts (openOrg + memberOf)
+    // — no fourth copy of the 401/403/503 ladder. Rules in org-buildings.js;
+    // the two keys are the vault's addressKey and the portfolio's
+    // verifiedKeyFor, injected, so no third key exists.
+    if (orgPath === "/api/org/buildings") {
+      const buildingsFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+      const wire = (rows, ctx) => rows.map((r) => BUILDINGS.toBuilding(r, ctx.user.id));
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const rows = await orgBuildingRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
+            // The whole set's line, computed once here so the desk and (slice
+            // 4) the subpage cannot disagree about the count.
+            summary: BUILDINGS.summarize(rows).line,
+            buildings: wire(rows, ctx),
+          });
+        })().catch((err) => {
+          console.error("Firm buildings read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's buildings. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // POST adds ONE building. Idempotent on (org_id, address_key): adding
+      // a building the firm already holds answers with that row and
+      // `existed: true` rather than a 409 — "Add to the firm's buildings"
+      // clicked twice is not an error, and the doors that offer it read the
+      // list to decide whether to offer it at all.
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const { row, errors } = BUILDINGS.normalizeBuilding(body, {
+            addressKey: VAULT.addressKey,
+            verifiedKeyFor: PFMATCH.verifiedKeyFor,
+            marketOf,
+            hasMarket: addressHasMarket,
+            types: VAULT.PROPERTY_TYPES,
+            year: new Date().getUTCFullYear(),
+          });
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+
+          const stamp = new Date().toISOString();
+          const payload = {
+            org_id: ctx.orgId,
+            ...row,
+            added_by_user_id: ctx.user.id,
+            // Snapshotted for 039's reason: on delete set null takes the join
+            // with the account, and a building nobody can attribute is one
+            // nobody can ask about. Name only, never the email.
+            added_by_name: String(ctx.user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+            updated_at: stamp,
+          };
+          // ignore-duplicates + representation: PostgREST answers [] for a row
+          // it ignored, which is how "existed" is known without a read first.
+          const stored = await sbRequest("POST", "org_buildings?on_conflict=org_id,address_key", [payload],
+            { prefer: "resolution=ignore-duplicates,return=representation" });
+          let building = Array.isArray(stored) && stored[0] ? stored[0] : null;
+          let existed = false;
+          if (!building) {
+            existed = true;
+            const scope = `org_buildings?org_id=eq.${encodeURIComponent(ctx.orgId)}` +
+              `&address_key=eq.${encodeURIComponent(row.address_key)}`;
+            // The one thing a repeat add may change: a verified key the
+            // stored row never had. FILLED, never rewritten — 035's rule, so a
+            // building keeps its identity even if a later door geocodes
+            // differently. Everything else on the row stays the first
+            // adder's.
+            if (row.verified_key) {
+              await sbRequest("PATCH", `${scope}&verified_key=is.null`,
+                { verified_key: row.verified_key }, { prefer: "return=minimal" });
+            }
+            building = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || null;
+            if (!building) return sendJson(res, 503, { error: "Couldn't save that building. Please try again in a minute." });
+          }
+          logEvent("org_buildings", { source: existed ? "again" : "add", prop_type: row.property_type || "" });
+          return sendJson(res, 200, { ok: true, existed, building: BUILDINGS.toBuilding(building, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm building write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that building. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "DELETE") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!buildingId || !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          // Scoped by org_id as well as id, the contacts route's rule: knowing
+          // a building's id must not be enough to take it off another firm's
+          // board. Any member may remove one — a building is the firm's index,
+          // and removing it is undone by adding it again.
+          const scope = `org_buildings?id=eq.${encodeURIComponent(buildingId)}` +
+            `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const found = await sbRequest("GET", `${scope}&select=id&limit=1`);
+          if (!((found || [])[0])) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+          logEvent("org_buildings", { source: "remove" });
+          return sendJson(res, 200, { ok: true, deleted: buildingId });
+        })().catch((err) => {
+          console.error("Firm building delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that building. Please try again in a minute." });
         });
         return;
       }

@@ -80,6 +80,7 @@ const TABLES = [
   ["msg_thread_members",  "044-firm-messaging.sql"],
   ["msg_messages",        "044-firm-messaging.sql"],
   ["msg_comps",           "044-firm-messaging.sql"],
+  ["org_buildings",       "045-org-buildings.sql"],
   ["msg_comp_saves",      "044-firm-messaging.sql"],
 ];
 
@@ -151,6 +152,12 @@ const COLUMNS = [
   // naming because the import's upsert conflicts on (org_id, email) and a
   // partially-applied file would 400 every import while reads look fine.
   ["org_contacts",      ["email", "notes"],                     "039-org-contacts.sql"],
+  // 045 adds the building entity and a nullable building_id on org_contacts.
+  // The table check proves org_buildings exists; verified_key and lat are
+  // named because a half-applied file would let the add route write rows the
+  // desk can never match to a portfolio property, with reads looking fine.
+  ["org_buildings",     ["verified_key", "lat", "lng"],         "045-org-buildings.sql"],
+  ["org_contacts",      ["building_id"],                        "045-org-buildings.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

@@ -57,7 +57,10 @@ interrupting for), **`deal-date.js`** (the deal-date parser, including the
 Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
 the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
-treated as invited, never public) and **`org-access.js`** (who is in a firm
+treated as invited, never public) and **`org-buildings.js`** (what may be put on a firm's board and how the list is
+summarized: the two keys are the vault's `addressKey` and the portfolio's
+`verifiedKeyFor`, INJECTED so no third key exists; a building with no street
+number is a city and is refused) and **`org-access.js`** (who is in a firm
 and what their membership allows — an unknown role is a `member`,
 `removed_at` beats ownership, and an invite is not a membership until the
 invited person accepts it) and **`market-hero.js`** (which city's
@@ -1518,6 +1521,25 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
+  **The firm's buildings** (Three Spaces slice 3, 2026-09-01; migration
+  `045-org-buildings.sql`, **run before deploying**; spec
+  `docs/superpowers/specs/2026-09-01-three-spaces-design.md`). `org_buildings`
+  is the firm's index: one row per building a member CHOSE to put on the board,
+  keyed on `(org_id, address_key)` with a nullable `verified_key` so a
+  portfolio row can be matched. `GET|POST|DELETE /api/org/buildings?id=<org>`
+  on the existing `openOrg` + `memberOf` gate; rules in the pure
+  **`org-buildings.js`**; the desk section `#deskBuildings` sits at the top of
+  the firm deck with an "Add to firm" door on portfolio and shelf rows. Four
+  rules: **nothing creates a building as a side effect** — `linkVaultProperties`
+  never touches the table and `test/org-routes.test.js` fails the build if the
+  table is named outside its read function and route block (a row appearing
+  from an upload would let a colleague read another's book by watching the
+  list); **POST is idempotent** on the key and a repeat add only ever FILLS a
+  missing `verified_key`, never rewrites (035's rule); **the whole set is
+  returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
+  in the browser); and **`org_contacts.building_id` is read by no code yet** —
+  naming it in `orgContactRows`' `select=` before 045 has run 400s every
+  contacts read. The plan numbered this migration 044; messaging took it.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

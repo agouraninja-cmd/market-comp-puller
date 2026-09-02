@@ -2535,6 +2535,46 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <section id="myDesk" class="hidden mt-4">
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
+      <!-- The firm's buildings (migration 045; Three Spaces, slice 3). FIRST in
+           the deck on purpose: buildings are the firm's index and the shelf
+           below is its output. Rendered only for a member of a firm, the
+           shelf's rule. A building is added DELIBERATELY — from a property
+           row, a shelf row, or this form — never derived from an upload;
+           see org-buildings.js's header and migration 045 for why that is
+           the privacy wall and not a convenience. -->
+      <div id="deskBuildings" class="hidden mt-4">
+        <div class="dk-rule">
+          <span class="rd-lab">Buildings</span>
+          <span id="buildingsStats" class="dk-note"></span>
+        </div>
+        <p class="text-xs text-[#68707E] mt-2">The buildings your firm works on, shared with everyone in it. Add one from a property below, from the shelf, or by address.</p>
+        <form id="buildingAddForm" class="mt-3 flex flex-wrap items-end gap-2">
+          <label class="flex-1 min-w-[10rem]">
+            <span class="rd-lab">Address</span>
+            <input id="buildingAddress" type="text" required maxlength="200" placeholder="100 Main St, Boise, ID"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </label>
+          <label class="min-w-[10rem]">
+            <span class="rd-lab">Type</span>
+            <!-- The vault's PROPERTY_TYPES, restated: index.html cannot
+                 require the module, and the server refuses anything else. -->
+            <select id="buildingType" class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="">Any type</option>
+              <option value="Industrial">Industrial</option>
+              <option value="Office">Office</option>
+              <option value="Retail">Retail</option>
+              <option value="Multifamily">Multifamily</option>
+              <option value="Land">Land</option>
+              <option value="Residential">Residential</option>
+            </select>
+          </label>
+          <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
+        </form>
+        <p id="buildingMsg" class="hidden text-sm mt-2"></p>
+        <p id="buildingsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
+        <div id="buildingRows" class="mt-3"></div>
+        <p id="buildingsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No buildings yet. Add one from a property below, from a report on the shelf, or type an address above.</p>
+      </div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
            below follows, and the opposite of the two lists above: those teach
@@ -13425,6 +13465,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         }
         const tdX = document.createElement("td");
         tdX.className = "num text-[10.5px] whitespace-nowrap";
+        // "Add to firm": the building's identity travels as the verified key
+        // the portfolio already holds (035), so nobody retypes an address and
+        // the same building typed two ways still meets one row.
+        const door = buildingDoor({
+          address: item.address, propertyType: item.property_type, verifiedKey: item.verified_key || "",
+        });
+        if (door) tdX.appendChild(door);
         const refresh = document.createElement("button");
         refresh.type = "button";
         refresh.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2";
@@ -14011,6 +14058,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // the shelf for whatever firm was in memory from the last render — which
     // on a sign-out-then-sign-in is somebody else's.
     await renderFirm();
+    // Buildings before the shelf: they are the deck's first section, and the
+    // shelf's rows offer "Add to firm" only for addresses not already listed,
+    // so the list has to be in memory before those rows are drawn.
+    await renderBuildings();
     await renderFirmShelf();
     // Last, and for renderFirmShelf's own reason: the board reads myFirm() too,
     // so it has to come after the membership load. Its own read is independent
@@ -14156,6 +14207,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       meta.className = "dk-shelf-meta";
       meta.textContent = bits.filter(Boolean).join(" · ");
       row.appendChild(meta);
+      // A shelf row names a building somebody at the firm has already valued;
+      // the same door the property rows carry, so nobody retypes it.
+      const door = buildingDoor({ address: r.address, propertyType: r.type });
+      // Same face as the meta, but WITHOUT its auto margin: two auto margins on
+      // one row split the space and pull the attribution off the right edge.
+      if (door) { door.className = "dk-shelf-meta underline"; door.style.marginLeft = "0"; row.appendChild(door); }
       wrap.appendChild(row);
     });
   }
@@ -14326,6 +14383,187 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // that fills the list from a lead, a hub or a BOV — the plan made that a
   // condition of the feature, and a button is how it would arrive by accident.
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // The firm's buildings — the deck's index (migration 045, Three Spaces
+  // slice 3). Presentation only: what may be stored is org-buildings.js's
+  // decision, made server-side, and this file draws what it is handed.
+  //
+  // Fetched WHOLE (up to 1000) — the shelf's rule, for its reason: the count
+  // line describes the whole set, and slice 4 slices it to eight here and
+  // sends the rest to /buildings. Do not add a server-side limit.
+  // ---------------------------------------------------------------------------
+  let firmBuildings = [];
+
+  function buildingMsg(text, bad) {
+    const el = document.getElementById("buildingMsg");
+    el.textContent = text || "";
+    el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
+  }
+
+  // Is this address already on the board? Verified key first (one building
+  // typed two ways), then the exact address. Both are read off the SERVER's
+  // rows — this is a lookup, not a key: the browser has no addressKey and must
+  // not grow one. A miss here costs one "already on the list" answer from
+  // the route, which is the honest fallback.
+  function buildingOnBoard({ address, verifiedKey }) {
+    const vk = String(verifiedKey || "");
+    const addr = String(address || "").trim().toLowerCase();
+    return firmBuildings.find((b) =>
+      (vk && b.verifiedKey && b.verifiedKey === vk) ||
+      (addr && String(b.address || "").trim().toLowerCase() === addr)) || null;
+  }
+
+  async function renderBuildings() {
+    const box = document.getElementById("deskBuildings");
+    // currentUser first, then the cached membership — renderFirmShelf's rule
+    // and its reason: a failed /api/org read leaves the LAST firm in memory,
+    // and the one state where acting on that is wrong is a signed-out page.
+    const firm = currentUser ? myFirm() : null;
+    if (!firm) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); return; }
+    let data = null;
+    try {
+      const res = await fetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    // A failed read hides the section rather than rendering an empty list:
+    // "no buildings" and "we could not reach the database" must never look
+    // the same, because the first invites somebody to retype a list.
+    if (!data) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); return; }
+    box.classList.remove("hidden");
+    firmBuildings = Array.isArray(data.buildings) ? data.buildings : [];
+    syncBuildingDoors();
+    // The whole set's line, computed by the server so this and the subpage
+    // (slice 4) can never disagree about the count.
+    document.getElementById("buildingsStats").textContent = data.summary || "";
+    document.getElementById("buildingsTruncated").classList.toggle("hidden", !data.truncated);
+    document.getElementById("buildingsEmpty").classList.toggle("hidden", firmBuildings.length > 0);
+
+    const wrap = document.getElementById("buildingRows");
+    wrap.innerHTML = "";
+    firmBuildings.forEach((b) => {
+      const row = document.createElement("div");
+      row.className = "db-row";
+      const name = document.createElement("span");
+      name.className = "db-name";
+      // textContent throughout: every address here is text a person typed.
+      name.textContent = b.address;
+      row.appendChild(name);
+      const meta = document.createElement("span");
+      meta.className = "db-split";
+      const bits = [];
+      if (b.type) bits.push(b.type);
+      if (b.sizeSqft) bits.push(`${Number(b.sizeSqft).toLocaleString("en-US")} SF`);
+      if (b.yearBuilt) bits.push(`built ${b.yearBuilt}`);
+      // "you" rather than the reader's own name — the shelf's rule.
+      bits.push(b.mine ? "added by you" : (b.addedBy ? "added by " + b.addedBy : "added by a colleague"));
+      meta.textContent = bits.join(" · ");
+      row.appendChild(meta);
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "db-total text-xs underline";
+      del.textContent = "Remove";
+      del.addEventListener("click", async () => {
+        // No confirm: removing a building from the index is undone by adding
+        // it again, and nothing hangs off it yet (slices 5 and 6 revisit this
+        // once notes and leases do).
+        del.disabled = true;
+        try {
+          const res = await fetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}` +
+            `&building=${encodeURIComponent(b.id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
+          buildingMsg("");
+          await renderBuildings();
+        } catch (err) {
+          del.disabled = false;
+          buildingMsg(err.message || "That didn't go through.", true);
+        }
+      });
+      row.appendChild(del);
+      wrap.appendChild(row);
+    });
+  }
+
+  // ONE writer for every door — the form, a property row, a shelf row — so
+  // there is one POST and one set of refusals behind all of them.
+  async function addBuildingToFirm(input) {
+    const firm = myFirm();
+    if (!firm) return null;
+    const res = await fetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || "That didn't go through.");
+    return out;
+  }
+
+  // The door a property row or a shelf row carries: a small "Add to firm"
+  // control, SHOWN only for a member of a firm and only while the address is
+  // not on the board (the Buy-button rule — a control that can only answer
+  // "already listed" never shows). It is created for any signed-in row and
+  // ships hidden, because the portfolio table is drawn before the firm
+  // membership has resolved: deciding at creation time would leave every
+  // property row doorless on a cold load. The buildings renderer decides,
+  // through syncBuildingDoors, every time the list changes.
+  const buildingDoors = [];
+  function syncBuildingDoors() {
+    const firm = currentUser ? myFirm() : null;
+    for (let i = buildingDoors.length - 1; i >= 0; i--) {
+      const door = buildingDoors[i];
+      // Pruned only once it has been on the page and then left it: a door is
+      // synced at creation, BEFORE its caller appends it, so a fresh one is
+      // not connected yet and must not be mistaken for a discarded one.
+      if (door.isConnected === true) door._seen = true;
+      else if (door._seen && door.isConnected === false) { buildingDoors.splice(i, 1); continue; }
+      const show = Boolean(firm) && !door._done && !buildingOnBoard(door._key);
+      door.classList.toggle("hidden", !show);
+      if (firm) door.title = `Add this building to ${firm.name}'s list`;
+    }
+  }
+  function buildingDoor({ address, propertyType, verifiedKey, lat, lng }) {
+    if (!currentUser || !address) return null;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2 hidden";
+    btn.textContent = "Add to firm";
+    btn._key = { address, verifiedKey };
+    btn._done = false;
+    btn.addEventListener("click", async () => {
+      const firm = myFirm();
+      if (!firm) return;
+      btn.disabled = true;
+      try {
+        const out = await addBuildingToFirm({ address, propertyType, verifiedKey, lat, lng });
+        btn._done = true;
+        btn.textContent = out && out.existed ? "Already listed" : "On the firm's list";
+        buildingMsg(out && out.existed
+          ? `${address} was already on ${firm.name}'s list.`
+          : `Added ${address} to ${firm.name}'s buildings.`);
+        await renderBuildings();
+      } catch (err) {
+        btn.disabled = false;
+        buildingMsg(err.message || "That didn't go through.", true);
+      }
+    });
+    buildingDoors.push(btn);
+    syncBuildingDoors();
+    return btn;
+  }
+
+  document.getElementById("buildingAddForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const address = document.getElementById("buildingAddress").value.trim();
+    const propertyType = document.getElementById("buildingType").value;
+    if (!address) return;
+    try {
+      const out = await addBuildingToFirm({ address, propertyType });
+      document.getElementById("buildingAddress").value = "";
+      buildingMsg(out && out.existed ? `${address} was already on the list.` : "");
+      await renderBuildings();
+    } catch (err) {
+      buildingMsg(err.message || "That didn't go through.", true);
+    }
+  });
+
   function contactsMsg(text, bad) {
     const el = document.getElementById("contactMsg");
     el.textContent = text || "";

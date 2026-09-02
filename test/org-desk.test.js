@@ -503,7 +503,10 @@ function loadShelf(opts) {
     // The flag the type filter sets when a person changes it themselves.
     " this.touch = () => { firmShelfTypeTouched = true; };",
     "let currentUser = __user; function myFirm() { return __firm; }\n" +
-    "function fmtShareDate(s) { return 'Mar 14'; }",
+    "function fmtShareDate(s) { return 'Mar 14'; }\n" +
+    // The buildings door (slice 3) is a collaborator of a shelf row, stubbed
+    // here like fmtShareDate; its own tests are the buildings block below.
+    "function buildingDoor() { return null; }",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
 }
@@ -512,6 +515,132 @@ const ITEM = (o) => Object.assign({
   address: "500 Warehouse Way", market: "Boise, ID", type: "Industrial",
   sharedBy: "Brad", mine: false, url: "/r/abc", createdAt: "2026-03-14T00:00:00Z",
 }, o);
+
+// ---------------------------------------------------------------------------
+// The firm's buildings (migration 045, Three Spaces slice 3) — the deck's
+// index. Presentation only; org-buildings.js decides what may be stored.
+// ---------------------------------------------------------------------------
+const BUILDINGS_RE = /  let firmBuildings = \[\];[\s\S]*?\n  document\.getElementById\("buildingAddForm"\)\.addEventListener\("submit"[\s\S]*?\n  \}\);/;
+function loadBuildings(opts) {
+  const o = opts || {};
+  const routes = [["/api/org/buildings", o.route || { status: o.status || 200, body: o.body }]];
+  const fetch = makeFetch(routes);
+  const ctx = load(BUILDINGS_RE,
+    "this.render = renderBuildings; this.door = buildingDoor; this.onBoard = buildingOnBoard;" +
+    " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };",
+    // myFirm() answers null until renderFirm has resolved the membership on a
+    // real page; __firmKnown lets a test model that cold-load beat.
+    "let currentUser = __user; let __firmKnown = true; function myFirm() { return __firmKnown ? __firm : null; }",
+    { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
+  ctx.fetchLog = fetch.log;
+  return ctx;
+}
+const BLDG = (o) => Object.assign({
+  id: "b1", address: "500 Warehouse Way, Boise, ID", addressKey: "500 warehouse way boise id",
+  verifiedKey: "", market: "Boise, ID", type: "Industrial", sizeSqft: 40000, yearBuilt: 1994,
+  addedBy: "Mike", mine: false, createdAt: "2026-09-01T00:00:00Z", updatedAt: "2026-09-01T00:00:00Z",
+}, o);
+
+test("the buildings section states the server's count for the whole set and attributes each row", async () => {
+  const ctx = loadBuildings({ body: {
+    summary: "2 buildings · 2 Industrial", truncated: false,
+    buildings: [BLDG({}), BLDG({ id: "b2", address: "7 Linder Rd, Meridian, ID", mine: true, addedBy: "Brad", sizeSqft: null, yearBuilt: null })],
+  } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskBuildings"), false);
+  assert.equal(ctx.dom.text("buildingsStats"), "2 buildings · 2 Industrial", "the line is the server's, never recomputed here");
+  assert.equal(ctx.dom.hidden("buildingsEmpty"), true);
+  assert.equal(ctx.dom.hidden("buildingsTruncated"), true);
+  const text = ctx.dom.text("buildingRows");
+  assert.match(text, /500 Warehouse Way, Boise, ID/);
+  assert.match(text, /Industrial · 40,000 SF · built 1994 · added by Mike/);
+  assert.match(text, /7 Linder Rd, Meridian, ID/);
+  assert.match(text, /added by you/, "your own row reads 'you', the shelf's rule");
+  assert.doesNotMatch(text, /added by Brad/);
+  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 2, "a Remove per row");
+});
+
+test("an empty board is an invitation, a failed read is neither", async () => {
+  let ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskBuildings"), false);
+  assert.equal(ctx.dom.hidden("buildingsEmpty"), false);
+  assert.equal(ctx.dom.text("buildingsStats"), "");
+  ctx = loadBuildings({ status: 503, body: { error: "down" } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskBuildings"), true,
+    "'no buildings' and 'could not reach the database' must never look the same");
+  assert.deepEqual(ctx.list(), []);
+});
+
+test("a truncated board says so rather than under-reporting", async () => {
+  const ctx = loadBuildings({ body: { summary: "1000 buildings", truncated: true, buildings: [BLDG({})] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("buildingsTruncated"), false);
+});
+
+test("a member of no firm, or a signed-out page, gets no buildings section and no fetch", async () => {
+  let ctx = loadBuildings({ firm: null, body: { buildings: [BLDG({})] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskBuildings"), true);
+  assert.equal(ctx.fetchLog.length, 0);
+  ctx = loadBuildings({ user: null, body: { buildings: [BLDG({})] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskBuildings"), true);
+  assert.equal(ctx.fetchLog.length, 0, "a stale firm in memory must not be asked about on a signed-out page");
+});
+
+test("the door shows only for a member of a firm and only for an address not already on the board", async () => {
+  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false,
+    buildings: [BLDG({ verifiedKey: "500 warehouse way boise id 83702" })] } });
+  await ctx.render();
+  const shown = (d) => d && !d.classList.contains("hidden");
+  assert.equal(shown(ctx.door({ address: "1 New St, Boise, ID" })), true, "a new address gets the door");
+  assert.equal(shown(ctx.door({ address: "500 WAREHOUSE WAY, Boise, ID  " })), false, "the exact address, whatever its case, is already listed");
+  assert.equal(shown(ctx.door({ address: "500 Warehouse Way, Boise, ID 83702", verifiedKey: "500 warehouse way boise id 83702" })), false,
+    "the same building typed another way meets through the verified key");
+  assert.equal(ctx.door({ address: "" }), null);
+  const noFirm = loadBuildings({ firm: null, body: { buildings: [] } });
+  assert.equal(shown(noFirm.door({ address: "1 New St, Boise, ID" })), false, "no firm, no door");
+  const noUser = loadBuildings({ user: null, body: { buildings: [] } });
+  assert.equal(noUser.door({ address: "1 New St, Boise, ID" }), null, "signed out, nothing is even created");
+});
+
+test("a door created before the firm resolved is revealed once the list loads — the cold-load order", async () => {
+  // The portfolio table is drawn before renderFirm has answered, so a door
+  // decided at creation time would leave every property row doorless.
+  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
+  ctx.setFirmKnown(false);
+  const early = ctx.door({ address: "1 New St, Boise, ID" });
+  const listed = ctx.door({ address: "500 Warehouse Way, Boise, ID" });
+  assert.ok(early.classList.contains("hidden"), "hidden until the list is known");
+  ctx.setFirmKnown(true);
+  await ctx.render();
+  assert.equal(early.classList.contains("hidden"), false, "revealed by the renderer");
+  assert.equal(listed.classList.contains("hidden"), true, "and the one already on the board stays hidden");
+});
+
+test("the door posts the identity the row already holds and then re-reads the board", async () => {
+  const seen = [];
+  const ctx = loadBuildings({ route: () => {
+    seen.push(1);
+    return seen.length === 1
+      ? { status: 200, body: { summary: "", truncated: false, buildings: [] } }
+      : { status: 200, body: { ok: true, existed: false, building: BLDG({}) } };
+  } });
+  await ctx.render();
+  const door = ctx.door({ address: "500 Warehouse Way, Boise, ID", propertyType: "Industrial", verifiedKey: "500 warehouse way boise id 83702" });
+  assert.ok(door);
+  await door.fire("click");
+  const post = ctx.fetchLog.find((c) => c.init && c.init.method === "POST");
+  assert.ok(post, "nothing was posted");
+  assert.deepEqual(JSON.parse(post.init.body), {
+    address: "500 Warehouse Way, Boise, ID", propertyType: "Industrial", verifiedKey: "500 warehouse way boise id 83702",
+  }, "the verified key travels, so the same building typed two ways still meets one row");
+  assert.equal(door.textContent, "On the firm's list");
+  assert.match(ctx.dom.text("buildingMsg"), /Added 500 Warehouse Way, Boise, ID to Colliers Boise's buildings/);
+});
 
 test("the shelf's header count describes the WHOLE shelf, never the filtered view", async () => {
   // /vault's rule, for its reasons: a count that shrinks with the search box

@@ -120,12 +120,45 @@ Plus the two views a professional actually reads a market through:
   *counts* are public (Census BPS); permit *difficulty* is not, and this is the
   only place it can live.
 
+### Lenses, not overrides
+
+A narrative is **not** a single value a firm overrides. It is a **lens**: one
+read, by one author, that anyone entitled to see it can switch to. A firm can
+hold several at once — CompNinja's, yours, a colleague's — and toggle between
+them without any of them destroying another.
+
+That decision changes three things, and all three are improvements:
+
+1. **The key is per author.** `unique (org_id, author_id, market, asset_class)`,
+   not one row per firm. Two analysts disagreeing about Ontario is a normal
+   state of the world, and the previous key made it a conflict.
+2. **CompNinja's default is a lens too**, not a fallback value — a system row
+   with no `org_id`, always present, always selectable. It is what the switcher
+   returns to.
+3. **"Reset to CompNinja default" switches the active lens; it never deletes.**
+   Nothing a person wrote is destroyed by a button labelled reset. Their lens is
+   still there when they switch back.
+
+Sharing follows the comp vault exactly: private to the author by default, a
+checkbox promotes it to the firm. `share_scope` is the same idea one level up
+from a comp — a judgment is as much the author's property as a deal is.
+
+**Attribution follows the text, not the switcher.** A lens with nothing written
+for a market falls back to CompNinja's read, and the UI must label that as
+CompNinja's. Crediting someone with a sentence they did not write is a small bug
+with a bad failure mode once lenses are shared across a firm.
+
 ### Schema (draft, not written as a migration)
 
 ```sql
 create table if not exists market_context (
   id           uuid primary key default gen_random_uuid(),
-  org_id       uuid not null references orgs(id) on delete cascade,
+  -- Null org_id + null author_id = CompNinja's own lens, visible to everyone.
+  org_id       uuid references orgs(id) on delete cascade,
+  author_id    uuid references users(id) on delete set null,
+  lens_name    text,                     -- display name; defaults to the author's
+  share_scope  text not null default 'private'
+                 check (share_scope in ('private','firm')),
   market       text not null,
   asset_class  text not null check (asset_class in
                  ('industrial','office','retail','multifamily','land','residential')),
@@ -146,11 +179,12 @@ create table if not exists market_context (
   score      numeric not null default 0,   -- -1..+1, the narrative's own reading
   rationale  text,
 
-  updated_by uuid references users(id) on delete set null,
   updated_at timestamptz not null default now(),
   expires_at timestamptz,
 
-  unique (org_id, market, asset_class)
+  -- One lens per author, per market, per class. Not one per firm: two analysts
+  -- disagreeing about a market is a normal state, not a conflict to resolve.
+  unique (org_id, author_id, market, asset_class)
 );
 alter table market_context enable row level security;
 ```
@@ -158,6 +192,25 @@ alter table market_context enable row level security;
 Org-scoped, not committed files — this is private business data and needs the
 wall `broker_comps` already has. A firm must never be one `git log` away from a
 competitor's read on Ontario.
+
+### Entering one: the flow matters more than the schema
+
+A vault nobody fills is worth nothing, so the writing path is load-bearing
+design rather than a form:
+
+1. **Never open a blank form.** The editor offers CompNinja's existing read as a
+   starting point. Editing someone else's sentence is a far smaller ask than
+   writing one from nothing.
+2. **Two required fields**: a direction, and one sentence. Confidence, deal
+   availability and both views are optional and collapsed. Save is disabled
+   until those two exist and enabled the moment they do — a usable read is
+   fifteen seconds of typing.
+3. **Show the consequence while they type.** "Saving this moves Ontario from
+   +0.18 to −0.04." A narrative that silently moves a ranking is how a firm
+   stops trusting its own numbers.
+4. **Two capture points**: an inline link in the ledger's own row, for when a
+   broker mentions something on a call, and the panel's Edit button on the
+   market card. Same editor, same two fields.
 
 ### Three rules
 
@@ -189,6 +242,89 @@ Tier belongs on screen too. A tertiary market's public score is a **weaker
 claim** than a primary market's — BLS suppresses small-cell employment, ACS
 5-year estimates carry wide margins — so the same score means less. That
 asymmetry is also why narrative weight earns more of its keep in small markets.
+
+---
+
+## The Market Workspace
+
+The explorer's ledger answers "which markets" and the market card answers "how
+is this one doing". Neither answers the question a member actually arrives
+with, which is **"what do I have here?"**
+
+The Market Workspace is that: one market, scoped to you, holding the ranking,
+your lens, the comps you own in it, and the reports you have run there. It is
+the market-level equivalent of the property card — a place rather than a
+readout.
+
+**Entry points, all leading to the same page:**
+
+- A hero card at the top of the market explorer — the primary route.
+- The vault, so a member reaches it from their own material rather than from a
+  public page. A firm's markets are the ones they hold comps in; that list
+  builds itself from `broker_comps.market`, which is already canonical
+  `marketOf()` form for exactly this kind of join.
+- The market card, as "open workspace".
+
+**What it holds:**
+
+| Panel | Source | Notes |
+|---|---|---|
+| Ranking and its three components | computed | Public score always shown beside the adjusted one |
+| Your lens, and the switcher | `market_context` | Write or edit in place |
+| Your comps in this market | `broker_comps` | The count is the honest answer to "do we know this market?" |
+| Reports run here | `shared_reports` / report history | |
+| Firm activity | `market_context` shared lenses | Who else has a read, and what it says |
+
+The comp count is worth more than it looks. A firm with two comps in a market
+and a confident narrative should see those two facts next to each other.
+
+---
+
+## How market context reaches a comp report
+
+Comps are priced by the market they sit in, so the ranking should inform a
+report. **How** it informs one is the single most consequential decision in this
+spec, and the answer is a hard split.
+
+### Track 1 — the measured direction MAY change the arithmetic
+
+`valuation.js` already weights comps by age, size similarity and source tier.
+Market velocity is a legitimate input to that weighting: a 24-month-old sale is
+weaker evidence in a fast-moving market than in a flat one, and decaying it
+harder there is better methodology, not an opinion.
+
+This is arithmetic on a public signal. It is reproducible by anyone with the
+same comps and the same FRED data, it can be explained in one sentence in the
+report, and it does not depend on who is logged in.
+
+### Track 2 — the narrative lens NEVER silently changes the number
+
+A client's read is displayed beside the range, never merged into it.
+
+The reasons are not stylistic:
+
+- **Two members of one firm would get different valuations for the same
+  building**, depending on whose lens was active. That is not a defensible
+  product behaviour, it is a bug that looks like a feature.
+- **The report's central claim weakens.** "An automated estimate built from
+  comparable sales" stops being true when an unstated opinion is inside the
+  number, and every disclaimer on the page is written against that claim.
+- **A report leaves the building.** It goes to an owner, a lender, a capital
+  partner. An opinion travelling inside a number, unlabelled, is the failure
+  mode that ends the product's credibility — and it would be discovered by a
+  reader, not by us.
+
+So the report shows the comp-derived range, and beside it: *"Your firm reads
+this market as contracting. Applied to this range, that would suggest the lower
+half."* The reader can see the judgment, weigh it, and disagree with it. Same
+three-number rule the ranking already runs on, one surface over.
+
+### What this buys
+
+Track 1 makes reports genuinely better in a way competitors using static decay
+cannot match. Track 2 keeps every report defensible to whoever receives it. The
+split is what lets both be true at once — and a single blended number would
+forfeit both.
 
 ---
 
@@ -288,9 +424,15 @@ The workbook the weights were derived in stays local: `.gitignore` excludes
 4. **FRED integration**, read-only, no UI: resolver script, verified codes,
    `macro_readings`, monthly refresh.
 5. **The public score** — areas 1 and 2 computed and rendered, tier shown.
-6. **`market_context`** and the client's own read.
-7. **Per-firm weights**, which are a copy of `market-weights.json` scoped to an
-   org.
+6. **`market_context`** and the client's own read — lenses, the switcher, and
+   the two-field editor.
+7. **The Market Workspace**, reachable from the explorer hero and from the
+   vault. Mostly assembly: every panel reads data slices 1-6 already store.
+8. **Track 1 in the report** — market velocity feeding `valuation.js`'s comp
+   decay. Public signal only.
+9. **Track 2 in the report** — the lens shown beside the range, never inside it.
+10. **Per-firm weights**, which are a copy of `market-weights.json` scoped to an
+    org.
 
 ---
 
@@ -302,11 +444,18 @@ The workbook the weights were derived in stays local: `.gitignore` excludes
 2. **Per-view narrative score, or one per asset class?** A market can be
    hostile to development and excellent for acquisition. Per-view is more
    precise and twice the writing.
-3. **Can a firm share its narrative outward** — with a client, in a report?
-   Same permission question the comp vault answers with `share_scope`, and the
-   answer should probably match.
-4. **Who inside a firm may write it?** Any seat, or an analyst role? The
-   narrative moves every number the firm produces.
-5. **Does CompNinja publish a house view** as a starting default, or ship only
-   the public layers and the client's own? A house view is a product surface
-   with an editorial cost and an opinion to defend.
+3. **Can a lens leave the firm** — shown to a client inside a report? Track 2
+   above displays it beside the range, which means it DOES leave. Worth a
+   deliberate yes rather than an inherited one, since a firm's read on a market
+   is arguably their most sensitive opinion.
+4. **Who inside a firm may write a lens?** Any seat, or an analyst role?
+   Lenses are per author, so anyone writing one only moves their own view —
+   which makes this a lighter question than it was under the one-row-per-firm
+   model, but sharing to the firm still needs a rule.
+5. **Does a lens expire per asset class?** Land and development move slower than
+   industrial leasing, so one 180-day default across all six may be wrong in
+   both directions.
+6. **Does the Market Workspace replace the market card**, or sit above it? They
+   overlap: the card is public-facing and indexable, the workspace is private
+   and personal. Two pages is honest; one page with a signed-in variant is less
+   to maintain and is the pattern `/how-it-works` already uses.

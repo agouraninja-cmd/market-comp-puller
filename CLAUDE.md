@@ -3535,6 +3535,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       collapsed "Required columns & privacy details" disclosure, is restated
       on the trust line, and is made again at publish. Do not put the fine
       print back on the invitation face without asking.
+    - **The one input takes MANY files (2026-09-02).** Choose or drop
+      several: PDFs and screenshots are read one by one (each its own
+      `/api/vault/extract` call, the route being rate-limited) and land in
+      ONE confirm table with a `pdf-src` row naming each file above its
+      rows — a row, never a column, because a cell rides into the upload as
+      a field. Spreadsheets QUEUE through the ordinary path one at a time
+      (the mapper is a screen a broker answers, and two cannot be open at
+      once): the extract batch first, then each CSV, and the next starts
+      only from `doImport`'s success with the previous rows STORED. A
+      refusal or a cancel drops the rest of the queue BY NAME
+      (`dropQueue`) rather than carrying on past a message the broker has
+      not read. `#res` is one line everywhere else, so a batch keeps
+      `batchLog` and every write during one starts with `batchPrefix()`
+      — "Imported 12 comps" from a.csv survives "Reading b.csv". One file
+      is the old path byte for byte (no source row, the plain name).
+      `test/vault-page.test.js` runs all four shapes.
     - **There is exactly ONE `<input type=file>`.** Its `accept` includes
       `.pdf` and the image types as well as `.csv`. `#bookPick` and the
       ordinary "Add comps"

@@ -3943,5 +3943,11 @@
     "type": "feature",
     "title": "Contacts attach to buildings: the sheet's Contacts section finally fills, and tenants are marked",
     "details": "org_contacts.building_id has existed since migration 046 and the building sheet has read it since slice 5, but nothing wrote it, so every sheet's Contacts section was permanently empty. POST|DELETE /api/org/buildings/contacts attaches and detaches, inside the buildings route block because it must prove the building is on this firm's board (test/org-routes.test.js refuses org_buildings anywhere else). Both halves scoped by org_id; a contact belongs to at most one building, so attaching elsewhere moves it and says so; detaching never deletes; an ordinary contact edit cannot touch the link; attaching moves the building up the desk. The sheet gains an Attach door that reads the firm's list only when opened, offers first the contacts whose company matches a lease's tenant on that building, and marks such a row 'tenant' — the lease record and the contact list meeting on the building. The Workspace's contact rows link to the building they are attached to. Proven end to end against the stand-in database, including the cross-firm refusals."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Upload several files into the vault at once",
+    "details": "The vault's one file input and its drop zone now take many files. PDFs and screenshots are read one after another — each its own extract call, since that route is rate-limited — and land in one confirm table with a row naming each file above its rows, so a broker confirms a folder of comp sheets once. Spreadsheets queue through the ordinary path one at a time (the mapper is a screen a broker answers), the next starting only once the previous import has stored its rows; a refusal or a cancel drops the rest of the queue by name rather than carrying on past a message nobody has read. The result area keeps a running log during a batch, so each file's Imported line survives the next file's Reading line. One file behaves exactly as before. First slice of the owner's Make it easier to upload data theme."
   }
 ]

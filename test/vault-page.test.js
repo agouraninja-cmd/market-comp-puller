@@ -1338,6 +1338,100 @@ test("a jpeg and a webp take the same door as a png", async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Several files at once (2026-09-02)
+// ---------------------------------------------------------------------------
+const MF_CSV = "address,property_type,transaction,deal_date\n100 Main St Boise ID,Industrial,sale,2026-01-09\n";
+const mfSettle = async () => { for (let i = 0; i < 6; i++) await tick(); };
+const mfPick = async (doc, files) => {
+  doc.getElementById("file").fire("change", { target: { files, value: "x" } });
+  await mfSettle();
+};
+const MF_PDF = (name) => ({ name, type: "application/pdf", size: 1200, dataUrl: "data:application/pdf;base64,JVBERi0x" });
+
+test("several PDFs and screenshots are extracted one by one into ONE confirm table, each file named above its rows", async () => {
+  assert.match(renderVaultHTML(boot([]), CHROME), /id="file"[^>]*\bmultiple\b/, "the one input takes many files");
+  let n = 0;
+  const { doc, calls } = await runPage([], null, {
+    extract: (init) => {
+      n++;
+      const name = JSON.parse(init.body).filename;
+      return Promise.resolve(jsonResponse(200, { filename: name, rows: [
+        { values: { address: n + " A St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+      ] }));
+    },
+  });
+  await mfPick(doc, [MF_PDF("one.pdf"), { name: "two.png", type: "image/png", size: 2400, dataUrl: "data:image/png;base64,iVBORw0KGgo=" }]);
+  const ex = calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0);
+  assert.deepEqual(ex.map((c) => c.body.filename), ["one.pdf", "two.png"], "one extract call per file, in order");
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+  assert.equal(doc.getElementById("pdfCount").textContent, "2", "the table counts every file's rows");
+  assert.match(doc.getElementById("pdfName").textContent, /^2 files: one\.pdf, two\.png$/);
+  const body = doc.getElementById("pdfBody").innerHTML;
+  assert.ok(body.indexOf('class="pdf-src"') < body.indexOf("1 A St"), "the file's name sits above its rows");
+  assert.match(body, /pdf-src"><td[^>]*>one\.pdf/);
+  assert.match(body, /pdf-src"><td[^>]*>two\.png/);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0, "nothing is stored until the broker confirms");
+  // One file is the old path exactly: no source row, the plain name.
+  const one = await runPage([], null, { extract: () => Promise.resolve(jsonResponse(200, { filename: "solo.pdf", rows: [] })) });
+  await mfPick(one.doc, [MF_PDF("solo.pdf")]);
+  assert.equal(one.doc.getElementById("pdfName").textContent, "solo.pdf");
+  assert.doesNotMatch(one.doc.getElementById("pdfBody").innerHTML, /pdf-src/);
+});
+
+test("several spreadsheets queue through the ordinary path, the next only after the last is stored, and every file keeps its line", async () => {
+  const order = [];
+  const { doc, calls } = await runPage([], null, {
+    upload: (init) => {
+      const b = JSON.parse(init.body);
+      order.push(b.filename);
+      return Promise.resolve(jsonResponse(200, { ok: true, imported: order.length, uploadId: "u" + order.length }));
+    },
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, { name: "b.csv", text: MF_CSV }, { name: "c.csv", text: MF_CSV }]);
+  assert.deepEqual(order, ["a.csv", "b.csv", "c.csv"], "one after another, in the order chosen");
+  const res = doc.getElementById("res").innerHTML;
+  assert.match(res, /a\.csv: Imported 1 comp/);
+  assert.match(res, /b\.csv: Imported 2 comps/);
+  assert.match(res, /c\.csv: Imported 3 comps/, "the summary keeps every file's line, not only the last");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 3);
+});
+
+test("a refused spreadsheet stops the batch and names what was not imported", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(400, { error: "Row 2: deal_date is required." })),
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, { name: "b.csv", text: MF_CSV }]);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 1, "b.csv was not attempted past a refusal the broker has not read");
+  assert.match(doc.getElementById("res").innerHTML, /deal_date is required/);
+  assert.match(doc.getElementById("res").innerHTML, /1 more file you chose was not imported: b\.csv/);
+});
+
+test("a mixed pick extracts first, reads the spreadsheet after the table is confirmed, and names a file nobody can read", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, { filename: "one.pdf", rows: [
+      { values: { address: "1 A St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+    ] })),
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, MF_PDF("one.pdf"), { name: "deck.pptx", type: "", size: 10 }]);
+  assert.match(doc.getElementById("res").innerHTML, /Skipped deck\.pptx/, "the file nobody can read is named, never dropped silently");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0, "the spreadsheet waits while the table is open");
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+  assert.equal(doc.getElementById("pdfName").textContent, "one.pdf", "one readable extract file is the plain single-file table");
+  doc.getElementById("pdfGo").fire("click");
+  await mfSettle();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 1, "then it is read");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 2, "the table's rows and the spreadsheet: two imports");
+  assert.match(doc.getElementById("res").innerHTML, /Skipped deck\.pptx/, "and the skip is still on screen at the end");
+  // Cancelling the table drops the waiting spreadsheet by name instead.
+  const c = await runPage([], null, { extract: () => Promise.resolve(jsonResponse(200, { filename: "one.pdf", rows: [] })) });
+  await mfPick(c.doc, [{ name: "a.csv", text: MF_CSV }, MF_PDF("one.pdf")]);
+  c.doc.getElementById("pdfCancel").fire("click");
+  await mfSettle();
+  assert.equal(c.calls.filter((x) => x.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.match(c.doc.getElementById("res").innerHTML, /Cancelled\. Nothing was saved\. 1 more file you chose was not imported: a\.csv/);
+});
+
 test("a file with no type still routes on its extension, both ways", async () => {
   // Drag-and-drop and some browsers hand over an empty `type`, so the
   // extension is the only signal left; a .csv must not fall into extract.

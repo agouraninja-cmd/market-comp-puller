@@ -55,6 +55,8 @@ const SHAREACCESS = require("./report-access.js");
 // consults, so there is exactly one place that decides a pending invite is not
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
+const BUILDINGS = require("./org-buildings.js");
+const ORGLEASES = require("./org-leases.js");
 // A firm's own tenant contacts: what may be stored and what a CSV of them
 // means (039). Pure and tested, and deliberately holding NO way to build a
 // contact from a lead or a hub participant — see its header.
@@ -216,6 +218,7 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
+const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -4508,6 +4511,173 @@ async function orgContactEmails(orgId) {
   return (rows || []).map((r) => r.email).filter(Boolean);
 }
 
+// The firm's buildings (migration 046) — every read names its columns, so
+// deploying before the migration 400s THESE routes and nothing else. Whole set,
+// capped at MAX_BUILDINGS: the desk states the count for everything and slices
+// for itself (slice 4), so a server-side ?limit=8 would leave the page unable
+// to say how much it was not showing — the shelf's rule.
+async function orgBuildingRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_buildings?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,address,address_key,verified_key,market,property_type,size_sqft,year_built,lat,lng,added_by_user_id,added_by_name,created_at,updated_at` +
+    `&order=updated_at.desc&limit=${BUILDINGS.MAX_BUILDINGS}`)) || [];
+}
+
+// The sheet's reads (Three Spaces, slice 5). Each is its own scoped query
+// and composeSheet in org-buildings.js is handed them as separate arrays —
+// never merged here, never widened. The viewer's own vault comps come from
+// a user_id-scoped read that no firm id can reach into.
+
+async function findOrgBuilding(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return null;
+  const rows = await sbRequest("GET",
+    `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}&limit=1`);
+  return (rows || [])[0] || null;
+}
+
+// Every comp the firm's members have shared, with the address inside the
+// comp jsonb — the reason the plan wanted a buildings table: without one,
+// "this building's comps" is this whole read filtered in memory, which is
+// what composeSheet does with it, keyed on the vault's addressKey.
+async function orgCompRowsForSheet(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  return (await sbRequest("GET",
+    `org_comps?org_id=eq.${encodeURIComponent(orgId)}` +
+    `&select=id,shared_by_user_id,shared_by_name,deal_date,comp&order=deal_date.desc&limit=1000`)) || [];
+}
+
+// The viewer's OWN vault comps on one building. user_id in the filter,
+// always, and a SEPARATE function from the firm read above — migration
+// 013's rule, the sheet's whole privacy argument.
+async function myCompsForBuilding(userId, addressKey) {
+  if (!DB_CONFIGURED || !userId || !addressKey) return [];
+  return (await sbRequest("GET",
+    `broker_comps?user_id=eq.${encodeURIComponent(userId)}&address_key=eq.${encodeURIComponent(addressKey)}` +
+    `&order=deal_date.desc&limit=200`)) || [];
+}
+
+// The shelf as METADATA — one row per shared report with its meta only.
+// orgShelfRows selects the whole payload, tens of KB a report, up to a
+// thousand of them: the desk pays that once per render, a per-building page
+// would pay it on every open. PostgREST's JSON projection (payload->meta)
+// keeps the wire to a few hundred bytes a row. FAIL-OPEN, cachedAddressKeys'
+// shape: a projection the live PostgREST refuses falls back to the full read
+// rather than an empty sheet, and says so in the log.
+async function orgShelfMetaRows(orgId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const slim = (r) => ({ id: r.id, created_at: r.created_at, user_id: r.user_id,
+    shared_by_name: r.shared_by_name, meta: r.meta || (r.payload && r.payload.meta) || null });
+  try {
+    const rows = await sbRequest("GET",
+      `shared_reports?org_id=eq.${encodeURIComponent(orgId)}&visibility=eq.org&revoked_at=is.null` +
+      `&select=id,created_at,user_id,shared_by_name,meta:payload->meta&order=created_at.desc&limit=1000`);
+    return (rows || []).map(slim);
+  } catch (err) {
+    console.error("Shelf meta projection failed, reading whole payloads instead:", err.message);
+    return (await orgShelfRows(orgId)).map(slim);
+  }
+}
+
+// Values for the firm's shared reports about ONE building: the whole payload
+// is read only for the handful of matching rows, then priced with the same
+// function bulk valuation uses, so a value on a sheet and a value on a bulk
+// row come from one piece of arithmetic. An enrichment: any failure is an
+// empty list, never a failed sheet.
+async function valueShelfReports(rows) {
+  const ids = (rows || []).map((r) => r.id).filter(isUuidish).slice(0, 12);
+  if (!DB_CONFIGURED || !ids.length) return [];
+  try {
+    const full = (await sbRequest("GET",
+      `shared_reports?id=in.(${pgInList(ids)})&select=id,payload,created_at&limit=${ids.length}`)) || [];
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    const out = [];
+    for (const r of full) {
+      const meta = (r.payload && r.payload.meta) || {};
+      const data = (r.payload && r.payload.data) || {};
+      const subject = meta.subject || {};
+      const v = BULK.valueFromReport(data, {
+        subjectSizeSqft: subject.sizeMin || subject.size || null,
+        propertyType: meta.type,
+        note: meta.note,
+        asOf: Date.parse(r.created_at) || Date.now(),
+      });
+      if (!v || !v.value_likely) continue;
+      const src = byId.get(String(r.id)) || {};
+      out.push({ reportId: r.id, ts: r.created_at, low: v.value_low, likely: v.value_likely, high: v.value_high,
+        sharedBy: src.shared_by_name || "" });
+    }
+    return out;
+  } catch (err) {
+    console.error("Shelf report valuation failed:", err.message);
+    return [];
+  }
+}
+
+// The firm's leases (migration 048), by firm or by one building. Firm-scoped
+// like org_contacts — a lease the firm manages is the firm's record, not one
+// member's — and read through its own function, never a widened vault read
+// (a lease comp in a broker's book is a different noun; see the migration).
+async function orgLeaseRows(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const scope = `org_leases?org_id=eq.${encodeURIComponent(orgId)}` +
+    (buildingId ? `&building_id=eq.${encodeURIComponent(buildingId)}` : "");
+  return (await sbRequest("GET", `${scope}&order=lease_expiry.asc&limit=1000`)) || [];
+}
+
+async function buildingContacts(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
+  // Its own select, deliberately NOT orgContactRows' — that one must not name
+  // building_id until 046 has run everywhere, and this read only ever runs
+  // for a building that exists, which proves 046 did.
+  return (await sbRequest("GET",
+    `org_contacts?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+    `&select=id,name,email,company,added_by_user_id,added_by_name&order=created_at.desc&limit=200`)) || [];
+}
+
+async function buildingNotes(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
+  return (await sbRequest("GET",
+    `org_building_notes?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+    `&order=created_at.desc&limit=200`)) || [];
+}
+
+// Everything one sheet shows, for one viewer. The reads run in parallel and
+// are handed to composeSheet as SEPARATE arrays; the only thing this function
+// adds is the valuation of the matching shared reports and the live names of
+// the colleagues who shared them.
+async function buildingSheetPayload(user, orgId, buildingId) {
+  const building = await findOrgBuilding(orgId, buildingId);
+  if (!building) return null;
+  const [firmComps, mineComps, shelf, portfolio, sharedIds, contacts, notes, org] = await Promise.all([
+    orgCompRowsForSheet(orgId),
+    myCompsForBuilding(user.id, building.address_key),
+    orgShelfMetaRows(orgId),
+    listPortfolio(user.id),
+    sharedCompIdsFor(user.id),
+    buildingContacts(orgId, buildingId),
+    buildingNotes(orgId, buildingId),
+    orgsByIds([orgId]).then((m) => m.get(String(orgId)) || null),
+  ]);
+  const leases = (await orgLeaseRows(orgId, buildingId)).map((l) => ORGLEASES.toLease(l, user.id));
+  const matching = shelf.filter((r) => r.meta && VAULT.addressKey(String(r.meta.address || "")) === building.address_key);
+  const people = await usersByIds(matching.map((r) => r.user_id));
+  for (const r of matching) {
+    const who = r.user_id ? people.get(String(r.user_id)) : null;
+    r.shared_by_name = (who && (who.name || who.email)) || r.shared_by_name || "";
+  }
+  const reportValues = await valueShelfReports(matching);
+  const sheet = BUILDINGS.composeSheet({
+    building, viewerId: user.id, addressKey: VAULT.addressKey,
+    firmComps, mineComps, shelf: matching,
+    // listPortfolio is user-scoped by construction; the id rides along so
+    // composeSheet's own rule (rule 2) can see whose rows these are.
+    portfolio: (portfolio || []).map((r) => ({ ...r, user_id: user.id })),
+    reportValues, sharedIds, contacts, notes, leases,
+  });
+  return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet };
+}
+
 async function orgCompRowsForBoard(orgId) {
   if (!DB_CONFIGURED || !orgId) return [];
   return (await sbRequest("GET",
@@ -4592,7 +4762,7 @@ async function msgThreadIdsFor(userId) {
   if (!DB_CONFIGURED || !userId) return [];
   const rows = await sbRequest("GET",
     `msg_thread_members?user_id=eq.${encodeURIComponent(userId)}` +
-    `&left_at=is.null&select=thread_id,last_read_at&limit=500`);
+    `&left_at=is.null&select=thread_id,last_read_at,added_at&limit=500`);
   return rows || [];
 }
 
@@ -8831,6 +9001,12 @@ const ACCOUNT_NAV_CSS = `
    [hidden] attribute's UA display:none, so every slot below would render
    signed-out chrome and signed-in chrome at once without this line. */
 .hdr nav [hidden]{display:none!important}
+/* The unread dot inside the Messages row (Three Spaces, slice 8). Ships
+   hidden; ACCOUNT_NAV_JS fills it from GET /api/messages/unread in the same
+   after-paint pass that reveals the vault row, so it never blinks for a
+   member with nothing waiting. Inline, so the rail's row layout leaves it
+   after the word rather than making it a row of its own. */
+.hdr nav .navdot{display:inline-block;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center;vertical-align:middle;margin-left:6px}
 .hdr nav .acct summary{display:flex;align-items:center}
 .hdr nav .acct .ini{width:28px;height:28px;border-radius:9999px;background:var(--slab);color:#fff;
   font-size:11px;font-weight:600;line-height:28px;text-align:center;display:inline-block;
@@ -9131,6 +9307,10 @@ const ACCOUNT_NAV_JS =
   // hubs; see vaultReadPayload and #vaultLocked.
   // This line is under `if(!me)return;` already, so it is members-only.
   `show($("navVault"),true);` +
+  // The unread dot (slice 8): its own endpoint, never a field on /api/config
+  // (which runs on every page load and is under a standing rule against DB
+  // reads). A 403 (no firm) or any failure leaves the dot hidden.
+  `fetch("/api/messages/unread",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null}).then(function(j){var d=$("navMsgDot");if(!d||!j||!(j.count>0))return;d.textContent=j.count>9?"9+":String(j.count);d.hidden=false;}).catch(function(){});` +
   // The tester badge, where the page asked for one. Same read, same pass:
   // this script has already paid for /api/config, and the badge ships
   // hidden so a non-tester never sees it blink. classList, not the hidden
@@ -9997,7 +10177,7 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -10114,7 +10294,10 @@ const marketBar = (signedIn = false, current = "") =>
       // Messages closes up directly under Workspace. That is the same thing
       // that already happens to Bulk valuation, and it is why the order is
       // pinned as a SEQUENCE rather than by position.
-      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages</a>`
+      // The unread dot (slice 8) rides INSIDE the row: the rail lays every nav
+      // child out as a full-width row, so a sibling badge would be a red bar.
+      // Hidden until ACCOUNT_NAV_JS asks. index.html carries the twin.
+      `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
     : "") +
   // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
   // visitor and shown only in the rail, so the markup stays identical in both
@@ -23671,6 +23854,365 @@ const server = http.createServer((req, res) =>
       }
     }
 
+    // --- GET|POST|DELETE /api/org/buildings — the firm's buildings ----------
+    //
+    // Three Spaces, slice 3 (migration 046). A building on the board is a
+    // member CHOOSING to put it there — the third opt-in of the same shape
+    // as a firm share and a firm comp. Nothing creates one as a side effect:
+    // linkVaultProperties() never touches org_buildings, and
+    // test/org-routes.test.js scans for exactly that, because a row that
+    // appeared from an upload would let a colleague read another's book by
+    // watching the list.
+    //
+    // Same gate as the shelf, the board and the contacts (openOrg + memberOf)
+    // — no fourth copy of the 401/403/503 ladder. Rules in org-buildings.js;
+    // the two keys are the vault's addressKey and the portfolio's
+    // verifiedKeyFor, injected, so no third key exists.
+    if (orgPath === "/api/org/buildings") {
+      const buildingsFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+      const wire = (rows, ctx) => rows.map((r) => BUILDINGS.toBuilding(r, ctx.user.id));
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const rows = await orgBuildingRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
+            // The whole set's line, computed once here so the desk and (slice
+            // 4) the subpage cannot disagree about the count.
+            summary: BUILDINGS.summarize(rows).line,
+            buildings: wire(rows, ctx),
+          });
+        })().catch((err) => {
+          console.error("Firm buildings read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's buildings. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // POST adds ONE building. Idempotent on (org_id, address_key): adding
+      // a building the firm already holds answers with that row and
+      // `existed: true` rather than a 409 — "Add to the firm's buildings"
+      // clicked twice is not an error, and the doors that offer it read the
+      // list to decide whether to offer it at all.
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const { row, errors } = BUILDINGS.normalizeBuilding(body, {
+            addressKey: VAULT.addressKey,
+            verifiedKeyFor: PFMATCH.verifiedKeyFor,
+            marketOf,
+            hasMarket: addressHasMarket,
+            types: VAULT.PROPERTY_TYPES,
+            year: new Date().getUTCFullYear(),
+          });
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+
+          const stamp = new Date().toISOString();
+          const payload = {
+            org_id: ctx.orgId,
+            ...row,
+            added_by_user_id: ctx.user.id,
+            // Snapshotted for 039's reason: on delete set null takes the join
+            // with the account, and a building nobody can attribute is one
+            // nobody can ask about. Name only, never the email.
+            added_by_name: String(ctx.user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+            updated_at: stamp,
+          };
+          // ignore-duplicates + representation: PostgREST answers [] for a row
+          // it ignored, which is how "existed" is known without a read first.
+          const stored = await sbRequest("POST", "org_buildings?on_conflict=org_id,address_key", [payload],
+            { prefer: "resolution=ignore-duplicates,return=representation" });
+          let building = Array.isArray(stored) && stored[0] ? stored[0] : null;
+          let existed = false;
+          if (!building) {
+            existed = true;
+            const scope = `org_buildings?org_id=eq.${encodeURIComponent(ctx.orgId)}` +
+              `&address_key=eq.${encodeURIComponent(row.address_key)}`;
+            // The one thing a repeat add may change: a verified key the
+            // stored row never had. FILLED, never rewritten — 035's rule, so a
+            // building keeps its identity even if a later door geocodes
+            // differently. Everything else on the row stays the first
+            // adder's.
+            if (row.verified_key) {
+              await sbRequest("PATCH", `${scope}&verified_key=is.null`,
+                { verified_key: row.verified_key }, { prefer: "return=minimal" });
+            }
+            building = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || null;
+            if (!building) return sendJson(res, 503, { error: "Couldn't save that building. Please try again in a minute." });
+          }
+          logEvent("org_buildings", { source: existed ? "again" : "add", prop_type: row.property_type || "" });
+          return sendJson(res, 200, { ok: true, existed, building: BUILDINGS.toBuilding(building, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm building write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that building. Please try again in a minute." });
+        });
+        return;
+      }
+
+      // PATCH edits the three descriptive fields (slice 5). Never the address:
+      // that is the key, and everything on the sheet hangs off it. Validated
+      // as the whole row it would become, so an edit cannot accept what an
+      // add refuses.
+      if (req.method === "PATCH") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!buildingId || !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const existing = await findOrgBuilding(ctx.orgId, buildingId);
+          if (!existing) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          const { row, errors } = BUILDINGS.validateBuildingEdit(existing, body, {
+            addressKey: VAULT.addressKey, verifiedKeyFor: PFMATCH.verifiedKeyFor, marketOf,
+            hasMarket: addressHasMarket, types: VAULT.PROPERTY_TYPES, year: new Date().getUTCFullYear(),
+          });
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          const scope = `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          const after = await findOrgBuilding(ctx.orgId, buildingId);
+          logEvent("org_buildings", { source: "edit" });
+          return sendJson(res, 200, { ok: true, building: BUILDINGS.toBuilding(after || { ...existing, ...row }, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm building edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "DELETE") {
+        (async () => {
+          const ctx = await buildingsFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!buildingId || !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          // Scoped by org_id as well as id, the contacts route's rule: knowing
+          // a building's id must not be enough to take it off another firm's
+          // board. Any member may remove one — a building is the firm's index,
+          // and removing it is undone by adding it again.
+          const scope = `org_buildings?id=eq.${encodeURIComponent(buildingId)}` +
+            `&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const found = await sbRequest("GET", `${scope}&select=id&limit=1`);
+          if (!((found || [])[0])) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+          logEvent("org_buildings", { source: "remove" });
+          return sendJson(res, 200, { ok: true, deleted: buildingId });
+        })().catch((err) => {
+          console.error("Firm building delete failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't remove that building. Please try again in a minute." });
+        });
+        return;
+      }
+    }
+
+    // --- GET /api/org/buildings/sheet — one building's sheet, for one viewer
+    //
+    // Everything the /building/<id> page shows, as JSON, so the page can
+    // re-read after an edit, a share toggle or a note. Same gate; the reads
+    // live in buildingSheetPayload and the composition in org-buildings.js.
+    if (req.method === "GET" && orgPath === "/api/org/buildings/sheet") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const payload = await buildingSheetPayload(user, orgId, buildingId);
+        if (!payload) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+        return sendJson(res, 200, payload);
+      })().catch((err) => {
+        console.error("Building sheet read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't load that building just now. Nothing has been lost. Refresh in a moment." });
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/org/buildings/notes — notes on a building (047) --
+    //
+    // Firm-wide, appended, attributed. No edit route: a note is a record of
+    // what somebody said when they said it. The author may delete their own,
+    // and the delete is scoped by author as well as firm and building.
+    if (orgPath === "/api/org/buildings/notes" && (req.method === "POST" || req.method === "DELETE")) {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const building = await findOrgBuilding(orgId, buildingId);
+        if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+
+        if (req.method === "DELETE") {
+          const noteId = (url.searchParams.get("note") || "").trim();
+          if (!isUuidish(noteId)) return sendJson(res, 400, { error: "Which note?" });
+          const scope = `org_building_notes?id=eq.${encodeURIComponent(noteId)}` +
+            `&org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
+            `&added_by_user_id=eq.${encodeURIComponent(user.id)}`;
+          const found = await sbRequest("GET", `${scope}&select=id&limit=1`);
+          if (!((found || [])[0])) return sendJson(res, 404, { error: "That note is not yours to remove, or is already gone." });
+          await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, deleted: noteId });
+        }
+
+        let body;
+        try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const { body: text, errors } = BUILDINGS.validateNote(body && body.body);
+        if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+        const stored = await sbRequest("POST", "org_building_notes", [{
+          org_id: orgId, building_id: buildingId, body: text,
+          added_by_user_id: user.id,
+          added_by_name: String(user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+        }], { prefer: "return=representation" });
+        // A note is activity: the building rises to the top of the desk's
+        // eight. Best-effort, the desk's order is a courtesy and not a record.
+        await sbRequest("PATCH",
+          `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+          { updated_at: new Date().toISOString() }, { prefer: "return=minimal" }).catch(() => {});
+        logEvent("org_buildings", { source: "note" });
+        const note = (stored || [])[0] || {};
+        return sendJson(res, 200, { ok: true, note: { id: note.id, body: text, addedBy: note.added_by_name || "", mine: true, createdAt: note.created_at || null } });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Building note write failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that note. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- GET|POST|PATCH|DELETE /api/org/leases — the firm's leases (048) --
+    //
+    // Three Spaces, slice 6. Membership-gated through openOrg + memberOf like
+    // every firm surface; every row carries org_id AND building_id, and the
+    // building must be on this firm's board before a lease may be filed on
+    // it. Rules in org-leases.js; renewal-watch.js is NOT wired to send —
+    // see the migration's header for why, and whose decision that is.
+    if (orgPath === "/api/org/leases") {
+      const leasesFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (buildingId && !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          const rows = await orgLeaseRows(ctx.orgId, buildingId || null);
+          const buildings = await orgBuildingRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            truncated: rows.length >= 1000,
+            leases: rows.map((l) => ORGLEASES.toLease(l, ctx.user.id)),
+            // The next twelve months, soonest first — renewal-watch's own
+            // arithmetic, for DISPLAY only. Nothing here mails anyone.
+            critical: ORGLEASES.criticalDates(rows, Date.now(), RENEWAL.deadlineOf, RENEWAL.daysUntil, buildings),
+          });
+        })().catch((err) => {
+          console.error("Firm leases read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's leases. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          const building = await findOrgBuilding(ctx.orgId, buildingId);
+          if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const { row, errors } = ORGLEASES.validateLease(body);
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          const stamp = new Date().toISOString();
+          const stored = await sbRequest("POST", "org_leases", [{
+            org_id: ctx.orgId, building_id: buildingId, ...row,
+            added_by_user_id: ctx.user.id,
+            added_by_name: String(ctx.user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+            updated_at: stamp,
+          }], { prefer: "return=representation" });
+          // A lease is activity: the building rises on the desk. Best-effort.
+          await sbRequest("PATCH",
+            `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`,
+            { updated_at: stamp }, { prefer: "return=minimal" }).catch(() => {});
+          logEvent("org_leases", { source: "add" });
+          return sendJson(res, 200, { ok: true, lease: ORGLEASES.toLease((stored || [])[0] || { ...row, building_id: buildingId }, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm lease write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that lease. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "PATCH" || req.method === "DELETE") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const leaseId = (ctx.url.searchParams.get("lease") || "").trim();
+          if (!isUuidish(leaseId)) return sendJson(res, 400, { error: "Which lease?" });
+          // Scoped by org_id as well as id on every call, the contacts
+          // route's rule: knowing a lease's id must not be enough to edit or
+          // delete another firm's row.
+          const scope = `org_leases?id=eq.${encodeURIComponent(leaseId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const existing = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0];
+          if (!existing) return sendJson(res, 404, { error: "That lease is not in this firm." });
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+            logEvent("org_leases", { source: "remove" });
+            return sendJson(res, 200, { ok: true, deleted: leaseId });
+          }
+
+          let patch;
+          try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          // Validated as the WHOLE row it would become — broker-vault.js's
+          // validateEdit rule, so an edit cannot accept what an add refuses.
+          const { row, errors } = ORGLEASES.validateLease(patch, existing);
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          const after = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || { ...existing, ...row };
+          logEvent("org_leases", { source: "edit" });
+          return sendJson(res, 200, { ok: true, lease: ORGLEASES.toLease(after, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm lease edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
+    }
+
     // --- POST /api/org/invite ----------------------------------------------
     if (req.method === "POST" && orgPath === "/api/org/invite") {
       (async () => {
@@ -24548,6 +25090,14 @@ const server = http.createServer((req, res) =>
             { prefer: "return=minimal" });
         }
         touchMsgThread(id, now);
+        // The author stamps their OWN cursor after posting (slice 8). Without
+        // it the thread reads as unread to the person who just wrote in it
+        // — the bug stampHubSeen exists to prevent on the hub. Fire-and-
+        // forget: a failed stamp must never cost the send.
+        sbRequest("PATCH",
+          `msg_thread_members?thread_id=eq.${encodeURIComponent(id)}&user_id=eq.${encodeURIComponent(g.user.id)}`,
+          { last_read_at: now }, { prefer: "return=minimal" }
+        ).catch((err) => console.error("Author read stamp failed (the message is fine):", err.message));
         // PII-free, and MARKET-free as well: a firm's markets are their
         // private book, so unlike a search event nothing here may carry one.
         // The vault_visit precedent.
@@ -24565,6 +25115,41 @@ const server = http.createServer((req, res) =>
     }
 
     // --- POST /api/messages/read — stamp how far I have read ----------------
+    // --- GET /api/messages/unread — how many conversations have something
+    // new (Three Spaces, slice 8). A BOOLEAN PER THREAD counted up, never a
+    // message count: 024 refused per-message receipts as three tables of
+    // state to answer a question nobody asked. Decided off two columns the
+    // list already carries — the thread's last_message_at against my own
+    // last_read_at — so it costs one membership read and one thread read,
+    // which is what lets it ride every page's after-paint hydration. The
+    // author's own send stamps their cursor, so a thread is never unread to
+    // the person who last wrote in it. In-app only; nothing here mails.
+    if (req.method === "GET" && msgPath === "/api/messages/unread") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const mine = await msgThreadIdsFor(g.user.id);
+        const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+        const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
+        let count = 0;
+        for (const m of mine) {
+          const last = lastAt.get(String(m.thread_id));
+          if (!last) continue;
+          // The baseline is the last read, or — for a member who has never
+          // opened it — the moment they were added. A thread's
+          // last_message_at is set at creation, so without the second half
+          // every freshly opened, still-empty conversation would count.
+          const since = m.last_read_at || m.added_at || "";
+          if (!since || String(last) > String(since)) count += 1;
+        }
+        return sendJson(res, 200, { count });
+      })().catch((err) => {
+        console.error("Unread count failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't count your unread conversations." });
+      });
+      return;
+    }
+
     if (req.method === "POST" && msgPath === "/api/messages/read") {
       (async () => {
         const g = await openMessaging();
@@ -26493,6 +27078,128 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD,
         testerBadge: true,
         body: renderMessagesBody(boot),
+      }));
+    })();
+    return;
+  }
+
+  // /buildings — the firm's whole list of buildings (Three Spaces, slice 4).
+  //
+  // The Workspace shows at most eight and always states the count for the
+  // whole set; past eight, one control links here. The boot payload is the
+  // SAME answer GET /api/org/buildings gives the Workspace — one read, one
+  // count, so the number under the Workspace heading and the number here can
+  // never disagree — and the page filters it in the browser. There is
+  // deliberately no server-side limit (the shelf's rule).
+  //
+  // The messages route's boot pattern: the first answer rides down with the
+  // page, so a member of no firm is told so rather than watching a spinner
+  // turn into a wall. pagePath, never req.url — the ?fbclid= lesson.
+  // /building/<id> — one building's sheet (Three Spaces, slice 5). The
+  // /buildings route's boot pattern, plus a 404 state for an id that is not
+  // on this firm's board: a colleague's link from another firm, or a
+  // building since removed.
+  const sheetMatch = req.method === "GET" ? /^\/building\/([0-9a-f-]{36})$/i.exec(pagePath) : null;
+  if (sheetMatch) {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Buildings are unavailable right now. Please try again in a minute." } };
+        else {
+          const firm = await messagingFirmOf(user);
+          if (!firm) boot = { s: 403, j: { error: "This account is not in a firm.", code: "no_firm" } };
+          else {
+            const payload = await buildingSheetPayload(user, firm.orgId, sheetMatch[1]);
+            boot = payload ? { s: 200, j: payload } : { s: 404, j: { error: "That building is not on your firm's list." } };
+          }
+        }
+      } catch (err) {
+        console.error("building sheet boot failed:", err.message);
+      }
+      logEvent("building_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "nofirm" : boot.s === 404 ? "gone" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      const addr = boot && boot.s === 200 && boot.j.building ? boot.j.building.address : "Building";
+      res.end(marketShell({
+        title: `${addr} \u00b7 CompNinja`,
+        description: "A building on your firm's board.",
+        canonical: `${SITE_URL}/building/${sheetMatch[1]}`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/building",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderBuildingSheetBody(boot),
+      }));
+    })();
+    return;
+  }
+
+  if (req.method === "GET" && pagePath === "/buildings") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Buildings are unavailable right now. Please try again in a minute." } };
+        else {
+          const firm = await messagingFirmOf(user);
+          if (!firm) boot = { s: 403, j: { error: "This account is not in a firm.", code: "no_firm" } };
+          else {
+            const rows = await orgBuildingRows(firm.orgId);
+            const org = (await orgsByIds([firm.orgId])).get(String(firm.orgId));
+            // The critical-dates strip (slice 6): the firm's leases, read
+            // once, reduced to the next twelve months by renewal-watch's own
+            // arithmetic. An enrichment — a failed lease read costs the
+            // strip and never the list.
+            let critical = [];
+            try {
+              critical = ORGLEASES.criticalDates(await orgLeaseRows(firm.orgId, null), Date.now(),
+                RENEWAL.deadlineOf, RENEWAL.daysUntil, rows);
+            } catch (err) { console.error("critical dates read failed:", err.message); }
+            boot = { s: 200, j: {
+              firm: { id: firm.orgId, name: (org && org.name) || "Your firm" },
+              truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
+              summary: BUILDINGS.summarize(rows).line,
+              buildings: rows.map((r) => BUILDINGS.toBuilding(r, user.id)),
+              critical,
+            } };
+          }
+        }
+      } catch (err) {
+        console.error("buildings boot failed:", err.message);
+      }
+      // PII-free and market-free, the vault_visit precedent: a firm's
+      // buildings are their private record. `source` is the boot outcome.
+      logEvent("buildings_visit", { source:
+        !boot ? "error"
+        : boot.s === 200 ? "ok"
+        : boot.s === 401 ? "signin"
+        : boot.s === 403 ? "nofirm"
+        : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Buildings \u00b7 CompNinja",
+        description: "Your firm's buildings.",
+        canonical: `${SITE_URL}/buildings`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/buildings",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderBuildingsBody(boot),
       }));
     })();
     return;

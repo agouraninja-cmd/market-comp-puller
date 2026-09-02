@@ -57,7 +57,10 @@ interrupting for), **`deal-date.js`** (the deal-date parser, including the
 Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
 the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
-treated as invited, never public) and **`org-access.js`** (who is in a firm
+treated as invited, never public) and **`org-buildings.js`** (what may be put on a firm's board and how the list is
+summarized: the two keys are the vault's `addressKey` and the portfolio's
+`verifiedKeyFor`, INJECTED so no third key exists; a building with no street
+number is a city and is refused) and **`org-access.js`** (who is in a firm
 and what their membership allows — an unknown role is a `member`,
 `removed_at` beats ownership, and an invite is not a membership until the
 invited person accepts it) and **`market-hero.js`** (which city's
@@ -1518,6 +1521,80 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     column. Deploy-first breaks every legacy public link — including ones
     already mailed to property owners with no account — not just the new
     feature.
+  **The firm's buildings** (Three Spaces slice 3, 2026-09-01; migration
+  `046-org-buildings.sql`, **run before deploying**; spec
+  `docs/superpowers/specs/2026-09-01-three-spaces-design.md`). `org_buildings`
+  is the firm's index: one row per building a member CHOSE to put on the board,
+  keyed on `(org_id, address_key)` with a nullable `verified_key` so a
+  portfolio row can be matched. `GET|POST|DELETE /api/org/buildings?id=<org>`
+  on the existing `openOrg` + `memberOf` gate; rules in the pure
+  **`org-buildings.js`**; the desk section `#deskBuildings` sits at the top of
+  the firm deck with an "Add to firm" door on the firm shelf's rows, and the
+  Vault's portfolio rows carry the same door (`firmDoorCell` in
+  vault-page.js — the portfolio moved there in slice 1), each reading the
+  board off the server's own rows so neither page grows an address key. Four
+  rules: **nothing creates a building as a side effect** — `linkVaultProperties`
+  never touches the table and `test/org-routes.test.js` fails the build if the
+  table is named outside its read function and route block (a row appearing
+  from an upload would let a colleague read another's book by watching the
+  list); **POST is idempotent** on the key and a repeat add only ever FILLS a
+  missing `verified_key`, never rewrites (035's rule); **the whole set is
+  returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
+  in the browser); and **`org_contacts.building_id` is read by no code yet** —
+  naming it in `orgContactRows`' `select=` before 046 has run 400s every
+  contacts read. The plan numbered this migration 044; messaging took it.
+  **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
+  the desk shows at most `COLLAPSE_AT` (8) rows and past that — only past
+  that — `#buildingsMore` links to `/buildings`, a marketShell body in
+  **`buildings-page.js`** whose boot payload is the SAME `/api/org/buildings`
+  answer the desk reads (one read, one count), filtered in the browser with
+  the header count always describing the whole set. `CTA_FREE_PAGES` gains
+  `/buildings`. `org-buildings.js`'s `OVERFLOW_AT` mirrors index.html's
+  `COLLAPSE_AT` and `test/org-desk.test.js` holds them together.
+  **Each building has a sheet** (slice 5, 2026-09-02; migration
+  `047-org-building-notes.sql`, **run before deploying**): `GET /building/<id>`
+  (`renderBuildingSheetBody`), composed by the pure `composeSheet` from reads
+  `buildingSheetPayload` makes SEPARATELY — the firm's `org_comps` filtered on
+  the vault's address key, the viewer's own `broker_comps` through a
+  user-scoped read, the shelf as metadata (`orgShelfMetaRows`, a
+  `payload->meta` projection that falls back to the full read on any error),
+  the viewer's own portfolio snapshots plus the firm's matching shared reports
+  priced with `BULK.valueFromReport`, contacts by `building_id`, and notes.
+  Two rules, tested: a colleague's private vault comp can never appear
+  (composeSheet drops anything in the viewer's arrays not carrying their
+  user_id), and valuations are the viewer's own plus the firm's shared reports,
+  never a colleague's portfolio. `PATCH /api/org/buildings` edits type, size and
+  year and never the address; `POST|DELETE /api/org/buildings/notes` are
+  appended, attributed, author-deletable, and a note counts as activity.
+  `test/building-sheet-run.test.js` runs the two-account isolation case.
+  **Leases, and the dates that matter** (slice 6, 2026-09-02; migration
+  `048-org-leases.sql`, **run before deploying**, after 046): `org_leases` is
+  the firm's lease record, a different noun from `broker_comps.lease_expiry`.
+  Rules in the pure **`org-leases.js`**, RESTATED from broker-vault.js rather
+  than shared (a different writer against a different table): a notice after
+  the expiry is refused as transposed, a rent needs its basis and it is never
+  guessed, an edit is validated as the whole row. `criticalDates` takes
+  renewal-watch.js's `deadlineOf`/`daysUntil` INJECTED, never required.
+  `GET|POST|PATCH|DELETE /api/org/leases` on the firm gate; the Leases section
+  on the sheet and the Critical dates strip at the top of `/buildings` (the
+  next twelve months, soonest first). **Nothing here sends mail**:
+  `renewal_notified_at` ships unwritten, renewal-watch is display-only on
+  this surface, and which member at a firm would get a reminder is an owner
+  decision the plan defers. The run test asserts the mail stand-in stayed
+  empty.
+  **Discovery, unread, contacts, reports** (slice 8, 2026-09-02, no
+  migration; spec §13 of the firm-messaging design). Four **Discuss** doors
+  (a SHARED comp in the Vault's Firm column, a shelf report, a building
+  sheet, a contact row) all land on `/messages?say=&comp=`, which seeds the
+  composer and posts NOTHING by arriving. `GET /api/messages/unread` counts
+  THREADS with something new (a boolean per thread; the member's `added_at`
+  is the baseline for a never-opened thread) and feeds `#navMsgDot` on both
+  rails from the after-paint hydration — never from `/api/config`; the send
+  route stamps the author's own `last_read_at`. `#deskThreads` on the
+  Workspace shows five, unread first; `/messages` sorts unread first. The
+  contact door composes name and company and **never the email** (039), and
+  the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
+  `report-access.js` stays the sole decider.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

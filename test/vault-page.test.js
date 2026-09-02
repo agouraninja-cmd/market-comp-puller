@@ -500,6 +500,27 @@ async function runPage(comps, benchResult, opts, identity) {
     // The BOV panel loads on every apply(), so without this stub every page
     // in this file ran its loadBovs through the catch branch — which hides
     // the empty-state line, and so could never have caught it lingering.
+    // The personal decks (Three Spaces, slice 1) read these on every apply();
+    // answered so a test can hand the portfolio real rows. The watchlist is
+    // not what any test here is about.
+    if (u.indexOf("/api/portfolio") === 0) {
+      return Promise.resolve(jsonResponse(200, { items: opts.portfolio || [] }));
+    }
+    if (u.indexOf("/api/watchlist/feed") === 0) {
+      return Promise.resolve(jsonResponse(200, { items: [] }));
+    }
+    // The firm's buildings (slice 3): what the portfolio rows' "Add to firm"
+    // door reads to decide whether to render, and where it posts.
+    if (u.indexOf("/api/org/buildings") === 0) {
+      if (init && init.method === "POST") {
+        return opts.addBuilding
+          ? opts.addBuilding(init)
+          : Promise.resolve(jsonResponse(200, { ok: true, existed: false, building: {} }));
+      }
+      return opts.buildings === null
+        ? Promise.resolve(jsonResponse(503, { error: "down" }))
+        : Promise.resolve(jsonResponse(200, { summary: "", truncated: false, buildings: opts.buildings || [] }));
+    }
     if (u.indexOf("/api/broker/bovs") === 0) {
       return opts.bovs ? opts.bovs(init, u) : Promise.resolve(jsonResponse(200, { bovs: [], rollup: null }));
     }
@@ -3324,6 +3345,80 @@ test("an import offers no push to a broker in no firm", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// "Add to firm" on a portfolio row (Three Spaces, slice 3)
+//
+// The portfolio moved here from /desk in slice 1, so the door that puts a
+// property on the firm's board lives here too. It reads the firm's buildings
+// once and renders only for a member of a firm, only once that read has
+// answered, and only for an address not already on the board.
+// ---------------------------------------------------------------------------
+
+const PROP = (o) => Object.assign({
+  id: "9c1e9a1e-0000-4000-8000-0000000000p1", address: "1210 N 17th St, Boise, ID",
+  property_type: "Industrial", verified_key: "1210 n 17th st boise id 83702",
+  snapshots: [{ ts: "2026-09-01T00:00:00Z", likely: 1250000 }], updated_at: "2026-09-01T00:00:00Z",
+}, o);
+const BOARD = (o) => Object.assign({
+  id: "b1", address: "100 Main St, Boise, ID", addressKey: "100 main st boise id", verifiedKey: "",
+  market: "Boise, ID", type: "Industrial", sizeSqft: null, yearBuilt: null, addedBy: "Mike", mine: false,
+}, o);
+
+test("the door renders on a property not yet on the firm's board, and not on one that is", async () => {
+  const { doc } = await runPage([comp({})], null, {
+    firm: FIRM,
+    portfolio: [PROP({}), PROP({ id: "9c1e9a1e-0000-4000-8000-0000000000p2", address: "100 MAIN ST, Boise, ID", verified_key: null })],
+    buildings: [BOARD({})],
+  });
+  await tick();
+  const rows = doc.getElementById("propsRows").innerHTML;
+  assert.match(rows, /data-firm-bldg="9c1e9a1e-0000-4000-8000-0000000000p1"[^>]*>Add to firm</,
+    "the unlisted property offers the door");
+  assert.doesNotMatch(rows, /data-firm-bldg="9c1e9a1e-0000-4000-8000-0000000000p2"/,
+    "the exact address, whatever its case, is already on the board");
+});
+
+test("the same building typed another way meets the board through the verified key", async () => {
+  const { doc } = await runPage([comp({})], null, {
+    firm: FIRM, portfolio: [PROP({})],
+    buildings: [BOARD({ address: "1210 North 17th Street, Boise, ID 83702", verifiedKey: "1210 n 17th st boise id 83702" })],
+  });
+  await tick();
+  assert.doesNotMatch(doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/);
+});
+
+test("no firm, or a board that could not be read, offers no door", async () => {
+  let ctx = await runPage([comp({})], null, { portfolio: [PROP({})] });
+  await tick();
+  assert.doesNotMatch(ctx.doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/, "no firm, no door");
+  assert.equal(ctx.calls.some((c) => c.url.indexOf("/api/org/buildings") === 0), false,
+    "and the board is not even asked for");
+  ctx = await runPage([comp({})], null, { firm: FIRM, portfolio: [PROP({})], buildings: null });
+  await tick();
+  assert.doesNotMatch(ctx.doc.getElementById("propsRows").innerHTML, /data-firm-bldg=/,
+    "a board we could not read must not be treated as empty — 'already listed' is a claim");
+});
+
+test("the door posts the identity the row already holds, then re-reads the board", async () => {
+  let sent = null;
+  const { doc, calls } = await runPage([comp({})], null, {
+    firm: FIRM, portfolio: [PROP({})], buildings: [],
+    addBuilding: (init) => {
+      sent = JSON.parse(init.body);
+      return Promise.resolve(jsonResponse(200, { ok: true, existed: false, building: BOARD({ address: "1210 N 17th St, Boise, ID" }) }));
+    },
+  });
+  await tick();
+  const btn = { getAttribute: (a) => (a === "data-firm-bldg" ? "9c1e9a1e-0000-4000-8000-0000000000p1" : null), disabled: false, textContent: "Add to firm" };
+  doc.getElementById("propsRows").fire("click", { target: { closest: (sel) => (sel === "button[data-firm-bldg]" ? btn : null) } });
+  await tick();
+  assert.deepEqual(sent, { address: "1210 N 17th St, Boise, ID", propertyType: "Industrial", verifiedKey: "1210 n 17th st boise id 83702" },
+    "the verified key travels, so the same building typed two ways meets one row");
+  assert.match(doc.getElementById("propsMsg").textContent, /Added 1210 N 17th St, Boise, ID to Colliers Boise's buildings/);
+  const reads = calls.filter((c) => c.url.indexOf("/api/org/buildings") === 0 && !c.body);
+  assert.ok(reads.length >= 2, "the board is re-read after the add, so the door disappears from the row");
+});
+
+// ---------------------------------------------------------------------------
 // The confirm table reads against the source document
 // ---------------------------------------------------------------------------
 // Measured 2026-08-28: verifying twelve extracted rows took 4m51s with zero
@@ -3571,4 +3666,17 @@ test("a checkbox the broker set by hand survives the selector's re-render", asyn
   assert.equal(after[0].checked, false,
     "the re-render must not resurrect a row the broker unchecked by hand");
   assert.equal(after[1].checked, true, "while the cured row still checks in");
+});
+
+
+// ---------------------------------------------------------------------------
+// Discuss, from the Firm column (Three Spaces, slice 8)
+// ---------------------------------------------------------------------------
+test("a shared comp offers Discuss with itself attached; an unshared one offers only Share", async () => {
+  const { doc } = await runPage([comp({ id: "c1", address: "100 Main St" }), comp({ id: "c2", address: "200 Oak Ave" })],
+    null, { firm: FIRM, sharedIds: ["c1"] });
+  const rows = doc.getElementById("tbody").innerHTML;
+  assert.match(rows, /data-firm="c1" data-on="1">Shared<\/button> <a class="lnk" href="\/messages\?say=About%20100%20Main%20St&amp;comp=c1"/,
+    "the shared comp's Discuss seeds the message with the comp attached");
+  assert.doesNotMatch(rows, /comp=c2/, "an unshared comp is not discussed — discussing it would be sending it, which is Share's act");
 });

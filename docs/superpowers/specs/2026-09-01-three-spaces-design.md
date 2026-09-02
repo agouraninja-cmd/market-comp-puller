@@ -1,0 +1,256 @@
+# Three Spaces — the workspace/vault split and the building entity
+
+**Status:** living spec for the Three Spaces program (plan:
+`~/.claude/plans/could-you-help-me-mighty-crane.md`). Slices 1 and 2 shipped
+on `feat/three-spaces-vault` (PR #246); this document is written at slice 3
+and grows with the slices that build on the building entity. The firm
+messaging half of the program has its own spec,
+`2026-09-01-firm-messaging-design.md`, and shipped ahead as migration 044.
+
+## The three spaces
+
+| Tab | Whose data | What it answers |
+|---|---|---|
+| **Workspace** (`/desk`, and `/` for a member) | the **firm's** | What has this company transacted on, what buildings do we work on, what leases do we hold |
+| **Vault** (`/vault`) | **yours** | What am I researching, what have I collected, what am I ready to push to the firm |
+| **Messages** (`/messages`) | **shared, deliberately** | Talking to colleagues about a specific deal |
+
+Two things are genuinely new in the data model and this program builds them:
+a **firm-scoped building entity** (this document) and a **firm-scoped lease
+record** (slice 6). Everything else is composition and relocation of things
+that already exist.
+
+## The building entity (migration 046, slice 3)
+
+### Why a table and not a derived list
+
+A building sheet must be **linkable** — from a message, a lease reminder, a
+colleague's note — and an address string is not an id: `1210N17th st` versus
+`1210 N 17th st Boise Idaho 83702` is the incident that produced
+`portfolio-match.js`. And `org_comps` stores the address inside its `comp`
+jsonb, so filtering a firm's comps by building without a table means pulling
+the firm's entire comp set on every sheet open.
+
+### Why it does not breach the privacy wall
+
+Migration 016's rule is untouched: two brokers on one building get
+**separate** `broker_properties` rows, because deduplicating them would make
+one broker's activity inferable from the other's. An `org_buildings` row is a
+different act — a member *choosing* to put a building on the firm's board.
+Structurally it is the third opt-in of the same shape as
+`POST /api/share {visibility:"org"}` and `POST /api/vault/firm`: a new table,
+read and written by new functions, so no `user_id=eq.` read is widened and
+`test/org-routes.test.js`'s `or=(user_id\.eq` scan stays satisfied by
+construction.
+
+**The rule that keeps that true: nothing creates a building as a side
+effect.** A row is created only by an explicit route call carrying a member's
+session. `linkVaultProperties()` never touches the table, and
+`test/org-routes.test.js` fails the build if the table is named anywhere in
+`server.js` outside its read function and its route block. If a row appeared
+from an upload, a colleague could read another's book by watching the list.
+
+### Two keys, deliberately, and no third
+
+- `address_key` — the natural key; it is what `broker_comps` and
+  `broker_properties` already carry (`broker-vault.js`'s `addressKey`), and
+  comps are the sheet's largest section.
+- `verified_key` — nullable; `portfolio-match.js`'s `verifiedKeyFor`, so a
+  `portfolio_items` / `recent_searches` row can be matched to a building.
+
+Both functions are **injected** into the pure `org-buildings.js` rather than
+required, and the browser's "already on the board" check reads the keys the
+server sends rather than computing one. No third key exists anywhere.
+
+### What may be stored (`org-buildings.js`, pure)
+
+`normalizeBuilding(input, { addressKey, verifiedKeyFor, marketOf, hasMarket,
+types, year })` refuses rather than guesses, broker-vault.js's rule: a
+building with no street number is a city; an address the market parser cannot
+place is refused rather than filed under nothing; the type is the vault's
+vocabulary; size is square feet or nothing ("1.2M" is refused); year built is
+a four-digit year in a sane window; a location is a lat/lng pair or nothing.
+`market` is attached with `marketOf()` so it agrees byte for byte with
+`comp_corpus.market`.
+
+`toBuilding(row, viewerId)` is an allowlist (vault-api.js's rule).
+`summarize(rows)` produces the one line the desk and the subpage both quote
+("14 buildings · 6 Industrial · 5 Retail · 3 Office"), always for the whole
+set. `OVERFLOW_AT = 8` and `MAX_BUILDINGS = 1000` are the plan's thresholds.
+
+### Routes
+
+`GET|POST|DELETE /api/org/buildings?id=<org>` (delete takes `&building=<id>`),
+on the existing `openOrg` + `memberOf` gate — no fourth copy of the
+401/403/503 ladder. The whole set is returned (≤1000, `truncated` said);
+there is deliberately **no server-side `?limit=8`** — the shelf's rule that a
+page must always be able to say how much it is not showing.
+
+`POST` is **idempotent** on `(org_id, address_key)`: a repeat add answers with
+the existing row and `existed: true`. The one thing a repeat may change is a
+`verified_key` the stored row never had, which is **filled, never rewritten**
+(035's rule). Attribution stays with the first adder.
+
+Any member may remove a building. The delete is scoped by `org_id` as well as
+`id`, so knowing a building's id is not enough to take it off another firm's
+board.
+
+### On screen
+
+`#deskBuildings` sits at the **top** of the firm deck — buildings are the
+firm's index, the shelf is its output. It fills from work already visible:
+an "Add to firm" door on a firm shelf row, plus an address form. The
+portfolio moved to the Vault in slice 1, so its rows carry the same door
+there (`firmDoorCell` in vault-page.js), carrying the row's verified key. The door renders only for a member
+of a firm and only for an address not already on the board (the Buy-button
+rule). A failed read hides the section rather than rendering an empty list —
+"no buildings" and "could not reach the database" must never look the same.
+
+### Deploy order
+
+Migration 046 must run **before** the code deploys. Every read names its
+columns in a PostgREST `select=`, so an unrun migration makes the buildings
+routes answer 503 — and *only* them; nothing else reads the table
+(`test/org-buildings-run.test.js` proves the blast radius). The migration
+also adds a nullable `org_contacts.building_id` that **no code reads yet**;
+naming it in `orgContactRows`' `select=` before the migration has run would
+take every contacts read down with it.
+
+## The buildings subpage (slice 4, no migration)
+
+**The owner's overflow rule.** The Workspace's buildings section always
+states the count for the **whole** set, then renders at most **eight** rows,
+most-recent-activity first (the server's `updated_at desc`). Past eight, and
+only past eight, one control renders: `#buildingsMore`, a link reading
+"See all 14 buildings →" to `/buildings`. Under eight it does not render at
+all (the Buy-button rule). The threshold is `index.html`'s existing
+`COLLAPSE_AT`, and `org-buildings.js`'s `OVERFLOW_AT` mirrors it — a test
+holds the two together, because index.html cannot require the module.
+
+**`/buildings`** (`buildings-page.js`, `renderBuildingsBody(boot)`) is a
+marketShell body like `/bulk` and `/messages`: no Tailwind utilities, its
+stylesheet in the body after `MARKET_CSS`, every custom property a theme
+token. The route follows the messages route's boot pattern — the first
+answer rides down with the page (401 sign in / 403 no firm / 503 outage /
+200 the list), `no-store`, `vary: cookie`, `noindex`, matched on
+`pagePath` — and the boot payload is the **same** `GET /api/org/buildings`
+answer the Workspace reads: one read, one count, so the two pages can never
+disagree. The page filters in the browser (search box + type select,
+revealed at six rows, the shelf's number), states the filtered count
+separately ("3 of 7"), and never lets the header count follow the filter.
+Remove works here too, through the same DELETE. `CTA_FREE_PAGES` gains
+`/buildings`: it is a page a member works in.
+
+**Deliberate asymmetry.** The portfolio (now on the Vault) gets the other
+idiom, the history list's fold. A firm's buildings are a shared record with
+search needs and earn a page; one member's portfolio is a short personal
+list and earns a fold.
+
+## Each building has a sheet (slice 5, migration 047)
+
+`GET /building/<id>` (`renderBuildingSheetBody` in `buildings-page.js`),
+composed by `org-buildings.js`'s pure **`composeSheet(parts)`**; `server.js`
+owns every read (`buildingSheetPayload`). The sections and their sources:
+
+| Section | Source | Editable? |
+|---|---|---|
+| Identity (`#bsHead`) | the `org_buildings` row | type, size, year — never the address, which is the key |
+| Transactions, the firm's (`#bsTxFirm`) | `org_comps`, filtered in memory on the vault's `addressKey` of the comp's address, attributed `shared_by_name` | read-only |
+| Transactions, yours (`#bsTxMine`) | your own `broker_comps` on the key, through a **separate user-scoped read** (`myCompsForBuilding`); each row carries the firm-share toggle | read-only rows, the toggle posts to `/api/vault/firm` |
+| Reports (`#bsReports`) | firm shelf rows whose `meta.address` keys to the building → `/r/<id>` | read-only |
+| Valuations (`#bsValues`) | your own `portfolio_items.snapshots` + the firm's matching shared reports, priced with `bulk.js`'s `valueFromReport` (one piece of arithmetic for a sheet and a bulk row) | read-only |
+| Contacts (`#bsContacts`) | `org_contacts` where `building_id` = this building, through its own select | read-only (attaching is later) |
+| Notes (`#bsNotes`) | `org_building_notes` (**new**, 047) | appended, attributed, author may delete |
+
+**Two rules `composeSheet` enforces and is tested on.** (1) A colleague's
+private vault comp can never appear: the composer is handed the firm's shared
+comps and the viewer's own comps as two arrays from two reads, never merges
+them, and drops anything in the viewer's arrays whose `user_id` is not the
+viewer's — so a caller bug would show nothing rather than something. The
+viewer's own shared comps are listed under "yours" with the toggle, never
+twice. (2) Valuations are the viewer's own snapshots plus values read off the
+firm's SHARED reports — never a colleague's portfolio; `portfolio_items` stays
+`user_id=eq.` scoped. `test/building-sheet-run.test.js` runs the two-account
+case against the fake PostgREST: B's unshared comp and B's snapshot are absent
+from A's sheet, and vice versa.
+
+**The shelf as metadata.** `orgShelfRows` selects whole payloads, tens of KB
+a report, up to a thousand of them; a per-building page would pay that on
+every open. `orgShelfMetaRows` uses PostgREST's JSON projection
+(`meta:payload->meta`) and **falls back to the full read on any error**
+(`cachedAddressKeys`' shape). The whole payload is then read only for the
+handful of reports that match the building, to price them. ⚠ The projection
+has not yet been tried against the live PostgREST — the stand-in ignores
+`select` — so the fallback is what stands between a refused projection and
+an empty sheet until somebody runs one curl.
+
+The "spreadsheet" convention is `/vault`'s: the identity cells show the
+formatted figure, hold the raw one on `data-raw`, swap on focus, save on blur
+through `PATCH /api/org/buildings`, validated as the whole row it would become
+(`validateBuildingEdit`, so an edit cannot accept what an add refuses).
+Notes go through `POST|DELETE /api/org/buildings/notes`; a note is activity
+and moves the building to the top of the desk's eight. `CTA_FREE_PAGES` gains
+`/building`. The desk's and `/buildings`' rows link to the sheet.
+
+## Leases, and the dates that matter (slice 6, migration 048)
+
+**`org_leases`** is a firm-scoped lease record: tenant, suite, size, term,
+expiry, option notice, rent and its basis, lease type, status, notes, who
+filed it, and `renewal_notified_at` — which **ships unwritten** (the
+`orgs.share_default` / `hub_items.status` precedent), so wiring mail later is
+a code change and not a second SQL trip. A lease the firm manages is a
+different noun from `broker_comps.lease_expiry` (a fact about a comparable in
+one broker's private book): a view over vault rows would be a widened
+`user_id` read and would double-count a lease two colleagues both filed.
+
+**Rules in the pure `org-leases.js`**, restated rather than shared with
+broker-vault.js because this is a different writer against a different table:
+an option notice after the expiry is refused by name as transposed; a rent
+needs its basis and the basis is never guessed (029); dates are YYYY-MM-DD on
+the calendar; lease type is NNN/FS/MG; status is a vocabulary with unpoliced
+transitions (bov-log's stance); an edit is validated as the whole row it
+would become. What is NOT restated is the date arithmetic: `criticalDates`
+takes renewal-watch.js's `deadlineOf` and `daysUntil` **injected, never
+required** (broker-leads.js's `siblingsOf` shape), so "which date is the
+deadline" has one owner.
+
+**Routes.** `GET|POST|PATCH|DELETE /api/org/leases?id=<org>&building=&lease=`
+on `openOrg` + `memberOf`; a lease can be filed only on a building on THIS
+firm's board; every edit and delete is scoped by `org_id` as well as `id`. A
+filed lease is activity and moves the building up the desk.
+
+**On screen.** The Leases section on a building sheet (rows with a status
+select that saves on change, Edit and Remove; one form for add and edit), and
+a **Critical dates** strip at the top of `/buildings` — the next twelve
+months, soonest first, the earlier of option notice and expiry, linking to the
+building. Rendered only when there is something to act on. Vacated and expired
+leases drop out.
+
+**This slice does NOT wire renewal-watch.js to send.** That module governs one
+of only two things this product mails on its own initiative; its bar is *when
+in doubt, send nothing*, and one-email-per-lease-ever is enforced by a single
+high-water mark on `broker_comps`. A second source would let two tables each
+claim to have sent it, and there is an unanswered product question — which
+member at a firm gets the mail — that is the owner's. `test/org-leases-run.test.js`
+asserts that nothing was posted to the mail stand-in across the whole flow.
+
+### Deliberately not in slice 6
+
+- Any reminder email for a firm lease (see above).
+- Leases on the Workspace itself; they live on the sheet and the strip.
+
+### Deliberately not in slice 5
+
+- Attaching a contact to a building (the column exists; the sheet lists what
+  is attached).
+- ~~Leases~~ — shipped as slice 6, above.
+- Editing a comp from the sheet; a comp is edited where it lives, in the vault.
+
+### Deliberately not in slice 3
+
+- ~~The overflow rule and the subpage~~ — shipped as slice 4, above.
+- ~~The sheet and notes~~ — shipped as slice 5, above.
+- The building sheet (`composeSheet`) and building notes (047) — slice 5.
+- An "Add to firm" door on a **comp row** inside a report — deferred with the
+  sheet, where a comp's building becomes something to look at.
+- Editing a building's fields after it is on the board — the sheet's job.

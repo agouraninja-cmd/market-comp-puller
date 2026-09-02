@@ -301,3 +301,66 @@ never changed through any of this.
 **What is left, when somebody picks this up:** decide with whoever owns the
 Three Spaces vault whether its hubs space becomes a pointer at Messages or
 comes out altogether, then do that. Nothing in Messages depends on the answer.
+
+## 13. Discovery, unread, contacts, reports — Three Spaces slice 8 (2026-09-02)
+
+*No migration.* The Three Spaces plan wrote this slice against its own thread
+tables and route names before §5 shipped; this is the same four intents on
+the schema that exists.
+
+**Discovery is what killed the client hub** (one production hub, one comp,
+zero messages). Four doors, all cheap, all seeding the composer rather than
+posting anything:
+
+- `/messages` → New, as before.
+- The Vault's Firm column: a quiet **Discuss** on a SHARED comp only —
+  discussing an unshared comp would be sending it, which is Share's act with
+  its own confirm.
+- The Workspace's firm shelf: **Discuss** on a report row.
+- A building sheet: **Discuss this building**.
+- `#deskContacts`: **Discuss** on a contact row.
+
+They all land on `/messages?say=<text>&comp=<vault comp id>`. The page holds
+the draft, opens the New panel when no thread is named ("Pick who to tell —
+your message is ready to send"), and applies the draft when a thread opens:
+text into the box, the comp into the tray. **Nothing is posted by
+arriving**; the person still picks the colleague and presses Send. The comp
+goes through the picker's own rule (it must be in the sender's vault), so a
+comp id in a URL buys nothing the button could not. The seed is consumed on
+arrival (the URL is rewritten), so a reload cannot re-seed a message somebody
+already sent or discarded.
+
+**Unread, in-app only.** `GET /api/messages/unread` → `{count}`: the number
+of THREADS with something new — a boolean per thread counted up, never a
+message count (024 refused per-message receipts). Decided off two columns the
+list already carries, the thread's `last_message_at` against the member's
+`last_read_at`, with the member's `added_at` as the baseline for a thread
+they have never opened (a thread's `last_message_at` is set at creation, so
+without that every freshly opened, empty conversation would count). **The
+author stamps their own cursor after posting**, fire-and-forget, so a thread
+is never unread to the person who last wrote in it — the bug `stampHubSeen`
+exists to prevent on the hub. The dot beside Messages on BOTH rails
+(`#navMsgDot`, a sibling of the row so the row's text stays what the parity
+tests match) is filled from that endpoint in the after-paint hydration —
+`ACCOUNT_NAV_JS` on server-rendered pages, `refreshMessagesDot` in the app —
+**never from `/api/config`**, which runs on every page load and is under a
+standing rule against DB reads. `/messages` sorts unread first; the Workspace
+gets `#deskThreads`, the five most recent, unread first, from the same list.
+
+**Contacts — "send tenant information".** `org_contacts` is already firm-wide,
+so pointing at a person in the context of a deal is not a disclosure. The
+contact door composes **name and company only — never the email** (039's
+header: tenant PII must not spread by accident; a message outlives the
+contact row, so an address copied into one would survive the person being
+removed from the firm's list). The message says who; the firm's list is where
+the address lives. A desk test executes the composer against a contact with
+an email and notes and asserts neither appears.
+
+**Reports are a LINK, never a snapshot.** The shelf's Discuss carries
+`/r/<id>`, so `report-access.js` stays the sole decider of who may read it
+(§10's stance, now with a door). Copying a payload into a message would be a
+second ACL for the same document — the "ACL is never cached" rule.
+
+Deliberately not built: any email for unread (this is the in-app half only);
+attaching a contact or a report as a structured message item (the schema has
+`msg_comps` only, and a link and a name do the job).

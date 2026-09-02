@@ -35,6 +35,9 @@ test("firm routes on a bare server (no database)", async (t) => {
       ["POST", "/api/org/invite"],
       ["POST", "/api/org/accept"],
       ["DELETE", "/api/org/member?org=org1&id=m1"],
+      ["GET", "/api/org/buildings?id=org1"],
+      ["POST", "/api/org/buildings?id=org1"],
+      ["DELETE", "/api/org/buildings?id=org1&building=b1"],
     ];
     for (const [method, url] of calls) {
       const r = await fetch(srv.base + url, {
@@ -84,6 +87,36 @@ test("firm routes on a bare server (no database)", async (t) => {
     const before = SERVER.slice(Math.max(0, i - 500), i);
     assert.match(before, /rec\.share\.visibility === "org"/,
       "and the membership read must be gated on the share actually being a firm share");
+  });
+
+  await t.test("a building is created only by its route, never as a side effect of an upload", () => {
+    // Migration 046's rule: an org_buildings row is a member CHOOSING to put a
+    // building on the firm's board. If one appeared from linkVaultProperties
+    // — or from anything else — a colleague could read another's book by
+    // watching the list. So EVERY mention of the table in server.js must sit
+    // inside one of two places: the read function, or the route block.
+    const fn = SERVER.match(/async function linkVaultProperties\([\s\S]*?\n\}\n/);
+    assert.ok(fn, "linkVaultProperties is gone from server.js");
+    assert.doesNotMatch(fn[0], /org_buildings/);
+
+    // Comment lines are blanked rather than removed, so every offset below
+    // is taken on the same string the matches are found in.
+    const code = SERVER.split("\n").map((l) => (/^\s*\/\//.test(l) ? "" : l)).join("\n");
+    // Two regions may name the table: the READS (orgBuildingRows through the
+    // sheet's buildingSheetPayload, slice 5 — one contiguous block beside
+    // orgCompRowsForBoard) and the ROUTES (the buildings block through the
+    // sheet and notes routes, up to the invite route).
+    const readStart = code.indexOf("async function orgBuildingRows(");
+    const readEnd = code.indexOf("async function orgCompRowsForBoard(", readStart);
+    const routeStart = code.indexOf('orgPath === "/api/org/buildings"');
+    const routeEnd = code.indexOf('orgPath === "/api/org/invite"', routeStart);
+    assert.ok(readStart > 0 && routeStart > 0 && routeEnd > routeStart, "could not isolate the buildings code");
+    const inside = (i) => (i >= readStart && i < readEnd) || (i >= routeStart && i < routeEnd);
+    let stray = 0;
+    for (const m of code.matchAll(/org_buildings/g)) {
+      if (!inside(m.index)) stray += 1;
+    }
+    assert.equal(stray, 0, "org_buildings is named outside orgBuildingRows and its route block");
   });
 
   await t.test("nothing in server.js widens an existing user-scoped read to an org", () => {

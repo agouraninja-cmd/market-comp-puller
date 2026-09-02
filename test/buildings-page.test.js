@@ -257,3 +257,55 @@ test("the sheet escapes everything a person typed", () => {
   assert.doesNotMatch(dom.el("bsNotesRows").innerHTML, /<img/);
   assert.match(dom.el("bsNotesRows").innerHTML, /&lt;img/);
 });
+
+
+// ---------------------------------------------------------------------------
+// Leases (slice 6): the critical-dates strip on the list, the section on the sheet
+// ---------------------------------------------------------------------------
+
+test("the critical-dates strip renders only when there is something to act on, soonest first, linking to the building", () => {
+  let dom = run(OK([BLDG({})], { critical: [] }));
+  assert.equal(dom.hidden("blCrit"), true, "no deadlines, no strip — a strip announcing nothing is furniture");
+  dom = run(OK([BLDG({})], { critical: [
+    { leaseId: "l2", buildingId: "b1", address: "500 Warehouse Way, Boise, ID", tenant: "Beta Co", suite: "", kind: "expiry", date: "2026-10-01", days: 29 },
+    { leaseId: "l1", buildingId: "b1", address: "500 Warehouse Way, Boise, ID", tenant: "Acme Logistics", suite: "200", kind: "notice", date: "2026-12-31", days: 120 },
+  ] }));
+  assert.equal(dom.hidden("blCrit"), false);
+  const rows = dom.el("blCritRows").innerHTML;
+  assert.match(rows, /class="d soon">in 29 days<\/span><span class="k">expiry<\/span><span class="t">Beta Co · <a href="\/building\/b1">500 Warehouse Way, Boise, ID<\/a>/,
+    "under thirty days reads red, and the row is a door to the building");
+  assert.match(rows, /class="d">in 120 days<\/span><span class="k">notice<\/span><span class="t">Acme Logistics · 200 · /);
+  assert.ok(rows.indexOf("Beta Co") < rows.indexOf("Acme Logistics"), "soonest first, as the server ordered them");
+  assert.match(renderBuildingsBody(OK([BLDG({})], { critical: [] })), /Critical dates · next 12 months/);
+});
+
+test("the sheet's Leases section: rows with a status select, Edit and Remove; the notice date in red; one form for add and edit", () => {
+  const sheet = SHEET({ leases: [
+    { id: "l1", buildingId: "b1", tenant: "Acme Logistics", suite: "200", sizeSqft: 12500, termStart: "2022-07-01", leaseExpiry: "2027-06-30",
+      optionNoticeDate: "2027-03-31", rentPsf: 18.5, rentBasis: "annual", leaseType: "NNN", status: "active", notes: "", addedBy: "Brad", mine: true },
+    { id: "l2", buildingId: "b1", tenant: "Beta Co", suite: "", sizeSqft: null, termStart: null, leaseExpiry: "2026-10-01",
+      optionNoticeDate: null, rentPsf: 1.35, rentBasis: "monthly", leaseType: "", status: "month-to-month", notes: "", addedBy: "Mike", mine: false },
+  ] });
+  const dom = runSheet(sheet);
+  assert.equal(dom.el("bsLeasesN").textContent, "2 leases");
+  assert.equal(dom.hidden("bsLeasesNone"), true);
+  const rows = dom.el("bsLeasesRows").innerHTML;
+  assert.match(rows, /Acme Logistics<\/span> · Suite 200 · 12,500 SF · \$18\.50\/SF\/yr NNN · expires 6\/30\/2027 · <span class="due">notice by 3\/31\/2027<\/span>/);
+  assert.match(rows, /Beta Co<\/span> · \$1\.35\/SF\/mo · expires 10\/1\/2026/, "a monthly rent says so — the basis is never dropped on screen");
+  assert.match(rows, /<select class="st" data-lease-status="l1"><option selected>active<\/option>/);
+  assert.match(rows, /data-lease-status="l2">(?:<option[^>]*>[^<]*<\/option>)*<option selected>month-to-month<\/option>/);
+  assert.match(rows, /data-lease-edit="l1"/);
+  assert.match(rows, /data-lease-rm="l2"/);
+  assert.match(rows, /· you · /, "your own lease reads 'you'");
+  assert.match(rows, /· Mike · /);
+  const html = renderBuildingSheetBody(sheet);
+  assert.match(html, /id="bsLeaseForm" class="bs-lease hide"/, "the form ships closed");
+  assert.match(html, /id="bsLeaseAdd"[^>]*>Add a lease/);
+  for (const id of ["bsLeaseTenant", "bsLeaseExpiry", "bsLeaseNotice", "bsLeaseRent", "bsLeaseBasis", "bsLeaseType", "bsLeaseStatus"]) {
+    assert.ok(html.includes(`id="${id}"`), id + " is missing from the lease form");
+  }
+  assert.match(html, /id="bsLeaseBasis"><option value="">/, "the basis has NO default option selected — 029's rule");
+  const empty = runSheet(SHEET({ leases: [] }));
+  assert.equal(empty.hidden("bsLeasesNone"), false);
+  assert.match(renderBuildingSheetBody(SHEET({ leases: [] })), /the option notice, which is the date that matters/);
+});

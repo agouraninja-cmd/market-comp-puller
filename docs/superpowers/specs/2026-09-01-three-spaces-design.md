@@ -192,11 +192,58 @@ Notes go through `POST|DELETE /api/org/buildings/notes`; a note is activity
 and moves the building to the top of the desk's eight. `CTA_FREE_PAGES` gains
 `/building`. The desk's and `/buildings`' rows link to the sheet.
 
+## Leases, and the dates that matter (slice 6, migration 047)
+
+**`org_leases`** is a firm-scoped lease record: tenant, suite, size, term,
+expiry, option notice, rent and its basis, lease type, status, notes, who
+filed it, and `renewal_notified_at` — which **ships unwritten** (the
+`orgs.share_default` / `hub_items.status` precedent), so wiring mail later is
+a code change and not a second SQL trip. A lease the firm manages is a
+different noun from `broker_comps.lease_expiry` (a fact about a comparable in
+one broker's private book): a view over vault rows would be a widened
+`user_id` read and would double-count a lease two colleagues both filed.
+
+**Rules in the pure `org-leases.js`**, restated rather than shared with
+broker-vault.js because this is a different writer against a different table:
+an option notice after the expiry is refused by name as transposed; a rent
+needs its basis and the basis is never guessed (029); dates are YYYY-MM-DD on
+the calendar; lease type is NNN/FS/MG; status is a vocabulary with unpoliced
+transitions (bov-log's stance); an edit is validated as the whole row it
+would become. What is NOT restated is the date arithmetic: `criticalDates`
+takes renewal-watch.js's `deadlineOf` and `daysUntil` **injected, never
+required** (broker-leads.js's `siblingsOf` shape), so "which date is the
+deadline" has one owner.
+
+**Routes.** `GET|POST|PATCH|DELETE /api/org/leases?id=<org>&building=&lease=`
+on `openOrg` + `memberOf`; a lease can be filed only on a building on THIS
+firm's board; every edit and delete is scoped by `org_id` as well as `id`. A
+filed lease is activity and moves the building up the desk.
+
+**On screen.** The Leases section on a building sheet (rows with a status
+select that saves on change, Edit and Remove; one form for add and edit), and
+a **Critical dates** strip at the top of `/buildings` — the next twelve
+months, soonest first, the earlier of option notice and expiry, linking to the
+building. Rendered only when there is something to act on. Vacated and expired
+leases drop out.
+
+**This slice does NOT wire renewal-watch.js to send.** That module governs one
+of only two things this product mails on its own initiative; its bar is *when
+in doubt, send nothing*, and one-email-per-lease-ever is enforced by a single
+high-water mark on `broker_comps`. A second source would let two tables each
+claim to have sent it, and there is an unanswered product question — which
+member at a firm gets the mail — that is the owner's. `test/org-leases-run.test.js`
+asserts that nothing was posted to the mail stand-in across the whole flow.
+
+### Deliberately not in slice 6
+
+- Any reminder email for a firm lease (see above).
+- Leases on the Workspace itself; they live on the sheet and the strip.
+
 ### Deliberately not in slice 5
 
 - Attaching a contact to a building (the column exists; the sheet lists what
   is attached).
-- Leases (`#bsLeases`) — slice 6.
+- ~~Leases~~ — shipped as slice 6, above.
 - Editing a comp from the sheet; a comp is edited where it lives, in the vault.
 
 ### Deliberately not in slice 3

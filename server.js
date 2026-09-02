@@ -56,6 +56,7 @@ const SHAREACCESS = require("./report-access.js");
 // a membership. "org" is the internal noun here, "firm" is the word on screen.
 const ORG = require("./org-access.js");
 const BUILDINGS = require("./org-buildings.js");
+const ORGLEASES = require("./org-leases.js");
 // A firm's own tenant contacts: what may be stored and what a CSV of them
 // means (039). Pure and tested, and deliberately holding NO way to build a
 // contact from a lead or a hub participant — see its header.
@@ -4506,6 +4507,17 @@ async function valueShelfReports(rows) {
   }
 }
 
+// The firm's leases (migration 047), by firm or by one building. Firm-scoped
+// like org_contacts — a lease the firm manages is the firm's record, not one
+// member's — and read through its own function, never a widened vault read
+// (a lease comp in a broker's book is a different noun; see the migration).
+async function orgLeaseRows(orgId, buildingId) {
+  if (!DB_CONFIGURED || !orgId) return [];
+  const scope = `org_leases?org_id=eq.${encodeURIComponent(orgId)}` +
+    (buildingId ? `&building_id=eq.${encodeURIComponent(buildingId)}` : "");
+  return (await sbRequest("GET", `${scope}&order=lease_expiry.asc&limit=1000`)) || [];
+}
+
 async function buildingContacts(orgId, buildingId) {
   if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
   // Its own select, deliberately NOT orgContactRows' — that one must not name
@@ -4540,6 +4552,7 @@ async function buildingSheetPayload(user, orgId, buildingId) {
     buildingNotes(orgId, buildingId),
     orgsByIds([orgId]).then((m) => m.get(String(orgId)) || null),
   ]);
+  const leases = (await orgLeaseRows(orgId, buildingId)).map((l) => ORGLEASES.toLease(l, user.id));
   const matching = shelf.filter((r) => r.meta && VAULT.addressKey(String(r.meta.address || "")) === building.address_key);
   const people = await usersByIds(matching.map((r) => r.user_id));
   for (const r of matching) {
@@ -4553,7 +4566,7 @@ async function buildingSheetPayload(user, orgId, buildingId) {
     // listPortfolio is user-scoped by construction; the id rides along so
     // composeSheet's own rule (rule 2) can see whose rows these are.
     portfolio: (portfolio || []).map((r) => ({ ...r, user_id: user.id })),
-    reportValues, sharedIds, contacts, notes,
+    reportValues, sharedIds, contacts, notes, leases,
   });
   return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet };
 }
@@ -23968,6 +23981,118 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // --- GET|POST|PATCH|DELETE /api/org/leases — the firm's leases (047) --
+    //
+    // Three Spaces, slice 6. Membership-gated through openOrg + memberOf like
+    // every firm surface; every row carries org_id AND building_id, and the
+    // building must be on this firm's board before a lease may be filed on
+    // it. Rules in org-leases.js; renewal-watch.js is NOT wired to send —
+    // see the migration's header for why, and whose decision that is.
+    if (orgPath === "/api/org/leases") {
+      const leasesFor = async () => {
+        const user = await openOrg();
+        if (!user) return null;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return null;
+        return { user, orgId, url };
+      };
+
+      if (req.method === "GET") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (buildingId && !isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          const rows = await orgLeaseRows(ctx.orgId, buildingId || null);
+          const buildings = await orgBuildingRows(ctx.orgId);
+          return sendJson(res, 200, {
+            id: ctx.orgId,
+            truncated: rows.length >= 1000,
+            leases: rows.map((l) => ORGLEASES.toLease(l, ctx.user.id)),
+            // The next twelve months, soonest first — renewal-watch's own
+            // arithmetic, for DISPLAY only. Nothing here mails anyone.
+            critical: ORGLEASES.criticalDates(rows, Date.now(), RENEWAL.deadlineOf, RENEWAL.daysUntil, buildings),
+          });
+        })().catch((err) => {
+          console.error("Firm leases read failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't load your firm's leases. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "POST") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const buildingId = (ctx.url.searchParams.get("building") || "").trim();
+          if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+          const building = await findOrgBuilding(ctx.orgId, buildingId);
+          if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+          let body;
+          try { body = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          const { row, errors } = ORGLEASES.validateLease(body);
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          const stamp = new Date().toISOString();
+          const stored = await sbRequest("POST", "org_leases", [{
+            org_id: ctx.orgId, building_id: buildingId, ...row,
+            added_by_user_id: ctx.user.id,
+            added_by_name: String(ctx.user.name || "").trim().slice(0, BUILDINGS.MAX_NAME),
+            updated_at: stamp,
+          }], { prefer: "return=representation" });
+          // A lease is activity: the building rises on the desk. Best-effort.
+          await sbRequest("PATCH",
+            `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`,
+            { updated_at: stamp }, { prefer: "return=minimal" }).catch(() => {});
+          logEvent("org_leases", { source: "add" });
+          return sendJson(res, 200, { ok: true, lease: ORGLEASES.toLease((stored || [])[0] || { ...row, building_id: buildingId }, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm lease write failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that lease. Please try again in a minute." });
+        });
+        return;
+      }
+
+      if (req.method === "PATCH" || req.method === "DELETE") {
+        (async () => {
+          const ctx = await leasesFor();
+          if (!ctx) return;
+          const leaseId = (ctx.url.searchParams.get("lease") || "").trim();
+          if (!isUuidish(leaseId)) return sendJson(res, 400, { error: "Which lease?" });
+          // Scoped by org_id as well as id on every call, the contacts
+          // route's rule: knowing a lease's id must not be enough to edit or
+          // delete another firm's row.
+          const scope = `org_leases?id=eq.${encodeURIComponent(leaseId)}&org_id=eq.${encodeURIComponent(ctx.orgId)}`;
+          const existing = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0];
+          if (!existing) return sendJson(res, 404, { error: "That lease is not in this firm." });
+
+          if (req.method === "DELETE") {
+            await sbRequest("DELETE", scope, null, { prefer: "return=minimal" });
+            logEvent("org_leases", { source: "remove" });
+            return sendJson(res, 200, { ok: true, deleted: leaseId });
+          }
+
+          let patch;
+          try { patch = await readOrgBody(); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+          // Validated as the WHOLE row it would become — broker-vault.js's
+          // validateEdit rule, so an edit cannot accept what an add refuses.
+          const { row, errors } = ORGLEASES.validateLease(patch, existing);
+          if (errors.length) return sendJson(res, 400, { error: errors.join(" ") });
+          await sbRequest("PATCH", scope, { ...row, updated_at: new Date().toISOString() }, { prefer: "return=minimal" });
+          const after = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || { ...existing, ...row };
+          logEvent("org_leases", { source: "edit" });
+          return sendJson(res, 200, { ok: true, lease: ORGLEASES.toLease(after, ctx.user.id) });
+        })().catch((err) => {
+          if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+          console.error("Firm lease edit failed:", err.message);
+          return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
+        });
+        return;
+      }
+    }
+
     // --- POST /api/org/invite ----------------------------------------------
     if (req.method === "POST" && orgPath === "/api/org/invite") {
       (async () => {
@@ -26808,11 +26933,21 @@ const server = http.createServer((req, res) =>
           else {
             const rows = await orgBuildingRows(firm.orgId);
             const org = (await orgsByIds([firm.orgId])).get(String(firm.orgId));
+            // The critical-dates strip (slice 6): the firm's leases, read
+            // once, reduced to the next twelve months by renewal-watch's own
+            // arithmetic. An enrichment — a failed lease read costs the
+            // strip and never the list.
+            let critical = [];
+            try {
+              critical = ORGLEASES.criticalDates(await orgLeaseRows(firm.orgId, null), Date.now(),
+                RENEWAL.deadlineOf, RENEWAL.daysUntil, rows);
+            } catch (err) { console.error("critical dates read failed:", err.message); }
             boot = { s: 200, j: {
               firm: { id: firm.orgId, name: (org && org.name) || "Your firm" },
               truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
               summary: BUILDINGS.summarize(rows).line,
               buildings: rows.map((r) => BUILDINGS.toBuilding(r, user.id)),
+              critical,
             } };
           }
         }

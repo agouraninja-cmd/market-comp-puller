@@ -82,6 +82,7 @@ const TABLES = [
   ["msg_comps",           "044-firm-messaging.sql"],
   ["org_buildings",       "045-org-buildings.sql"],
   ["org_building_notes",  "046-org-building-notes.sql"],
+  ["org_leases",          "047-org-leases.sql"],
   ["msg_comp_saves",      "044-firm-messaging.sql"],
 ];
 
@@ -160,6 +161,10 @@ const COLUMNS = [
   ["org_buildings",     ["verified_key", "lat", "lng"],         "045-org-buildings.sql"],
   ["org_contacts",      ["building_id"],                        "045-org-buildings.sql"],
   ["org_building_notes", ["building_id", "body"],                "046-org-building-notes.sql"],
+  // 047: option_notice_date is the column the critical-dates strip keys on,
+  // rent_basis the one 029's rule stands on, renewal_notified_at the one that
+  // ships unwritten so mail can be wired later without a migration.
+  ["org_leases",        ["option_notice_date", "rent_basis", "renewal_notified_at"], "047-org-leases.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

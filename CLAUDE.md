@@ -1567,6 +1567,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   year and never the address; `POST|DELETE /api/org/buildings/notes` are
   appended, attributed, author-deletable, and a note counts as activity.
   `test/building-sheet-run.test.js` runs the two-account isolation case.
+  **Leases, and the dates that matter** (slice 6, 2026-09-02; migration
+  `047-org-leases.sql`, **run before deploying**, after 045): `org_leases` is
+  the firm's lease record, a different noun from `broker_comps.lease_expiry`.
+  Rules in the pure **`org-leases.js`**, RESTATED from broker-vault.js rather
+  than shared (a different writer against a different table): a notice after
+  the expiry is refused as transposed, a rent needs its basis and it is never
+  guessed, an edit is validated as the whole row. `criticalDates` takes
+  renewal-watch.js's `deadlineOf`/`daysUntil` INJECTED, never required.
+  `GET|POST|PATCH|DELETE /api/org/leases` on the firm gate; the Leases section
+  on the sheet and the Critical dates strip at the top of `/buildings` (the
+  next twelve months, soonest first). **Nothing here sends mail**:
+  `renewal_notified_at` ships unwritten, renewal-watch is display-only on
+  this surface, and which member at a firm would get a reminder is an owner
+  decision the plan defers. The run test asserts the mail stand-in stayed
+  empty.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

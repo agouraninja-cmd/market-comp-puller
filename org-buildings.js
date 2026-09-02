@@ -377,7 +377,13 @@ function composeSheet(parts) {
     .map((n) => ({ id: n.id, body: str(n.body), addedBy: str(n.added_by_name) || "a colleague",
       mine: mine(n, "added_by_user_id"), createdAt: n.created_at || null }));
 
-  return { building: toBuilding(building, viewerId), firmComps: firm, mineComps: own, reports, valuations, contacts, notes };
+  // Leases (slice 6): already shaped by the caller (org-leases.js's toLease);
+  // this only keeps the ones on THIS building, since the caller's read is
+  // by firm.
+  const leases = (Array.isArray(p.leases) ? p.leases : [])
+    .filter((l) => l && String(l.buildingId || "") === String(building.id || ""));
+
+  return { building: toBuilding(building, viewerId), firmComps: firm, mineComps: own, reports, valuations, contacts, notes, leases };
 }
 
 module.exports = {

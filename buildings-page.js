@@ -65,6 +65,16 @@ function renderBuildingsBody(boot) {
 .bl-wall{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:18px 20px;margin:18px 0}
 .bl-wall p{margin:0 0 8px;font-size:14px;color:var(--ink-body)}
 .bl-wall a{color:var(--red);text-decoration:underline}
+.bl-crit{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:12px 16px;margin:0 0 18px}
+.bl-crit .kicker{margin:0 0 6px}
+.bl-crit-row{display:flex;align-items:baseline;gap:10px;padding:5px 0;border-bottom:1px solid var(--hair);font-size:13px}
+.bl-crit-row:last-child{border-bottom:0}
+.bl-crit-row .d{flex:0 0 7.5rem;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+.bl-crit-row .d.soon{color:var(--red)}
+.bl-crit-row .k{flex:0 0 4.5rem;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3)}
+.bl-crit-row .t{flex:1 1 auto;min-width:0;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bl-crit-row .t a{color:var(--ink);text-decoration:underline}
+.bl-crit-row .m{flex:0 0 auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .hide{display:none}
 </style>
 <main class="wrap bl-page">
@@ -75,6 +85,14 @@ function renderBuildingsBody(boot) {
   </div>
   <p class="bl-sub" id="blSub">The buildings your firm works on, shared with everyone in it. Add one from the <a href="/desk">Workspace</a>, from a property in your <a href="/vault">Vault</a>, or from a report on the shelf.</p>
   <div class="bl-wall hide" id="blWall"></div>
+  <!-- Critical dates (slice 6): the firm's leases with a date to act on in
+       the next twelve months, soonest first, the earlier of option notice
+       and expiry. Rendered only when there is one — a strip announcing "no
+       deadlines" would be furniture. Display only; nothing here mails. -->
+  <div class="bl-crit hide" id="blCrit">
+    <div class="kicker">Critical dates \u00b7 next 12 months</div>
+    <div id="blCritRows"></div>
+  </div>
   <div class="bl-tools hide" id="blTools">
     <input type="search" id="blSearch" placeholder="Search by address, market or type" aria-label="Search your firm's buildings" autocomplete="off"/>
     <select id="blType" aria-label="Filter by property type"><option value="">All types</option></select>
@@ -111,8 +129,21 @@ function renderBuildingsBody(boot) {
     firm=o.j.firm||null; items=Array.isArray(o.j.buildings)?o.j.buildings:[];
     truncated=Boolean(o.j.truncated); summary=o.j.summary||"";
     $("blTitle").textContent=firm&&firm.name?firm.name+"\\u2019s buildings":"Buildings";
+    renderCritical(Array.isArray(o.j.critical)?o.j.critical:[]);
     fillTypes();
     render();
+  }
+  function renderCritical(list){
+    var box=$("blCrit");
+    if(!list.length){ box.className="bl-crit hide"; $("blCritRows").innerHTML=""; return; }
+    box.className="bl-crit";
+    $("blCritRows").innerHTML=list.map(function(c){
+      var when=c.days===0?"today":c.days===1?"tomorrow":"in "+c.days+" days";
+      return '<div class="bl-crit-row"><span class="d'+(c.days<=30?" soon":"")+'">'+esc(when)+'</span>'+
+        '<span class="k">'+(c.kind==="notice"?"notice":"expiry")+'</span>'+
+        '<span class="t">'+esc(c.tenant)+(c.suite?" \u00b7 "+esc(c.suite):"")+' \u00b7 <a href="/building/'+esc(encodeURIComponent(c.buildingId))+'">'+esc(c.address||"building")+'</a></span>'+
+        '<span class="m">'+esc(c.date)+"</span></div>";
+    }).join("");
   }
   function fillTypes(){
     var sel=$("blType"),cur=sel.value,seen={},opts='<option value="">All types</option>';
@@ -227,6 +258,13 @@ function renderBuildingSheetBody(boot) {
 .bs-lnk:hover{color:var(--red)}
 .bs-lnk.on{color:var(--ok-text);text-decoration:none}
 .bs-notes .body{white-space:pre-wrap;font-size:13.5px;color:var(--ink-body);margin:0}
+.bs-lease{display:grid;grid-template-columns:repeat(auto-fill,minmax(9rem,1fr));gap:8px 12px;margin:10px 0 12px}
+.bs-lease label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.bs-lease input,.bs-lease select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);min-width:0}
+.bs-lease .wide{grid-column:1/-1}
+.bs-lease-act{display:flex;gap:10px;align-items:center;margin:0 0 12px}
+.bs-row .st{font:inherit;font-size:11px;padding:2px 4px;border:1px solid var(--edge);border-radius:4px;background:var(--card);color:var(--ink)}
+.bs-row .due{color:var(--red)}
 .bs-notes form{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
 .bs-notes textarea{font:inherit;font-size:13.5px;padding:8px 10px;border:1px solid var(--edge);border-radius:8px;
   background:var(--card);color:var(--ink);min-height:64px;resize:vertical}
@@ -276,6 +314,28 @@ function renderBuildingSheetBody(boot) {
       <div class="bs-rule"><span class="lab">Valuations</span><span class="n" id="bsValuesN"></span></div>
       <div id="bsValuesRows"></div>
       <p class="bs-note hide" id="bsValuesNone">No valuation yet \u2014 your own portfolio checks and the firm\u2019s shared reports land here. A colleague\u2019s portfolio never does.</p>
+    </section>
+
+    <section class="bs-sec" id="bsLeases">
+      <div class="bs-rule"><span class="lab">Leases</span><span class="n" id="bsLeasesN"></span></div>
+      <div id="bsLeasesRows"></div>
+      <p class="bs-note hide" id="bsLeasesNone">No lease on this building yet. A lease the firm holds or manages goes here \u2014 the tenant, the term, and the option notice, which is the date that matters.</p>
+      <form id="bsLeaseForm" class="bs-lease hide">
+        <input type="hidden" id="bsLeaseId" value=""/>
+        <label>Tenant <input id="bsLeaseTenant" type="text" maxlength="120" required/></label>
+        <label>Suite <input id="bsLeaseSuite" type="text" maxlength="40"/></label>
+        <label>Size (SF) <input id="bsLeaseSize" type="text" inputmode="numeric"/></label>
+        <label>Term start <input id="bsLeaseStart" type="date"/></label>
+        <label>Lease expiry <input id="bsLeaseExpiry" type="date" required/></label>
+        <label>Option notice <input id="bsLeaseNotice" type="date"/></label>
+        <label>Rent $/SF <input id="bsLeaseRent" type="text" inputmode="decimal"/></label>
+        <label>Rent basis <select id="bsLeaseBasis"><option value="">\u2014</option><option value="annual">annual</option><option value="monthly">monthly</option></select></label>
+        <label>Lease type <select id="bsLeaseType"><option value="">\u2014</option><option>NNN</option><option>FS</option><option>MG</option></select></label>
+        <label>Status <select id="bsLeaseStatus"><option>active</option><option>month-to-month</option><option>renewed</option><option>expired</option><option>vacated</option></select></label>
+        <label class="wide">Notes <input id="bsLeaseNotes" type="text" maxlength="2000"/></label>
+        <div class="wide bs-lease-act"><button type="submit" class="bs-btn" id="bsLeaseSave">Save lease</button><button type="button" class="bs-lnk" id="bsLeaseCancel">Cancel</button></div>
+      </form>
+      <p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsLeaseAdd">Add a lease</button></p>
     </section>
 
     <section class="bs-sec" id="bsContacts">
@@ -377,6 +437,23 @@ function renderBuildingSheetBody(boot) {
         (v.ts?" \u00b7 "+esc(when(v.ts)):"")+"</span></div>";
     }).join("");
 
+    var leases=sheet.leases||[];
+    count("bsLeasesN",leases.length,"lease"); none("bsLeasesNone",!leases.length);
+    $("bsLeasesRows").innerHTML=leases.map(function(l){
+      var bits=[];
+      if(l.suite)bits.push("Suite "+l.suite);
+      if(l.sizeSqft)bits.push(num(l.sizeSqft)+" SF");
+      if(l.rentPsf!=null)bits.push("$"+Number(l.rentPsf).toFixed(2)+"/SF"+(l.rentBasis==="monthly"?"/mo":l.rentBasis==="annual"?"/yr":"")+(l.leaseType?" "+l.leaseType:""));
+      if(l.leaseExpiry)bits.push("expires "+when(l.leaseExpiry));
+      if(l.optionNoticeDate)bits.push('<span class="due">notice by '+esc(when(l.optionNoticeDate))+"</span>");
+      return '<div class="bs-row"><span class="a"><span class="fig">'+esc(l.tenant)+"</span>"+(bits.length?" \u00b7 "+bits.map(function(b){return /^<span/.test(b)?b:esc(b)}).join(" \u00b7 "):"")+"</span>"+
+        '<span class="m"><select class="st" data-lease-status="'+esc(l.id)+'">'+
+        ["active","month-to-month","renewed","expired","vacated"].map(function(st){return '<option'+(st===l.status?" selected":"")+">"+st+"</option>"}).join("")+
+        "</select> \u00b7 "+(l.mine?"you":esc(l.addedBy||"a colleague"))+
+        ' \u00b7 <button type="button" class="bs-lnk" data-lease-edit="'+esc(l.id)+'">Edit</button>'+
+        ' \u00b7 <button type="button" class="bs-lnk" data-lease-rm="'+esc(l.id)+'">Remove</button></span></div>';
+    }).join("");
+
     var cons=sheet.contacts||[];
     count("bsContactsN",cons.length,"contact"); none("bsContactsNone",!cons.length);
     $("bsContactsRows").innerHTML=cons.map(function(c){
@@ -437,6 +514,64 @@ function renderBuildingSheetBody(boot) {
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){ if(o.s!==200){b.disabled=false;msg(o.j.error||"That didn't go through.",true);return;} reload(); })
       .catch(function(){ b.disabled=false; msg("That didn't go through.",true); });
+  });
+
+  // Leases (slice 6). One form for add and edit: the hidden id decides which
+  // route the save takes. Every refusal is org-leases.js's and is shown by
+  // name — a notice after the expiry is the one this form most invites.
+  function leaseForm(open,l){
+    var f=$("bsLeaseForm"); f.className=open?"bs-lease":"bs-lease hide";
+    $("bsLeaseAdd").className=open?"bs-lnk hide":"bs-lnk";
+    if(!open)return;
+    l=l||{};
+    $("bsLeaseId").value=l.id||""; $("bsLeaseTenant").value=l.tenant||""; $("bsLeaseSuite").value=l.suite||"";
+    $("bsLeaseSize").value=l.sizeSqft?String(l.sizeSqft):""; $("bsLeaseStart").value=l.termStart||"";
+    $("bsLeaseExpiry").value=l.leaseExpiry||""; $("bsLeaseNotice").value=l.optionNoticeDate||"";
+    $("bsLeaseRent").value=l.rentPsf!=null?String(l.rentPsf):""; $("bsLeaseBasis").value=l.rentBasis||"";
+    $("bsLeaseType").value=l.leaseType||""; $("bsLeaseStatus").value=l.status||"active"; $("bsLeaseNotes").value=l.notes||"";
+    $("bsLeaseSave").textContent=l.id?"Save changes":"Save lease";
+  }
+  function leaseBody(){
+    return { tenant:$("bsLeaseTenant").value, suite:$("bsLeaseSuite").value, sizeSqft:$("bsLeaseSize").value,
+      termStart:$("bsLeaseStart").value, leaseExpiry:$("bsLeaseExpiry").value, optionNoticeDate:$("bsLeaseNotice").value,
+      rentPsf:$("bsLeaseRent").value, rentBasis:$("bsLeaseBasis").value, leaseType:$("bsLeaseType").value,
+      status:$("bsLeaseStatus").value, notes:$("bsLeaseNotes").value };
+  }
+  function leaseUrl(leaseId){
+    return "/api/org/leases?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id)+(leaseId?"&lease="+encodeURIComponent(leaseId):"");
+  }
+  $("bsLeaseAdd").addEventListener("click",function(){ leaseForm(true,null); });
+  $("bsLeaseCancel").addEventListener("click",function(){ leaseForm(false); });
+  $("bsLeaseForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    if(!org||!building)return;
+    var id=$("bsLeaseId").value;
+    fetch(leaseUrl(id),{method:id?"PATCH":"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(leaseBody())})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){msg(o.j.error||"That didn't go through.",true);return;} msg(id?"Lease saved.":"Lease added."); leaseForm(false); reload(); })
+      .catch(function(){ msg("That didn't reach the server. Nothing was changed.",true); });
+  });
+  $("bsLeasesRows").addEventListener("click",function(e){
+    var t=e.target;
+    var ed=t&&t.closest?t.closest("button[data-lease-edit]"):null;
+    if(ed){ var l=(sheet.leases||[]).filter(function(x){return String(x.id)===ed.getAttribute("data-lease-edit")})[0]; if(l)leaseForm(true,l); return; }
+    var rm=t&&t.closest?t.closest("button[data-lease-rm]"):null;
+    if(!rm||!org)return;
+    if(!confirm("Remove this lease from the firm\u2019s record?"))return;
+    rm.disabled=true;
+    fetch(leaseUrl(rm.getAttribute("data-lease-rm")),{method:"DELETE",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){rm.disabled=false;msg(o.j.error||"That didn't go through.",true);return;} msg("Lease removed."); reload(); })
+      .catch(function(){ rm.disabled=false; msg("That didn't go through.",true); });
+  });
+  // The status select saves on change: a status is the one field that
+  // changes on its own timetable, and a form for one word is a chore.
+  $("bsLeasesRows").addEventListener("change",function(e){
+    var sel=e.target&&e.target.closest?e.target.closest("select[data-lease-status]"):null; if(!sel||!org)return;
+    fetch(leaseUrl(sel.getAttribute("data-lease-status")),{method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({status:sel.value})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){msg(o.j.error||"That didn't go through.",true);reload();return;} msg("Saved."); reload(); })
+      .catch(function(){ msg("That didn't reach the server. Nothing was changed.",true); });
   });
 
   $("bsNoteForm").addEventListener("submit",function(e){

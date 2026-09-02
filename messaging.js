@@ -343,21 +343,48 @@ function previewOf(message) {
 // A thread whose other members have all left the firm still renders, as "A
 // colleague". The correspondence outlives the employment, and a thread that
 // suddenly had no name would read as data loss.
+// How a set of people reads as one line: two names in full, then a count —
+// the list row is one line, and four names in it would be an ellipsis rather
+// than an answer. Returns "" for nobody, and the CALLER owns the fallback,
+// because what an empty room is called depends on what kind of room it is
+// ("Group" inside the firm, the deal's own title outside it).
+function peopleLabel(names) {
+  const list = (Array.isArray(names) ? names : []).map((n) => str(n).trim()).filter(Boolean);
+  if (!list.length) return "";
+  if (list.length <= 2) return list.join(", ");
+  return `${list[0]}, ${list[1]} and ${list.length - 2} other` +
+    (list.length - 2 === 1 ? "" : "s");
+}
+
 function threadLabel(thread, members, userId) {
   const me = str(userId).trim();
   const others = activeMembers(members).filter((m) => str(m.user_id) !== me);
   if (kindOf(thread) === "channel") {
     const t = cleanText(thread && thread.title).trim();
     if (t) return t;
-    // An unnamed group. Two names in full, then a count — the list row is one
-    // line, and four names in it would be an ellipsis rather than an answer.
-    const names = others.map(displayName);
-    if (!names.length) return "Group";
-    if (names.length <= 2) return names.join(", ");
-    return `${names[0]}, ${names[1]} and ${names.length - 2} other` +
-      (names.length - 2 === 1 ? "" : "s");
+    return peopleLabel(others.map(displayName)) || "Group";
   }
   return displayName(others[0]);
+}
+
+// The unread count for an EXTERNAL conversation (a deal room shared with
+// people outside the firm). Same rules as unreadCount, different identity:
+// deal rooms know their people by EMAIL, because a client with no account is
+// exactly who they exist for, so "mine" is an email compare and the read mark
+// is the room's own per-person seen stamp.
+function externalUnread(messages, { seenAt, email } = {}) {
+  const me = normalizeEmail(email);
+  const at = Date.parse(str(seenAt));
+  const since = Number.isFinite(at) ? at : 0;
+  let n = 0;
+  for (const m of Array.isArray(messages) ? messages : []) {
+    if (!m || m.deleted_at) continue;
+    if (me && normalizeEmail(m.author_email) === me) continue;
+    const t = Date.parse(str(m.created_at));
+    if (!Number.isFinite(t)) continue;
+    if (t > since) n += 1;
+  }
+  return n;
 }
 
 module.exports = {
@@ -368,5 +395,5 @@ module.exports = {
   canReadThread, canPostToThread,
   validateMessage, validateThread,
   compRowFrom,
-  unreadCount, previewOf, threadLabel,
+  unreadCount, externalUnread, previewOf, threadLabel, peopleLabel,
 };

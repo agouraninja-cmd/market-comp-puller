@@ -2061,7 +2061,7 @@ test("market explorer with the guest gate disabled", async (t) => {
 // run for free with no database.
 
 test("tester passkey", async (t) => {
-  await t.test("the route does not exist when NEITHER passkey is set", async () => {
+  await t.test("the route does not exist when NEITHER passkey is set", async (t) => {
     const srv = await boot({});
     t.after(() => srv.stop());
     const r = await fetch(srv.base + "/api/redeem-passkey", {
@@ -2083,7 +2083,7 @@ test("tester passkey", async (t) => {
     assert.equal(cfg.pro.vaultPasskey, false);
   });
 
-  await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async () => {
+  await t.test("configured: refuses anonymous and wrong codes, accepts the right one", async (t) => {
     const PASSKEY = "let-me-in-please";
     const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: PASSKEY });
     t.after(() => srv.stop());
@@ -2292,7 +2292,7 @@ test("vault passkey", async (t) => {
     body: JSON.stringify({ passkey }),
   });
 
-  await t.test("VAULT_PASSKEY alone opens the route, and grants the vault without Pro", async () => {
+  await t.test("VAULT_PASSKEY alone opens the route, and grants the vault without Pro", async (t) => {
     const VAULT = "give-me-the-vault";
     // Deliberately NO TESTER_PASSKEY: the two are independent, and a
     // deployment running only the broker door must still answer this route.
@@ -2330,7 +2330,7 @@ test("vault passkey", async (t) => {
     assert.equal((await again.json()).already, true);
   });
 
-  await t.test("the two codes are separate in both directions", async () => {
+  await t.test("the two codes are separate in both directions", async (t) => {
     const TESTER = "try-pro-please";
     const VAULT = "vault-please";
     const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
@@ -2361,7 +2361,7 @@ test("vault passkey", async (t) => {
     assert.equal(v1.pro.isPro, false, "the vault grant must not comp Pro");
   });
 
-  await t.test("holding every configured grant answers already, even to a wrong code", async () => {
+  await t.test("holding every configured grant answers already, even to a wrong code", async (t) => {
     const TESTER = "pro-code";
     const VAULT = "vault-code";
     const srv = await boot({ PRO_ENABLED: "on", TESTER_PASSKEY: TESTER, VAULT_PASSKEY: VAULT });
@@ -2689,7 +2689,7 @@ test("analytics visitor attribution", async (t) => {
     return all.find((c) => String(c).startsWith(name + "=")) || "";
   };
 
-  await t.test("a document navigation mints cn_vid; an API call alone does not", async () => {
+  await t.test("a document navigation mints cn_vid; an API call alone does not", async (t) => {
     const srv = await boot({ ADMIN_KEY: KEY });
     t.after(() => srv.stop());
 
@@ -2712,7 +2712,7 @@ test("analytics visitor attribution", async (t) => {
     assert.match(cookieNamed(sniffed, "cn_vid"), /^cn_vid=[0-9a-f]{32};/);
   });
 
-  await t.test("the id is stable across a visit, and reaches /api/stats as a funnel", async () => {
+  await t.test("the id is stable across a visit, and reaches /api/stats as a funnel", async (t) => {
     const srv = await boot({ ADMIN_KEY: KEY });
     t.after(() => srv.stop());
 
@@ -2761,7 +2761,7 @@ test("analytics visitor attribution", async (t) => {
     assert.ok(stats.funnel.report <= stats.funnel.arrived);
   });
 
-  await t.test("a garbage cookie value is never trusted into the column", async () => {
+  await t.test("a garbage cookie value is never trusted into the column", async (t) => {
     const srv = await boot({ ADMIN_KEY: KEY });
     t.after(() => srv.stop());
     // The value comes from a client and is written to a database, so anything
@@ -2792,7 +2792,7 @@ test("analytics visitor attribution", async (t) => {
 test("watchlist digest", async (t) => {
   const KEY = "digest-admin-key";
 
-  await t.test("the route does not exist without ADMIN_KEY, and refuses a stranger", async () => {
+  await t.test("the route does not exist without ADMIN_KEY, and refuses a stranger", async (t) => {
     const dark = await boot({});
     t.after(() => dark.stop());
     const gone = await fetch(dark.base + "/api/watchlist/digest", {
@@ -2808,7 +2808,7 @@ test("watchlist digest", async (t) => {
     assert.equal(anon.status, 401, "this route reads every account's email address");
   });
 
-  await t.test("it refuses to run without a database rather than marking everyone mailed", async () => {
+  await t.test("it refuses to run without a database rather than marking everyone mailed", async (t) => {
     const srv = await boot({ ADMIN_KEY: KEY });
     t.after(() => srv.stop());
     const r = await fetch(srv.base + "/api/watchlist/digest", {
@@ -2820,7 +2820,7 @@ test("watchlist digest", async (t) => {
     assert.match((await r.json()).error, /database/i);
   });
 
-  await t.test("even a dry run refuses without a database", async () => {
+  await t.test("even a dry run refuses without a database", async (t) => {
     // The dry run skips the outbound-mail check (inspecting copy should not
     // need a verified domain) but not this one: with no database there is no
     // watchlist to read, and an empty summary would read as "nobody is
@@ -2846,7 +2846,7 @@ test("watchlist digest unsubscribe", async (t) => {
     .update(`watchlist-digest-unsubscribe:${id}`).digest("hex").slice(0, 32);
   const USER = "11111111-2222-3333-4444-555555555555";
 
-  await t.test("a wrong or missing token is refused", async () => {
+  await t.test("a wrong or missing token is refused", async (t) => {
     const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());
     for (const q of [`?u=${USER}`, `?u=${USER}&t=nope`, `?u=&t=${macFor("")}`]) {
@@ -2855,7 +2855,7 @@ test("watchlist digest unsubscribe", async (t) => {
     }
   });
 
-  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async () => {
+  await t.test("a valid link CONFIRMS rather than acting, and is noindex", async (t) => {
     const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());
     const r = await fetch(srv.base + `/watchlist/unsubscribe?u=${USER}&t=${macFor(USER)}`);
@@ -2873,7 +2873,7 @@ test("watchlist digest unsubscribe", async (t) => {
     assert.equal(r.headers.get("x-robots-tag"), "noindex");
   });
 
-  await t.test("the resubscribe direction is reachable from the same link", async () => {
+  await t.test("the resubscribe direction is reachable from the same link", async (t) => {
     // A one-way off switch with no way back is a support ticket.
     const srv = await boot({ SUPABASE_SERVICE_KEY: SERVICE });
     t.after(() => srv.stop());

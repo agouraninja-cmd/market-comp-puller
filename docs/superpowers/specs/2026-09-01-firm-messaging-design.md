@@ -211,3 +211,47 @@ why the order is pinned as a sequence rather than by position.
 - Cross-firm messaging, and messaging a hub participant.
 - A message that carries a whole report. A share link in the body already does
   that, and a second serialization of a report is a second thing to strip.
+
+## 11. External conversations — step 1, added later the same day
+
+**Owner's direction:** communication becomes ONE feature. The comp hub stops
+being a thing a broker thinks about; Messages absorbs its broker side, and the
+vault eventually stops hosting it. Branded **External** on screen (owner's
+word), never "clients" and never "hub".
+
+**What shipped as step 1:** the deal rooms a member OWNS appear in Messages as
+an **External** group under the firm's **Internal** one. Each row is named
+after the people in it (the firm-messaging rule carried outside the firm; the
+deal's title is context and the fallback), previews the last note, and carries
+an unread badge off the hub's own per-person seen stamp. Opening one shows the
+whole conversation — notes AND the comps, merged into one stream in the order
+they happened, with a note about one specific comp tagged "about <address>" —
+and the composer writes back. A closed room reads but does not write, and says
+so in the composer itself.
+
+**The one architectural rule:** this is a WINDOW onto the deal room, never a
+second room. The list is a read-only view over the hub tables
+(`externalThreadsFor`, owner-scoped by construction and failing open to an
+empty section); the thread is read and written through the EXISTING hub routes
+— `GET /api/hub` to read (which is also what stamps the read mark, so opening
+from the inbox clears the badge), `POST /api/hub/message` for words,
+`POST /api/hub/items` for comps. What the inbox sends is byte-identical to
+what the deal room's own page would have sent, so the client's page, their
+email nudges, the tokens and the audit trail are all untouched by
+construction rather than by care.
+
+**Send order in one composer action is comps THEN words**, deliberately: if
+the item post fails the words never go, so a client can never receive "here's
+the comp" with no comp. The cosmetic cost is that a comp-and-caption send
+renders comp-first in the stream.
+
+**Still with the vault, deliberately, until Messages can do each job:**
+creating a room and inviting the client, managing people, closing. The
+migration plan is in this conversation's record: absorb each job into
+Messages, then remove the vault's hub section, leaving at most a
+"send these comps to a client" door that jumps here.
+
+**Known limit:** `/messages` still requires a firm (`openMessaging`'s gate), so
+a solo broker with deal rooms and no firm cannot reach the inbox view of them.
+Their deal rooms are unaffected (the vault still lists them). Worth revisiting
+when a real solo broker exists.

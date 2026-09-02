@@ -4568,6 +4568,108 @@ function touchMsgThread(threadId, when) {
   ).catch((err) => console.error("Thread touch failed (the message is stored):", err.message));
 }
 
+// The EXTERNAL side of the inbox (2026-09-01): the deal rooms this member
+// OWNS, shaped as conversation rows for /messages. Branded External on
+// screen (owner's word), and the target state is that Messages absorbs the
+// broker side of the hub entirely — this list is step 1 of that migration,
+// and the vault's own hub section comes out once Messages can do every job
+// it does.
+//
+// A read-only VIEW over the hub tables, never a second store: the thread
+// itself is still read and written through the existing /api/hub routes, so
+// the client's page, the note emails, the tokens and the audit trail are
+// untouched. Owner-scoped by construction (hubs?owner_user_id=eq.me), which
+// is the same wall the hub's own list read has always had.
+//
+// FAILS OPEN TO EMPTY, per part: a member's firm conversations must never be
+// taken down by a hub read, so every failure here costs the External section
+// and nothing else.
+async function externalThreadsFor(user) {
+  if (!DB_CONFIGURED || !user || !user.id) return [];
+  const hubs = (await sbRequest("GET",
+    `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
+    `&select=id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`)) || [];
+  if (!hubs.length) return [];
+  const ids = hubs.map((h) => String(h.id));
+  const me = MSG.normalizeEmail(user.email);
+
+  let parts = [];
+  let notify = [];
+  try {
+    [parts, notify] = await Promise.all([
+      sbRequest("GET",
+        `hub_participants?hub_id=in.(${pgInList(ids)})` +
+        `&select=hub_id,email,removed_at&limit=1000`),
+      // The owner's own seen stamps (040) — the hub's read mark, which is why
+      // opening a conversation from the inbox clears its badge: GET /api/hub
+      // stamps this on every read.
+      sbRequest("GET",
+        `hub_notify?hub_id=in.(${pgInList(ids)})` +
+        `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
+    ]);
+  } catch (err) {
+    console.error("External conversation context read failed (rows degrade):", err.message);
+  }
+  parts = parts || [];
+  notify = notify || [];
+
+  // Real names where the participant has an account; the email's local part
+  // where they do not — which is the COMMON case, since a deal room's whole
+  // point is a client with no account. usersByIds' pattern, keyed by email.
+  const byEmail = new Map();
+  const emails = [...new Set(parts.filter((p) => !p.removed_at)
+    .map((p) => MSG.normalizeEmail(p.email)).filter(Boolean))];
+  if (emails.length) {
+    try {
+      const users = await sbRequest("GET",
+        `users?email=in.(${pgInList(emails)})&select=email,name&limit=${emails.length}`);
+      for (const u of users || []) byEmail.set(MSG.normalizeEmail(u.email), u.name || "");
+    } catch (err) {
+      console.error("External name read failed (emails still label the rows):", err.message);
+    }
+  }
+
+  const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
+  const out = [];
+  for (const h of hubs) {
+    // Recent notes only: the preview and the unread count both live in the
+    // tail of the conversation, and the thread itself is read through
+    // /api/hub when opened. Capped, so a long-running deal costs the same as
+    // a new one.
+    let msgs = [];
+    try {
+      msgs = (await sbRequest("GET",
+        `hub_messages?hub_id=eq.${encodeURIComponent(h.id)}&deleted_at=is.null` +
+        `&select=author_email,body,created_at&order=created_at.desc&limit=30`)) || [];
+    } catch (err) {
+      console.error("External preview read failed (the row stays):", err.message);
+    }
+    const latest = msgs[0] || null;
+    const people = parts
+      .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
+      .map((p) => {
+        const e = MSG.normalizeEmail(p.email);
+        return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
+      });
+    out.push({
+      id: String(h.id),
+      // The PEOPLE name the row, the firm-messaging rule carried outside the
+      // firm. The deal's title is context and falls back in only when there
+      // is nobody to name it after yet.
+      label: MSG.peopleLabel(people.map((p) => p.name)) ||
+        String(h.title || "").trim() || "No one invited yet",
+      title: String(h.title || ""),
+      closed: h.status === "closed" || Boolean(h.closed_at),
+      lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
+      preview: latest ? MSG.previewOf({ body: latest.body }) : "",
+      unread: MSG.externalUnread(msgs, { seenAt: seenBy.get(String(h.id)), email: me }),
+      people,
+    });
+  }
+  out.sort((a, b) => String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || "")));
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // The messaging hub (migration 024) — the reads and writes behind /api/hub*.
 //
@@ -23977,10 +24079,20 @@ const server = http.createServer((req, res) =>
           });
           out.push(threadPayload(t, rows, g.user.id, latest, unread, names));
         }
+        // The deal rooms this member owns, as External conversations. Its own
+        // try: a hub read failing must cost the External section and never
+        // the firm's own messages.
+        let external = [];
+        try {
+          external = await externalThreadsFor(g.user);
+        } catch (err) {
+          console.error("External conversations read failed (internal list unaffected):", err.message);
+        }
         return sendJson(res, 200, {
           ok: true,
           firm: { id: g.orgId, name: (org && org.name) || "", kind: ORG.kindOf(org) },
           me: { id: String(g.user.id), email: String(g.user.email || "") },
+          external,
           // The Attach control is not rendered without this — the Buy-button
           // rule. Attaching reads a vault, so it is the vault's own gate, and
           // messaging itself stays open to every colleague.

@@ -673,35 +673,18 @@ test("every Tailwind class the hub surfaces use is in the vendored stylesheet", 
   }
 });
 
-test("empty desk copy names the way properties actually get there", () => {
-  // THIS TEST'S PREMISE REVERSED ON 2026-08-31, and the reversal is the point.
-  //
-  // It used to assert that the copy did NOT mention Save, because every
-  // signed-in search auto-saved itself and telling somebody to press a button
-  // that had already fired was the bug. The portfolio is opt-in now — it holds
-  // what a member says they OWN — so Save IS the mechanism and naming it is
-  // correct. "Run a report and it will show up here" became untrue the same
-  // day, which is why the old wording is pinned as FORBIDDEN rather than
-  // simply dropped: it reads perfectly well and would quietly promise the old
-  // behaviour back.
-  assert.doesNotMatch(html, /Run a report and it will show up here/,
-    "a report does not land on the desk by itself any more");
-  const m = html.match(/id="deskEmpty"[^>]*>([\s\S]*?)<\/p>/);
-  assert.ok(m, "#deskEmpty must still exist");
-  const copy = m[1];
-  assert.match(copy, /Save to portfolio/, "it has to name the control that does it");
-  assert.match(copy, /recent searches/i, "and the other door, for a report already run");
-  // Owner's standing copy rule (2026-08-22): no em dashes in copy.
-  assert.ok(!copy.includes("\u2014"), "no em dashes in copy");
-});
-
 test("a failed desk read says nothing has been lost, not just that it failed", () => {
-  // Both lines cover sections holding saved work — one the member's own
-  // portfolio, one the reports colleagues shared with them — and a bare
-  // "couldn't load" there reads as data loss to exactly the person most
-  // likely to be looking at it. The shares line said only that it failed
-  // until 2026-08-22. Neither may go back to one sentence.
-  for (const id of ["deskLoadError", "deskSharesLoadError"]) {
+  // The line covers a section holding saved work — the reports colleagues
+  // shared with this member — and a bare "couldn't load" there reads as data
+  // loss to exactly the person most likely to be looking at it. It said only
+  // that it failed until 2026-08-22 and may never go back to one sentence.
+  //
+  // #deskLoadError was the second half of this loop until 2026-09-01, when the
+  // portfolio moved to /vault. The rule went with it rather than lapsing:
+  // test/vault-personal-decks.test.js's "a failed read renders as a failure,
+  // never as an empty portfolio" pins the same two sentences on #propsErr, and
+  // pins that the failure path returns before anything states a count.
+  for (const id of ["deskSharesLoadError"]) {
     const m = html.match(new RegExp('id="' + id + '"[^>]*>([^<]+)<'));
     assert.ok(m, `${id} is gone`);
     assert.match(m[1], /Couldn't load/, `${id} must name the failure`);
@@ -722,30 +705,35 @@ test("auto-save lives inside saveHistory, behind the same three guards", () => {
   assert.ok(guarded.length >= 2, "every renderResults saveHistory call must keep the sample/fromHistory/shared guard");
 });
 
-test("the desk branches on portfolioValues, not a raw isPro", () => {
-  const start = html.indexOf("async function renderMyDesk");
-  const end = html.indexOf("// /desk — My Desk lives on its own URL");
-  assert.ok(start >= 0 && end > start);
-  const fn = html.slice(start, end);
-  assert.match(fn, /portfolioValuesOn\(\)/);
-  assert.match(fn, /History/);
-  assert.match(fn, /Likely value/);
-  // Free path: the value columns are gated, not deleted from the file.
-  assert.match(fn, /if \(showValues\)/);
-  // movement.line is market median $/SF — a dollar figure. Gate it with the
-  // rest of the book; do not strip it from the GET.
-  assert.match(fn, /if \(showValues && item\.movement && item\.movement\.line\)/);
-});
-
-test("portfolioValuesOn falls back so a missing field cannot blank a Pro-off desk", () => {
-  // An old /api/config (or the boot-time { enabled: false } default) has no
-  // portfolioValues key. Keying the desk on isPro alone would hide dollars
-  // from everyone while PRO_ENABLED is off — today's desk already shows them.
-  const fn = html.match(/function portfolioValuesOn\(\)[\s\S]{0,400}?\n  \}/);
-  assert.ok(fn, "index.html must define portfolioValuesOn()");
-  assert.match(fn[0], /typeof proConfig\.portfolioValues === "boolean"/);
-  assert.match(fn[0], /!proConfig\.enabled \|\| Boolean\(proConfig\.isPro\)/);
-});
+// ----------------------------------------------------------------------------
+// FIVE TESTS RETIRED HERE ON 2026-09-01 ("Three Spaces"), and what happened to
+// each rule, because a rule that vanishes with its surface is the one a later
+// edit reinvents badly.
+//
+// The workspace stopped drawing a portfolio and a watchlist that day; both
+// moved to /vault. Two of these described the desk-level reading strip, which
+// went with them and was NOT recreated there — the vault draws three cells in
+// its own .strip and needed no new CSS:
+//   * "both writers of the markets cell emit the same anatomy" — there was one
+//     writer and one placeholder for that fourth cell, and the cell is gone.
+//   * "the fourth ledger cell counts new comps, not watched markets"
+//   * "the workspace ledger goes 2x2 on a phone instead of four deep"
+// A FIRM-level strip belongs on the workspace eventually. It is not this one
+// with the labels changed, which is why the CSS came out rather than being
+// left standing.
+//
+// The other two described who sees dollars, and that answer moved SERVER-side:
+//   * "the desk branches on portfolioValues, not a raw isPro"
+//   * "portfolioValuesOn falls back so a missing field cannot blank a Pro-off
+//     desk" — the fallback is subsumed, not dropped. It guarded a stale
+//     /api/config body with no such key; vaultReadPayload states
+//     portfolioValues on all three of its exits from the entitlement, in the
+//     same process that renders the page, so there is no stale body to fall
+//     through, and entitlements.js's dark branch already answers true.
+// Both are pinned in test/vault-personal-decks.test.js now — "the free
+// portfolio is an address list, with no figure anywhere on it" and the two
+// run tests that read the 403 and 200 bodies against a real server.
+// ----------------------------------------------------------------------------
 
 test("pricing states the Portfolio split in the compare table", () => {
   assert.match(html, /<tr><td>Portfolio<\/td><td class="c">Saved reports, address list<\/td><td class="c">Saved reports, with estimated values<\/td><\/tr>/);
@@ -931,6 +919,47 @@ test("Run a report jumps to the chamber and seats the caret, deterministically",
   }
 });
 
+test("?refresh=1 replays the search; ?property alone reopens the saved report", () => {
+  // /vault lists a member's portfolio since 2026-09-01 and its rows are links,
+  // because that page can neither render a report nor replay a search -- both
+  // need the real #compForm and every rule hanging off it, all of which live
+  // here. So Refresh there is this door with one more parameter on it, rather
+  // than a second search path nobody would keep in step.
+  const at = html.indexOf('const propParam = new URLSearchParams(location.search).get("property")');
+  assert.ok(at > -1, "the ?property handler moved");
+  const blk = html.slice(at, at + 700);
+  assert.match(blk, /const wantsRefresh = qs\.get\("refresh"\) === "1"/, "the flag is read");
+  assert.match(blk, /qs\.delete\("refresh"\)/,
+    "and cleared with ?property, or a reload would re-run a billed search");
+  assert.match(blk, /if \(wantsRefresh\) refreshPortfolioItemById\(propParam\)/, "refresh replays");
+  assert.match(blk, /else openPortfolioItem\(propParam\)/, "without it, the saved report opens");
+});
+
+test("Refresh survives a row whose report never landed", () => {
+  // refreshPortfolioItemById was extracted on 2026-09-01 when the desk's button
+  // and /vault's new link both needed it. The button went with the portfolio
+  // table later the same day, so the URL is the only door now -- which is
+  // exactly why the guard below matters more than it did as a button.
+  assert.match(html, /async function refreshPortfolioItemById\(id\)/, "the door exists");
+  // refreshPortfolioItem replays item.payload.meta. A row whose payload never
+  // landed would throw on that read -- survivable as a button on a row this
+  // page had just drawn, not survivable from a URL anyone can type, where the
+  // symptom is a page that visibly does nothing.
+  const at = html.indexOf("async function refreshPortfolioItemById(id)");
+  const fn = html.slice(at, at + 900);
+  assert.match(fn, /if \(full\.payload && full\.payload\.meta\) refreshPortfolioItem\(full\)/,
+    "the missing-payload case must be checked, not assumed");
+  assert.match(fn, /no saved report to re-run/, "and answered in words a person can act on");
+  assert.match(fn, /Nothing has been lost/,
+    "a failed read says nothing is gone — the desk's standing rule for saved work");
+});
+
+// The dangling-getElementById check lives in test/routes.test.js, not here.
+// It was written in this file first and immediately caught a FALSE positive:
+// #testerBadge is injected at serve time from server.js's TESTER_BADGE marker,
+// exactly as the nav links and the bulk run view are, so it is never in the
+// static bytes. The invariant is about the page a browser runs, which means it
+// has to be asserted against the SERVED page.
 test("the vault is a nav item, not a row inside the account menu", () => {
   // It sat in the account dropdown until 2026-08-29. Under NAV_SHELL=rail that
   // dropdown is pinned to the FOOT of a 224px sidebar and opens upward, so a
@@ -942,80 +971,24 @@ test("the vault is a nav item, not a row inside the account menu", () => {
   assert.match(nav, /href="\/vault"/, "and still points at its own server-rendered page");
   const menu = html.slice(html.indexOf('id="acctMenu"'), html.indexOf('id="signOutBtn"'));
   assert.ok(!menu.includes("menuVaultLink"), "and it is no longer a row in the account menu");
-  // One link, one toggle: refreshBillingUI still owns it off canUseVault, so
-  // moving it cannot have widened who sees it.
+  // One link, one toggle: refreshBillingUI still owns it.
   assert.equal(html.split('id="menuVaultLink"').length - 1, 1, "exactly one vault link");
-  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !canVault)`),
-    "still shown from canUseVault and nothing else");
+  // Shown to every signed-in member since 2026-09-01 ("Three Spaces"), where
+  // it was canUseVault before. /vault stopped being only the comp book that
+  // day: the member's portfolio and watchlist moved into it off the
+  // workspace, and neither was ever part of Pro. Gating the only door on the
+  // entitlement would leave a free member's own saved properties reachable by
+  // typing the URL and no other way. The PAGE still refuses the book, the
+  // pipeline and the hubs -- vaultReadPayload's 403 and #vaultLocked -- so
+  // this widened who can see the door, never what is behind it.
+  assert.ok(html.includes(`getElementById("menuVaultLink").classList.toggle("hidden", !currentUser)`),
+    "shown to any signed-in member, not gated on the vault entitlement");
 });
 
 // The workspace header's profile cluster is pinned by "the workspace header
 // does not say who you are at all" further down -- it started life as that
 // pass's own test and absorbed this one, rather than two tests asserting the
 // same removals under different names.
-
-test("the between-checks cell names its sample and cannot read as a return", () => {
-  // "Since last checks" read as a portfolio return, and the figure is not
-  // one: it compares each property's last two check-ins, over only the
-  // properties checked at least twice, with no time window at all. The
-  // arithmetic stays; the caption stops over-claiming.
-  const start = html.indexOf("async function renderMyDesk");
-  const end = html.indexOf("// /desk — My Desk lives on its own URL");
-  assert.ok(start > -1 && end > start, "renderMyDesk slice anchors moved");
-  const fn = html.slice(start, end);
-  assert.ok(fn.includes("Between checks"), "the cell is labelled Between checks");
-  assert.ok(fn.includes("last check vs the check before"), "the note names the basis");
-  assert.ok(fn.includes("of ${items.length} properties"), "the note names its sample");
-  // The old label survives in a comment explaining WHY it went; the pin is on
-  // the cell() call, so history stays readable while the label cannot return.
-  assert.ok(!fn.includes('cell("Since last checks"'), "the return-shaped label must not come back");
-  assert.ok(!fn.includes("across properties checked twice"), "nor its old under-disclosing note");
-  assert.ok(fn.includes("not a return over any period of time"),
-    "the title says outright what the figure is not");
-  // One figure, computed once: the same bookPct feeds the ledger cell and the
-  // statement's tfoot, so the two can never disagree.
-  assert.ok((fn.match(/bookPct/g) || []).length >= 4, "bookPct must feed both surfaces");
-});
-
-test("both writers of the markets cell emit the same anatomy", () => {
-  // renderMyDesk renders #deskLedgerMarkets as a placeholder; renderWatchFeed
-  // fills it in later. If the two emit different markup the cell visibly
-  // changes shape when the feed lands, which reads as a glitch.
-  for (const fnName of ["async function renderMyDesk", "async function renderWatchFeed"]) {
-    const at = html.indexOf(fnName);
-    assert.ok(at > -1, fnName + " not found");
-    const seg = html.slice(at, at + 30000);
-    const cellAt = seg.indexOf("deskLedgerMarkets");
-    assert.ok(cellAt > -1, fnName + " must write the markets cell");
-    // Wide enough to clear the explanatory comment above the feed's writer.
-    const cell = seg.slice(cellAt, cellAt + 1600);
-    assert.ok(cell.includes("dk-lfig"), fnName + " must use the promoted figure class");
-    assert.ok(cell.includes("dk-lnote"), fnName + " must use the promoted note class");
-    // Both must also agree on the LABEL, or the cell renames itself when the
-    // feed lands a moment after first paint.
-    assert.ok(cell.includes(">New comps<"), fnName + " must label the cell New comps");
-  }
-});
-
-test("the fourth ledger cell counts new comps, not watched markets", () => {
-  // The other three cells are facts about the book. This one was a count of a
-  // preference, with the only live thing on the strip ("N new comps waiting")
-  // demoted to the 11px note under it. The signal is the figure now.
-  const at = html.indexOf("async function renderWatchFeed");
-  const seg = html.slice(at, at + 30000);
-  const cellAt = seg.indexOf("const mk = document.getElementById");
-  assert.ok(cellAt > -1, "the feed still writes the cell");
-  const blk = seg.slice(cellAt, cellAt + 1400);
-  assert.ok(blk.includes('<span class="rd-lab">New comps</span>'), "the label names what the figure counts");
-  assert.ok(blk.includes("mkts ? totalNew"), "the figure is the new-comp count");
-  // Three honest notes, and an em dash rather than a 0 when there is nothing
-  // to count yet: "0 new comps" over an empty watchlist states a fact about
-  // markets the member never asked about.
-  assert.ok(blk.includes("watch a market to see new comps here"), "no markets: an invitation");
-  assert.ok(blk.includes("you watch"), "with news: the markets are the context");
-  assert.ok(blk.includes("watched · quiet"), "no news: says so plainly");
-  assert.ok(!blk.includes("new comps waiting"), "the old buried note is gone");
-});
 
 // ----------------------------------------------------------------------------
 // The attention line (2026-08-29). The workspace opened with numbers and lists
@@ -1024,53 +997,6 @@ test("the fourth ledger cell counts new comps, not watched markets", () => {
 // fourth cell a line above, a pending firm invitation is already the first
 // deck a line below, and lease expiries never reach this surface at all.
 // ----------------------------------------------------------------------------
-test("the attention line says nothing when nothing is waiting", () => {
-  const at = html.indexOf('id="deskAttention"');
-  assert.ok(at > -1, "the line exists");
-  assert.match(html.slice(at - 60, at + 60), /class="hidden dk-attn"/,
-    "it ships hidden; a standing all-caught-up banner is the vault's 0-0 scoreboard");
-  const fn = html.slice(html.indexOf("async function renderMyDesk"),
-                        html.indexOf("// /desk — My Desk lives on its own URL"));
-  assert.ok(fn.includes("const showAttn = showValues && staleN > 0"),
-    "shown only when something is actually stale, and never on a values-free free desk");
-  // Sign-out must drop it for the same reason the ledger beside it is dropped:
-  // it is a statement about one person's own properties.
-  assert.ok(fn.includes('getElementById("deskAttention").classList.add("hidden")'),
-    "sign-out drops the line");
-  assert.ok(fn.includes("1 property was last checked over a year ago"), "singular copy");
-  assert.ok(fn.includes("properties were last checked over a year ago"), "plural copy");
-  assert.ok(!/deskAttention[\s\S]{0,400}innerHTML/.test(fn), "textContent only");
-});
-
-test("stale is a year, and it is not a number invented here", () => {
-  const fn = html.slice(html.indexOf("async function renderMyDesk"),
-                        html.indexOf("// /desk — My Desk lives on its own URL"));
-  assert.ok(fn.includes("const STALE_MS = 365 * 24 * 60 * 60 * 1000"), "one year");
-  // portfolio-delta.js already draws this line, and says why: past a year a
-  // window "stops being 'since you last looked' and becomes market history".
-  // It is a server module and cannot be required here, so the mirror is
-  // marked — the same treatment compWeight and SHOP_COPY get.
-  assert.ok(fn.includes("portfolio-delta.js"), "the source of the threshold is named");
-  assert.ok(fn.includes("MIRRORED CONSTANT"), "the duplication is flagged, not silent");
-  const delta = fs.readFileSync(path.join(__dirname, "..", "portfolio-delta.js"), "utf8");
-  assert.match(delta, /MAX_WINDOW_YEARS = 1/, "the constant this mirrors still says a year");
-});
-
-test("the checked date and the attention line count the same fact", () => {
-  // The table said "checked {updated_at}" — when the ROW was last written by
-  // anything — while the line counts the last time a value was produced. Two
-  // dates for one word, thirty pixels apart, contradicted each other on screen
-  // (caught in a browser against an aged store, not by reading).
-  const fn = html.slice(html.indexOf("async function renderMyDesk"),
-                        html.indexOf("// /desk — My Desk lives on its own URL"));
-  assert.ok(fn.includes("const lastTs = last && last.ts ? last.ts : item.updated_at"),
-    "the row reads the last snapshot, falling back only when there is none");
-  assert.ok(!fn.includes("checked ${new Date(item.updated_at)"),
-    "the row must not go back to the row-written date");
-  assert.ok(fn.includes("const ts = last && last.ts ? Date.parse(last.ts) : NaN"),
-    "the count reads the same field");
-});
-
 test("the workspace header does not say who you are at all", () => {
   // The row carried the circle, "Signed in as {name}" and "Add a photo",
   // beside a nav that already shows the same photo and account menu. It came
@@ -1144,27 +1070,15 @@ test("report branding is collapsed behind a summary that states what is saved", 
 });
 
 test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your properties, your firm's shelf, and everything you have shared."),
+  assert.ok(html.includes("Your firm's shelf, and everything you have shared."),
     "the subtitle names what the workspace actually holds");
   assert.ok(!html.includes("Your recent searches and tracked properties."),
     "the old line described about a fifth of the page and must not come back");
-});
-
-test("the workspace ledger goes 2x2 on a phone instead of four deep", () => {
-  // At 375px the single column filled the entire first screen, so a member
-  // scrolled past a phone-full of statistics before reaching a property.
-  // Scoped to .dk-ledger: every other .rd-ledger is a 2-3 cell strip that
-  // stacks fine.
-  // Anchored on the ledger's own stacking rule: index.html has several
-  // 639.98px blocks and the first one is about form cells, not the ledger.
-  const at = html.indexOf(".rd-ledger { flex-direction: column; }");
-  assert.ok(at > -1, "the generic ledger stack rule moved");
-  const block = html.slice(at, at + 1400);
-  assert.ok(block.includes(".dk-ledger { flex-direction: row; flex-wrap: wrap; }"),
-    "the workspace ledger wraps rather than stacking");
-  assert.ok(block.includes("flex: 1 1 50%"), "two cells per row");
-  assert.ok(block.includes(":nth-last-child(-n+2) { border-bottom: 0; }"),
-    "the bottom ROW owns the last rule; :last-child alone leaves a stray hairline");
+  // "Your properties" left the line on 2026-09-01 with the deck it named.
+  // A subtitle promising a portfolio on a page that no longer holds one is
+  // the same failure as the old line, one deck later.
+  assert.ok(!/mt-3">Your properties,/.test(html),
+    "the subtitle must not promise a portfolio this page no longer draws");
 });
 
 // ----------------------------------------------------------------------------

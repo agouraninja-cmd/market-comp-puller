@@ -91,6 +91,43 @@ test("clicking Workspace at / does not mint a second URL for the same view", () 
     "the unconditional push is gone, not merely guarded somewhere else as well");
 });
 
+test("the tools group is labelled on both rails, and shows on neither bar", () => {
+  // Group, do NOT move (2026-09-01). The rail hides the Explore dropdown, so
+  // for a signed-in member the rail is the only navigation there is and every
+  // removal from it is a real loss rather than a tidy-up -- which is why the
+  // three-tab story got a reading fix instead of a reshuffle. Two rules make
+  // that work and both are easy to half-apply across the two nav authors.
+
+  // 1. The label exists in both, immediately before Market explorer, so the
+  //    group starts at the same row on both sides of a click.
+  for (const [name, src, row] of [
+    ["server.js", SERVER_JS, '<a href="/markets"'],
+    ["index.html", INDEX_HTML, '<a href="/markets"'],
+  ]) {
+    const at = src.indexOf('class="navsec">Tools<');
+    assert.ok(at > -1, name + " has no tools label — the rail's one grouping rule");
+    const next = src.indexOf(row, at);
+    assert.ok(next > at && next - at < 400,
+      name + " puts the label somewhere other than directly above Market explorer");
+  }
+
+  // 2. It is rail-ONLY, and the default has to sit OUTSIDE the 900px guard.
+  //    Everything in those blocks is guarded, so a display rule written inside
+  //    one could only ever turn the label ON — leaving a section heading
+  //    stranded between two links in the wrapping bar a phone gets.
+  for (const [name, src] of [["server.js", SERVER_JS], ["index.html", INDEX_HTML]]) {
+    const off = src.search(/\.navsec\s*\{\s*display:\s*none/);
+    assert.notEqual(off, -1, name + " never hides the label, so a phone shows it");
+    const on = src.indexOf("nav-rail");
+    const guard = src.indexOf("min-width:900px") > -1
+      ? src.indexOf("min-width:900px") : src.indexOf("min-width: 900px");
+    assert.ok(guard > -1, name + " lost its 900px guard");
+    assert.ok(off < guard,
+      name + " declares the hidden default INSIDE the rail media query, where it can only turn the label on");
+    assert.ok(on > -1, name + " lost its rail rules entirely");
+  }
+});
+
 test("the vault row is called the same thing on both sides of the click", () => {
   // It read "Your vault" in the app and "Vault" everywhere else, so the row a
   // member was looking at renamed itself the moment they clicked it.

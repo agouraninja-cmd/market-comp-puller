@@ -151,3 +151,57 @@ test("the list is sorted unread first, then most recent, after every read", () =
   assert.match(js.slice(at, at + 500), /state\.threads\.sort\(function\(a, b\)\{\s*var ua = a\.unread \? 1 : 0, ub = b\.unread \? 1 : 0;/,
     "unread first is not applied where the list is read");
 });
+
+// ---------------------------------------------------------------------------
+// The OTHER way one template literal breaks, and the one that shipped.
+//
+// A backtick closes the literal loudly: the page becomes "NaN" and somebody
+// notices within a minute. A single-backslash escape is the quiet version.
+// `\s` is not a recognized escape in a template literal, so it collapses to a
+// bare `s` — and `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` written in the source ships as
+// `/^[^s@]+@[^s@]+.[^s@]+$/`, a character class excluding the LETTER s.
+//
+// It shipped in PR #255 and reached production. Every address with an "s" in
+// it — jason@, chris@, sales@ — was refused by both email checks on the page:
+// the New panel silently never offered the invite row, and the People panel
+// answered "That doesn't look like an email address." The owner reported it as
+// not being able to find how to invite by email, which is what it looked like
+// from outside.
+//
+// A source-level assertion cannot catch this, because the SOURCE is correct.
+// These tests read the regex out of the EMITTED script and run it.
+
+const emittedEmailRegexes = () => {
+  const script = scriptOf(renderMessagesBody({
+    s: 200, j: { me: "u1", firm: "F", people: [], threads: [], canAttachComps: true },
+  }));
+  const found = [...script.matchAll(/\/\^\[\^[^\]]*\]\+@[^\s/]*\/(?=\.test)/g)].map((m) => m[0]);
+  assert.ok(found.length >= 2,
+    "the page's email checks have moved or been renamed; this guard now checks nothing");
+  return found.map((lit) => new RegExp(lit.slice(1, -1)));
+};
+
+test("every email check the page SHIPS accepts an address containing the letter s", () => {
+  for (const re of emittedEmailRegexes()) {
+    for (const ok of ["jason@conejoindustries.com", "chris@acme.com", "sales@x.co", "s@s.se"]) {
+      assert.ok(re.test(ok), `the shipped regex ${re} refuses ${ok} — \\s collapsed to a bare s`);
+    }
+  }
+});
+
+test("the shipped email checks still refuse what is not an address", () => {
+  // The fix must not be "loosen it until everything passes".
+  for (const re of emittedEmailRegexes()) {
+    for (const bad of ["not an email", "a@b", "x y@z.com", "@nope.com", "trailing@dot."]) {
+      assert.ok(!re.test(bad), `the shipped regex ${re} accepts ${bad}`);
+    }
+  }
+});
+
+test("the emitted script carries no collapsed backslash escape", () => {
+  // The general form of the same bug, so the next one is caught wherever it
+  // lands rather than only in the two email checks.
+  const script = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  assert.ok(!/\[\^s@\]/.test(script),
+    "[^s@] in the emitted script means a \\s collapsed — double the backslash in the source");
+});

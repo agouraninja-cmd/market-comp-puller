@@ -2736,8 +2736,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <label for="firmAutoShareSelect">My new reports</label>
               <select id="firmAutoShareSelect"
                 class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-                <option value="follow">Follow the firm</option>
-                <option value="always">Always share with the firm</option>
+                <!-- The first two options produce the SAME outcome while the
+                     firm default is on, so each one says what it does rather
+                     than naming a mode: "follow" states the firm's current
+                     setting (renderFirmAutoShare writes it in), "always" says
+                     what it survives. Two labels that read as one choice were
+                     read as a redundant option (owner, 2026-09-01). -->
+                <option id="firmAutoShareFollow" value="follow">Use the firm's setting</option>
+                <option value="always">Always share, even if the firm turns it off</option>
                 <option value="never">Never share automatically</option>
               </select>
               <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
@@ -14268,9 +14274,16 @@ async function renderMyDesk() {
     defWrap.classList.toggle("hidden", !firm.canManage);
     defToggle.checked = firm.shareDefault === "reports";
     sel.value = firm.autoShare || "follow";
+    // The follow option names the firm's CURRENT setting. It is the one option
+    // whose meaning moves under a member, and without the parenthetical it
+    // reads as the same choice as "always" whenever the firm default is on.
+    // Read off shareDefault — the firm's own switch, the same field the
+    // toggle above shows — never off autoShareOn, which is the resolved
+    // outcome of both and belongs to the sentence below.
+    document.getElementById("firmAutoShareFollow").textContent =
+      `Use the firm's setting (currently ${firm.shareDefault === "reports" ? "on" : "off"})`;
     // Says what will actually happen, in a sentence, because the two switches
-    // interact and "Follow the firm" alone does not tell a member which way
-    // the firm is currently set.
+    // interact and the option label alone does not say what the outcome is.
     state.textContent = firm.autoShareOn
       ? `On — new reports go to ${firm.name}`
       : "Off — nothing is shared unless you share it";

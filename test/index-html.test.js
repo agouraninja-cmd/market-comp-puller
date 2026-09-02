@@ -868,6 +868,33 @@ test("the workspace leads and the chamber follows, in DOM order", () => {
   assert.ok(iChamber < iStatus, "the chamber still sits above status, loading and results");
 });
 
+// ----------------------------------------------------------------------------
+// Recent searches follows the chamber (2026-09-02). It led the workspace,
+// above "Your firm", which put a personal list first on a firm-first page and
+// the two halves of one act at opposite ends of it. It is its own block
+// outside #deskView and #searchSection (see the markup comment), so nothing
+// hides it for free: every seam that hides the desk header has to hide it
+// too, and this counts them.
+// ----------------------------------------------------------------------------
+test("Recent searches sits under the chamber and follows the desk header's seams", () => {
+  const iDesk = html.indexOf('id="deskView"');
+  const iChamber = html.indexOf('id="searchSection"');
+  const iDeck = html.indexOf('id="historyDeck"');
+  const iWrap = html.indexOf('id="historyWrap"');
+  const iStatus = html.indexOf('id="statusBox"');
+  assert.ok(iDeck > -1 && iWrap > -1, "an id vanished");
+  assert.ok(iDesk < iChamber && iChamber < iDeck && iDeck < iWrap && iWrap < iStatus,
+    "workspace, then the chamber, then its recent searches, then status");
+  assert.ok(iDeck > html.indexOf("</section>", iDesk), "the history deck is OUTSIDE #deskView, which hides wholesale");
+  assert.match(html, /id="historyDeck" class="hidden /, "ships hidden; showDeskView reveals it");
+  const hides = (html.match(/getElementById\("historyDeck"\)\.classList\.add\("hidden"\)/g) || []).length;
+  const headHides = (html.match(/getElementById\("searchDeckHead"\)\.classList\.add\("hidden"\)/g) || []).length;
+  assert.equal(hides, headHides, "every seam that hides the desk header hides the recent searches with it");
+  assert.ok(hides >= 3, "showHomeView, beginAssembly and renderResults");
+  assert.equal((html.match(/getElementById\("historyDeck"\)\.classList\.remove\("hidden"\)/g) || []).length, 1,
+    "one reveal, in showDeskView");
+});
+
 test("the chamber wears its desk header only while the workspace is on screen", () => {
   // The header sits inside #searchSection (so the wall's boot CSS hides it
   // with its parent) but BEFORE the rd-form span the Mock-A test measures,
@@ -1076,8 +1103,10 @@ test("report branding is collapsed behind a summary that states what is saved", 
 });
 
 test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your firm's shelf, and everything you have shared."),
+  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault."),
     "the subtitle names what the workspace actually holds");
+  assert.ok(!html.includes("Your firm's shelf, and everything you have shared."),
+    "the 2026-08-29 line named two of the eight sections and must not come back");
   assert.ok(!html.includes("Your recent searches and tracked properties."),
     "the old line described about a fifth of the page and must not come back");
   // "Your properties" left the line on 2026-09-01 with the deck it named.

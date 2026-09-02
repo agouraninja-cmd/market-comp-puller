@@ -1540,7 +1540,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   list); **POST is idempotent** on the key and a repeat add only ever FILLS a
   missing `verified_key`, never rewrites (035's rule); **the whole set is
   returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
-  in the browser); and **`org_contacts.building_id` is read by no code yet** —
+  in the browser); and **`org_contacts.building_id` is WRITTEN by no code yet** (slice 5's sheet
+  reads it; nothing attaches a contact to a building) —
   naming it in `orgContactRows`' `select=` before 046 has run 400s every
   contacts read. The plan numbered this migration 044; messaging took it.
   **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
@@ -1595,6 +1596,35 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   contact door composes name and company and **never the email** (039), and
   the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
   `report-access.js` stays the sole decider.
+  **The Workspace read as one page (2026-09-02).** Slices 3–8 each placed
+  their own section by local reasoning; this was the first look at the whole,
+  and three things changed, each test-pinned. **Contacts is capped**: it was
+  the one firm section with no overflow rule (Buildings shows 8 and sends the
+  rest to `/buildings`, Conversations 5, the shelf grows a filter at 6), so
+  an imported spreadsheet rendered every row on the front page, up to 2,000,
+  with Membership, Sharing, Broker, Account and the search chamber below all
+  of them. It now shows `COLLAPSE_AT` rows and folds the rest behind "Show N
+  more" — `renderHistory`'s fold, not `/buildings`' subpage, because there is
+  no `/firm/contacts` yet and `/contacts` is the owner's ADMIN_KEY rolodex
+  that migration 007 says must never meet this list; the count line still
+  describes the whole list. **Its add/import form ships CLOSED** behind one
+  "+ Add or import" control, `setContactAddOpen` the single writer (the
+  vault's `#addSec` rule). **It is labelled "Contacts"**: "Tenant contacts"
+  was written for the tenant-rep shop kind, withdrawn 2026-08-31, and a broker
+  or development shop keeps a contact list too; the `tenant_*` CSV aliases in
+  `org-contacts.js` stay, since an old spreadsheet still has to import. And
+  **Recent searches moved from the top of the workspace to directly under the
+  Run-a-report chamber**, as that chamber's output — it was a personal list
+  above "Your firm" on a page the 2026-08-28 decision made firm-first. It is
+  its own `#historyDeck`, outside both `#deskView` (hidden wholesale on the
+  home view and on a report) and `#searchSection` (hidden by the wall's boot
+  CSS while the list still renders signed out), toggled at exactly the four
+  seams that toggle `#searchDeckHead`; `test/index-html.test.js` counts
+  them. Contacts keeps its place — after the deal board, before Membership —
+  and Buildings stays first. Recorded for later, not built: a firm-level
+  "needs attention" band (lease critical dates + unread conversations —
+  `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
+  page for the fold's "See all".
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

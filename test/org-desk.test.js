@@ -530,7 +530,10 @@ function loadBuildings(opts) {
     " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };",
     // myFirm() answers null until renderFirm has resolved the membership on a
     // real page; __firmKnown lets a test model that cold-load beat.
-    "let currentUser = __user; let __firmKnown = true; function myFirm() { return __firmKnown ? __firm : null; }",
+    // COLLAPSE_AT is the desk's own threshold (index.html:~11860), stubbed
+    // at the value the source pins below.
+    "let currentUser = __user; let __firmKnown = true; function myFirm() { return __firmKnown ? __firm : null; }\n" +
+    "const COLLAPSE_AT = 8;",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
   ctx.fetchLog = fetch.log;
@@ -559,6 +562,33 @@ test("the buildings section states the server's count for the whole set and attr
   assert.match(text, /added by you/, "your own row reads 'you', the shelf's rule");
   assert.doesNotMatch(text, /added by Brad/);
   assert.equal(buttons(ctx.dom.el("buildingRows")).length, 2, "a Remove per row");
+});
+
+// The owner's overflow rule (slice 4): eight rows, then one control.
+test("past eight buildings the desk shows eight and one link to the whole list", async () => {
+  const twelve = Array.from({ length: 12 }, (_, i) => BLDG({ id: "b" + i, address: (i + 1) * 100 + " Cap St, Boise, ID" }));
+  const ctx = loadBuildings({ body: { summary: "12 buildings · 12 Industrial", truncated: false, buildings: twelve } });
+  await ctx.render();
+  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 8, "eight rows, most recent first");
+  assert.match(ctx.dom.text("buildingRows"), /100 Cap St/);
+  assert.doesNotMatch(ctx.dom.text("buildingRows"), /900 Cap St/, "the ninth is behind the link");
+  assert.equal(ctx.dom.text("buildingsStats"), "12 buildings · 12 Industrial", "the count line still describes the whole set");
+  assert.equal(ctx.dom.hidden("buildingsMore"), false);
+  assert.equal(ctx.dom.text("buildingsMoreLink"), "See all 12 buildings →");
+});
+
+test("at eight or fewer the link does not render at all", async () => {
+  const eight = Array.from({ length: 8 }, (_, i) => BLDG({ id: "b" + i, address: (i + 1) * 100 + " Cap St, Boise, ID" }));
+  const ctx = loadBuildings({ body: { summary: "8 buildings", truncated: false, buildings: eight } });
+  await ctx.render();
+  assert.equal(buttons(ctx.dom.el("buildingRows")).length, 8);
+  assert.equal(ctx.dom.hidden("buildingsMore"), true, "a control that can only be a no-op never renders");
+});
+
+test("the desk's threshold and the module's OVERFLOW_AT are one number", () => {
+  const B = require("../org-buildings");
+  assert.match(html, /const COLLAPSE_AT = 8;/, "index.html's threshold moved; move org-buildings.js's OVERFLOW_AT with it");
+  assert.equal(B.OVERFLOW_AT, 8);
 });
 
 test("an empty board is an invitation, a failed read is neither", async () => {

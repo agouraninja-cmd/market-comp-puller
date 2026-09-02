@@ -116,9 +116,39 @@ also adds a nullable `org_contacts.building_id` that **no code reads yet**;
 naming it in `orgContactRows`' `select=` before the migration has run would
 take every contacts read down with it.
 
+## The buildings subpage (slice 4, no migration)
+
+**The owner's overflow rule.** The Workspace's buildings section always
+states the count for the **whole** set, then renders at most **eight** rows,
+most-recent-activity first (the server's `updated_at desc`). Past eight, and
+only past eight, one control renders: `#buildingsMore`, a link reading
+"See all 14 buildings →" to `/buildings`. Under eight it does not render at
+all (the Buy-button rule). The threshold is `index.html`'s existing
+`COLLAPSE_AT`, and `org-buildings.js`'s `OVERFLOW_AT` mirrors it — a test
+holds the two together, because index.html cannot require the module.
+
+**`/buildings`** (`buildings-page.js`, `renderBuildingsBody(boot)`) is a
+marketShell body like `/bulk` and `/messages`: no Tailwind utilities, its
+stylesheet in the body after `MARKET_CSS`, every custom property a theme
+token. The route follows the messages route's boot pattern — the first
+answer rides down with the page (401 sign in / 403 no firm / 503 outage /
+200 the list), `no-store`, `vary: cookie`, `noindex`, matched on
+`pagePath` — and the boot payload is the **same** `GET /api/org/buildings`
+answer the Workspace reads: one read, one count, so the two pages can never
+disagree. The page filters in the browser (search box + type select,
+revealed at six rows, the shelf's number), states the filtered count
+separately ("3 of 7"), and never lets the header count follow the filter.
+Remove works here too, through the same DELETE. `CTA_FREE_PAGES` gains
+`/buildings`: it is a page a member works in.
+
+**Deliberate asymmetry.** The portfolio (now on the Vault) gets the other
+idiom, the history list's fold. A firm's buildings are a shared record with
+search needs and earn a page; one member's portfolio is a short personal
+list and earns a fold.
+
 ### Deliberately not in slice 3
 
-- The overflow rule (8 rows then `/buildings`) and the subpage — slice 4.
+- ~~The overflow rule and the subpage~~ — shipped as slice 4, above.
 - The building sheet (`composeSheet`) and building notes (046) — slice 5.
 - An "Add to firm" door on a **comp row** inside a report — deferred with the
   sheet, where a comp's building becomes something to look at.

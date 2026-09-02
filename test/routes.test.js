@@ -572,7 +572,9 @@ test("bare environment", async (t) => {
   // on those four the red button is a nag for a different task.
   await t.test("the Run a report CTA is dropped on the four working pages", async () => {
     const member = { cookie: "cn_session=irrelevant-presence-only" };
-    for (const p of ["/vault", "/markets", "/1031-exchange", "/bulk"]) {
+    // /buildings joined the list in Three Spaces slice 4: the firm's whole
+    // building list is a page a member is working IN, like the vault.
+    for (const p of ["/vault", "/markets", "/1031-exchange", "/bulk", "/buildings"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
       assert.ok(!/class="btn sm" href="\/">Run a report/.test(nav),

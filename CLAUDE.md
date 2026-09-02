@@ -1543,6 +1543,14 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   in the browser); and **`org_contacts.building_id` is read by no code yet** —
   naming it in `orgContactRows`' `select=` before 045 has run 400s every
   contacts read. The plan numbered this migration 044; messaging took it.
+  **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
+  the desk shows at most `COLLAPSE_AT` (8) rows and past that — only past
+  that — `#buildingsMore` links to `/buildings`, a marketShell body in
+  **`buildings-page.js`** whose boot payload is the SAME `/api/org/buildings`
+  answer the desk reads (one read, one count), filtered in the browser with
+  the header count always describing the whole set. `CTA_FREE_PAGES` gains
+  `/buildings`. `org-buildings.js`'s `OVERFLOW_AT` mirrors index.html's
+  `COLLAPSE_AT` and `test/org-desk.test.js` holds them together.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both

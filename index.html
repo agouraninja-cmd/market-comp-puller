@@ -2562,6 +2562,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="buildingMsg" class="hidden text-sm mt-2"></p>
         <p id="buildingsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
         <div id="buildingRows" class="mt-3"></div>
+        <!-- The owner's overflow rule (slice 4): past eight buildings — and
+             only past eight — one control to the whole list. Under it the
+             control does not render at all, the Buy-button rule. -->
+        <p id="buildingsMore" class="hidden text-sm mt-2"><a id="buildingsMoreLink" href="/buildings" class="underline hover:text-[#1A2433]"></a></p>
         <p id="buildingsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No buildings yet. Add one from a property below, from a report on the shelf, or type an address above.</p>
       </div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
@@ -13948,7 +13952,20 @@ async function renderMyDesk() {
 
     const wrap = document.getElementById("buildingRows");
     wrap.innerHTML = "";
-    firmBuildings.forEach((b) => {
+    // The owner's overflow rule (slice 4): at most COLLAPSE_AT rows here,
+    // most-recent-activity first (the server's order), and past that — only
+    // past that — one control to the whole list at /buildings. The count line
+    // above already describes the WHOLE set, so what is not shown is never
+    // silently hidden. COLLAPSE_AT is the history list's own threshold;
+    // org-buildings.js's OVERFLOW_AT mirrors it and a test holds the two
+    // together, because index.html cannot require the module.
+    const overflow = firmBuildings.length > COLLAPSE_AT;
+    document.getElementById("buildingsMore").classList.toggle("hidden", !overflow);
+    if (overflow) {
+      document.getElementById("buildingsMoreLink").textContent =
+        `See all ${firmBuildings.length} buildings \u2192`;
+    }
+    firmBuildings.slice(0, COLLAPSE_AT).forEach((b) => {
       const row = document.createElement("div");
       row.className = "db-row";
       const name = document.createElement("span");

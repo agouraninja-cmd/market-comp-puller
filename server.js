@@ -212,6 +212,7 @@ const PFDELTA = require("./portfolio-delta");
 // server.js owns the job tables, the worker and the search itself.
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
+const { renderBuildingsBody } = require("./buildings-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -9904,7 +9905,7 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -26476,6 +26477,71 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD,
         testerBadge: true,
         body: renderMessagesBody(boot),
+      }));
+    })();
+    return;
+  }
+
+  // /buildings — the firm's whole list of buildings (Three Spaces, slice 4).
+  //
+  // The Workspace shows at most eight and always states the count for the
+  // whole set; past eight, one control links here. The boot payload is the
+  // SAME answer GET /api/org/buildings gives the Workspace — one read, one
+  // count, so the number under the Workspace heading and the number here can
+  // never disagree — and the page filters it in the browser. There is
+  // deliberately no server-side limit (the shelf's rule).
+  //
+  // The messages route's boot pattern: the first answer rides down with the
+  // page, so a member of no firm is told so rather than watching a spinner
+  // turn into a wall. pagePath, never req.url — the ?fbclid= lesson.
+  if (req.method === "GET" && pagePath === "/buildings") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Buildings are unavailable right now. Please try again in a minute." } };
+        else {
+          const firm = await messagingFirmOf(user);
+          if (!firm) boot = { s: 403, j: { error: "This account is not in a firm.", code: "no_firm" } };
+          else {
+            const rows = await orgBuildingRows(firm.orgId);
+            const org = (await orgsByIds([firm.orgId])).get(String(firm.orgId));
+            boot = { s: 200, j: {
+              firm: { id: firm.orgId, name: (org && org.name) || "Your firm" },
+              truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
+              summary: BUILDINGS.summarize(rows).line,
+              buildings: rows.map((r) => BUILDINGS.toBuilding(r, user.id)),
+            } };
+          }
+        }
+      } catch (err) {
+        console.error("buildings boot failed:", err.message);
+      }
+      // PII-free and market-free, the vault_visit precedent: a firm's
+      // buildings are their private record. `source` is the boot outcome.
+      logEvent("buildings_visit", { source:
+        !boot ? "error"
+        : boot.s === 200 ? "ok"
+        : boot.s === 401 ? "signin"
+        : boot.s === 403 ? "nofirm"
+        : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Buildings \u00b7 CompNinja",
+        description: "Your firm's buildings.",
+        canonical: `${SITE_URL}/buildings`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/buildings",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderBuildingsBody(boot),
       }));
     })();
     return;

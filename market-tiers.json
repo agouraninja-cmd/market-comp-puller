@@ -1,0 +1,2107 @@
+{
+  "_comment": "Market tiering for the ranking system. EVERY cbsa.code IS UNVERIFIED: these are a starting point for scripts/resolve-fred-series.js to confirm against the Census delineation files, never values to query with. A wrong CBSA code does not error - it returns real, plausible employment for a different city. Nothing may read a code whose verified flag is false.",
+  "generated": "2026-09-01",
+  "selection": "MSA population and metro GDP scale, cross-checked against markets that appear routinely in published institutional CRE coverage. No proprietary tier list is reproduced. Tiering is an industry convention, not an official designation - no government body publishes one.",
+  "markets": [
+    {
+      "rank": 1,
+      "market": "New York",
+      "state": "NY",
+      "tier": "primary",
+      "cbsa": {
+        "name": "New York-Newark-Jersey City, NY-NJ-PA",
+        "code": "35620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 2,
+      "market": "Los Angeles",
+      "state": "CA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Los Angeles-Long Beach-Anaheim, CA",
+        "code": "31080",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 3,
+      "market": "Chicago",
+      "state": "IL",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Chicago-Naperville-Elgin, IL-IN-WI",
+        "code": "16980",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 4,
+      "market": "Dallas-Fort Worth",
+      "state": "TX",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Dallas-Fort Worth-Arlington, TX",
+        "code": "19100",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 5,
+      "market": "Houston",
+      "state": "TX",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Houston-The Woodlands-Sugar Land, TX",
+        "code": "26420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 6,
+      "market": "Atlanta",
+      "state": "GA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Atlanta-Sandy Springs-Alpharetta, GA",
+        "code": "12060",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 7,
+      "market": "Washington",
+      "state": "DC",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Washington-Arlington-Alexandria, DC-VA-MD-WV",
+        "code": "47900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 8,
+      "market": "Philadelphia",
+      "state": "PA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Philadelphia-Camden-Wilmington, PA-NJ-DE-MD",
+        "code": "37980",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 9,
+      "market": "Miami",
+      "state": "FL",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Miami-Fort Lauderdale-Pompano Beach, FL",
+        "code": "33100",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 10,
+      "market": "Phoenix",
+      "state": "AZ",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Phoenix-Mesa-Chandler, AZ",
+        "code": "38060",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 11,
+      "market": "Boston",
+      "state": "MA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Boston-Cambridge-Newton, MA-NH",
+        "code": "14460",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 12,
+      "market": "Riverside-San Bernardino",
+      "state": "CA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Riverside-San Bernardino-Ontario, CA",
+        "code": "40140",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 13,
+      "market": "San Francisco",
+      "state": "CA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "San Francisco-Oakland-Berkeley, CA",
+        "code": "41860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 14,
+      "market": "Detroit",
+      "state": "MI",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Detroit-Warren-Dearborn, MI",
+        "code": "19820",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 15,
+      "market": "Seattle",
+      "state": "WA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Seattle-Tacoma-Bellevue, WA",
+        "code": "42660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 16,
+      "market": "Minneapolis",
+      "state": "MN",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Minneapolis-St. Paul-Bloomington, MN-WI",
+        "code": "33460",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 17,
+      "market": "Tampa",
+      "state": "FL",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Tampa-St. Petersburg-Clearwater, FL",
+        "code": "45300",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 18,
+      "market": "San Diego",
+      "state": "CA",
+      "tier": "primary",
+      "cbsa": {
+        "name": "San Diego-Chula Vista-Carlsbad, CA",
+        "code": "41740",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 19,
+      "market": "Denver",
+      "state": "CO",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Denver-Aurora-Lakewood, CO",
+        "code": "19740",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 20,
+      "market": "Baltimore",
+      "state": "MD",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Baltimore-Columbia-Towson, MD",
+        "code": "12580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 21,
+      "market": "Orlando",
+      "state": "FL",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Orlando-Kissimmee-Sanford, FL",
+        "code": "36740",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 22,
+      "market": "Charlotte",
+      "state": "NC",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Charlotte-Concord-Gastonia, NC-SC",
+        "code": "16740",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 23,
+      "market": "St. Louis",
+      "state": "MO",
+      "tier": "primary",
+      "cbsa": {
+        "name": "St. Louis, MO-IL",
+        "code": "41180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 24,
+      "market": "San Antonio",
+      "state": "TX",
+      "tier": "primary",
+      "cbsa": {
+        "name": "San Antonio-New Braunfels, TX",
+        "code": "41700",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 25,
+      "market": "Portland",
+      "state": "OR",
+      "tier": "primary",
+      "cbsa": {
+        "name": "Portland-Vancouver-Hillsboro, OR-WA",
+        "code": "38900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 26,
+      "market": "Sacramento",
+      "state": "CA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Sacramento-Roseville-Folsom, CA",
+        "code": "40900",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 27,
+      "market": "Pittsburgh",
+      "state": "PA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Pittsburgh, PA",
+        "code": "38300",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 28,
+      "market": "Austin",
+      "state": "TX",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Austin-Round Rock-Georgetown, TX",
+        "code": "12420",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 29,
+      "market": "Las Vegas",
+      "state": "NV",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Las Vegas-Henderson-Paradise, NV",
+        "code": "29820",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 30,
+      "market": "Cincinnati",
+      "state": "OH",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Cincinnati, OH-KY-IN",
+        "code": "17140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 31,
+      "market": "Kansas City",
+      "state": "MO",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Kansas City, MO-KS",
+        "code": "28140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 32,
+      "market": "Columbus",
+      "state": "OH",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Columbus, OH",
+        "code": "18140",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 33,
+      "market": "Indianapolis",
+      "state": "IN",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Indianapolis-Carmel-Anderson, IN",
+        "code": "26900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 34,
+      "market": "Cleveland",
+      "state": "OH",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Cleveland-Elyria, OH",
+        "code": "17460",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 35,
+      "market": "San Jose",
+      "state": "CA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "San Jose-Sunnyvale-Santa Clara, CA",
+        "code": "41940",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 36,
+      "market": "Nashville",
+      "state": "TN",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Nashville-Davidson--Murfreesboro--Franklin, TN",
+        "code": "34980",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 37,
+      "market": "Virginia Beach",
+      "state": "VA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Virginia Beach-Norfolk-Newport News, VA-NC",
+        "code": "47260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 38,
+      "market": "Providence",
+      "state": "RI",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Providence-Warwick, RI-MA",
+        "code": "39300",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 39,
+      "market": "Jacksonville",
+      "state": "FL",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Jacksonville, FL",
+        "code": "27260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 40,
+      "market": "Milwaukee",
+      "state": "WI",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Milwaukee-Waukesha, WI",
+        "code": "33340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 41,
+      "market": "Oklahoma City",
+      "state": "OK",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Oklahoma City, OK",
+        "code": "36420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 42,
+      "market": "Raleigh",
+      "state": "NC",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Raleigh-Cary, NC",
+        "code": "39580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 43,
+      "market": "Memphis",
+      "state": "TN",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Memphis, TN-MS-AR",
+        "code": "32820",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 44,
+      "market": "Richmond",
+      "state": "VA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Richmond, VA",
+        "code": "40060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 45,
+      "market": "Louisville",
+      "state": "KY",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Louisville/Jefferson County, KY-IN",
+        "code": "31140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 46,
+      "market": "New Orleans",
+      "state": "LA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "New Orleans-Metairie, LA",
+        "code": "35380",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 47,
+      "market": "Salt Lake City",
+      "state": "UT",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Salt Lake City, UT",
+        "code": "41620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 48,
+      "market": "Hartford",
+      "state": "CT",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Hartford-East Hartford-Middletown, CT",
+        "code": "25540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 49,
+      "market": "Buffalo",
+      "state": "NY",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Buffalo-Cheektowaga, NY",
+        "code": "15380",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 50,
+      "market": "Birmingham",
+      "state": "AL",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Birmingham-Hoover, AL",
+        "code": "13820",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 51,
+      "market": "Rochester",
+      "state": "NY",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Rochester, NY",
+        "code": "40380",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 52,
+      "market": "Grand Rapids",
+      "state": "MI",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Grand Rapids-Kentwood, MI",
+        "code": "24340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 53,
+      "market": "Tucson",
+      "state": "AZ",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Tucson, AZ",
+        "code": "46060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 54,
+      "market": "Honolulu",
+      "state": "HI",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Urban Honolulu, HI",
+        "code": "46520",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 55,
+      "market": "Tulsa",
+      "state": "OK",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Tulsa, OK",
+        "code": "46140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 56,
+      "market": "Fresno",
+      "state": "CA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Fresno, CA",
+        "code": "23420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 57,
+      "market": "Worcester",
+      "state": "MA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Worcester, MA-CT",
+        "code": "49340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 58,
+      "market": "Omaha",
+      "state": "NE",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Omaha-Council Bluffs, NE-IA",
+        "code": "36540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 59,
+      "market": "Bridgeport",
+      "state": "CT",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Bridgeport-Stamford-Norwalk, CT",
+        "code": "14860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 60,
+      "market": "Greenville",
+      "state": "SC",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Greenville-Anderson, SC",
+        "code": "24860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 61,
+      "market": "Albuquerque",
+      "state": "NM",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Albuquerque, NM",
+        "code": "10740",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 62,
+      "market": "Bakersfield",
+      "state": "CA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Bakersfield, CA",
+        "code": "12540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 63,
+      "market": "Knoxville",
+      "state": "TN",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Knoxville, TN",
+        "code": "28940",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 64,
+      "market": "Albany",
+      "state": "NY",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Albany-Schenectady-Troy, NY",
+        "code": "10580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 65,
+      "market": "McAllen",
+      "state": "TX",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "McAllen-Edinburg-Mission, TX",
+        "code": "32580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 66,
+      "market": "Baton Rouge",
+      "state": "LA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Baton Rouge, LA",
+        "code": "12940",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 67,
+      "market": "New Haven",
+      "state": "CT",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "New Haven-Milford, CT",
+        "code": "35300",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 68,
+      "market": "Oxnard",
+      "state": "CA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Oxnard-Thousand Oaks-Ventura, CA",
+        "code": "37100",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 69,
+      "market": "El Paso",
+      "state": "TX",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "El Paso, TX",
+        "code": "21340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 70,
+      "market": "Allentown",
+      "state": "PA",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Allentown-Bethlehem-Easton, PA-NJ",
+        "code": "10900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 71,
+      "market": "Charleston",
+      "state": "SC",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Charleston-North Charleston, SC",
+        "code": "16700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 72,
+      "market": "Columbia",
+      "state": "SC",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Columbia, SC",
+        "code": "17900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 73,
+      "market": "North Port-Sarasota",
+      "state": "FL",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "North Port-Sarasota-Bradenton, FL",
+        "code": "35840",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 74,
+      "market": "Dayton",
+      "state": "OH",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Dayton-Kettering, OH",
+        "code": "19430",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 75,
+      "market": "Greensboro",
+      "state": "NC",
+      "tier": "secondary",
+      "cbsa": {
+        "name": "Greensboro-High Point, NC",
+        "code": "24660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 76,
+      "market": "Cape Coral-Fort Myers",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Cape Coral-Fort Myers, FL",
+        "code": "15980",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 77,
+      "market": "Little Rock",
+      "state": "AR",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Little Rock-North Little Rock-Conway, AR",
+        "code": "30780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 78,
+      "market": "Stockton",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Stockton, CA",
+        "code": "44700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 79,
+      "market": "Colorado Springs",
+      "state": "CO",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Colorado Springs, CO",
+        "code": "17820",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 80,
+      "market": "Boise",
+      "state": "ID",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Boise City, ID",
+        "code": "14260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 81,
+      "market": "Des Moines",
+      "state": "IA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Des Moines-West Des Moines, IA",
+        "code": "19780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 82,
+      "market": "Akron",
+      "state": "OH",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Akron, OH",
+        "code": "10420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 83,
+      "market": "Winston-Salem",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Winston-Salem, NC",
+        "code": "49180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 84,
+      "market": "Madison",
+      "state": "WI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Madison, WI",
+        "code": "31540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 85,
+      "market": "Ogden",
+      "state": "UT",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Ogden-Clearfield, UT",
+        "code": "36260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 86,
+      "market": "Syracuse",
+      "state": "NY",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Syracuse, NY",
+        "code": "45060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 87,
+      "market": "Provo",
+      "state": "UT",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Provo-Orem, UT",
+        "code": "39340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 88,
+      "market": "Wichita",
+      "state": "KS",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Wichita, KS",
+        "code": "48620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 89,
+      "market": "Toledo",
+      "state": "OH",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Toledo, OH",
+        "code": "45780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 90,
+      "market": "Augusta",
+      "state": "GA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Augusta-Richmond County, GA-SC",
+        "code": "12260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 91,
+      "market": "Deltona-Daytona Beach",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Deltona-Daytona Beach-Ormond Beach, FL",
+        "code": "19660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 92,
+      "market": "Palm Bay-Melbourne",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Palm Bay-Melbourne-Titusville, FL",
+        "code": "37340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 93,
+      "market": "Jackson",
+      "state": "MS",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Jackson, MS",
+        "code": "27140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 94,
+      "market": "Harrisburg",
+      "state": "PA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Harrisburg-Carlisle, PA",
+        "code": "25420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 95,
+      "market": "Spokane",
+      "state": "WA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Spokane-Spokane Valley, WA",
+        "code": "44060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 96,
+      "market": "Chattanooga",
+      "state": "TN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Chattanooga, TN-GA",
+        "code": "16860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 97,
+      "market": "Lancaster",
+      "state": "PA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lancaster, PA",
+        "code": "29540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 98,
+      "market": "Durham",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Durham-Chapel Hill, NC",
+        "code": "20500",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 99,
+      "market": "Lakeland",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lakeland-Winter Haven, FL",
+        "code": "29460",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 100,
+      "market": "Scranton",
+      "state": "PA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Scranton--Wilkes-Barre, PA",
+        "code": "42540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 101,
+      "market": "Modesto",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Modesto, CA",
+        "code": "33700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 102,
+      "market": "Youngstown",
+      "state": "OH",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Youngstown-Warren-Boardman, OH-PA",
+        "code": "49660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 103,
+      "market": "Portland",
+      "state": "ME",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Portland-South Portland, ME",
+        "code": "38860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 104,
+      "market": "Fayetteville",
+      "state": "AR",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Fayetteville-Springdale-Rogers, AR",
+        "code": "22220",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 105,
+      "market": "Springfield",
+      "state": "MA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Springfield, MA",
+        "code": "44140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 106,
+      "market": "Huntsville",
+      "state": "AL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Huntsville, AL",
+        "code": "26620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 107,
+      "market": "Pensacola",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Pensacola-Ferry Pass-Brent, FL",
+        "code": "37860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 108,
+      "market": "Corpus Christi",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Corpus Christi, TX",
+        "code": "18580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 109,
+      "market": "Visalia",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Visalia, CA",
+        "code": "47300",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 110,
+      "market": "Killeen",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Killeen-Temple, TX",
+        "code": "28660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 111,
+      "market": "Reno",
+      "state": "NV",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Reno, NV",
+        "code": "39900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 112,
+      "market": "Asheville",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Asheville, NC",
+        "code": "11700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 113,
+      "market": "Santa Rosa",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Santa Rosa-Petaluma, CA",
+        "code": "42220",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 114,
+      "market": "Fort Wayne",
+      "state": "IN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Fort Wayne, IN",
+        "code": "23060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 115,
+      "market": "Flint",
+      "state": "MI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Flint, MI",
+        "code": "22420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 116,
+      "market": "Rockford",
+      "state": "IL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Rockford, IL",
+        "code": "40420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 117,
+      "market": "Salinas",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Salinas, CA",
+        "code": "41500",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 118,
+      "market": "Salisbury",
+      "state": "MD",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Salisbury, MD-DE",
+        "code": "41540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 119,
+      "market": "Savannah",
+      "state": "GA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Savannah, GA",
+        "code": "42340",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 120,
+      "market": "Peoria",
+      "state": "IL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Peoria, IL",
+        "code": "37900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 121,
+      "market": "Eugene",
+      "state": "OR",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Eugene-Springfield, OR",
+        "code": "21660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 122,
+      "market": "Naples",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Naples-Marco Island, FL",
+        "code": "34940",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 123,
+      "market": "Lansing",
+      "state": "MI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lansing-East Lansing, MI",
+        "code": "29620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 124,
+      "market": "Gulfport-Biloxi",
+      "state": "MS",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Gulfport-Biloxi, MS",
+        "code": "25060",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 125,
+      "market": "Fayetteville",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Fayetteville, NC",
+        "code": "22180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 126,
+      "market": "Lafayette",
+      "state": "LA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lafayette, LA",
+        "code": "29180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 127,
+      "market": "Brownsville",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Brownsville-Harlingen, TX",
+        "code": "15180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 128,
+      "market": "York",
+      "state": "PA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "York-Hanover, PA",
+        "code": "49620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 129,
+      "market": "Beaumont",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Beaumont-Port Arthur, TX",
+        "code": "13140",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 130,
+      "market": "Shreveport",
+      "state": "LA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Shreveport-Bossier City, LA",
+        "code": "43340",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 131,
+      "market": "Mobile",
+      "state": "AL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Mobile, AL",
+        "code": "33660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 132,
+      "market": "Anchorage",
+      "state": "AK",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Anchorage, AK",
+        "code": "11260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 133,
+      "market": "Manchester-Nashua",
+      "state": "NH",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Manchester-Nashua, NH",
+        "code": "31700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 134,
+      "market": "Trenton",
+      "state": "NJ",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Trenton-Princeton, NJ",
+        "code": "45940",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 135,
+      "market": "Montgomery",
+      "state": "AL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Montgomery, AL",
+        "code": "33860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 136,
+      "market": "Ann Arbor",
+      "state": "MI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Ann Arbor, MI",
+        "code": "11460",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 137,
+      "market": "Green Bay",
+      "state": "WI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Green Bay, WI",
+        "code": "24580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 138,
+      "market": "Roanoke",
+      "state": "VA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Roanoke, VA",
+        "code": "40220",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 139,
+      "market": "Tallahassee",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Tallahassee, FL",
+        "code": "45220",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 140,
+      "market": "Duluth",
+      "state": "MN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Duluth, MN-WI",
+        "code": "20260",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 141,
+      "market": "Ocala",
+      "state": "FL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Ocala, FL",
+        "code": "36100",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 142,
+      "market": "Boulder",
+      "state": "CO",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Boulder, CO",
+        "code": "14500",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 143,
+      "market": "Fort Collins",
+      "state": "CO",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Fort Collins, CO",
+        "code": "22660",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 144,
+      "market": "Utica-Rome",
+      "state": "NY",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Utica-Rome, NY",
+        "code": "46540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 145,
+      "market": "Kingsport-Bristol",
+      "state": "TN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Kingsport-Bristol, TN-VA",
+        "code": "28700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 146,
+      "market": "Wilmington",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Wilmington, NC",
+        "code": "48900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 147,
+      "market": "Lubbock",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lubbock, TX",
+        "code": "31180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 148,
+      "market": "Laredo",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Laredo, TX",
+        "code": "29700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 149,
+      "market": "Clarksville",
+      "state": "TN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Clarksville, TN-KY",
+        "code": "17300",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 150,
+      "market": "Amarillo",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Amarillo, TX",
+        "code": "11100",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 151,
+      "market": "Merced",
+      "state": "CA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Merced, CA",
+        "code": "32900",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 152,
+      "market": "Erie",
+      "state": "PA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Erie, PA",
+        "code": "21500",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 153,
+      "market": "Binghamton",
+      "state": "NY",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Binghamton, NY",
+        "code": "13780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 154,
+      "market": "South Bend",
+      "state": "IN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "South Bend-Mishawaka, IN-MI",
+        "code": "43780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 155,
+      "market": "College Station",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "College Station-Bryan, TX",
+        "code": "17780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 156,
+      "market": "Charleston",
+      "state": "WV",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Charleston, WV",
+        "code": "16620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 157,
+      "market": "Hickory",
+      "state": "NC",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Hickory-Lenoir-Morganton, NC",
+        "code": "25860",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 158,
+      "market": "Norwich-New London",
+      "state": "CT",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Norwich-New London, CT",
+        "code": "35980",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 159,
+      "market": "Waco",
+      "state": "TX",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Waco, TX",
+        "code": "47380",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 160,
+      "market": "Topeka",
+      "state": "KS",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Topeka, KS",
+        "code": "45820",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 161,
+      "market": "Champaign-Urbana",
+      "state": "IL",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Champaign-Urbana, IL",
+        "code": "16580",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 162,
+      "market": "Prescott Valley",
+      "state": "AZ",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Prescott Valley-Prescott, AZ",
+        "code": "39150",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 163,
+      "market": "Bremerton",
+      "state": "WA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Bremerton-Silverdale-Port Orchard, WA",
+        "code": "14740",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 164,
+      "market": "Yakima",
+      "state": "WA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Yakima, WA",
+        "code": "49420",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 165,
+      "market": "Greeley",
+      "state": "CO",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Greeley, CO",
+        "code": "24540",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 166,
+      "market": "Bellingham",
+      "state": "WA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Bellingham, WA",
+        "code": "13380",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 167,
+      "market": "Barnstable Town",
+      "state": "MA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Barnstable Town, MA",
+        "code": "12700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 168,
+      "market": "Sioux Falls",
+      "state": "SD",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Sioux Falls, SD",
+        "code": "43620",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 169,
+      "market": "Columbus",
+      "state": "GA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Columbus, GA-AL",
+        "code": "17980",
+        "verified": false
+      },
+      "seeded": true
+    },
+    {
+      "rank": 170,
+      "market": "Kalamazoo",
+      "state": "MI",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Kalamazoo-Portage, MI",
+        "code": "28020",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 171,
+      "market": "Springfield",
+      "state": "MO",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Springfield, MO",
+        "code": "44180",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 172,
+      "market": "Lincoln",
+      "state": "NE",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Lincoln, NE",
+        "code": "30700",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 173,
+      "market": "Evansville",
+      "state": "IN",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Evansville, IN-KY",
+        "code": "21780",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 174,
+      "market": "Olympia",
+      "state": "WA",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Olympia-Lacey-Tumwater, WA",
+        "code": "36500",
+        "verified": false
+      },
+      "seeded": false
+    },
+    {
+      "rank": 175,
+      "market": "Fargo",
+      "state": "ND",
+      "tier": "tertiary",
+      "cbsa": {
+        "name": "Fargo, ND-MN",
+        "code": "22020",
+        "verified": false
+      },
+      "seeded": false
+    }
+  ]
+}

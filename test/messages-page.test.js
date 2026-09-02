@@ -140,8 +140,46 @@ test("a discovery door seeds the composer through the URL, and nothing is posted
   assert.match(apply, /state\.canAttach/);
   assert.match(apply, /That comp isn't in your vault, so it wasn't attached\./);
   assert.doesNotMatch(apply, /\/api\/messages\/send/, "arriving with a draft must never send it");
-  // With nobody to say it to yet, the New panel opens first.
-  assert.match(js, /if \(state\.draft\) \{[\s\S]{0,400}openNewPanel\(\);/);
+  // With nobody to say it to yet, the New panel opens first — and only for
+  // a reader who HAS a firm, since the picker searches one and a client in a
+  // deal room (who reaches this page with no firm since 2026-09-02) would get
+  // a panel that can find nobody.
+  assert.match(js, /if \(state\.draft && state\.firm\) \{[\s\S]{0,400}openNewPanel\(\);/);
+});
+
+// ---------------------------------------------------------------------------
+// A guest's deal room (2026-09-02)
+// ---------------------------------------------------------------------------
+// External used to mean "a room I own", so every owner-only control on this
+// page could be drawn from "is this external". A client's room joined the
+// list and the two questions came apart.
+test("the broker's controls hang off whose room it is, not off it being external", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const at = js.indexOf("function applyComposerMode(){");
+  assert.ok(at > 0, "applyComposerMode has moved; this guard now checks nothing");
+  const fn = js.slice(at, at + 2400);
+  assert.match(fn, /var mine = external && !!row && row\.owner === true;/,
+    "the page decides ownership some other way than the server's answer");
+  // The guest list is the broker's panel. A guest must not be handed the
+  // other addresses in the room, which is why GET /api/hub sends them none.
+  assert.match(fn, /\$\("msgPeopleBtn"\)\.className = mine \?/,
+    "the guest list opens for somebody who is not the broker");
+  assert.match(fn, /\$\("msgPeoplePanel"\)\.className = "msg-panel msg-hide"/);
+  // Sending comps into a deal room is owner-only on the server, so the
+  // button is not offered where it could only fail.
+  assert.match(fn, /state\.canAttach && !closed && \(!external \|\| mine\)/,
+    "Attach is offered in a room the reader does not own");
+});
+
+test("a reader with no firm gets their rooms, and nothing that needs a firm", () => {
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  // New opens firm threads. It goes away rather than failing when pressed.
+  assert.match(js, /if \(!state\.firm\) \{\s*\$\("msgNewBtn"\)\.className = "msg-btn sm msg-hide";/);
+  assert.match(js, /\$\("msgFirmLine"\)\.textContent = "Deal rooms shared with you";/);
+  // The Internal / External headings are a way to tell two groups apart, so
+  // they appear only when there are two — otherwise a client, external to a
+  // firm they are not in, gets a heading saying so.
+  assert.match(js, /var both = list\.length > 0 && ext\.length > 0;/);
 });
 
 test("the list is sorted unread first, then most recent, after every read", () => {

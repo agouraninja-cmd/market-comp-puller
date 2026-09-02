@@ -116,21 +116,21 @@ test("the wall serves the landing page at the root", async (t) => {
     assert.match(html, /"@type":"WebApplication"/, "the crawler-facing product entity now lives at /");
   });
 
-  // REVERSED 2026-09-01, and the reversal is the point of the change. This
-  // page canonicalized to `/` for the whole life of the wall because `/`
-  // served its exact bytes, and consolidating two URLs' signals onto one is
-  // right when they are one page. `/` is design 3a now — a different document
-  // — so a canonical pointing there would be telling Google that the
-  // methodology page is a duplicate of a page that does not contain it.
-  await t.test("/how-it-works canonicalizes to ITSELF now that / is its own page", async () => {
-    const html = await (await get("/how-it-works")).text();
-    assert.match(html, /<link rel="canonical" href="[^"]*\/how-it-works"\/>/,
-      "this page is no longer a duplicate of / and must stop saying it is");
-    // And the two really are different documents. A regression that pointed
-    // /how-it-works back at renderHomeHTML would still pass the line above.
+  // RETIRED 2026-09-02. This subtest has now been rewritten twice for the same
+  // URL and the history is worth keeping: /how-it-works canonicalized to `/`
+  // for the whole life of the wall (they were one render), then to itself on
+  // 2026-09-01 when `/` became design 3a, and now it is gone. What replaces
+  // the canonical question is a REDIRECT question — the URL is in the wild
+  // and must keep resolving to something.
+  await t.test("/how-it-works is a permanent redirect, not a page and not a 404", async () => {
+    const res = await get("/how-it-works");   // the helper never follows redirects
+    assert.equal(res.status, 301, "301 so the ranking it earned transfers");
+    assert.equal(res.headers.get("location"), "/brokers-firms",
+      "it lands on the audience page that absorbed it");
+    // And it is really gone, not merely relabelled: the page it points at must
+    // not be a second copy of the home page either.
     const home = await (await get("/")).text();
     assert.ok(isLanding(home), "/ is the home page");
-    assert.ok(!isLanding(html), "/how-it-works must not be a second copy of it");
   });
 
   // The header's Home link (2026-08-28) must not point at the page drawing it.
@@ -146,18 +146,18 @@ test("the wall serves the landing page at the root", async (t) => {
       "/markets is where a walled visitor most needs the way back");
   });
 
-  // The two visitors get OPPOSITE answers here, and they always should have.
-  // Until 2026-09-01 they agreed by coincidence: anonymously this page WAS
-  // `/`, so Home self-linked, and for a member the 2026-08-29 rule replaces
-  // Home with Workspace. The first reason is gone — this is a page of its own
-  // now — so the anonymous visitor is owed the link like any other page, and
-  // the member is still owed Workspace instead.
-  await t.test("a visitor gets Home on /how-it-works, a member gets Workspace", async () => {
-    const anon = await (await get("/how-it-works")).text();
+  // This pair of assertions moved to /brokers-firms on 2026-09-02, when
+  // /how-it-works was retired. The rule is unchanged and is worth keeping
+  // under test on SOME page that is neither `/` nor the workspace: an
+  // anonymous visitor is owed the way back to the home page, and a member is
+  // owed Workspace in its place (the 2026-08-28 bug was a member left with
+  // neither).
+  await t.test("a visitor gets Home on a public page, a member gets Workspace", async () => {
+    const anon = await (await get("/brokers-firms")).text();
     assert.ok(anon.includes(`<nav><a href="/">Home</a><details>`),
-      "this page is no longer `/`, so a visitor is owed the way back to it");
+      "a public page is not `/`, so a visitor is owed the way back to it");
 
-    const member = await (await get("/how-it-works", FAKE_SESSION)).text();
+    const member = await (await get("/brokers-firms", FAKE_SESSION)).text();
     assert.ok(!member.includes(`<a href="/">Home</a>`),
       "a member's / is the workspace, and the nav carries Workspace instead");
     assert.match(member, /<a href="\/desk">Workspace<\/a>/,
@@ -230,20 +230,30 @@ test("the wall serves the landing page at the root", async (t) => {
   });
 
   await t.test("the public pages are untouched", async () => {
-    for (const p of ["/how-it-works", "/markets", "/brokers-firms", "/terms", "/privacy", "/healthz"]) {
+    for (const p of ["/markets", "/brokers-firms", "/terms", "/privacy", "/healthz", "/faq", "/pricing"]) {
       assert.equal((await get(p)).status, 200, p + " must stay public");
     }
+    // /how-it-works left this list on 2026-09-02 — retired, and a 301 rather
+    // than a 200. It must still be reachable WITHOUT a session, though: the
+    // wall exempting a page and then the redirect target sitting behind it
+    // would be a redirect to a lock screen for every old inbound link.
+    const gone = await get("/how-it-works");
+    assert.equal(gone.status, 301, "the retired page redirects for a stranger too");
+    assert.equal((await get(gone.headers.get("location"))).status, 200,
+      "and the page it redirects to is itself public");
   });
 
-  // /how-it-works is listed under the wall since 2026-09-01. It was omitted
-  // for the wall's whole life because it canonicalized to `/`, and a
-  // self-declared duplicate in a sitemap is a Search Console soft error. `/`
-  // is design 3a now and this is a different document, so both belong.
-  await t.test("the sitemap lists / and /how-it-works, which are two pages now", async () => {
+  // /how-it-works was listed here for exactly one day. It was omitted for the
+  // wall's whole life (it canonicalized to `/`, and a self-declared duplicate
+  // in a sitemap is a Search Console soft error), listed on 2026-09-01 when it
+  // became its own document, and REMOVED on 2026-09-02 when it was retired —
+  // a sitemap must never list a URL that redirects, the rule /brokers and
+  // /firms came out under the day before.
+  await t.test("the sitemap lists the pages that exist, and not the retired one", async () => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
     assert.match(xml, /<loc>[^<]*\/<\/loc>/, "/ is a real 200 now and the strongest URL the site has");
-    assert.match(xml, /how-it-works/, "the methodology page is its own indexable URL again");
-    assert.match(xml, /<loc>[^<]*\/faq<\/loc>/, "and so is the FAQ that left it");
+    assert.match(xml, /<loc>[^<]*\/faq<\/loc>/, "and so is the FAQ");
+    assert.ok(!/how-it-works/.test(xml), "a sitemap must not list a URL that 301s");
   });
 });
 
@@ -256,16 +266,19 @@ test("with the wall off the app is open again", async (t) => {
     assert.equal(r.status, 200);
   });
 
-  await t.test("the sitemap lists both / and /how-it-works again", async () => {
+  await t.test("the sitemap is the same list with the wall off", async () => {
     const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
     assert.match(xml, /<loc>[^<]*\/<\/loc>/, "with no wall, / is the app's landing page again");
-    assert.match(xml, /how-it-works/, "with no wall, /how-it-works is its own page again");
+    assert.ok(!/how-it-works/.test(xml), "the retired page stays out in both wall states");
   });
 
-  await t.test("/how-it-works canonicalizes to itself again", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
-    assert.match(html, /<link rel="canonical" href="[^"]*\/how-it-works"\/>/,
-      "with / serving the app, this page is no duplicate and keeps its own canonical");
+  await t.test("the retired page redirects in both wall states", async () => {
+    // The wall used to decide what /how-it-works WAS; it must not decide
+    // whether the redirect happens. An old inbound link has to land the same
+    // way whichever state the deployment is in.
+    const r = await fetch(srv.base + "/how-it-works", { redirect: "manual" });
+    assert.equal(r.status, 301);
+    assert.equal(r.headers.get("location"), "/brokers-firms");
   });
 });
 
@@ -273,72 +286,17 @@ test("with the wall off the app is open again", async (t) => {
 
 // --- Signed-in visitors ----------------------------------------------------
 
-// /how-it-works is linked from inside the signed-in app (header nav, footer),
-// and it used to render the same signed-out chrome for everyone — "Log in" /
-// "Create account" — which read as having been logged out mid-session. The
-// page now swaps its auth chrome on cookie PRESENCE, the wall's own rule:
-// cheap, no DB read, and a forged cookie buys the sight of different buttons
-// and nothing else.
-test("/how-it-works does not read as logged out to a signed-in visitor", async (t) => {
-  const srv = await boot({ ACCOUNT_WALL: "on" });
-  t.after(() => srv.stop());
+// The /how-it-works chrome-swap suite lived here until 2026-09-02. It pinned
+// three things about that page: that a signed-in visitor got app chrome
+// instead of signup buttons, that the signed-in variant was `no-store`, and
+// that the anonymous one carried `vary: cookie` alongside its hour cache.
+// The page was RETIRED and 301s to /brokers-firms, so there is nothing left
+// to swap. The rule itself is not lost: every surviving server-rendered page
+// goes through marketShell, and test/routes.test.js pins the same chrome swap
+// across all of them. If a second hand-rolled shell ever appears, restore
+// this suite from git history — the `vary: cookie` half is the one that is
+// easy to forget, and its absence re-serves an hour-old signed-out page to
+// somebody who has just created an account.
 
-  await t.test("a session cookie swaps the signup chrome for app links", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works", { headers: FAKE_SESSION })).text();
-    assert.ok(!/href="\/\?auth=signup"/.test(html), "a signed-in visitor must not be told to create an account");
-    assert.ok(!/href="\/\?auth=signin"/.test(html), "nor to log in — that chrome is what read as being logged out");
-    assert.match(html, /href="\/desk"/, "the header should lead back into the app instead");
-  });
+// The signup-controls suite for that page went with it on the same day.
 
-  await t.test("the signed-in variant is never cached", async () => {
-    const r = await fetch(srv.base + "/how-it-works", { headers: FAKE_SESSION });
-    assert.match(r.headers.get("cache-control") || "", /no-store/,
-      "a cached signed-in copy would outlive a sign-out");
-  });
-
-  await t.test("the anonymous variant still caches, but varies on the cookie", async () => {
-    const r = await fetch(srv.base + "/how-it-works");
-    assert.match(r.headers.get("cache-control") || "", /max-age/, "the SEO-facing page keeps its hour cache");
-    assert.match((r.headers.get("vary") || "").toLowerCase(), /cookie/,
-      "without this, the hour-old signed-out copy survives signing in");
-  });
-});
-
-test("/how-it-works carries the signup controls", async (t) => {
-  const srv = await boot({ ACCOUNT_WALL: "on" });
-  t.after(() => srv.stop());
-
-  await t.test("both auth doors are linked", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
-    assert.match(html, /href="\/\?auth=signup"/, "a visitor sent here must be able to create an account");
-    assert.match(html, /href="\/\?auth=signin"/, "and an existing customer must be able to log in");
-  });
-
-  await t.test("nothing on the page links back into a redirect", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
-    // The closing CTA used to point at "/", which under the wall bounces the
-    // visitor straight back to the page they are standing on.
-    assert.ok(!/class="btn"\s+href="\/"/.test(html), "no button may point at the walled app root");
-    assert.ok(!/Run a free report/.test(html), "the old CTA copy is gone with it");
-  });
-
-  await t.test("the redundant top kicker is gone", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
-    assert.ok(!/class="kicker">How it works</.test(html), "the page IS the front door; it need not label itself");
-    assert.match(html, /class="kicker">Method</, "the other section kickers stay");
-  });
-
-  await t.test("it carries the product's structured data", async () => {
-    const html = await (await fetch(srv.base + "/how-it-works")).text();
-    // It moved off index.html, which no crawler reaches under the wall.
-    assert.match(html, /"@type":"WebApplication"/);
-    // The FAQPage node LEFT with the accordions on 2026-09-01. Emitting FAQ
-    // structured data on a page that shows no FAQ is the mismatch Google
-    // flags, so this is pinned in both directions: gone from here, present
-    // on the page that actually shows the questions.
-    assert.ok(!/"@type":"FAQPage"/.test(html),
-      "this page no longer shows an FAQ and must not claim one in its markup");
-    const faq = await (await fetch(srv.base + "/faq")).text();
-    assert.match(faq, /"@type":"FAQPage"/, "the FAQ markup went with the questions");
-  });
-});

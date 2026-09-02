@@ -173,6 +173,13 @@ const root = (f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8").repla
 // here: they declare their own :root and are out of scope (spec section 1).
 const SERVER_JS = root("server.js");
 const VAULT_JS = root("vault-page.js");
+// The two page stylesheets, required rather than sliced out of their files:
+// both are exported constants, so a rename fails loudly here instead of
+// silently reducing this file's scope to nothing. They joined the in-scope
+// lists on 2026-09-02, when both pages were rebuilt off a handoff whose
+// token table named a `--paper-alt` that theme.js does not define.
+const { FAQ_CSS } = require("../faq-page.js");
+const { PRICING_CSS } = require("../pricing-page.js");
 const INDEX_HTML = root("index.html");
 
 // Slice one template-literal CSS constant out of server.js by name.
@@ -295,7 +302,12 @@ test("the dark-mode footer ink reaches all three server-rendered footers", () =>
 
   // Interpolated into both server-side stylesheets.
   const uses = SERVER_JS.match(/\$\{FOOTER_DARK_CSS\}/g) || [];
-  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate it");
+  // ONE consumer since 2026-09-02. It was two until HOW_CSS was deleted with
+  // /how-it-works; the block is still extracted rather than inlined into
+  // MARKET_CSS, because FOOTER_LINK_COLS and this rule are what a future
+  // second document-building page would need handed to it, exactly as /vault
+  // was until Task 9.
+  assert.equal(uses.length, 1, "expected MARKET_CSS to interpolate it");
   // The vault used to be HANDED this block, because it built its own document
   // and therefore its own footer. Since Task 9 (2026-08-30) it renders a body
   // inside marketShell and gets the real MARKET_FOOTER, so it receives the
@@ -337,10 +349,15 @@ test("no in-scope stylesheet references an undefined variable", () => {
   const defined = new Set(Object.keys(THEME_TOKENS).map((n) => `--${n}`));
   const blocks = {
     MARKET_CSS: cssBlock("MARKET_CSS"),
-    HOW_CSS: cssBlock("HOW_CSS"),
     ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
     "index.html": root("index.html").split("</style>")[0],
     "vault-page.js": VAULT_JS,
+    // /faq and /pricing carry their own <style> in the BODY, so they were
+    // never in this list and were never checked. They are now: both were
+    // rewritten on 2026-09-02 off a handoff whose token table names
+    // `--paper-alt`, which is not a token this codebase has.
+    "faq-page.js": FAQ_CSS,
+    "pricing-page.js": PRICING_CSS,
   };
   for (const [where, css] of Object.entries(blocks)) {
     for (const m of css.matchAll(/var\((--[a-z0-9-]+)/g)) {
@@ -366,7 +383,7 @@ test("no in-scope stylesheet paints a background with the TEXT red", () => {
   // project) to `--red-fill` / `--red-fill-hover`, so this file is now held
   // to the same rule as every other in-scope stylesheet.
   const blocks = [
-    cssBlock("MARKET_CSS"), cssBlock("HOW_CSS"), cssBlock("ACCOUNT_NAV_CSS"), VAULT_JS,
+    cssBlock("MARKET_CSS"), cssBlock("ACCOUNT_NAV_CSS"), VAULT_JS, FAQ_CSS, PRICING_CSS,
   ];
   for (const css of blocks) {
     for (const m of css.matchAll(/background[^;{}]*var\((--red|--red-deep)\)/g)) {
@@ -383,18 +400,17 @@ test("every in-scope server page can set the theme before first paint", () => {
   // /1031-exchange, /terms, /privacy.
   const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
   assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
-  // renderHowItWorksHTML covers / and /how-it-works, and is a SEPARATE shell
-  // from marketShell -- checking one is not evidence about the other. A
-  // future edit that removed the boot script from just this function would
-  // otherwise pass the suite and reintroduce a white flash on / and
-  // /how-it-works. Bounded by the NEXT top-level function rather than a
-  // fixed character window: this function is long (it also carries HOW_FAQ
-  // and the scroll-choreography script), so a short window like marketShell's
-  // would land before THEME_BOOT and produce a false failure.
-  const howStart = SERVER_JS.indexOf("function renderHowItWorksHTML(");
-  const howEnd = SERVER_JS.indexOf("\nfunction ", howStart + 10);
-  const howShell = SERVER_JS.slice(howStart, howEnd);
-  assert.ok(howShell.includes("THEME_BOOT"), "renderHowItWorksHTML lacks the boot script");
+  // renderHowItWorksHTML was the SECOND shell and was checked separately here
+  // -- checking one shell was never evidence about the other. It was deleted
+  // with /how-it-works on 2026-09-02, and marketShell is the only server-side
+  // head builder left, so this is asserted from the other side now: nothing
+  // may build a second <head> without coming back through here. `/` reaches
+  // marketShell like every other page (renderHomeHTML is a BODY).
+  assert.ok(!SERVER_JS.includes("function renderHowItWorksHTML("),
+    "the second head builder is back; it needs its own THEME_BOOT assertion");
+  const heads = SERVER_JS.match(/<\/head>\\n<body/g) || [];
+  assert.equal(heads.length, 1,
+    "a second server-side <head> appeared: give it THEME_BOOT and assert it here");
   // vault-page.js had its own head, and Task 6 put THEME_BOOT in it. Task 9
   // (2026-08-30) retired that head: the page is a body inside marketShell now,
   // so the marketShell window checked above IS the vault's boot script too.
@@ -1146,9 +1162,10 @@ test("the header CompNinja mark themes, and the footer mark does not", () => {
   // neither now, so a copy of this rule in that file would style nothing and
   // would be one more thing to keep in step. The two stylesheets that DO wrap
   // a header are the two that must carry it.
+  // HOW_CSS left this list on 2026-09-02, deleted with /how-it-works. One
+  // stylesheet wraps a header now, and MARKET_CSS is it.
   for (const [where, css] of [
     ["MARKET_CSS", cssBlock("MARKET_CSS")],
-    ["HOW_CSS", cssBlock("HOW_CSS")],
   ]) {
     assert.ok(css.includes(".cn-logo rect{fill:var(--ink)}"),
       `${where} is missing the .cn-logo rect rule`);
@@ -1190,11 +1207,24 @@ test("no raw hex colour remains in in-scope server stylesheets outside the delib
   // dashboards are out of scope and are not in this list.
   const ALLOWLIST = new Set([
     "color:#fff", // text on --red-fill buttons and on the --slab footer
+    // pricing-page.js's founding band, on --slab. The ink ramp runs backwards
+    // on a surface that is dark in both themes, so these are literal for the
+    // same documented reason MARKET_FOOTER's and /brokers-firms' dark bands
+    // are. #F87171 / #B6C1CF / #DC2626 are theme.js's own on-dark values.
+    "color:#f87171",
+    "color:#b6c1cf",
+    "background:#dc2626",
+    "background:#b91c1c",
   ]);
   const blocks = {
     MARKET_CSS: cssBlock("MARKET_CSS"),
-    HOW_CSS: cssBlock("HOW_CSS"),
     ACCOUNT_NAV_CSS: cssBlock("ACCOUNT_NAV_CSS"),
+    // Both page stylesheets joined on 2026-09-02. pricing-page.js in
+    // particular NEEDS this check and needs the allowlist below: its founding
+    // band sits on --slab, which is dark in BOTH themes, so its text colours
+    // are deliberately literal — the same carve-out FOOTER_DARK_CSS has.
+    "faq-page.js": FAQ_CSS,
+    "pricing-page.js": PRICING_CSS,
   };
   const offenders = [];
   for (const [where, css] of Object.entries(blocks)) {
@@ -1228,7 +1258,7 @@ test("no raw colour literal remains in in-scope server.js generated markup", () 
   // it is a stylesheet the server concatenates into two surfaces, not markup
   // with a colour baked into it. Carving it out here would leave it unchecked,
   // so it has a test of its own directly below.
-  for (const name of ["MARKET_CSS", "HOW_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS", "TESTER_BADGE_CSS"]) {
+  for (const name of ["MARKET_CSS", "ACCOUNT_NAV_CSS", "FOOTER_LINKS_CSS", "TESTER_BADGE_CSS"]) {
     const block = cssBlock(name);
     assert.ok(inScope.includes(block), `${name} missing from the in-scope slice`);
     inScope = inScope.replace(block, "");
@@ -1299,69 +1329,12 @@ test("the tester badge stylesheet themes itself, like every other one", () => {
       "TESTER_BADGE_CSS should draw " + token + " from the shared tokens");
   }
 });
+// The `.anim` scroll choreography test lived here until 2026-09-02. It
+// checked that every selector HOW_CSS hid under `.anim` was revealed again
+// for prefers-reduced-motion and for print — the rule that kept
+// scripts/shot.js from photographing blank bands. HOW_CSS was deleted with
+// /how-it-works, and no surviving stylesheet hides anything under `.anim`,
+// so the test had nothing left to read. If a page ever reintroduces
+// scroll-revealed content, restore this from git history rather than
+// rewriting it: the reduced-motion half is the part that is easy to forget.
 
-
-// ---------------------------------------------------------------------------
-// Motion that hides content must be undone in BOTH escape hatches.
-//
-// HOW_CSS hides things before revealing them on scroll (`.anim … {opacity:0}`),
-// with an IntersectionObserver adding `.on`. Two contexts never fire that
-// observer and must therefore get the finished page: a reader who asked for
-// reduced motion, and paper.
-//
-// This is not a style nicety, it is why the standing before/after screenshot
-// rule can be trusted. scripts/shot.js forces prefers-reduced-motion (it has
-// to: an observer never fires in a beyond-viewport capture), so a hiding rule
-// with no reduced-motion reset does not fail any test and does not look wrong
-// in a browser -- it silently photographs as a BLANK BAND where a whole
-// section should be. That has happened once already, to Method and the FAQ,
-// and shot.js carries a comment about it.
-//
-// So: every selector that HOW_CSS hides under `.anim` must appear again inside
-// both the reduced-motion block and the print block.
-test("every .anim hiding rule in HOW_CSS is undone for reduced motion and print", () => {
-  const start = SERVER_JS.indexOf("const HOW_CSS = ");
-  assert.ok(start > -1, "HOW_CSS not found");
-  const how = SERVER_JS.slice(start, SERVER_JS.indexOf("\nconst ", start + 20));
-
-  // ALL blocks carrying this at-rule, joined. HOW_CSS has TWO @media print
-  // blocks — one for general print styling, one that undoes the scroll
-  // choreography — so reading only the first finds the wrong one and reports
-  // every animated selector as unreset. (Caught by this test on its first run.)
-  const blocksFor = (needle) => {
-    let out = "";
-    let at = how.indexOf(needle);
-    assert.ok(at > -1, needle + " block missing from HOW_CSS");
-    while (at > -1) {
-      const open = how.indexOf("{", at);
-      let depth = 0;
-      for (let i = open; i < how.length; i++) {
-        if (how[i] === "{") depth++;
-        else if (how[i] === "}" && --depth === 0) { out += how.slice(open, i); break; }
-      }
-      at = how.indexOf(needle, at + needle.length);
-    }
-    return out;
-  };
-  const reduced = blocksFor("@media (prefers-reduced-motion:reduce)");
-  const print = blocksFor("@media print");
-
-  // Every rule that sets opacity:0 on an .anim selector, outside those blocks.
-  const hidden = [];
-  for (const m of how.matchAll(/(^|\})\s*([^{}]*\.anim [^{}]*)\{([^{}]*)\}/g)) {
-    if (!/opacity\s*:\s*0\b/.test(m[3])) continue;
-    for (const sel of m[2].split(",")) {
-      const s = sel.trim();
-      // :nth-child delay rules carry no opacity; only real hiders reach here.
-      if (s.startsWith(".anim ")) hidden.push(s);
-    }
-  }
-  assert.ok(hidden.length > 0, "found no .anim hiding rules — did the selector shape change?");
-
-  // A selector counts as covered if it, or the bare element it hangs off,
-  // is reset. `.anim .three .pane` is covered by `.anim .three .pane`.
-  const missing = hidden.filter((s) => !reduced.includes(s) || !print.includes(s));
-  assert.deepEqual(missing, [],
-    "these .anim rules hide content with no reduced-motion/print reset, so they "
-    + "will photograph as blank bands in scripts/shot.js: " + missing.join(" | "));
-});

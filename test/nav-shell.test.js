@@ -152,9 +152,13 @@ test("both market stylesheets still take the rail, and the vault does too", () =
   // The whole point of one definition is that consumers cannot drift apart.
   // The failure this catches is silent: a stylesheet that stops interpolating
   // RAIL_CSS renders a perfectly correct page with no sidebar on it.
+  // ONE consumer since 2026-09-02: HOW_CSS was deleted with /how-it-works.
+  // Still pinned as an exact count, because the failure this catches is a
+  // stylesheet that QUIETLY stops interpolating it — and that is just as
+  // possible with one consumer as with two.
   const uses = SERVER_JS.match(/\$\{RAIL_CSS\}/g) || [];
-  assert.equal(uses.length, 2, "expected MARKET_CSS and HOW_CSS to interpolate RAIL_CSS");
-  for (const block of ["MARKET_CSS", "HOW_CSS"]) {
+  assert.equal(uses.length, 1, "expected MARKET_CSS to interpolate RAIL_CSS");
+  for (const block of ["MARKET_CSS"]) {
     const m = SERVER_JS.match(new RegExp(`const ${block} =[\\s\\S]*?\`;`));
     assert.ok(m, `could not read ${block}`);
     assert.ok(m[0].includes("${RAIL_CSS}"), `${block} no longer takes the rail`);

@@ -159,13 +159,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
         p + " must not claim a ten-comp free limit; FREE_MAX_COMPS is \"all\"");
       assert.ok(!/unlocks on its own for \$20/i.test(html) && !/single report unlocks/i.test(html),
         p + " must not sell the single-report unlock; it was retired 2026-08-21");
-      // The wording is faq-page.js's now ("every comparable itemized with its
-      // date, size, $/SF and a disclosed source", and the three-year window
-      // stated outright). What is pinned is the same thing it always was:
-      // the page says what the free tier actually is.
-      assert.ok(/every comparable itemized/i.test(html),
+      // The wording moved again on 2026-09-02, when ten answers became six and
+      // "What exactly do I get from a report?" was folded away. What is pinned
+      // is the same thing it always was, and deliberately not one phrasing of
+      // it: the page must say what the free tier ACTUALLY is rather than going
+      // vague, and it must name the free window, because both are what stop
+      // this answer drifting back into a promise the code does not keep.
+      assert.ok(/runs a full report on any commercial address/i.test(html),
         p + " should state the real free tier, not go vague about it");
-      assert.ok(/three-year lookback/i.test(html),
+      assert.ok(/three[- ]year lookback|three years back/i.test(html),
         p + " should name the free lookback; FREE_MAX_LOOKBACK_MONTHS is 36");
     }
   });
@@ -241,16 +243,17 @@ test("the cost answer matches what the product actually sells", async (t) => {
       "and the home page's Verified credit tile says the same thing");
   });
 
-  // What is left of the old "brokers is not a Method clone" pin. The ledger it
-  // guarded was the LANDING page's, and design 3a has no brokers band; the
-  // shape of /brokers-firms is owned by test/brokers-firms-page.test.js, which
-  // landed with that page. What still belongs here is the one cross-page fact
-  // neither file would otherwise assert: Method's three-up is the methodology
-  // page's and nothing else reuses it as a layout.
-  await t.test("Method's three-up belongs to the methodology page alone", async () => {
-    const how = await (await fetch(srv.base + "/how-it-works")).text();
-    assert.match(how, /class="steps"/, "Method still uses .steps, on the methodology page");
-    for (const p of ["/", "/faq", "/brokers-firms"]) {
+  // What is left of the old "brokers is not a Method clone" pin, which has now
+  // outlived the page it was about. Method's three-up lived on
+  // /how-it-works; that page was retired on 2026-09-02 and its stylesheet
+  // deleted with it, so `.steps` exists nowhere. The half of the assertion
+  // that still means something is the negative one — no public page may grow
+  // a three-up-of-steps band, which is the layout every one of these pages has
+  // been talked out of reusing at least once.
+  await t.test("no public page reuses the retired Method three-up", async () => {
+    const how = await fetch(srv.base + "/how-it-works", { redirect: "manual" });
+    assert.equal(how.status, 301, "the methodology page is retired, not restyled");
+    for (const p of ["/", "/faq", "/brokers-firms", "/pricing"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(!/class="steps"/.test(html), p + " must not reuse Method's three-up");
     }

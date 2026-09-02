@@ -48,7 +48,9 @@ test("the FAQ is reachable from every surface a stranger uses", async (t) => {
     // NAV_LINKS is one list with three consumers, so a link added there
     // reaches all of them. That is exactly what makes a missing one easy to
     // ship: nothing in any single file looks wrong.
-    for (const p of ["/", "/how-it-works", "/markets", "/brokers-firms", "/pricing"]) {
+    // /how-it-works left this list on 2026-09-02: the page was retired and
+    // 301s to /brokers-firms, so it renders no menu of its own any more.
+    for (const p of ["/", "/markets", "/brokers-firms", "/pricing"]) {
       const html = await (await fetch(srv.base + p)).text();
       assert.ok(html.includes('<a href="/faq">FAQ</a>'), p + " cannot reach the FAQ from its Explore menu");
     }
@@ -83,10 +85,23 @@ test("the FAQ is reachable from every surface a stranger uses", async (t) => {
     assert.match(html, /<summary class="on">/, "/faq must mark Explore as the active nav");
     assert.match(html, /<a href="\/faq" class="on" aria-current="page">/,
       "and the menu item itself still says which row");
-    // Not on a page that is not in the menu, or the mark means nothing.
+    // Not on a page that is in NEITHER menu, or the mark means nothing.
+    // /markets no longer serves as that control: it moved INTO the new Tools
+    // dropdown on 2026-09-02, so for a signed-out reader it correctly marks a
+    // summary — just not Explore's. /terms is in no menu at all.
+    const terms = await (await fetch(srv.base + "/terms")).text();
+    assert.ok(!/<summary class="on">/.test(terms),
+      "/terms is in no menu and must mark none");
+
+    // And the mark that /markets DOES get belongs to Tools, not to Explore.
     const markets = await (await fetch(srv.base + "/markets")).text();
-    assert.ok(!/<summary class="on">/.test(markets),
+    const exploreAt = markets.indexOf("Explore<span");
+    const toolsAt = markets.indexOf("Tools<span");
+    assert.ok(exploreAt > -1 && toolsAt > exploreAt, "both menus render for a stranger");
+    assert.ok(!/<summary class="on">Explore/.test(markets),
       "/markets is not inside Explore and must not mark it");
+    assert.match(markets, /<summary class="on">Tools/,
+      "/markets is inside Tools and must mark it");
   });
 });
 
@@ -102,7 +117,11 @@ test("one array feeds the page and the structured data", async (t) => {
 
   // Google flags mismatched FAQ markup, and the invisible copy is the one
   // that reaches search results. Every question must appear in BOTH.
-  assert.equal(faq.mainEntity.length, 10, "design 3b specifies ten questions");
+  // SIX since 2026-09-02 (owner's call). The four retired questions left the
+  // structured data with the page, which was the deliberate trade — see the
+  // header on faqEntries. Pinned as a NUMBER so a future edit that "restores"
+  // one has to change this line on purpose rather than drift past it.
+  assert.equal(faq.mainEntity.length, 6, "the FAQ is six questions since 2026-09-02");
   for (const q of faq.mainEntity) {
     assert.ok(html.includes(q.name.replace(/&/g, "&amp;")) || html.includes(q.name),
       "a question is in the structured data but not on the page: " + q.name);
@@ -139,8 +158,12 @@ test("every answer is a promise the code keeps", async (t) => {
       "the live-search claim was already retired once as false");
     assert.ok(!/stale (cache|database)/i.test(html),
       "any phrasing of it is the same claim");
-    assert.match(html, /check what we already hold/i,
-      "say what actually happens: archive first, then a live search");
+    // The positive half of this assertion ("check what we already hold") went
+    // with the "How long does a report take?" answer on 2026-09-02 — the
+    // owner's cut, on the grounds that nobody asks it before signing up. The
+    // NEGATIVES stay: this page must never grow a sentence calling our own
+    // stored comps stale, whichever answer a future editor writes it into.
+    // That sentence has now been deleted from two different surfaces.
   });
 
   await t.test("the shared-report answer covers all three outcomes", () => {
@@ -160,21 +183,38 @@ test("every answer is a promise the code keeps", async (t) => {
     // entitlements.js: FREE_EXPORTS_PER_MONTH is 5 and branding follows the
     // subscription. The design's answer offered "under your own branding" to
     // everybody, which is a Pro feature sold as free.
-    // The answer spells the numeral, so the constant is checked directly:
-    // move FREE_EXPORTS_PER_MONTH off 5 and this fails rather than leaving
-    // the page quoting an allowance nobody gets.
+    // The claim this protects is unchanged and is the one that matters:
+    // UNLIMITED exports and BRANDING are Pro, and the page may never imply a
+    // free account gets either. Asserted from both sides.
+    assert.match(html, /unlimited exports and your branding/i,
+      "both belong to Pro and the cost answer must say so");
+    const freeSentence = (html.match(/A free account runs[^.]*\./i) || [""])[0];
+    assert.ok(!/branding|unlimited/i.test(freeSentence),
+      "the free sentence must not offer a Pro capability: " + freeSentence);
+
+    // WHAT CHANGED 2026-09-02, and it is a real loss worth knowing about.
+    // The five-a-month free export cap used to be stated here, inside "Can I
+    // use a report in a client deliverable?", and that question was retired.
+    // The figure is still stated on /pricing's Free tile, and
+    // test/pricing-page.test.js pins THAT one to the constant — so the
+    // product still says the number out loud somewhere a buyer reads, which
+    // is why the cut was allowed to stand. If the FAQ ever quotes an export
+    // allowance again, pin it to the constant the way that test does rather
+    // than typing the numeral.
     assert.equal(ENT.FREE_EXPORTS_PER_MONTH, 5,
-      "the answer says five a month; FREE_EXPORTS_PER_MONTH moved");
-    assert.match(html, /five reports a month on a free account/i,
-      "the free export allowance must be stated, not glossed");
-    assert.match(html, /unlimited on Pro, which also puts your own branding/i,
-      "branding belongs to Pro and the sentence must say so");
+      "if this moved, check /pricing's Free tile — the FAQ no longer states it");
   });
 
   await t.test("the free lookback is the one entitlements.js enforces", () => {
     const years = ENT.FREE_MAX_LOOKBACK_MONTHS / 12;
     assert.equal(years, 3, "the answer says three years; FREE_MAX_LOOKBACK_MONTHS moved");
-    assert.match(html, /three-year lookback/i, "the free window must be stated");
+    // The wording moved with the merge (2026-09-02): the cost answer says
+    // "three years back" where the retired free/Pro answer said "a three-year
+    // lookback". Both spellings are accepted so the assertion is about the
+    // FIGURE — which is what has to agree with entitlements.js — rather than
+    // about one phrasing of it.
+    assert.match(html, /three[- ]year lookback|three years back/i,
+      "the free window must be stated");
   });
 
   await t.test("the appraisal disclaimer is in the first answer", () => {

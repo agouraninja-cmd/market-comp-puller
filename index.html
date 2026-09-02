@@ -38,10 +38,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <meta name="twitter:title" content="Commercial Real Estate Comps" />
   <meta name="twitter:description" content="Recent comparable sales and lease comps for any commercial property. Free, in under a minute." />
   <meta name="twitter:image" content="https://market-comp-puller.onrender.com/og-image.png" />
-  <!-- The FAQPage and WebApplication structured data live on /how-it-works.
-       Under the account wall no crawler reaches this file: / 302s to that page
-       for anyone without a session, so it is the one indexable description of
-       the product. -->
+  <!-- The FAQPage structured data lives on /faq and the WebApplication node on
+       `/`, both server-rendered. Under the account wall no crawler reaches this
+       file: an anonymous visitor at / gets home-page.js, so the server-rendered
+       pages are the indexable description of the product.
+       (Both nodes used to live on /how-it-works, which was retired 2026-09-02.) -->
   <!-- Favicon: CompNinja cut-card mark (navy comp card, red diagonal slice).
        Real files, not data: URIs — Google only shows a favicon it can crawl. -->
   <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -903,6 +904,20 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        leaving a section heading sitting between two links in the wrapping
        horizontal bar a phone gets. Same split as server.js RAIL_CSS. */
     .rd-appbar > nav > .navsec { display: none; }
+    /* The Explore menu's lead row — the twin of server.js's
+       `.hdr nav .dd a.nav-lead` rule. Written by hand rather than as
+       utilities, like every other rule in this block: tailwind.css is a
+       vendored purged build, and a utility that existed only in server.js's
+       injected class string would silently stop styling on the next regen.
+       The links themselves are NOT authored here (server.js injects them from
+       NAV_LINKS at serve time); only their appearance is, which is why this
+       rule and the server's have to move together. */
+    #exploreMenu { width: 15rem; }
+    #exploreMenu a.nav-lead { background: var(--wash); color: var(--ink); font-weight: 500; }
+    #exploreMenu a .nav-sub {
+      display: block; font-weight: 400; font-size: 11.5px; line-height: 1.35;
+      color: var(--ink-3); margin-top: 2px; white-space: normal;
+    }
     /* --- The rail (NAV_SHELL=rail, 2026-08-28) ----------------------------
        The app's half of the shell server.js gives every other page. Same
        geometry, same one class on <html> -- stamped by authBoot before first
@@ -2306,17 +2321,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
-        <!-- The guide is a bar row for a MEMBER and a menu item for a stranger
-             (owner's, 2026-08-30). The row above it earns its slot for both
-             audiences; this one only earns it once the rail is on, because the
-             rail is what takes the dropdown away. A signed-out visitor still
-             opens Explore, and server.js injects the guide back into it as an
-             anonOnly entry -- see NAV_LINKS.
-             Ships hidden and is revealed by refreshAccountUI, the same shape
-             as #menuVaultLink and #menuBulkLink beside it: this file is one
-             set of bytes served to everybody, so anonymous is the pre-paint
-             default and the member's row arrives with their account. -->
-        <a id="nav1031Link" href="/1031-exchange" class="hidden hover:text-[#1A2433]">1031 guide</a>
+        <!-- A bar row for EVERY reader of this file since 2026-09-02.
+             It was a bar row for a member and an Explore menu item for a
+             stranger (owner's, 2026-08-30), toggled after paint. The menu half
+             is gone: the guide moved out of NAV_LINKS into server.js's new
+             Tools dropdown, which marketBar renders for a signed-out visitor
+             and this file has no equivalent of.
+             So rather than leave an anonymous reader of THIS file — someone on
+             a shared report, or mid-signup — with the guide in neither place,
+             the row simply always renders. That deletes a toggle instead of
+             adding one, and it is the same rule the move was made under: a
+             link belongs where its reader can reach it. -->
+        <a id="nav1031Link" href="/1031-exchange" class="hover:text-[#1A2433]">1031 guide</a>
         <!-- Bulk valuation, the second Pro tool, on the same 2026-08-29 report.
              /bulk had no link on this page at all -- not in the menu, not in
              the footer -- so from inside the app the only way in was typing
@@ -4406,9 +4422,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     <!-- Home info — pointer row under the desk; hidden once a report is shown -->
     <div id="homeInfo" class="no-print">
       <div class="mt-12 reveal border-y rd-hairline py-5 flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        <a href="/how-it-works" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">How it works</a>
-        <span class="text-[#9AA2AD]">·</span>
+        <!-- "How it works" was the first link here until 2026-09-02, when that
+             page was retired and 301'd to this one. The separator went with it:
+             a single row needs no middle dot. -->
         <a href="/brokers-firms" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">For brokers &amp; firms</a>
+        <span class="text-[#9AA2AD]">·</span>
+        <a href="/faq" class="text-[13.5px] font-semibold text-[#B91C1C] hover:text-[#991B1B]">FAQ</a>
       </div>
     </div>
 
@@ -4444,9 +4463,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              long enough that the footer was the tallest block on the landing
              page. The labels reuse .rd-lab (the site's micro-label token) so
              this adds no new type styles. Server-rendered pages carry their
-             own copies of this footer — MARKET_FOOTER and the /how-it-works
-             footer in server.js, both using the matching `footer .cols` /
-             `.ch` rules. Keep the three in step. -->
+             own copy of this footer — MARKET_FOOTER in server.js, using the
+             matching `footer .cols` / `.ch` rules. Keep the TWO in step; it
+             was three until /how-it-works was retired on 2026-09-02 and its
+             hand-kept footer went with it. -->
         <div class="shrink-0 flex flex-wrap gap-x-11 gap-y-5">
           <div>
             <div class="rd-lab">Explore</div>
@@ -4462,7 +4482,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    a real URL and works signed out, which is exactly what that
                    reader needs. -->
               <li><a href="/pricing" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Pricing</a></li>
-              <li><a href="/how-it-works" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">How it works</a></li>
               <li><a href="/faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
               <li><a href="/1031-exchange" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">1031 exchange guide</a></li>
               <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
@@ -12413,13 +12432,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // forbids outright. Toggled rather than added so both directions hold.
     if (navRailMode) document.documentElement.classList.toggle("nav-rail", on);
     document.getElementById("signInLink").classList.toggle("hidden", on);
-    // The 1031 guide swaps places rather than appearing: a bar row for a
-    // member (the rail hides Explore, so a menu item would be unreachable),
-    // a menu item for a stranger (their dropdown opens, and this bar has a
-    // pitch to make). Both halves are toggled here so the two never show at
-    // once and neither is left behind by a sign-out, which this page also
-    // does without reloading.
-    document.getElementById("nav1031Link").classList.toggle("hidden", !on);
+    // The 1031 guide no longer swaps places (2026-09-02). It was a bar row for
+    // a member and an Explore menu item for a stranger, toggled here so the
+    // two never showed at once; the menu half left NAV_LINKS for server.js's
+    // Tools dropdown, which this file has no equivalent of, so the row simply
+    // always renders and there is nothing to toggle. See its markup above.
+    //
+    // The .nav-anon sweep STAYS. Nothing in NAV_LINKS carries that flag today,
+    // so it is a no-op — kept deliberately, because the flag is the mechanism
+    // for any future anonymous-only entry in a file served as one set of bytes
+    // to everybody, and re-deriving it later is how the two halves get out of
+    // step. It is three lines and it costs a querySelectorAll on sign-in.
     document.querySelectorAll(".nav-anon").forEach(function (el) {
       el.classList.toggle("hidden", on);
     });

@@ -33,10 +33,10 @@
 // and would helpfully restore the real ones.
 //
 // Usage:
-//   node scripts/shot.js /how-it-works
+//   node scripts/shot.js /faq
 //   node scripts/shot.js / /markets /brokers-firms    several pages in one boot
-//   node scripts/shot.js /how-it-works --before       vs origin/main
-//   node scripts/shot.js /how-it-works --before HEAD~1
+//   node scripts/shot.js /faq --before                vs origin/main
+//   node scripts/shot.js /faq /pricing --before HEAD~1
 //   node scripts/shot.js / --size 390x844             a phone-width capture
 //   node scripts/shot.js / --env ACCOUNT_WALL=off     signed-out app, not the landing page
 //   node scripts/shot.js /markets --viewport          just the fold, not the whole page
@@ -152,10 +152,10 @@ function parseShotArgs(argv) {
     if (arg === "--keep") { out.keep = true; continue; }
     if (arg.startsWith("-")) { out.errors.push(`Unknown flag ${arg}`); continue; }
     const p = normalizeShotPath(arg);
-    if (!p) out.errors.push(`"${arg}" is not a page path — pass /how-it-works, not a full URL`);
+    if (!p) out.errors.push(`"${arg}" is not a page path — pass /faq, not a full URL`);
     else out.paths.push(p);
   }
-  if (!out.paths.length && !out.help) out.errors.push("Nothing to shoot — pass at least one page path, e.g. /how-it-works");
+  if (!out.paths.length && !out.help) out.errors.push("Nothing to shoot — pass at least one page path, e.g. /faq");
   return out;
 }
 
@@ -421,9 +421,10 @@ async function captureViaCdp(dt, url, size, fullPage, settleMs, expand, dark) {
 
     if (expand) {
       // Collapsed content is invisible to a screenshot, and this site puts
-      // real copy inside <details>: the FAQ accordions on / and /how-it-works
-      // and /brokers-firms, the vault's three `dbox` panels, the uploader's
-      // "Required columns & privacy details". A change to any of it produces
+      // real copy inside <details>: the /faq accordions (back since
+      // 2026-09-02) and /brokers-firms', the vault's three `dbox` panels, the
+      // uploader's "Required columns & privacy details". A change to any of
+      // it produces
       // two identical pictures otherwise — which reads as "nothing changed"
       // rather than "you photographed a closed drawer". Kept off by default,
       // because the closed state is what a visitor actually sees.

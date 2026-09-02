@@ -3955,5 +3955,11 @@
     "type": "improvement",
     "title": "The vault says what lat, lng and tenancy are",
     "details": "Two questions from testers, answered where they are asked. The template's guidance now reads 'lat and lng are latitude and longitude' with a worked example (43.6187 and -116.2146) and says they are optional — leave them blank and CompNinja places the pin itself — and tenancy, which had no guidance line at all, gets one naming the three usual answers (Single tenant, Multi-tenant, Owner-user) and saying it is descriptive and never used in the math. On the page, a FIELD_HINTS map renders the same answers as hover titles on every header that names the column — the spreadsheet, the compact table and the extract confirm table — and on the add form, whose Lat and Lng labels now read Latitude and Longitude with example placeholders."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Add a property to your portfolio by address, without running a report",
+    "details": "The firm's buildings form on the Workspace had this door; the personal book did not — a property could only reach it through a report. POST /api/portfolio now takes { address, propertyType } alone and files the ordinary row holding an empty report, the shape the next search fills in, so the match key, the cap and the verified-key rules apply unchanged. A property already in the book is answered (existed: true) and never rewritten, because an empty report must not replace the one a search stored. Refuses a type outside the vault's vocabulary, an address with no street number, and one the market parser cannot place. The vault's properties deck gains the door, closed by default; rows with no valuation now say 'not valued yet' rather than 'checked' with a date nobody checked on."
   }
 ]

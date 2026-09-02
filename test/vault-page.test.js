@@ -3526,6 +3526,33 @@ test("the door posts the identity the row already holds, then re-reads the board
   assert.ok(reads.length >= 2, "the board is re-read after the add, so the door disappears from the row");
 });
 
+test("a property can be added by address with no search: the door ships closed, posts address and type, and an unvalued row says so", async () => {
+  const { doc, calls } = await runPage([comp({})], null, { portfolio: [PROP({ snapshots: [] })] });
+  await tick();
+  assert.match(doc.getElementById("propsRows").innerHTML, /not valued yet/, "no valuation was taken, so none is claimed");
+  assert.doesNotMatch(doc.getElementById("propsRows").innerHTML, /checked/);
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "ships closed");
+  doc.getElementById("propAddToggle").fire("click", {});
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") < 0);
+  assert.match(doc.getElementById("pType").innerHTML, /Industrial[\s\S]*Residential/, "the vault's own type list");
+  doc.getElementById("pAddr").value = "  500 S Capitol Blvd, Boise, ID ";
+  doc.getElementById("pType").value = "Office";
+  doc.getElementById("pAdd").fire("click", {});
+  await tick(); await tick();
+  const posts = calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body);
+  assert.deepEqual(posts.map((c) => c.body), [{ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Office" }],
+    "address and type, nothing report-shaped");
+  assert.match(doc.getElementById("propsMsg").textContent, /Added 500 S Capitol Blvd, Boise, ID/);
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "closes on success");
+  // An empty address never leaves the page.
+  doc.getElementById("propAddToggle").fire("click", {});
+  doc.getElementById("pAddr").value = "";
+  doc.getElementById("pAdd").fire("click", {});
+  await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body).length, 1);
+  assert.match(doc.getElementById("propsMsg").textContent, /street address/);
+});
+
 // ---------------------------------------------------------------------------
 // The confirm table reads against the source document
 // ---------------------------------------------------------------------------

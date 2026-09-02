@@ -898,12 +898,25 @@ a.btn.ghost:hover{color:var(--ink)}
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckProps">
       <span class="dlab">Your properties</span><span class="dln"></span>
-      <a class="dact" href="/">+ Run a report</a>
+      <button class="dact" id="propAddToggle" aria-expanded="false" aria-controls="propAddForm">+ Add a property</button>
     </div>
 
     <section id="propsSec">
       <p class="sub hide" id="propsIntro" style="margin-top:0">The buildings you own or track.
         Each keeps the value from every report you have run on it. Only you can see this.</p>
+      <!-- Add by address, no search (2026-09-02). The firm's buildings form
+           on the Workspace had this door; the personal book did not — a
+           property reached it only through a report. Ships closed (the
+           #addSec rule); setPropAddOpen is its one writer. -->
+      <div class="form hide" id="propAddForm" style="margin-top:var(--s4)">
+        <label class="span2">Address <input id="pAddr" type="text" maxlength="300" placeholder="100 Main St, Boise, ID"/></label>
+        <label>Type <select id="pType"></select></label>
+        <div class="formact span-all">
+          <button class="btn" id="pAdd" type="button">Add property</button>
+          <button class="btn ghost" id="pCancel" type="button">Cancel</button>
+          <span class="fine">No search runs. Use Refresh on the row when you want a value, or <a href="/">run a report</a>.</span>
+        </div>
+      </div>
       <div class="strip hide" id="propsStrip"></div>
       <p class="note hide" id="propsAttn"></p>
       <!-- The "Add to firm" door's answer (Three Spaces, slice 3). Its own
@@ -917,8 +930,9 @@ a.btn.ghost:hover{color:var(--ink)}
       <div class="msg bad hide" id="propsErr">Couldn&rsquo;t load your properties just now.
         Nothing has been lost. Refresh in a moment.</div>
       <div class="invite hide" id="propsEmpty">
-        <p>Nothing here yet. Your portfolio holds the properties you own. Run a report and
-          use <strong>Save to portfolio</strong>, or add one from your recent searches.</p>
+        <p>Nothing here yet. Your portfolio holds the properties you own. Add one by address
+          with <strong>+ Add a property</strong> above, run a report and use <strong>Save to portfolio</strong>,
+          or add one from your recent searches.</p>
       </div>
       <div class="tw hide" id="propsWrap"><table id="propsTbl">
         <thead><tr id="propsHead"></tr></thead>
@@ -4606,9 +4620,12 @@ a.btn.ghost:hover{color:var(--ink)}
       var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
       var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
       var href="/?property="+encodeURIComponent(item.id);
-      var lastTs=last&&last.ts?last.ts:item.updated_at;
-      var sub=esc(item.property_type||"")+" · checked "+
-        esc(new Date(lastTs).toLocaleDateString());
+      // "checked" only when a valuation was actually taken. A row added by
+      // address, or from a recent search with no value, says so rather than
+      // claiming a check nobody ran.
+      var sub=esc(item.property_type||"")+(last&&last.ts
+        ? " · checked "+esc(new Date(last.ts).toLocaleDateString())
+        : " · not valued yet");
       // The standing market page for this property's market + type. The
       // server attaches market_page only when one exists, so absence renders
       // nothing; the slug is shape-checked before it becomes an href, like
@@ -4722,6 +4739,43 @@ a.btn.ghost:hover{color:var(--ink)}
         loadFirmBuildings();
       })
       .catch(function(){b.disabled=false;b.textContent="Add to firm";propsMsg("That didn't reach the server. Nothing was changed.",true);});
+  });
+
+  // Add a property by address (2026-09-02). No search runs; the row lands
+  // without a valuation and says so. Types are PROP_TYPES, the watchlist
+  // form's own list, so the two selects cannot disagree.
+  var propAddOpen=false;
+  $("pType").innerHTML='<option value="">Property type</option>'+PROP_TYPES.map(function(t){return '<option value="'+escA(t)+'">'+esc(t)+"</option>"}).join("");
+  function setPropAddOpen(open){
+    propAddOpen=!!open;
+    $("propAddForm").className="form"+(propAddOpen?"":" hide");
+    var t=$("propAddToggle");
+    if(t.setAttribute)t.setAttribute("aria-expanded",propAddOpen?"true":"false");
+    t.textContent=propAddOpen?"Close":"+ Add a property";
+    if(propAddOpen&&$("pAddr").focus)$("pAddr").focus();
+  }
+  // Stated at load, not only in the markup: the closed state is then a fact
+  // the one writer made, wherever the page is drawn.
+  setPropAddOpen(false);
+  $("propAddToggle").addEventListener("click",function(){ setPropAddOpen(!propAddOpen); });
+  $("pCancel").addEventListener("click",function(){ setPropAddOpen(false); });
+  $("pAdd").addEventListener("click",function(){
+    var address=String($("pAddr").value||"").trim(),type=$("pType").value;
+    if(!address){propsMsg("Type the property\u2019s street address.",true);return;}
+    if(!type){propsMsg("Which kind of property is it?",true);return;}
+    $("pAdd").disabled=true;
+    fetch("/api/portfolio",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+      body:JSON.stringify({address:address,propertyType:type})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("pAdd").disabled=false;
+        if(o.s!==200){propsMsg((o.j&&o.j.error)||"That did not go through.",true);return;}
+        $("pAddr").value="";
+        propsMsg(o.j&&o.j.existed?address+" is already in your portfolio.":"Added "+address+". Use Refresh on its row when you want a value.",false);
+        setPropAddOpen(false);
+        loadProps();
+      })
+      .catch(function(){$("pAdd").disabled=false;propsMsg("That did not reach the server. Nothing was changed.",true);});
   });
 
   $("propsRows").addEventListener("click",function(e){

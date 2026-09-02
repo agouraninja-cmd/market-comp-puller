@@ -2658,6 +2658,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+  **Add a property by address (2026-09-02).** `POST /api/portfolio` takes
+  `{ address, propertyType }` with no report: the row is the ordinary row
+  holding an EMPTY report (`data.comps: []`, the shape the next search
+  fills), so the match key, the cap and the fill-never-rewrite verified key
+  apply unchanged. One rule is new and test-pinned: a match is ANSWERED
+  (`existed: true`, the row's own id and snapshots) and never rewritten,
+  because an empty report must not replace the one a search stored. It
+  refuses the firm buildings form's three cases — a type outside the
+  vault's vocabulary, an address with no street number (a city is not a
+  property), and one `addressHasMarket` cannot place. `/vault`'s
+  properties deck carries the door (`#propAddToggle`, ships closed,
+  `setPropAddOpen` its one writer; the "+ Run a report" link it replaced
+  lives inside the form). A row with no snapshot now says "not valued yet"
+  instead of "checked <date>", which claimed a check nobody ran — that
+  reaches rows added from recent searches too, honestly.
   **Profile photo** (2026-08-14; migration `027-account-avatar.sql`). A
   signed-in account can upload a picture that replaces the initial in the
   account circle (app header, every server-rendered page, My Desk). Rules

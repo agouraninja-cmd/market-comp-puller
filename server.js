@@ -17840,7 +17840,32 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireUser(req, res);
           if (!user) return;
-          const { id, payload, snapshot, verifiedKey } = JSON.parse(body || "{}");
+          const parsed = JSON.parse(body || "{}");
+          const { id, snapshot, verifiedKey } = parsed;
+          let payload = parsed.payload;
+          // Add by ADDRESS, with no report (2026-09-02): { address,
+          // propertyType } and nothing else. The row is the ordinary row
+          // holding an EMPTY report — the shape the next search fills in —
+          // so the match key, the cap and the fill-never-rewrite verified
+          // key below apply unchanged. What differs is the match case: a
+          // property already in the book is ANSWERED (existed: true), never
+          // rewritten, because an empty report must not replace a real one.
+          // Refusals mirror the firm buildings form: a type from the vault's
+          // vocabulary, a street number (a city is not a property), and a
+          // market the parser can place.
+          let byAddress = false;
+          if (!payload && !id && parsed.address != null) {
+            const addr = String(parsed.address || "").trim().replace(/\s+/g, " ").slice(0, 300);
+            const type = String(parsed.propertyType || parsed.property_type || "").trim();
+            if (!addr) return sendJson(res, 400, { error: "Type the property's street address." });
+            if (!VAULT.PROPERTY_TYPES.includes(type)) {
+              return sendJson(res, 400, { error: `Which kind of property? One of ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+            }
+            if (!/\d/.test(addr)) return sendJson(res, 400, { error: "That looks like a city, not a property. Include the street number." });
+            if (!addressHasMarket(addr)) return sendJson(res, 400, { error: "Include the city and state, like 100 Main St, Boise, ID." });
+            payload = { meta: { address: addr, type }, data: { comps: [] } };
+            byAddress = true;
+          }
           if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
@@ -17867,6 +17892,9 @@ const server = http.createServer((req, res) =>
             address, propertyType: property_type, verifiedKey: vkey,
           });
           if (existing) {
+            // By address: the book already has it. Say so and write nothing —
+            // an empty report must never replace the one a search stored.
+            if (byAddress) return sendJson(res, 200, { id: existing.id, snapshots: existing.snapshots || [], existed: true });
             // Backfill: a row saved before this column existed, or before the
             // browser could verify this address, adopts the key on its next
             // save — so the duplicate stops being created from then on without
@@ -17886,8 +17914,8 @@ const server = http.createServer((req, res) =>
           const item = await insertPortfolioItem(user.id, {
             address, property_type, payload, snapshot: snap, verifiedKey: vkey,
           });
-          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
-          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
+          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address), ...(byAddress ? { source: "address" } : {}) });
+          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots, ...(byAddress ? { existed: false } : {}) });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("portfolio POST error:", err);

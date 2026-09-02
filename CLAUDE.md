@@ -1529,7 +1529,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   portfolio row can be matched. `GET|POST|DELETE /api/org/buildings?id=<org>`
   on the existing `openOrg` + `memberOf` gate; rules in the pure
   **`org-buildings.js`**; the desk section `#deskBuildings` sits at the top of
-  the firm deck with an "Add to firm" door on portfolio and shelf rows. Four
+  the firm deck with an "Add to firm" door on the firm shelf's rows, and the
+  Vault's portfolio rows carry the same door (`firmDoorCell` in
+  vault-page.js — the portfolio moved there in slice 1), each reading the
+  board off the server's own rows so neither page grows an address key. Four
   rules: **nothing creates a building as a side effect** — `linkVaultProperties`
   never touches the table and `test/org-routes.test.js` fails the build if the
   table is named outside its read function and route block (a row appearing

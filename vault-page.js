@@ -904,6 +904,10 @@ a.btn.ghost:hover{color:var(--ink)}
         Each keeps the value from every report you have run on it. Only you can see this.</p>
       <div class="strip hide" id="propsStrip"></div>
       <p class="note hide" id="propsAttn"></p>
+      <!-- The "Add to firm" door's answer (Three Spaces, slice 3). Its own
+           line, not #propsErr: that one means the portfolio could not be
+           read, and a building landing on the firm's board is not that. -->
+      <p class="msg hide" id="propsMsg" aria-live="polite"></p>
       <!-- Two empty states, two elements, on purpose -- and the wording of the
            failure one is the desk's model: a bare "couldn't load" on a section
            holding saved work reads as data loss to the person most likely to
@@ -1432,6 +1436,7 @@ a.btn.ghost:hover{color:var(--ink)}
     allMarkets=o.j.markets||[];
     uploads=o.j.uploads||[];
     myFirm=o.j.firm||null;
+    loadFirmBuildings();
     sharedIds={};
     (o.j.sharedWithFirm||[]).forEach(function(id){sharedIds[id]=true});
     // The firm filter is furniture for a broker in no firm, so it is not
@@ -4509,7 +4514,7 @@ a.btn.ghost:hover{color:var(--ink)}
       // (validation, the cache, the caps, the per-type columns) -- all of
       // which live in index.html and nowhere else. So this navigates rather
       // than pretending to run a search here.
-      cells+='<td class="rowact num"><a href="'+escA(href+"&refresh=1")+
+      cells+='<td class="rowact num">'+firmDoorCell(item)+'<a href="'+escA(href+"&refresh=1")+
         '" title="Runs a new live search for this property">Refresh</a> '+
         '<button class="lnk trash" type="button" data-prop-del="'+escA(item.id)+
         '" data-prop-addr="'+escA(item.address)+
@@ -4528,6 +4533,66 @@ a.btn.ghost:hover{color:var(--ink)}
   }
 
   // Delegated, because #propsRows is rewritten on every render.
+  // The firm's buildings (Three Spaces, slice 3), read ONLY to decide which
+  // portfolio rows may offer "Add to firm": null until the read has answered
+  // (no door is offered on a list we could not read), then the wire rows.
+  // Same route the Workspace reads; index.html holds the twin of this door
+  // for the firm shelf, and the on-board check below mirrors its heuristic —
+  // the verified key first, then the exact address — both read off the
+  // SERVER's own rows, so neither page grows an address key of its own.
+  var firmBldgs=null;
+  function loadFirmBuildings(){
+    firmBldgs=null;
+    if(!myFirm){ if(propsOk)renderProps(); return; }
+    fetch("/api/org/buildings?id="+encodeURIComponent(myFirm.id),{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        firmBldgs=(o.s===200&&Array.isArray(o.j.buildings))?o.j.buildings:null;
+        if(propsOk)renderProps();
+      })
+      .catch(function(){ firmBldgs=null; });
+  }
+  function onFirmBoard(item){
+    if(!firmBldgs)return true;
+    var vk=String(item.verified_key||""),addr=String(item.address||"").trim().toLowerCase();
+    return firmBldgs.some(function(b){
+      return (vk&&b.verifiedKey&&b.verifiedKey===vk)||
+        (addr&&String(b.address||"").trim().toLowerCase()===addr);
+    });
+  }
+  function firmDoorCell(item){
+    if(!myFirm||!firmBldgs||onFirmBoard(item))return "";
+    return '<button class="lnk" type="button" data-firm-bldg="'+escA(item.id)+
+      '" title="'+escA("Add this building to "+myFirm.name+"’s list")+'">Add to firm</button> ';
+  }
+  function propsMsg(text,bad){
+    var el=$("propsMsg");
+    el.textContent=text||"";
+    el.className="msg"+(bad?" bad":" ok")+(text?"":" hide");
+  }
+  $("propsRows").addEventListener("click",function(e){
+    var b=e.target.closest("button[data-firm-bldg]");if(!b||!myFirm)return;
+    var id=b.getAttribute("data-firm-bldg");
+    var item=propItems.filter(function(p){return String(p.id)===String(id)})[0];
+    if(!item)return;
+    b.disabled=true;b.textContent="Adding\u2026";
+    // The identity travels as the verified key the portfolio already holds
+    // (035), so nobody retypes an address and the same building typed two
+    // ways still meets one row on the board.
+    fetch("/api/org/buildings?id="+encodeURIComponent(myFirm.id),{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({address:item.address,propertyType:item.property_type,verifiedKey:item.verified_key||""})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){b.disabled=false;b.textContent="Add to firm";propsMsg(o.j.error||"That didn't go through.",true);return;}
+        propsMsg(o.j.existed
+          ? item.address+" was already on "+myFirm.name+"'s list."
+          : "Added "+item.address+" to "+myFirm.name+"'s buildings.");
+        loadFirmBuildings();
+      })
+      .catch(function(){b.disabled=false;b.textContent="Add to firm";propsMsg("That didn't reach the server. Nothing was changed.",true);});
+  });
+
   $("propsRows").addEventListener("click",function(e){
     var b=e.target.closest("button[data-prop-del]");if(!b)return;
     var id=b.getAttribute("data-prop-del"),addr=b.getAttribute("data-prop-addr")||"this property";

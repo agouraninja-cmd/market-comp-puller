@@ -99,8 +99,9 @@ board.
 
 `#deskBuildings` sits at the **top** of the firm deck — buildings are the
 firm's index, the shelf is its output. It fills from work already visible:
-an "Add to firm" door on a portfolio row (carrying the row's verified key) and
-on a firm shelf row, plus an address form. The door renders only for a member
+an "Add to firm" door on a firm shelf row, plus an address form. The
+portfolio moved to the Vault in slice 1, so its rows carry the same door
+there (`firmDoorCell` in vault-page.js), carrying the row's verified key. The door renders only for a member
 of a firm and only for an address not already on the board (the Buy-button
 rule). A failed read hides the section rather than rendering an empty list —
 "no buildings" and "could not reach the database" must never look the same.

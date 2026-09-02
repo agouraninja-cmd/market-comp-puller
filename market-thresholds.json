@@ -1,0 +1,159 @@
+{
+  "_comment": "Maps a raw indicator onto the -1..+1 scale. Piecewise linear through three points: `low` scores -1, `mid` scores 0, `high` scores +1, linear between and clamped outside. Separate from market-weights.json on purpose - weights say how much a metric COUNTS, thresholds say what counts as GOOD, and they are argued about separately. Every `mid` is an explicit judgement, not a default.",
+  "generated": "2026-09-01",
+  "units": "All values are the unit named in each metric's `unit` field. Percentages are whole numbers (2.5 means 2.5%), not fractions.",
+  "_mid_is_not_zero": "The most common way to get this wrong is to assume `mid` should be 0. Population growth of exactly 0% is a market losing ground against a country growing near 0.5%, so mid is 0.4 rather than 0. A threshold table that treated 0 as neutral would call a shrinking-relative-to-nation market flat.",
+  "macro": {
+    "Job growth (total nonfarm, YoY)": {
+      "unit": "percent",
+      "low": -2.0,
+      "mid": 0.5,
+      "high": 3.0
+    },
+    "Labor force growth (YoY)": {
+      "unit": "percent",
+      "low": -1.5,
+      "mid": 0.4,
+      "high": 2.5
+    },
+    "Average hourly earnings growth (YoY)": {
+      "unit": "percent",
+      "low": 0.0,
+      "mid": 3.0,
+      "high": 6.0,
+      "note": "mid is 3%, not 0. Nominal wages almost always rise; a metro growing wages at 1% is losing ground to inflation and to every other metro, so 0% must score well below flat."
+    },
+    "House price index change (YoY)": {
+      "unit": "percent",
+      "low": -5.0,
+      "mid": 2.0,
+      "high": 10.0
+    },
+    "Unemployment rate (level and direction)": {
+      "unit": "percent",
+      "low": 3.0,
+      "mid": 4.5,
+      "high": 8.0,
+      "invert": true,
+      "note": "Inverted: lower is better. Inverting here rather than using a negative weight keeps every weight positive, so a reader never has to work out what a negative weight would have meant."
+    }
+  },
+  "class_specific": {
+    "industrial": {
+      "Mining, logging & construction employment growth": {
+        "unit": "percent",
+        "low": -4.0,
+        "mid": 0.5,
+        "high": 5.0
+      },
+      "Trade, transport & utilities employment growth": {
+        "unit": "percent",
+        "low": -2.0,
+        "mid": 0.5,
+        "high": 3.5
+      },
+      "Manufacturing employment growth": {
+        "unit": "percent",
+        "low": -3.0,
+        "mid": 0.0,
+        "high": 3.0
+      }
+    },
+    "office": {
+      "Professional & business services employment growth": {
+        "unit": "percent",
+        "low": -2.0,
+        "mid": 0.5,
+        "high": 3.5
+      },
+      "Information sector employment growth": {
+        "unit": "percent",
+        "low": -4.0,
+        "mid": 0.5,
+        "high": 5.0
+      },
+      "Financial activities employment growth": {
+        "unit": "percent",
+        "low": -2.0,
+        "mid": 0.5,
+        "high": 3.0
+      },
+      "Educational attainment (bachelor's or higher)": {
+        "unit": "percent of adults, LEVEL",
+        "low": 20.0,
+        "mid": 32.0,
+        "high": 48.0,
+        "note": "Office demand tracks the STOCK of degree-holding workers, not this year's movement in it. A LEVEL, not a change. ACS lags about two and a half years, which is nearly irrelevant here: this is composition rather than motion, and a metro's share does not swing year to year. Momentum metrics use FRED because they must be current; structure does not."
+      }
+    },
+    "retail": {
+      "Retail trade employment growth": {
+        "unit": "percent",
+        "low": -2.0,
+        "mid": 0.3,
+        "high": 3.0
+      },
+      "Leisure & hospitality employment growth": {
+        "unit": "percent",
+        "low": -3.0,
+        "mid": 1.0,
+        "high": 5.0
+      },
+      "Household count growth (YoY)": {
+        "unit": "percent",
+        "low": -0.5,
+        "mid": 0.6,
+        "high": 2.5
+      },
+      "Median household income growth (YoY)": {
+        "unit": "percent",
+        "low": -1.0,
+        "mid": 2.0,
+        "high": 5.0
+      }
+    },
+    "multifamily": {
+      "Median gross rent growth (YoY)": {
+        "unit": "percent",
+        "low": -1.0,
+        "mid": 3.0,
+        "high": 8.0
+      },
+      "Renter-occupied share": {
+        "unit": "percent of occupied units, LEVEL",
+        "low": 25.0,
+        "mid": 33.0,
+        "high": 45.0,
+        "note": "A LEVEL. A metro where a third of households rent has a materially deeper multifamily market than one at a quarter, regardless of this year's movement. A LEVEL, not a change. ACS lags about two and a half years, which is nearly irrelevant here: this is composition rather than motion, and a metro's share does not swing year to year. Momentum metrics use FRED because they must be current; structure does not."
+      }
+    },
+    "land": {
+      "Household count growth (YoY)": {
+        "unit": "percent",
+        "low": -0.5,
+        "mid": 0.6,
+        "high": 2.5
+      },
+      "Median household income growth (YoY)": {
+        "unit": "percent",
+        "low": -1.0,
+        "mid": 2.0,
+        "high": 5.0
+      }
+    },
+    "residential": {
+      "Median household income growth (YoY)": {
+        "unit": "percent",
+        "low": -1.0,
+        "mid": 2.0,
+        "high": 5.0
+      },
+      "Household count growth (YoY)": {
+        "unit": "percent",
+        "low": -0.5,
+        "mid": 0.6,
+        "high": 2.5
+      }
+    }
+  }
+}

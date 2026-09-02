@@ -81,6 +81,7 @@ const TABLES = [
   ["msg_messages",        "044-firm-messaging.sql"],
   ["msg_comps",           "044-firm-messaging.sql"],
   ["msg_comp_saves",      "044-firm-messaging.sql"],
+  ["macro_readings",      "045-macro-readings.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

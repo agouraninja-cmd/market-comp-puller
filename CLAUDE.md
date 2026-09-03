@@ -3267,6 +3267,58 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     convention; and addresses street-verbatim with "City, ST" completion
     only when the document itself proves the state — the 2026-08-28
     verdict's dedupe-key instability, made deterministic.
+  - **A bare address is offered its city, never handed one** (2026-09-02).
+    A firm's own sheet writes "123 Main St" because everyone there knows
+    which city, and both import doors refused every such row — the CSV by
+    line number, the confirm table only AFTER Import, since
+    `classifyExtractRows` never asked. Now `POST /api/vault/inspect` and
+    `/api/vault/extract` answer `marketSuggest` (`count`, a `sample` of the
+    bare rows, and `candidates` ranked **this file → the broker's vault →
+    their coverage**, the order in which each is likely to be what the sheet
+    left unsaid), and each door asks ONCE: the mapper's `#mapMarket` row
+    (`CONST_ASK`'s shape) and the confirm table's `#pdfMarketRow`
+    (`#pdfBasisRow`'s shape). Rules, all test-pinned
+    (`test/vault-market-complete.test.js`, `-run.test.js`, the page suite):
+    - **Nothing is applied until a person picks.** The blank option is
+      today's behaviour (those rows are left out and named). The pure
+      `suggestMarketCompletion` writes no address; `marketOf` is INJECTED
+      beside `hasMarket`, and a market string that is not itself canonical
+      is never offered back (a vault row misfiled before `hasMarket` existed
+      must not become a completion).
+    - **The CSV door completes on the SERVER**: `completeWith: "City, ST"`
+      on `/api/vault/upload`, canonicalized by the route (`canonicalMarket`
+      — "boise, id" files as "Boise, ID"; a non-market is 400 before any row
+      is read), then composed inside `parseUpload` right where
+      `composeAddress` runs — only onto an address that still fails
+      `hasMarket` AFTER the mapped City/State columns had their say, so a
+      row naming its own city keeps it — and the result still passes the
+      ordinary `hasMarket` gate, so "Boise, Idaho" is refused with the
+      ordinary message naming the string it produced. `completed` /
+      `completedAs` ride the response and the result line says "N addresses
+      completed as Boise, ID". The rows door never takes it: confirm-table
+      rows carry their completed addresses in the cells, stamped visibly by
+      the selector (`joinMarket`, a ⚠ mirror of `composeAddress`'s
+      append-only rule, pinned on three shapes), a hand-typed address always
+      winning and the blank option putting a stamped row back.
+    - **`MARKET_NEEDLE` is a ⚠ mirror of `MARKET_REFUSAL`**, exported so the
+      page test pins it — `RENT_BASIS_NEEDLE`'s reason.
+    - **`POST /api/vault/confirm-market` is a badge, never a gate.** After a
+      pick, and only then, ≤10 completed streets go to `geocodeCensus` — our
+      own in-process call, never Nominatim, never the browser (migration
+      017's wall) — and the row says "k of n found in Boise, ID". A miss on
+      a rural or new address is ordinary, so "0 of n found" is information,
+      not a refusal. Writes nothing, logs no address, through `openVault`.
+    - **The mapper opens for a clean template that holds bare addresses**
+      (every column already mapped, one question) — the deliberate bend of
+      "the screen is shown only when a header is not ours": that rule's
+      reason was that there was nothing to ask, and now there is. The
+      mapper re-asks inspect only when the address trio of the mapping
+      changes (`trioSig`), since a City column mapped onto `address_city`
+      is what makes a bare street whole and the question then disappears.
+    - **The extract prompt is untouched.** It still never guesses a city
+      the document does not name; the completion is the broker's act.
+    Not built: bulk valuation and the firm-buildings form still refuse a
+    bare address with their own messages (owner's scope, 2026-09-02).
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday

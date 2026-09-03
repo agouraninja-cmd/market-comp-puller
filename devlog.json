@@ -2,6 +2,12 @@
   {
     "date": "2026-09-02",
     "type": "feature",
+    "title": "A vault import offers a city and state for addresses that have none",
+    "details": "A firm's own spreadsheet or comp sheet writes \"123 Main St\" because everyone there knows which city, and both import doors refused every such row — the CSV by line number, the confirm table only after Import. Now the mapper and the confirm table each ask once, offering the markets the broker's own records already name (this file first, then their vault, then their coverage) or a typed City, ST. Nothing is applied until a person picks; the CSV door completes on the server through the same append-only compose and the same market check as any other row, the confirm table stamps the completion visibly into the address cells with a hand-typed address always winning, and after a pick the completed streets are checked against our own Census call as a badge — “7 of 9 found in Boise, ID” — never a gate. The import's result line says how many addresses were completed and as what."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
     "title": "The confirm table triages: clean rows are text, refused rows say why, Import sits at the top",
     "details": "Second slice of the owner’s “Make it easier to upload data” theme, aimed at the measured failure: 4m51s to confirm 12 extracted rows that were all correct (docs/evals/extract-2026-08-28-verdict-final.md), with every cell an input and nothing saying which rows needed a look. A row normalizeRow accepted now renders as text — the formatted figure, read against the page — with an Edit control (or a double-click) that opens just that row; a refused row stays inputs, tinted, and is followed by a line naming its reason, and the cursor lands there on open. The strip says “12 found · 12 ready · everything reads clean” and a second Import button sits beside it above the table, carrying the same state as the one below. “Review every cell” is the cautious broker’s door back to the all-inputs table. Document order (#217) is untouched; a row opened by hand survives the basis selector’s re-render exactly as a checkbox does."
   },

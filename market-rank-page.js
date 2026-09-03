@@ -69,6 +69,38 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-cov i{display:block;height:100%;background:var(--ink-3)}
 .rk-note{font-size:13px;color:var(--ink-2);margin:14px 0 0}
 .rk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 0;font-size:12px;color:var(--ink-3)}
+/* --- The explorer's entry card (/markets) ------------------------------- */
+/* Two columns on a wide screen: the explanation and the class links on the
+   left, the live top three on the right. One column below 720px, where a
+   side-by-side would squeeze every market name onto two lines. */
+.rke{border:1px solid var(--edge);background:var(--card);border-radius:6px;
+  padding:22px 24px;margin:0 0 26px;box-shadow:var(--lift);
+  display:grid;grid-template-columns:1.35fr 1fr;gap:8px 30px;align-items:start}
+.rke-head{grid-column:1}
+.rke h2{font-family:var(--serif);font-weight:500;font-size:21px;color:var(--ink);
+  margin:0 0 6px;letter-spacing:normal;text-transform:none}
+.rke-head p{color:var(--ink-2);font-size:14px;margin:0;max-width:56ch}
+.rke-tabs{grid-column:1;display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:14px}
+.rke-lab{font-size:13px;color:var(--ink-2);font-weight:600;margin-right:2px}
+/* The preview spans both left-hand rows so it sits beside the text, not under it. */
+.rke-top{grid-column:2;grid-row:1 / span 2;border-left:1px solid var(--hair);padding-left:26px}
+.rke-top h3{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 9px}
+.rke-list{list-style:none;margin:0;padding:0}
+.rke-list li{display:flex;align-items:center;gap:8px;font-size:14px;padding:5px 0;
+  border-bottom:1px solid var(--hair)}
+.rke-list li:last-child{border-bottom:0}
+.rke-n{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums;min-width:.9rem}
+.rke-list a{color:var(--ink);font-weight:600;flex:1;min-width:0}
+.rke-list a:hover{color:var(--red)}
+.rke-s{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:13px}
+.rke-more{margin:12px 0 0;font-size:13.5px}
+.rke-foot{grid-column:1;font-size:12px;color:var(--ink-3);margin:12px 0 0}
+@media(max-width:720px){
+  .rke{grid-template-columns:1fr;padding:20px}
+  .rke-top{grid-column:1;grid-row:auto;border-left:0;padding-left:0;
+    border-top:1px solid var(--hair);padding-top:16px;margin-top:16px}
+}
 `;
 
 function esc(s) {
@@ -162,7 +194,11 @@ function renderRankingsBody(assetClass, rows, meta) {
       + `The rest are scored on macro data alone and show it in the Data column.</p></div>`
     : "";
 
-  return `<h1>Market rankings</h1>`
+  // The way back. The market card has carried "All markets" to the ledger since
+  // it shipped; the ledger had nothing to the page a reader arrives FROM, so
+  // the step was one-way and the browser's back button was the only exit.
+  return `<p style="margin:0 0 6px"><a href="/markets">&larr; Market explorer</a></p>`
+    + `<h1>Market rankings</h1>`
     + `<p class="sub">${scored.length} markets scored for ${esc(CLASS_LABEL[cls].toLowerCase())}, `
     + `from public government data. Every score shows its parts.</p>`
 
@@ -309,5 +345,67 @@ function renderMarketCardBody(m) {
     + `number can be checked.</p>`;
 }
 
+// ---------------------------------------------------------------------------
+// The door, on /markets. The spec's "hero card at the top of the market
+// explorer - the primary route".
+//
+// The rankings shipped with no way in. /rankings, /rankings/<class> and the
+// market card all render, all set `current: "/markets"` so the nav lights up
+// Market explorer, and nothing on Market explorer linked to any of them. A
+// feature nobody can reach is a feature that does not exist.
+//
+// WHY IT CARRIES DATA RATHER THAN BEING A BUTTON. A card that only says
+// "market rankings ->" asks the reader to take a trip to find out whether the
+// trip was worth taking. Three real rows answer that on the page they are
+// already on, and they are the same three the ledger opens with because both
+// read the same sorted array - the preview cannot drift from the thing it
+// previews.
+//
+// The six class links are here for the reason they are on the ledger: the
+// ranking is genuinely different per asset class (measured 2026-09-02: an
+// average spread of 18.7 places out of 49, San Jose moving 7th to 46th), so a
+// member who works one class steps straight into it rather than landing on
+// industrial and re-navigating.
+//
+// PURE, like everything else in this file. The caller decides whether there is
+// anything to show; an empty `rows` returns an empty string rather than a card
+// promising a ranking that is not there.
+function renderExplorerEntry(assetClass, rows, meta) {
+  const cls = ASSET_CLASSES.includes(assetClass) ? assetClass : "industrial";
+  const scored = (rows || []).filter((r) => typeof r.score === "number");
+  if (!scored.length) return "";                  // no data, no door
+  const m = meta || {};
+
+  const preview = scored.slice(0, 3).map((r, i) =>
+    `<li><span class="rke-n">${i + 1}</span>`
+    + `<a href="/rankings/${cls}/${esc(r.cbsa)}">${esc(r.market)}, ${esc(r.state)}</a>`
+    + `<span class="rke-s">${fmtScore(r.score)}</span>`
+    + `<span class="rk-pill ${bandClass(r.band)}">${bandWord(r.band)}</span></li>`).join("");
+
+  return `<div class="rke">`
+    + `<div class="rke-head">`
+    + `<h2>Market rankings</h2>`
+    + `<p>${scored.length} US markets scored from public government data &mdash; employment, `
+    + `labor force, wages and house prices &mdash; weighted differently for every asset class. `
+    + `Every score shows its parts, so it can be checked rather than taken on trust.</p>`
+    + `</div>`
+
+    // Not the ledger's tabs: nothing is aria-current here, because the reader
+    // has not chosen a class yet. This is where they choose one.
+    + `<div class="rke-tabs"><span class="rke-lab">Rank for</span>`
+    + ASSET_CLASSES.map((c) =>
+        `<a class="rk-tab" href="/rankings/${c}">${CLASS_LABEL[c]}</a>`).join("")
+    + `</div>`
+
+    + `<div class="rke-top">`
+    + `<h3>Leading for ${esc(CLASS_LABEL[cls].toLowerCase())}</h3>`
+    + `<ol class="rke-list">${preview}</ol>`
+    + `<p class="rke-more"><a href="/rankings/${cls}">See all ${scored.length} markets &rarr;</a></p>`
+    + `</div>`
+
+    + (m.generated ? `<p class="rke-foot">Readings as of ${esc(m.generated)}.</p>` : "")
+    + `</div>`;
+}
+
 module.exports = { ASSET_CLASSES, CLASS_LABEL, RANK_CSS, renderRankingsBody,
-  fmtScore, bandClass, bandWord, coverageBar, assetTabs, renderMarketCardBody };
+  fmtScore, bandClass, bandWord, coverageBar, assetTabs, renderMarketCardBody, renderExplorerEntry };

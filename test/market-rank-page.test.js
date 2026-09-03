@@ -273,3 +273,90 @@ test("with every market scored, no pending line appears", () => {
   const txt = strip(P.renderRankingsBody("industrial", all, META));
   assert.ok(!/further market/.test(txt));
 });
+
+
+// ---------------------------------------------------------------------------
+// The explorer entry card — the only door into any of this.
+//
+// The ranking pages shipped complete and UNREACHABLE: nothing on the site
+// linked to /rankings, so the whole feature was live and invisible. These tests
+// are about the door staying open and staying honest, because a hero card is
+// exactly the kind of thing a later redesign of /markets removes for looking
+// busy.
+
+const entry = (cls = "industrial", rows = ROWS) =>
+  P.renderExplorerEntry(cls, rows, { generated: "2026-09-02" });
+
+test("the entry card links into the ranking, and into every asset class", () => {
+  const html = entry();
+  assert.match(html, /href="\/rankings\/industrial"/,
+    "no link to the ledger — the card would be decoration");
+  for (const c of P.ASSET_CLASSES) {
+    assert.ok(html.includes(`href="/rankings/${c}"`),
+      `${c} has no link, so a member who works it lands on industrial instead`);
+  }
+});
+
+// The guard that stops the door leading nowhere. server.js 404s /rankings when
+// RANK_CONFIGURED is false, and an install with no readings file scores nothing
+// — in both cases the card must not appear at all.
+test("no scored markets means no card, never an empty one", () => {
+  assert.strictEqual(entry("industrial", []), "");
+  assert.strictEqual(entry("industrial", ROWS.filter((r) => r.score === null)), "",
+    "a list of unscored markets is not a ranking to advertise");
+});
+
+// The preview and the ledger read the same sorted array, so this pins that they
+// cannot disagree — a card claiming a different leader than the page it opens
+// would be worse than no preview.
+test("the preview shows the top three of the list it links to", () => {
+  const html = entry();
+  const scored = ROWS.filter((r) => typeof r.score === "number");
+  const top = scored.slice(0, 3);
+  for (const r of top) assert.ok(html.includes(`${r.market}, ${r.state}`), `${r.market} missing`);
+  assert.ok(!html.includes("Eagle Pass"),
+    "an unscored market must never appear in a leaderboard preview");
+});
+
+test("the count is the scored markets, not the row count", () => {
+  const html = entry();
+  const scored = ROWS.filter((r) => typeof r.score === "number").length;
+  assert.ok(html.includes(`See all ${scored} markets`),
+    "the card must not count markets it has no score for");
+  assert.ok(!html.includes(`See all ${ROWS.length} markets`));
+});
+
+test("an unknown asset class falls back rather than rendering an empty heading", () => {
+  const html = entry("datacenter");
+  assert.match(html, /Leading for industrial/);
+  assert.ok(!html.includes("datacenter"));
+});
+
+test("the card escapes what it prints", () => {
+  const html = P.renderExplorerEntry("industrial", [{
+    market: '<script>x</script>', state: "XX", tier: "primary", cbsa: "99999",
+    score: 0.5, band: "expanding",
+  }], { generated: '"onload="' });
+  assert.ok(!html.includes("<script>x</script>"));
+  assert.ok(!html.includes('"onload="'));
+});
+
+// Both directions. The card is the way in; without this the way out is the
+// browser's back button, which is not a way out a page may rely on.
+test("the ledger links back to the explorer it is entered from", () => {
+  assert.match(render(), /href="\/markets"/,
+    "the ledger must offer the way back to /markets");
+});
+
+// The card reuses the ledger's classes rather than restating them, which is
+// only safe while server.js ships RANK_CSS on /markets too. If this ever fails,
+// the class links have gone back to looking like bare underlined text.
+test("the card reuses the ledger's styles, so /markets must carry RANK_CSS", () => {
+  const html = entry();
+  assert.ok(html.includes('class="rk-tab"'), "class links use the ledger's tab style");
+  assert.match(html, /class="rk-pill rk-(exp|flat|con)"/, "band pills use the ledger's colours");
+  for (const cls of ["rk-tab", "rk-pill", "rk-exp"]) {
+    assert.ok(P.RANK_CSS.includes("." + cls), `RANK_CSS does not define .${cls}`);
+  }
+  assert.ok(P.RANK_CSS.includes(".rke"), "RANK_CSS must carry the entry card's own styles");
+});

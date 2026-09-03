@@ -680,6 +680,29 @@ function rankRowsFor(assetClass) {
   return rows;
 }
 
+// The Market explorer's door into the rankings, rendered ONCE at startup.
+//
+// /markets is not cached the way /rankings is (no maxAge on its sendShellPage),
+// so building this per request would rescore all 196 markets on every visit to
+// the busiest server-rendered page on the site. The readings are a file read at
+// boot and cannot change while the process lives, so the card cannot either.
+//
+// "" when the rankings are unconfigured or nothing has scored, and
+// renderExplorerEntry returns "" for an empty list for the same reason: the
+// route 404s under !RANK_CONFIGURED, and a hero card linking to a 404 is worse
+// than no hero card. The explorer simply renders as it did before.
+const RANK_ENTRY = (() => {
+  if (!RANK_CONFIGURED) return "";
+  try {
+    return RANKPAGE.renderExplorerEntry("industrial", rankRowsFor("industrial"),
+      { generated: (RANK_READINGS && RANK_READINGS.generated) || "" });
+  } catch (e) {
+    // A broken readings file must cost the card, never the whole directory.
+    console.error("[rank] explorer entry not built:", e && e.message);
+    return "";
+  }
+})();
+
 // Visitor-generated market pages (the Market Explorer). Same payload shape as
 // MARKET_PAGES entries; persisted to the Supabase `market_pages` table (file
 // fallback when unconfigured) and loaded at startup.
@@ -12608,6 +12631,10 @@ function renderMarketDirectoryHTML(signedIn) {
   const body =
     `<h1>Commercial Real Estate Market Snapshots</h1>` +
     `<p class="sub">Recent price-per-square-foot and cap-rate snapshots by market, built from real comparable sales. Pick a market, or run a free valuation for your own building.</p>` +
+    // The rankings, above the directory grid. Ordering is deliberate: the grid
+    // below answers "what do you have on this city", the card answers "which
+    // cities should I be looking at", and the second question comes first.
+    RANK_ENTRY +
     filterUi +
     mapUi +
     (cards ? `<div class="grid">${cards}</div>` : `<p>Market snapshots are being prepared. <a href="/">Run a live valuation &rarr;</a></p>`) +
@@ -12616,7 +12643,13 @@ function renderMarketDirectoryHTML(signedIn) {
     `<a class="btn" href="/">Get my free valuation &rarr;</a></div>`;
   return marketShell({
     title: `${title} | CompNinja`, description, canonical, body, jsonLd, signedIn,
-    head: mapUi ? LEAFLET_HEAD : "", current: "/markets",
+    // RANK_CSS rides along whenever the entry card is on the page: the card
+    // reuses .rk-tab and the .rk-pill band colours rather than restating them,
+    // so without it the class links render as bare text and the band pills lose
+    // their colour. Only when there IS a card — an unconfigured install ships
+    // no unused stylesheet.
+    head: (mapUi ? LEAFLET_HEAD : "") + (RANK_ENTRY ? `<style>${RANKPAGE.RANK_CSS}</style>` : ""),
+    current: "/markets",
   });
 }
 // How It Works — RETIRED 2026-09-02.

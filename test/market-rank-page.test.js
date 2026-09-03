@@ -145,10 +145,30 @@ const CARD = {
   market: "Boise City", state: "ID", tier: "secondary", cbsa: "14260",
   cbsaName: "Boise City, ID", population: 790640, assetClass: "industrial",
   weights: { macro: 0.30, class: 0.45, narrative: 0.25 },
-  macro: { score: 0.30, coverage: 1 },
-  class: { score: 0.22, coverage: 0.67 },
+  // `metrics` is what market-score.js actually returns on each block, and the
+  // card reads it to decide which indicators belong to which component. It
+  // KEEPS null-scored keys deliberately (measured: one present reading of five
+  // still returns five keys), so an indicator that failed to resolve is a row
+  // saying so rather than a row that is simply not there.
+  macro: { score: 0.30, coverage: 1, metrics: {
+    "Job growth (total nonfarm, YoY)": 0.58,
+    "Labor force growth (YoY)": null,
+  } },
+  class: { score: 0.22, coverage: 0.67, metrics: {
+    "Manufacturing employment growth": 0.22,
+  } },
+  units: {
+    "Job growth (total nonfarm, YoY)": "percent",
+    "Manufacturing employment growth": "percent",
+    "Renter-occupied share": "percent of occupied units, LEVEL",
+  },
+  expected: { macro: 5, class: 3 },
   readings: {
     "Job growth (total nonfarm, YoY)": { yoy_pct: 0.58, as_of: "2026-07-01", source: "fred", series_id: "BOIS216NA" },
+    "Manufacturing employment growth": { yoy_pct: 1.4, as_of: "2026-07-01", source: "fred", series_id: "SMU16" },
+    // Held for this market but NOT weighted for industrial - it is a
+    // multifamily input. Present so the test below can prove an unweighted
+    // reading stays off this card.
     "Renter-occupied share": { yoy_pct: null, value: 31.4, as_of: "2023-12-31", source: "census", series_id: "B25003" },
   },
 };
@@ -181,8 +201,12 @@ test("with no lens, the card says so and reassures what writing one does", () =>
     bandMovedByNarrative: false, lens: null });
   const txt = strip(html);
   assert.match(txt, /No firm read has been written/);
-  assert.match(txt, /public score above stays exactly as it is/,
+  assert.match(txt, /public score stays exactly as it is/,
     "a member must know their read changes only their own view");
+  // The panel replaced a table row, and the reason it is a panel is that a
+  // member has to be able to see this component is theirs to write.
+  assert.match(txt, /Write your read/,
+    "the one editable component must offer the edit");
 });
 
 test("every reading is traceable to a dated, named series", () => {
@@ -191,19 +215,37 @@ test("every reading is traceable to a dated, named series", () => {
   const txt = strip(html);
   assert.match(txt, /BOIS216NA/, "the FRED series id must be shown");
   assert.match(txt, /2026-07-01/, "with the observation date");
-  assert.match(txt, /B25003/);
-  assert.match(txt, /2023-12-31/);
+  assert.match(txt, /SMU16/, "the class block's series too, not only macro's");
   assert.match(txt, /publish on different schedules/,
     "differing dates need explaining, or they read as staleness");
+  // The audit trail MOVED behind a disclosure when the card was rebuilt; it
+  // was not dropped. If this ever fails, the evidence has gone off the page.
+  assert.match(html, /<details/, "the evidence must still be reachable");
+
+  // Renter-occupied share is a multifamily input. We hold a reading for it
+  // here, and it is deliberately absent from an INDUSTRIAL card: a component
+  // shows the indicators it actually weighs, because an indicator contributing
+  // nothing to this score would read as though it did. It is on the
+  // multifamily card, where it counts.
+  assert.ok(!txt.includes("B25003"),
+    "an indicator this asset class does not weigh must not appear on its card");
 });
 
 test("a market with no readings says absence, not zero", () => {
+  // Empty blocks as well as empty readings: a market nothing resolved for gets
+  // {score: null, coverage: 0} with no metrics, which is what the server hands
+  // over when rankReadingsFor finds nothing.
   const html = P.renderMarketCardBody({ ...CARD, readings: {}, narrative: null,
+    macro: { score: null, coverage: 0 }, class: { score: null, coverage: 0 },
     score: null, publicScore: null, band: null, publicBand: null });
   const txt = strip(html);
-  assert.match(txt, /No public readings resolved/);
-  assert.match(txt, /rather than a score of zero/);
+  // Said per component now, rather than once at the foot of the page: each one
+  // is separately absent or present, and one sentence for both could only be
+  // true of a market where nothing at all resolved.
+  assert.match(txt, /no score rather than a score of zero/);
   assert.match(html, /rk-none/, "and the pill must be the no-data one");
+  assert.ok(!/<details/.test(html),
+    "nothing resolved means nothing to fold away either");
 });
 
 test("the card shows the weight beside each component", () => {
@@ -359,4 +401,212 @@ test("the card reuses the ledger's styles, so /markets must carry RANK_CSS", () 
     assert.ok(P.RANK_CSS.includes("." + cls), `RANK_CSS does not define .${cls}`);
   }
   assert.ok(P.RANK_CSS.includes(".rke"), "RANK_CSS must carry the entry card's own styles");
+});
+
+
+// ---------------------------------------------------------------------------
+// The component panels: what a score MEANS, with the evidence folded under it.
+
+const UNITS = {
+  "Job growth (total nonfarm, YoY)": "percent",
+  "Unemployment rate (level and direction)": "percent",
+  "Educational attainment (bachelor's or higher)": "percent of adults, LEVEL",
+  "Renter-occupied share": "percent of occupied units, LEVEL",
+};
+const READS = {
+  "Job growth (total nonfarm, YoY)": { yoy_pct: 2.62, value: 2747.2, as_of: "2026-07-01", source: "fred", series_id: "SMS25" },
+  "Unemployment rate (level and direction)": { yoy_pct: null, value: 3.9, as_of: "2026-06-01", source: "fred" },
+  "Educational attainment (bachelor's or higher)": { yoy_pct: 51.2, value: 51.2, as_of: "2023-12-31", source: "census" },
+};
+
+// THE ONE THAT MATTERS MOST IN THIS BLOCK, and a bug that shipped in the first
+// draft of it.
+//
+// Educational attainment is a STOCK: 51.2% of Boston adults hold a degree. The
+// refresh script stores it in `yoy_pct` because that is the field the scorer
+// reads, so a renderer that treats every yoy_pct as a change prints
+// "educational attainment (+51.2%)" -- a metro whose graduate share grew by
+// half in a year. Real number, right market, wrong quantity, nothing thrown.
+// Exactly the failure the CBSA verification and the discontinued-series filter
+// exist to refuse.
+test("a level is never printed as a year-over-year change", () => {
+  const block = { score: 0.5, coverage: 1, metrics: {
+    "Educational attainment (bachelor's or higher)": 1,
+    "Job growth (total nonfarm, YoY)": -0.9,
+  } };
+  const story = P.narrateBlock(block, READS, { units: UNITS, expected: 2 });
+  assert.ok(story.includes("educational attainment (51.2%)"),
+    "a LEVEL must print bare: got " + story);
+  assert.ok(!story.includes("+51.2"), "a level must carry no + sign");
+  assert.ok(!/51\.2%\s*YoY/.test(story), "a level must not be labelled YoY");
+  assert.ok(story.includes("job growth (+2.6% YoY)"),
+    "a genuine change keeps its sign and its YoY label: got " + story);
+});
+
+test("a metric with no yoy_pct prints its level, with the unit", () => {
+  const block = { score: 0.4, coverage: 1,
+    metrics: { "Unemployment rate (level and direction)": 0.4 } };
+  const story = P.narrateBlock(block, READS, { units: UNITS, expected: 1 });
+  assert.ok(story.includes("unemployment rate (3.9%)"), "got " + story);
+});
+
+test("the sentence names what pulls up and what pulls down", () => {
+  const block = { score: 0.1, coverage: 1, metrics: {
+    "Job growth (total nonfarm, YoY)": 0.8,
+    "Unemployment rate (level and direction)": -0.7,
+  } };
+  const story = P.narrateBlock(block, READS, { units: UNITS, expected: 2 });
+  assert.match(story, /leads the read/);
+  assert.match(story, /pulls against it/);
+});
+
+// Absence is the thing this whole feature refuses to round off, and the
+// coverage bar is a shape rather than a fact. The gap has to be in words.
+test("the sentence states what did not report, not just what did", () => {
+  const block = { score: 0.5, coverage: 0.4,
+    metrics: { "Job growth (total nonfarm, YoY)": 0.8 } };
+  const story = P.narrateBlock(block, READS, { units: UNITS, expected: 5 });
+  assert.ok(story.includes("1 of 5 indicators reported"), "got " + story);
+  assert.ok(story.includes("not scored rather than scored as zero"),
+    "the reason must be stated, not just the count");
+});
+
+test("nothing to say returns null, so no empty paragraph is rendered", () => {
+  assert.strictEqual(P.narrateBlock({ metrics: {} }, READS, {}), null);
+  assert.strictEqual(P.narrateBlock(null, null, null), null);
+  assert.strictEqual(P.narrateBlock({ metrics: { a: null, b: undefined } }, {}, {}), null);
+});
+
+// Grammar, because the sentence is read by people who will judge the number by
+// how it is written. "1 other sit near neutral" shipped in the first draft.
+test("counts agree with their verbs", () => {
+  const one = P.narrateBlock({ metrics: { a: 0.9, b: 0.01, c: -0.9 } },
+    { a: {}, b: {}, c: {} }, { expected: 3 });
+  assert.ok(one.includes("1 other sits near neutral"), "got " + one);
+  const two = P.narrateBlock({ metrics: { a: 0.9, b: 0.01, c: 0.02, d: -0.9 } },
+    { a: {}, b: {}, c: {}, d: {} }, { expected: 4 });
+  assert.ok(two.includes("2 others sit near neutral"), "got " + two);
+});
+
+// The +/-0.1 dead zone is editorial: naming a metric at 0.04 as a driver
+// invents a story out of noise.
+test("a metric sitting at neutral is counted, never named as a driver", () => {
+  const story = P.narrateBlock({ metrics: { "Job growth (total nonfarm, YoY)": 0.04 } },
+    READS, { units: UNITS, expected: 1 });
+  assert.ok(!story.includes("job growth ("), "a neutral metric must not be named: " + story);
+  assert.match(story, /neutral point/);
+});
+
+test("the component panel folds its evidence rather than dropping it", () => {
+  const html = P.renderComponent({
+    title: "Macro economic", weight: 0.35, expected: 5, units: UNITS, readings: READS,
+    block: { score: 0.2, coverage: 0.6, metrics: {
+      "Job growth (total nonfarm, YoY)": 0.5,
+      "Unemployment rate (level and direction)": -0.4,
+    } },
+  });
+  assert.match(html, /<details/, "the audit trail must still be on the page");
+  assert.ok(html.includes("Show the 2 indicators behind this"));
+  assert.ok(html.includes("SMS25"), "the series id is the point of the audit trail");
+  assert.ok(html.includes("2026-07-01"), "and so is the as-of date");
+  assert.ok(!/<details[^>]*\sopen/.test(html),
+    "closed by default -- open evidence is the flat table this replaced");
+});
+
+test("an empty component says so instead of rendering a bare zero", () => {
+  const html = P.renderComponent({ title: "Office specific", weight: 0.4, block: {} });
+  assert.ok(html.includes("no score rather than a score of zero"));
+  assert.ok(!html.includes("<details"), "nothing to fold means no disclosure");
+});
+
+// ---------------------------------------------------------------------------
+// Your read: the one component a member can change.
+
+test("an unwritten read invites writing and states what it is worth", () => {
+  const html = P.renderYourRead(
+    { cbsa: "14460", narrative: null, weights: { narrative: 0.25 } }, "office");
+  assert.match(html, /href="\/rankings\/office\/14460\/read"/, "no way to write one");
+  assert.ok(html.includes("Write your read"));
+  assert.ok(html.includes("25%"), "the weight is the reason to bother");
+  assert.ok(html.includes("public score stays exactly as it is"),
+    "a member must know their read does not alter the public number");
+});
+
+test("a written read says what it moved, and offers to change it", () => {
+  const html = P.renderYourRead({
+    cbsa: "14460", narrative: 0.6, score: 0.4, publicScore: 0.25,
+    bandMovedByNarrative: true, lens: { name: "Q3 fabricator build", updated: "2026-09-01" },
+    weights: { narrative: 0.25 },
+  }, "office");
+  assert.ok(html.includes("Q3 fabricator build"));
+  assert.ok(html.includes("Edit your read"));
+  assert.ok(html.includes("across a band boundary"),
+    "crossing a band is the change worth naming");
+});
+
+// ---------------------------------------------------------------------------
+// The spreadsheet.
+
+test("the ledger export leads with its provenance", () => {
+  const rows = P.rankingsCsvRows("industrial", ROWS,
+    { weights: { macro: 0.3, class: 0.45, narrative: 0.25 }, generated: "2026-09-02" });
+  const title = String(rows[0][0]);
+  assert.match(title, /CompNinja market rankings/);
+  assert.match(title, /not an appraisal/,
+    "the file outlives the screen that explained it");
+  assert.match(title, /2026-09-02/, "and must date itself");
+  assert.deepStrictEqual(rows[1][0], "Rank", "the header follows the title row");
+});
+
+// On the page an unscored market is a count under the table. In a spreadsheet
+// a reader sorts and filters, and a market simply absent from the file reads as
+// a market that does not exist.
+test("unscored markets are named in the export, with blank scores", () => {
+  const rows = P.rankingsCsvRows("industrial", ROWS, { weights: {}, generated: "x" });
+  const flat = rows.map((r) => r.join("|")).join("\n");
+  assert.ok(flat.includes("Eagle Pass"), "an unscored market must still be listed");
+  const eagle = rows.find((r) => r[1] === "Eagle Pass");
+  assert.strictEqual(eagle[10], "", "its score cell must be blank, never 0");
+});
+
+// fmtScore's minus is U+2212, which Excel reads as text and will not sum.
+test("export numbers are plain, so a spreadsheet can add them up", () => {
+  const rows = P.rankingsCsvRows("industrial", ROWS, { weights: {}, generated: "x" });
+  const hartford = rows.find((r) => r[1] === "Hartford");
+  assert.strictEqual(typeof hartford[10], "number", "a score cell must be a number");
+  assert.ok(hartford[10] < 0, "and keep its sign as an ASCII minus");
+
+  // fmtScore's output is for a page: "\u22120.12" leads with a MINUS SIGN,
+  // which Excel reads as text and will not sum, and "\u2014" is the page's
+  // stand-in for a blank. Neither may reach a numeric cell. Checked on the
+  // SCORE COLUMNS only - the provenance line and the "not scored" heading are
+  // prose, and an em dash is correct English there.
+  const numeric = rows.filter((r) => typeof r[0] === "number")
+    .flatMap((r) => r.slice(7, 11));
+  assert.ok(numeric.length, "expected some scored rows to check");
+  for (const cell of numeric) {
+    const t = String(cell);
+    assert.ok(!t.includes("\u2212"), "unicode minus in a numeric cell: " + t);
+    assert.ok(!t.includes("\u2014"), "em dash in a numeric cell: " + t);
+    assert.ok(cell === "" || typeof cell === "number",
+      "a score cell must be a number or blank, never a string: " + t);
+  }
+});
+
+test("one market's export carries every indicator and its series", () => {
+  const rows = P.marketCsvRows({
+    market: "Boston", state: "MA", cbsa: "14460", assetClass: "office",
+    score: 0.54, publicScore: 0.54, band: "expanding", coverage: 0.75,
+    weights: { macro: 0.35, class: 0.4, narrative: 0.25 }, units: UNITS, readings: READS,
+    macro: { score: 0.01, coverage: 0.65, metrics: { "Job growth (total nonfarm, YoY)": -0.09 } },
+    class: { score: 1, coverage: 0.2, metrics: { "Educational attainment (bachelor's or higher)": 1 } },
+  });
+  const flat = rows.map((r) => r.join("|")).join("\n");
+  assert.ok(flat.includes("SMS25"), "the series id must ride in the file");
+  assert.ok(flat.includes("Public only (no read)"),
+    "the public score must be in the file beside the adjusted one");
+  // The level-vs-change rule holds in the spreadsheet too -- further from its
+  // explanation than the page is, so it matters more here.
+  assert.ok(flat.includes("51.2%"), "a level keeps its unit");
+  assert.ok(!flat.includes("+51.2"), "and never gains a + sign");
 });

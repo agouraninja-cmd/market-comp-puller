@@ -680,6 +680,33 @@ function rankRowsFor(assetClass) {
   return rows;
 }
 
+// Every metric's unit, from market-thresholds.json, flattened to one lookup.
+//
+// The page and the CSV both need to know whether a figure is a LEVEL or a
+// year-over-year CHANGE before they print it, and the thresholds file is where
+// that is recorded. Built once: it is config, read at boot, and it cannot
+// change while the process lives.
+const RANK_UNITS = (() => {
+  const out = {};
+  const th = RANK_THRESHOLDS || {};
+  for (const [k, v] of Object.entries(th.macro || {})) out[k] = v && v.unit;
+  for (const block of Object.values(th.class_specific || {})) {
+    for (const [k, v] of Object.entries(block || {})) out[k] = v && v.unit;
+  }
+  return out;
+})();
+
+// How many indicators the weights define for each block of one asset class.
+// The denominator in "3 of 5 indicators reported", which is the difference
+// between a thin score that says so and a thin score that looks complete.
+function rankExpectedCounts(assetClass) {
+  const macro = Object.keys((RANK_WEIGHTS && RANK_WEIGHTS.macro) || {}).length;
+  const cls = Object.keys(
+    (RANK_WEIGHTS && RANK_WEIGHTS.class_specific && RANK_WEIGHTS.class_specific[assetClass]) || {},
+  ).length;
+  return { macro, class: cls };
+}
+
 // The Market explorer's door into the rankings, rendered ONCE at startup.
 //
 // /markets is not cached the way /rankings is (no maxAge on its sendShellPage),
@@ -26200,6 +26227,66 @@ const server = http.createServer((req, res) =>
   // Server-rendered with links rather than a client-side switcher, so the
   // asset class is in the URL: a member can send "look at Boise for office" as
   // a link, and a crawler sees six real pages instead of one that needs script.
+  // --- Rankings as a spreadsheet -----------------------------------------
+  //
+  //   /rankings/<class>.csv         -> the whole ledger, one row per market
+  //   /rankings/<class>/<cbsa>.csv  -> one market, every indicator behind it
+  //
+  // MATCHED BEFORE the HTML route, because /rankings/office.csv would
+  // otherwise be read as the asset class "office.csv", fail the ASSET_CLASSES
+  // check, and 302 to industrial - a redirect to the wrong file rather than an
+  // error, which is the shape of failure this whole feature is built to refuse.
+  //
+  // Public, like the pages themselves: the file holds nothing the page does not
+  // already show, and requiring an account to export what is on screen only
+  // teaches people to copy out of the table by hand.
+  const rankCsv = req.method === "GET"
+    && pagePath.match(/^\/rankings\/([a-z]+)(?:\/(\d{5}))?\.csv$/);
+  if (rankCsv) {
+    if (!RANK_CONFIGURED) return sendNotFound(req, res, "Market rankings aren't available yet.");
+    const cls = rankCsv[1];
+    if (!RANKPAGE.ASSET_CLASSES.includes(cls)) {
+      return sendNotFound(req, res, "That isn't an asset class we rank.");
+    }
+    const rows = rankRowsFor(cls);
+    const weights = (RANK_WEIGHTS.by_asset_class && RANK_WEIGHTS.by_asset_class[cls]) || {};
+    const generated = (RANK_READINGS && RANK_READINGS.generated) || "";
+
+    let matrix, name;
+    if (rankCsv[2]) {
+      const row = rows.find((r) => r.cbsa === rankCsv[2]);
+      if (!row) return sendNotFound(req, res, "That market isn't in the rankings.");
+      const blocks = row._blocks || {};
+      matrix = RANKPAGE.marketCsvRows({
+        ...row, assetClass: cls, weights,
+        macro: blocks.macro || {}, class: blocks.class || {},
+        readings: RANK_DETAIL.get(row.cbsa) || {},
+        units: RANK_UNITS,
+      });
+      // Sanitised, not slugified: this string goes into a Content-Disposition
+      // header, so anything outside [a-z0-9-] is a header-injection question
+      // rather than a tidiness one.
+      const safe = String(row.market).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "").slice(0, 40) || "market";
+      name = `compninja-${cls}-${safe}-${row.cbsa}.csv`;
+    } else {
+      matrix = RANKPAGE.rankingsCsvRows(cls, rows, { weights, generated });
+      name = `compninja-${cls}-market-rankings-${generated || "current"}.csv`;
+    }
+
+    // ONE escaper for every CSV this server emits: broker-vault's csvCell
+    // carries the formula-injection guard, so a market whose name began with
+    // an = could not become a live formula in somebody's Excel.
+    const csv = matrix.map((r) => r.map(VAULT.csvCell).join(",")).join("\r\n") + "\r\n";
+    res.writeHead(200, {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": `attachment; filename="${name}"`,
+      "cache-control": "public, max-age=300",
+      "x-robots-tag": "noindex, nofollow",
+    });
+    return res.end(csv);
+  }
+
   const rankMatch = req.method === "GET"
     && pagePath.match(/^\/rankings(?:\/([a-z]+))?(?:\/(\d{5}))?$/);
   if (rankMatch) {
@@ -26228,6 +26315,12 @@ const server = http.createServer((req, res) =>
         class: blocks.class || { score: null, coverage: 0 },
         lens: null,
         readings: RANK_DETAIL.get(row.cbsa) || {},
+        units: RANK_UNITS,
+        // How many indicators each block is SUPPOSED to have, read off the
+        // weights rather than counted from what arrived. Without it the card
+        // could only say "3 reported" and never "3 of 5" - and the missing two
+        // are the half of that sentence a reader needs.
+        expected: rankExpectedCounts(cls),
       });
       return sendShellPage(req, res, (signedIn) => marketShell({
         title: `${row.market}, ${row.state} — ${RANKPAGE.CLASS_LABEL[cls]} market ranking | CompNinja`,

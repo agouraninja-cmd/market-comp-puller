@@ -5355,6 +5355,96 @@ async function hasExternalRooms(user) {
   }
 }
 
+// How many DEAL ROOMS have something new in them for this person.
+//
+// The nav dot used to mean "firm threads with something new" and answered 403
+// to anybody with no firm — so a client, whose only conversations ARE deal
+// rooms, could never be told anything had arrived. That is the same discovery
+// gap #275 closed one layer down: the room lists now, and nothing says when it
+// moves. A broker gets the same benefit, since a client's reply never lit the
+// dot either.
+//
+// A BOOLEAN PER ROOM counted up, the internal side's rule, and the rule for
+// what counts as unread is MSG.externalUnread's — the one the list already
+// uses, so a badge in the nav and a badge on the row cannot disagree.
+//
+// FOUR READS, all bounded, and they are the reason this is a separate function
+// rather than a call to externalThreadsFor: that one reads the messages of
+// each room in turn to build a preview, which is fine on the page somebody
+// asked for and far too much for a dot that rides every page's hydration.
+// Nothing here reads a message BODY.
+//
+// FAILS TO ZERO at every step. A dot is a courtesy; the firm's own count must
+// never be taken down by a hub read, and the alternative to a silent zero is a
+// number nobody can trust.
+async function externalUnreadCount(user) {
+  if (!DB_CONFIGURED || !user || !user.id) return 0;
+  const me = MSG.normalizeEmail(user.email);
+  let owned = [];
+  let invited = [];
+  try {
+    [owned, invited] = await Promise.all([
+      sbRequest("GET",
+        `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
+        `&select=id&order=updated_at.desc&limit=50`),
+      me
+        ? sbRequest("GET",
+          `hub_participants?email=eq.${encodeURIComponent(me)}` +
+          `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=50`)
+        : Promise.resolve([]),
+    ]);
+  } catch (err) {
+    console.error("External unread rooms read failed (the dot counts the firm only):", err.message);
+    return 0;
+  }
+  // Both sides, deduped and capped the way the inbox caps them. A room the
+  // caller owns AND sits in as a participant is one room and one badge.
+  const ids = [...new Set([
+    ...(owned || []).map((h) => String(h.id)),
+    ...(invited || []).map((r) => String(r.hub_id || "")),
+  ].filter(Boolean))].slice(0, 50);
+  if (!ids.length) return 0;
+
+  let notify = [];
+  let msgs = [];
+  try {
+    [notify, msgs] = await Promise.all([
+      sbRequest("GET",
+        `hub_notify?hub_id=in.(${pgInList(ids)})` +
+        `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
+      // ONE read across every room rather than one per room, and no bodies:
+      // the question is whether anything arrived, not what it said. Ordered
+      // newest first so the window holds the recent end of every
+      // conversation, which is the only end that can be unread. A room whose
+      // news is older than the whole window is a room nobody has opened in
+      // 500 messages, and it undercounts rather than inventing a dot.
+      sbRequest("GET",
+        `hub_messages?hub_id=in.(${pgInList(ids)})&deleted_at=is.null` +
+        `&select=hub_id,author_email,created_at&order=created_at.desc&limit=500`),
+    ]);
+  } catch (err) {
+    console.error("External unread read failed (the dot counts the firm only):", err.message);
+    return 0;
+  }
+
+  const seen = new Map((notify || []).map((n) => [String(n.hub_id), n.seen_at]));
+  const byHub = new Map();
+  for (const m of msgs || []) {
+    const k = String(m.hub_id);
+    if (!byHub.has(k)) byHub.set(k, []);
+    byHub.get(k).push(m);
+  }
+  let count = 0;
+  for (const id of ids) {
+    const unread = MSG.externalUnread(byHub.get(id) || [], {
+      seenAt: seen.get(id),
+      email: me,
+    });
+    if (unread) count += 1;
+  }
+  return count;
+}
+
 // ---------------------------------------------------------------------------
 // The messaging hub (migration 024) — the reads and writes behind /api/hub*.
 //
@@ -25580,22 +25670,36 @@ const server = http.createServer((req, res) =>
     // the person who last wrote in it. In-app only; nothing here mails.
     if (req.method === "GET" && msgPath === "/api/messages/unread") {
       (async () => {
-        const g = await openMessaging();
+        // FIRM OPTIONAL, like the list route (2026-09-03). The dot used to
+        // 403 anybody with no firm, which is a console error on every page a
+        // client loads and, worse, meant the one reader whose conversations
+        // are ALL deal rooms could never be told something had arrived. A
+        // person with no firm and no rooms gets a plain zero rather than the
+        // list's no_firm refusal: the question here is "is there anything
+        // new", and the honest answer to that is no.
+        const g = await openMessaging({ firmOptional: true });
         if (!g) return;
-        const mine = await msgThreadIdsFor(g.user.id);
-        const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
-        const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
         let count = 0;
-        for (const m of mine) {
-          const last = lastAt.get(String(m.thread_id));
-          if (!last) continue;
-          // The baseline is the last read, or — for a member who has never
-          // opened it — the moment they were added. A thread's
-          // last_message_at is set at creation, so without the second half
-          // every freshly opened, still-empty conversation would count.
-          const since = m.last_read_at || m.added_at || "";
-          if (!since || String(last) > String(since)) count += 1;
+        if (g.orgId) {
+          const mine = await msgThreadIdsFor(g.user.id);
+          const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+          const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
+          for (const m of mine) {
+            const last = lastAt.get(String(m.thread_id));
+            if (!last) continue;
+            // The baseline is the last read, or — for a member who has never
+            // opened it — the moment they were added. A thread's
+            // last_message_at is set at creation, so without the second half
+            // every freshly opened, still-empty conversation would count.
+            const since = m.last_read_at || m.added_at || "";
+            if (!since || String(last) > String(since)) count += 1;
+          }
         }
+        // The External half, added with it. It counts rooms on BOTH sides —
+        // a client's reply never lit this dot for the broker either — and it
+        // fails to zero on its own, so a hub outage costs the deal-room half
+        // of the badge and never the firm's.
+        count += await externalUnreadCount(g.user);
         return sendJson(res, 200, { count });
       })().catch((err) => {
         console.error("Unread count failed:", err.message);

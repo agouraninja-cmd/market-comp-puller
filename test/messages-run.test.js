@@ -561,18 +561,23 @@ test("the unread count is per thread, clears on read, and never counts your own 
   const { srv } = ctx;
 
   const count = async (who) => (await (await fetch(srv.base + "/api/messages/unread", as(who))).json()).count;
-  assert.equal(await count(BRAD), 0, "nothing yet");
+  // ONE, not none: the dot counts DEAL ROOMS as well as firm threads
+  // (2026-09-03), and the seed's room holds a note from the client that Brad
+  // has never opened. Before that, a client's reply lit nothing anywhere,
+  // which is the same "nothing tells you it moved" gap the inbox had.
+  assert.equal(await count(BRAD), 1, "the client's unanswered note is something new");
+  assert.equal(await count(MIKE), 0, "Mike is in no deal room, so his count is the firm's alone");
 
   const opened = await fetch(srv.base + "/api/messages/thread", as(BRAD, { method: "POST", body: JSON.stringify({ memberIds: [MIKE.id] }) }));
   assert.equal(opened.status, 201);
   const threadId = (await opened.json()).thread.id;
-  assert.equal(await count(BRAD), 0, "an empty thread is not unread");
+  assert.equal(await count(BRAD), 1, "an empty thread is not unread");
   assert.equal(await count(MIKE), 0);
 
   const sent = await fetch(srv.base + "/api/messages/send", as(BRAD, { method: "POST", body: JSON.stringify({ threadId, body: "Seen the Fairview comp?" }) }));
   assert.equal(sent.status, 201);
   await new Promise((r) => setTimeout(r, 60));
-  assert.equal(await count(BRAD), 0, "the author is not unread on their own message");
+  assert.equal(await count(BRAD), 1, "the author is not unread on their own message");
   assert.equal(await count(MIKE), 1, "one THREAD with something new — a boolean per thread, counted");
 
   const again = await fetch(srv.base + "/api/messages/send", as(BRAD, { method: "POST", body: JSON.stringify({ threadId, body: "And the Linder one." }) }));
@@ -587,4 +592,59 @@ test("the unread count is per thread, clears on read, and never counts your own 
 
   assert.equal(await count(RIVAL), 0, "another firm's member never sees our thread in their count");
   assert.equal((await fetch(srv.base + "/api/messages/unread")).status, 401);
+
+  // Reading the ROOM clears its badge the same way reading a thread clears
+  // one: GET /api/hub stamps the reader's seen mark, and the count is decided
+  // off that stamp rather than off a second store.
+  const readRoom = await fetch(srv.base + "/api/hub?id=hubAAA111", as(BRAD));
+  assert.equal(readRoom.status, 200);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(await count(BRAD), 0, "opening the deal room did not clear its dot");
+});
+
+test("the dot reaches a client who is in no firm at all", async (t) => {
+  // The other half of #275. His room lists now; without this nothing ever
+  // tells him it moved, and the endpoint that would say so answered 403 to
+  // anyone with no firm — a console error on every page he loads.
+  const tables = seedTables();
+  const JASON = { id: "u-jason", email: "jason@client.com", name: "Jason Reed" };
+  tables.users.push({ ...JASON, pro_tester: false, vault_beta: false, digest_optout: false });
+  tables.sessions.push({ token_hash: sha256("tok-" + JASON.id), user_id: JASON.id, expires_at: YEAR_OUT });
+  // The seed's only note is Jason's own. Brad answers it, so there is
+  // something waiting that is not his.
+  tables.hub_messages.push({
+    id: "hm2", hub_id: "hubAAA111", item_id: null,
+    author_email: BRAD.email, author_user_id: BRAD.id,
+    body: "Two more by the airport, sending them over now.",
+    created_at: "2026-08-31T09:00:00.000Z", deleted_at: null,
+  });
+  const ctx = await bootWithDb(tables);
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+  const count = async (who) => {
+    const r = await fetch(srv.base + "/api/messages/unread", as(who));
+    assert.equal(r.status, 200, "a reader with no firm was refused a count");
+    return (await r.json()).count;
+  };
+
+  assert.equal(await count(JASON), 1, "the broker's note is something new for the client");
+
+  const read = await fetch(srv.base + "/api/hub?id=hubAAA111", as(JASON));
+  assert.equal(read.status, 200);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(await count(JASON), 0, "reading the room did not clear his dot");
+
+  // And a person with no firm and no rooms is answered, not refused: the
+  // question is whether anything is new, and the honest answer is none.
+  const empty = seedTables();
+  empty.org_members = empty.org_members.filter((m) => m.email !== BRAD.email);
+  empty.hubs = [];
+  empty.hub_participants = [];
+  empty.hub_messages = [];
+  const solo = await bootWithDb(empty);
+  try {
+    const r = await fetch(solo.srv.base + "/api/messages/unread", as(BRAD));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).count, 0);
+  } finally { await solo.stop(); }
 });

@@ -421,3 +421,29 @@ client is not "external" to a firm they are not in.
 **Nothing about who may read or post changed.** The room is still read and
 written through `/api/hub`, which carries its own gate; this is still a
 window, never a second room.
+
+## 15. The dot follows the rooms — 2026-09-03
+
+§14 let a client's deal room into their inbox and left the badge behind.
+`GET /api/messages/unread` refused anybody with no firm (a console 403 on
+every page a client loads), and counted firm threads only — so the reader
+whose conversations are ALL deal rooms could never be told something had
+arrived, and a client's reply never lit the dot for the broker either.
+
+It is `firmOptional` now and adds **a boolean per deal room**, both sides.
+Unread is `MSG.externalUnread` against the hub's own seen stamp: the same rule
+and the same stamp the inbox rows use, so the nav badge and the row badge
+cannot disagree, and `GET /api/hub` clears both by being the read.
+
+**Why it is not a call to `externalThreadsFor`:** that reads each room's
+messages in turn to build a preview, which is right on the page somebody asked
+for and far too much for a dot that rides every page's after-paint hydration.
+This is four bounded reads with no message bodies — the room ids on both
+sides, the caller's seen stamps, and ONE read of the recent tail across every
+room. A room whose news falls outside that window is one nobody has opened in
+500 messages; it undercounts rather than inventing a badge.
+
+Every step fails to zero. A hub outage costs the deal-room half of the count
+and never the firm's. A person with no firm and no rooms gets a plain zero
+rather than the list's `no_firm` refusal: the question here is whether
+anything is new, and the honest answer to that is no.

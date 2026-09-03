@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-03",
+    "type": "feature",
+    "title": "The building remembers: vault deals inherit building-level facts from each other",
+    "details": "Every fact in the vault was stored on the deal, but year built, clear height, units, lot acres, zoning and class are facts about the building — so a broker with three deals on one building typed them three times, and a priced sale missing its size counted for nothing in any median. Now the broker's own deals on one building are read together (building-facts.js, pure and dual-exported; migration 050 adds broker_properties.facts): agreement gives a value, disagreement gives a named conflict and no value, size derives from sales only. Inheritance happens at read time only — the stored deal keeps exactly what was stated, the export and the public records stay stated-only — so on /vault an empty cell shows the building's value in muted italics and holds nothing, a priced sale with no size of its own gets the building's and a $/SF from its own price and joins the medians and the broker's own report blend, the add form and the confirm table prefill a known building's empty cells and say “Known building · 2 deals in your book · year built, clear height filled in from them”, and each repeat property lists what its deals agree on, what none of them state, and where they disagree. Nothing crosses the privacy wall: derived from the broker's own rows, read back onto the broker's own rows, never the corpus, never a share, never the firm copy."
+  },
+  {
     "date": "2026-09-02",
     "type": "feature",
     "title": "A vault import offers a city and state for addresses that have none",

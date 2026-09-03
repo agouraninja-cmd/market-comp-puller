@@ -10,7 +10,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 
 const { toApiComp, toApiComps, API_COMP_FIELDS, INTERNAL_FIELDS , PROPERTY_FIELDS,
-  SUBMISSION_FIELDS } = require("../vault-api");
+  SUBMISSION_FIELDS, DERIVED_FIELDS } = require("../vault-api");
 
 // Parse the columns the migrations actually declare, rather than restating
 // them here — a second hand-written list would be a second thing to keep in
@@ -54,6 +54,31 @@ test("the contract claims no field the schema does not have", () => {
 // slipped through, which would have retired the tripwire for every future
 // column. This is the right one: a second checked list, so BOTH tables stay
 // honest and neither can drift silently.
+// The fourth list (migration 050). `inherited` is computed at READ time by
+// building-facts.js's applyFacts and stored on NO table — so its tripwire is
+// the opposite of the other three: it must NOT be a column anywhere, or a
+// migration could quietly start persisting a value the design says is only
+// ever a reading.
+test("every read-time field is a column on NO table", () => {
+  const comps = migrationColumns("broker_comps");
+  const props = migrationColumns("broker_properties");
+  const stored = DERIVED_FIELDS.filter((f) => comps.includes(f) || props.includes(f));
+  assert.deepEqual(stored, [],
+    `read-time field(s) now have a column: ${stored.join(", ")}. Inheritance is read-time only.`);
+  assert.ok(DERIVED_FIELDS.includes("inherited"));
+  assert.ok(PROPERTY_FIELDS.includes("facts"), "the building's facts ride the property list");
+});
+
+test("toApiComp carries facts and inherited when present and nothing when absent", () => {
+  const facts = { values: { year_built: "1998" }, conflicts: {}, prior: {} };
+  const out = toApiComp({ id: "c1", address: "1 Main St", facts, inherited: ["year_built"], year_built: "1998" });
+  assert.deepEqual(out.facts, facts);
+  assert.deepEqual(out.inherited, ["year_built"]);
+  const plain = toApiComp({ id: "c2", address: "2 Main St" });
+  assert.equal("facts" in plain, false);
+  assert.equal("inherited" in plain, false);
+});
+
 test("every property-derived field is a real broker_properties column", () => {
   const cols = migrationColumns("broker_properties");
   const phantom = PROPERTY_FIELDS.filter((f) => !cols.includes(f));

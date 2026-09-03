@@ -255,6 +255,10 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 /* The line under a refused row saying what is wrong with it, and the
    read-only cells of a row that read cleanly (2026-09-02). */
 #pdfTable tbody tr.pdf-err td,#pdfTable tbody tr.pdf-err:hover td{background:var(--err-bg);color:var(--err-text);font-size:var(--t5);padding-top:0;border-top:0}
+/* A row on a building the book already holds (050): says so, and names the
+   cells filled in from the broker's other deals there. Same shape as the
+   refusal line, in the muted ink because it is context, not a problem. */
+#pdfTable tbody tr.pdf-known td,#pdfTable tbody tr.pdf-known:hover td{background:none;color:var(--ink-3);font-size:var(--t5);padding-top:0;border-top:0}
 #pdfTable td.ro{font-variant-numeric:tabular-nums;white-space:nowrap;cursor:text}
 #mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--t5);margin:var(--s3) 0}
 #pasteBox{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.4;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink);resize:vertical}
@@ -347,6 +351,13 @@ td.rowact{white-space:nowrap}
    computed for priced sales only. Both are refreshed from the server's own
    saved row after an edit rather than recomputed here. */
 #tbl td.ro{color:var(--ink-2)}
+/* Inherited from the building (050): a value the broker stated on ANOTHER
+   deal at this address, shown here because this deal's own cell is empty.
+   Muted and italic so it reads as a reading, not a record; focusing it
+   offers a blank, and typing states the value on this deal. */
+#tbl input.cell.inh{color:var(--ink-3);font-style:italic}
+#tbl td.ro.inh{color:var(--ink-3);font-style:italic}
+#tbl input.inh::placeholder{color:var(--ink-3);font-style:italic;opacity:1}
 /* Spreadsheet mode: the uploaded book, as a grid. Cells are real inputs so
    Tab/Enter move the way they do in Excel; a saving/error state rides on
    the input rather than replacing the row, because rebuilding the table
@@ -411,6 +422,10 @@ td.rowact{white-space:nowrap}
 .rep:first-child{border-top:0;padding-top:0}
 .rep .addr{font-weight:600}
 .rep .deal{color:var(--ink-2);font-variant-numeric:tabular-nums;font-size:13px;margin-top:2px}
+/* What the building's deals agree on, what none of them state, and where
+   they disagree — the line where a broker sees that fixing one cell fixes
+   the building (050). */
+.rep .facts{color:var(--ink-3);font-size:13px;margin-top:4px}
 .note{color:var(--ink-3);font-size:var(--t5)}
 /* ---- Gut check ----------------------------------------------------------
    Verdict chips stay in the page's existing voice: the pubbtn border style,
@@ -697,6 +712,9 @@ a.btn.ghost:hover{color:var(--ink)}
         <summary>Or add one comp by hand</summary>
         <div class="form" style="margin-top:var(--s4)">
           <label class="span2">Address <input id="addComp_address" type="text"/></label>
+          <!-- A building the book already holds says so here, and names the
+               cells filled in from the broker's other deals on it (050). -->
+          <p class="note span-all hide" id="addKnown" aria-live="polite"></p>
           <label>Type <select id="addComp_property_type"></select></label>
           <label>Sale/lease <select id="addComp_transaction">
             <option value="sale">Sale</option>
@@ -1212,6 +1230,7 @@ a.btn.ghost:hover{color:var(--ink)}
   <p class="vfoot">Private broker workspace. Your comps are never read into CompNinja's public records unless you choose to publish them.</p>
 <script>window.__VAULT_BOOT__=${bootJson};</script>
 <script src="/gut-check.js"></script>
+<script src="/building-facts.js"></script>
 <script>
 (function(){
   var $=function(id){return document.getElementById(id)};
@@ -1669,13 +1688,24 @@ a.btn.ghost:hover{color:var(--ink)}
     // width and would otherwise eat the last characters back off again.
     return Math.max(7,Math.min(CELL_MAX_CH[k]||24,n+3));
   }
+  // Inherited from the building (050). The server fills an EMPTY building-
+  // level cell from what the broker's other deals at that address agree on
+  // and names the filled cells in "inherited"; the stored cell is still
+  // empty. So an inherited cell SHOWS the value and HOLDS nothing: its raw is
+  // "", focusing it offers a blank, typing states the value on this deal, and
+  // leaving it blank keeps inheriting. Nothing about it is written until a
+  // person types.
+  var INH_TITLE="From the building: stated on another deal at this address, not on this one. Type a value to state it here.";
+  function isInherited(c,k){ return !!(c&&c.inherited&&c.inherited.indexOf(k)>=0); }
   function cellInput(c,k){
+    var inh=isInherited(c,k);
     // deal_date's raw mirrors its display for the undated case — "undated" is
     // a real input value the server accepts, unlike "" which it refuses.
-    var raw=c[k]==null?(k==="deal_date"?"undated":""):c[k],shown=cellDisplay(k,c[k]);
-    return '<input type="text" class="cell" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-      '" data-raw="'+escA(raw)+'" value="'+escA(shown)+
-      '" style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
+    var raw=inh?"":(c[k]==null?(k==="deal_date"?"undated":""):c[k]),shown=cellDisplay(k,c[k]);
+    return '<input type="text" class="cell'+(inh?" inh":"")+'" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
+      '" data-raw="'+escA(raw)+'" value="'+escA(shown)+'"'+
+      (inh?' title="'+escA(INH_TITLE)+'"':"")+
+      ' style="min-width:'+cellWidth(k,shown)+'ch" aria-label="'+escA(sheetLabel(k))+'"/>';
   }
   // Derived cells carry their own id/key so a save can refresh just them,
   // without the re-render that would steal focus from the next cell.
@@ -1710,8 +1740,10 @@ a.btn.ghost:hover{color:var(--ink)}
     return psf(c.price_per_sqft);
   }
   function roCell(c,k,html,isNum){
-    return '<td class="ro'+(isNum?" num":"")+'" data-ro-id="'+escA(c.id)+
-      '" data-ro-k="'+escA(k)+'">'+html+"</td>";
+    // A $/SF computed from an inherited size is itself a reading (050).
+    var inh=isInherited(c,k);
+    return '<td class="ro'+(isNum?" num":"")+(inh?" inh":"")+'" data-ro-id="'+escA(c.id)+
+      '" data-ro-k="'+escA(k)+'"'+(inh?' title="'+escA(INH_TITLE)+'"':"")+'>'+html+"</td>";
   }
   // Preserves whatever base class the input carries (.cell in the compact
   // table, none in the spreadsheet) while swapping the save state, so a
@@ -1990,11 +2022,18 @@ a.btn.ghost:hover{color:var(--ink)}
       var pub=publishCell(c);
       var cells=keys.map(function(k){
         var v=c[k]==null?"":c[k];
+        // An inherited value (050) rides as the PLACEHOLDER, never the value:
+        // this grid shows stored values, a spreadsheet cell carries no
+        // data-raw for focus to swap, and a value in the box would be saved
+        // as stated the first time the broker tabbed through it.
+        var inh=isInherited(c,k);
         // Same width rule as the compact table (see cellWidth): a notes cell
         // holding two sentences must not render as a twenty-character box
         // with the rest of the sentence scrolled out of sight.
         return '<td><input type="text" data-id="'+escA(c.id)+'" data-k="'+escA(k)+
-          '" value="'+escA(v)+'" style="min-width:'+cellWidth(k,v)+'ch"/></td>';
+          '" value="'+escA(inh?"":v)+'"'+
+          (inh?' class="inh" placeholder="'+escA(v)+'" title="'+escA(INH_TITLE)+'"':"")+
+          ' style="min-width:'+cellWidth(k,v)+'ch"/></td>';
       }).join("");
       return "<tr>"+cells+"<td>"+pub+'</td><td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
@@ -2307,6 +2346,50 @@ a.btn.ghost:hover{color:var(--ink)}
     box.className="strip";
   }
 
+  // Re-derive one row's inherited cells from the facts it carries (050).
+  // Used after a save, when the server's stored row has replaced the page's
+  // filled one. applyFacts never overwrites a stated cell, so the value just
+  // saved survives; "inherited" is rebuilt from scratch so a cell that was
+  // just stated drops out of it.
+  function reapplyFacts(row){
+    if(!row||typeof BFACTS==="undefined"||!row.facts)return;
+    delete row.inherited;
+    var re=BFACTS.applyFacts(row,row.facts);
+    Object.keys(re).forEach(function(k){ row[k]=re[k]; });
+  }
+  // The name a building fact goes by on this page, and the figure as read.
+  function factLabel(k){ return TYPE_FIELD_LABELS[k]||EDIT_LABELS[k]||k; }
+  function factVal(k,v){ return k==="size_sqft"?num(v)+" SF":String(v); }
+  // One line under a repeat property (050): what its deals agree on, what
+  // none of them state, and where they disagree — named with both values,
+  // because a disagreement serves no value anywhere and this is the one
+  // place the broker can see why. Relevance is the type's own fields plus
+  // the two every building has, so a warehouse is not asked for its unit
+  // count.
+  function repeatFacts(g){
+    if(typeof BFACTS==="undefined")return "";
+    var src=null;
+    for(var i=0;i<g.deals.length;i++){ if(g.deals[i].facts){ src=g.deals[i].facts; break; } }
+    if(!src)return "";
+    var type=g.deals[0].property_type||"";
+    var relevant=["year_built","size_sqft"].concat(TYPE_FIELDS[type]||[]).filter(function(k){
+      return BFACTS.BUILDING_FIELDS.indexOf(k)>=0;
+    });
+    var have=[],gaps=[],conf=[];
+    relevant.forEach(function(k){
+      var v=src.values&&src.values[k];
+      if(v!=null&&String(v)!=="")have.push(factLabel(k)+" "+factVal(k,v));
+      else if(src.conflicts&&src.conflicts[k])conf.push(factLabel(k).toLowerCase()+" disagrees: "+src.conflicts[k].join(" vs "));
+      else gaps.push(factLabel(k).toLowerCase());
+    });
+    var parts=[];
+    if(have.length)parts.push(have.join(" \\u00b7 "));
+    if(gaps.length)parts.push("not stated on any deal: "+gaps.join(", "));
+    if(conf.length)parts.push(conf.join("; "));
+    if(!parts.length)return "";
+    return '<div class="facts">'+esc(parts.join("  \\u00b7  "))+"</div>";
+  }
+
   var lastReps={props:0,deals:0};
   function renderRepeats(rows){
     var by={},order=[];
@@ -2347,7 +2430,7 @@ a.btn.ghost:hover{color:var(--ink)}
       // same-numbered addresses in neighbouring cities are exactly the pair a
       // reader would otherwise assume had been merged.
       return '<div class="rep"><div class="addr">'+esc(g.address)+" <span class=\\"note\\">"+
-        (g.market?esc(g.market)+" \\u00b7 ":"")+g.deals.length+" deals</span></div>"+deals+"</div>";
+        (g.market?esc(g.market)+" \\u00b7 ":"")+g.deals.length+" deals</span></div>"+deals+repeatFacts(g)+"</div>";
     }).join("")+(reps.length>10?'<p class="note">'+(reps.length-10)+" more not shown.</p>":"");
   }
 
@@ -3815,7 +3898,33 @@ a.btn.ghost:hover{color:var(--ink)}
     var act=editing?"":'<button type="button" class="lnk" data-edit="'+i+'">Edit</button>';
     var html="<tr"+tint+"><td>"+cb+"</td>"+cells+"<td>"+act+"</td></tr>";
     if(r.error!=null)html+='<tr class="pdf-err"><td></td><td colspan="'+(cols.length+1)+'">'+esc(r.error)+"</td></tr>";
+    if(r.known)html+='<tr class="pdf-known"><td></td><td colspan="'+(cols.length+1)+'">'+esc(knownLine(r.known))+"</td></tr>";
     return html;
+  }
+  function knownLine(k){
+    return "Known building \\u00b7 "+k.deals+" deal"+(k.deals===1?"":"s")+" in your book"+
+      (k.filled.length?" \\u00b7 "+k.filled.join(", ")+" filled in from them":"");
+  }
+  // An extracted row on a building the book already holds takes that
+  // building's facts into its EMPTY building-level cells (050) — the same
+  // rule the add form applies, from the same module, against the same rows
+  // the page holds. Size only onto a sale. The row then says which building
+  // it is about, which is the half of "which property is this" that needs
+  // no name field. A row on a new building is untouched.
+  function prefillPdfRow(r){
+    if(typeof BFACTS==="undefined"||!r||!r.values)return;
+    var b=BFACTS.findBuilding(comps,addrKey(r.values.address),addrKey);
+    if(!b)return;
+    var filled=[];
+    BFACTS.BUILDING_FIELDS.forEach(function(f){
+      var cur=r.values[f];
+      if(cur!=null&&String(cur)!=="")return;
+      if(!BFACTS.mayInherit({transaction:r.values.transaction},f))return;
+      var v=b.facts&&b.facts.values?b.facts.values[f]:null;
+      if(v==null||String(v)==="")return;
+      r.values[f]=String(v); filled.push(factLabel(f).toLowerCase());
+    });
+    r.known={deals:b.deals,filled:filled};
   }
 
   function openPdfPreview(info){
@@ -3830,6 +3939,9 @@ a.btn.ghost:hover{color:var(--ink)}
       // What the row arrived with, so a re-pick recomposes from the bare
       // street and "leave those rows out" can put it back.
       if(r.needsMarket===true&&r.bare==null)r.bare=String(r.values.address||"");
+      // Known building (050): first draw only, so a cell the broker clears
+      // is not refilled by the next re-render.
+      if(!r.prefilled){ r.prefilled=true; prefillPdfRow(r); }
     });
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
@@ -4196,10 +4308,53 @@ a.btn.ghost:hover{color:var(--ink)}
       var el=$("addComp_"+f); if(el)el.value="";
     });
     renderAddTypeFields();
+    $("addKnown").className="note span-all hide";
     load();
     addCompMsg("Added.");
   }
   $("addCompBtn").addEventListener("click",addComp);
+
+  // Known building (050): a typed address the book already holds prefills
+  // the EMPTY building-level cells from what the broker's other deals on it
+  // agree on, and says so. A prefilled value is a value in the input, so it
+  // is sent and STATED on the new deal — the broker confirmed it by saving.
+  // Size only on a sale (a suite is not the building). The lookup runs in
+  // the browser against the rows the page already holds; nothing leaves the
+  // page to ask which building an address is. Only what this function wrote
+  // is ever cleared, never what the broker typed.
+  function prefillFromBuilding(fromAddress){
+    var note=$("addKnown"); if(!note)return;
+    if(typeof BFACTS==="undefined"){ note.className="note span-all hide"; return; }
+    var key=addrKey($("addComp_address").value);
+    var b=BFACTS.findBuilding(comps,key,addrKey);
+    BFACTS.BUILDING_FIELDS.forEach(function(f){
+      var el=$("addComp_"+f);
+      if(el&&el.getAttribute("data-prefill")==="1"){ el.value=""; el.removeAttribute("data-prefill"); }
+    });
+    if(!b){ note.className="note span-all hide"; note.textContent=""; return; }
+    // The building's own type, on the address event only: the type select
+    // re-renders the per-type inputs, and a broker changing the type by hand
+    // afterwards must not have it snapped back.
+    if(fromAddress&&b.type&&$("addComp_property_type").value!==b.type){
+      $("addComp_property_type").value=b.type; renderAddTypeFields();
+    }
+    var tx=$("addComp_transaction").value, filled=[];
+    BFACTS.BUILDING_FIELDS.forEach(function(f){
+      var el=$("addComp_"+f); if(!el||el.value.trim())return;
+      if(!BFACTS.mayInherit({transaction:tx},f))return;
+      var v=b.facts&&b.facts.values?b.facts.values[f]:null;
+      if(v==null||String(v)==="")return;
+      el.value=String(v); el.setAttribute("data-prefill","1"); filled.push(factLabel(f).toLowerCase());
+    });
+    note.textContent="Known building \\u00b7 "+b.deals+" deal"+(b.deals===1?"":"s")+" in your book"+
+      (filled.length?" \\u00b7 "+filled.join(", ")+" filled in from them":"");
+    note.className="note span-all";
+  }
+  $("addComp_address").addEventListener("change",function(){ prefillFromBuilding(true); });
+  $("addComp_transaction").addEventListener("change",function(){ prefillFromBuilding(false); });
+  // Registered AFTER renderAddTypeFields' own listener, so the per-type
+  // inputs exist again before they are filled.
+  $("addComp_property_type").addEventListener("change",function(){ prefillFromBuilding(false); });
 
   // One delegated handler for the strip: a cell that carries data-open owns a
   // panel, and opening it is all it does. The details element holds its own
@@ -4551,8 +4706,17 @@ a.btn.ghost:hover{color:var(--ink)}
   async function saveCell(id, key, el){
     var before=compById(id); if(!before||!el)return;
     var v=String(el.value||"").trim();
-    var was=before[key]==null?"":String(before[key]);
-    if(v===was){ cellState(el,""); showCell(el,key,before[key]); return; }
+    // An inherited cell holds NOTHING (050): its stored value is empty, so a
+    // blur that typed nothing is not a change, and typing the very value it
+    // was showing IS one — it states that value on this deal.
+    var was=isInherited(before,key)?"":(before[key]==null?"":String(before[key]));
+    if(v===was){
+      cellState(el,""); showCell(el,key,before[key]);
+      // showCell put the shown value into data-raw; an inherited cell must
+      // keep offering a blank on the next focus.
+      if(isInherited(before,key))el.setAttribute("data-raw","");
+      return;
+    }
     var patch={}; patch[key]=v;
     cellState(el,"saving");
     var r;
@@ -4580,6 +4744,11 @@ a.btn.ghost:hover{color:var(--ink)}
       if(j.comp){
         Object.keys(j.comp).forEach(function(k){ row[k]=j.comp[k]; });
       }
+      // The stored row the server sent back carries no inherited values, and
+      // has just overwritten the ones this row was showing. Put them back from
+      // the building's facts the page still holds (050); the cell just stated
+      // stays stated, because a stated cell is never overwritten.
+      reapplyFacts(row);
     }
     // Sorting a column, changing the filter or a delete's reload all rebuild
     // the table, and any of them can land while this save is still in flight —
@@ -4598,6 +4767,8 @@ a.btn.ghost:hover{color:var(--ink)}
       // ends up trusting a figure the vault never stored.
       showCell(el,key,row?row[key]:v);
       refreshDerived(id,row);
+      // Stated now, so it stops reading as a reading (050).
+      if(row&&!isInherited(row,key)&&el.classList){ el.classList.remove("inh"); el.removeAttribute("title"); }
     }
     if(j.unpublished){
       compMsg("Saved. This comp was published, so it has been withdrawn from the public records \\u2014 publish it again when you are happy with it.");
@@ -4643,7 +4814,15 @@ a.btn.ghost:hover{color:var(--ink)}
     for(var i=0;i<cells.length;i++){
       var k=cells[i].getAttribute&&cells[i].getAttribute("data-ro-k");
       if(k==="market")cells[i].innerHTML=esc(row.market);
-      else if(k==="price_per_sqft")cells[i].innerHTML=rateCell(row);
+      else if(k==="price_per_sqft"){
+        cells[i].innerHTML=rateCell(row);
+        // Stating a size turns an inherited $/SF into a stored one (050).
+        var inh=isInherited(row,"price_per_sqft");
+        if(cells[i].classList){
+          cells[i].classList.toggle("inh",inh);
+          if(inh)cells[i].setAttribute("title",INH_TITLE); else cells[i].removeAttribute("title");
+        }
+      }
     }
   }
 

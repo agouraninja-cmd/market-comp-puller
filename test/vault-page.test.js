@@ -188,6 +188,24 @@ test("the page loads /gut-check.js and guards the global", () => {
     "the inline script must guard its use of the GUTCHECK global");
 });
 
+// Building-level facts (migration 050). The page prefills a known building's
+// cells through the SAME module the server fills with, so the two cannot
+// disagree about which fields inherit — and it must degrade, never throw, if
+// that file fails to load.
+test("the page loads /building-facts.js and guards the global", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<script src="\/building-facts\.js"><\/script>/,
+    "the building-facts module must load before the inline script");
+  const js = pageScript(html);
+  assert.match(js, /typeof BFACTS/, "the inline script must guard its use of the BFACTS global");
+  // The add form's known-building line ships hidden; the confirm table and
+  // the compact table carry their own markers.
+  assert.match(html, /id="addKnown"[^>]*class="note span-all hide"|class="note span-all hide" id="addKnown"/);
+  assert.match(js, /pdf-known/, "the confirm table names a known building");
+  assert.match(js, /class="cell'\+\(inh\?" inh":""\)/, "an inherited cell is marked, not stored");
+  assert.match(html, /#tbl input\.cell\.inh\{/, "the inherited cell has its style");
+});
+
 test("the gut-check panel ships hidden and lives inside the filtered section", () => {
   const html = renderVaultHTML(boot([]), CHROME);
   // Inside #compsSec (so applyFirstRun's hide covers it) and hidden until

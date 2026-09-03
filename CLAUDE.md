@@ -55,7 +55,10 @@ profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-diges
 initiative, so every judgment in it is about what a person is worth
 interrupting for), **`deal-date.js`** (the deal-date parser, including the
 Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
-the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
+the usable-vs-listed split) and **`building-facts.js`** (what a broker's own
+deals on one building agree on and what an empty cell may inherit from that,
+read-time only — dual-exported like `valuation.js`, since `/vault` prefills
+from the same rule the server fills with) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`org-buildings.js`** (what may be put on a firm's board and how the list is
 summarized: the two keys are the vault's `addressKey` and the portfolio's
@@ -3853,6 +3856,50 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       the fake PostgREST and a census stub on `CENSUS_API_URL` (test-only
       env, `RESEND_API_URL`'s precedent — decides where a private address is
       posted, so trusted config, unset in production).
+  - **The building remembers** (2026-09-03; migration
+    `050-broker-property-facts.sql`, **run before deploying**; spec
+    `docs/superpowers/specs/2026-09-03-vault-building-facts-design.md`).
+    Every fact in the vault is stored on the deal, but year built, clear
+    height, units, lot acres, zoning and class are facts about the
+    BUILDING, so a broker with three deals on one building typed them three
+    times and a priced sale missing its size counted for nothing in any
+    median. `broker_properties.facts` (jsonb) is what the broker's own
+    deals on one building AGREE on, derived by the pure, dual-exported
+    **`building-facts.js`** (browser global `BFACTS`, `max-age: 0` like
+    `gut-check.js`) and recomputed by `deriveBuildingFacts` at the tail of
+    `linkVaultProperties` on every upload, add and edit. Five rules, all
+    test-pinned (`test/building-facts.test.js`,
+    `test/vault-building-facts-run.test.js`):
+    - **Inheritance is READ-TIME ONLY.** `applyFacts` runs in exactly two
+      places, `vaultCompsForReport` and `vaultReadPayload`, and writes
+      nothing: `broker_comps` keeps what was stated on each deal, so the
+      export, the public records and the firm copy stay stated-only, and one
+      correction moves every sibling's view with no second write. The comp
+      carries `inherited` (vault-api.js's `DERIVED_FIELDS`, a fourth checked
+      list whose tripwire is that it is a column on NO table) so the page
+      can say a cell is a reading. On `/vault` an inherited cell shows the
+      value muted and italic and HOLDS nothing (raw `""`, a placeholder in
+      spreadsheet mode), so a blur that typed nothing is not a save.
+    - **Disagreement is a CONFLICT, never a winner.** Two deals saying 12
+      and 14 dock doors serve no value and name both; `anchor_tenant` is
+      the one recent-wins exception. Blank is not a vote.
+    - **`size_sqft` derives from SALES only and inherits onto SALES only.**
+      On a lease it is the suite. A size inherited onto a priced sale gets a
+      `$/SF` from THAT deal's own price, never copied from another deal.
+    - **Every `broker_comps` column is on exactly one side** of
+      `BUILDING_FIELDS` / `DEAL_FIELDS`, and the unit test fails the build on
+      a column placed on neither — the `add-comp-field` skill's step 1c.
+    - **The privacy wall is untouched.** Derived from the broker's own rows,
+      read back onto the broker's own rows, user-scoped on both the read and
+      the PATCH; `attachPropertyCoords` stitches `facts` but does not apply
+      them, because it also serves `shareVaultCompsToOrg`. The add form and
+      the confirm table prefill a known building's empty cells
+      (`prefillFromBuilding` / `prefillPdfRow`, "Known building · 2 deals in
+      your book · year built filled in from them") against rows the page
+      already holds — nothing leaves the page to ask which building an
+      address is — and a prefilled value is STATED when saved. A DELETE does
+      not recompute (a lingering fact is still true of the building); a
+      pre-050 book derives on its first vault read.
   - **Gut check** (v4 slice 1, 2026-08-08; spec
     `docs/superpowers/specs/2026-08-08-gut-check-design.md`). A panel on
     `/vault` compares the broker's per-bucket median $/SF and cap rates

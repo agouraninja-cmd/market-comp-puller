@@ -1,0 +1,48 @@
+-- migrations/050-broker-property-facts.sql
+-- 050 · The building remembers: building-level facts on the vault's property
+-- dimension (2026-09-03). Follows 016 (the dimension) and 017 (its location).
+-- Spec: docs/superpowers/specs/2026-09-03-vault-building-facts-design.md
+--
+-- RUN BEFORE DEPLOYING, the 017 shape: attachPropertyCoords SELECTs `facts`
+-- by name and PostgREST 400s an unknown column. That read is wrapped, so
+-- deploy-first would not break a vault read — it would silently stop
+-- stitching coordinates AND facts onto every comp, and the derivation PATCH
+-- inside linkVaultProperties would 400 into its own catch on every upload.
+-- Nothing would be lost and nothing would be reported. Migrate, then deploy.
+--
+-- WHY. Every fact in the vault is stored on the DEAL, but year built, clear
+-- height, units, lot acres, zoning and class are facts about the BUILDING, so
+-- a broker with three deals on one building typed them three times and a
+-- priced sale missing its size counted for nothing in any median. This column
+-- is what the broker's own deals on one building AGREE on, derived in JS by
+-- building-facts.js (agreement gives a value, disagreement gives a named
+-- conflict and no value, size from sales only) and applied at READ time only
+-- — broker_comps keeps exactly what was stated on each deal.
+--
+-- jsonb rather than a column per fact, 030's argument for the firm copy: the
+-- per-type field list grows through the add-comp-field skill, and a column
+-- per fact would make every new field a migration here too. Shape:
+--
+--   { "values":    { "year_built": "1998", "size_sqft": 84000 },
+--     "conflicts": { "dock_doors": ["12", "14"] },
+--     "prior":     { "anchor_tenant": ["Albertsons"] },
+--     "derived_at": "2026-09-03T18:20:11Z" }
+--
+-- DERIVED, NEVER STATED, in this version: nothing the broker types goes into
+-- it directly, so it is safe to recompute rather than fill-only. A null means
+-- "not derived yet" — a book uploaded before this shipped derives on its next
+-- touch or its next vault read — and reads as "no inheritance", which is
+-- exactly what the page rendered before this existed.
+--
+-- Broker PRIVATE data, vault-class: written only by linkVaultProperties and
+-- the vault-read backfill, always scoped by user_id, derived only from the
+-- same broker's own rows, read by no owner surface and never by the corpus.
+-- No SQL backfill (the derivation is JS — 019's reason). Purely additive.
+
+alter table broker_properties
+  add column if not exists facts jsonb;
+
+-- Verify (zero rows = schema complete):
+--   select c from unnest(array['facts']) as c
+--   where not exists (select 1 from information_schema.columns
+--                     where table_name = 'broker_properties' and column_name = c);

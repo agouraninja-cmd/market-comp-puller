@@ -3671,8 +3671,48 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       — "Imported 12 comps" from a.csv survives "Reading b.csv". One file
       is the old path byte for byte (no source row, the plain name).
       `test/vault-page.test.js` runs all four shapes.
+    - **Excel workbooks and pasted rows come in too (2026-09-02)**, and both
+      become comma CSV TEXT before anything reads them, so `inspectCsv`, the
+      mapper and `parseUpload` keep one input and the browser keeps posting
+      one shape to `/api/vault/upload`. `POST /api/vault/inspect` takes
+      `{ xlsx }` (base64, `MAX_EXTRACT_BYTES`' 4 MB cap, the same
+      `xlsxGridFromBase64` helper the contacts import uses at 1 MB) and reads
+      it with **`xlsx.js`'s typed mode**: a numeric cell is read THROUGH its
+      style in `xl/styles.xml`, so a date-styled serial arrives as
+      `YYYY-MM-DD` (both epochs, the Lotus 29-Feb-1900 gap, the time
+      fraction dropped) and a percent-styled fraction as the percentage Excel
+      shows — handed `0.0625`, `parsePercent` would store a cap rate 100x low
+      and nothing would refuse it. A serial in a General cell stays a serial
+      and is refused by name. The contacts caller stays untyped and
+      byte-identical. A tab-separated body (cells copied from Excel, Outlook
+      or a CoStar web table, the `#pasteSec` drawer) is detected on its first
+      non-blank line and converted through `parseCsv({ delimiter })` +
+      `gridToCsv` — never a tab-for-comma swap, since an address is one cell
+      holding two commas. Three rules: the converted text rides BACK to the
+      browser as `csv` (only when converted) and is what the upload carries,
+      so the bytes the mapping was confirmed against are the bytes it is
+      applied to; `gridToCsv` pads blank rows back in so "Line 5" still
+      names Excel's row 5, and uses `quoteCsvCell`, never `csvCell`, because
+      the formula guard would put an apostrophe into a broker's own note;
+      and `.xls` is let through by the browser so the server can refuse it
+      BY NAME. `test/vault-xlsx-run.test.js` runs the loop against the
+      stand-in PostgREST.
+    - **The confirm table triages (2026-09-02).** A row `normalizeRow`
+      accepted renders as TEXT — the formatted figure, read against the page
+      — with an Edit control (or a double-click) that opens just that row; a
+      refused row stays inputs, tinted, followed by a `pdf-err` line naming
+      its reason, and the cursor lands on the first one on open. The strip
+      says "12 found · 12 ready · everything reads clean" and a second
+      Import button (`#pdfGoTop`) sits above the table carrying the same
+      state as the one below (`refreshPdfGo` writes both). "Review every
+      cell" (`#pdfEditAll`) is the all-inputs table this used to be. The
+      measured reason is the 4m51s in
+      `docs/evals/extract-2026-08-28-verdict-final.md`. Document order
+      (#217) is untouched; `r.editing` survives re-renders exactly as
+      `checked` does; Edit is delegated on `#pdfBody` because the body is
+      rebuilt on every re-render.
     - **There is exactly ONE `<input type=file>`.** Its `accept` includes
-      `.pdf` and the image types as well as `.csv`. `#bookPick` and the
+      `.pdf`, `.xlsx`/`.xls` and the image types as well as `.csv`. `#bookPick` and the
       ordinary "Add comps"
       button both call `$("file").click()`. Two inputs would mean two values
       and two change handlers, and an upload started from one would be
@@ -3923,7 +3963,19 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     A broker uploads their own export and maps its columns once. `POST
     /api/vault/inspect` reports headers, real sample values and a suggested
     mapping; `/api/vault/upload` takes an optional `mapping`, and absent it
-    behaves byte for byte as before. Six rules a future editor will
+    behaves byte for byte as before. **Since 2026-09-02 the screen has a
+    summary mode**: when the pre-selection (suggested plus remembered) claims
+    every required field, nothing is ambiguous and no two columns sit on one
+    target, the dropdown table folds under `#mapDetails` ("6 of 6 columns
+    matched · change how they match") and Import is the next thing on
+    screen; the "Will be ignored" line moved ABOVE the fold so the rule below
+    holds whether or not the dropdowns are showing. And the remembered
+    mapping is **one per file SHAPE**, not one per broker (migration 049,
+    run before deploying — the read names the column): `headerSignature`
+    hashes the normalized header row, computed server-side from the CSV the
+    route received; the exact shape wins and an unseen shape falls back to
+    the most recent mapping, which is what one-per-broker always returned.
+    Six rules a future editor will
     otherwise break: **a target is suggested only when exactly ONE column
     claims it**, which is how the old "we do not guess column names"
     decision survives (two columns aliasing to `price` suggest neither);

@@ -109,8 +109,13 @@ const MAX_EXTRACT_BYTES = 4 * 1024 * 1024;
  * corrupts every address containing a comma, which is most of them.
  *
  * Returns an array of rows, each an array of cell strings. Never throws.
+ *
+ * `delimiter` defaults to the comma and every existing caller keeps it; a tab
+ * is what cells copied out of Excel, Outlook or a CoStar web table arrive as
+ * (see normalizeDelimited), and the one-character change here is the whole
+ * cost of reading them.
  */
-function parseCsv(text) {
+function parseCsv(text, { delimiter = "," } = {}) {
   const src = String(text == null ? "" : text);
   const rows = [];
   let row = [];
@@ -162,7 +167,7 @@ function parseCsv(text) {
     }
 
     if (c === '"' && cell === "") { quoted = true; i++; continue; }
-    if (c === ",") { endCell(); i++; continue; }
+    if (c === delimiter) { endCell(); i++; continue; }
     if (c === "\r") { i++; continue; }          // CRLF -> LF
     if (c === "\n") { endRow(); fileLine++; rowLine = fileLine; i++; continue; }
     cell += c; i++;
@@ -1558,7 +1563,18 @@ function guardFormula(s) {
  * opened in a spreadsheet by design, so there is no un-guarded variant.
  */
 function csvCell(v) {
-  const s = guardFormula(String(v == null ? "" : v));
+  return quoteCsvCell(guardFormula(String(v == null ? "" : v)));
+}
+
+/**
+ * The quoting half of csvCell, with NO formula guard. For data on its way IN
+ * (a broker's own workbook or pasted cells re-expressed as CSV so one import
+ * path reads them): guardFormula would turn their "- see lease" note into
+ * "'- see lease" and the apostrophe would be stored. Every CSV this module
+ * EMITS still goes through csvCell.
+ */
+function quoteCsvCell(v) {
+  const s = String(v == null ? "" : v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -2180,6 +2196,86 @@ function uploadPayloadToCsv({ csv, rows } = {}) {
   return { ok: false, csv: "", error: "Nothing to import." };
 }
 
+// --- other shapes a book arrives in (2026-09-02) -----------------------------
+// An Excel workbook and cells pasted from one both become CSV TEXT before
+// anything reads them, so inspectCsv, the mapper and parseUpload keep one
+// input and the browser keeps posting the same thing to /api/vault/upload.
+
+/**
+ * A grid of rows (arrays of cells, each optionally stamped with the
+ * non-enumerable `line` that parseCsv and readXlsxGrid both write) as CSV
+ * text — through quoteCsvCell, never csvCell, because this is the broker's
+ * own data on its way in and must not gain an apostrophe.
+ *
+ * Blank rows are PADDED BACK IN: a row stamped `line: 5` is written on the
+ * fifth line, so that when parseCsv re-reads this text and re-stamps its own
+ * line numbers, "Line 5" still names the Excel row the broker is looking at.
+ * Both readers drop blank rows but keep the count, and this is where the
+ * count is spent. One known slip, accepted rather than edited around: a cell
+ * holding an embedded newline (Alt+Enter in a notes cell) is emitted quoted
+ * and verbatim, parseCsv counts that newline as a line of the file, and every
+ * row after it reports one higher than Excel shows. Rows with no stamp are
+ * simply appended.
+ */
+function gridToCsv(rows) {
+  const out = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const line = Number(row && row.line);
+    if (Number.isFinite(line)) while (out.length + 1 < line) out.push("");
+    out.push((Array.isArray(row) ? row : []).map(quoteCsvCell).join(","));
+  }
+  return out.join("\n") + (out.length ? "\n" : "");
+}
+
+/**
+ * Comma or tab, decided on the first non-blank line: a tab-separated paste
+ * from Excel has tabs between every cell and commas only inside addresses, so
+ * tabs at least as numerous as commas is the tell. A one-column paste with
+ * neither reads as CSV, which is what it is.
+ */
+function delimiterOf(text) {
+  const src = String(text == null ? "" : text).replace(/^﻿/, "");
+  const first = src.split(/\r?\n/).find((l) => l.trim() !== "") || "";
+  const tabs = (first.match(/\t/g) || []).length;
+  const commas = (first.match(/,/g) || []).length;
+  return tabs > 0 && tabs >= commas ? "\t" : ",";
+}
+
+/**
+ * Text as comma-separated CSV: unchanged when it already is, converted when it
+ * is tab-separated. NEVER a tab-for-comma replace — "120 Main St, Boise, ID"
+ * is one tab-delimited cell holding two commas, and it comes out quoted.
+ */
+function normalizeDelimited(text) {
+  const src = String(text == null ? "" : text);
+  if (delimiterOf(src) !== "\t") return { csv: src, converted: false };
+  return { csv: gridToCsv(parseCsv(src, { delimiter: "\t" })), converted: true };
+}
+
+/**
+ * A short, stable name for the SHAPE of a file: its normalized header row.
+ * Two exports from the same system have the same signature however the rows
+ * differ; the same broker's CoStar export and their own tracking sheet do
+ * not. It keys the remembered column mapping (migration 049), so alternating
+ * between two shapes no longer overwrites one mapping with the other.
+ *
+ * FNV-1a, not a cryptographic hash, on purpose: a collision costs a wrong
+ * PRE-SELECTION on a screen the broker still confirms, and this module has no
+ * requires. The column count rides along so two vectors of different length
+ * can never share a name.
+ */
+function headerSignature(csvText) {
+  const table = parseCsv(csvText);
+  const headers = normalizedHeaderRow(table.length ? table[0] : []);
+  const s = headers.join("\x1f");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0") + "-" + headers.filter(Boolean).length;
+}
+
 module.exports = {
   normAddr,
   matchOffered,
@@ -2223,6 +2319,11 @@ module.exports = {
   parseUpload,
   guardFormula,
   csvCell,
+  quoteCsvCell,
+  gridToCsv,
+  delimiterOf,
+  normalizeDelimited,
+  headerSignature,
   templateCsv,
   exportColumns,
   exportCsv,

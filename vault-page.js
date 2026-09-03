@@ -252,6 +252,12 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 #pdfTable tbody tr.need-fix td,#pdfTable tbody tr.need-fix:hover td{background:var(--err-bg)}
 #pdfTable tbody tr.pdf-src td,#pdfTable tbody tr.pdf-src:hover td{padding-top:12px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:none;border-bottom:0}
+/* The line under a refused row saying what is wrong with it, and the
+   read-only cells of a row that read cleanly (2026-09-02). */
+#pdfTable tbody tr.pdf-err td,#pdfTable tbody tr.pdf-err:hover td{background:var(--err-bg);color:var(--err-text);font-size:var(--t5);padding-top:0;border-top:0}
+#pdfTable td.ro{font-variant-numeric:tabular-nums;white-space:nowrap;cursor:text}
+#mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--t5);margin:var(--s3) 0}
+#pasteBox{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.4;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink);resize:vertical}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
 #gate .msg{max-width:44ch;margin-top:var(--s7)}
@@ -661,10 +667,24 @@ a.btn.ghost:hover{color:var(--ink)}
         <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
         <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
         <p>or drop files here &mdash; several at once is fine &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. An Excel file or pasted rows are read on our own server. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <input type="file" id="file" accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
       </div>
       <div id="res"></div>
+
+      <!-- Cells copied out of Excel, a CoStar web table or an email arrive
+           tab-separated; /api/vault/inspect reads that as it reads a CSV, so
+           this is the ordinary mapper path with no file in between. A button
+           rather than the paste event, so a cell can be fixed before it is
+           read (2026-09-02). -->
+      <details class="dbox" id="pasteSec">
+        <summary>Or paste rows from Excel, CoStar or an email</summary>
+        <p class="note" style="margin-top:var(--s3)">Copy the cells, header row included, and paste them here. Tabs and commas both work.</p>
+        <textarea id="pasteBox" rows="6" style="margin-top:var(--s3)" placeholder="address&#9;property_type&#9;transaction&#9;deal_date&#9;price&#9;size_sqft"></textarea>
+        <div class="formact" style="margin-top:var(--s3)">
+          <button class="btn" id="pasteGo" type="button">Read pasted rows</button>
+        </div>
+      </details>
 
       <!-- One comp at a time, through the SAME route the importer's own rows
            land on (POST /api/vault/comp -> normalizeRow), so a hand-typed
@@ -711,13 +731,21 @@ a.btn.ghost:hover{color:var(--ink)}
     <div id="mapSec" class="mappanel hide">
       <h2>Match your columns</h2>
       <p class="sub" style="margin-top:0">We found <span id="mapRows">0</span> rows.
-        Tell us which of your columns is which, then import. Nothing is saved until you do.</p>
+        <span id="mapLead">Tell us which of your columns is which, then import.</span> Nothing is saved until you do.</p>
       <p class="note hide" id="mapAmbig"></p>
-      <div class="tw"><table id="mapTable">
-        <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
-        <tbody id="mapBody"></tbody>
-      </table></div>
+      <!-- Above the table, not below it: this line is the guarantee the
+           mapper exists for (a column dropped is a column NAMED), and since
+           2026-09-02 the table itself is folded away when every required
+           field was matched unambiguously — so the line has to stand where it
+           is read either way. -->
       <p class="note" id="mapIgnored"></p>
+      <details id="mapDetails" open>
+        <summary id="mapSummary">How your columns match</summary>
+        <div class="tw"><table id="mapTable">
+          <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
+          <tbody id="mapBody"></tbody>
+        </table></div>
+      </details>
       <!-- The whole-file answers. A developer's or owner-operator's own sheet
            names no property type and no deal type anywhere, because every row
            is the one thing they build and nobody writes that down. Shown only
@@ -750,8 +778,18 @@ a.btn.ghost:hover{color:var(--ink)}
     <div id="pdfSec" class="mappanel hide">
       <h2>Review these comps</h2>
       <p class="sub" style="margin-top:0"><span id="pdfCount">0</span> deals in <span id="pdfName"></span>.
-        Uncheck any that aren't yours. Fix a cell if we misread it. Nothing is saved until you import.</p>
+        Rows that read cleanly are shown as we read them; rows that need a fix are marked and say why.
+        Use Edit on any we misread, and uncheck any that aren't yours. Nothing is saved until you import.</p>
       <p class="note" id="pdfStrip"></p>
+      <!-- The action row at the TOP (2026-09-02): a clean table is imported
+           from here after a glance, and the button under the table is for
+           the one that needed correcting. Both buttons carry one state
+           (refreshPdfGo). "Review every cell" is the cautious broker's door
+           back to the all-inputs table this used to be. -->
+      <div class="formact" id="pdfTop">
+        <button class="btn" id="pdfGoTop">Import</button>
+        <button class="btn ghost" id="pdfEditAll" type="button">Review every cell</button>
+      </div>
       <!-- The per-sheet rent basis (2026-08-29). Lease sheets routinely state
            a rate and never the word "annual" or "monthly" because within a
            market it goes without saying — measured at 4 refused rows in the
@@ -2869,7 +2907,7 @@ a.btn.ghost:hover{color:var(--ink)}
     if(!viaMapper&&!viaPdf)setAddOpen(true);
     $("pick").disabled=true;
     if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
-    if(viaPdf){ $("pdfGo").disabled=true; $("pdfGo").textContent="Importing\\u2026"; }
+    if(viaPdf){ ["pdfGo","pdfGoTop"].forEach(function(id){ $(id).disabled=true; $(id).textContent="Importing\\u2026"; }); }
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
     var payload={filename:name};
     if(rows){ payload.rows=rows; }
@@ -2995,11 +3033,56 @@ a.btn.ghost:hover{color:var(--ink)}
     var t=String(file&&file.type||"");
     return t==="text/csv" || /\\.csv$/.test(n);
   }
+  // An Excel workbook (2026-09-02). Decided by name or declared type, unlike
+  // the contacts door's byte sniff, because the server sniffs the bytes
+  // anyway and refuses a 2003-era .xls BY NAME — which is why .xls is let
+  // through here rather than stopped with a message that names nothing.
+  function isXlsxFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return /\\.xlsx?$/.test(n) ||
+           t==="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+           t==="application/vnd.ms-excel";
+  }
+  var FILE_KINDS_MSG="Use a .csv, an Excel .xlsx, a .pdf, or a screenshot (PNG, JPEG or WebP).";
+
+  // What happens once /api/vault/inspect has answered, on every door — a CSV,
+  // a workbook, pasted rows. heldCsv is the text the browser read itself;
+  // the server answers with csv when it CONVERTED (a workbook, a tab-
+  // separated paste), and that text is what the upload must carry, since the
+  // mapping being confirmed was built against it.
+  function afterInspect(name,heldCsv,o){
+    if(o.s!==200){
+      $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
+      return;
+    }
+    var csv=(o.j&&typeof o.j.csv==="string")?o.j.csv:heldCsv;
+    // A file already in our own column names skips the screen entirely
+    // — unless it holds addresses with no city or state, in which case the
+    // screen has exactly one question to ask (every column already mapped,
+    // so the table folds and the question is the next thing on screen) and
+    // importing straight away would refuse those rows by line number with
+    // the answer sitting right here.
+    var ms=o.j.marketSuggest;
+    if(o.j.cleanTemplate&&!(ms&&ms.count)){ doImport(name,csv,null); return; }
+    pending={name:name,csv:csv};
+    openMapper(o.j);
+  }
+  function inspectPost(body,name,heldCsv){
+    fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ $("pick").disabled=false; afterInspect(name,heldCsv,o); })
+      // Deliberately NOT a silent fallback to a strict upload: that would
+      // reintroduce the old rejection message under a different cause.
+      .catch(function(){ $("pick").disabled=false;
+        $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+  }
 
   function upload(file){
     if(!file)return;
-    if(!isExtractFile(file) && !isCsvFile(file)){
-      $("res").innerHTML='<div class="msg bad">Use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).</div>';
+    if(!isExtractFile(file) && !isCsvFile(file) && !isXlsxFile(file)){
+      $("res").innerHTML='<div class="msg bad">'+FILE_KINDS_MSG+'</div>';
       return;
     }
     if(file.size>4*1024*1024){
@@ -3010,31 +3093,19 @@ a.btn.ghost:hover{color:var(--ink)}
     $("pick").disabled=true; $("res").innerHTML=batchPrefix()+'<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
+    if(isXlsxFile(file)){
+      // Bytes, not text: the server reads the workbook and hands back CSV.
+      fr.onload=function(){
+        var url=String(fr.result||"");
+        var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
+        inspectPost({xlsx:b64,filename:file.name},file.name,"");
+      };
+      fr.readAsDataURL(file);
+      return;
+    }
     fr.onload=function(){
       var csv=String(fr.result||"");
-      fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
-        headers:{"content-type":"application/json"},body:JSON.stringify({csv:csv})})
-        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-        .then(function(o){
-          $("pick").disabled=false;
-          if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
-            return;
-          }
-          // A file already in our own column names skips the screen entirely
-          // — unless it holds addresses with no city or state, in which case
-          // the screen has exactly one question to ask (every column already
-          // mapped) and importing straight away would refuse those rows by
-          // line number with the answer sitting right here.
-          var ms=o.j.marketSuggest;
-          if(o.j.cleanTemplate&&!(ms&&ms.count)){ doImport(file.name,csv,null); return; }
-          pending={name:file.name,csv:csv};
-          openMapper(o.j);
-        })
-        // Deliberately NOT a silent fallback to a strict upload: that would
-        // reintroduce the old rejection message under a different cause.
-        .catch(function(){ $("pick").disabled=false;
-          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+      inspectPost({csv:csv},file.name,csv);
     };
     fr.readAsText(file);
   }
@@ -3120,12 +3191,13 @@ a.btn.ghost:hover{color:var(--ink)}
     batchOn=true;
     var bad=[],big=[],ex=[],csvs=[];
     all.forEach(function(f){
-      if(!isExtractFile(f)&&!isCsvFile(f))bad.push(f.name);
+      if(!isExtractFile(f)&&!isCsvFile(f)&&!isXlsxFile(f))bad.push(f.name);
       else if(f.size>4*1024*1024)big.push(f.name);
       else if(isExtractFile(f))ex.push(f);
+      // A workbook queues with the CSVs: it takes the mapper path too.
       else csvs.push(f);
     });
-    if(bad.length)batchLog.push("Skipped "+bad.join(", ")+" \\u2014 use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).");
+    if(bad.length)batchLog.push("Skipped "+bad.join(", ")+" \\u2014 "+FILE_KINDS_MSG.charAt(0).toLowerCase()+FILE_KINDS_MSG.slice(1));
     if(big.length)batchLog.push("Skipped "+big.join(", ")+" \\u2014 over the 4 MB limit.");
     setAddOpen(true);
     $("res").innerHTML=batchPrefix();
@@ -3460,6 +3532,26 @@ a.btn.ghost:hover{color:var(--ink)}
       $("mapAmbig").textContent="";
       $("mapAmbig").classList.add("hide");
     }
+    // Summary mode (2026-09-02). When the pre-selection already claims every
+    // required field, nothing is ambiguous and no two columns sit on one
+    // target, the table of dropdowns folds away and Import is the next thing
+    // on screen. The mapper spec's rule — the screen is always shown, so a
+    // dropped column is always NAMED — holds unchanged: the "Will be ignored"
+    // line stands above the fold either way, and the table is one click
+    // away. Anything short of a complete pre-selection opens it as before. A
+    // CoStar export used to mean ~40 dropdowns to read past on every upload
+    // even when every one of them was already right.
+    var dup=preset.some(function(t,i){return preset.indexOf(t)!==i});
+    var missing=(info.required||[]).filter(function(t){return preset.indexOf(t)<0});
+    var summary=!missing.length&&!amb.length&&!dup;
+    var named=info.normalized.filter(Boolean).length;
+    $("mapDetails").open=!summary;
+    $("mapSummary").textContent=summary
+      ? preset.length+" of "+named+" columns matched \\u00b7 change how they match"
+      : "How your columns match";
+    $("mapLead").textContent=summary
+      ? "We matched your columns to ours. Check the line below, then import."
+      : "Tell us which of your columns is which, then import.";
     $("mapSec").classList.remove("hide");
     $("pdfSec").classList.add("hide");
     $("addSec").classList.add("hide");
@@ -3647,8 +3739,13 @@ a.btn.ghost:hover{color:var(--ink)}
   function refreshPdfGo(){
     var n=0;
     ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){ if(r.checked)n++; });
-    $("pdfGo").textContent="Import "+n+" comps";
-    $("pdfGo").disabled=n===0;
+    // Two buttons, one state: the one at the top is where a clean table is
+    // imported from after a glance; the one under the table is for the one
+    // that needed correcting.
+    ["pdfGo","pdfGoTop"].forEach(function(id){
+      $(id).textContent="Import "+n+" comp"+(n===1?"":"s");
+      $(id).disabled=n===0;
+    });
   }
 
   function collectPdfRows(){
@@ -3695,6 +3792,32 @@ a.btn.ghost:hover{color:var(--ink)}
     return hasRent&&(!hasBasis||r.stampedBasis===true);
   }
 
+  // One row of the confirm table (2026-09-02). A row that read cleanly is
+  // drawn as TEXT — the formatted figure, which is what the broker reads
+  // against the source document — with an Edit control at the end; a row
+  // normalizeRow refused is drawn as inputs, tinted, and followed by a line
+  // saying what is wrong with it. Measured reason: 4m51s to confirm 12 rows
+  // that were all correct (docs/evals/extract-2026-08-28-verdict-final.md),
+  // with every cell an input and nothing saying which rows needed a look. A
+  // broker's job on this screen is to glance, and the markup should say so.
+  // r.editing is a row the broker opened by hand; it survives the
+  // re-renders the basis selector and Edit itself trigger, like checked.
+  function pdfRowHtml(r,i,cols){
+    var editing=r.error!=null||r.editing===true;
+    var tint=r.error!=null?' class="need-fix"':"";
+    var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
+    var cells=cols.map(function(k){
+      var raw=r.values[k]==null?"":String(r.values[k]);
+      if(!editing)return '<td class="ro" data-i="'+i+'">'+esc(pdfDisplay(k,raw))+"</td>";
+      return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
+        '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
+    }).join("");
+    var act=editing?"":'<button type="button" class="lnk" data-edit="'+i+'">Edit</button>';
+    var html="<tr"+tint+"><td>"+cb+"</td>"+cells+"<td>"+act+"</td></tr>";
+    if(r.error!=null)html+='<tr class="pdf-err"><td></td><td colspan="'+(cols.length+1)+'">'+esc(r.error)+"</td></tr>";
+    return html;
+  }
+
   function openPdfPreview(info){
     pdfPending=info||{filename:"",rows:[]};
     var rows=pdfPending.rows||[];
@@ -3711,22 +3834,15 @@ a.btn.ghost:hover{color:var(--ink)}
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
     $("pdfName").textContent=pdfPending.filename||"";
-    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"<th></th></tr>";
     var multi=(pdfPending.files||0)>1, lastSrc=null;
     $("pdfBody").innerHTML=rows.map(function(r,i){
       // A merged batch names each file above its rows. Not a column: a cell
       // would ride into the upload as a field, and the file is not a fact
       // about the deal.
       var head="";
-      if(multi&&r.source&&r.source!==lastSrc){ lastSrc=r.source; head='<tr class="pdf-src"><td colspan="'+(cols.length+1)+'">'+esc(r.source)+"</td></tr>"; }
-      var tint=r.error!=null?' class="need-fix"':"";
-      var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
-      var cells=cols.map(function(k){
-        var raw=r.values[k]==null?"":String(r.values[k]);
-        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
-          '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
-      }).join("");
-      return head+"<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
+      if(multi&&r.source&&r.source!==lastSrc){ lastSrc=r.source; head='<tr class="pdf-src"><td colspan="'+(cols.length+2)+'">'+esc(r.source)+"</td></tr>"; }
+      return head+pdfRowHtml(r,i,cols);
     }).join("");
     var n=rows.length, ready=0, fail=0, allDate=true, allCity=true;
     rows.forEach(function(r){
@@ -3737,8 +3853,11 @@ a.btn.ghost:hover{color:var(--ink)}
         if(stripError(r.error,MARKET_NEEDLE)!=null)allCity=false;
       }
     });
-    var failBit=fail?(allCity?fail+" need a city":allDate?fail+" need a date":fail+" need a fix"):"";
-    $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
+    var strip=n+" found \u00b7 "+ready+" ready";
+    if(fail)strip+=" \u00b7 "+(allCity?fail+" need a city":allDate?fail+" need a date":fail+" need a fix");
+    else if(n)strip+=" \u00b7 everything reads clean";
+    $("pdfStrip").textContent=strip;
+    $("pdfEditAll").textContent=pdfPending.editAll?"Done reviewing":"Review every cell";
     // The sheet-level basis row, only when a row can actually take it, with
     // the current choice surviving a re-render.
     var needsBasis=rows.some(pdfNeedsBasis);
@@ -3762,6 +3881,16 @@ a.btn.ghost:hover{color:var(--ink)}
     $("pdfSec").classList.remove("hide");
     $("addSec").classList.add("hide");
     $("bookEmpty").classList.add("hide");
+    // Where the cursor lands: the row Edit was just pressed on, or — on first
+    // open only — the first row that needs a fix, so the broker starts where
+    // their attention is needed rather than at row one. A re-render for the
+    // basis selector hands focus to nobody.
+    var focusRow=pdfPending.focusRow;
+    if(focusRow==null&&!alreadyOpen){
+      for(var f=0;f<rows.length;f++){ if(rows[f].error!=null){ focusRow=f; break; } }
+    }
+    pdfPending.focusRow=null;
+    var focusTarget=null;
     Array.prototype.forEach.call($("pdfBody").querySelectorAll("input"),function(inp){
       var i=Number(inp.getAttribute("data-i"));
       if(inp.type==="checkbox"){
@@ -3789,11 +3918,46 @@ a.btn.ghost:hover{color:var(--ink)}
         inp.addEventListener("blur",function(){
           inp.value=pdfDisplay(inp.getAttribute("data-k"),inp.getAttribute("data-raw")||"");
         });
+        if(!focusTarget&&focusRow!=null&&i===focusRow)focusTarget=inp;
       }
     });
     refreshPdfGo();
+    if(focusTarget&&typeof focusTarget.focus==="function")focusTarget.focus();
     if(!alreadyOpen)$("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
+
+  // Edit on a clean row, or a double-click on one of its cells, turns that
+  // row into inputs. Delegated to the table body, because the body is rebuilt
+  // on every re-render and a listener per button would be re-wired each time.
+  function editPdfRow(i){
+    if(!pdfPending||!pdfPending.rows[i])return;
+    pdfPending.rows[i].editing=true;
+    pdfPending.focusRow=i;
+    openPdfPreview(pdfPending);
+  }
+  function pdfRowFrom(e,sel,attr){
+    var t=e&&e.target&&typeof e.target.closest==="function"?e.target.closest(sel):null;
+    if(!t)return -1;
+    var i=Number(t.getAttribute(attr));
+    return isFinite(i)&&i>=0?i:-1;
+  }
+  $("pdfBody").addEventListener("click",function(e){
+    var i=pdfRowFrom(e,"[data-edit]","data-edit");
+    if(i>=0)editPdfRow(i);
+  });
+  $("pdfBody").addEventListener("dblclick",function(e){
+    var i=pdfRowFrom(e,"td.ro","data-i");
+    if(i>=0)editPdfRow(i);
+  });
+  // The cautious broker's door back to the all-inputs table: every row opens
+  // for editing, and a second press folds the clean ones back to text. A row
+  // that needs a fix is inputs either way.
+  $("pdfEditAll").addEventListener("click",function(){
+    if(!pdfPending)return;
+    pdfPending.editAll=!pdfPending.editAll;
+    (pdfPending.rows||[]).forEach(function(r){ r.editing=!!pdfPending.editAll; });
+    openPdfPreview(pdfPending);
+  });
 
   // Choosing a basis writes it into every row that needs one — visibly, cell
   // by cell — and cures the rows whose ONLY blocker it was: their error
@@ -3865,12 +4029,14 @@ a.btn.ghost:hover{color:var(--ink)}
     applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
   }
 
-  $("pdfGo").addEventListener("click",function(){
+  function importPdfRows(){
     if(!pdfPending)return;
     var rows=collectPdfRows();
     if(!rows.length)return;
     doImport(pdfPending.filename,null,null,closePdfPreview,rows);
-  });
+  }
+  $("pdfGo").addEventListener("click",importPdfRows);
+  $("pdfGoTop").addEventListener("click",importPdfRows);
   $("pdfCancel").addEventListener("click",function(){
     closePdfPreview();
     var more=dropQueue();
@@ -3883,6 +4049,24 @@ a.btn.ghost:hover{color:var(--ink)}
   // result message.
   $("bookPick").addEventListener("click",function(){ $("file").click() });
   $("file").addEventListener("change",function(e){ uploadMany(e.target.files); e.target.value=""; });
+  // Pasted rows take the CSV path with the textarea's text as the "file";
+  // the server converts a tab-separated paste and hands the CSV back. Never
+  // part of a batch: a paste is one thing, read now.
+  $("pasteGo").addEventListener("click",function(){
+    var text=String($("pasteBox").value||"");
+    if(!text.trim()){
+      $("res").innerHTML='<div class="msg bad">Paste some rows first, header row included.</div>';
+      return;
+    }
+    if(text.length>4*1024*1024){
+      $("res").innerHTML='<div class="msg bad">That is too much to read at once. The limit is 4 MB.</div>';
+      return;
+    }
+    csvQueue=[]; batchOn=false; batchLog=[];
+    $("pick").disabled=true;
+    $("res").innerHTML='<div class="msg ok">Reading pasted rows&hellip;</div>';
+    inspectPost({csv:text,filename:"Pasted rows"},"Pasted rows",text);
+  });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});
   ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){

@@ -32,11 +32,22 @@
 // and the `tier` field stays editable for exactly that reason. What it will
 // never be is silently different from run to run.
 //
+// GEOGRAPHY comes from the Census GAZETTEER, a second read against the same
+// authority (2026-09-02). Each row gains an internal point and a land area, so
+// a market can be DRAWN rather than only listed. That file is the right source
+// for the same reason the delineation is: Census defines the CBSA, so its
+// centroid and its acreage are facts about the thing rather than a geocoder's
+// opinion about a city name. 936 rows, 46KB, and it matched all 196 markets on
+// the first run - which the old MARKETHERO.coordsFor lookup could not do: that
+// is keyed to the ~38 seeded market pages and resolved 21 of 50 primary
+// markets, missing New York, Los Angeles and Chicago.
+//
 // Reads CENSUS_API_KEY from the environment or .env. READ-ONLY against Census.
 // ---------------------------------------------------------------------------
 
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
 
 const ROOT = path.join(__dirname, "..");
 const OUT = path.join(ROOT, "market-tiers.json");
@@ -106,6 +117,46 @@ function isSeeded(label, state) {
   return SEEDED.some(([city, s]) => city.toLowerCase() === l && s.toLowerCase() === st);
 }
 
+// The Gazetteer ships as a zip holding one tab-delimited file. Unzipped here
+// with the built-in zlib rather than a dependency, the way the xlsx reader in
+// server.js already does it: one local file header, then a raw deflate stream.
+const GAZ_URL = "https://www2.census.gov/geo/docs/maps-data/data/gazetteer/"
+  + VINTAGE + "_Gazetteer/" + VINTAGE + "_Gaz_cbsa_national.zip";
+
+async function fetchGazetteer() {
+  const res = await fetch(GAZ_URL, { signal: AbortSignal.timeout(60000) });
+  if (!res.ok) throw new Error("Gazetteer returned HTTP " + res.status);
+  const buf = Buffer.from(await res.arrayBuffer());
+  if (buf.slice(0, 2).toString() !== "PK") throw new Error("Gazetteer is not a zip");
+
+  const nameLen = buf.readUInt16LE(26);
+  const extraLen = buf.readUInt16LE(28);
+  const method = buf.readUInt16LE(8);
+  const body = buf.slice(30 + nameLen + extraLen);
+  const text = (method === 0 ? body : zlib.inflateRawSync(body)).toString("utf8");
+
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  const head = lines[0].split("\t").map((c) => c.trim());
+  const iGeo = head.indexOf("GEOID");
+  const iLat = head.indexOf("INTPTLAT");
+  const iLng = head.indexOf("INTPTLONG");
+  const iLand = head.indexOf("ALAND_SQMI");
+  if (iGeo < 0 || iLat < 0 || iLng < 0 || iLand < 0) {
+    // A renamed column would otherwise write undefined into every row and the
+    // map would draw nothing, silently. Named columns, checked once, loudly.
+    throw new Error("Gazetteer columns changed: " + head.join(","));
+  }
+
+  const out = new Map();
+  for (const line of lines.slice(1)) {
+    const c = line.split("\t").map((x) => x.trim());
+    const lat = Number(c[iLat]), lng = Number(c[iLng]), sqmi = Number(c[iLand]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(sqmi)) continue;
+    out.set(c[iGeo], { lat, lng, sqmi });
+  }
+  return out;
+}
+
 function loadKey() {
   if (process.env.CENSUS_API_KEY) return process.env.CENSUS_API_KEY.trim();
   try {
@@ -160,12 +211,26 @@ function shortName(censusName) {
     }
   }
 
+  // Geography, from the same authority. A market with no gazetteer row keeps
+  // every other field and simply cannot be drawn - the map's own version of
+  // "a market with no readings is not scored", rather than a market placed at
+  // a guessed point.
+  let gaz = new Map();
+  try {
+    gaz = await fetchGazetteer();
+    console.log("\nGazetteer " + VINTAGE + ": " + gaz.size + " CBSAs with a point and a land area.");
+  } catch (e) {
+    console.error("\n!! Gazetteer failed: " + e.message);
+    console.error("   Rows will carry no geography and the ranking map will draw nothing.");
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const markets = chosen.concat(rescued).map((m, i) => {
     const n = shortName(m.census);
     const rank = i + 1;
     const tier = rank <= PRIMARY_THROUGH ? "primary"
       : rank <= SECONDARY_THROUGH ? "secondary" : "tertiary";
+    const g = gaz.get(m.code) || null;
     return {
       rank,
       market: n.label,
@@ -175,9 +240,16 @@ function shortName(censusName) {
         name: n.full,
         code: m.code,
         population: m.pop,
+        // Census's INTERNAL POINT, not a centroid: for a concave shape the
+        // centroid can fall outside the area entirely, so Census publishes a
+        // point guaranteed to lie within it. `land_sq_mi` is land only -
+        // AWATER is excluded, so a Great Lakes metro is not credited with the
+        // lake.
+        ...(g ? { lat: g.lat, lng: g.lng, land_sq_mi: g.sqmi } : {}),
         verified: true,
         verified_on: today,
-        verified_by: "scripts/build-market-tiers.js (Census ACS5 " + VINTAGE + ")",
+        verified_by: "scripts/build-market-tiers.js (Census ACS5 " + VINTAGE
+          + (g ? " + Gazetteer " + VINTAGE : "") + ")",
       },
       seeded: isSeeded(n.label, n.state),
     };
@@ -192,6 +264,11 @@ function shortName(censusName) {
     console.log("\n  Added below the population cut because CompNinja seeds them:");
     for (const r of rescued) console.log("    " + shortName(r.census).full + " (" + Number(r.pop).toLocaleString() + ")");
   }
+  const drawable = markets.filter((m) => Number.isFinite(m.cbsa.lat)).length;
+  console.log("  drawable  " + drawable + " of " + markets.length + " have a point and a land area");
+  if (drawable < markets.length) {
+    console.log("    (the rest are listed and ranked, and simply do not appear on the map)");
+  }
   console.log("\n  largest : " + markets[0].cbsa.name + "  " + markets[0].cbsa.population.toLocaleString());
   const lastRow = markets[markets.length - 1];
   console.log("  smallest: " + lastRow.cbsa.name + "  " + lastRow.cbsa.population.toLocaleString());
@@ -204,7 +281,13 @@ function shortName(censusName) {
         + "and vintage. A wrong CBSA code does not error — it returns real data for a different "
         + "city — which is why this list is generated rather than written.",
       generated: today,
-      vintage: "Census ACS5 " + VINTAGE,
+      vintage: "Census ACS5 " + VINTAGE + " + Census Gazetteer " + VINTAGE,
+      geography: "cbsa.lat/lng is Census's INTERNAL POINT (guaranteed inside the area, unlike a "
+        + "centroid on a concave shape) and cbsa.land_sq_mi is ALAND only, excluding water. The "
+        + "ranking map draws an EQUIVALENT-AREA CIRCLE from land_sq_mi: the circle's area equals "
+        + "the CBSA's real land area, so it is a true claim about SCALE and no claim at all about "
+        + "SHAPE. A CBSA is not a circle - Riverside-San Bernardino spans 27,277 sq mi because it "
+        + "reaches into the Mojave, and its circle is correspondingly the largest on the map.",
       selection: "Metropolitan statistical areas ranked by population. Primary = top "
         + PRIMARY_THROUGH + ", secondary = next " + (SECONDARY_THROUGH - PRIMARY_THROUGH)
         + ", tertiary = every remaining METROPOLITAN area. Micropolitan areas are excluded "

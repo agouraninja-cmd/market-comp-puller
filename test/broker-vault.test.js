@@ -2130,3 +2130,62 @@ test("parseCsv stamps each row with its file line, invisibly", () => {
   assert.equal(JSON.stringify(rows[1]), '["c","d"]');
   assert.deepEqual(Object.keys(rows[1]), ["0", "1"]);
 });
+
+// --- other shapes a book arrives in (2026-09-02) -----------------------------
+// A workbook and a paste both become CSV text before anything reads them.
+const { quoteCsvCell, gridToCsv, delimiterOf, normalizeDelimited, headerSignature } = require("../broker-vault");
+
+test("gridToCsv quotes commas, quotes and newlines, and never adds a formula guard", () => {
+  const out = gridToCsv([["- see lease", "+1 suite", '120 Main St, "Unit B"', "two\nlines"]]);
+  const back = parseCsv(out);
+  assert.deepEqual([...back[0]], ["- see lease", "+1 suite", '120 Main St, "Unit B"', "two\nlines"],
+    "inbound data round-trips untouched — an apostrophe here would be STORED");
+  assert.equal(csvCell("- see lease"), "'- see lease", "the export guard is unchanged");
+  assert.equal(quoteCsvCell("- see lease"), "- see lease");
+});
+
+test("gridToCsv pads blank rows back in so line numbers stay true to the sheet", () => {
+  const a = ["address", "price"]; Object.defineProperty(a, "line", { value: 1, enumerable: false });
+  const b = ["1 Main St", "100"]; Object.defineProperty(b, "line", { value: 4, enumerable: false });
+  const rows = parseCsv(gridToCsv([a, b]));
+  assert.equal(rows.length, 2, "the padding is blank lines, which parseCsv drops again");
+  assert.equal(rows[1].line, 4, "and the surviving row still names Excel's row 4");
+  assert.equal(gridToCsv([["x"]]), "x\n", "an unstamped row is simply appended");
+  assert.equal(gridToCsv([]), "");
+});
+
+test("delimiterOf reads the first non-blank line: tabs at least as many as commas mean a paste", () => {
+  assert.equal(delimiterOf("address\tprice\n1 Main St, Boise, ID\t100\n"), "\t");
+  assert.equal(delimiterOf("\n\naddress\tprice\n"), "\t", "leading blank lines are skipped");
+  assert.equal(delimiterOf("address,price\n1 Main St\t100\n"), ",", "the header decides, not a later cell");
+  assert.equal(delimiterOf("address\n1 Main St\n"), ",", "one column is CSV");
+  assert.equal(delimiterOf("﻿address\tprice\n"), "\t", "a BOM does not hide the first line");
+  assert.equal(delimiterOf(""), ",");
+});
+
+test("normalizeDelimited converts a tab-separated paste with quoting, never a tab-for-comma swap", () => {
+  const tsv = "address\tproperty_type\ttransaction\tdeal_date\n120 Main St, Boise, ID\tIndustrial\tsale\t2026-01-05\n";
+  const out = normalizeDelimited(tsv);
+  assert.equal(out.converted, true);
+  assert.match(out.csv, /^address,property_type,transaction,deal_date\n"120 Main St, Boise, ID",Industrial,sale,2026-01-05\n$/);
+  const parsed = parseUpload(out.csv, { hasMarket: () => true });
+  assert.equal(parsed.ok, true, JSON.stringify(parsed.errors));
+  assert.equal(parsed.rows[0].address, "120 Main St, Boise, ID");
+  const csv = "address,price\n1 Main St,100\n";
+  assert.deepEqual(normalizeDelimited(csv), { csv, converted: false }, "comma input is returned as it came");
+});
+
+test("parseCsv keeps the comma unless told otherwise, and a tab delimiter leaves commas inside cells alone", () => {
+  assert.deepEqual([...parseCsv("a,b\tc\n")[0]], ["a", "b\tc"]);
+  assert.deepEqual([...parseCsv("a,b\tc\n", { delimiter: "\t" })[0]], ["a,b", "c"]);
+});
+
+test("headerSignature names a file's shape: stable across case and punctuation, different across shapes", () => {
+  const a = headerSignature("Property Address,Sale Price,Sale Date\n1 Main St,100,2026-01-05\n");
+  const b = headerSignature("property-address,SALE PRICE,sale_date\n9 Oak Ave,200,2026-02-05\n");
+  assert.equal(a, b, "same normalized headers, whatever the rows hold");
+  assert.notEqual(a, headerSignature("Property Address,Sale Price\n1 Main St,100\n"), "a different column count is a different shape");
+  assert.notEqual(a, headerSignature("Address,Price,Date\n1 Main St,100,2026-01-05\n"));
+  assert.match(a, /^[0-9a-f]{8}-3$/, "a short hash plus the column count");
+  assert.equal(headerSignature(""), headerSignature("\n"), "an empty file has one shape");
+});

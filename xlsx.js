@@ -14,21 +14,39 @@
 // npm test prove every refusal below against files it builds itself.
 //
 // ---------------------------------------------------------------------------
-// IT READS TEXT. IT DOES NOT READ DATES, AND THAT IS THE POINT.
+// TWO MODES: TEXT (the default) AND TYPED (the vault's).
 // ---------------------------------------------------------------------------
 // Excel stores a date as a number counting days from 1900 (or from 1904 — it
 // is a per-workbook setting), and whether a given number IS a date is decided
 // by a format string in a different XML part. Getting that wrong turns a lease
-// expiry into 1970, or into 45678, silently. This reader deliberately does
-// none of it: a numeric cell comes back as the digits Excel stored.
+// expiry into 1970, or into 45678, silently.
 //
-// That is honest for the ONE caller it has — the firm's tenant contacts, whose
-// four fields (name, email, company, notes) are all text — and it is why this
-// must NOT be wired into the broker vault without doing the date work first.
-// The vault is mostly dates and money, and broker-vault.js refuses "1.2M"
-// rather than guess precisely because a wrong number nobody notices is worse
-// than a rejected row. A date silently read as 45678 walks straight past that
-// rule.
+// By DEFAULT this reader does none of it: a numeric cell comes back as the
+// digits Excel stored. That is honest for the firm's contacts list, whose four
+// fields (name, email, company, notes) are all text, and it is byte-identical
+// to what that caller has always received.
+//
+// With `{ typed: true }` (2026-09-02, the broker vault's door) a numeric cell
+// is read THROUGH its style: xl/styles.xml's <cellXfs> names the number format
+// each cell wears, and the format decides. A date-formatted serial becomes
+// "YYYY-MM-DD"; a percent-formatted fraction becomes the percentage Excel
+// SHOWS (0.0625 formatted "0.00%" is "6.25", which is what broker-vault.js's
+// parsePercent reads — handed 0.0625 it would store a cap rate 100x low and
+// nothing would refuse it); every other number is the digits Excel stored,
+// with scientific notation and float tails normalised. A serial in a General
+// cell is NOT a date — it stays "45678" and broker-vault.js refuses it by
+// name, which is the right answer for a column Excel itself does not show as
+// dates. Typed mode still does not read TIMES (a time-only format carries no
+// day, so its serial stays digits), currency symbols, styles reached only
+// through <cellStyleXfs>, or conditional formats; none of those decide a
+// vault value.
+//
+// Why the split lives here and not in the caller: only the reader can see the
+// style a cell wore, and a caller handed "45730" cannot recover whether Excel
+// showed it as a date. The vault is mostly dates and money, and broker-vault.js
+// refuses "1.2M" rather than guess precisely because a wrong number nobody
+// notices is worse than a rejected row — which is why typed mode converts only
+// what the workbook itself declares, and never infers.
 //
 // ---------------------------------------------------------------------------
 // IT REFUSES BY NAME. org-contacts.js's rule, and the vault extract's HEIC
@@ -260,6 +278,138 @@ function firstSheetPath(book, rels) {
   return /^xl\//.test(target) ? target : "xl/" + target;
 }
 
+// --- typed cells: dates and percents ---------------------------------------
+// The builtin number formats. Excel never writes these into styles.xml — ids
+// below 164 are implied by the file format — so the reader has to know them.
+// Only the verdicts that matter here are listed. Time-only formats are kept
+// APART from dates on purpose: their serial is a fraction of a day with no
+// day in it, and converting one yields 1899-12-30, a date nobody wrote.
+const BUILTIN_DATE = new Set([14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
+  50, 51, 52, 53, 54, 55, 56, 57, 58]);
+const BUILTIN_TIME = new Set([18, 19, 20, 21, 45, 46, 47]);
+const BUILTIN_PERCENT = new Set([9, 10]);
+
+/**
+ * What a number format MEANS: "date", "percent", "time" or "plain".
+ *
+ * A custom format code is read with everything that is not a token stripped
+ * first — quoted literals, [bracket] sections (colours, locales, conditions,
+ * elapsed [h]), backslash escapes, `_x` padding and `*x` fill — and only its
+ * first `;` section (positive numbers) consulted. Then `%` means percent; a
+ * `y` or `d` means a date; an `m` with no `h` or `s` beside it means a date
+ * (`mmm-yy` has a y anyway; this catches a bare `mmmm`); an `h` or `s` means a
+ * time. `General`, `#,##0.00`, `0.00E+00`, `@` and the accounting formats all
+ * come out plain, which is what makes a serial in an unformatted column stay a
+ * serial.
+ */
+function classifyNumFmt(id, numFmts) {
+  const n = Number(id);
+  if (!Number.isFinite(n)) return "plain";
+  if (BUILTIN_PERCENT.has(n)) return "percent";
+  if (BUILTIN_DATE.has(n)) return "date";
+  if (BUILTIN_TIME.has(n)) return "time";
+  const code = numFmts && typeof numFmts.get === "function" ? numFmts.get(n) : undefined;
+  if (code == null) return "plain";
+  const s = String(code).split(";")[0]
+    .replace(/"[^"]*"/g, "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\\./g, "")
+    .replace(/[_*]./g, "");
+  if (s.indexOf("%") >= 0) return "percent";
+  const l = s.toLowerCase();
+  if (/[yd]/.test(l)) return "date";
+  if (/[hs]/.test(l)) return "time";
+  if (/m/.test(l)) return "date";
+  return "plain";
+}
+
+/**
+ * An Excel day serial as "YYYY-MM-DD", or null when it is not a day at all.
+ *
+ * The 1900 system carries Lotus 1-2-3's phantom 29 February 1900: serials
+ * 1-59 count from 1899-12-31, 61 and up from 1899-12-30, and 60 itself is a
+ * day that never happened. The 1904 system counts from 1904-01-01 with no
+ * such gap. The time-of-day fraction is dropped — a deal closed on a day, not
+ * at 14:30. All arithmetic is UTC so the machine's own zone cannot shift a
+ * closing date by a day.
+ */
+function serialToIso(serial, date1904) {
+  const n = Math.floor(Number(serial));
+  if (!Number.isFinite(n)) return null;
+  let ms;
+  if (date1904) {
+    if (n < 0 || n > 2957003) return null;
+    ms = Date.UTC(1904, 0, 1) + n * 86400000;
+  } else {
+    if (n < 1 || n > 2958465 || n === 60) return null;
+    ms = (n < 60 ? Date.UTC(1899, 11, 31) : Date.UTC(1899, 11, 30)) + n * 86400000;
+  }
+  const d = new Date(ms);
+  const pad = (x) => String(x).padStart(2, "0");
+  return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate());
+}
+
+// The digits a person would type: 1.25E+6 -> "1250000", and the float tail
+// Excel sometimes stores (5.7000000000000002) trimmed to what it displays.
+function plainNumber(n) {
+  return String(Number(Number(n).toPrecision(15)));
+}
+
+// 0.0625 formatted "0.00%" is shown as 6.25%, and 6.25 is what parsePercent
+// downstream expects. 100x, then the same tail trim.
+function percentToText(n) {
+  return plainNumber(Number(n) * 100);
+}
+
+function workbookDate1904(workbookXml) {
+  const pr = String(workbookXml || "").match(new RegExp("<" + NS + "workbookPr\\b[^>]*>", "i"));
+  return !!(pr && /\bdate1904\s*=\s*"(1|true)"/i.test(pr[0]));
+}
+
+/**
+ * xl/styles.xml, reduced to the two things a cell's `s` attribute leads to:
+ * the custom format codes by id, and the numFmtId of each <cellXfs> entry in
+ * order (a cell's `s="3"` is index 3 of that list). <cellStyleXfs> is a
+ * different list — named styles, which a cell never indexes directly — and is
+ * deliberately not read.
+ */
+function readStyles(stylesXml) {
+  const numFmts = new Map();
+  const xfs = [];
+  if (!stylesXml) return { numFmts, xfs };
+  const nfRe = new RegExp("<" + NS + "numFmt\\b([^>]*?)/?>", "gi");
+  let m;
+  while ((m = nfRe.exec(stylesXml))) {
+    const id = Number((m[1].match(/\bnumFmtId\s*=\s*"(\d+)"/i) || [])[1]);
+    const code = (m[1].match(/\bformatCode\s*=\s*"([^"]*)"/i) || [])[1];
+    if (Number.isFinite(id) && code != null) numFmts.set(id, decodeEntities(code));
+  }
+  const block = textInTag(stylesXml, "cellXfs");
+  const xfRe = new RegExp("<" + NS + "xf\\b([^>]*?)/?>", "gi");
+  while ((m = xfRe.exec(block))) {
+    const id = Number((m[1].match(/\bnumFmtId\s*=\s*"(\d+)"/i) || [])[1]);
+    xfs.push(Number.isFinite(id) ? id : 0);
+  }
+  return { numFmts, xfs };
+}
+
+// One numeric cell in typed mode. `attrs` is the cell's own attribute string
+// (its `s` names the style); a style index the sheet does not have, or no
+// style at all, is format 0 — General — which is plain.
+function typedNumber(raw, attrs, styles, date1904) {
+  const n = Number(raw);
+  if (raw.trim() === "" || !Number.isFinite(n)) return raw;
+  const s = Number((attrs.match(/\bs\s*=\s*"(\d+)"/) || [])[1]);
+  const fmtId = Number.isFinite(s) && styles.xfs[s] != null ? styles.xfs[s] : 0;
+  const kind = classifyNumFmt(fmtId, styles.numFmts);
+  if (kind === "date") {
+    const iso = serialToIso(n, date1904);
+    return iso == null ? plainNumber(n) : iso;
+  }
+  if (kind === "percent") return percentToText(n);
+  return plainNumber(n);
+}
+
 /**
  * An .xlsx as a grid of strings.
  *
@@ -269,8 +419,11 @@ function firstSheetPath(book, rels) {
  * both doors without a second copy. Here `line` is the real Excel row number,
  * read off the row's own `r` attribute, so a refusal names the row the person
  * is actually looking at even when rows above it were blank.
+ *
+ * `{ typed: true }` reads dates and percents through the workbook's styles —
+ * see the header. Off by default, so the contacts caller is untouched.
  */
-function readXlsxGrid(bytes) {
+function readXlsxGrid(bytes, { typed = false } = {}) {
   const kind = sniffSpreadsheet(bytes);
   if (kind === "xls") {
     throw err("old_xls", "That is an older .xls file. Open it in Excel, save it as .xlsx (or as CSV), and try again.");
@@ -290,9 +443,14 @@ function readXlsxGrid(bytes) {
   }
 
   const strings = sharedStrings(zip.read("xl/sharedStrings.xml"));
-  const path = firstSheetPath(zip.read("xl/workbook.xml"), zip.read("xl/_rels/workbook.xml.rels"));
+  const workbook = zip.read("xl/workbook.xml");
+  const path = firstSheetPath(workbook, zip.read("xl/_rels/workbook.xml.rels"));
   const sheet = zip.read(path) || zip.read("xl/worksheets/sheet1.xml");
   if (sheet == null) throw err("no_sheet", "That spreadsheet has no readable sheet in it.");
+  // Read only in typed mode: the untyped caller never consults a style, and
+  // a styles part it cannot parse must not be able to fail a contacts import.
+  const date1904 = typed ? workbookDate1904(workbook) : false;
+  const styles = typed ? readStyles(zip.read("xl/styles.xml")) : null;
 
   const rows = [];
   const rowRe = new RegExp(
@@ -337,10 +495,16 @@ function readXlsxGrid(bytes) {
         // Excel could not compute holds no contact detail, and "#REF!" landing
         // in a name column would be stored as somebody's name.
         value = "";
+      } else if (typed && type === "d") {
+        // An ISO date cell type, which Excel itself never writes but other
+        // writers do. The day is the first ten characters.
+        value = String(textInTag(inner, "v")).trim().slice(0, 10);
       } else {
         // "str" (a formula's text result) and plain numbers alike — whatever
-        // Excel wrote. See this file's header on why numbers stay uninterpreted.
+        // Excel wrote. Untyped, numbers stay uninterpreted (see the header);
+        // typed, a plain number is read through its style.
         value = decodeEntities(textInTag(inner, "v"));
+        if (typed && type === "n") value = typedNumber(value, attrs, styles, date1904);
       }
 
       while (cells.length < at) cells.push("");
@@ -354,7 +518,11 @@ function readXlsxGrid(bytes) {
     rows.push(cells);
   }
 
-  return { rows, sheet: path };
+  return { rows, sheet: path, date1904 };
 }
 
-module.exports = { readXlsxGrid, sniffSpreadsheet, MAX_ROWS };
+module.exports = {
+  readXlsxGrid, sniffSpreadsheet, MAX_ROWS,
+  // The typed-mode rules, exported so a test can state each one on its own.
+  classifyNumFmt, serialToIso, percentToText, plainNumber, readStyles, workbookDate1904,
+};

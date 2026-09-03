@@ -90,10 +90,29 @@ function zip(files, opts = {}) {
   return Buffer.concat([...locals, cdBuf, eocd, comment]);
 }
 
-const WORKBOOK = (sheets) =>
-  `<?xml version="1.0"?><workbook><sheets>` +
+const WORKBOOK = (sheets, { date1904 = false } = {}) =>
+  `<?xml version="1.0"?><workbook>` +
+  (date1904 ? `<workbookPr date1904="1"/>` : "") +
+  `<sheets>` +
   sheets.map((s, i) => `<sheet name="${s}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join("") +
   `</sheets></workbook>`;
+
+/**
+ * A minimal xl/styles.xml: custom format codes by id, and <cellXfs> in order
+ * so a cell's s="N" is index N of `xfs`. Written the way Excel writes it —
+ * numFmts first, then the xf list — and knowing nothing of how it is read.
+ */
+const STYLES = ({ numFmts = {}, xfs = [0] } = {}) =>
+  `<?xml version="1.0"?><styleSheet>` +
+  (Object.keys(numFmts).length
+    ? `<numFmts count="${Object.keys(numFmts).length}">` +
+      Object.keys(numFmts).map((id) => `<numFmt numFmtId="${id}" formatCode="${esc(numFmts[id]).replace(/"/g, "&quot;")}"/>`).join("") +
+      `</numFmts>`
+    : "") +
+  `<cellStyleXfs count="1"><xf numFmtId="0"/></cellStyleXfs>` +
+  `<cellXfs count="${xfs.length}">` +
+  xfs.map((id) => `<xf numFmtId="${id}" applyNumberFormat="1"><alignment/></xf>`).join("") +
+  `</cellXfs></styleSheet>`;
 
 const RELS = (targets) =>
   `<?xml version="1.0"?><Relationships>` +
@@ -106,19 +125,24 @@ const SST = (items) =>
 const SHEET = (rowsXml) =>
   `<?xml version="1.0"?><worksheet><sheetData>${rowsXml}</sheetData></worksheet>`;
 
-/** A one-sheet workbook whose sheet XML is supplied whole. */
-function book(sheetXml, { sst = [], sheetName = "xl/worksheets/sheet1.xml" } = {}) {
+const esc = (s) => String(s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * A one-sheet workbook whose sheet XML is supplied whole. `styles` is either
+ * the object STYLES takes or a raw styles.xml string; `date1904` flips the
+ * workbook's epoch.
+ */
+function book(sheetXml, { sst = [], sheetName = "xl/worksheets/sheet1.xml", styles = null, date1904 = false } = {}) {
   const files = [
-    { name: "xl/workbook.xml", text: WORKBOOK(["Sheet1"]) },
+    { name: "xl/workbook.xml", text: WORKBOOK(["Sheet1"], { date1904 }) },
     { name: "xl/_rels/workbook.xml.rels", text: RELS([sheetName.replace(/^xl\//, "")]) },
     { name: sheetName, text: sheetXml },
   ];
   if (sst.length) files.push({ name: "xl/sharedStrings.xml", text: SST(sst) });
+  if (styles) files.push({ name: "xl/styles.xml", text: typeof styles === "string" ? styles : STYLES(styles) });
   return zip(files);
 }
-
-const esc = (s) => String(s)
-  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /**
  * The ordinary case: a grid of strings as a workbook, written the way Excel
@@ -126,8 +150,12 @@ const esc = (s) => String(s)
  *
  * `null` in a row means Excel omitted that cell entirely, which is what it
  * does for a blank; an empty row array means a blank line.
+ *
+ * A cell given as `{ n: 45730, s: 1 }` is written NUMERIC — `<c s="1"><v>`
+ * with no `t` — which is how Excel stores a date, a price or a percent; `s`
+ * indexes the `styles.xfs` list. Everything else stays a shared string.
  */
-function xlsxFromRows(rows) {
+function xlsxFromRows(rows, { styles = null, date1904 = false } = {}) {
   const strings = [];
   const idOf = (s) => {
     const at = strings.indexOf(s);
@@ -146,12 +174,16 @@ function xlsxFromRows(rows) {
     const line = r + 1;
     const xml = (cells || []).map((v, c) => {
       if (v == null || v === "") return "";
+      if (typeof v === "object" && v.n != null) {
+        const s = v.s != null ? ` s="${v.s}"` : "";
+        return `<c r="${colName(c)}${line}"${s}><v>${v.n}</v></c>`;
+      }
       return `<c r="${colName(c)}${line}" t="s"><v>${idOf(String(v))}</v></c>`;
     }).join("");
     return `<row r="${line}">${xml}</row>`;
   }).join("");
 
-  return book(SHEET(body), { sst: strings.map((s) => `<si><t>${esc(s)}</t></si>`) });
+  return book(SHEET(body), { sst: strings.map((s) => `<si><t>${esc(s)}</t></si>`), styles, date1904 });
 }
 
-module.exports = { zip, book, xlsxFromRows, WORKBOOK, RELS, SST, SHEET, crc32 };
+module.exports = { zip, book, xlsxFromRows, WORKBOOK, RELS, SST, SHEET, STYLES, crc32 };

@@ -166,6 +166,10 @@ const COLUMNS = [
   // rent_basis the one 029's rule stands on, renewal_notified_at the one that
   // ships unwritten so mail can be wired later without a migration.
   ["org_leases",        ["option_notice_date", "rent_basis", "renewal_notified_at"], "048-org-leases.sql"],
+  // 049: getCsvMapping names signature in its SELECT on every inspect. Its
+  // absence is silent (both halves swallow their errors), so the mapper just
+  // stops remembering anything — which nobody reports. Named so the tool says.
+  ["broker_csv_mappings", ["signature"],                        "049-broker-csv-mappings-signature.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

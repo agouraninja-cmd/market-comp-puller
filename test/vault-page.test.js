@@ -222,6 +222,11 @@ const GUTCHECK = require("../gut-check");
 // The mapper tests answer /api/vault/inspect out of the real module, exactly
 // as server.js does, so the page is pinned against its actual producer.
 const VAULT = require("../broker-vault");
+// The Excel door (2026-09-02): the inspect fake below reads a workbook the
+// way the route does, and tests build real workbooks with the same writer
+// test/xlsx.test.js uses.
+const XLSX = require("../xlsx.js");
+const { xlsxFromRows } = require("./helpers/make-xlsx.js");
 
 // A <select> as the mapper's own emitted markup describes it: the source
 // column on data-src, and the option carrying `selected` as the value. pick()
@@ -445,10 +450,34 @@ async function runPage(comps, benchResult, opts, identity) {
       return benchResult ? benchResult() : Promise.resolve(jsonResponse(200, { buckets: [] }));
     }
     if (u.indexOf("/api/vault/inspect") === 0) {
-      const info = VAULT.inspectCsv(String(calls[calls.length - 1].body.csv || ""));
+      // Mirrors the real route's three shapes (2026-09-02): a workbook is
+      // read typed and converted, a tab-separated paste is converted, and
+      // the converted text rides back as `csv` exactly as server.js sends
+      // it. A reader refusal answers 400 with its own message, as the route
+      // does.
+      const b = calls[calls.length - 1].body || {};
+      let csv = String(b.csv || "");
+      const extra = {};
+      if (typeof b.xlsx === "string") {
+        try {
+          csv = VAULT.gridToCsv(XLSX.readXlsxGrid(Buffer.from(b.xlsx, "base64"), { typed: true }).rows);
+        } catch (e) {
+          return Promise.resolve(jsonResponse(400, { error: e.message }));
+        }
+        extra.csv = csv;
+      } else {
+        const norm = VAULT.normalizeDelimited(csv);
+        csv = norm.csv;
+        if (norm.converted) extra.csv = csv;
+      }
+      const info = VAULT.inspectCsv(csv);
       if (!info.ok) return Promise.resolve(jsonResponse(400, { error: info.error }));
-      return Promise.resolve(jsonResponse(200, Object.assign({}, info, {
+      return Promise.resolve(jsonResponse(200, Object.assign({}, info, extra, {
         remembered: opts.remembered || null,
+        // Mirrors the real route's market suggestion, through the REAL
+        // module: which addresses have no city and state under the mapping
+        // the page sent, and the candidates in the server's own order.
+        marketSuggest: marketSuggestOf(VAULT.csvAddresses(csv, { mapping: b.mapping || null }), opts),
         // Mirrors the real /api/vault/inspect: address parts ride along so a
         // sheet keeping Address, City and State in three columns can say so,
         // and constantTargets says which required fields may be answered once
@@ -463,6 +492,13 @@ async function runPage(comps, benchResult, opts, identity) {
       return opts.extract
         ? opts.extract(init)
         : Promise.resolve(jsonResponse(200, { filename: "book.pdf", rows: [] }));
+    }
+    if (u.indexOf("/api/vault/confirm-market") === 0) {
+      const req = calls[calls.length - 1].body;
+      const n = (req.addresses || []).length;
+      return opts.confirm
+        ? opts.confirm(init)
+        : Promise.resolve(jsonResponse(200, { market: req.market, checked: n, confirmed: n, results: [] }));
     }
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload(init, u) : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
@@ -550,6 +586,18 @@ async function runPage(comps, benchResult, opts, identity) {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+// server.js's addressHasMarket, restated (test/vault-address-market.test.js).
+const { marketOf } = require("../market");
+const hasMarket = (a) => /^[^,]+,\s[A-Z]{2}$/.test(marketOf(a));
+function marketSuggestOf(addresses, opts) {
+  const s = VAULT.suggestMarketCompletion(addresses, {
+    hasMarket, marketOf,
+    vaultMarkets: (opts && opts.vaultMarkets) || [],
+    coverageMarkets: (opts && opts.coverageMarkets) || [],
+  });
+  return { count: s.incomplete.length, sample: s.incomplete.slice(0, 10), candidates: s.candidates };
+}
 
 // Picking a file is the only way into the mapper, so the tests come in that
 // way too: the change handler on the one <input type=file>.
@@ -824,9 +872,12 @@ const MAPPABLE_CSV =
   "Property Address,Type,Deal Type,Sale Date,Sq Ft,Sale Price\n" +
   "1 Main St,Industrial,Sale,2026-01-05,10000,2450000\n";
 // Already in our own column names: the screen must not appear at all.
+// Whole addresses, deliberately: a clean template whose addresses have no
+// city and state now opens the mapper with that one question (2026-09-02),
+// so "1 Main St" alone would no longer be the clean case this file names.
 const CLEAN_CSV =
   "address,property_type,transaction,deal_date\n" +
-  "1 Main St,Industrial,sale,2026-01-05\n";
+  "\"1 Main St, Boise, ID\",Industrial,sale,2026-01-05\n";
 
 test("the ignored line names the broker's own headers, never our synthetic keys", async () => {
   // Live, this read "Will be ignored: deal, closed, column_4,
@@ -1254,9 +1305,13 @@ test("editing a cell posts the edited value", async () => {
     upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
   });
   await choosePdf(doc, "Q2.pdf");
+  // A row that read cleanly is text until Edit is pressed (2026-09-02).
+  assert.ok(!doc.getElementById("pdfBody").querySelectorAll("input").some((el) => el.type === "text"),
+    "a clean row must not open as inputs");
+  pressEdit(doc, 0);
   const addr = doc.getElementById("pdfBody").querySelectorAll("input")
     .find((el) => el.getAttribute("data-k") === "address");
-  assert.ok(addr, "the confirm table should emit an address input");
+  assert.ok(addr, "Edit should turn the row into inputs, address included");
   addr.value = "999 New St, Boise ID";
   addr.fire("input");
   doc.getElementById("pdfGo").click();
@@ -1288,14 +1343,24 @@ test("Import posts only checked rows under the PDF filename", async () => {
   assert.equal(up[0].body.rows[0].address, "4100 W Franklin Rd, Boise ID");
 });
 
-test("a non-csv non-pdf file never hits inspect", async () => {
+test("a file of a kind no door takes never hits inspect, and the message names every kind", async () => {
   const { doc, calls } = await runPage([]);
   doc.getElementById("file").fire("change", {
-    target: { files: [{ name: "book.xlsx", type: "application/vnd.ms-excel", size: 5 * 1024 * 1024, text: "PK" }], value: "x" },
+    target: { files: [{ name: "memo.docx", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 1200, text: "PK" }], value: "x" },
   });
   await tick();
   assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
-  assert.match(doc.getElementById("res").innerHTML, /Use a \.csv, a \.pdf, or a screenshot/);
+  assert.match(doc.getElementById("res").innerHTML, /Use a \.csv, an Excel \.xlsx, a \.pdf, or a screenshot/);
+});
+
+test("a workbook over 4 MB is refused in the browser, before any request", async () => {
+  const { doc, calls } = await runPage([]);
+  doc.getElementById("file").fire("change", {
+    target: { files: [{ name: "book.xlsx", type: "application/vnd.ms-excel", size: 5 * 1024 * 1024, dataUrl: "data:;base64,UEsDBA==" }], value: "x" },
+  });
+  await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.match(doc.getElementById("res").innerHTML, /too large to read/);
 });
 
 // ---------------------------------------------------------------------------
@@ -1344,7 +1409,7 @@ test("a jpeg and a webp take the same door as a png", async () => {
 // ---------------------------------------------------------------------------
 // Several files at once (2026-09-02)
 // ---------------------------------------------------------------------------
-const MF_CSV = "address,property_type,transaction,deal_date\n100 Main St Boise ID,Industrial,sale,2026-01-09\n";
+const MF_CSV = "address,property_type,transaction,deal_date\n\"100 Main St, Boise, ID\",Industrial,sale,2026-01-09\n";
 const mfSettle = async () => { for (let i = 0; i < 6; i++) await tick(); };
 const mfPick = async (doc, files) => {
   doc.getElementById("file").fire("change", { target: { files, value: "x" } });
@@ -3604,11 +3669,17 @@ test("a numeric figure is shown formatted and held raw", async () => {
     })),
   });
   await choosePdf(doc, "Q2.pdf");
+  // A clean row is text first (2026-09-02), read against the page as-is...
+  const ro = doc.getElementById("pdfBody").innerHTML;
+  assert.match(ro, /<td class="ro" data-i="0">\$4,250,000<\/td>/, "the cell should read like the page it came from");
+  assert.match(ro, /<td class="ro" data-i="0">9,237<\/td>/);
+  // ...and the same convention holds once it is opened for editing.
+  pressEdit(doc, 0);
   const cells = doc.getElementById("pdfBody").querySelectorAll("input");
   const price = cells.find((el) => el.getAttribute("data-k") === "price");
   const size = cells.find((el) => el.getAttribute("data-k") === "size_sqft");
-  assert.equal(price.value, "$4,250,000", "the cell should read like the page it came from");
-  assert.equal(price.getAttribute("data-raw"), "4250000", "and still HOLD the raw figure");
+  assert.equal(price.value, "$4,250,000", "the input shows the formatted reading");
+  assert.equal(price.getAttribute("data-raw"), "4250000", "and still HOLDS the raw figure");
   assert.equal(size.value, "9,237");
   assert.equal(size.getAttribute("data-raw"), "9237");
 });
@@ -3648,6 +3719,7 @@ test("focus shows the raw figure, blur shows the formatted one, and the import p
     upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })); },
   });
   await choosePdf(doc, "Q2.pdf");
+  pressEdit(doc, 0); // a clean row is text until Edit (2026-09-02)
   const price = doc.getElementById("pdfBody").querySelectorAll("input")
     .find((el) => el.getAttribute("data-k") === "price");
 
@@ -3788,6 +3860,9 @@ test("a basis the sheet stated, or a hand-typed one, is never overwritten", asyn
     ]),
   });
   await choosePdf(doc, "leases.pdf");
+  // Every row as inputs, so the stamped cell can be read off data-raw; a
+  // row the stamp cures would otherwise fold back to text (2026-09-02).
+  doc.getElementById("pdfEditAll").click();
 
   const sel = doc.getElementById("pdfBasis");
   sel.value = "annual";
@@ -3844,4 +3919,538 @@ test("a shared comp offers Discuss with itself attached; an unshared one offers 
   assert.match(rows, /data-firm="c1" data-on="1">Shared<\/button> <a class="lnk" href="\/messages\?say=About%20100%20Main%20St&amp;comp=c1"/,
     "the shared comp's Discuss seeds the message with the comp attached");
   assert.doesNotMatch(rows, /comp=c2/, "an unshared comp is not discussed — discussing it would be sending it, which is Share's act");
+});
+
+
+// ---------------------------------------------------------------------------
+// Suggested "City, ST" for bare addresses (2026-09-02)
+//
+// A firm's own sheet writes "123 Main St" because everyone there knows which
+// city, and the import refused every such row by line number. The screen now
+// asks once, with the markets the broker's own records already name, and
+// nothing is applied until a person picks. test/vault-market-complete.test.js
+// proves the module; these prove the page: what renders, what is posted, and
+// that a hand-typed address always wins.
+// ---------------------------------------------------------------------------
+
+const BARE_CLEAN_CSV =
+  "address,property_type,transaction,deal_date\n" +
+  "\"1 Main St, Meridian, ID\",Industrial,sale,2026-01-05\n" +
+  "2 Second St,Industrial,sale,2026-01-06\n" +
+  "3 Third St,Industrial,sale,2026-01-07\n";
+
+const BARE_MAPPED_CSV =
+  "Property Address,Town,ST,Type,Deal,Sale Date\n" +
+  "1 Main St,Meridian,ID,Industrial,Sale,2026-01-05\n" +
+  "2 Second St,,,Industrial,Sale,2026-01-06\n";
+
+const marketSelect = (doc, id) => doc.getElementById(id);
+const optionValues = (html) => [...html.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
+
+test("the page's market needle is broker-vault's own refusal — the mirror pin", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const m = /var MARKET_NEEDLE="([^"]+)"/.exec(script);
+  assert.ok(m, "the page must hold the needle as a named constant");
+  assert.equal(m[1], VAULTMOD.MARKET_REFUSAL,
+    "rewording broker-vault.js's refusal silently stops the selector curing anything");
+});
+
+test("joinMarket agrees with composeAddress on the shapes that matter — the mirror pin", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const src = /function joinMarket\(bare,market\)\{([\s\S]*?)\n  \}/.exec(script);
+  assert.ok(src, "joinMarket must exist as a named function");
+  const joinMarket = new Function("bare", "market", src[1]);
+  for (const bare of ["1 A St", "1 A St, Boise", "1 A St, Boise, ID", "1 A St, boise"]) {
+    assert.equal(joinMarket(bare, "Boise, ID"), VAULTMOD.composeAddress(bare, "Boise", "ID"),
+      `the address a cell shows after a pick must be the address the import stores (${bare})`);
+  }
+});
+
+test("both market rows are present and hidden on first paint", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  for (const id of ["mapMarket", "mapMarketPick", "mapMarketOther", "mapMarketCheck",
+                    "pdfMarketRow", "pdfMarketPick", "pdfMarketOther", "pdfMarketCheck"]) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} is missing`);
+  }
+  assert.match(html, /id="mapMarket" class="hide"/);
+  assert.match(html, /class="note hide" id="pdfMarketRow"/);
+});
+
+test("a clean template with bare addresses opens the mapper with the one question, and posts nothing", async () => {
+  const { doc, calls } = await runPage([], null, { vaultMarkets: ["Boise, ID"], coverageMarkets: ["Nampa, ID"] });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0,
+    "importing straight away would refuse those rows with the answer sitting right here");
+  assert.ok(!doc.getElementById("mapSec").classList.contains("hide"), "the mapper opens");
+  const row = doc.getElementById("mapMarket");
+  assert.ok(!row.classList.contains("hide"), "the market row shows");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 addresses have no city or state/);
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 Second St.*line 3/);
+  const opts = doc.getElementById("mapMarketPick").innerHTML;
+  assert.deepEqual(optionValues(opts), ["", "Meridian, ID", "Boise, ID", "Nampa, ID", "__other"],
+    "this file first, then the vault, then coverage, then a free-text door");
+  assert.match(opts, /<option value="" selected>/, "nothing is pre-selected");
+  assert.match(opts, /Elsewhere in this file[\s\S]*In your vault[\s\S]*Markets you cover/);
+  assert.equal(doc.getElementById("mapGo").disabled, false,
+    "Import is not held hostage: blank means those rows are left out, as they always were");
+});
+
+test("a clean template whose addresses are whole still imports without the screen", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 1);
+  assert.equal(doc.getElementById("mapBody").innerHTML, "", "the mapping screen was not rendered");
+});
+
+test("picking a market posts completeWith, checks the streets, and the result says so", async () => {
+  const { doc, calls } = await runPage([], null, {
+    vaultMarkets: ["Boise, ID"],
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 3, completed: 2, completedAs: "Boise, ID" })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  const sel = marketSelect(doc, "mapMarketPick");
+  sel.value = "Boise, ID";
+  sel.fire("change");
+  await tick();
+  const confirms = calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0);
+  assert.equal(confirms.length, 1, "the check runs once, after the pick");
+  assert.deepEqual(confirms[0].body, { market: "Boise, ID", addresses: ["2 Second St", "3 Third St"] });
+  assert.match(doc.getElementById("mapMarketCheck").textContent, /2 of 2 found in Boise, ID/);
+
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.completeWith, "Boise, ID");
+  assert.match(doc.getElementById("res").innerHTML, /2 addresses completed as Boise, ID/);
+});
+
+test("with nothing picked the upload carries no completeWith at all", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, skipped: 2 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.ok(!("completeWith" in up[0].body), "byte for byte what it always sent");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0).length, 0,
+    "no pick, so no street ever left for a city nobody chose");
+});
+
+test("a typed market that is not City, ST holds Import; a well-shaped one is posted", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 3 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  const sel = marketSelect(doc, "mapMarketPick");
+  sel.value = "__other"; sel.fire("change");
+  assert.ok(!doc.getElementById("mapMarketOther").classList.contains("hide"), "the free-text door opens");
+  const other = doc.getElementById("mapMarketOther");
+  other.value = "Boise"; other.fire("input");
+  assert.equal(doc.getElementById("mapGo").disabled, true);
+  assert.match(doc.getElementById("mapMsg").textContent, /City, ST/);
+  other.value = "Caldwell, ID"; other.fire("input"); other.fire("change");
+  assert.equal(doc.getElementById("mapGo").disabled, false);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up[0].body.completeWith, "Caldwell, ID");
+});
+
+test("mapping City and State columns makes the question disappear, re-asking inspect only for that", async () => {
+  const { doc, calls } = await runPage([]);
+  await chooseFile(doc, BARE_MAPPED_CSV);
+  const inspects = () => calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0);
+  // The screen opened from the file's own names; the address trio the
+  // mapper starts with differs (Property Address -> address), so one re-ask.
+  await tick();
+  const n0 = inspects().length;
+  assert.ok(n0 >= 2, "the mapper re-asked with its own mapping");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 addresses have no city or state/);
+
+  // A column that is not part of the address trio changes nothing.
+  selectFor(doc, "type").pick("property_type");
+  await tick();
+  assert.equal(inspects().length, n0, "an unrelated column must not re-ask");
+
+  selectFor(doc, "town").pick("address_city");
+  selectFor(doc, "st").pick("address_state");
+  await tick();
+  assert.ok(inspects().length > n0, "the address trio changed, so it re-asked");
+  const last = inspects()[inspects().length - 1].body.mapping;
+  assert.equal(last.town, "address_city");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /1 address has no city or state/,
+    "the row whose City cell is blank is the one still asked about");
+});
+
+// --- the confirm table --------------------------------------------------------
+
+function extractWithMarket(rows, opts) {
+  const classified = VAULTMOD.classifyExtractRows(rows, { hasMarket });
+  return () => Promise.resolve(jsonResponse(200, {
+    filename: "sheet.pdf",
+    rows: classified,
+    marketSuggest: marketSuggestOf(classified.map((r, i) => ({ index: i, address: r.values.address })), opts),
+  }));
+}
+const saleValues = (address, extra) => Object.assign({
+  address, property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12", price: "1000000",
+}, extra || {});
+const addressCells = (doc) => doc.getElementById("pdfBody").querySelectorAll("input")
+  .filter((el) => el.getAttribute("data-k") === "address");
+const checkboxes = (doc) => doc.getElementById("pdfBody").querySelectorAll("input")
+  .filter((el) => el.type === "checkbox");
+// The address a row SHOWS. Since the confirm table triages (2026-09-02) a row
+// that reads clean is text and only a refused or hand-opened row is inputs,
+// so a stamped-and-cured row is read off its text cell.
+function rowAddress(doc, i) {
+  const inp = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "address" && Number(el.getAttribute("data-i")) === i);
+  if (inp) return inp.getAttribute("data-raw");
+  const m = new RegExp("<td class=\"ro\" data-i=\"" + i + "\">([^<]*)</td>").exec(doc.getElementById("pdfBody").innerHTML);
+  return m ? m[1] : null;
+}
+
+test("a bare street on a photographed sheet is not ready, and the market row shows", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("4100 W Franklin Rd"), saleValues("1 Ready Way, Boise, ID")],
+      { vaultMarkets: ["Boise, ID"] }),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  assert.equal(checkboxes(doc)[0].checked, false, "a row the import would refuse must not start checked");
+  assert.equal(checkboxes(doc)[1].checked, true);
+  assert.match(doc.getElementById("pdfStrip").textContent, /1 need a city/);
+  assert.ok(!doc.getElementById("pdfMarketRow").classList.contains("hide"));
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /1 address has no city or state/);
+  assert.deepEqual(optionValues(doc.getElementById("pdfMarketPick").innerHTML), ["", "Boise, ID", "__other"]);
+});
+
+test("the market row renders only when a row can take it", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("1 Ready Way, Boise, ID")]),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  assert.ok(doc.getElementById("pdfMarketRow").classList.contains("hide"));
+});
+
+test("picking a market stamps the address cells, cures the market-only rows, and posts the completed rows", async () => {
+  let posted = null;
+  const { doc, calls } = await runPage([], null, {
+    extract: extractWithMarket([
+      saleValues("4100 W Franklin Rd"),                              // only blocker: the market
+      saleValues("88 Freight Ln", { deal_date: "soon" }),           // a bad date too
+      saleValues("1 Ready Way, Boise, ID"),
+    ], { vaultMarkets: ["Boise, ID"] }),
+    upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 2 })); },
+  });
+  await choosePdf(doc, "sheet.pdf");
+  const sel = doc.getElementById("pdfMarketPick");
+  sel.value = "Boise, ID"; sel.fire("change");
+  await tick();
+
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Boise, ID",
+    "the stamp is visible in the row's own address cell (cured, so it now reads as text)");
+  assert.equal(rowAddress(doc, 1), "88 Freight Ln, Boise, ID", "still refused for its date, so still an input");
+  assert.equal(rowAddress(doc, 2), "1 Ready Way, Boise, ID", "a whole address is untouched");
+  const boxes = checkboxes(doc);
+  assert.equal(boxes[0].checked, true, "the row whose ONLY blocker was the market cures itself");
+  assert.equal(boxes[1].checked, false, "a row with another problem keeps it");
+  assert.match(doc.getElementById("pdfStrip").textContent, /1 need a date/);
+  const confirms = calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0);
+  assert.equal(confirms.length, 1);
+  assert.deepEqual(confirms[0].body.addresses, ["4100 W Franklin Rd", "88 Freight Ln"]);
+  assert.match(doc.getElementById("pdfMarketCheck").textContent, /2 of 2 found in Boise, ID/);
+
+  doc.getElementById("pdfGo").click();
+  await tick();
+  assert.ok(posted);
+  assert.deepEqual(posted.rows.map((r) => r.address), ["4100 W Franklin Rd, Boise, ID", "1 Ready Way, Boise, ID"],
+    "the completed address travels IN the row — zero server change, one validation path");
+  assert.ok(!("completeWith" in posted), "the rows door never carries the whole-file answer");
+});
+
+test("a hand-typed address is never overwritten, a re-pick corrects only the stamped ones, and blank puts them back", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("4100 W Franklin Rd"), saleValues("88 Freight Ln")],
+      { vaultMarkets: ["Boise, ID", "Nampa, ID"] }),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  // The broker types the second row's address by hand.
+  const typed = addressCells(doc)[1];
+  typed.value = "88 Freight Ln, Caldwell, ID"; typed.fire("input");
+
+  const sel = doc.getElementById("pdfMarketPick");
+  sel.value = "Boise, ID"; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Boise, ID");
+  assert.equal(rowAddress(doc, 1), "88 Freight Ln, Caldwell, ID",
+    "a typed address always wins");
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /1 address has/,
+    "the typed row is no longer one the selector may write into");
+
+  sel.value = "Nampa, ID"; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Nampa, ID",
+    "a stamped row follows a corrected pick, recomposed from the bare street");
+
+  sel.value = ""; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd", "blank puts it back");
+  assert.equal(checkboxes(doc)[0].checked, false, "and it is not ready again");
+  // Two, not one: a hand-typed cell is not re-validated in the browser (the
+  // basis precedent — the server recomputes every verdict at import), so the
+  // typed row keeps the flag it arrived with until then.
+  assert.match(doc.getElementById("pdfStrip").textContent, /2 need a city/);
+});
+
+test("several files merge their market questions into one row", async () => {
+  let n = 0;
+  const { doc } = await runPage([], null, {
+    extract: () => {
+      n++;
+      const rows = n === 1
+        ? [saleValues("1 Bare St"), saleValues("9 Whole St, Meridian, ID")]
+        : [saleValues("2 Bare St"), saleValues("8 Whole St, Boise, ID")];
+      const classified = VAULTMOD.classifyExtractRows(rows, { hasMarket });
+      return Promise.resolve(jsonResponse(200, {
+        filename: n === 1 ? "a.pdf" : "b.png", rows: classified,
+        marketSuggest: marketSuggestOf(classified.map((r, i) => ({ index: i, address: r.values.address })),
+          { coverageMarkets: ["Nampa, ID"] }),
+      }));
+    },
+  });
+  doc.getElementById("file").fire("change", { target: { files: [
+    { name: "a.pdf", type: "application/pdf", size: 1200, dataUrl: "data:application/pdf;base64,JVBERi0x" },
+    { name: "b.png", type: "image/png", size: 1200, dataUrl: "data:image/png;base64,iVBORw0KGgo=" },
+  ], value: "x" } });
+  for (let i = 0; i < 6; i++) await tick();
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /2 addresses have no city or state/);
+  assert.deepEqual(optionValues(doc.getElementById("pdfMarketPick").innerHTML),
+    ["", "Meridian, ID", "Boise, ID", "Nampa, ID", "__other"],
+    "each file's own markets first, deduped, then the shared coverage");
+});
+
+// ---------------------------------------------------------------------------
+// The confirm table triages (2026-09-02)
+// ---------------------------------------------------------------------------
+// Rows are cloned per test: openPdfPreview writes checked/editing onto the
+// row objects, and a constant shared between tests would carry one test's
+// state into the next.
+const CLEAN_ROW = { values: { address: "4100 W Franklin Rd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12", price: "4250000" }, error: null };
+const CLEAN_ROW_2 = { values: { address: "700 S Capitol Blvd, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-01-20", price: "980000" }, error: null };
+const BAD_ROW = { values: { address: "500 E Front St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-02-01", price: "1.2M" }, error: '"1.2M" is not a plain number — write 1200000, not 1.2M' };
+const clone = (r) => JSON.parse(JSON.stringify(r));
+// The Edit control is reached by delegation on the table body, so the stub
+// hands the handler an event whose target answers closest("[data-edit]").
+function pressEdit(doc, i) {
+  doc.getElementById("pdfBody").fire("click", {
+    target: { closest: (sel) => (sel === "[data-edit]" ? { getAttribute: () => String(i) } : null) },
+  });
+}
+const textInputs = (doc) => doc.getElementById("pdfBody").querySelectorAll("input").filter((el) => el.type === "text");
+async function pdfPage(rows, upload) {
+  return runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, { filename: "Q2.pdf", rows: rows.map(clone) })),
+    upload: upload || (() => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }))),
+  });
+}
+
+test("a clean row is text with an Edit control; a refused row is inputs and says why", async () => {
+  const { doc } = await pdfPage([CLEAN_ROW, BAD_ROW]);
+  await choosePdf(doc, "Q2.pdf");
+  const html = doc.getElementById("pdfBody").innerHTML;
+  const texts = textInputs(doc);
+  assert.ok(texts.length > 0, "the refused row opens as inputs");
+  assert.ok(texts.every((el) => el.getAttribute("data-i") === "1"), "only the refused row opens as inputs");
+  assert.match(html, /<td class="ro" data-i="0">[^<]*4,250,000<\/td>/, "the clean row shows the formatted figure as text");
+  assert.match(html, /data-edit="0">Edit</, "the clean row carries Edit");
+  assert.doesNotMatch(html, /data-edit="1"/, "a refused row is already open and needs no Edit");
+  assert.match(html, /<tr class="pdf-err">[\s\S]*not a plain number/, "the refused row is followed by its reason");
+  assert.match(doc.getElementById("pdfStrip").textContent, /2 found · 1 ready · 1 need a fix/);
+});
+
+test("a clean table says so, and the top and bottom Import buttons carry one state", async () => {
+  const { doc } = await pdfPage([CLEAN_ROW, CLEAN_ROW_2]);
+  await choosePdf(doc, "Q2.pdf");
+  assert.match(doc.getElementById("pdfStrip").textContent, /2 found · 2 ready · everything reads clean/);
+  assert.equal(doc.getElementById("pdfGoTop").textContent, "Import 2 comps");
+  assert.equal(doc.getElementById("pdfGo").textContent, "Import 2 comps");
+  assert.equal(doc.getElementById("pdfGoTop").disabled, false);
+  assert.equal(textInputs(doc).length, 0, "nothing to edit is offered as inputs");
+});
+
+test("the top Import button posts the same rows the bottom one would", async () => {
+  const { doc, calls } = await pdfPage([CLEAN_ROW]);
+  await choosePdf(doc, "Q2.pdf");
+  doc.getElementById("pdfGoTop").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.rows[0].address, CLEAN_ROW.values.address);
+});
+
+test("Edit opens one row, and an edit made there is what imports", async () => {
+  const { doc, calls } = await pdfPage([CLEAN_ROW, CLEAN_ROW_2]);
+  await choosePdf(doc, "Q2.pdf");
+  pressEdit(doc, 1);
+  const texts = textInputs(doc);
+  assert.ok(texts.length > 0 && texts.every((el) => el.getAttribute("data-i") === "1"), "only the edited row opened");
+  const price = texts.find((el) => el.getAttribute("data-k") === "price");
+  price.value = "990000";
+  price.fire("input");
+  doc.getElementById("pdfGo").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up[0].body.rows[1].price, "990000");
+  assert.equal(up[0].body.rows[0].price, "4250000", "the untouched row imports as read");
+});
+
+test("Review every cell opens every row; pressing it again folds the clean ones back", async () => {
+  const { doc } = await pdfPage([CLEAN_ROW, CLEAN_ROW_2, BAD_ROW]);
+  await choosePdf(doc, "Q2.pdf");
+  doc.getElementById("pdfEditAll").click();
+  let seen = new Set(textInputs(doc).map((el) => el.getAttribute("data-i")));
+  assert.deepEqual([...seen].sort(), ["0", "1", "2"]);
+  assert.equal(doc.getElementById("pdfEditAll").textContent, "Done reviewing");
+  doc.getElementById("pdfEditAll").click();
+  seen = new Set(textInputs(doc).map((el) => el.getAttribute("data-i")));
+  assert.deepEqual([...seen], ["2"], "a row that needs a fix stays open either way");
+  assert.equal(doc.getElementById("pdfEditAll").textContent, "Review every cell");
+});
+
+test("a row opened by hand survives the basis selector's re-render", async () => {
+  const lease = { values: { address: "9 Lease Ln, Boise ID", property_type: "Industrial", transaction: "lease", deal_date: "2026-02-01", rent_psf: "1.35" }, error: "rent_basis is required with a rent — write annual or monthly" };
+  const { doc } = await pdfPage([CLEAN_ROW, lease]);
+  await choosePdf(doc, "Q2.pdf");
+  pressEdit(doc, 0);
+  doc.getElementById("pdfBasis").value = "monthly";
+  doc.getElementById("pdfBasis").fire("change");
+  const seen = new Set(textInputs(doc).map((el) => el.getAttribute("data-i")));
+  assert.ok(seen.has("0"), "the row the broker opened is still open after the re-render");
+});
+
+// ---------------------------------------------------------------------------
+// The Excel door and the paste door (2026-09-02)
+// ---------------------------------------------------------------------------
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const xlsxFile = (name, buf) => ({ name, type: XLSX_MIME, size: buf.length, dataUrl: "data:" + XLSX_MIME + ";base64," + buf.toString("base64") });
+
+test("an Excel workbook posts its bytes to inspect and imports the CSV the server hands back", async () => {
+  const buf = xlsxFromRows([
+    ["address", "property_type", "transaction", "deal_date", "price"],
+    ["100 Main St, Boise, ID", "Industrial", "sale", { n: 45730, s: 1 }, { n: 1250000, s: 0 }],
+  ], { styles: { xfs: [0, 14] } });
+  const { doc, calls } = await runPage([], null, { upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })) });
+  doc.getElementById("file").fire("change", { target: { files: [xlsxFile("book.xlsx", buf)], value: "x" } });
+  await tick(); await tick();
+  const ins = calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0);
+  assert.equal(ins.length, 1);
+  assert.equal(ins[0].body.xlsx, buf.toString("base64"), "the bytes, data: prefix stripped");
+  assert.equal(ins[0].body.filename, "book.xlsx");
+  assert.equal(ins[0].body.csv, undefined, "a workbook is never read as text");
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1, "our own column names skip the mapper");
+  assert.match(up[0].body.csv, /2025-03-14/, "the date-styled serial arrives as a day");
+  assert.match(up[0].body.csv, /1250000/);
+  assert.equal(up[0].body.filename, "book.xlsx");
+});
+
+test("a workbook in a broker's own column names opens the mapper over the converted text", async () => {
+  const buf = xlsxFromRows([
+    ["Property Address", "Type", "Deal Type", "Sale Date", "Sale Price"],
+    ["1 Main St", "Industrial", "Sale", { n: 45730, s: 1 }, { n: 2450000, s: 0 }],
+  ], { styles: { xfs: [0, 14] } });
+  const { doc, calls } = await runPage([comp({})]);
+  doc.getElementById("file").fire("change", { target: { files: [xlsxFile("costar.xlsx", buf)], value: "x" } });
+  await tick(); await tick();
+  assert.ok(!doc.getElementById("mapSec").classList.contains("hide"), "the mapper opened");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0, "nothing imported yet");
+  doc.getElementById("mapGo").click();
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.match(up[0].body.csv, /^Property Address,Type,Deal Type,Sale Date,Sale Price\n/, "the mapping is applied to the text it was built on");
+  assert.match(up[0].body.csv, /2025-03-14/);
+  assert.equal(up[0].body.mapping.sale_date, "deal_date");
+});
+
+test("an older .xls reaches the server, which refuses it by name", async () => {
+  const xls = Buffer.alloc(64); xls[0] = 0xd0; xls[1] = 0xcf; xls[2] = 0x11; xls[3] = 0xe0;
+  const { doc, calls } = await runPage([]);
+  doc.getElementById("file").fire("change", { target: { files: [{ name: "book.xls", type: "application/vnd.ms-excel", size: 64, dataUrl: "data:application/vnd.ms-excel;base64," + xls.toString("base64") }], value: "x" } });
+  await tick(); await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 1, "the browser does not stop it — the server names the fix");
+  assert.match(doc.getElementById("res").innerHTML, /older \.xls/);
+});
+
+test("a workbook picked with a CSV queues with it, and each goes through inspect in turn", async () => {
+  const buf = xlsxFromRows([["address", "property_type", "transaction", "deal_date"], ["100 Main St, Boise, ID", "Industrial", "sale", "2026-01-09"]]);
+  const { doc, calls } = await runPage([], null, { upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })) });
+  await mfPick(doc, [xlsxFile("b.xlsx", buf), { name: "c.csv", text: MF_CSV }]);
+  await mfSettle();
+  const ins = calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0);
+  assert.equal(ins.length, 2);
+  assert.equal(typeof ins[0].body.xlsx, "string", "the workbook went first, as bytes");
+  assert.equal(typeof ins[1].body.csv, "string", "then the CSV, as text");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 2);
+});
+
+test("pasted tab-separated rows are read through inspect, and the converted CSV is what imports", async () => {
+  const { doc, calls } = await runPage([], null, { upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })) });
+  doc.getElementById("pasteBox").value = "address\tproperty_type\ttransaction\tdeal_date\n120 Main St, Boise, ID\tIndustrial\tsale\t2026-01-05\n";
+  doc.getElementById("pasteGo").click();
+  await tick(); await tick();
+  const ins = calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0);
+  assert.equal(ins.length, 1);
+  assert.match(ins[0].body.csv, /\t/, "the paste is sent as pasted");
+  assert.equal(ins[0].body.filename, "Pasted rows");
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.match(up[0].body.csv, /"120 Main St, Boise, ID"/, "the address keeps its commas, quoted");
+  assert.doesNotMatch(up[0].body.csv, /\t/, "what imports is comma CSV");
+  assert.equal(up[0].body.filename, "Pasted rows");
+});
+
+test("an empty paste box is refused before any request", async () => {
+  const { doc, calls } = await runPage([]);
+  doc.getElementById("pasteBox").value = "   \n";
+  doc.getElementById("pasteGo").click();
+  await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.match(doc.getElementById("res").innerHTML, /Paste some rows first/);
+});
+
+test("the one file input names Excel, and the drop copy says the file is not stored", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  const accept = (html.match(/id="file"[^>]*accept="([^"]*)"/) || [])[1];
+  for (const kind of [".xlsx", ".xls", XLSX_MIME, "application/vnd.ms-excel"]) {
+    assert.ok(accept.split(",").includes(kind), "accept is missing " + kind);
+  }
+  assert.match(html, /id="pasteBox"/);
+  assert.match(html, /An Excel file or pasted rows are read on our own server/);
+});
+
+// ---------------------------------------------------------------------------
+// The mapper's summary mode (2026-09-02)
+// ---------------------------------------------------------------------------
+test("the mapper folds to a summary when every required field was matched, and opens when one was not", async () => {
+  const a = await runPage([comp({})]);
+  await chooseFile(a.doc, MAPPABLE_CSV);
+  assert.equal(a.doc.getElementById("mapDetails").open, false, "nothing left to decide: the dropdowns fold away");
+  assert.match(a.doc.getElementById("mapSummary").textContent, /^\d+ of 6 columns matched/);
+  assert.match(a.doc.getElementById("mapLead").textContent, /We matched your columns/);
+  assert.equal(a.doc.getElementById("mapGo").disabled, false);
+  assert.match(a.doc.getElementById("mapIgnored").textContent, /^(Every column is mapped\.|Will be ignored: )/,
+    "the ignored line stands above the fold either way");
+
+  const b = await runPage([comp({})]);
+  await chooseFile(b.doc, DIRTY_CSV);
+  assert.equal(b.doc.getElementById("mapDetails").open, true, "a required field unclaimed: the table opens as before");
+  assert.match(b.doc.getElementById("mapLead").textContent, /Tell us which/);
+  assert.equal(b.doc.getElementById("mapGo").disabled, true);
 });

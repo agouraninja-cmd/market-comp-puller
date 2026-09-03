@@ -109,8 +109,13 @@ const MAX_EXTRACT_BYTES = 4 * 1024 * 1024;
  * corrupts every address containing a comma, which is most of them.
  *
  * Returns an array of rows, each an array of cell strings. Never throws.
+ *
+ * `delimiter` defaults to the comma and every existing caller keeps it; a tab
+ * is what cells copied out of Excel, Outlook or a CoStar web table arrive as
+ * (see normalizeDelimited), and the one-character change here is the whole
+ * cost of reading them.
  */
-function parseCsv(text) {
+function parseCsv(text, { delimiter = "," } = {}) {
   const src = String(text == null ? "" : text);
   const rows = [];
   let row = [];
@@ -162,7 +167,7 @@ function parseCsv(text) {
     }
 
     if (c === '"' && cell === "") { quoted = true; i++; continue; }
-    if (c === ",") { endCell(); i++; continue; }
+    if (c === delimiter) { endCell(); i++; continue; }
     if (c === "\r") { i++; continue; }          // CRLF -> LF
     if (c === "\n") { endRow(); fileLine++; rowLine = fileLine; i++; continue; }
     cell += c; i++;
@@ -408,6 +413,28 @@ function composeAddress(address, city, state) {
     if (v && !has(v)) parts.push(v);
   }
   return parts.filter(Boolean).join(", ");
+}
+
+// The refusal fragment every door shares for an address with no city and
+// state. vault-page.js keeps a ⚠ MIRROR of it (MARKET_NEEDLE) so the confirm
+// table's market selector knows which part of a row's error IT can cure —
+// exported so the page test pins the two together. A reworded refusal here
+// would silently stop curing anything over there.
+const MARKET_REFUSAL = "needs a city and a two-letter state";
+const marketRefusal = (address) => `"${address}" ${MARKET_REFUSAL}`;
+
+/**
+ * Split a "City, ST" answer at its LAST comma into the two parts
+ * composeAddress takes. No comma means no state: composeAddress then appends
+ * the city alone and the ordinary market check refuses the row, which is the
+ * right answer to a completion this module cannot read — it rejects rather
+ * than guesses, like everything else here.
+ */
+function splitMarket(market) {
+  const m = text(market, 80);
+  const i = m.lastIndexOf(",");
+  if (i < 0) return { city: m, state: "" };
+  return { city: m.slice(0, i).trim(), state: m.slice(i + 1).trim() };
 }
 
 /**
@@ -929,6 +956,94 @@ function inspectCsv(csvText, { samples = 3 } = {}) {
   };
 }
 
+/**
+ * The address column of a CSV, read the way parseUpload reads it — the same
+ * normalizedHeaderRow → applyHeaderMapping → composeAddress path — and
+ * judging nothing else about the row. It works on a mapping still missing
+ * required targets, which is the state the mapper screen is in while it asks
+ * whether the bare addresses in a file should be completed. Comment rows and
+ * blank streets are skipped; two sources claiming `address` yield [] rather
+ * than a guess (the mapper blocks Import on that anyway). Line numbers are
+ * parseCsv's own stamps, the numbering Excel shows the broker.
+ */
+function csvAddresses(csvText, { mapping = null } = {}) {
+  const table = parseCsv(csvText);
+  if (!table.length) return [];
+  let headers = normalizedHeaderRow(table[0]);
+  if (mapping && typeof mapping === "object" && !Array.isArray(mapping)) {
+    if (Object.values(mapping).filter((t) => t === "address").length > 1) return [];
+    headers = applyHeaderMapping(headers, mapping);
+  }
+  const ai = headers.indexOf("address");
+  if (ai < 0) return [];
+  const ci = headers.indexOf("address_city");
+  const si = headers.indexOf("address_state");
+  const out = [];
+  table.slice(1).forEach((cells, i) => {
+    if (isCommentRow(cells)) return;
+    const line = Number.isFinite(cells.line) ? cells.line : i + 2;
+    const street = text(cells[ai], 200);
+    if (!street) return;
+    const address = (ci >= 0 || si >= 0)
+      ? composeAddress(street, ci >= 0 ? cells[ci] : "", si >= 0 ? cells[si] : "")
+      : street;
+    out.push({ line, address });
+  });
+  return out;
+}
+
+/**
+ * Which of a file's addresses have no city and state, and which "City, ST"
+ * the broker might mean. A SUGGESTION and nothing more: this writes no
+ * address, and a completion is applied only after a person picks one
+ * (parseUpload's `completeWith`, the confirm table's selector).
+ *
+ * Incomplete means a leading street number and no market — a row with no
+ * street number is not a property, and normalizeRow refuses it for its own
+ * reason. Candidates come from the file itself first (the markets of the
+ * addresses that DO parse, most common first), then the markets already in
+ * the broker's vault, then the ones they cover: the order in which each is
+ * likely to be what the sheet left unsaid because everyone at the firm knew
+ * it. Deduped by market string in that priority, and anything that is not
+ * itself a canonical market is dropped, so a vault row misfiled before
+ * hasMarket existed can never be offered back as a completion.
+ *
+ * hasMarket and marketOf are INJECTED, never required: this module does not
+ * know what a market is (see parseUpload's own note).
+ */
+function suggestMarketCompletion(addresses, { hasMarket = null, marketOf = null, vaultMarkets = [],
+                                              coverageMarkets = [], max = 12 } = {}) {
+  const list = Array.isArray(addresses) ? addresses : [];
+  const incomplete = [];
+  const fileCounts = new Map();
+  if (typeof hasMarket !== "function") return { incomplete, candidates: [] };
+  for (const item of list) {
+    const address = text(item && item.address, 200);
+    if (!address) continue;
+    if (hasMarket(address)) {
+      const m = typeof marketOf === "function" ? text(marketOf(address), 80) : "";
+      if (m) fileCounts.set(m, (fileCounts.get(m) || 0) + 1);
+    } else if (/^\d/.test(address)) {
+      incomplete.push({ ...item, address });
+    }
+  }
+  if (!incomplete.length) return { incomplete, candidates: [] };
+  const seen = new Set();
+  const candidates = [];
+  const add = (market, source, count) => {
+    const m = text(market, 80);
+    if (!m || seen.has(m) || !hasMarket(m)) return;
+    seen.add(m);
+    candidates.push({ market: m, source, count });
+  };
+  [...fileCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .forEach(([m, n]) => add(m, "file", n));
+  for (const m of (Array.isArray(vaultMarkets) ? vaultMarkets : [])) add(m, "vault", 0);
+  for (const m of (Array.isArray(coverageMarkets) ? coverageMarkets : [])) add(m, "coverage", 0);
+  return { incomplete, candidates: candidates.slice(0, max) };
+}
+
 // --- one row -----------------------------------------------------------------
 
 /**
@@ -1223,8 +1338,9 @@ function validateEdit(existing, patch) {
  * wrong-file mistake rather than a data mistake.
  */
 function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, mapping = null,
-                                hasMarket = null, constants = null } = {}) {
-  const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0, commented: 0 };
+                                hasMarket = null, constants = null, completeWith = null } = {}) {
+  const empty = { ok: false, rows: [], errors: [], total: 0, skipped: 0, duplicates: 0, commented: 0,
+                  completed: 0 };
   const table = parseCsv(csvText);
   if (!table.length) {
     return { ...empty, errors: ["That file is empty."] };
@@ -1278,6 +1394,11 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
   let skipped = 0;
   let duplicates = 0;
   let commented = 0;
+  let completed = 0;
+  // The broker's whole-file answer for the rows the file left bare — "123
+  // Main St" with no city or state, because everyone at the firm knows which
+  // city. Inert without hasMarket, like the check it feeds.
+  const fill = completeWith && hasMarket ? splitMarket(completeWith) : null;
 
   // Iterate the WHOLE body and skip inside the loop rather than filtering
   // comments out first: a filtered array would renumber every error away from
@@ -1304,6 +1425,23 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     }
     delete obj.address_city;
     delete obj.address_state;
+
+    // Applied ONLY to an address the market check refuses as it stands, after
+    // the mapped City/State columns have had their say — so a row that names
+    // its own city keeps it — and only ever through composeAddress, which
+    // appends what is missing and never repeats what is there. Nothing about
+    // the check further down changes: the completed address has to pass the
+    // same hasMarket gate as any other, so a completion this module cannot
+    // read ("Boise" alone, "Boise, Idaho") is refused with the ordinary
+    // message, naming the string it produced.
+    let stamped = false;
+    if (fill) {
+      const street = text(obj.address, 200);
+      if (street && /^\d/.test(street) && !hasMarket(street)) {
+        obj.address = composeAddress(street, fill.city, fill.state);
+        stamped = true;
+      }
+    }
 
     // A whole-file answer fills a blank; a value in the row always wins. The
     // file is the record and the answer is only what the file left unsaid — so
@@ -1343,8 +1481,8 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
         // so a spelled-out "Idaho" reads as a market called "Idaho" and lands
         // here too — and "needs a city and state" alone is baffling advice to
         // somebody who can see both words sitting in their file.
-        errors.push(`Line ${lineNo}: "${result.row.address}" needs a city and a two-letter ` +
-          `state — write the whole address in one cell, like "${result.row.address}, Boise, ID"`);
+        errors.push(`Line ${lineNo}: ${marketRefusal(result.row.address)} — write the whole ` +
+          `address in one cell, like "${result.row.address}, Boise, ID"`);
       }
       return;
     }
@@ -1355,6 +1493,9 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     if (seen.has(key)) { duplicates++; return; }
     seen.add(key);
     rows.push(result.row);
+    // Counted only for a row that is actually stored: a completed address on
+    // a row the date check refuses is not a completion the broker got.
+    if (stamped) completed++;
   });
 
   if (errors.length >= maxErrors) {
@@ -1382,6 +1523,8 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     skipped,
     duplicates,
     commented,
+    // Rows whose bare address was completed with `completeWith` AND stored.
+    completed,
   };
 }
 
@@ -1420,7 +1563,18 @@ function guardFormula(s) {
  * opened in a spreadsheet by design, so there is no un-guarded variant.
  */
 function csvCell(v) {
-  const s = guardFormula(String(v == null ? "" : v));
+  return quoteCsvCell(guardFormula(String(v == null ? "" : v)));
+}
+
+/**
+ * The quoting half of csvCell, with NO formula guard. For data on its way IN
+ * (a broker's own workbook or pasted cells re-expressed as CSV so one import
+ * path reads them): guardFormula would turn their "- see lease" note into
+ * "'- see lease" and the apostrophe would be stored. Every CSV this module
+ * EMITS still goes through csvCell.
+ */
+function quoteCsvCell(v) {
+  const s = String(v == null ? "" : v);
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -2001,15 +2155,28 @@ function vaultValues(raw) {
   return out;
 }
 
-function classifyExtractRows(candidates) {
+function classifyExtractRows(candidates, { hasMarket = null } = {}) {
   const list = Array.isArray(candidates) ? candidates : [];
   return list.map((raw) => {
     const values = vaultValues(raw);
     const result = normalizeRow(values);
-    return {
-      values,
-      error: result.ok ? null : (result.errors || []).join("; "),
-    };
+    const errors = result.ok ? [] : (result.errors || []).slice();
+    // The market check parseUpload applies at import, asked HERE so the
+    // confirm table can say a bare street address is not ready. Before this
+    // such a row showed as ready and pre-checked, and failed only after
+    // Import. Injected like parseUpload's; without it the output is what it
+    // always was. Only a street-numbered address is asked (a row with none
+    // already carries normalizeRow's own refusal), and `needsMarket` tells
+    // the page's sheet-level selector which rows it may complete.
+    const street = text(values.address, 200);
+    let needsMarket = false;
+    if (typeof hasMarket === "function" && street && /^\d/.test(street) && !hasMarket(street)) {
+      needsMarket = true;
+      errors.push(marketRefusal(street));
+    }
+    const out = { values, error: errors.length ? errors.join("; ") : null };
+    if (needsMarket) out.needsMarket = true;
+    return out;
   });
 }
 
@@ -2029,6 +2196,86 @@ function uploadPayloadToCsv({ csv, rows } = {}) {
   return { ok: false, csv: "", error: "Nothing to import." };
 }
 
+// --- other shapes a book arrives in (2026-09-02) -----------------------------
+// An Excel workbook and cells pasted from one both become CSV TEXT before
+// anything reads them, so inspectCsv, the mapper and parseUpload keep one
+// input and the browser keeps posting the same thing to /api/vault/upload.
+
+/**
+ * A grid of rows (arrays of cells, each optionally stamped with the
+ * non-enumerable `line` that parseCsv and readXlsxGrid both write) as CSV
+ * text — through quoteCsvCell, never csvCell, because this is the broker's
+ * own data on its way in and must not gain an apostrophe.
+ *
+ * Blank rows are PADDED BACK IN: a row stamped `line: 5` is written on the
+ * fifth line, so that when parseCsv re-reads this text and re-stamps its own
+ * line numbers, "Line 5" still names the Excel row the broker is looking at.
+ * Both readers drop blank rows but keep the count, and this is where the
+ * count is spent. One known slip, accepted rather than edited around: a cell
+ * holding an embedded newline (Alt+Enter in a notes cell) is emitted quoted
+ * and verbatim, parseCsv counts that newline as a line of the file, and every
+ * row after it reports one higher than Excel shows. Rows with no stamp are
+ * simply appended.
+ */
+function gridToCsv(rows) {
+  const out = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const line = Number(row && row.line);
+    if (Number.isFinite(line)) while (out.length + 1 < line) out.push("");
+    out.push((Array.isArray(row) ? row : []).map(quoteCsvCell).join(","));
+  }
+  return out.join("\n") + (out.length ? "\n" : "");
+}
+
+/**
+ * Comma or tab, decided on the first non-blank line: a tab-separated paste
+ * from Excel has tabs between every cell and commas only inside addresses, so
+ * tabs at least as numerous as commas is the tell. A one-column paste with
+ * neither reads as CSV, which is what it is.
+ */
+function delimiterOf(text) {
+  const src = String(text == null ? "" : text).replace(/^﻿/, "");
+  const first = src.split(/\r?\n/).find((l) => l.trim() !== "") || "";
+  const tabs = (first.match(/\t/g) || []).length;
+  const commas = (first.match(/,/g) || []).length;
+  return tabs > 0 && tabs >= commas ? "\t" : ",";
+}
+
+/**
+ * Text as comma-separated CSV: unchanged when it already is, converted when it
+ * is tab-separated. NEVER a tab-for-comma replace — "120 Main St, Boise, ID"
+ * is one tab-delimited cell holding two commas, and it comes out quoted.
+ */
+function normalizeDelimited(text) {
+  const src = String(text == null ? "" : text);
+  if (delimiterOf(src) !== "\t") return { csv: src, converted: false };
+  return { csv: gridToCsv(parseCsv(src, { delimiter: "\t" })), converted: true };
+}
+
+/**
+ * A short, stable name for the SHAPE of a file: its normalized header row.
+ * Two exports from the same system have the same signature however the rows
+ * differ; the same broker's CoStar export and their own tracking sheet do
+ * not. It keys the remembered column mapping (migration 049), so alternating
+ * between two shapes no longer overwrites one mapping with the other.
+ *
+ * FNV-1a, not a cryptographic hash, on purpose: a collision costs a wrong
+ * PRE-SELECTION on a screen the broker still confirms, and this module has no
+ * requires. The column count rides along so two vectors of different length
+ * can never share a name.
+ */
+function headerSignature(csvText) {
+  const table = parseCsv(csvText);
+  const headers = normalizedHeaderRow(table.length ? table[0] : []);
+  const s = headers.join("\x1f");
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0") + "-" + headers.filter(Boolean).length;
+}
+
 module.exports = {
   normAddr,
   matchOffered,
@@ -2045,6 +2292,9 @@ module.exports = {
   normalizedHeaderRow,
   suggestMapping,
   composeAddress,
+  csvAddresses,
+  suggestMarketCompletion,
+  MARKET_REFUSAL,
   validateConstants,
   ADDRESS_PART_TARGETS,
   SHEET_CONSTANT_TARGETS,
@@ -2069,6 +2319,11 @@ module.exports = {
   parseUpload,
   guardFormula,
   csvCell,
+  quoteCsvCell,
+  gridToCsv,
+  delimiterOf,
+  normalizeDelimited,
+  headerSignature,
   templateCsv,
   exportColumns,
   exportCsv,

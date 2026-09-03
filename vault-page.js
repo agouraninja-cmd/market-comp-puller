@@ -252,6 +252,12 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 #pdfTable tbody tr.need-fix td,#pdfTable tbody tr.need-fix:hover td{background:var(--err-bg)}
 #pdfTable tbody tr.pdf-src td,#pdfTable tbody tr.pdf-src:hover td{padding-top:12px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:none;border-bottom:0}
+/* The line under a refused row saying what is wrong with it, and the
+   read-only cells of a row that read cleanly (2026-09-02). */
+#pdfTable tbody tr.pdf-err td,#pdfTable tbody tr.pdf-err:hover td{background:var(--err-bg);color:var(--err-text);font-size:var(--t5);padding-top:0;border-top:0}
+#pdfTable td.ro{font-variant-numeric:tabular-nums;white-space:nowrap;cursor:text}
+#mapDetails>summary{cursor:pointer;color:var(--ink-2);font-size:var(--t5);margin:var(--s3) 0}
+#pasteBox{width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.4;padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);background:var(--card);color:var(--ink);resize:vertical}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
 #gate .msg{max-width:44ch;margin-top:var(--s7)}
@@ -661,10 +667,24 @@ a.btn.ghost:hover{color:var(--ink)}
         <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
         <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
         <p>or drop files here &mdash; several at once is fine &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
-        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
+        <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. An Excel file or pasted rows are read on our own server. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
+        <input type="file" id="file" accept=".csv,.xlsx,.xls,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
       </div>
       <div id="res"></div>
+
+      <!-- Cells copied out of Excel, a CoStar web table or an email arrive
+           tab-separated; /api/vault/inspect reads that as it reads a CSV, so
+           this is the ordinary mapper path with no file in between. A button
+           rather than the paste event, so a cell can be fixed before it is
+           read (2026-09-02). -->
+      <details class="dbox" id="pasteSec">
+        <summary>Or paste rows from Excel, CoStar or an email</summary>
+        <p class="note" style="margin-top:var(--s3)">Copy the cells, header row included, and paste them here. Tabs and commas both work.</p>
+        <textarea id="pasteBox" rows="6" style="margin-top:var(--s3)" placeholder="address&#9;property_type&#9;transaction&#9;deal_date&#9;price&#9;size_sqft"></textarea>
+        <div class="formact" style="margin-top:var(--s3)">
+          <button class="btn" id="pasteGo" type="button">Read pasted rows</button>
+        </div>
+      </details>
 
       <!-- One comp at a time, through the SAME route the importer's own rows
            land on (POST /api/vault/comp -> normalizeRow), so a hand-typed
@@ -711,13 +731,21 @@ a.btn.ghost:hover{color:var(--ink)}
     <div id="mapSec" class="mappanel hide">
       <h2>Match your columns</h2>
       <p class="sub" style="margin-top:0">We found <span id="mapRows">0</span> rows.
-        Tell us which of your columns is which, then import. Nothing is saved until you do.</p>
+        <span id="mapLead">Tell us which of your columns is which, then import.</span> Nothing is saved until you do.</p>
       <p class="note hide" id="mapAmbig"></p>
-      <div class="tw"><table id="mapTable">
-        <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
-        <tbody id="mapBody"></tbody>
-      </table></div>
+      <!-- Above the table, not below it: this line is the guarantee the
+           mapper exists for (a column dropped is a column NAMED), and since
+           2026-09-02 the table itself is folded away when every required
+           field was matched unambiguously — so the line has to stand where it
+           is read either way. -->
       <p class="note" id="mapIgnored"></p>
+      <details id="mapDetails" open>
+        <summary id="mapSummary">How your columns match</summary>
+        <div class="tw"><table id="mapTable">
+          <thead><tr><th>Your column</th><th>Maps to</th><th>Sample values</th></tr></thead>
+          <tbody id="mapBody"></tbody>
+        </table></div>
+      </details>
       <!-- The whole-file answers. A developer's or owner-operator's own sheet
            names no property type and no deal type anywhere, because every row
            is the one thing they build and nobody writes that down. Shown only
@@ -726,6 +754,20 @@ a.btn.ghost:hover{color:var(--ink)}
            the rows most likely to be wrong are the ones nobody would check.
            Same shape as #pdfBasisRow, for the same reason. -->
       <div id="mapConst" class="hide" style="margin:10px 0"></div>
+      <!-- Addresses with no city or state (2026-09-02). A firm's own sheet
+           writes "123 Main St" because everyone there knows which city; the
+           import would refuse every such row by line number. Asked once,
+           here, with the markets the broker's own records already name —
+           this file first, then their vault, then their coverage — and
+           nothing chosen: the blank option is today's behaviour (those rows
+           are left out and named). The pick is a suggestion the broker makes
+           true; the server re-validates every completed row regardless. -->
+      <div id="mapMarket" class="hide" style="margin:10px 0"><div class="crow">
+        <label for="mapMarketPick" id="mapMarketAsk"></label>
+        <select id="mapMarketPick" aria-label="City and state for the addresses that have none"></select>
+        <input type="text" id="mapMarketOther" class="hide" list="mktList" placeholder="City, ST" aria-label="Another city and state"/>
+        <span class="note" id="mapMarketCheck"></span>
+      </div></div>
       <p id="mapMsg" class="msg bad hide"></p>
       <div class="formact mapact">
         <button class="btn" id="mapGo">Import</button>
@@ -736,8 +778,18 @@ a.btn.ghost:hover{color:var(--ink)}
     <div id="pdfSec" class="mappanel hide">
       <h2>Review these comps</h2>
       <p class="sub" style="margin-top:0"><span id="pdfCount">0</span> deals in <span id="pdfName"></span>.
-        Uncheck any that aren't yours. Fix a cell if we misread it. Nothing is saved until you import.</p>
+        Rows that read cleanly are shown as we read them; rows that need a fix are marked and say why.
+        Use Edit on any we misread, and uncheck any that aren't yours. Nothing is saved until you import.</p>
       <p class="note" id="pdfStrip"></p>
+      <!-- The action row at the TOP (2026-09-02): a clean table is imported
+           from here after a glance, and the button under the table is for
+           the one that needed correcting. Both buttons carry one state
+           (refreshPdfGo). "Review every cell" is the cautious broker's door
+           back to the all-inputs table this used to be. -->
+      <div class="formact" id="pdfTop">
+        <button class="btn" id="pdfGoTop">Import</button>
+        <button class="btn ghost" id="pdfEditAll" type="button">Review every cell</button>
+      </div>
       <!-- The per-sheet rent basis (2026-08-29). Lease sheets routinely state
            a rate and never the word "annual" or "monthly" because within a
            market it goes without saying — measured at 4 refused rows in the
@@ -753,6 +805,17 @@ a.btn.ghost:hover{color:var(--ink)}
           <option value="monthly">monthly</option>
         </select>
         — filled into rows that don't say.
+      </p>
+      <!-- The sheet-level city and state (2026-09-02): #pdfBasisRow's shape
+           for the address. A photographed sheet prints bare streets for the
+           same reason a spreadsheet does, and the extract prompt is told
+           never to guess a city — so the completion is the broker's act,
+           made here, stamped visibly into the address cells of exactly the
+           rows that need it. A hand-typed address always wins. -->
+      <p class="note hide" id="pdfMarketRow"><span id="pdfMarketAsk"></span>
+        <select id="pdfMarketPick" aria-label="City and state for the addresses that have none"></select>
+        <input type="text" id="pdfMarketOther" class="hide" list="mktList" placeholder="City, ST" aria-label="Another city and state"/>
+        <span id="pdfMarketCheck"></span>
       </p>
       <div class="tw"><table id="pdfTable">
         <thead id="pdfHead"></thead>
@@ -2832,7 +2895,7 @@ a.btn.ghost:hover{color:var(--ink)}
   var pending = null;   // {name, csv} held while the broker maps
   var pdfPending = null; // extract result held while the broker confirms
 
-  function doImport(name, csv, mapping, onOk, rows, constants){
+  function doImport(name, csv, mapping, onOk, rows, constants, completeWith){
     // Whether this import came from the mapping screen decides where its
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
@@ -2844,7 +2907,7 @@ a.btn.ghost:hover{color:var(--ink)}
     if(!viaMapper&&!viaPdf)setAddOpen(true);
     $("pick").disabled=true;
     if(viaMapper){ $("mapGo").disabled=true; $("mapGo").textContent="Importing\\u2026"; }
-    if(viaPdf){ $("pdfGo").disabled=true; $("pdfGo").textContent="Importing\\u2026"; }
+    if(viaPdf){ ["pdfGo","pdfGoTop"].forEach(function(id){ $(id).disabled=true; $(id).textContent="Importing\\u2026"; }); }
     $("res").innerHTML='<div class="msg ok">Importing&hellip;</div>';
     var payload={filename:name};
     if(rows){ payload.rows=rows; }
@@ -2854,6 +2917,10 @@ a.btn.ghost:hover{color:var(--ink)}
       // Omitted entirely when nothing was answered, so a file that needed none
       // of this sends byte for byte what it always did.
       if(constants&&Object.keys(constants).length) payload.constants=constants;
+      // The whole-file "City, ST" for the bare addresses, only when one was
+      // picked. Confirm-table rows carry their completed addresses in the
+      // rows themselves, which is why this lives in the CSV branch.
+      if(completeWith) payload.completeWith=completeWith;
     }
     // Line-numbered problems are the point: a broker fixing a spreadsheet
     // needs to know WHICH row, in the numbering Excel shows them.
@@ -2920,6 +2987,9 @@ a.btn.ghost:hover{color:var(--ink)}
         // and a skip nobody is told about is the one thing this module does
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
+        // A row that arrived as "123 Main St" and was filed under Boise, ID
+        // is a fact worth stating beside the count.
+        if(j.completed)bits.push(j.completed+" address"+(j.completed===1?"":"es")+" completed as "+j.completedAs);
         var line=bits.join(" \\u00b7 ");
         if(batchOn)batchLog.push(name+": "+line);
         $("res").innerHTML=batchPrefix()+(batchOn&&!j.skipped?"":'<div class="msg '+(j.skipped?"bad":"ok")+'">'+(batchOn?"":esc(line))+errList(j)+"</div>");
@@ -2963,11 +3033,56 @@ a.btn.ghost:hover{color:var(--ink)}
     var t=String(file&&file.type||"");
     return t==="text/csv" || /\\.csv$/.test(n);
   }
+  // An Excel workbook (2026-09-02). Decided by name or declared type, unlike
+  // the contacts door's byte sniff, because the server sniffs the bytes
+  // anyway and refuses a 2003-era .xls BY NAME — which is why .xls is let
+  // through here rather than stopped with a message that names nothing.
+  function isXlsxFile(file){
+    var n=String(file&&file.name||"").toLowerCase();
+    var t=String(file&&file.type||"");
+    return /\\.xlsx?$/.test(n) ||
+           t==="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+           t==="application/vnd.ms-excel";
+  }
+  var FILE_KINDS_MSG="Use a .csv, an Excel .xlsx, a .pdf, or a screenshot (PNG, JPEG or WebP).";
+
+  // What happens once /api/vault/inspect has answered, on every door — a CSV,
+  // a workbook, pasted rows. heldCsv is the text the browser read itself;
+  // the server answers with csv when it CONVERTED (a workbook, a tab-
+  // separated paste), and that text is what the upload must carry, since the
+  // mapping being confirmed was built against it.
+  function afterInspect(name,heldCsv,o){
+    if(o.s!==200){
+      $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
+      return;
+    }
+    var csv=(o.j&&typeof o.j.csv==="string")?o.j.csv:heldCsv;
+    // A file already in our own column names skips the screen entirely
+    // — unless it holds addresses with no city or state, in which case the
+    // screen has exactly one question to ask (every column already mapped,
+    // so the table folds and the question is the next thing on screen) and
+    // importing straight away would refuse those rows by line number with
+    // the answer sitting right here.
+    var ms=o.j.marketSuggest;
+    if(o.j.cleanTemplate&&!(ms&&ms.count)){ doImport(name,csv,null); return; }
+    pending={name:name,csv:csv};
+    openMapper(o.j);
+  }
+  function inspectPost(body,name,heldCsv){
+    fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify(body)})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ $("pick").disabled=false; afterInspect(name,heldCsv,o); })
+      // Deliberately NOT a silent fallback to a strict upload: that would
+      // reintroduce the old rejection message under a different cause.
+      .catch(function(){ $("pick").disabled=false;
+        $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+  }
 
   function upload(file){
     if(!file)return;
-    if(!isExtractFile(file) && !isCsvFile(file)){
-      $("res").innerHTML='<div class="msg bad">Use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).</div>';
+    if(!isExtractFile(file) && !isCsvFile(file) && !isXlsxFile(file)){
+      $("res").innerHTML='<div class="msg bad">'+FILE_KINDS_MSG+'</div>';
       return;
     }
     if(file.size>4*1024*1024){
@@ -2978,26 +3093,19 @@ a.btn.ghost:hover{color:var(--ink)}
     $("pick").disabled=true; $("res").innerHTML=batchPrefix()+'<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
+    if(isXlsxFile(file)){
+      // Bytes, not text: the server reads the workbook and hands back CSV.
+      fr.onload=function(){
+        var url=String(fr.result||"");
+        var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
+        inspectPost({xlsx:b64,filename:file.name},file.name,"");
+      };
+      fr.readAsDataURL(file);
+      return;
+    }
     fr.onload=function(){
       var csv=String(fr.result||"");
-      fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
-        headers:{"content-type":"application/json"},body:JSON.stringify({csv:csv})})
-        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-        .then(function(o){
-          $("pick").disabled=false;
-          if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
-            return;
-          }
-          // A file already in our own column names skips the screen entirely.
-          if(o.j.cleanTemplate){ doImport(file.name,csv,null); return; }
-          pending={name:file.name,csv:csv};
-          openMapper(o.j);
-        })
-        // Deliberately NOT a silent fallback to a strict upload: that would
-        // reintroduce the old rejection message under a different cause.
-        .catch(function(){ $("pick").disabled=false;
-          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+      inspectPost({csv:csv},file.name,csv);
     };
     fr.readAsText(file);
   }
@@ -3083,12 +3191,13 @@ a.btn.ghost:hover{color:var(--ink)}
     batchOn=true;
     var bad=[],big=[],ex=[],csvs=[];
     all.forEach(function(f){
-      if(!isExtractFile(f)&&!isCsvFile(f))bad.push(f.name);
+      if(!isExtractFile(f)&&!isCsvFile(f)&&!isXlsxFile(f))bad.push(f.name);
       else if(f.size>4*1024*1024)big.push(f.name);
       else if(isExtractFile(f))ex.push(f);
+      // A workbook queues with the CSVs: it takes the mapper path too.
       else csvs.push(f);
     });
-    if(bad.length)batchLog.push("Skipped "+bad.join(", ")+" \\u2014 use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).");
+    if(bad.length)batchLog.push("Skipped "+bad.join(", ")+" \\u2014 "+FILE_KINDS_MSG.charAt(0).toLowerCase()+FILE_KINDS_MSG.slice(1));
     if(big.length)batchLog.push("Skipped "+big.join(", ")+" \\u2014 over the 4 MB limit.");
     setAddOpen(true);
     $("res").innerHTML=batchPrefix();
@@ -3099,13 +3208,14 @@ a.btn.ghost:hover{color:var(--ink)}
   function extractMany(list){
     setAddOpen(true);
     $("pick").disabled=true;
-    var rows=[],names=[],failed=[],i=0;
+    var rows=[],names=[],failed=[],suggests=[],i=0;
     function done(){
       $("pick").disabled=false;
       if(failed.length)batchLog.push("Could not read "+failed.join(", ")+". Nothing was saved from "+(failed.length===1?"it":"them")+".");
       $("res").innerHTML=batchPrefix();
       if(!names.length){ drainCsvQueue(); return; }
-      openPdfPreview({filename:names.length===1?names[0]:names.length+" files: "+names.join(", "),rows:rows,files:names.length});
+      openPdfPreview({filename:names.length===1?names[0]:names.length+" files: "+names.join(", "),rows:rows,files:names.length,
+        marketSuggest:mergeMarketSuggests(suggests)});
     }
     function step(){
       if(i>=list.length){ done(); return; }
@@ -3117,12 +3227,103 @@ a.btn.ghost:hover{color:var(--ink)}
           else{
             ((o.j&&o.j.rows)||[]).forEach(function(r){ r.source=file.name; rows.push(r); });
             names.push(file.name);
+            if(o.j&&o.j.marketSuggest)suggests.push(o.j.marketSuggest);
           }
           step();
         })
         .catch(function(){ failed.push(file.name); step(); });
     }
     step();
+  }
+
+  // One confirm table for several files means one market question: counts
+  // summed, samples pooled, candidates deduped in the server's own order —
+  // this file, then the vault, then coverage.
+  function mergeMarketSuggests(list){
+    var out={count:0,sample:[],candidates:[]},seen={};
+    (list||[]).forEach(function(s){
+      out.count+=(s&&s.count)||0;
+      ((s&&s.sample)||[]).forEach(function(r){ if(out.sample.length<10)out.sample.push(r); });
+    });
+    ["file","vault","coverage"].forEach(function(src){
+      (list||[]).forEach(function(s){ ((s&&s.candidates)||[]).forEach(function(c){
+        if(c.source!==src||seen[c.market])return; seen[c.market]=true; out.candidates.push(c);
+      }); });
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The "City, ST" completion (2026-09-02), shared by the mapper's market row
+  // and the confirm table's. Everything here is a SUGGESTION until a person
+  // picks: nothing writes an address on its own, and the server re-validates
+  // every completed row through the same hasMarket gate as any other.
+  // ---------------------------------------------------------------------------
+  // ⚠ MIRROR of broker-vault.js's MARKET_REFUSAL, for the same reason
+  // RENT_BASIS_NEEDLE below mirrors its refusal: the needle is how the
+  // selector knows which part of a row's error IT can cure. Pinned by test
+  // against the module's own constant.
+  var MARKET_NEEDLE="needs a city and a two-letter state";
+  var MARKET_SOURCE_LABEL={file:"Elsewhere in this file",vault:"In your vault",coverage:"Markets you cover"};
+  // ⚠ MIRROR of broker-vault.js's composeAddress RULE — append only what is
+  // missing, never repeat a segment the address already carries — so the
+  // address a cell shows after a pick is the address the import stores.
+  // Pinned by test against the module on the three shapes that matter.
+  function joinMarket(bare,market){
+    var parts=String(bare||"").split(",").map(function(s){return s.trim()}).filter(Boolean);
+    var m=String(market||"").trim(), cut=m.lastIndexOf(",");
+    var add=cut<0?[m]:[m.slice(0,cut).trim(),m.slice(cut+1).trim()];
+    add.forEach(function(v){
+      if(!v)return;
+      var have=parts.some(function(p){return p.toLowerCase()===v.toLowerCase()});
+      if(!have)parts.push(v);
+    });
+    return parts.join(", ");
+  }
+  // A courtesy check only ("Boise, ID"-shaped); the server canonicalizes case
+  // and refuses anything it cannot key.
+  function looksLikeMarket(v){ return /^[^,]+,\\s*[A-Za-z]{2}$/.test(String(v||"").trim()); }
+  function marketOptionsHtml(suggest,chosen){
+    var cands=(suggest&&suggest.candidates)||[],groups={};
+    var html='<option value=""'+(chosen?"":" selected")+'>&mdash; leave those rows out &mdash;</option>';
+    cands.forEach(function(c){ (groups[c.source]=groups[c.source]||[]).push(c); });
+    ["file","vault","coverage"].forEach(function(s){
+      if(!groups[s])return;
+      html+='<optgroup label="'+escA(MARKET_SOURCE_LABEL[s])+'">'+groups[s].map(function(c){
+        var n=c.source==="file"&&c.count?" ("+c.count+" row"+(c.count===1?"":"s")+")":"";
+        return '<option value="'+escA(c.market)+'"'+(chosen===c.market?" selected":"")+">"+esc(c.market)+n+"</option>";
+      }).join("")+"</optgroup>";
+    });
+    html+='<option value="__other"'+(chosen==="__other"?" selected":"")+">Another City, ST\\u2026</option>";
+    return html;
+  }
+  function pickedMarket(selId,otherId){
+    var v=$(selId).value||"";
+    if(v==="__other")return String($(otherId).value||"").trim();
+    return v;
+  }
+  // "Are these streets in that city?" — a badge, never a gate. Fire-and-
+  // forget to our own census proxy, and only AFTER a pick, so a street paired
+  // with a city nobody chose never leaves the process. A reply that arrives
+  // after a later pick is dropped.
+  var confirmSeq=0;
+  function confirmMarket(addresses,market,badgeId){
+    var el=$(badgeId), seq=++confirmSeq;
+    if(!market||!addresses.length){ el.textContent=""; return; }
+    el.textContent="Checking\\u2026";
+    fetch("/api/vault/confirm-market",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:market,addresses:addresses.slice(0,10)})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(seq!==confirmSeq)return;
+        if(o.s!==200||!o.j){ el.textContent=""; return; }
+        var n=o.j.checked||0,k=o.j.confirmed||0;
+        el.textContent=k
+          ? k+" of "+n+" found in "+o.j.market
+          : "0 of "+n+" found \\u2014 the geocoder often misses rural and new addresses; keep it if you\\u2019re sure";
+      })
+      .catch(function(){ if(seq===confirmSeq)el.textContent=""; });
   }
 
   var mapInfo=null;
@@ -3209,6 +3410,55 @@ a.btn.ghost:hover{color:var(--ink)}
   // <select> were the only place it was kept. Reset per file by openMapper: a
   // new spreadsheet must never inherit the last one's answers.
   var constAnswers={}, constShown="";
+  // The market question's state. marketSig is the address trio of the
+  // current mapping (which columns feed address, City and State): the
+  // question depends on nothing else, so inspect is re-asked only when that
+  // changes, and a reply for a trio no longer current is dropped.
+  var marketSuggest=null, marketAnswer="", marketSig="";
+  function trioSig(m){
+    var by={};
+    Object.keys(m||{}).forEach(function(k){ by[m[k]]=k; });
+    return [by.address||"",by.address_city||"",by.address_state||""].join("|");
+  }
+  function reinspectMarket(sig){
+    if(!pending)return;
+    fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({csv:pending.csv,mapping:currentMapping()})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(sig!==marketSig||!mapInfo)return;
+        if(o.s===200)marketSuggest=(o.j&&o.j.marketSuggest)||null;
+        syncMarketRow();
+      })
+      .catch(function(){});
+  }
+  function syncMarketRow(){
+    var s=marketSuggest, n=s?(s.count||0):0;
+    if(!n||!mapInfo){ $("mapMarket").classList.add("hide"); return; }
+    var sample=(s.sample||[]).slice(0,3).map(function(r){
+      return '\\u201c'+esc(r.address)+'\\u201d (line '+esc(r.line)+")";
+    }).join(", ");
+    $("mapMarketAsk").innerHTML=n+" address"+(n===1?" has":"es have")+" no city or state"+
+      (sample?" \\u2014 "+sample+(n>3?", \\u2026":""):"")+". Add one to those rows:";
+    $("mapMarketPick").innerHTML=marketOptionsHtml(s,marketAnswer);
+    $("mapMarketOther").classList.toggle("hide",marketAnswer!=="__other");
+    $("mapMarket").classList.remove("hide");
+  }
+  function mapMarketPicked(){
+    var m=pickedMarket("mapMarketPick","mapMarketOther");
+    var addrs=((marketSuggest&&marketSuggest.sample)||[]).map(function(r){return r.address});
+    if(m&&looksLikeMarket(m))confirmMarket(addrs,m,"mapMarketCheck");
+    else { confirmSeq++; $("mapMarketCheck").textContent=""; }
+  }
+  $("mapMarketPick").addEventListener("change",function(){
+    marketAnswer=$("mapMarketPick").value||"";
+    $("mapMarketOther").classList.toggle("hide",marketAnswer!=="__other");
+    mapMarketPicked();
+    refreshMapper();
+  });
+  $("mapMarketOther").addEventListener("input",refreshMapper);
+  $("mapMarketOther").addEventListener("change",mapMarketPicked);
   function syncConstants(wants){
     var key=wants.join(",");
     if(key!==constShown){
@@ -3282,6 +3532,26 @@ a.btn.ghost:hover{color:var(--ink)}
       $("mapAmbig").textContent="";
       $("mapAmbig").classList.add("hide");
     }
+    // Summary mode (2026-09-02). When the pre-selection already claims every
+    // required field, nothing is ambiguous and no two columns sit on one
+    // target, the table of dropdowns folds away and Import is the next thing
+    // on screen. The mapper spec's rule — the screen is always shown, so a
+    // dropped column is always NAMED — holds unchanged: the "Will be ignored"
+    // line stands above the fold either way, and the table is one click
+    // away. Anything short of a complete pre-selection opens it as before. A
+    // CoStar export used to mean ~40 dropdowns to read past on every upload
+    // even when every one of them was already right.
+    var dup=preset.some(function(t,i){return preset.indexOf(t)!==i});
+    var missing=(info.required||[]).filter(function(t){return preset.indexOf(t)<0});
+    var summary=!missing.length&&!amb.length&&!dup;
+    var named=info.normalized.filter(Boolean).length;
+    $("mapDetails").open=!summary;
+    $("mapSummary").textContent=summary
+      ? preset.length+" of "+named+" columns matched \\u00b7 change how they match"
+      : "How your columns match";
+    $("mapLead").textContent=summary
+      ? "We matched your columns to ours. Check the line below, then import."
+      : "Tell us which of your columns is which, then import.";
     $("mapSec").classList.remove("hide");
     $("pdfSec").classList.add("hide");
     $("addSec").classList.add("hide");
@@ -3293,6 +3563,15 @@ a.btn.ghost:hover{color:var(--ink)}
     });
     // A new file starts with no answers, and no question row rendered.
     constAnswers={}; constShown=""; $("mapConst").innerHTML="";
+    // The market question starts from the inspect that opened the screen,
+    // which read the file's own column names — so its answer is current for
+    // exactly that trio, and refreshMapper re-asks the moment the mapping
+    // feeds the address from anywhere else.
+    marketSuggest=info.marketSuggest||null; marketAnswer=""; $("mapMarketOther").value="";
+    $("mapMarketCheck").textContent="";
+    var ident={};
+    ["address","address_city","address_state"].forEach(function(t){ if((info.normalized||[]).indexOf(t)>=0)ident[t]=t; });
+    marketSig=trioSig(ident);
     refreshMapper();
     $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -3327,6 +3606,9 @@ a.btn.ghost:hover{color:var(--ink)}
     syncConstants(offering);
     var answered=currentConstants();
     var missing=unclaimed.filter(function(t){return !answered[t]});
+    var sig=trioSig(m);
+    if(sig!==marketSig){ marketSig=sig; reinspectMarket(sig); }
+    syncMarketRow();
     // Naming the ignored columns is half the point: importing while quietly
     // dropping a column is the silent failure this screen exists to end. It
     // names the RAW header, never the normalized key — "column_4" is our
@@ -3375,6 +3657,13 @@ a.btn.ghost:hover{color:var(--ink)}
           " to be added before this file can be imported.");
       }
     }
+    // A typed completion that is not "City, ST"-shaped would complete every
+    // bare row into a refusal; an EMPTY one is no answer (those rows are left
+    // out, as they always were).
+    if(marketAnswer==="__other"){
+      var typed=String($("mapMarketOther").value||"").trim();
+      if(typed&&!looksLikeMarket(typed))lines.push('Write the market as City, ST, like "Boise, ID".');
+    }
     if(lines.length){
       $("mapMsg").textContent=lines.join(" ");
       $("mapMsg").classList.remove("hide");
@@ -3401,7 +3690,8 @@ a.btn.ghost:hover{color:var(--ink)}
     // The panel closes on SUCCESS only. Closing here would clear the mapping,
     // the held file and every dropdown before knowing whether the import
     // worked, leaving a re-pick and a full re-map as the only way back.
-    doImport(p.name,p.csv,currentMapping(),closeMapper,null,currentConstants());
+    doImport(p.name,p.csv,currentMapping(),closeMapper,null,currentConstants(),
+      pickedMarket("mapMarketPick","mapMarketOther"));
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();
@@ -3449,8 +3739,13 @@ a.btn.ghost:hover{color:var(--ink)}
   function refreshPdfGo(){
     var n=0;
     ((pdfPending&&pdfPending.rows)||[]).forEach(function(r){ if(r.checked)n++; });
-    $("pdfGo").textContent="Import "+n+" comps";
-    $("pdfGo").disabled=n===0;
+    // Two buttons, one state: the one at the top is where a clean table is
+    // imported from after a glance; the one under the table is for the one
+    // that needed correcting.
+    ["pdfGo","pdfGoTop"].forEach(function(id){
+      $(id).textContent="Import "+n+" comp"+(n===1?"":"s");
+      $(id).disabled=n===0;
+    });
   }
 
   function collectPdfRows(){
@@ -3474,13 +3769,18 @@ a.btn.ghost:hover{color:var(--ink)}
   // server re-validates every imported row regardless (normalizeRow's verdict
   // is recomputed at import, never trusted from this screen).
   var RENT_BASIS_NEEDLE="rent_basis is required with a rent";
-  function stripBasisError(err){
+  function stripError(err,needle){
     if(err==null)return null;
     var parts=String(err).split("; ").filter(function(p){
-      return p.indexOf(RENT_BASIS_NEEDLE)<0;
+      return p.indexOf(needle)<0;
     });
     return parts.length?parts.join("; "):null;
   }
+  function stripBasisError(err){ return stripError(err,RENT_BASIS_NEEDLE); }
+  // A row the sheet-level market may write into: the server flagged its
+  // address as bare, and nobody has typed into that cell since. A stamped
+  // row stays eligible so a re-pick corrects it; a typed one never is.
+  function pdfNeedsMarket(r){ return !!r&&r.needsMarket===true&&!r.addressTyped; }
   // A row the sheet-level basis may write into: it has a rent, and its basis
   // is either absent or something THIS selector wrote earlier (stampedBasis),
   // so re-choosing corrects a mis-pick without ever touching a cell a person
@@ -3492,6 +3792,32 @@ a.btn.ghost:hover{color:var(--ink)}
     return hasRent&&(!hasBasis||r.stampedBasis===true);
   }
 
+  // One row of the confirm table (2026-09-02). A row that read cleanly is
+  // drawn as TEXT — the formatted figure, which is what the broker reads
+  // against the source document — with an Edit control at the end; a row
+  // normalizeRow refused is drawn as inputs, tinted, and followed by a line
+  // saying what is wrong with it. Measured reason: 4m51s to confirm 12 rows
+  // that were all correct (docs/evals/extract-2026-08-28-verdict-final.md),
+  // with every cell an input and nothing saying which rows needed a look. A
+  // broker's job on this screen is to glance, and the markup should say so.
+  // r.editing is a row the broker opened by hand; it survives the
+  // re-renders the basis selector and Edit itself trigger, like checked.
+  function pdfRowHtml(r,i,cols){
+    var editing=r.error!=null||r.editing===true;
+    var tint=r.error!=null?' class="need-fix"':"";
+    var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
+    var cells=cols.map(function(k){
+      var raw=r.values[k]==null?"":String(r.values[k]);
+      if(!editing)return '<td class="ro" data-i="'+i+'">'+esc(pdfDisplay(k,raw))+"</td>";
+      return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
+        '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
+    }).join("");
+    var act=editing?"":'<button type="button" class="lnk" data-edit="'+i+'">Edit</button>';
+    var html="<tr"+tint+"><td>"+cb+"</td>"+cells+"<td>"+act+"</td></tr>";
+    if(r.error!=null)html+='<tr class="pdf-err"><td></td><td colspan="'+(cols.length+1)+'">'+esc(r.error)+"</td></tr>";
+    return html;
+  }
+
   function openPdfPreview(info){
     pdfPending=info||{filename:"",rows:[]};
     var rows=pdfPending.rows||[];
@@ -3501,39 +3827,51 @@ a.btn.ghost:hover{color:var(--ink)}
       // re-renders the table, and a checkbox the broker set by hand must
       // survive that.
       if(typeof r.checked!=="boolean")r.checked=r.error==null;
+      // What the row arrived with, so a re-pick recomposes from the bare
+      // street and "leave those rows out" can put it back.
+      if(r.needsMarket===true&&r.bare==null)r.bare=String(r.values.address||"");
     });
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
     $("pdfName").textContent=pdfPending.filename||"";
-    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"<th></th></tr>";
     var multi=(pdfPending.files||0)>1, lastSrc=null;
     $("pdfBody").innerHTML=rows.map(function(r,i){
       // A merged batch names each file above its rows. Not a column: a cell
       // would ride into the upload as a field, and the file is not a fact
       // about the deal.
       var head="";
-      if(multi&&r.source&&r.source!==lastSrc){ lastSrc=r.source; head='<tr class="pdf-src"><td colspan="'+(cols.length+1)+'">'+esc(r.source)+"</td></tr>"; }
-      var tint=r.error!=null?' class="need-fix"':"";
-      var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
-      var cells=cols.map(function(k){
-        var raw=r.values[k]==null?"":String(r.values[k]);
-        return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
-          '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
-      }).join("");
-      return head+"<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
+      if(multi&&r.source&&r.source!==lastSrc){ lastSrc=r.source; head='<tr class="pdf-src"><td colspan="'+(cols.length+2)+'">'+esc(r.source)+"</td></tr>"; }
+      return head+pdfRowHtml(r,i,cols);
     }).join("");
-    var n=rows.length, ready=0, fail=0, allDate=true;
+    var n=rows.length, ready=0, fail=0, allDate=true, allCity=true;
     rows.forEach(function(r){
       if(r.error==null)ready++;
-      else { fail++; if(!/date/i.test(String(r.error)))allDate=false; }
+      else {
+        fail++;
+        if(!/date/i.test(String(r.error)))allDate=false;
+        if(stripError(r.error,MARKET_NEEDLE)!=null)allCity=false;
+      }
     });
-    var failBit=fail?(allDate?fail+" need a date":fail+" need a fix"):"";
-    $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
+    var strip=n+" found \u00b7 "+ready+" ready";
+    if(fail)strip+=" \u00b7 "+(allCity?fail+" need a city":allDate?fail+" need a date":fail+" need a fix");
+    else if(n)strip+=" \u00b7 everything reads clean";
+    $("pdfStrip").textContent=strip;
+    $("pdfEditAll").textContent=pdfPending.editAll?"Done reviewing":"Review every cell";
     // The sheet-level basis row, only when a row can actually take it, with
     // the current choice surviving a re-render.
     var needsBasis=rows.some(pdfNeedsBasis);
     $("pdfBasisRow").classList.toggle("hide",!needsBasis);
     $("pdfBasis").value=pdfPending.rentBasis||"";
+    // The sheet-level market row, only when a row can actually take it, the
+    // current choice surviving a re-render exactly as the basis does.
+    var needCity=rows.filter(pdfNeedsMarket).length;
+    $("pdfMarketRow").classList.toggle("hide",!needCity);
+    if(needCity){
+      $("pdfMarketAsk").textContent=needCity+" address"+(needCity===1?" has":"es have")+" no city or state. Add one to those rows:";
+      $("pdfMarketPick").innerHTML=marketOptionsHtml(pdfPending.marketSuggest,pdfPending.market||"");
+      $("pdfMarketOther").classList.toggle("hide",(pdfPending.market||"")!=="__other");
+    }
     $("pdfMsg").innerHTML="";
     $("pdfMsg").classList.add("hide");
     // Re-renders (the basis selector) must not smooth-scroll the page back to
@@ -3543,6 +3881,16 @@ a.btn.ghost:hover{color:var(--ink)}
     $("pdfSec").classList.remove("hide");
     $("addSec").classList.add("hide");
     $("bookEmpty").classList.add("hide");
+    // Where the cursor lands: the row Edit was just pressed on, or — on first
+    // open only — the first row that needs a fix, so the broker starts where
+    // their attention is needed rather than at row one. A re-render for the
+    // basis selector hands focus to nobody.
+    var focusRow=pdfPending.focusRow;
+    if(focusRow==null&&!alreadyOpen){
+      for(var f=0;f<rows.length;f++){ if(rows[f].error!=null){ focusRow=f; break; } }
+    }
+    pdfPending.focusRow=null;
+    var focusTarget=null;
     Array.prototype.forEach.call($("pdfBody").querySelectorAll("input"),function(inp){
       var i=Number(inp.getAttribute("data-i"));
       if(inp.type==="checkbox"){
@@ -3561,16 +3909,55 @@ a.btn.ghost:hover{color:var(--ink)}
         });
         inp.addEventListener("input",function(){
           inp.setAttribute("data-raw",inp.value);
-          if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+          var row=pdfPending.rows[i], k=inp.getAttribute("data-k");
+          if(row)row.values[k]=inp.value;
+          // A hand-typed address always wins: the market selector may never
+          // write into this cell again, and its stamp is no longer its own.
+          if(row&&k==="address"){ row.addressTyped=true; row.stampedMarket=false; }
         });
         inp.addEventListener("blur",function(){
           inp.value=pdfDisplay(inp.getAttribute("data-k"),inp.getAttribute("data-raw")||"");
         });
+        if(!focusTarget&&focusRow!=null&&i===focusRow)focusTarget=inp;
       }
     });
     refreshPdfGo();
+    if(focusTarget&&typeof focusTarget.focus==="function")focusTarget.focus();
     if(!alreadyOpen)$("pdfSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
+
+  // Edit on a clean row, or a double-click on one of its cells, turns that
+  // row into inputs. Delegated to the table body, because the body is rebuilt
+  // on every re-render and a listener per button would be re-wired each time.
+  function editPdfRow(i){
+    if(!pdfPending||!pdfPending.rows[i])return;
+    pdfPending.rows[i].editing=true;
+    pdfPending.focusRow=i;
+    openPdfPreview(pdfPending);
+  }
+  function pdfRowFrom(e,sel,attr){
+    var t=e&&e.target&&typeof e.target.closest==="function"?e.target.closest(sel):null;
+    if(!t)return -1;
+    var i=Number(t.getAttribute(attr));
+    return isFinite(i)&&i>=0?i:-1;
+  }
+  $("pdfBody").addEventListener("click",function(e){
+    var i=pdfRowFrom(e,"[data-edit]","data-edit");
+    if(i>=0)editPdfRow(i);
+  });
+  $("pdfBody").addEventListener("dblclick",function(e){
+    var i=pdfRowFrom(e,"td.ro","data-i");
+    if(i>=0)editPdfRow(i);
+  });
+  // The cautious broker's door back to the all-inputs table: every row opens
+  // for editing, and a second press folds the clean ones back to text. A row
+  // that needs a fix is inputs either way.
+  $("pdfEditAll").addEventListener("click",function(){
+    if(!pdfPending)return;
+    pdfPending.editAll=!pdfPending.editAll;
+    (pdfPending.rows||[]).forEach(function(r){ r.editing=!!pdfPending.editAll; });
+    openPdfPreview(pdfPending);
+  });
 
   // Choosing a basis writes it into every row that needs one — visibly, cell
   // by cell — and cures the rows whose ONLY blocker it was: their error
@@ -3595,18 +3982,61 @@ a.btn.ghost:hover{color:var(--ink)}
     openPdfPreview(pdfPending);
   });
 
+  // Choosing a market writes it into the address of every row that arrived
+  // bare — visibly, cell by cell, through the same append-only rule the
+  // import applies — and cures the rows whose ONLY blocker it was. Choosing
+  // the blank option puts those rows back exactly as they arrived. Then the
+  // completed streets are checked against our own census proxy, as a badge.
+  function applyPdfMarket(){
+    if(!pdfPending)return;
+    var chosen=pickedMarket("pdfMarketPick","pdfMarketOther");
+    if(chosen&&!looksLikeMarket(chosen))return;
+    var bare=[];
+    (pdfPending.rows||[]).forEach(function(r){
+      if(!pdfNeedsMarket(r))return;
+      if(!chosen){
+        // Back to how it arrived: the bare street, unchecked, and the
+        // refusal restored in the module's own words (so a later pick can
+        // find it again). Other cures — a basis stamped meanwhile — stand.
+        if(!r.stampedMarket)return;
+        r.values.address=r.bare; r.stampedMarket=false; r.checked=false;
+        r.error=(r.error?r.error+"; ":"")+'"'+r.bare+'" '+MARKET_NEEDLE;
+        return;
+      }
+      bare.push(r.bare);
+      r.values.address=joinMarket(r.bare,chosen);
+      r.stampedMarket=true;
+      var left=stripError(r.error,MARKET_NEEDLE);
+      if(left!==r.error){ r.error=left; if(left==null)r.checked=true; }
+    });
+    openPdfPreview(pdfPending);
+    if(chosen)confirmMarket(bare,chosen,"pdfMarketCheck");
+    else { confirmSeq++; $("pdfMarketCheck").textContent=""; }
+  }
+  $("pdfMarketPick").addEventListener("change",function(){
+    if(!pdfPending)return;
+    pdfPending.market=$("pdfMarketPick").value||"";
+    $("pdfMarketOther").classList.toggle("hide",pdfPending.market!=="__other");
+    // "Another…" waits for the text; the cells change when it is entered.
+    if(pdfPending.market==="__other")return;
+    applyPdfMarket();
+  });
+  $("pdfMarketOther").addEventListener("change",applyPdfMarket);
+
   function closePdfPreview(){
     $("pdfSec").classList.add("hide");
     pdfPending=null;
     applyFirstRun(firstRunCounts[0],firstRunCounts[1]);
   }
 
-  $("pdfGo").addEventListener("click",function(){
+  function importPdfRows(){
     if(!pdfPending)return;
     var rows=collectPdfRows();
     if(!rows.length)return;
     doImport(pdfPending.filename,null,null,closePdfPreview,rows);
-  });
+  }
+  $("pdfGo").addEventListener("click",importPdfRows);
+  $("pdfGoTop").addEventListener("click",importPdfRows);
   $("pdfCancel").addEventListener("click",function(){
     closePdfPreview();
     var more=dropQueue();
@@ -3619,6 +4049,24 @@ a.btn.ghost:hover{color:var(--ink)}
   // result message.
   $("bookPick").addEventListener("click",function(){ $("file").click() });
   $("file").addEventListener("change",function(e){ uploadMany(e.target.files); e.target.value=""; });
+  // Pasted rows take the CSV path with the textarea's text as the "file";
+  // the server converts a tab-separated paste and hands the CSV back. Never
+  // part of a batch: a paste is one thing, read now.
+  $("pasteGo").addEventListener("click",function(){
+    var text=String($("pasteBox").value||"");
+    if(!text.trim()){
+      $("res").innerHTML='<div class="msg bad">Paste some rows first, header row included.</div>';
+      return;
+    }
+    if(text.length>4*1024*1024){
+      $("res").innerHTML='<div class="msg bad">That is too much to read at once. The limit is 4 MB.</div>';
+      return;
+    }
+    csvQueue=[]; batchOn=false; batchLog=[];
+    $("pick").disabled=true;
+    $("res").innerHTML='<div class="msg ok">Reading pasted rows&hellip;</div>';
+    inspectPost({csv:text,filename:"Pasted rows"},"Pasted rows",text);
+  });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});
   ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){

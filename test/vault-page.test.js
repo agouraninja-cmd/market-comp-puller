@@ -36,7 +36,7 @@ function comp(o) {
     price: 1000000, size_sqft: 10000, price_per_sqft: 100, published: false,
   }, o);
 }
-function boot(comps, identity) {
+function boot(comps, identity, extra) {
   return { s: 200, j: {
     comps, uploads: [],
     counts: { returned: comps.length, published: comps.filter((c) => c.published).length },
@@ -45,6 +45,9 @@ function boot(comps, identity) {
     // The credit identity, as vaultReadPayload serves it. Default is the
     // unstated case, which is what every pre-existing test wants.
     identity: identity || { display_name: "", company: "", creditedTo: "" },
+    // Anything else vaultReadPayload serves that one test wants to set
+    // (identitySuggest, say) rides in here.
+    ...(extra || {}),
   } };
 }
 // The page's own inline script, as the browser would receive it.
@@ -417,7 +420,7 @@ function jsonResponse(status, body) {
 async function runPage(comps, benchResult, opts, identity) {
   opts = opts || {};
   const calls = [];
-  const bootPayload = boot(comps, identity);
+  const bootPayload = boot(comps, identity, opts.bootExtra);
   if (opts.uploads) bootPayload.j.uploads = opts.uploads;
   // A firm and the shelf lookup, in the shape vaultReadPayload serves them,
   // so the push button and the Firm filter can be EXECUTED here rather than
@@ -1338,6 +1341,100 @@ test("a jpeg and a webp take the same door as a png", async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Several files at once (2026-09-02)
+// ---------------------------------------------------------------------------
+const MF_CSV = "address,property_type,transaction,deal_date\n100 Main St Boise ID,Industrial,sale,2026-01-09\n";
+const mfSettle = async () => { for (let i = 0; i < 6; i++) await tick(); };
+const mfPick = async (doc, files) => {
+  doc.getElementById("file").fire("change", { target: { files, value: "x" } });
+  await mfSettle();
+};
+const MF_PDF = (name) => ({ name, type: "application/pdf", size: 1200, dataUrl: "data:application/pdf;base64,JVBERi0x" });
+
+test("several PDFs and screenshots are extracted one by one into ONE confirm table, each file named above its rows", async () => {
+  assert.match(renderVaultHTML(boot([]), CHROME), /id="file"[^>]*\bmultiple\b/, "the one input takes many files");
+  let n = 0;
+  const { doc, calls } = await runPage([], null, {
+    extract: (init) => {
+      n++;
+      const name = JSON.parse(init.body).filename;
+      return Promise.resolve(jsonResponse(200, { filename: name, rows: [
+        { values: { address: n + " A St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+      ] }));
+    },
+  });
+  await mfPick(doc, [MF_PDF("one.pdf"), { name: "two.png", type: "image/png", size: 2400, dataUrl: "data:image/png;base64,iVBORw0KGgo=" }]);
+  const ex = calls.filter((c) => c.url.indexOf("/api/vault/extract") === 0);
+  assert.deepEqual(ex.map((c) => c.body.filename), ["one.pdf", "two.png"], "one extract call per file, in order");
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+  assert.equal(doc.getElementById("pdfCount").textContent, "2", "the table counts every file's rows");
+  assert.match(doc.getElementById("pdfName").textContent, /^2 files: one\.pdf, two\.png$/);
+  const body = doc.getElementById("pdfBody").innerHTML;
+  assert.ok(body.indexOf('class="pdf-src"') < body.indexOf("1 A St"), "the file's name sits above its rows");
+  assert.match(body, /pdf-src"><td[^>]*>one\.pdf/);
+  assert.match(body, /pdf-src"><td[^>]*>two\.png/);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0, "nothing is stored until the broker confirms");
+  // One file is the old path exactly: no source row, the plain name.
+  const one = await runPage([], null, { extract: () => Promise.resolve(jsonResponse(200, { filename: "solo.pdf", rows: [] })) });
+  await mfPick(one.doc, [MF_PDF("solo.pdf")]);
+  assert.equal(one.doc.getElementById("pdfName").textContent, "solo.pdf");
+  assert.doesNotMatch(one.doc.getElementById("pdfBody").innerHTML, /pdf-src/);
+});
+
+test("several spreadsheets queue through the ordinary path, the next only after the last is stored, and every file keeps its line", async () => {
+  const order = [];
+  const { doc, calls } = await runPage([], null, {
+    upload: (init) => {
+      const b = JSON.parse(init.body);
+      order.push(b.filename);
+      return Promise.resolve(jsonResponse(200, { ok: true, imported: order.length, uploadId: "u" + order.length }));
+    },
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, { name: "b.csv", text: MF_CSV }, { name: "c.csv", text: MF_CSV }]);
+  assert.deepEqual(order, ["a.csv", "b.csv", "c.csv"], "one after another, in the order chosen");
+  const res = doc.getElementById("res").innerHTML;
+  assert.match(res, /a\.csv: Imported 1 comp/);
+  assert.match(res, /b\.csv: Imported 2 comps/);
+  assert.match(res, /c\.csv: Imported 3 comps/, "the summary keeps every file's line, not only the last");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 3);
+});
+
+test("a refused spreadsheet stops the batch and names what was not imported", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(400, { error: "Row 2: deal_date is required." })),
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, { name: "b.csv", text: MF_CSV }]);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 1, "b.csv was not attempted past a refusal the broker has not read");
+  assert.match(doc.getElementById("res").innerHTML, /deal_date is required/);
+  assert.match(doc.getElementById("res").innerHTML, /1 more file you chose was not imported: b\.csv/);
+});
+
+test("a mixed pick extracts first, reads the spreadsheet after the table is confirmed, and names a file nobody can read", async () => {
+  const { doc, calls } = await runPage([], null, {
+    extract: () => Promise.resolve(jsonResponse(200, { filename: "one.pdf", rows: [
+      { values: { address: "1 A St, Boise ID", property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12" }, error: null },
+    ] })),
+  });
+  await mfPick(doc, [{ name: "a.csv", text: MF_CSV }, MF_PDF("one.pdf"), { name: "deck.pptx", type: "", size: 10 }]);
+  assert.match(doc.getElementById("res").innerHTML, /Skipped deck\.pptx/, "the file nobody can read is named, never dropped silently");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 0, "the spreadsheet waits while the table is open");
+  assert.ok(!doc.getElementById("pdfSec").classList.contains("hide"));
+  assert.equal(doc.getElementById("pdfName").textContent, "one.pdf", "one readable extract file is the plain single-file table");
+  doc.getElementById("pdfGo").fire("click");
+  await mfSettle();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0).length, 1, "then it is read");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 2, "the table's rows and the spreadsheet: two imports");
+  assert.match(doc.getElementById("res").innerHTML, /Skipped deck\.pptx/, "and the skip is still on screen at the end");
+  // Cancelling the table drops the waiting spreadsheet by name instead.
+  const c = await runPage([], null, { extract: () => Promise.resolve(jsonResponse(200, { filename: "one.pdf", rows: [] })) });
+  await mfPick(c.doc, [{ name: "a.csv", text: MF_CSV }, MF_PDF("one.pdf")]);
+  c.doc.getElementById("pdfCancel").fire("click");
+  await mfSettle();
+  assert.equal(c.calls.filter((x) => x.url.indexOf("/api/vault/inspect") === 0).length, 0);
+  assert.match(c.doc.getElementById("res").innerHTML, /Cancelled\. Nothing was saved\. 1 more file you chose was not imported: a\.csv/);
+});
+
 test("a file with no type still routes on its extension, both ways", async () => {
   // Drag-and-drop and some browsers hand over an empty `type`, so the
   // extension is the only signal left; a .csv must not fall into extract.
@@ -1910,6 +2007,20 @@ test("the page offers an add-one-comp form with the four required fields", () =>
   }
 });
 
+test("the columns brokers stall on carry a one-line hint wherever they are named", () => {
+  const page = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(page, /<label title="Latitude in decimal degrees[^"]*">Latitude <input id="addComp_lat"/);
+  assert.match(page, /<label title="Longitude in decimal degrees[^"]*">Longitude <input id="addComp_lng"/);
+  assert.match(page, /<label title="Who occupies the building[^"]*">Tenancy <input id="addComp_tenancy"/);
+  assert.doesNotMatch(page, /<label>Lat <input/, "the bare abbreviation was the question");
+  assert.doesNotMatch(page, /<label>Lng <input/);
+  // One hint map, read by every header renderer: the spreadsheet's and the
+  // compact table's headCell, and the confirm table's own header line.
+  assert.match(page, /var FIELD_HINTS=\{\s*tenancy:/);
+  assert.equal((page.match(/escA\(fieldHint\(k\)\)/g) || []).length, 2, "headCell and the confirm-table header both carry the hint as title=");
+  for (const k of ["tenancy", "lat", "lng"]) assert.match(page, new RegExp("\\b" + k + ':"'), k + " has a hint");
+});
+
 test("there is still exactly one file input on the page", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   const inputs = (html.match(/type=["']?file/g) || []).length;
@@ -2095,6 +2206,33 @@ test("an unstated identity says so, and offers to fix it", async () => {
   const line = doc.getElementById("creditLine").innerHTML;
   assert.match(line, /need a name to credit/i);
   assert.match(line, /id="idEdit"/, "there must be a control to state one");
+});
+
+test("an unstated identity is offered the member's report branding — filled in, never saved", async () => {
+  const suggest = { company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins", license_number: "01899123" };
+  const { doc, calls } = await runPage([comp({})], null, { bootExtra: { identitySuggest: suggest } });
+  doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(doc.getElementById("idCompany").value, "Hawkins Ridge CRE");
+  assert.equal(doc.getElementById("idName").value, "Chuck Hawkins");
+  assert.equal(doc.getElementById("idLicense").value, "01899123");
+  assert.match(doc.getElementById("idMsg").textContent, /Filled in from your report branding/);
+  assert.ok(!doc.getElementById("idMsg").classList.contains("hide"), "the line says where the values came from");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/identity") === 0).length, 0,
+    "opening the form writes nothing — the credit is stated by the Save click, never inherited");
+});
+
+test("a stated identity is never second-guessed by the branding, and a plain open stays quiet", async () => {
+  const stated = { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", license_number: "", creditedTo: "Hawkins Ridge CRE" };
+  const { doc } = await runPage([comp({})], null,
+    { bootExtra: { identitySuggest: { company: "Somebody Else LLC", display_name: "X", license_number: "999" } } }, stated);
+  doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(doc.getElementById("idCompany").value, "Hawkins Ridge CRE");
+  assert.equal(doc.getElementById("idLicense").value, "", "even an empty field stays empty once a credit is stated");
+  assert.ok(doc.getElementById("idMsg").classList.contains("hide"));
+  const bare = await runPage([comp({})]);
+  bare.doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(bare.doc.getElementById("idCompany").value, "");
+  assert.ok(bare.doc.getElementById("idMsg").classList.contains("hide"), "nothing to offer, nothing said");
 });
 
 test("the identity form ships closed in the markup", () => {
@@ -3416,6 +3554,33 @@ test("the door posts the identity the row already holds, then re-reads the board
   assert.match(doc.getElementById("propsMsg").textContent, /Added 1210 N 17th St, Boise, ID to Colliers Boise's buildings/);
   const reads = calls.filter((c) => c.url.indexOf("/api/org/buildings") === 0 && !c.body);
   assert.ok(reads.length >= 2, "the board is re-read after the add, so the door disappears from the row");
+});
+
+test("a property can be added by address with no search: the door ships closed, posts address and type, and an unvalued row says so", async () => {
+  const { doc, calls } = await runPage([comp({})], null, { portfolio: [PROP({ snapshots: [] })] });
+  await tick();
+  assert.match(doc.getElementById("propsRows").innerHTML, /not valued yet/, "no valuation was taken, so none is claimed");
+  assert.doesNotMatch(doc.getElementById("propsRows").innerHTML, /checked/);
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "ships closed");
+  doc.getElementById("propAddToggle").fire("click", {});
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") < 0);
+  assert.match(doc.getElementById("pType").innerHTML, /Industrial[\s\S]*Residential/, "the vault's own type list");
+  doc.getElementById("pAddr").value = "  500 S Capitol Blvd, Boise, ID ";
+  doc.getElementById("pType").value = "Office";
+  doc.getElementById("pAdd").fire("click", {});
+  await tick(); await tick();
+  const posts = calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body);
+  assert.deepEqual(posts.map((c) => c.body), [{ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Office" }],
+    "address and type, nothing report-shaped");
+  assert.match(doc.getElementById("propsMsg").textContent, /Added 500 S Capitol Blvd, Boise, ID/);
+  assert.ok(doc.getElementById("propAddForm").className.indexOf("hide") >= 0, "closes on success");
+  // An empty address never leaves the page.
+  doc.getElementById("propAddToggle").fire("click", {});
+  doc.getElementById("pAddr").value = "";
+  doc.getElementById("pAdd").fire("click", {});
+  await tick();
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/portfolio") === 0 && c.body).length, 1);
+  assert.match(doc.getElementById("propsMsg").textContent, /street address/);
 });
 
 // ---------------------------------------------------------------------------

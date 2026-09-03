@@ -1757,7 +1757,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                while it was a real entitlement in entitlements.js with no UI
                drawing a logo anywhere; the bullet is back now that it does
                (branding.js, GET|PUT|DELETE /api/branding, the letterhead on
-               screen/print/PNG/CSV/XLSX, 2026-08-08). The exports bullet came
+               screen/print/PNG/CSV/XLSX/PPTX, 2026-08-08). The exports bullet came
                back on 2026-08-03 when the monthly cap became real. -->
           <!-- "Unlimited comps" is a claim about the GATE, not about search
                depth: entitlements.js returns maxComps "all", so Pro is never
@@ -1848,7 +1848,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
-            <tr><td>CSV, image, PDF and Excel exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
+            <tr><td>CSV, image, PDF, Excel and PowerPoint exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Address Explorer</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Your firm's branding on reports</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
@@ -2482,8 +2482,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            tracked properties" from when that was the whole of it; the workspace
            has since grown the firm shelf, the deal board, shares, the vault and
            the report runner, so the old line described about a fifth of the
-           page it introduces. -->
-      <p class="text-sm text-[#5A6473] mt-3">Your firm's shelf, and everything you have shared.</p>
+           page it introduces. Rewritten again on 2026-09-02, once buildings,
+           conversations and contacts had joined the firm deck and the
+           portfolio had left for the Vault. -->
+      <p class="text-sm text-[#5A6473] mt-3">Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault.</p>
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -2504,33 +2506,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p class="text-sm text-[#4C5665]">Sign in to work with your firm, share reports, and keep your own book of properties.</p>
         <button id="deskSignInBtn" type="button"
           class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
-      </div>
-
-      <!-- Search history — one row per property, stored in this browser only.
-           The newest few keep their full report (Open is free); older rows keep
-           only their inputs (Re-run is a fresh billed search). The filter input
-           is static markup on purpose: a search completing re-renders the rows
-           three times over, and regenerating the input would eat what the user
-           is typing. Deliberately OUTSIDE #myDesk: it still renders signed
-           out (the account wall permitting).
-
-           Since 2026-08-31 it is the list a search actually lands in — the
-           portfolio holds only what a member says they OWN — and it has two
-           sources: this browser's propertyHistory.v1, which carries the
-           reports and works signed out, plus /api/recents for a signed-in
-           member, which carries rows run on their other devices. See
-           mergedHistory(). -->
-      <div id="historyWrap" class="hidden mt-6">
-        <div class="dk-rule flex-wrap">
-          <span class="rd-lab">Recent searches</span>
-          <div class="flex items-center gap-3">
-            <span id="historyCount" class="text-xs text-[#68707E]"></span>
-            <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
-              class="hidden w-52 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <button id="clearHistoryBtn" type="button" class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">clear</button>
-          </div>
-        </div>
-        <div id="historyRows" class="mt-2"></div>
       </div>
 
       <!-- My Desk — the signed-in areas, grouped into five decks (2026-08-21;
@@ -2694,20 +2669,35 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </div>
       </div>
 
-      <!-- The firm's own tenant contacts (039). Typed or imported, NEVER
-           collected: nothing on this panel is populated from a CompNinja lead
-           or a hub participant, which the plan made a condition of building it
-           — see migrations/039 for the reasoning. Firm-wide, with the member
-           who added each one shown, because that is what keeps the
-           private-by-default option open later. -->
+      <!-- The firm's own contacts (039). Typed or imported, NEVER collected:
+           nothing on this panel is populated from a CompNinja lead or a hub
+           participant, which the plan made a condition of building it — see
+           migrations/039 for the reasoning. Firm-wide, with the member who
+           added each one shown, because that is what keeps the
+           private-by-default option open later.
+
+           "Contacts", not "Tenant contacts" (2026-09-02): the old label was
+           written for the tenant-rep shop kind, withdrawn on 2026-08-31, and a
+           broker shop or a development shop keeps a contact list too. The
+           tenant_* CSV aliases in org-contacts.js stay — an old spreadsheet
+           still has to import.
+
+           The add/import form ships CLOSED behind the one control on the
+           rule, and setContactAddOpen() is its single writer — the vault's
+           #addSec rule: a firm with three hundred contacts opening the
+           Workspace should be handed its list, not a form. -->
       <div id="deskContacts" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Tenant contacts</span>
-          <span id="contactsStats" class="dk-note"></span>
+          <span class="rd-lab">Contacts</span>
+          <div class="flex items-center gap-3">
+            <span id="contactsStats" class="dk-note"></span>
+            <button type="button" id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"
+              class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9] whitespace-nowrap">+ Add or import</button>
+          </div>
         </div>
         <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
 
-        <form id="contactAddForm" class="mt-3 flex flex-wrap items-end gap-2">
+        <form id="contactAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
             <span class="rd-lab">Name</span>
             <input id="contactName" type="text" required maxlength="120" placeholder="Dana Wu"
@@ -2738,7 +2728,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Add one above, or import a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
+        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
 
       <!-- The firm itself: create one, accept an invitation, see who is in it.
@@ -3009,7 +2999,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button type="button" id="brandLogoRemove" class="text-sm text-[#68707E] hover:text-[#374253]">Remove logo</button>
             <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
           </div>
-          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG. Resized automatically for print.</p>
+          <!-- Or read it off the firm's website (2026-09-02): the server picks
+               the page's declared icon and the result runs through the SAME
+               resizer a chosen file does. Nothing is saved until Save. -->
+          <div class="flex flex-wrap items-center gap-2 mt-2">
+            <input id="brandLogoSite" type="text" inputmode="url" placeholder="yourfirm.com" aria-label="Your firm's web address" maxlength="300"
+              class="w-52 min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button type="button" id="brandLogoImport"
+              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Import logo from website</button>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG, chosen from your computer or read from your website. Resized automatically for print.</p>
 
           <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
@@ -3026,6 +3025,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
             class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
 
+          <!-- Shown only when fillBrandForm() poured a suggestion into an
+               empty field (2026-09-02, "one profile"): the member must know
+               these came from somewhere, are not saved, and will print. -->
+          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and vault details. Nothing is saved until you press Save, and these details print on your reports.</p>
           <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
@@ -3448,6 +3451,48 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
     </div>
 
+    <!-- Recent searches — UNDER the chamber since 2026-09-02, as its output.
+         It sat at the top of the workspace, above "Your firm": a personal
+         list leading a page the 2026-08-28 decision made firm-first, and the
+         two halves of one act (run a search, reopen one) at opposite ends of
+         the page. It is its own block, OUTSIDE both neighbours on purpose:
+         #deskView hides wholesale on the home view and on a report, and the
+         wall's boot CSS hides #searchSection for a locked visitor while this
+         list still renders signed out. So it is toggled at exactly the four
+         seams that toggle #searchDeckHead — showDeskView, showHomeView,
+         beginAssembly, renderResults — and test/index-html.test.js counts
+         them, because a fifth seam that forgot it would leave a stray list
+         under a report.
+
+         Search history — one row per property, stored in this browser only.
+         The newest few keep their full report (Open is free); older rows keep
+         only their inputs (Re-run is a fresh billed search). The filter input
+         is static markup on purpose: a search completing re-renders the rows
+         three times over, and regenerating the input would eat what the user
+         is typing. Deliberately OUTSIDE #myDesk: it still renders signed
+         out (the account wall permitting).
+
+         Since 2026-08-31 it is the list a search actually lands in — the
+         portfolio holds only what a member says they OWN — and it has two
+         sources: this browser's propertyHistory.v1, which carries the
+         reports and works signed out, plus /api/recents for a signed-in
+         member, which carries rows run on their other devices. See
+         mergedHistory(). -->
+    <div id="historyDeck" class="hidden mt-8 no-print">
+      <div id="historyWrap" class="hidden">
+        <div class="dk-rule flex-wrap">
+          <span class="rd-lab">Recent searches</span>
+          <div class="flex items-center gap-3">
+            <span id="historyCount" class="text-xs text-[#68707E]"></span>
+            <input id="historyFilter" type="search" autocomplete="off" placeholder="Filter by address or type"
+              class="hidden w-52 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button id="clearHistoryBtn" type="button" class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9]">clear</button>
+          </div>
+        </div>
+        <div id="historyRows" class="mt-2"></div>
+      </div>
+    </div>
+
     <!-- Status / Error -->
     <div id="statusBox" class="hidden mt-6 no-print" role="status" aria-live="polite"></div>
 
@@ -3587,6 +3632,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           title="Comps, valuation, and assumptions as a 3-sheet workbook">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
           Excel
+        </button>
+        <!-- Signed-in only, the Excel button's door (refreshAccountUI). A deck
+             is a professional deliverable, and the anonymous toolbar does not
+             grow for it. Icon INSIDE the button: flashExportDone swaps
+             innerHTML. -->
+        <button id="pptxBtn"
+          class="hidden btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5"
+          title="Value, market, comps, map and sources as an editable deck">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 12 3-3 3 3 4-4"/></svg>
+          PowerPoint
         </button>
         <!-- Monthly export allowance. Hidden entirely for Pro, for anyone with
              the tier switched off, and until we've actually been told a number —
@@ -5737,6 +5792,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // screen up to a minute before renderResults repaints wholesale.
     document.getElementById("deskView").classList.add("hidden");
     document.getElementById("searchDeckHead").classList.add("hidden");
+    document.getElementById("historyDeck").classList.add("hidden");
     // The rail's Workspace row stops being the current page here, not only in
     // showHomeView: a report yields the workspace at this seam a minute before
     // renderResults repaints, and a highlight left standing over a view that
@@ -11293,15 +11349,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     tiles.forEach((t) => { if (t.labels) ctx.drawImage(t.labels, t.left, t.top, 128, 128); });
     // Comps first, subject last — the red pin is the one mark that must never
     // end up underneath another.
+    //
+    // The pins are projected at fit.z, the LOGICAL zoom, so the origin they
+    // are measured from must be the logical one too — ox/oy above are in
+    // tile-zoom (fit.z + 1) pixels, i.e. doubled. From 2026-08-26 to
+    // 2026-09-02 this subtracted the doubled origin and every pin landed
+    // ~120,000 px off the canvas: the PDF and the PNG shipped a pinless
+    // basemap, which reads as a map with nothing on it rather than as a bug.
+    // Found by the PowerPoint export, whose map slide is the same raster.
+    const px = fit.cx - SMAP_W / 2, py = fit.cy - SMAP_H / 2;
     pts.forEach((p) => {
       if (p.subject) return;
       const q = smapProject(p.lat, p.lng, fit.z);
-      smapCompPin(ctx, q.x - ox, q.y - oy, p.num);
+      smapCompPin(ctx, q.x - px, q.y - py, p.num);
     });
     pts.forEach((p) => {
       if (!p.subject) return;
       const q = smapProject(p.lat, p.lng, fit.z);
-      smapSubjectPin(ctx, q.x - ox, q.y - oy);
+      smapSubjectPin(ctx, q.x - px, q.y - py);
     });
     smapAttribution(ctx);
     // WebP, falling back to PNG. Measured on a downtown Boise set at these
@@ -11648,6 +11713,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // scroll and the wrong thing on top. "My Desk" brings the workspace back.
     document.getElementById("deskView").classList.add("hidden");
     document.getElementById("searchDeckHead").classList.add("hidden");
+    document.getElementById("historyDeck").classList.add("hidden");
     markNavCurrent();          // the report is not a nav destination — see beginAssembly
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
 
@@ -12461,6 +12527,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (typeof applySettingsAccountUI === "function") applySettingsAccountUI();
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
+    const pb = document.getElementById("pptxBtn");
+    if (pb) pb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
     // Recent searches follow identity for the same reason the desk does: the
     // list is per-account, so signing out must drop the previous member's
@@ -13358,6 +13426,8 @@ async function renderMyDesk() {
     // header there, so it reads as the workspace's own "Run a report" section
     // rather than a page of its own that happens to follow one.
     document.getElementById("searchDeckHead").classList.remove("hidden");
+    // And the recent-searches deck under it (2026-09-02) — see #historyDeck.
+    document.getElementById("historyDeck").classList.remove("hidden");
     document.getElementById("results").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
@@ -13376,6 +13446,7 @@ async function renderMyDesk() {
     // Home shows the chamber standalone; the workspace rule over it would be
     // a heading for a section that is not on screen.
     document.getElementById("searchDeckHead").classList.add("hidden");
+    document.getElementById("historyDeck").classList.add("hidden");
     // fade-in is added here rather than in markup so it doesn't double-animate
     // against the .enter page-load entrance on first paint.
     ["hero", "searchSection", "homeInfo"].forEach((id) => {
@@ -13544,6 +13615,14 @@ async function renderMyDesk() {
       const email = document.getElementById("compBrokerEmail");
       if (!email.value) email.value = currentUser.email;
       if (!name.value && currentUser.name) name.value = currentUser.name;
+      // And the firm and phone from the saved report branding, else what the
+      // branding card was itself offered (2026-09-02, "one profile"). Into
+      // empty fields only; the submission is still what they send.
+      const brand = currentBranding || currentSuggested || {};
+      const company = document.getElementById("compBrokerCompany");
+      const phone = document.getElementById("compBrokerPhone");
+      if (company && !company.value && brand.firmName) company.value = brand.firmName;
+      if (phone && !phone.value && brand.phone) phone.value = brand.phone;
     }
   });
   document.getElementById("brokerProfileToggle").addEventListener("change", async (e) => {
@@ -13946,7 +14025,8 @@ async function renderMyDesk() {
   });
 
   // ---------------------------------------------------------------------------
-  // The firm's tenant contacts (039).
+  // The firm's contacts (039; "Tenant contacts" on screen until 2026-09-02,
+  // see the markup comment for why that label went).
   //
   // Presentation only, like the deal board above it: every refusal lives in
   // org-contacts.js and is enforced server-side, so this file never decides
@@ -14234,9 +14314,95 @@ async function renderMyDesk() {
     el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
   }
 
+  // The fold's open state survives a re-render — renderHistory's rule: a
+  // contact added or removed must not snap the list shut again.
+  let contactsExpanded = false;
+
+  // The add/import panel ships CLOSED and this is the ONE writer of its
+  // visibility (the vault's #addSec rule, 2026-08-10: "a broker with 200
+  // comps opened their book and was handed an uploader"). The control's label
+  // and aria-expanded ride with it so they cannot disagree with the panel.
+  let contactAddOpen = false;
+  function setContactAddOpen(open) {
+    contactAddOpen = Boolean(open);
+    document.getElementById("contactAddForm").classList.toggle("hidden", !contactAddOpen);
+    const btn = document.getElementById("contactAddToggle");
+    btn.setAttribute("aria-expanded", contactAddOpen ? "true" : "false");
+    btn.textContent = contactAddOpen ? "Close" : "+ Add or import";
+  }
+  document.getElementById("contactAddToggle").addEventListener("click", () => {
+    setContactAddOpen(!contactAddOpen);
+    if (contactAddOpen) document.getElementById("contactName").focus();
+  });
+
+  function contactRow(c, firm) {
+    const row = document.createElement("div");
+    row.className = "db-row";
+    const name = document.createElement("span");
+    name.className = "db-name";
+    // textContent throughout: every one of these is text a person typed.
+    name.textContent = c.name;
+    row.appendChild(name);
+
+    const meta = document.createElement("span");
+    meta.className = "db-split";
+    const bits = [];
+    if (c.company) bits.push(c.company);
+    if (c.email) bits.push(c.email);
+    // "you" rather than the reader's own name, the shelf's rule: reading
+    // your own name in a list of colleagues is a beat of confusion.
+    bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
+    meta.textContent = bits.join(" · ");
+    row.appendChild(meta);
+
+    // Attached to a building (046, written by the sheet's Attach door): a
+    // door to that sheet. Mapped off the desk's own buildings read, which
+    // renderShares awaits BEFORE this list, so the address is known here.
+    const at = c.buildingId ? firmBuildings.find((b) => String(b.id) === String(c.buildingId)) : null;
+    if (at) {
+      const where = document.createElement("a");
+      where.className = "db-split underline mr-2";
+      where.href = "/building/" + encodeURIComponent(at.id);
+      where.textContent = "at " + at.address;
+      row.appendChild(where);
+    }
+
+    const talk = document.createElement("a");
+    talk.className = "db-total text-xs underline mr-2";
+    talk.textContent = "Discuss";
+    talk.title = "Start a conversation about this contact — by name, never their address";
+    talk.href = contactDiscussHref(c);
+    row.appendChild(talk);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "db-total text-xs underline";
+    del.textContent = "Remove";
+    del.addEventListener("click", async () => {
+      // No confirm: a contact is four fields somebody can retype, unlike a
+      // vault comp, and the vault's own Undo exists because a comp is not.
+      del.disabled = true;
+      try {
+        const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}` +
+          `&contact=${encodeURIComponent(c.id)}`, { method: "DELETE" });
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
+        contactsMsg("");
+        await renderContacts();
+      } catch (err) {
+        del.disabled = false;
+        contactsMsg(err.message || "That didn't go through.", true);
+      }
+    });
+    row.appendChild(del);
+    return row;
+  }
+
   async function renderContacts() {
     const box = document.getElementById("deskContacts");
-    const firm = myFirm();
+    // currentUser first, then the cached membership — renderBuildings' rule:
+    // a failed /api/org read leaves the LAST firm in memory, and the one
+    // state where acting on that is wrong is a signed-out page.
+    const firm = currentUser ? myFirm() : null;
     if (!firm) { box.classList.add("hidden"); return; }
     let data = null;
     try {
@@ -14251,6 +14417,7 @@ async function renderMyDesk() {
     box.classList.remove("hidden");
 
     const rows = Array.isArray(data.contacts) ? data.contacts : [];
+    // The count describes the WHOLE list, whatever the fold below shows.
     document.getElementById("contactsStats").textContent =
       rows.length ? `${rows.length} ${rows.length === 1 ? "contact" : "contacts"}` : "";
     document.getElementById("contactsTruncated").classList.toggle("hidden", !data.truncated);
@@ -14258,55 +14425,32 @@ async function renderMyDesk() {
 
     const wrap = document.getElementById("contactRows");
     wrap.innerHTML = "";
-    rows.forEach((c) => {
-      const row = document.createElement("div");
-      row.className = "db-row";
-      const name = document.createElement("span");
-      name.className = "db-name";
-      // textContent throughout: every one of these is text a person typed.
-      name.textContent = c.name;
-      row.appendChild(name);
-
-      const meta = document.createElement("span");
-      meta.className = "db-split";
-      const bits = [];
-      if (c.company) bits.push(c.company);
-      if (c.email) bits.push(c.email);
-      // "you" rather than the reader's own name, the shelf's rule: reading
-      // your own name in a list of colleagues is a beat of confusion.
-      bits.push(c.mine ? "added by you" : (c.addedBy ? "added by " + c.addedBy : "added by a colleague"));
-      meta.textContent = bits.join(" · ");
-      row.appendChild(meta);
-
-      const talk = document.createElement("a");
-      talk.className = "db-total text-xs underline mr-2";
-      talk.textContent = "Discuss";
-      talk.title = "Start a conversation about this contact — by name, never their address";
-      talk.href = contactDiscussHref(c);
-      row.appendChild(talk);
-
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "db-total text-xs underline";
-      del.textContent = "Remove";
-      del.addEventListener("click", async () => {
-        // No confirm: a contact is four fields somebody can retype, unlike a
-        // vault comp, and the vault's own Undo exists because a comp is not.
-        del.disabled = true;
-        try {
-          const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}` +
-            `&contact=${encodeURIComponent(c.id)}`, { method: "DELETE" });
-          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "That didn't go through.");
-          contactsMsg("");
-          await renderContacts();
-        } catch (err) {
-          del.disabled = false;
-          contactsMsg(err.message || "That didn't go through.", true);
-        }
-      });
-      row.appendChild(del);
-      wrap.appendChild(row);
-    });
+    // The overflow rule (2026-09-02): at most COLLAPSE_AT rows flat, the rest
+    // behind "Show N more". This was the one firm section with no cap —
+    // Buildings shows eight and sends the rest to /buildings, Conversations
+    // five, the shelf grows a filter at six — so an imported spreadsheet put
+    // every row on the front page, up to 2,000, with Membership, Sharing,
+    // Broker, Account and the search chamber below all of them. It is
+    // renderHistory's fold rather than /buildings' subpage because there is
+    // no /firm/contacts page yet, and /contacts is the owner's ADMIN_KEY
+    // rolodex that migration 007 says must never meet this list.
+    const collapse = rows.length > COLLAPSE_AT;
+    const head = document.createElement("div");
+    (collapse ? rows.slice(0, COLLAPSE_AT) : rows).forEach((c) => head.appendChild(contactRow(c, firm)));
+    wrap.appendChild(head);
+    if (!collapse) return;
+    const more = document.createElement("details");
+    more.id = "contactsMore";
+    more.open = contactsExpanded;   // a re-render must not collapse it again
+    more.addEventListener("toggle", () => { contactsExpanded = more.open; });
+    const summary = document.createElement("summary");
+    summary.className = "py-2 text-xs font-medium text-[#5A6473] hover:text-[#1A2433]";
+    summary.textContent = `Show ${rows.length - COLLAPSE_AT} more`;
+    const rest = document.createElement("div");
+    rows.slice(COLLAPSE_AT).forEach((c) => rest.appendChild(contactRow(c, firm)));
+    more.appendChild(summary);
+    more.appendChild(rest);
+    wrap.appendChild(more);
   }
 
   // One writer for both doors — the typed form and the CSV — because they are
@@ -14494,9 +14638,24 @@ async function renderMyDesk() {
     if (state.canCreate) {
       box.classList.remove("hidden");
       createBox.classList.remove("hidden");
+      // Guarded like updateBrandScopeUI guards myFirm: test/org-desk.test.js
+      // slices this function into a sandbox without the branding block.
+      if (typeof seedFirmNameInput === "function") seedFirmNameInput();
       return;
     }
     box.classList.add("hidden");
+  }
+
+  // The create-a-firm box is offered the firm name the branding card holds,
+  // else the one it was suggested (2026-09-02, "one profile") — into an
+  // EMPTY field only, never over something typed. Called from the create
+  // state and again when the branding read lands, since either can be first.
+  function seedFirmNameInput() {
+    const el = document.getElementById("firmNameInput");
+    const createBox = document.getElementById("firmCreate");
+    if (!el || !createBox || createBox.classList.contains("hidden") || el.value) return;
+    const known = (currentBranding && currentBranding.firmName) || (currentSuggested && currentSuggested.firmName) || "";
+    if (known) el.value = known;
   }
 
   function renderFirmInvites(invites) {
@@ -15356,7 +15515,17 @@ async function renderMyDesk() {
       if (file.size > 5e6) return reject(new Error("That image is very large. Please choose one under 5MB."));
       const fr = new FileReader();
       fr.onerror = () => reject(new Error("Could not read that file."));
-      fr.onload = () => {
+      fr.onload = () => resolve(resizeLogoDataUri(String(fr.result || "")));
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // ONE resizer for both doors — a chosen file and a logo read off the
+  // firm's website (2026-09-02) — so an imported logo obeys exactly the size
+  // rules a chosen one does.
+  function resizeLogoDataUri(dataUri) {
+    return new Promise((resolve, reject) => {
+      {
         const img = new Image();
         img.onerror = () => reject(new Error("That file is not an image we can read."));
         img.onload = () => {
@@ -15380,9 +15549,8 @@ async function renderMyDesk() {
           }
           resolve(out);
         };
-        img.src = String(fr.result || "");
-      };
-      fr.readAsDataURL(file);
+        img.src = String(dataUri || "");
+      }
     });
   }
 
@@ -15590,14 +15758,37 @@ async function renderMyDesk() {
     disclaimer: document.getElementById("brandDisclaimer").value,
   });
 
-  function fillBrandForm(brand) {
+  // What GET /api/branding offered for the form's EMPTY fields — the vault's
+  // credit identity, the member's firm, the account (2026-09-02, "one
+  // profile, reused everywhere"). A suggestion, never a save: the member
+  // still presses Save on a form they can read, which is what keeps the
+  // vault's "stated, never inherited" rule while the facts stop being
+  // retyped. brandSeeded records that the form holds something unsaved, so
+  // the summary line cannot claim a letterhead exists.
+  let currentSuggested = null;
+  let brandSeeded = false;
+
+  function fillBrandForm(brand, suggested) {
     const b = brand || {};
-    document.getElementById("brandFirm").value = b.firmName || "";
-    document.getElementById("brandPreparer").value = b.preparerName || "";
-    document.getElementById("brandPhone").value = b.phone || "";
-    document.getElementById("brandEmail").value = b.email || "";
-    document.getElementById("brandLicense").value = b.licenseNumber || "";
-    document.getElementById("brandDisclaimer").value = b.disclaimer || "";
+    const s = suggested || {};
+    brandSeeded = false;
+    // A saved value first, else the suggestion, else blank. Seeding is
+    // per FIELD, so a saved profile missing its license still picks the
+    // vault's up.
+    const pick = (id, saved, hint) => {
+      const el = document.getElementById(id);
+      if (saved) { el.value = saved; return; }
+      el.value = hint || "";
+      if (hint) brandSeeded = true;
+    };
+    pick("brandFirm", b.firmName, s.firmName);
+    pick("brandPreparer", b.preparerName, s.preparerName);
+    pick("brandPhone", b.phone, s.phone);
+    pick("brandEmail", b.email, s.email);
+    pick("brandLicense", b.licenseNumber, s.licenseNumber);
+    pick("brandDisclaimer", b.disclaimer, s.disclaimer);
+    const note = document.getElementById("brandSeedNote");
+    if (note) note.classList.toggle("hidden", !brandSeeded);
     const img = document.getElementById("brandLogoPreview");
     if (pendingLogo) { img.src = pendingLogo; img.classList.remove("hidden"); }
     else { img.src = ""; img.classList.add("hidden"); }
@@ -15629,7 +15820,10 @@ async function renderMyDesk() {
     if (b.licenseNumber) bits.push("license shown");
     // Named rather than counted: "3 details saved" tells a member nothing
     // about what is going on their reports.
-    el.textContent = bits.length ? bits.join(" · ") : "No branding saved yet";
+    // A seeded, unsaved form must not read as a letterhead that exists: the
+    // summary is written from the live form, so it says so.
+    const unsaved = brandSeeded && !currentBranding && brandScope === "mine";
+    el.textContent = bits.length ? bits.join(" · ") + (unsaved ? " · suggested, not saved yet" : "") : "No branding saved yet";
   }
 
   function renderBrandPreview() {
@@ -15689,7 +15883,11 @@ async function renderMyDesk() {
     brandScope = scope;
     const src = scope === "firm" ? currentFirmBranding : currentBranding;
     pendingLogo = (src && src.logo) || "";
-    fillBrandForm(src);
+    // The firm's form is offered the firm's own name (orgs.name) for an
+    // empty firm name — and nothing else: the rest of a member's details are
+    // not the firm's.
+    const firmSeed = { firmName: ((typeof myFirm === "function" && myFirm()) || {}).name || "" };
+    fillBrandForm(src, scope === "firm" ? firmSeed : currentSuggested);
     renderBrandPreview();
     const msg = document.getElementById("brandMsg");
     if (msg) msg.textContent = "";
@@ -15711,7 +15909,7 @@ async function renderMyDesk() {
     if (!manage && brandScope === "firm") {
       brandScope = "mine";
       pendingLogo = (currentBranding && currentBranding.logo) || "";
-      fillBrandForm(currentBranding);
+      fillBrandForm(currentBranding, currentSuggested);
       renderBrandPreview();
     }
     row.classList.toggle("hidden", !manage);
@@ -15779,6 +15977,8 @@ async function renderMyDesk() {
         // The firm fallback (041), riding the same response. null when there
         // is none — the server sends null, never {}.
         currentFirmBranding = (body.firm && Object.keys(body.firm).length) ? body.firm : null;
+        // What the account already knows, for empty fields. null when nothing.
+        currentSuggested = (body.suggested && Object.keys(body.suggested).length) ? body.suggested : null;
         // Fill only the scope the form is showing. In practice this load runs
         // once per identity while brandScope is still "mine" (scope resets at
         // every auth transition, and the brandingLoaded guard stops refetches),
@@ -15786,10 +15986,13 @@ async function renderMyDesk() {
         // after someone has switched to the firm profile mid-edit.
         if (brandScope === "mine") {
           pendingLogo = (currentBranding && currentBranding.logo) || "";
-          fillBrandForm(currentBranding);
+          fillBrandForm(currentBranding, currentSuggested);
           renderBrandPreview();
         }
         updateBrandScopeUI();
+        // The create-a-firm box may already be on screen, empty, having
+        // rendered before this read landed.
+        seedFirmNameInput();
         brandingLoaded = true;
         // A report can already be on screen — rendered before this fetch
         // resolved (page load), or rendered while signed out and still up
@@ -15832,6 +16035,40 @@ async function renderMyDesk() {
       renderBrandPreview();
     } catch (ex) {
       msg.textContent = ex.message;
+    }
+  });
+
+  // Import a logo from the firm's website (2026-09-02). The server reads the
+  // page, picks its icon and answers a data URI; it then takes the same
+  // resizer a chosen file does, lands in the preview, and is kept only on
+  // Save. A refusal is the server's own sentence — it names the fix.
+  document.getElementById("brandLogoImport").addEventListener("click", async () => {
+    const btn = document.getElementById("brandLogoImport");
+    const msg = document.getElementById("brandMsg");
+    const site = document.getElementById("brandLogoSite").value.trim();
+    if (!site) { msg.textContent = "Enter your firm's web address first."; return; }
+    btn.disabled = true;
+    msg.textContent = "Reading " + site + "…";
+    try {
+      const r = await fetch("/api/branding/logo-from-site", {
+        method: "POST", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: site }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = body.error || "Couldn't read that site."; return; }
+      pendingLogo = await resizeLogoDataUri(body.logo);
+      const img = document.getElementById("brandLogoPreview");
+      img.src = pendingLogo;
+      img.classList.remove("hidden");
+      renderBrandPreview();
+      msg.textContent = body.kind === "og:image"
+        ? "Read the site's preview image from " + site + " — check it looks like your logo, then press Save."
+        : "Logo read from " + site + ". Press Save to keep it.";
+    } catch (ex) {
+      msg.textContent = ex.message || "That didn't reach the server.";
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -15880,6 +16117,10 @@ async function renderMyDesk() {
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
       const saved = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       if (firm) currentFirmBranding = saved; else currentBranding = saved;
+      // Whatever was seeded is saved now, so it is no longer a suggestion.
+      brandSeeded = false;
+      const seedNote = document.getElementById("brandSeedNote");
+      if (seedNote) seedNote.classList.add("hidden");
       msg.textContent = "Saved.";
       renderBrandPreview();
       updateBrandScopeUI();
@@ -16980,7 +17221,7 @@ async function renderMyDesk() {
         // Same rule as the pricing tile: name only what ships. Report branding
         // was withheld here while it was granted by entitlements.js with no
         // UI to draw it; it is named to a paying member now that it renders
-        // everywhere a report does (screen, print, PNG, CSV, XLSX).
+        // everywhere a report does (screen, print, PNG, CSV, XLSX, PPTX).
         //
         // The vault IS named, for the same reason: it ships, every Pro
         // member has one (`const broker = pro` in entitlements.js), and a
@@ -19214,6 +19455,365 @@ async function renderMyDesk() {
   }
   document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
+  // ----------------------------------------------------------------------------
+  // PowerPoint export (2026-09-02). The PNG is one flat picture, the PDF is a
+  // print of the web page and the XLSX is data with no story; a deck is what a
+  // broker actually puts in front of a seller, a buyer or a lender, and until
+  // this they screenshotted the hero into one by hand. Five slides of NATIVE
+  // text boxes and tables — value, market, comps, map & chart, sources — that
+  // a broker can restyle, reorder or drop into a listing pitch.
+  //
+  // Three rules it inherits rather than re-derives:
+  //  - Rows come from exportableComps(), never includedComps(): a broker's
+  //    private vault comp is kept out of every file the app produces, and the
+  //    deck says how many it left out (the CSV's reader-vs-owner split).
+  //  - It is one more format of the same report, so it rides gatedExport()
+  //    and costs the same allowance slot as the CSV of that report.
+  //  - Co-branded, never white label: the member's letterhead when entitled
+  //    (activeBrand), the CompNinja attribution on every slide regardless.
+  //
+  // The ledger is read off the hero's rendered DOM rather than recomputed:
+  // renderOwnerHero already resolved every branch — dollar range, per-unit,
+  // income-only, the leases-only rent range where lastValuation stays null,
+  // and the no-range dashes — and a second computation here would be a
+  // second answer. Exports are always light (theme.test.js's PNG rule), so
+  // every colour below is a light-palette literal and the chart's var()
+  // tokens are resolved through PPTX_CHART_VARS before rasterizing.
+  //
+  // PptxGenJS is not on cdnjs; jsdelivr is named beside cdnjs in the privacy
+  // policy's third-parties list. Loaded on first click like SheetJS.
+  let pptxGenPromise = null;
+  function loadPptxGenJs() {
+    if (window.PptxGenJS) return Promise.resolve();
+    if (!pptxGenPromise) {
+      pptxGenPromise = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          pptxGenPromise = null;   // a retry re-attempts rather than failing forever
+          reject(new Error("Could not load the PowerPoint library. Check your connection and try again."));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    return pptxGenPromise;
+  }
+
+  const PPTX_ATTRIBUTION = "Prepared with CompNinja · an automated estimate, not an appraisal.";
+  const PPTX_FONT = "Calibri";   // installed everywhere PowerPoint is; Inter is not
+  // Light-palette literals, hex without "#" as PptxGenJS wants them.
+  const PPTX_INK = "1A2433", PPTX_MUTE = "5A6473", PPTX_INK3 = "68707E", PPTX_RED = "B91C1C",
+        PPTX_LINE = "D8D4C9", PPTX_WASH = "F5F4EF", PPTX_PAPER = "FBFBF9", PPTX_CARD = "FFFFFF";
+  // ⚠ MIRROR of theme.js's LIGHT values for the tokens renderMarketChart's SVG
+  // uses. test/index-html.test.js pins each entry to THEME_TOKENS[name].light,
+  // because a drift here is a chart with a black fill in a broker's deck.
+  const PPTX_CHART_VARS = {
+    "--line": "#E4E2DA", "--red-fill": "#B91C1C", "--ink": "#1A2433", "--card": "#ffffff",
+    "--ink-mute": "#5A6473", "--ink-3": "#68707E", "--red": "#B91C1C",
+  };
+
+  // PowerPoint does not render WebP, and the static map (drawStaticMap) and a
+  // brand logo can both be WebP. Re-encode through a canvas; null on failure.
+  function toPngDataUri(src) {
+    return new Promise((resolve) => {
+      if (!src) return resolve(null);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext("2d").drawImage(img, 0, 0);
+          resolve({ data: c.toDataURL("image/png"), w: c.width, h: c.height });
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  // The market-position chart is an inline SVG coloured with var(--token).
+  // Serialized on its own it has no stylesheet, so the tokens are replaced
+  // with light literals and the animation classes (which start at opacity 0)
+  // are stripped before it is drawn to a canvas. Null on failure.
+  function pptxSvgToPng(svgEl) {
+    return new Promise((resolve) => {
+      try {
+        const clone = svgEl.cloneNode(true);
+        clone.querySelectorAll("[class]").forEach((n) => n.removeAttribute("class"));
+        clone.querySelectorAll("[style]").forEach((n) => n.removeAttribute("style"));
+        const vb = String(clone.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+        const w = vb[2] > 0 ? vb[2] : 800, h = vb[3] > 0 ? vb[3] : 300;
+        clone.setAttribute("width", String(w));
+        clone.setAttribute("height", String(h));
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        const xml = new XMLSerializer().serializeToString(clone)
+          .replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PPTX_CHART_VARS[v] || "#1A2433");
+        const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const c = document.createElement("canvas");
+            c.width = w * 2; c.height = h * 2;
+            const ctx = c.getContext("2d");
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            resolve({ data: c.toDataURL("image/png"), w, h });
+          } catch (e) { resolve(null); }
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  // One slide with the title rule, the logo when there is one, and the footer
+  // every slide carries: the member's line on the left, the CompNinja
+  // attribution on the right. Returns the slide; content goes between y 1.05
+  // and y 6.85 on a 13.33 x 7.5 in canvas.
+  function pptxFrame(pptx, ctx, title) {
+    const slide = pptx.addSlide();
+    slide.background = { color: PPTX_PAPER };
+    slide.addText(title, { x: 0.5, y: 0.3, w: ctx.logo ? 10.4 : 12.33, h: 0.5, fontFace: PPTX_FONT,
+      fontSize: 20, bold: true, color: PPTX_INK, margin: 0, valign: "middle" });
+    if (ctx.logo) {
+      slide.addImage({ data: ctx.logo.data, x: 11.13, y: 0.22, w: 1.7, h: 0.66,
+        sizing: { type: "contain", w: 1.7, h: 0.66 } });
+    }
+    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 0.92, w: 12.33, h: 0, line: { color: PPTX_LINE, width: 0.75 } });
+    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 6.95, w: 12.33, h: 0, line: { color: PPTX_LINE, width: 0.75 } });
+    slide.addText(ctx.brandLine, { x: 0.5, y: 7.0, w: 7.3, h: 0.35, fontFace: PPTX_FONT, fontSize: 9,
+      color: PPTX_INK3, margin: 0, valign: "middle" });
+    slide.addText(PPTX_ATTRIBUTION, { x: 7.83, y: 7.0, w: 5.0, h: 0.35, fontFace: PPTX_FONT, fontSize: 9,
+      color: PPTX_INK3, align: "right", margin: 0, valign: "middle" });
+    return slide;
+  }
+
+  async function exportPptx() {
+    if (!currentComps.length || !currentMeta) return;
+    const btn = document.getElementById("pptxBtn");
+    btn.disabled = true;
+    try {
+      await loadPptxGenJs();
+      const txt = (id) => { const el = document.getElementById(id); return el ? el.textContent.trim() : ""; };
+      const meta = currentMeta;
+      const parsed = currentParsed || {};
+      const brand = activeBrand();
+      const logo = brand && brand.logo ? await toPngDataUri(brand.logo) : null;
+      // Co-branding, not white label: the member's line still names CompNinja
+      // as the one that computed the number, as the CSV's does.
+      const brandLine = brand
+        ? [brand.firmName, brand.preparerName, brand.phone, brand.email,
+            brand.licenseNumber ? "Lic. " + brand.licenseNumber : ""].filter(Boolean).join(" · ")
+          + " · Valuation by CompNinja"
+        : "CompNinja · compninja.co";
+      const ctx = { brandLine, logo };
+      const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+      const T = (extra) => Object.assign({ fontFace: PPTX_FONT, color: PPTX_INK, margin: 0 }, extra || {});
+      const KICKER = (text, extra) => ({ text, options: Object.assign({ fontSize: 9, bold: true, color: PPTX_INK3, charSpacing: 1.5, breakLine: true, paraSpaceAfter: 4 }, extra || {}) });
+
+      const pptx = new PptxGenJS();
+      pptx.layout = "LAYOUT_WIDE";
+      pptx.title = `${meta.address} — CompNinja valuation`;
+
+      // ---- 1 · Value ---------------------------------------------------------
+      {
+        const s = pptxFrame(pptx, ctx, "Valuation");
+        s.addText(meta.address, T({ x: 0.5, y: 1.05, w: 12.33, h: 0.6, fontSize: 26, bold: true, valign: "middle" }));
+        s.addText(`${metaLine(meta)} · Generated ${dateStr}`, T({ x: 0.5, y: 1.65, w: 12.33, h: 0.35, fontSize: 11, color: PPTX_MUTE }));
+        s.addText(txt("ownerHeroTitle").toUpperCase(), T({ x: 0.5, y: 2.2, w: 12.33, h: 0.35, fontSize: 11, bold: true, color: PPTX_RED, charSpacing: 1.5 }));
+        [["Low", "ownerLow", "ownerLowPpsf"], ["Likely", "ownerMid", "ownerMidPpsf"], ["High", "ownerHigh", "ownerHighPpsf"]]
+          .forEach(([label, figId, subId], i) => {
+            const x = 0.5 + i * 4.11, mid = i === 1;
+            s.addShape(pptx.ShapeType.rect, { x, y: 2.6, w: 4.11, h: 1.55, fill: { color: mid ? PPTX_WASH : PPTX_CARD }, line: { color: PPTX_LINE, width: 0.75 } });
+            s.addText(label.toUpperCase(), T({ x: x + 0.2, y: 2.7, w: 3.7, h: 0.3, fontSize: 9, bold: true, color: PPTX_INK3, charSpacing: 1.5 }));
+            s.addText(txt(figId) || "-", T({ x: x + 0.2, y: 3.0, w: 3.7, h: 0.7, fontSize: mid ? 30 : 26, bold: true, valign: "middle" }));
+            s.addText(txt(subId), T({ x: x + 0.2, y: 3.72, w: 3.7, h: 0.3, fontSize: 9, color: PPTX_MUTE }));
+          });
+        const basis = txt("ownerBasis");
+        if (basis) s.addText(basis, T({ x: 0.5, y: 4.25, w: 12.33, h: 0.3, fontSize: 9, color: PPTX_MUTE }));
+        const trust = txt("ownerTrust");
+        if (trust) s.addText(trust, T({ x: 0.5, y: 4.55, w: 12.33, h: 0.6, fontSize: 11, valign: "top" }));
+        // The approaches ledger: the ones that produced a figure first, the
+        // collapsed absences (in #apOff) after, muted — the screen's order.
+        const rows = [];
+        document.querySelectorAll("#ownerApproaches tr:not(.ap-head)").forEach((tr) => {
+          const lab = tr.querySelector(".ap-lab");
+          if (!lab) return;
+          const label = lab.textContent.replace(/:\s*$/, "");
+          const td = tr.querySelector("td");
+          const text = td ? td.textContent.replace(lab.textContent, "").replace(/\s*Source\s*$/, "").trim() : "";
+          const num = tr.querySelector("td.num");
+          const muted = Boolean(tr.closest("#apOff")) || tr.classList.contains("muted");
+          rows.push({ label, text, value: num ? num.textContent.trim() : "", muted });
+        });
+        if (rows.length) {
+          const color = (r) => (r.muted ? PPTX_INK3 : PPTX_INK);
+          const table = [[
+            { text: "Approach", options: { bold: true, color: PPTX_INK3, fontSize: 8, fill: { color: PPTX_WASH } } },
+            { text: "", options: { fill: { color: PPTX_WASH } } },
+            { text: "Indicated value", options: { bold: true, color: PPTX_INK3, fontSize: 8, align: "right", fill: { color: PPTX_WASH } } },
+          ]].concat(rows.slice(0, 5).map((r) => [
+            { text: r.label, options: { bold: !r.muted, color: color(r), fontSize: 9 } },
+            { text: r.text, options: { color: color(r), fontSize: 8 } },
+            { text: r.value, options: { bold: !r.muted, color: color(r), fontSize: 9, align: "right" } },
+          ]));
+          s.addTable(table, { x: 0.5, y: 5.2, w: 12.33, colW: [2.6, 7.4, 2.33], fontFace: PPTX_FONT,
+            border: { type: "solid", color: PPTX_LINE, pt: 0.5 }, margin: 0.05, valign: "middle", autoPage: false });
+        }
+      }
+
+      // ---- 2 · Market ---------------------------------------------------------
+      {
+        const summary = txt("summaryText");
+        const trend = txt("marketTrend");
+        const drivers = Array.from(document.querySelectorAll("#driversList p"))
+          .map((p) => p.textContent.replace(/^\s*[•·]\s*/, "").trim()).filter(Boolean);
+        const pdEl = document.getElementById("priceDiscovery");
+        const pdNote = pdEl && !pdEl.classList.contains("hidden") ? txt("priceDiscoveryNote") : "";
+        const pdDir = txt("priceDiscoveryDir").replace(/^\s*·\s*/, "");
+        const urEl = document.getElementById("userRead");
+        const urNote = urEl && !urEl.classList.contains("hidden") ? txt("userReadNote") : "";
+        const urDir = txt("userReadDir").replace(/^\s*·\s*/, "");
+        if (summary || trend || drivers.length || pdNote || urNote) {
+          const s = pptxFrame(pptx, ctx, "Market summary");
+          if (summary) s.addText(summary, T({ x: 0.5, y: 1.1, w: 6.6, h: 5.6, fontSize: 13, valign: "top", paraSpaceAfter: 6 }));
+          const right = [];
+          if (trend) right.push({ text: trend, options: { bold: true, fontSize: 12, breakLine: true, paraSpaceAfter: 8 } });
+          if (drivers.length) {
+            right.push(KICKER("WHAT IS DRIVING PRICES HERE"));
+            drivers.forEach((d) => right.push({ text: d, options: { fontSize: 11, bullet: true, breakLine: true, paraSpaceAfter: 4 } }));
+          }
+          if (pdNote) {
+            right.push(KICKER("PRICE DISCOVERY" + (pdDir ? " · " + pdDir.toUpperCase() : ""), { paraSpaceBefore: 8 }));
+            right.push({ text: pdNote, options: { fontSize: 11, breakLine: true } });
+          }
+          if (urNote) {
+            right.push(KICKER((meta.shared ? "OWNER'S READ" : "YOUR READ") + (urDir ? " · " + urDir.toUpperCase() : ""), { paraSpaceBefore: 8 }));
+            right.push({ text: urNote, options: { fontSize: 11, breakLine: true } });
+          }
+          if (right.length) s.addText(right, T({ x: 7.4, y: 1.1, w: 5.43, h: 5.6, valign: "top" }));
+        }
+      }
+
+      // ---- 3..n · Comparables --------------------------------------------------
+      {
+        // exportableComps(), never the included set: the deck is the single
+        // easiest file to forward, and a private vault comp must not be in it.
+        const comps = exportableComps();
+        const cols = COLUMNS;
+        const weight = (c) => (c.key === "address" ? 2.6 : c.key === "notes" ? 2.6 : c.key === "source_url" ? 1.6
+          : c.key === "tenancy" ? 1.5 : c.key === "price_or_rate" ? 1.3 : c.key === "dock_doors" ? 1.2 : 1);
+        const total = cols.reduce((a, c) => a + weight(c), 0) + 1.1;
+        const colW = cols.map((c) => 12.33 * weight(c) / total).concat([12.33 * 1.1 / total]);
+        const cellOpts = { fontSize: 8, color: PPTX_INK };
+        const header = cols.map((c) => ({ text: c.label, options: { bold: true, fontSize: 8, color: PPTX_INK3, fill: { color: PPTX_WASH }, align: c.numeric ? "right" : "left" } }))
+          .concat([{ text: "Source confidence", options: { bold: true, fontSize: 8, color: PPTX_INK3, fill: { color: PPTX_WASH } } }]);
+        const body = comps.map((comp) => cols.map((c) => ({ text: String(exportCellValue(comp, c) ?? ""), options: Object.assign({ align: c.numeric ? "right" : "left" }, cellOpts) }))
+          .concat([{ text: (SOURCE_TIERS[compTier(comp)] || {}).label || "", options: cellOpts }]));
+        // Counts and the private-comp disclosure, as the CSV's title row says
+        // them; the deck travels on its own, so it says "report owner".
+        const cc = curationCounts();
+        const bits = [comps.length === 1 ? "1 comparable" : `${comps.length} comparables`];
+        if (reportCurrency.code !== "USD") {
+          bits.push(showUsd && reportCurrency.rate
+            ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = ${fmtRate(reportCurrency.rate)}`
+            : `Prices in ${reportCurrency.code}`);
+        }
+        if (cc.excluded > 0) bits.push(`${cc.included} of ${cc.total} comps, ${cc.excluded} excluded by report owner`);
+        if (cc.added > 0) bits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
+        const privOut = privateIncludedCount();
+        if (privOut > 0) {
+          bits.push(meta.shared
+            ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, from the sender's own records`
+            : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, visible only to the report owner`);
+        }
+        const PER = 10;
+        const pages = Math.max(1, Math.ceil(body.length / PER));
+        const noun = meta.txFocus === "leases" ? "Comparable leases" : meta.txFocus === "sales" ? "Comparable sales" : "Comparable sales & leases";
+        for (let p = 0; p < pages; p++) {
+          const s = pptxFrame(pptx, ctx, pages > 1 ? `${noun} (${p + 1} of ${pages})` : noun);
+          s.addText(bits.join(" · "), T({ x: 0.5, y: 1.05, w: 12.33, h: 0.35, fontSize: 9, color: PPTX_MUTE, valign: "middle" }));
+          const slice = body.slice(p * PER, (p + 1) * PER);
+          s.addTable([header].concat(slice.length ? slice : [[{ text: "No comparables to list.", options: cellOpts }]]),
+            { x: 0.5, y: 1.45, w: 12.33, colW, fontFace: PPTX_FONT, rowH: 0.34,
+              border: { type: "solid", color: PPTX_LINE, pt: 0.5 }, margin: 0.04, valign: "middle", autoPage: false });
+        }
+      }
+
+      // ---- 4 · Map & market position ------------------------------------------
+      {
+        await ensureStaticMap();
+        const mapEl = document.getElementById("mapStatic");
+        const map = mapEl && mapEl.getAttribute("src") ? await toPngDataUri(mapEl.getAttribute("src")) : null;
+        const svg = document.querySelector("#chartWrap svg");
+        const chartCard = document.getElementById("chartCard");
+        const chart = svg && chartCard && !chartCard.classList.contains("hidden") ? await pptxSvgToPng(svg) : null;
+        if (map || chart) {
+          const s = pptxFrame(pptx, ctx, map && chart ? "Comp map & market position" : map ? "Comp map" : "Market position");
+          const fit = (img, x, y, maxW, maxH) => {
+            const r = Math.min(maxW / img.w, maxH / img.h);
+            const w = img.w * r, h = img.h * r;
+            s.addImage({ data: img.data, x: x + (maxW - w) / 2, y, w, h });
+            return h;
+          };
+          const cap = (text, x, y, w) => s.addText(text, T({ x, y, w, h: 0.5, fontSize: 9, color: PPTX_MUTE, valign: "top" }));
+          const MAP_CAP = "Red pin = the subject; numbered dots match the comps table.";
+          const CHART_CAP = "Sale comps by price per square foot, with the comp median and the subject's range.";
+          if (map && chart) {
+            const h1 = fit(map, 0.5, 1.15, 7.4, 4.9);
+            cap(MAP_CAP, 0.5, 1.2 + h1, 7.4);
+            const h2 = fit(chart, 8.2, 1.15, 4.63, 4.9);
+            cap(CHART_CAP, 8.2, 1.2 + h2, 4.63);
+          } else {
+            const h = fit(map || chart, 0.5, 1.15, 12.33, 5.0);
+            cap(map ? MAP_CAP : CHART_CAP, 0.5, 1.2 + h, 12.33);
+          }
+        }
+      }
+
+      // ---- 5 · Sources & method -------------------------------------------------
+      {
+        const s = pptxFrame(pptx, ctx, "Sources & method");
+        const how = txt("ownerTrustHow");
+        const left = [];
+        if (how) {
+          left.push(KICKER("HOW THIS RANGE IS CALCULATED"));
+          left.push({ text: how, options: { fontSize: 10, breakLine: true } });
+        }
+        const searchBits = [];
+        if (parsed.transactions_reviewed) searchBits.push(`${parsed.transactions_reviewed} transactions reviewed`);
+        if (parsed.search_radius) searchBits.push(`search radius ${parsed.search_radius}`);
+        if (meta.months) searchBits.push(`last ${meta.months} month${meta.months === 1 ? "" : "s"}`);
+        if (searchBits.length) {
+          left.push(KICKER("THE SEARCH", { paraSpaceBefore: 8 }));
+          left.push({ text: searchBits.join(" · "), options: { fontSize: 10, breakLine: true } });
+        }
+        if (left.length) s.addText(left, T({ x: 0.5, y: 1.1, w: 7.0, h: 5.7, valign: "top" }));
+        const right = [KICKER("SOURCE CONFIDENCE")];
+        const present = new Set(exportableComps().map((c) => compTier(c)).filter(Boolean));
+        Object.keys(SOURCE_TIERS).filter((k) => present.has(k)).forEach((k) => {
+          right.push({ text: SOURCE_TIERS[k].label + ": ", options: { fontSize: 10, bold: true } });
+          right.push({ text: SOURCE_TIERS[k].legend, options: { fontSize: 10, breakLine: true, paraSpaceAfter: 3 } });
+        });
+        if (brand && brand.disclaimer) right.push({ text: brand.disclaimer, options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        right.push({ text: "Automated estimate, not an appraisal. Verify independently before underwriting.", options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        right.push({ text: "CompNinja · compninja.co", options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        s.addText(right, T({ x: 7.83, y: 1.1, w: 5.0, h: 5.7, valign: "top" }));
+      }
+
+      await pptx.writeFile({ fileName: exportFileName("pptx") });
+      flashExportDone(btn, "Saved");
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  } // end exportPptx
+  document.getElementById("pptxBtn").addEventListener("click", gatedExport(exportPptx));
+
   // The trust line's mechanics toggle. Registered once at module scope, not in
   // renderOwnerHero — that function runs on every render and every edit to a
   // subject field, and an addEventListener there would stack a new handler on
@@ -19453,8 +20053,8 @@ async function renderMyDesk() {
 
   // ----------------------------------------------------------------------------
   // Export allowance. Free accounts get a number of REPORTS per month; Pro is
-  // unlimited. Counted per report, so the same analysis as CSV, image, PDF and
-  // Excel costs one, not four.
+  // unlimited. Counted per report, so the same analysis as CSV, image, PDF,
+  // Excel and PowerPoint costs one, not five.
   //
   // Honour system, and deliberately so: every export is produced in this
   // browser, so the server can only be asked "may I?" — it can never withhold

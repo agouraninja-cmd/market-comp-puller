@@ -868,6 +868,33 @@ test("the workspace leads and the chamber follows, in DOM order", () => {
   assert.ok(iChamber < iStatus, "the chamber still sits above status, loading and results");
 });
 
+// ----------------------------------------------------------------------------
+// Recent searches follows the chamber (2026-09-02). It led the workspace,
+// above "Your firm", which put a personal list first on a firm-first page and
+// the two halves of one act at opposite ends of it. It is its own block
+// outside #deskView and #searchSection (see the markup comment), so nothing
+// hides it for free: every seam that hides the desk header has to hide it
+// too, and this counts them.
+// ----------------------------------------------------------------------------
+test("Recent searches sits under the chamber and follows the desk header's seams", () => {
+  const iDesk = html.indexOf('id="deskView"');
+  const iChamber = html.indexOf('id="searchSection"');
+  const iDeck = html.indexOf('id="historyDeck"');
+  const iWrap = html.indexOf('id="historyWrap"');
+  const iStatus = html.indexOf('id="statusBox"');
+  assert.ok(iDeck > -1 && iWrap > -1, "an id vanished");
+  assert.ok(iDesk < iChamber && iChamber < iDeck && iDeck < iWrap && iWrap < iStatus,
+    "workspace, then the chamber, then its recent searches, then status");
+  assert.ok(iDeck > html.indexOf("</section>", iDesk), "the history deck is OUTSIDE #deskView, which hides wholesale");
+  assert.match(html, /id="historyDeck" class="hidden /, "ships hidden; showDeskView reveals it");
+  const hides = (html.match(/getElementById\("historyDeck"\)\.classList\.add\("hidden"\)/g) || []).length;
+  const headHides = (html.match(/getElementById\("searchDeckHead"\)\.classList\.add\("hidden"\)/g) || []).length;
+  assert.equal(hides, headHides, "every seam that hides the desk header hides the recent searches with it");
+  assert.ok(hides >= 3, "showHomeView, beginAssembly and renderResults");
+  assert.equal((html.match(/getElementById\("historyDeck"\)\.classList\.remove\("hidden"\)/g) || []).length, 1,
+    "one reveal, in showDeskView");
+});
+
 test("the chamber wears its desk header only while the workspace is on screen", () => {
   // The header sits inside #searchSection (so the wall's boot CSS hides it
   // with its parent) but BEFORE the rd-form span the Mock-A test measures,
@@ -1045,6 +1072,44 @@ test("the workspace header does not say who you are at all", () => {
 // everything the member owns. Collapsing it took the page from 2371px to
 // 1859px. None of this surface was pinned before.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// One profile, reused everywhere (2026-09-02). The branding form fills its
+// EMPTY fields from what the account already holds (GET /api/branding's
+// `suggested`), says so, and never lets a seeded-but-unsaved form read as a
+// letterhead that exists. The submission modal and the create-a-firm box read
+// the same facts back.
+// ----------------------------------------------------------------------------
+test("the branding form fills empty fields from what the account knows, and says so", () => {
+  assert.ok(html.includes("function fillBrandForm(brand, suggested)"), "the fill takes the suggestion as its second argument");
+  assert.match(html, /id="brandSeedNote" class="hidden /, "the seed note ships hidden and only fillBrandForm reveals it");
+  assert.equal((html.match(/fillBrandForm\(currentBranding, currentSuggested\)/g) || []).length, 2,
+    "the load and the scope fallback both pour the suggestion into the member's own scope");
+  assert.ok(html.includes("fillBrandForm(null)"), "a delete still blanks the form rather than re-seeding it");
+  const sum = html.slice(html.indexOf("function renderBrandSummary"), html.indexOf("function renderBrandPreview"));
+  assert.match(sum, /suggested, not saved yet/, "the summary must not claim a letterhead exists for a seeded form");
+  const at = html.indexOf('getElementById("brokerSubmitBtn").addEventListener');
+  const sub = html.slice(at, at + 1400);
+  assert.match(sub, /compBrokerCompany/);
+  assert.match(sub, /compBrokerPhone/);
+  assert.match(sub, /currentBranding \|\| currentSuggested/, "saved branding first, then the suggestion");
+  assert.ok(html.includes("function seedFirmNameInput()"), "the create-a-firm box is seeded through one function");
+  assert.equal((html.match(/seedFirmNameInput\(\);/g) || []).length, 2, "called from the create state and from the branding read, whichever lands second");
+});
+
+test("a logo can be read off the firm's website, through the same resizer a chosen file takes", () => {
+  assert.match(html, /id="brandLogoSite"[^>]*inputmode="url"/, "the address field");
+  assert.ok(html.includes('id="brandLogoImport"'), "the import control");
+  const at = html.indexOf('getElementById("brandLogoImport").addEventListener');
+  assert.ok(at > -1, "the import handler is gone");
+  const handler = html.slice(at, at + 1600);
+  assert.match(handler, /fetch\("\/api\/branding\/logo-from-site"/);
+  assert.match(handler, /pendingLogo = await resizeLogoDataUri\(body\.logo\)/, "the imported picture obeys the chosen-file size rules");
+  assert.match(handler, /Press Save to keep it/, "it is kept only on Save");
+  // ONE resizer: the file door reads the file and hands the data URI to it.
+  assert.equal((html.match(/function resizeLogoDataUri\(/g) || []).length, 1);
+  assert.match(html, /fr\.onload = \(\) => resolve\(resizeLogoDataUri\(String\(fr\.result \|\| ""\)\)\);/);
+});
+
 test("report branding is collapsed behind a summary that states what is saved", () => {
   const at = html.indexOf('id="deskBranding"');
   assert.ok(at > -1, "the branding section is still there");
@@ -1076,8 +1141,10 @@ test("report branding is collapsed behind a summary that states what is saved", 
 });
 
 test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your firm's shelf, and everything you have shared."),
+  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault."),
     "the subtitle names what the workspace actually holds");
+  assert.ok(!html.includes("Your firm's shelf, and everything you have shared."),
+    "the 2026-08-29 line named two of the eight sections and must not come back");
   assert.ok(!html.includes("Your recent searches and tracked properties."),
     "the old line described about a fifth of the page and must not come back");
   // "Your properties" left the line on 2026-09-01 with the deck it named.
@@ -2657,4 +2724,81 @@ test("this file still owns the reveal, and cannot throw if the injection is miss
   const guards = script.match(/\.some\(\(id\) => \{ const el = document\.getElementById\(id\); return el && !el\.classList\.contains\("hidden"\); \}\)/g) || [];
   assert.equal(guards.length, 2,
     "both open-modal guards must tolerate an absent modal");
+});
+
+// ---------------------------------------------------------------------------
+// The PowerPoint export (2026-09-02). One more format of the same report, so
+// the rules it must share with the CSV, the XLSX and the PNG are pinned here
+// rather than trusted: the private-comp filter, the one export gate, the
+// signed-in door, the always-light palette and the attribution.
+test("the PowerPoint export shares the Excel button's door and the one export gate", () => {
+  assert.match(html, /<button id="pptxBtn"\s+class="hidden /, "the button ships hidden");
+  assert.match(html, /const pb = document\.getElementById\("pptxBtn"\);\s*if \(pb\) pb\.classList\.toggle\("hidden", !on\);/,
+    "refreshAccountUI reveals it with the Excel button");
+  assert.match(html, /gatedExport\(exportPptx\)/, "wired through gatedExport, which is what consumes an export");
+  assert.match(html, /<button id="pptxBtn"[\s\S]{0,600}?<svg[\s\S]{0,600}?PowerPoint\s*<\/button>/,
+    "the icon sits inside the button (flashExportDone swaps innerHTML)");
+});
+
+test("the PowerPoint export keeps private comps out and says how many it left out", () => {
+  const fn = html.match(/async function exportPptx\(\)[\s\S]*?\n  \} \/\/ end exportPptx\n/);
+  assert.ok(fn, "index.html must define exportPptx() closed by its end marker");
+  assert.match(fn[0], /exportableComps\(\)/, "rows come from exportableComps");
+  assert.doesNotMatch(fn[0], /\bincludedComps\(\)/, "never includedComps");
+  assert.match(fn[0], /privateIncludedCount\(\)/, "the disclosure counts what was withheld");
+  assert.match(fn[0], /from the sender's own records/, "the shared-report wording");
+  assert.match(fn[0], /visible only to the report owner/, "the owner wording");
+  assert.match(fn[0], /await ensureStaticMap\(\)/, "the map comes from the export raster, never the Leaflet pane");
+  assert.match(fn[0], /activeBrand\(\)/, "branding through the one mirror of brandForRender");
+  assert.match(fn[0], /Valuation by CompNinja/, "co-branded, never white label");
+});
+
+test("every PowerPoint slide carries the CompNinja attribution, and the loader is pinned", () => {
+  assert.match(html, /const PPTX_ATTRIBUTION = "Prepared with CompNinja · an automated estimate, not an appraisal\.";/);
+  const frame = html.match(/function pptxFrame\(pptx, ctx, title\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(frame, "pptxFrame builds every slide");
+  assert.match(frame[0], /PPTX_ATTRIBUTION/, "the footer is on the frame, so no slide can omit it");
+  assert.match(html, /s\.src = "https:\/\/cdn\.jsdelivr\.net\/npm\/pptxgenjs@4\.0\.1\/dist\/pptxgen\.bundle\.js";/,
+    "the library version is pinned");
+  const loader = html.match(/function loadPptxGenJs\(\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(loader);
+  assert.match(loader[0], /pptxGenPromise = null;/, "a failed load nulls the promise so a retry re-attempts");
+});
+
+test("the PowerPoint chart palette mirrors theme.js's light tokens", () => {
+  // The market-position chart is coloured with var(--token) and is rasterized
+  // outside the page's stylesheet, so the export resolves each token itself.
+  // A drift here is a chart with a black fill in a broker's deck, and exports
+  // are always light (the PNG rule in theme.test.js), so LIGHT is the side.
+  const { THEME_TOKENS } = require("../theme");
+  const m = html.match(/const PPTX_CHART_VARS = \{([\s\S]*?)\};/);
+  assert.ok(m, "index.html must define PPTX_CHART_VARS");
+  const entries = [...m[1].matchAll(/"--([a-z0-9-]+)": "(#[0-9a-fA-F]{6})"/g)];
+  assert.ok(entries.length >= 5, "the map names the chart's tokens");
+  for (const [, name, hex] of entries) {
+    assert.ok(THEME_TOKENS[name], "theme.js has no token named " + name);
+    assert.equal(hex.toLowerCase(), THEME_TOKENS[name].light.toLowerCase(), "--" + name + " must be theme.js's light value");
+  }
+  // And every token the chart actually uses is in the map.
+  const chart = html.match(/function renderMarketChart\(\)[\s\S]*?getElementById\("chartWrap"\)\.innerHTML = svg;/);
+  assert.ok(chart, "index.html must define renderMarketChart()");
+  const used = new Set([...chart[0].matchAll(/var\((--[a-z0-9-]+)\)/g)].map((x) => x[1]));
+  const mapped = new Set(entries.map(([, name]) => "--" + name));
+  for (const v of used) assert.ok(mapped.has(v), "the chart uses " + v + " and PPTX_CHART_VARS does not map it");
+});
+
+test("the static map's pins are measured from the LOGICAL origin, not the doubled tile origin", () => {
+  // drawStaticMap fetches tiles one zoom deeper than the frame (retina), so
+  // its tile origin ox/oy is in doubled pixels, while every pin is projected
+  // at the frame's own zoom. Subtracting the doubled origin from a logical
+  // projection put every pin ~120,000 px off the canvas, and the PDF and PNG
+  // shipped a pinless basemap for a week (2026-08-26 to 2026-09-02) with
+  // nothing on screen to say so. Pinned here because the failure is a map
+  // that merely looks empty.
+  const fn = html.match(/async function drawStaticMap\(pts\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(fn, "index.html must define drawStaticMap()");
+  assert.match(fn[0], /const px = fit\.cx - SMAP_W \/ 2, py = fit\.cy - SMAP_H \/ 2;/, "a logical origin is derived");
+  assert.match(fn[0], /smapCompPin\(ctx, q\.x - px, q\.y - py, p\.num\)/, "comp pins use it");
+  assert.match(fn[0], /smapSubjectPin\(ctx, q\.x - px, q\.y - py\)/, "the subject pin uses it");
+  assert.doesNotMatch(fn[0], /Pin\(ctx, q\.x - ox/, "no pin subtracts the doubled tile origin");
 });

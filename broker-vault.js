@@ -1467,10 +1467,14 @@ function templateCsv() {
     "lease_type: NNN, FS (full service) or MG (modified gross). Optional, but a median mixing them is a weaker number and we will say so.",
     "lease_expiry and option_notice_date turn on the renewal watch: one email 90 days before the deadline, saying what comparable space rents for. Same date format as deal_date.",
     "Leave both blank and nothing changes. If you only know the expiry, fill that in - we will use it and say \"expires\" rather than claiming notice is owed.",
+    // The two columns testers asked about by name (2026-09-02). Tenancy had
+    // no line at all — only three example cells — and lat/lng were named by
+    // their abbreviations alone.
+    "tenancy: who occupies the building - Single tenant, Multi-tenant or Owner-user. Free text and optional; it is shown on the comp and searchable, never used in the math.",
     // Filled in on the sale example rather than left blank, because a blank
     // column reads as "leave this alone" and these two are what keep a private
     // address from being sent to a third party to place its map pin.
-    "lat and lng: decimal degrees, both or neither. Supplying them keeps this address off third-party geocoders.",
+    "lat and lng are latitude and longitude: decimal degrees like 43.6187 and -116.2146, both or neither. Optional - leave them blank and CompNinja places the map pin itself. Filling them in keeps this address off third-party geocoders.",
     `You can add any of these columns too: ${OPTIONAL_SPEC_COLUMNS.join(", ")}.`,
     "The rows below are examples. Type your own address over the # to use one, or delete them.",
   ];

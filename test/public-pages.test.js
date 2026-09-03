@@ -733,3 +733,14 @@ test("the settings door, for a visitor with no account menu to reach it from", a
     assert.ok(!/id="settingsModal"/.test(html), "and must not leak the app");
   });
 });
+
+test("the privacy policy names every host the export feature loads code from", async (t) => {
+  // The CSV needs nothing, the XLSX loads SheetJS from cdnjs, and the
+  // PowerPoint export loads PptxGenJS from jsdelivr (it is not on cdnjs). The
+  // third-parties list is a promise about where a member's browser is sent,
+  // so a new host is a copy change here, not only a script tag.
+  const srv = await boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const body = await (await fetch(srv.base + "/privacy")).text();
+  assert.match(body, /<strong>cdnjs<\/strong> and <strong>jsdelivr<\/strong> provide content delivery for the export feature/);
+});

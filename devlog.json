@@ -3937,5 +3937,59 @@
     "type": "fix",
     "title": "The print rule the handoff specified for the FAQ accordions does nothing",
     "details": "The handoff asked for @media print{details{display:block} details>div{display:block!important}} to force every accordion open on paper. That was the correct fix when a closed <details> hid its content with display:none on the internal slot; current engines do not — they set content-visibility:hidden on the ::details-content pseudo-element, which a display rule on the CHILD cannot reach. Measured in Chrome 148 against the shipped page: with only that rule a closed row stayed 119px and its answer reported checkVisibility() false, so a printed or PDF'd FAQ would have been six headings and no answers, silently. The fix adds .faqq::details-content{content-visibility:visible!important;block-size:auto!important}, which takes the same row to 1624px and visible; the display rule is kept as the fallback for older engines that still use the slot. Also caught by test/theme.test.js on the first run of the new pricing stylesheet: the \"Most brokers\" tag was painted with var(--red), which lightens in dark mode for use as TEXT while white sits on it — it is var(--red-fill) now, theme.js's documented split."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "improvement",
+    "title": "The Workspace read as one page: Contacts capped and folded, its form closed, renamed from Tenant contacts; Recent searches under the chamber",
+    "details": "Slices 3–8 of Three Spaces each placed their own section on the workspace; this was the first look at the whole. Contacts was the one firm section with no overflow rule — Buildings shows 8 and links /buildings, Conversations 5, the shelf grows a filter at 6 — so an imported spreadsheet rendered every row on the front page, up to 2,000, with Membership, Sharing, Broker, Account and the search chamber pushed below all of them. It now shows COLLAPSE_AT rows and folds the rest behind Show N more (the recent-searches fold; /contacts is the owner's rolodex, so a /firm/contacts page is deferred). Its add/import form ships closed behind one + Add or import control with a single writer, the vault's #addSec rule. The label is Contacts: Tenant contacts was written for the tenant-rep shop kind, withdrawn 2026-08-31, and the tenant_* CSV aliases stay so old spreadsheets still import. Recent searches moved from the top of the workspace, above Your firm, to directly under the Run-a-report chamber as its output, in its own #historyDeck toggled at the four seams that toggle the desk header — a test counts them. Position of Contacts in the deck unchanged; Buildings still first. Deferred and recorded in the plan: a needs-attention band (lease critical dates + unread threads) and the contacts subpage."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Contacts attach to buildings: the sheet's Contacts section finally fills, and tenants are marked",
+    "details": "org_contacts.building_id has existed since migration 046 and the building sheet has read it since slice 5, but nothing wrote it, so every sheet's Contacts section was permanently empty. POST|DELETE /api/org/buildings/contacts attaches and detaches, inside the buildings route block because it must prove the building is on this firm's board (test/org-routes.test.js refuses org_buildings anywhere else). Both halves scoped by org_id; a contact belongs to at most one building, so attaching elsewhere moves it and says so; detaching never deletes; an ordinary contact edit cannot touch the link; attaching moves the building up the desk. The sheet gains an Attach door that reads the firm's list only when opened, offers first the contacts whose company matches a lease's tenant on that building, and marks such a row 'tenant' — the lease record and the contact list meeting on the building. The Workspace's contact rows link to the building they are attached to. Proven end to end against the stand-in database, including the cross-firm refusals."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Upload several files into the vault at once",
+    "details": "The vault's one file input and its drop zone now take many files. PDFs and screenshots are read one after another — each its own extract call, since that route is rate-limited — and land in one confirm table with a row naming each file above its rows, so a broker confirms a folder of comp sheets once. Spreadsheets queue through the ordinary path one at a time (the mapper is a screen a broker answers), the next starting only once the previous import has stored its rows; a refusal or a cancel drops the rest of the queue by name rather than carrying on past a message nobody has read. The result area keeps a running log during a batch, so each file's Imported line survives the next file's Reading line. One file behaves exactly as before. First slice of the owner's Make it easier to upload data theme."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "improvement",
+    "title": "The vault says what lat, lng and tenancy are",
+    "details": "Two questions from testers, answered where they are asked. The template's guidance now reads 'lat and lng are latitude and longitude' with a worked example (43.6187 and -116.2146) and says they are optional — leave them blank and CompNinja places the pin itself — and tenancy, which had no guidance line at all, gets one naming the three usual answers (Single tenant, Multi-tenant, Owner-user) and saying it is descriptive and never used in the math. On the page, a FIELD_HINTS map renders the same answers as hover titles on every header that names the column — the spreadsheet, the compact table and the extract confirm table — and on the add form, whose Lat and Lng labels now read Latitude and Longitude with example placeholders."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Add a property to your portfolio by address, without running a report",
+    "details": "The firm's buildings form on the Workspace had this door; the personal book did not — a property could only reach it through a report. POST /api/portfolio now takes { address, propertyType } alone and files the ordinary row holding an empty report, the shape the next search fills in, so the match key, the cap and the verified-key rules apply unchanged. A property already in the book is answered (existed: true) and never rewritten, because an empty report must not replace the one a search stored. Refuses a type outside the vault's vocabulary, an address with no street number, and one the market parser cannot place. The vault's properties deck gains the door, closed by default; rows with no valuation now say 'not valued yet' rather than 'checked' with a date nobody checked on."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "One profile, reused everywhere: the branding card fills itself, and the vault identity, the submission form and the create-a-firm box read from it",
+    "details": "The same firm, name, email and license were asked for in five places and none read another. GET /api/branding now carries a suggestion built from what the account already holds — the vault's credit identity first, then the member's firm, then the account — and the branding form pours it into empty fields only, with a note saying where it came from, that nothing is saved until Save, and that it prints on reports. The vault identity form is offered the saved branding's firm, name and license while no credit is stated; the comp-submission modal takes the firm and phone from the saved branding; creating a firm starts from the branding's firm name. Every one of these is a prefill the member reads and saves, never a write between tables, which keeps the vault's rule that a credit is stated, never inherited. The summary line says 'suggested, not saved yet' while the form holds a seed and no profile exists."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Import a logo from the firm's website",
+    "details": "On the branding card, type the firm's web address and the server reads the page, picks its declared icon (apple-touch-icon first, then icons of a usable size, then og:image, then the undeclared /apple-touch-icon.png; .ico and .svg never) and hands it back as a picture that runs through the same resizer a chosen file does, into the preview, kept only on Save. The fetch follows the source-link check's discipline: every host DNS-resolved and refused on a private or loopback answer, redirects followed by hand with the guard re-run per hop, bodies read under a byte cap, a six-second timeout. The bytes decide what is accepted — sniffed as PNG/JPEG/WebP, a PNG narrower than 48px refused as a favicon. The site is fetched by our own server only; no third-party logo service sees a firm's domain. Rules in the pure logo-import.js; the whole path proven against a stub site, including that without the test-only LOGO_IMPORT_ALLOW_PRIVATE a loopback address is refused before any fetch."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Export a report as a PowerPoint deck",
+    "details": "A PowerPoint button beside Excel on the report toolbar, for signed-in members. Five slides of native, editable text and tables rather than a picture of the page: the valuation ledger with its basis, trust line and approaches; the market summary, trend, price drivers and price-discovery read; the comp table with source-confidence badges, ten rows a slide; the comp map and the market-position chart as images; and a sources-and-method slide. Co-branded like every other export — the member's letterhead and logo when entitled, the CompNinja attribution and the automated-estimate line on every slide regardless. It costs the same monthly allowance slot as the CSV of the same report, and it reads only the exportable comps, so a private vault comp never reaches the file and the deck says how many it left out. Built in the browser by PptxGenJS, loaded on first click the way the Excel export loads its library."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "fix",
+    "title": "The printed and PNG comp map had no pins",
+    "details": "Since the export raster moved to retina tiles on 2026-08-26, its pins were measured from the doubled tile origin while being projected at the frame's own zoom, so every pin landed about 120,000 pixels off the canvas. The PDF and the PNG shipped a clean basemap with nothing on it, which reads as a map rather than as a bug. Found while building the PowerPoint export's map slide, which uses the same raster. The pins now subtract the logical origin, and a test pins the arithmetic."
   }
 ]

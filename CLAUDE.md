@@ -538,6 +538,14 @@ dependency. `.env` is git-ignored — never commit it.
   keeps its own endpoint, so there is one override and one thing it can move.
   Not a secret and authorizes nothing (the API key still does), but it decides
   where a billed request is posted, so treat it as trusted config.
+- `LOGO_IMPORT_ALLOW_PRIVATE` — **test-only**, unset in production. Lets
+  `POST /api/branding/logo-from-site` fetch a loopback or private address,
+  which the route's DNS guard refuses by design; `test/logo-import-run.test.js`
+  stands its stub firm website up on 127.0.0.1 and could not reach the fetch
+  path without it (the link check's suites route around the same guard by
+  citing bot-walled hosts, which this feature has no equivalent of). Not a
+  secret and authorizes nothing, but it switches off an SSRF guard, so treat
+  it as trusted config the way `RESEND_API_URL` is.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
   Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
   cookie gets a **real page rendered at `/` with a 200** (since 2026-09-01
@@ -1540,7 +1548,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   list); **POST is idempotent** on the key and a repeat add only ever FILLS a
   missing `verified_key`, never rewrites (035's rule); **the whole set is
   returned, never a server-side `?limit=8`** (the shelf's rule; slice 4 slices
-  in the browser); and **`org_contacts.building_id` is read by no code yet** —
+  in the browser); and **`org_contacts.building_id` is written ONLY by
+  `POST|DELETE /api/org/buildings/contacts`** (2026-09-02, see below) —
   naming it in `orgContactRows`' `select=` before 046 has run 400s every
   contacts read. The plan numbered this migration 044; messaging took it.
   **The overflow rule and `/buildings`** (slice 4, 2026-09-02, no migration):
@@ -1595,6 +1604,59 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   contact door composes name and company and **never the email** (039), and
   the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
   `report-access.js` stays the sole decider.
+  **The Workspace read as one page (2026-09-02).** Slices 3–8 each placed
+  their own section by local reasoning; this was the first look at the whole,
+  and three things changed, each test-pinned. **Contacts is capped**: it was
+  the one firm section with no overflow rule (Buildings shows 8 and sends the
+  rest to `/buildings`, Conversations 5, the shelf grows a filter at 6), so
+  an imported spreadsheet rendered every row on the front page, up to 2,000,
+  with Membership, Sharing, Broker, Account and the search chamber below all
+  of them. It now shows `COLLAPSE_AT` rows and folds the rest behind "Show N
+  more" — `renderHistory`'s fold, not `/buildings`' subpage, because there is
+  no `/firm/contacts` yet and `/contacts` is the owner's ADMIN_KEY rolodex
+  that migration 007 says must never meet this list; the count line still
+  describes the whole list. **Its add/import form ships CLOSED** behind one
+  "+ Add or import" control, `setContactAddOpen` the single writer (the
+  vault's `#addSec` rule). **It is labelled "Contacts"**: "Tenant contacts"
+  was written for the tenant-rep shop kind, withdrawn 2026-08-31, and a broker
+  or development shop keeps a contact list too; the `tenant_*` CSV aliases in
+  `org-contacts.js` stay, since an old spreadsheet still has to import. And
+  **Recent searches moved from the top of the workspace to directly under the
+  Run-a-report chamber**, as that chamber's output — it was a personal list
+  above "Your firm" on a page the 2026-08-28 decision made firm-first. It is
+  its own `#historyDeck`, outside both `#deskView` (hidden wholesale on the
+  home view and on a report) and `#searchSection` (hidden by the wall's boot
+  CSS while the list still renders signed out), toggled at exactly the four
+  seams that toggle `#searchDeckHead`; `test/index-html.test.js` counts
+  them. Contacts keeps its place — after the deal board, before Membership —
+  and Buildings stays first. Recorded for later, not built: a firm-level
+  "needs attention" band (lease critical dates + unread conversations —
+  `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
+  page for the fold's "See all".
+  **Contacts attach to buildings (2026-09-02).** The write half of
+  `org_contacts.building_id`: slice 5 shipped the sheet's read
+  (`buildingContacts`) with nothing filling it, so every sheet's Contacts
+  section was permanently empty. `POST|DELETE /api/org/buildings/contacts?id=
+  &building=&contact=` attaches and detaches, and it lives in the BUILDINGS
+  route block rather than the contacts one because it must prove the building
+  is on this firm's board with `findOrgBuilding` and
+  `test/org-routes.test.js` refuses `org_buildings` anywhere else. Rules,
+  all run against a real server in `test/building-sheet-run.test.js`: both
+  halves are scoped by `org_id` (a contact from another firm and a building
+  on another firm's board are both 404); a contact belongs to at most ONE
+  building, so attaching elsewhere moves it and the answer says `moved`;
+  DELETE detaches only from the building named and never deletes the contact;
+  the ordinary contact PATCH cannot touch the column (it writes only
+  `FIELDS`), so a name edit cannot silently detach; and attaching is
+  activity (the building's `updated_at` moves). `orgContactRows` now names
+  `building_id` and the list carries `buildingId`, which the desk row maps
+  to an address off its own buildings read (awaited BEFORE contacts in
+  `renderShares`). The sheet's Attach door reads the firm's list only when
+  opened, leaves out what is already attached, and groups first the contacts
+  whose company matches a lease's tenant on that building — the same match
+  that marks a row "tenant" — which is where the lease record and the contact
+  list meet. `org-contacts.js` is unchanged: `building_id` is a link the
+  buildings routes own, not a contact field.
   **Auto-share** (`orgs.share_default` + `org_members.auto_share`, migration
   031, owner's yes 2026-08-16). An owner or admin can set the firm to share
   members' NEW reports automatically; `POST /api/org/settings` carries both
@@ -2604,6 +2666,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   "seen" only on explicit My Desk/bell clicks, never on render. Password
   reset emails go through the Resend outbound gate (`EMAIL_FROM` +
   `RESEND_API_KEY`); with either unset the link logs to console instead.
+  **Add a property by address (2026-09-02).** `POST /api/portfolio` takes
+  `{ address, propertyType }` with no report: the row is the ordinary row
+  holding an EMPTY report (`data.comps: []`, the shape the next search
+  fills), so the match key, the cap and the fill-never-rewrite verified key
+  apply unchanged. One rule is new and test-pinned: a match is ANSWERED
+  (`existed: true`, the row's own id and snapshots) and never rewritten,
+  because an empty report must not replace the one a search stored. It
+  refuses the firm buildings form's three cases — a type outside the
+  vault's vocabulary, an address with no street number (a city is not a
+  property), and one `addressHasMarket` cannot place. `/vault`'s
+  properties deck carries the door (`#propAddToggle`, ships closed,
+  `setPropAddOpen` its one writer; the "+ Run a report" link it replaced
+  lives inside the form). A row with no snapshot now says "not valued yet"
+  instead of "checked <date>", which claimed a check nobody ran — that
+  reaches rows added from recent searches too, honestly.
   **Profile photo** (2026-08-14; migration `027-account-avatar.sql`). A
   signed-in account can upload a picture that replaces the initial in the
   account circle (app header, every server-rendered page, My Desk). Rules
@@ -2909,7 +2986,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   over-length field or a non-image logo rather than truncating it, and
   `brandForRender` decides what a given render is allowed to show. The mark
   appears everywhere a report does once entitled — the on-screen letterhead,
-  the print footer, the PNG export, and both the CSV and XLSX exports — and
+  the print footer, the PNG export, and the CSV, XLSX and PPTX exports — and
   the license number renders on all of those, not just the desk preview.
   **Co-branded, never white-label**: the surfaces (not `branding.js`) always
   add the CompNinja attribution and the automated-estimate line, on top of
@@ -2921,6 +2998,51 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   scoped to the property they bought (the sale is retired; the grants are
   not), not a live Pro subscription, so this cannot be folded into
   `/api/config`.
+  **One profile, reused everywhere (2026-09-02).** The product asked for the
+  same facts in five places — this card, the firm's branding, the vault's
+  credit identity, the account, the comp-submission modal — and none read
+  another. Now `GET /api/branding` also carries `suggested`
+  (`BRANDING.suggestBrand`, pure: the vault's `broker_profiles` company,
+  name and license first, then the member's oldest active firm's `orgs.name`,
+  then the account's name and email; never `org_branding`, which already
+  applies at render time and would freeze as a copy), and `fillBrandForm`
+  pours it into EMPTY fields only, with `#brandSeedNote` saying where it
+  came from and that it prints. The reverse door: `vaultReadPayload` sends
+  `identitySuggest` from the member's saved branding ONLY while no credit is
+  stated, and the identity form fills from it; the submission modal takes
+  firm and phone from the saved branding; the create-a-firm box takes the
+  firm name. **Every one of these is a prefill the member reads and saves,
+  never a write** — that is what keeps the vault's "stated, never inherited"
+  rule (`creditName`'s comment: a copied signup name was once published as
+  somebody's firm) while the facts stop being retyped. Two honesty rules,
+  test-pinned: the summary line reads "suggested, not saved yet" while the
+  form holds a seed and no profile exists, and a delete blanks the form
+  rather than re-seeding it.
+  **A logo can be read off the firm's website (2026-09-02).** `POST
+  /api/branding/logo-from-site { url }` fetches the page, picks its declared
+  icon and answers a data URI; the branding card's "Import logo from website"
+  control runs it through `resizeLogoDataUri` — the ONE resizer, which the
+  chosen-file door now also calls — into the preview, kept only on Save.
+  Rules in the pure `logo-import.js` (`test/logo-import.test.js`): the
+  address must be public (localhost, IP literals, single-label hosts and
+  embedded credentials are refused before any DNS); candidates are
+  apple-touch-icon, then icons at least 64px, then the undeclared
+  `/apple-touch-icon.png`, then og:image (measured on github.com: its declared
+  icons are too small and its og:image is a homepage banner), then tiny
+  icons, six at most, and
+  `.ico`/`.svg`/`.gif` hrefs are never fetched; the BYTES decide, sniffed
+  by account-avatar.js's `sniffImage`, a PNG narrower than 48px refused as a
+  favicon, a PNG more than three times wider than tall refused as a banner,
+  anything over 2MB skipped. server.js owns the fetch and it is the
+  source-link check's discipline: every host resolved with
+  `lookupWithTimeout` and refused on a private answer (`privateAddress`),
+  redirects followed BY HAND with that guard re-run per hop, every body read
+  under a byte cap (`readCapped`), a 6s timeout, our own UA. The site is
+  fetched by our server only — no third-party logo service sees a firm's
+  domain. `test/logo-import-run.test.js` runs it against a stub site
+  (touch icon found; `.ico`-only and over-cap sites 404 naming the fix;
+  redirect followed; unreachable 502; and, WITHOUT the test-only
+  `LOGO_IMPORT_ALLOW_PRIVATE`, a loopback address refused before any fetch).
   **The firm fallback (2026-08-29; migration 041, `org_branding`).** A firm's
   owner/admin saves one profile for the org (`GET|PUT|DELETE
   /api/org/branding`, write gated on `ORG.canManageMembers`, validation
@@ -3481,6 +3603,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       collapsed "Required columns & privacy details" disclosure, is restated
       on the trust line, and is made again at publish. Do not put the fine
       print back on the invitation face without asking.
+    - **The one input takes MANY files (2026-09-02).** Choose or drop
+      several: PDFs and screenshots are read one by one (each its own
+      `/api/vault/extract` call, the route being rate-limited) and land in
+      ONE confirm table with a `pdf-src` row naming each file above its
+      rows — a row, never a column, because a cell rides into the upload as
+      a field. Spreadsheets QUEUE through the ordinary path one at a time
+      (the mapper is a screen a broker answers, and two cannot be open at
+      once): the extract batch first, then each CSV, and the next starts
+      only from `doImport`'s success with the previous rows STORED. A
+      refusal or a cancel drops the rest of the queue BY NAME
+      (`dropQueue`) rather than carrying on past a message the broker has
+      not read. `#res` is one line everywhere else, so a batch keeps
+      `batchLog` and every write during one starts with `batchPrefix()`
+      — "Imported 12 comps" from a.csv survives "Reading b.csv". One file
+      is the old path byte for byte (no source row, the plain name).
+      `test/vault-page.test.js` runs all four shapes.
     - **There is exactly ONE `<input type=file>`.** Its `accept` includes
       `.pdf` and the image types as well as `.csv`. `#bookPick` and the
       ordinary "Add comps"
@@ -3718,6 +3856,16 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the template names it. Keep the text TRUE: `parseMoney` strips `$` and
     commas, `parseNumber` accepts `45,000 SF`, `parsePercent` accepts
     `6.25%`; the old template said "no $ signs" and was simply wrong.
+    **Two columns get a sentence each because testers asked what they were
+    (2026-09-02)**: `lat and lng are latitude and longitude` with a worked
+    example, and a `tenancy:` line — it had NONE, only three example cells,
+    and it is free text (`"NNN"` is stored in it elsewhere), so the line
+    names the three usual answers and says it is never used in the math.
+    The same two answers ride `vault-page.js`'s `FIELD_HINTS` as `title=`
+    on every header that names the column (`headCell` and the confirm
+    table) and on the add form, whose labels now read Latitude and
+    Longitude; a hint explains a column and never names one, so it is not a
+    fourth label map. Pinned in both test files.
   - **The CSV column mapper** (2026-08-10; spec
     `docs/superpowers/specs/2026-08-10-vault-csv-column-mapper-design.md`).
     A broker uploads their own export and maps its columns once. `POST
@@ -4000,6 +4148,35 @@ private row has not earned. Two rules matter when editing anything down here:
   the broker vault above. Moving `/api/geocode` to POST ranked above it and
   **shipped 2026-08-17** — see that route's entry above; the address a private
   comp sends to our own proxy no longer lands in a URL.
+
+**PowerPoint export** (2026-09-02; `exportPptx` in index.html). One more
+format of the same report, for the reason the others could not serve: the
+PNG is one flat picture, the PDF is a print of the web page and the XLSX is
+data with no story, and a broker who needed a deck screenshotted the hero into
+one by hand. Five slides of NATIVE text and tables — value (the hero's
+ledger, basis, trust line and approaches), market summary and drivers, the
+comp table paginated ten rows a slide, the comp map and market-position chart
+as images, and sources & method. Built in the browser by **PptxGenJS 4.0.1,
+lazy-loaded from jsdelivr** on first click exactly as the Excel export loads
+SheetJS from cdnjs (it is not on cdnjs; jsdelivr is named beside cdnjs in the
+privacy policy's third-parties list, and `test/public-pages.test.js` pins
+that line). The button is `#pptxBtn`, revealed for signed-in members only
+with the Excel button. Five rules, all pinned in `test/index-html.test.js`:
+it goes through `gatedExport` and so costs the same allowance slot as the
+CSV of that report (`POST /api/export` takes no format); rows come from
+`exportableComps()`, never the included set, and the deck says how many
+private comps it left out with the CSV's reader-vs-owner wording; branding
+rides `activeBrand()` and every slide's footer carries the CompNinja
+attribution from `pptxFrame`, so no slide can omit it; the ledger is READ
+OFF THE HERO'S DOM rather than recomputed, because `renderOwnerHero` already
+resolved every branch (per-unit, income-only, the leases-only rent range, the
+dashes) and a second computation would be a second answer; and it is always
+light — `PPTX_CHART_VARS` mirrors theme.js's light tokens for the chart's
+`var()` colours and a test holds the two together. The map slide is the
+print/PNG raster (`ensureStaticMap`) re-encoded to PNG because PowerPoint
+does not render WebP; building it is how the pinless-raster bug below was
+found. Verified by opening the file in PowerPoint through its COM interface
+and exporting each slide to PNG (a PowerShell one-liner, no dependency).
 
 ### Non-obvious flows to know before editing
 

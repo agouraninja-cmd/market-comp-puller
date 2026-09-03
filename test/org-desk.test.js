@@ -82,6 +82,12 @@ function makeEl(tag, initialClasses) {
     },
     appendChild(child) { el.children.push(child); return child; },
     addEventListener(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
+    // Two more, for the contacts panel's toggle: aria-expanded rides the
+    // single writer, and opening it focuses the first field.
+    attrs: {},
+    setAttribute(k, v) { el.attrs[k] = String(v); },
+    getAttribute(k) { return k in el.attrs ? el.attrs[k] : null; },
+    focus() {},
     // Returns the handlers' promises so a test can await an async click.
     fire(ev, arg) {
       return Promise.all((handlers[ev] || []).map((fn) => fn(arg || { target: el })));
@@ -752,6 +758,93 @@ test("the contact door names the person and the company, and NEVER their email",
   assert.equal(fn({ name: "", company: "" }), "", "nobody to name, no door");
   // And the row builder uses it, with nothing else on the href.
   assert.match(html, /talk\.href = contactDiscussHref\(c\);/);
+});
+
+// ---------------------------------------------------------------------------
+// Contacts on the Workspace (2026-09-02): the fold, the closed form, the label
+// ---------------------------------------------------------------------------
+const CONTACTS_RE = /  let contactsExpanded = false;[\s\S]*?\n  async function renderContacts\(\) \{[\s\S]*?\n  \}/;
+function loadContacts(o) {
+  const fetch = makeFetch([["/api/org/contacts", { status: o.status || 200, body: o.body }]]);
+  return load(CONTACTS_RE,
+    "this.render = renderContacts; this.setOpen = setContactAddOpen;",
+    "const COLLAPSE_AT = 8; let currentUser = __user; function myFirm() { return __firm; }\n" +
+    "let firmBuildings = __buildings;\n" +
+    "function contactDiscussHref(c) { return '/messages?say=' + encodeURIComponent(c.name); }\n" +
+    "function contactsMsg() {}",
+    { fetch, __buildings: o.buildings || [], __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
+}
+const CT = (i) => ({ id: "c" + i, name: "Person " + i, company: "Co " + i, email: "p" + i + "@x.com", mine: i === 0, addedBy: "Mike" });
+
+test("Contacts shows COLLAPSE_AT rows and folds the rest, while the count names the whole list", async () => {
+  const ctx = loadContacts({ body: { contacts: Array.from({ length: 11 }, (_, i) => CT(i)) } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskContacts"), false);
+  assert.match(ctx.dom.text("contactsStats"), /^11 contacts$/, "the count describes the whole list, not the eight shown");
+  const wrap = ctx.dom.el("contactRows");
+  assert.equal(wrap.children.length, 2, "the flat head and the fold");
+  assert.equal(wrap.children[0].children.length, 8, "eight flat, never more — the buildings section's number");
+  const fold = wrap.children[1];
+  assert.equal(fold.tagName, "DETAILS");
+  assert.equal(fold.open, false, "ships folded");
+  assert.match(fold.children[0].textContent, /^Show 3 more$/);
+  assert.equal(fold.children[1].children.length, 3, "the rest are in the fold, not dropped");
+  assert.match(wrap.children[0].children[0].textContent, /Person 0.*added by you/, "the reader's own row says you");
+});
+
+test("under the cap there is no fold; no firm or a failed read hides the section", async () => {
+  let ctx = loadContacts({ body: { contacts: [CT(0), CT(1)] } });
+  await ctx.render();
+  assert.equal(ctx.dom.el("contactRows").children.length, 1, "no details element under eight");
+  assert.equal(ctx.dom.el("contactRows").children[0].children.length, 2);
+  assert.equal(ctx.dom.hidden("contactsEmpty"), true);
+  ctx = loadContacts({ body: { contacts: [] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("contactsEmpty"), false);
+  ctx = loadContacts({ firm: null, body: { contacts: [CT(0)] } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskContacts"), true);
+  assert.equal(ctx.fetch.log.length, 0, "no member, no read");
+  ctx = loadContacts({ status: 503, body: { error: "down" } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("deskContacts"), true, "'could not read' is not 'no contacts'");
+});
+
+test("a contact attached to a building carries a door to that building's sheet", async () => {
+  const ctx = loadContacts({
+    body: { contacts: [Object.assign(CT(0), { buildingId: "b1" }), Object.assign(CT(1), { buildingId: "b-unknown" }), CT(2)] },
+    buildings: [{ id: "b1", address: "1210 N 17th St, Boise, ID" }],
+  });
+  await ctx.render();
+  const rows = ctx.dom.el("contactRows").children[0].children;
+  const links = (row) => (row.children || []).filter((el) => el.tagName === "A").map((a) => [a.href, a.textContent]);
+  assert.deepEqual(links(rows[0]).filter((l) => l[0].startsWith("/building/")), [["/building/b1", "at 1210 N 17th St, Boise, ID"]]);
+  assert.equal(links(rows[1]).filter((l) => l[0].startsWith("/building/")).length, 0, "a building the desk does not hold gets no door, never a broken one");
+  assert.equal(links(rows[2]).filter((l) => l[0].startsWith("/building/")).length, 0);
+});
+
+test("the add/import form ships closed behind one control, with one writer", () => {
+  // Markup: closed, and the control says what it opens.
+  assert.match(html, /id="contactAddForm" class="hidden /, "the form ships hidden — the vault's #addSec rule");
+  assert.match(html, /id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"/);
+  // One writer: nothing else touches the form's classes.
+  assert.equal((html.match(/getElementById\("contactAddForm"\)\.classList/g) || []).length, 1,
+    "setContactAddOpen is the single writer of the form's visibility");
+  const ctx = loadContacts({ body: { contacts: [] } });
+  ctx.setOpen(true);
+  assert.equal(ctx.dom.hidden("contactAddForm"), false);
+  assert.equal(ctx.dom.el("contactAddToggle").getAttribute("aria-expanded"), "true");
+  assert.match(ctx.dom.text("contactAddToggle"), /Close/);
+  ctx.setOpen(false);
+  assert.equal(ctx.dom.hidden("contactAddForm"), true);
+  assert.equal(ctx.dom.el("contactAddToggle").getAttribute("aria-expanded"), "false");
+  assert.match(ctx.dom.text("contactAddToggle"), /Add or import/);
+});
+
+test("the section is labelled Contacts — the tenant-rep shop it was named for was withdrawn", () => {
+  assert.match(html, /<span class="rd-lab">Contacts<\/span>/);
+  assert.doesNotMatch(html, /rd-lab">Tenant contacts</, "a broker shop or a development shop keeps a contact list too");
 });
 
 test("the shelf row's Discuss sends the report as a LINK, never a copy of it", () => {

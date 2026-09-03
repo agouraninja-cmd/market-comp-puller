@@ -612,6 +612,15 @@ test("the template's guidance names every type and every optional column", () =>
   }
 });
 
+test("the template explains the two columns testers stalled on: lat/lng, and tenancy", () => {
+  const csv = templateCsv();
+  assert.match(csv, /lat and lng are latitude and longitude/, "the abbreviations were the question");
+  assert.match(csv, /43\.6187 and -116\.2146/, "an example a broker can pattern-match");
+  assert.match(csv, /tenancy: who occupies the building/i, "tenancy had no guidance line at all, only three example cells");
+  assert.match(csv, /Single tenant, Multi-tenant or Owner-user/);
+  assert.match(csv, /never used in the math/, "and says it is descriptive, so nobody fears a wrong word moves a number");
+});
+
 test("the template does not repeat the cleanup the importer already does", () => {
   // It used to say "no $ signs", which is false: parseMoney strips $ and
   // commas, parseNumber accepts "45,000 SF", parsePercent accepts "6.25%".

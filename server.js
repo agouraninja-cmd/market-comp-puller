@@ -192,7 +192,8 @@ const BACKTEST = require("./backtest");
 // Report branding — the member's mark (logo, firm name, contact info,
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
-const BRANDING = require("./branding.js");
+const BRANDING = require("./branding");
+const LOGO = require("./logo-import");
 // Account profile photo — the picture in the account circle. Pure and tested;
 // server.js owns the route (GET|PUT|DELETE /api/account/avatar) and the
 // avatar_rev field on GET /api/account/me.
@@ -2537,12 +2538,143 @@ async function findBrandingProfile(userId) {
 // asymmetry is safe here because nothing ever upserts over this value — the
 // blank-on-next-save hazard that forces the strict 503 on the own-profile
 // read has no analogue on a fallback nobody writes back.
+// The caller's ACTIVE memberships, oldest first — the one ordering rule
+// shared by the firm-branding fallback and the branding suggestion, so the
+// two can never disagree about which firm is "the member's firm".
+async function activeMembershipsFor(user) {
+  if (!user || !user.email || !DB_CONFIGURED) return [];
+  return (await orgMembershipsFor(user.email))
+    .filter((r) => ORG.isActive(r))
+    .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+}
+
+// The member's oldest active firm as { id, name }, or null. Fails open.
+async function oldestActiveFirmFor(user) {
+  try {
+    const first = (await activeMembershipsFor(user))[0];
+    if (!first) return null;
+    const rows = await sbRequest("GET",
+      `orgs?id=eq.${encodeURIComponent(first.org_id)}&select=id,name&limit=1`);
+    const org = (rows || [])[0];
+    return org ? { id: org.id, name: org.name || "" } : null;
+  } catch (e) {
+    console.error("Firm lookup for branding failed:", e.message);
+    return null;
+  }
+}
+
+// What the branding card is offered for its EMPTY fields (2026-09-02, "one
+// profile"): the vault's credit identity, the member's firm, the account.
+// BRANDING.suggestBrand owns the precedence. Fails open to the account alone:
+// a suggestion is a courtesy and must never fail the branding read.
+async function suggestedBrandFor(user) {
+  if (!user) return null;
+  try {
+    const [profile, firm] = await Promise.all([
+      DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : null,
+      DB_CONFIGURED ? oldestActiveFirmFor(user) : null,
+    ]);
+    return BRANDING.suggestBrand({ user, brokerProfile: profile, firm });
+  } catch (e) {
+    console.error("Branding suggestion failed:", e.message);
+    return BRANDING.suggestBrand({ user });
+  }
+}
+
+// --- Logo import: a logo off the firm's own website (2026-09-02) ----------
+//
+// The member types their firm's address; we read the page, pick its declared
+// icon (LOGO.logoCandidates) and hand the bytes back as a data URI for the
+// branding form to resize, preview and — only on Save — keep. The rules
+// that matter are the fetch's, and they are the source-link check's: every
+// host is DNS-resolved first and private or loopback answers are refused
+// (lookupWithTimeout / privateAddress, the same two functions), redirects
+// are followed BY HAND with that guard re-run on every hop, and every body
+// is read under a byte cap. The site is fetched by our server only; no
+// third-party logo service ever sees a firm's domain.
+//
+// LOGO_IMPORT_ALLOW_PRIVATE is TEST-ONLY (RESEND_API_URL's precedent): the
+// stub site the run test stands up is on loopback, which the guard refuses
+// by design. Never set it in production.
+const LOGO_IMPORT_ALLOW_PRIVATE = /^(1|true|on)$/i.test(String(process.env.LOGO_IMPORT_ALLOW_PRIVATE || ""));
+const LOGO_IMPORT_UA = "CompNinjaLogoImport/1.0 (+https://compninja.co)";
+const LOGO_IMPORT_TIMEOUT_MS = 6000;
+
+async function siteHostAllowed(url) {
+  if (LOGO_IMPORT_ALLOW_PRIVATE) return true;
+  let host;
+  try { host = new URL(url).hostname; } catch (_) { return false; }
+  let addrs;
+  try { addrs = await lookupWithTimeout(host, LOGO_IMPORT_TIMEOUT_MS); } catch (_) { return false; }
+  return addrs.length > 0 && !addrs.some((a) => privateAddress(a.address, a.family));
+}
+
+// Read a body up to `max` bytes and stop; a page or a picture past that is
+// not worth having, and an unbounded read is how one URL exhausts a dyno.
+async function readCapped(r, max) {
+  const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+  if (!reader) return Buffer.from(await r.arrayBuffer()).subarray(0, max);
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    total += value.length;
+    if (total >= max) { try { await reader.cancel(); } catch (_) { /* closed */ } break; }
+  }
+  return Buffer.concat(chunks).subarray(0, max);
+}
+
+async function fetchSite(url, { accept, max, hops = 2 }) {
+  let current = url;
+  for (let i = 0; i <= hops; i++) {
+    if (!(await siteHostAllowed(current))) return { refused: true };
+    const r = await fetch(current, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(LOGO_IMPORT_TIMEOUT_MS),
+      headers: { "user-agent": LOGO_IMPORT_UA, accept },
+    });
+    if (r.status >= 300 && r.status < 400 && r.headers.get("location")) {
+      try { if (r.body) await r.body.cancel(); } catch (_) { /* closed */ }
+      let next;
+      try { next = new URL(r.headers.get("location"), current).toString(); } catch (_) { return { status: r.status }; }
+      if (!/^https?:/i.test(next)) return { status: r.status };
+      current = next;
+      continue;
+    }
+    if (!r.ok) { try { if (r.body) await r.body.cancel(); } catch (_) { /* closed */ } return { status: r.status }; }
+    return { ok: true, url: current, bytes: await readCapped(r, max) };
+  }
+  return { status: 310 };
+}
+
+async function importLogoFromSite(url) {
+  let page;
+  try {
+    page = await fetchSite(url, { accept: "text/html,*/*;q=0.5", max: LOGO.PAGE_MAX });
+  } catch (_) {
+    return { status: 502, code: "unreachable", error: "Couldn't reach that site. Check the address, or choose a file instead." };
+  }
+  if (page.refused) return { status: 400, code: "refused", error: "Enter a public web address, like yourfirm.com." };
+  if (!page.ok) return { status: 502, code: "unreachable", error: `That site didn't answer (${page.status}). Choose a file instead.` };
+  for (const c of LOGO.logoCandidates(page.bytes.toString("utf8"), page.url)) {
+    try {
+      // One byte past the cap is read on purpose, so acceptLogoBytes can
+      // tell "exactly at the cap" from "over it".
+      const img = await fetchSite(c.url, { accept: "image/png,image/jpeg,image/webp,image/*;q=0.5", max: LOGO.LOGO_FETCH_MAX + 1, hops: 1 });
+      if (!img.ok) continue;
+      const got = LOGO.acceptLogoBytes(img.bytes);
+      if (got) return { kind: c.kind, url: c.url, dataUri: got.dataUri };
+    } catch (_) { /* next candidate */ }
+  }
+  return { status: 404, code: "none", error: "No usable logo found on that site. Choose a file instead." };
+}
+
 async function findOrgBrandingFor(user) {
   if (!user || !user.email || !DB_CONFIGURED) return null;
   try {
-    const memberships = (await orgMembershipsFor(user.email))
-      .filter((r) => ORG.isActive(r))
-      .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+    const memberships = await activeMembershipsFor(user);
     if (!memberships.length) return null;
     const ids = [...new Set(memberships.map((r) => String(r.org_id)).filter(Boolean))];
     const rows = await sbRequest("GET",
@@ -4496,7 +4628,9 @@ async function orgContactRows(orgId) {
   if (!DB_CONFIGURED || !orgId) return [];
   return (await sbRequest("GET",
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
-    `&select=id,name,email,company,notes,added_by_user_id,added_by_name,created_at` +
+    // building_id since 2026-09-02 — 046 is applied and verified in
+    // production (migrations/APPLIED.md), which is the gate that kept it out.
+    `&select=id,name,email,company,notes,building_id,added_by_user_id,added_by_name,created_at` +
     `&order=created_at.desc&limit=2000`)) || [];
 }
 
@@ -4627,9 +4761,10 @@ async function orgLeaseRows(orgId, buildingId) {
 
 async function buildingContacts(orgId, buildingId) {
   if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
-  // Its own select, deliberately NOT orgContactRows' — that one must not name
-  // building_id until 046 has run everywhere, and this read only ever runs
-  // for a building that exists, which proves 046 did.
+  // Its own select, deliberately NOT orgContactRows' — this one is scoped to
+  // ONE building and answers the sheet; that one is the firm's whole list.
+  // (Until 2026-09-02 the split also kept building_id out of the list read
+  // while 046 was unapplied; 046 is applied, and both name the column now.)
   return (await sbRequest("GET",
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
     `&select=id,name,email,company,added_by_user_id,added_by_name&order=created_at.desc&limit=200`)) || [];
@@ -13127,7 +13262,7 @@ function renderPrivacyPageHTML(signedIn) {
     `<strong>OpenStreetMap</strong>, and <strong>CARTO</strong> provide map imagery and tiles.</li>` +
     `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
     `geocoding.</li>` +
-    `<li><strong>cdnjs</strong> provides content delivery for the export feature.</li>` +
+    `<li><strong>cdnjs</strong> and <strong>jsdelivr</strong> provide content delivery for the export feature.</li>` +
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
@@ -13231,7 +13366,7 @@ function renderHomeHTML({ signedIn = false } = {}) {
           "Estimated value range",
           "Source badge on every comp",
           "Private comp vault",
-          "CSV and XLSX export",
+          "CSV, XLSX and PowerPoint export",
           "PDF report export",
         ],
         // Stays a free Offer: a free tier genuinely exists, and turning this
@@ -15914,7 +16049,7 @@ async function vaultReadPayload(req, params) {
   // so the offset pages stably inside a date tie (the export's own rule).
   query += `&order=deal_date.desc.nullslast,id.asc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR, profileR, firmR, sharedR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR, firmR, sharedR, brandR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
@@ -15931,6 +16066,10 @@ async function vaultReadPayload(req, params) {
     // state that offers no control rather than a broken one.
     DB_CONFIGURED ? orgMembershipsFor(user.email) : Promise.resolve(null),
     DB_CONFIGURED ? sharedCompIdsFor(user.id) : Promise.resolve(null),
+    // The member's saved report branding, offered to an UNSTATED credit
+    // identity (2026-09-02, "one profile"). Settled like the rest: a
+    // suggestion must never be able to fail a vault.
+    DB_CONFIGURED ? findBrandingProfile(user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -16006,6 +16145,19 @@ async function vaultReadPayload(req, params) {
         creditedTo: VAULT.creditName(p),
         canPublish: VAULT.canPublishAs(p).ok,
       };
+    })(),
+    // The report branding's firm, name and license, offered to the identity
+    // form ONLY while nothing has been stated (2026-09-02, "one profile").
+    // The credit stays stated, never inherited: this fills a form the broker
+    // reads and saves, and it is the branding they typed, never the account
+    // name creditName's comment warns about. null once a credit exists, so a
+    // statement is never second-guessed.
+    identitySuggest: (() => {
+      const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      if (VAULT.creditName(p)) return null;
+      const b = BRANDING.normalizeBrand(brandR.status === "fulfilled" ? brandR.value : null);
+      if (!b || !b.firmName) return null;
+      return { company: b.firmName, display_name: b.preparerName || "", license_number: b.licenseNumber || "" };
     })(),
     // The firm's half of the header, and the per-comp control. `firm: null`
     // is the ordinary case — a broker in no firm — and the page renders
@@ -17982,7 +18134,32 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireUser(req, res);
           if (!user) return;
-          const { id, payload, snapshot, verifiedKey } = JSON.parse(body || "{}");
+          const parsed = JSON.parse(body || "{}");
+          const { id, snapshot, verifiedKey } = parsed;
+          let payload = parsed.payload;
+          // Add by ADDRESS, with no report (2026-09-02): { address,
+          // propertyType } and nothing else. The row is the ordinary row
+          // holding an EMPTY report — the shape the next search fills in —
+          // so the match key, the cap and the fill-never-rewrite verified
+          // key below apply unchanged. What differs is the match case: a
+          // property already in the book is ANSWERED (existed: true), never
+          // rewritten, because an empty report must not replace a real one.
+          // Refusals mirror the firm buildings form: a type from the vault's
+          // vocabulary, a street number (a city is not a property), and a
+          // market the parser can place.
+          let byAddress = false;
+          if (!payload && !id && parsed.address != null) {
+            const addr = String(parsed.address || "").trim().replace(/\s+/g, " ").slice(0, 300);
+            const type = String(parsed.propertyType || parsed.property_type || "").trim();
+            if (!addr) return sendJson(res, 400, { error: "Type the property's street address." });
+            if (!VAULT.PROPERTY_TYPES.includes(type)) {
+              return sendJson(res, 400, { error: `Which kind of property? One of ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+            }
+            if (!/\d/.test(addr)) return sendJson(res, 400, { error: "That looks like a city, not a property. Include the street number." });
+            if (!addressHasMarket(addr)) return sendJson(res, 400, { error: "Include the city and state, like 100 Main St, Boise, ID." });
+            payload = { meta: { address: addr, type }, data: { comps: [] } };
+            byAddress = true;
+          }
           if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
@@ -18009,6 +18186,9 @@ const server = http.createServer((req, res) =>
             address, propertyType: property_type, verifiedKey: vkey,
           });
           if (existing) {
+            // By address: the book already has it. Say so and write nothing —
+            // an empty report must never replace the one a search stored.
+            if (byAddress) return sendJson(res, 200, { id: existing.id, snapshots: existing.snapshots || [], existed: true });
             // Backfill: a row saved before this column existed, or before the
             // browser could verify this address, adopts the key on its next
             // save — so the duplicate stops being created from then on without
@@ -18028,8 +18208,8 @@ const server = http.createServer((req, res) =>
           const item = await insertPortfolioItem(user.id, {
             address, property_type, payload, snapshot: snap, verifiedKey: vkey,
           });
-          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
-          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
+          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address), ...(byAddress ? { source: "address" } : {}) });
+          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots, ...(byAddress ? { existed: false } : {}) });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("portfolio POST error:", err);
@@ -18583,6 +18763,40 @@ const server = http.createServer((req, res) =>
     return;
   }
 
+  // --- POST /api/branding/logo-from-site — a logo off the firm's website ----
+  //
+  // See importLogoFromSite. Signed-in only and rate-limited (it makes our
+  // server fetch an address a member typed); NOT gated on canBrand, the same
+  // reasoning as saving a profile — the gate is on applying a mark. Answers
+  // the picture as a data URI; nothing is stored here.
+  if (req.url.split("?")[0] === "/api/branding/logo-from-site" && req.method === "POST") {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 4e3) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (rateLimited("brandlogo:" + clientIp(req), 10)) return sendJson(res, 429, { error: "Too many tries. Please wait a minute." });
+        let parsed;
+        try { parsed = JSON.parse(body || "{}"); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const site = LOGO.normalizeSiteUrl(parsed && parsed.url, { allowPrivate: LOGO_IMPORT_ALLOW_PRIVATE });
+        if (site.error) return sendJson(res, 400, { error: site.error });
+        const found = await importLogoFromSite(site.url);
+        if (found.error) {
+          logEvent("brand_logo_import", { source: found.code || "none" });
+          return sendJson(res, found.status || 404, { error: found.error });
+        }
+        logEvent("brand_logo_import", { source: "ok:" + found.kind });
+        return sendJson(res, 200, { ok: true, logo: found.dataUri, source: found.url, kind: found.kind });
+      } catch (err) {
+        console.error("Logo import failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't read that site just now. Choose a file instead." });
+      }
+    });
+    return;
+  }
+
   // --- Report branding: the member's own mark -------------------------------
   //
   // Saving is deliberately NOT gated on canBrand. That entitlement is
@@ -18618,9 +18832,14 @@ const server = http.createServer((req, res) =>
         // branding yet" is a normal state, not an error. `firm` is null when
         // there is nothing — the browser branches on it, and {} would read as
         // a brand that normalizes to nothing.
+        // And what the account already knows, for the form's EMPTY fields
+        // (2026-09-02, "one profile"). Offered, never written: the member
+        // still presses Save. null when nothing is known.
+        const suggested = await suggestedBrandFor(user);
         return sendJson(res, 200, {
           branding: BRANDING.normalizeBrand(row) || {},
           firm: BRANDING.normalizeBrand(firmRow),
+          suggested,
         });
       })().catch((err) => {
         console.error("Branding read failed:", err.message);
@@ -23146,6 +23365,10 @@ const server = http.createServer((req, res) =>
               email: r.email || "",
               company: r.company || "",
               notes: r.notes || "",
+              // The building it is attached to, if any (046; written only by
+              // POST|DELETE /api/org/buildings/contacts). The desk maps it to
+              // an address off its own buildings read.
+              buildingId: r.building_id || "",
               // Live name first, stored snapshot second — 038's ordering, and
               // its reason: an attribution should say what a colleague is
               // called today, and the snapshot only speaks once they are gone.
@@ -23553,6 +23776,63 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Building note write failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't save that note. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/org/buildings/contacts — attach a contact (046) --
+    //
+    // The WRITE half of org_contacts.building_id; the read half (the sheet's
+    // buildingContacts) shipped in slice 5 with nothing filling it, so every
+    // sheet's Contacts section was permanently empty. It lives HERE, in the
+    // buildings route block, and not in /api/org/contacts: the attach must
+    // prove the building is on THIS firm's board (findOrgBuilding), and
+    // test/org-routes.test.js fails the build if org_buildings is named
+    // outside this block — a building is consulted only by its own routes.
+    // The contact must be in this firm too, so both halves of the link are
+    // scoped by org_id. POST attaches, DELETE detaches (the column goes back
+    // to null; the contact stays on the firm's list). A contact belongs to
+    // at most one building, so attaching elsewhere MOVES it, and the answer
+    // says so. The ordinary contact PATCH never touches the column, so an
+    // edit to a name cannot silently detach.
+    if (orgPath === "/api/org/buildings/contacts" && (req.method === "POST" || req.method === "DELETE")) {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const building = await findOrgBuilding(orgId, buildingId);
+        if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+        const contactId = (url.searchParams.get("contact") || "").trim();
+        if (!isUuidish(contactId)) return sendJson(res, 400, { error: "Which contact?" });
+        const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}&org_id=eq.${encodeURIComponent(orgId)}`;
+        const contact = ((await sbRequest("GET", `${scope}&select=id,name,building_id&limit=1`)) || [])[0];
+        if (!contact) return sendJson(res, 404, { error: "That contact is not in this firm." });
+        const stamp = new Date().toISOString();
+        if (req.method === "DELETE") {
+          // Only from the building it is on: a stale Detach on one sheet must
+          // not pull a contact off a different building.
+          if (String(contact.building_id || "") !== buildingId) {
+            return sendJson(res, 404, { error: "That contact is not attached to this building." });
+          }
+          await sbRequest("PATCH", scope, { building_id: null, updated_at: stamp }, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, detached: contactId });
+        }
+        const moved = Boolean(contact.building_id && String(contact.building_id) !== buildingId);
+        await sbRequest("PATCH", scope, { building_id: buildingId, updated_at: stamp }, { prefer: "return=minimal" });
+        // Attaching is activity: the building rises on the desk. Best-effort.
+        await sbRequest("PATCH",
+          `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+          { updated_at: stamp }, { prefer: "return=minimal" }).catch(() => {});
+        logEvent("org_buildings", { source: "contact" });
+        return sendJson(res, 200, { ok: true, attached: contactId, moved });
+      })().catch((err) => {
+        console.error("Contact attach failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
       });
       return;
     }

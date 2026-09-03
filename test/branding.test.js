@@ -2,7 +2,7 @@
 // no server, no database, no clock.
 const test = require("node:test");
 const assert = require("node:assert");
-const { brandForRender, validateForSave, normalizeBrand, LOGO_SAVE_MAX } = require("../branding.js");
+const { brandForRender, validateForSave, normalizeBrand, suggestBrand, LOGO_SAVE_MAX } = require("../branding.js");
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 const ROW = {
@@ -155,4 +155,38 @@ test("an empty profile saves as an all-empty row, which is how a member clears i
   assert.equal(r.error, undefined);
   assert.equal(r.row.firm_name, "");
   assert.equal(r.row.logo_url, "");
+});
+
+// ---------------------------------------------------------------------------
+// suggestBrand — what the account already knows, offered to empty fields
+// ---------------------------------------------------------------------------
+
+test("the vault's credit identity beats the firm, which beats the account", () => {
+  const s = suggestBrand({
+    user: { name: "Brad", email: "brad@colliers.com" },
+    brokerProfile: { company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins", license_number: "01899123" },
+    firm: { name: "Colliers Boise" },
+  });
+  assert.deepEqual(s, { firmName: "Hawkins Ridge CRE", preparerName: "Chuck Hawkins", email: "brad@colliers.com", licenseNumber: "01899123" });
+});
+
+test("with no credit identity the firm's name and the account's name and email are offered", () => {
+  const s = suggestBrand({ user: { name: " Mike  H ", email: "mike@colliers.com" }, firm: { name: "Colliers Boise" } });
+  assert.deepEqual(s, { firmName: "Colliers Boise", preparerName: "Mike H", email: "mike@colliers.com" });
+});
+
+test("nothing known is null, never {}; and no key is ever an empty string", () => {
+  assert.equal(suggestBrand({}), null);
+  assert.equal(suggestBrand(), null);
+  assert.equal(suggestBrand({ user: { name: "  ", email: "" }, brokerProfile: { company: "" } }), null);
+  const s = suggestBrand({ user: { email: "a@b.co" }, brokerProfile: { display_name: "", license_number: "  " } });
+  assert.deepEqual(s, { email: "a@b.co" });
+});
+
+test("phone, logo and disclaimer are never suggested, and text obeys the same limits as a save", () => {
+  const s = suggestBrand({ user: { email: "a@b.co", phone: "208-555-0100" }, brokerProfile: { company: "x".repeat(200), logo_url: "data:image/png;base64,AAAA", disclaimer: "no" } });
+  assert.equal("phone" in s, false);
+  assert.equal("logo" in s, false);
+  assert.equal("disclaimer" in s, false);
+  assert.equal(s.firmName.length, 80, "clipped to the firm-name limit rather than refused — it is a hint, not a save");
 });

@@ -4496,7 +4496,9 @@ async function orgContactRows(orgId) {
   if (!DB_CONFIGURED || !orgId) return [];
   return (await sbRequest("GET",
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}` +
-    `&select=id,name,email,company,notes,added_by_user_id,added_by_name,created_at` +
+    // building_id since 2026-09-02 — 046 is applied and verified in
+    // production (migrations/APPLIED.md), which is the gate that kept it out.
+    `&select=id,name,email,company,notes,building_id,added_by_user_id,added_by_name,created_at` +
     `&order=created_at.desc&limit=2000`)) || [];
 }
 
@@ -4627,9 +4629,10 @@ async function orgLeaseRows(orgId, buildingId) {
 
 async function buildingContacts(orgId, buildingId) {
   if (!DB_CONFIGURED || !orgId || !isUuidish(buildingId)) return [];
-  // Its own select, deliberately NOT orgContactRows' — that one must not name
-  // building_id until 046 has run everywhere, and this read only ever runs
-  // for a building that exists, which proves 046 did.
+  // Its own select, deliberately NOT orgContactRows' — this one is scoped to
+  // ONE building and answers the sheet; that one is the firm's whole list.
+  // (Until 2026-09-02 the split also kept building_id out of the list read
+  // while 046 was unapplied; 046 is applied, and both name the column now.)
   return (await sbRequest("GET",
     `org_contacts?org_id=eq.${encodeURIComponent(orgId)}&building_id=eq.${encodeURIComponent(buildingId)}` +
     `&select=id,name,email,company,added_by_user_id,added_by_name&order=created_at.desc&limit=200`)) || [];
@@ -17837,7 +17840,32 @@ const server = http.createServer((req, res) =>
           }
           const user = await requireUser(req, res);
           if (!user) return;
-          const { id, payload, snapshot, verifiedKey } = JSON.parse(body || "{}");
+          const parsed = JSON.parse(body || "{}");
+          const { id, snapshot, verifiedKey } = parsed;
+          let payload = parsed.payload;
+          // Add by ADDRESS, with no report (2026-09-02): { address,
+          // propertyType } and nothing else. The row is the ordinary row
+          // holding an EMPTY report — the shape the next search fills in —
+          // so the match key, the cap and the fill-never-rewrite verified
+          // key below apply unchanged. What differs is the match case: a
+          // property already in the book is ANSWERED (existed: true), never
+          // rewritten, because an empty report must not replace a real one.
+          // Refusals mirror the firm buildings form: a type from the vault's
+          // vocabulary, a street number (a city is not a property), and a
+          // market the parser can place.
+          let byAddress = false;
+          if (!payload && !id && parsed.address != null) {
+            const addr = String(parsed.address || "").trim().replace(/\s+/g, " ").slice(0, 300);
+            const type = String(parsed.propertyType || parsed.property_type || "").trim();
+            if (!addr) return sendJson(res, 400, { error: "Type the property's street address." });
+            if (!VAULT.PROPERTY_TYPES.includes(type)) {
+              return sendJson(res, 400, { error: `Which kind of property? One of ${VAULT.PROPERTY_TYPES.join(", ")}.` });
+            }
+            if (!/\d/.test(addr)) return sendJson(res, 400, { error: "That looks like a city, not a property. Include the street number." });
+            if (!addressHasMarket(addr)) return sendJson(res, 400, { error: "Include the city and state, like 100 Main St, Boise, ID." });
+            payload = { meta: { address: addr, type }, data: { comps: [] } };
+            byAddress = true;
+          }
           if (!payload || typeof payload !== "object" || !payload.meta || !payload.data || !Array.isArray(payload.data.comps)) {
             return sendJson(res, 400, { error: "A report payload ({meta, data}) is required." });
           }
@@ -17864,6 +17892,9 @@ const server = http.createServer((req, res) =>
             address, propertyType: property_type, verifiedKey: vkey,
           });
           if (existing) {
+            // By address: the book already has it. Say so and write nothing —
+            // an empty report must never replace the one a search stored.
+            if (byAddress) return sendJson(res, 200, { id: existing.id, snapshots: existing.snapshots || [], existed: true });
             // Backfill: a row saved before this column existed, or before the
             // browser could verify this address, adopts the key on its next
             // save — so the duplicate stops being created from then on without
@@ -17883,8 +17914,8 @@ const server = http.createServer((req, res) =>
           const item = await insertPortfolioItem(user.id, {
             address, property_type, payload, snapshot: snap, verifiedKey: vkey,
           });
-          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address) });
-          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots });
+          logEvent("portfolio_add", { prop_type: property_type, market: marketOf(address), ...(byAddress ? { source: "address" } : {}) });
+          return sendJson(res, 200, { id: item.id, snapshots: item.snapshots, ...(byAddress ? { existed: false } : {}) });
         } catch (err) {
           if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
           console.error("portfolio POST error:", err);
@@ -23001,6 +23032,10 @@ const server = http.createServer((req, res) =>
               email: r.email || "",
               company: r.company || "",
               notes: r.notes || "",
+              // The building it is attached to, if any (046; written only by
+              // POST|DELETE /api/org/buildings/contacts). The desk maps it to
+              // an address off its own buildings read.
+              buildingId: r.building_id || "",
               // Live name first, stored snapshot second — 038's ordering, and
               // its reason: an attribution should say what a colleague is
               // called today, and the snapshot only speaks once they are gone.
@@ -23408,6 +23443,63 @@ const server = http.createServer((req, res) =>
         if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
         console.error("Building note write failed:", err.message);
         return sendJson(res, 503, { error: "Couldn't save that note. Please try again in a minute." });
+      });
+      return;
+    }
+
+    // --- POST|DELETE /api/org/buildings/contacts — attach a contact (046) --
+    //
+    // The WRITE half of org_contacts.building_id; the read half (the sheet's
+    // buildingContacts) shipped in slice 5 with nothing filling it, so every
+    // sheet's Contacts section was permanently empty. It lives HERE, in the
+    // buildings route block, and not in /api/org/contacts: the attach must
+    // prove the building is on THIS firm's board (findOrgBuilding), and
+    // test/org-routes.test.js fails the build if org_buildings is named
+    // outside this block — a building is consulted only by its own routes.
+    // The contact must be in this firm too, so both halves of the link are
+    // scoped by org_id. POST attaches, DELETE detaches (the column goes back
+    // to null; the contact stays on the firm's list). A contact belongs to
+    // at most one building, so attaching elsewhere MOVES it, and the answer
+    // says so. The ordinary contact PATCH never touches the column, so an
+    // edit to a name cannot silently detach.
+    if (orgPath === "/api/org/buildings/contacts" && (req.method === "POST" || req.method === "DELETE")) {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const url = new URL(req.url, "http://localhost");
+        const orgId = (url.searchParams.get("id") || url.searchParams.get("org") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const buildingId = (url.searchParams.get("building") || "").trim();
+        if (!isUuidish(buildingId)) return sendJson(res, 400, { error: "Which building?" });
+        const building = await findOrgBuilding(orgId, buildingId);
+        if (!building) return sendJson(res, 404, { error: "That building is not on this firm's list." });
+        const contactId = (url.searchParams.get("contact") || "").trim();
+        if (!isUuidish(contactId)) return sendJson(res, 400, { error: "Which contact?" });
+        const scope = `org_contacts?id=eq.${encodeURIComponent(contactId)}&org_id=eq.${encodeURIComponent(orgId)}`;
+        const contact = ((await sbRequest("GET", `${scope}&select=id,name,building_id&limit=1`)) || [])[0];
+        if (!contact) return sendJson(res, 404, { error: "That contact is not in this firm." });
+        const stamp = new Date().toISOString();
+        if (req.method === "DELETE") {
+          // Only from the building it is on: a stale Detach on one sheet must
+          // not pull a contact off a different building.
+          if (String(contact.building_id || "") !== buildingId) {
+            return sendJson(res, 404, { error: "That contact is not attached to this building." });
+          }
+          await sbRequest("PATCH", scope, { building_id: null, updated_at: stamp }, { prefer: "return=minimal" });
+          return sendJson(res, 200, { ok: true, detached: contactId });
+        }
+        const moved = Boolean(contact.building_id && String(contact.building_id) !== buildingId);
+        await sbRequest("PATCH", scope, { building_id: buildingId, updated_at: stamp }, { prefer: "return=minimal" });
+        // Attaching is activity: the building rises on the desk. Best-effort.
+        await sbRequest("PATCH",
+          `org_buildings?id=eq.${encodeURIComponent(buildingId)}&org_id=eq.${encodeURIComponent(orgId)}`,
+          { updated_at: stamp }, { prefer: "return=minimal" }).catch(() => {});
+        logEvent("org_buildings", { source: "contact" });
+        return sendJson(res, 200, { ok: true, attached: contactId, moved });
+      })().catch((err) => {
+        console.error("Contact attach failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't save that change. Please try again in a minute." });
       });
       return;
     }

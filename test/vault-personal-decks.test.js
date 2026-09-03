@@ -235,8 +235,14 @@ test("the checked date and the attention line count the same fact", () => {
   // dates for one word, thirty pixels apart, contradicted each other on screen
   // (caught in a browser against an aged store, not by reading).
   const html = bootBody({ s: 200, j: { portfolioValues: true } });
-  assert.ok(html.includes("var lastTs=last&&last.ts?last.ts:item.updated_at"),
-    "the row reads the last snapshot, falling back only when there is none");
+  assert.ok(html.includes('" · checked "+esc(new Date(last.ts).toLocaleDateString())'),
+    "the row reads the last snapshot");
+  // Since 2026-09-02 there is NO fallback: a row with no snapshot (added by
+  // address, or from a recent search with no value) says "not valued yet".
+  // The old fallback printed updated_at as a "checked" date, a check nobody ran.
+  assert.ok(html.includes('" · not valued yet"'), "and says so when there is none");
+  assert.ok(!html.includes("var lastTs=last&&last.ts?last.ts:item.updated_at"),
+    "the updated_at fallback claimed a check nobody ran");
   assert.ok(!html.includes("checked \"+esc(new Date(item.updated_at)"),
     "the row must not go back to the row-written date");
   assert.ok(html.includes("var ts=last&&last.ts?Date.parse(last.ts):NaN"),

@@ -14313,6 +14313,18 @@ async function renderMyDesk() {
     meta.textContent = bits.join(" · ");
     row.appendChild(meta);
 
+    // Attached to a building (046, written by the sheet's Attach door): a
+    // door to that sheet. Mapped off the desk's own buildings read, which
+    // renderShares awaits BEFORE this list, so the address is known here.
+    const at = c.buildingId ? firmBuildings.find((b) => String(b.id) === String(c.buildingId)) : null;
+    if (at) {
+      const where = document.createElement("a");
+      where.className = "db-split underline mr-2";
+      where.href = "/building/" + encodeURIComponent(at.id);
+      where.textContent = "at " + at.address;
+      row.appendChild(where);
+    }
+
     const talk = document.createElement("a");
     talk.className = "db-total text-xs underline mr-2";
     talk.textContent = "Discuss";

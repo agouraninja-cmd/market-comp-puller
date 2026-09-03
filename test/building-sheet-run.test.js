@@ -29,6 +29,9 @@ const ADDRESS = "1210 N 17th St, Boise, ID";
 const KEY = VAULT.addressKey(ADDRESS);
 const B1 = "9c1e9a1e-0000-4000-8000-0000000000b1";
 const B_OTHER = "9c1e9a1e-0000-4000-8000-0000000000b9";
+const B2 = "9c1e9a1e-0000-4000-8000-0000000000b2";
+const C2 = "9c1e9a1e-0000-4000-8000-0000000000c2";
+const C3 = "9c1e9a1e-0000-4000-8000-0000000000c3";
 
 const member = (u, org, role) => ({ id: crypto.randomUUID(), org_id: org, email: u.email, user_id: u.id, role,
   invited_at: NOW, joined_at: NOW, removed_at: null, auto_share: null });
@@ -54,6 +57,9 @@ function tables() {
       { id: B1, org_id: ORG_ID, address: ADDRESS, address_key: KEY, verified_key: "1210 n 17th st boise id 83702",
         market: "Boise, ID", property_type: "Industrial", size_sqft: 12500, year_built: 1994, lat: null, lng: null,
         added_by_user_id: BRAD.id, added_by_name: "Brad", created_at: NOW, updated_at: NOW },
+      { id: B2, org_id: ORG_ID, address: "450 W Main St, Boise, ID", address_key: VAULT.addressKey("450 W Main St, Boise, ID"),
+        verified_key: null, market: "Boise, ID", property_type: "Office", size_sqft: null, year_built: null, lat: null, lng: null,
+        added_by_user_id: MIKE.id, added_by_name: "Mike", created_at: NOW, updated_at: NOW },
       { id: B_OTHER, org_id: OTHER_ORG, address: "1 Elsewhere Rd, Boise, ID", address_key: VAULT.addressKey("1 Elsewhere Rd, Boise, ID"),
         verified_key: null, market: "Boise, ID", property_type: "", size_sqft: null, year_built: null, lat: null, lng: null,
         added_by_user_id: NOBODY.id, added_by_name: "Nobody", created_at: NOW, updated_at: NOW },
@@ -77,8 +83,14 @@ function tables() {
           { address: "2 B St, Boise, ID", transaction: "sale", price: 1300000, size_sqft: 13000, price_per_sqft: 100, date: "2026-01-02", source_type: "public_record" },
           { address: "3 C St, Boise, ID", transaction: "sale", price: 1100000, size_sqft: 11000, price_per_sqft: 100, date: "2026-01-03", source_type: "listing" },
         ] } } }],
-    org_contacts: [{ id: crypto.randomUUID(), org_id: ORG_ID, name: "Dana Wu", email: null, company: "Acme", notes: null,
-      building_id: B1, added_by_user_id: MIKE.id, added_by_name: "Mike", created_at: NOW }],
+    org_contacts: [
+      { id: crypto.randomUUID(), org_id: ORG_ID, name: "Dana Wu", email: null, company: "Acme", notes: null,
+        building_id: B1, added_by_user_id: MIKE.id, added_by_name: "Mike", created_at: NOW },
+      { id: C2, org_id: ORG_ID, name: "Luis Ortega", email: "luis@acme.com", company: "Acme", notes: null,
+        building_id: null, added_by_user_id: BRAD.id, added_by_name: "Brad", created_at: NOW },
+      { id: C3, org_id: OTHER_ORG, name: "Nobody's Contact", email: null, company: null, notes: null,
+        building_id: null, added_by_user_id: NOBODY.id, added_by_name: "Nobody", created_at: NOW },
+    ],
     org_building_notes: [],
     analytics_events: [],
   };
@@ -172,6 +184,53 @@ test("the building sheet, end to end", async (t) => {
     const mine = await fetch(`${srv.base}/api/org/buildings/notes?id=${ORG_ID}&building=${B1}&note=${noteId}`, as(MIKE, { method: "DELETE" }));
     assert.equal(mine.status, 200);
     assert.equal(tbl.org_building_notes.length, 0);
+  });
+
+  await t.test("contacts: attached from the sheet, moved rather than copied, detached, and never across firms", async () => {
+    const url = (org, b, c) => `${srv.base}/api/org/buildings/contacts?id=${org}&building=${b}&contact=${c}`;
+    const row = () => tbl.org_contacts.find((c) => c.id === C2);
+    const before = tbl.org_buildings.find((b) => b.id === B1).updated_at;
+    await new Promise((r) => setTimeout(r, 5));
+    let r = await fetch(url(ORG_ID, B1, C2), as(BRAD, { method: "POST" }));
+    assert.equal(r.status, 200, await r.text());
+    assert.equal(row().building_id, B1);
+    assert.notEqual(tbl.org_buildings.find((b) => b.id === B1).updated_at, before, "attaching is activity: the building rises on the desk");
+    let s = await (await fetch(api(ORG_ID), as(MIKE))).json();
+    assert.deepEqual(s.contacts.map((c) => c.name).sort(), ["Dana Wu", "Luis Ortega"], "every member's sheet lists it");
+    const list = await (await fetch(`${srv.base}/api/org/contacts?id=${ORG_ID}`, as(BRAD))).json();
+    assert.equal(list.contacts.find((c) => c.id === C2).buildingId, B1, "the desk's list carries the link");
+    assert.equal(list.contacts.find((c) => c.id === C3), undefined, "and never another firm's contact");
+
+    // At most one building: attaching elsewhere MOVES it, and says so.
+    r = await fetch(url(ORG_ID, B2, C2), as(BRAD, { method: "POST" }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).moved, true);
+    assert.equal(row().building_id, B2);
+    s = await (await fetch(api(ORG_ID), as(BRAD))).json();
+    assert.deepEqual(s.contacts.map((c) => c.name), ["Dana Wu"], "gone from the first building's sheet");
+
+    // An ordinary edit never touches the attachment.
+    r = await fetch(`${srv.base}/api/org/contacts?id=${ORG_ID}&contact=${C2}`, as(BRAD, { method: "PATCH", body: JSON.stringify({ company: "Acme Logistics" }) }));
+    assert.equal(r.status, 200, await r.text());
+    assert.equal(row().company, "Acme Logistics");
+    assert.equal(row().building_id, B2, "a name or company edit cannot silently detach");
+
+    // Detach only from the building it is on; the contact itself survives.
+    assert.equal((await fetch(url(ORG_ID, B1, C2), as(BRAD, { method: "DELETE" }))).status, 404, "not attached there");
+    assert.equal(row().building_id, B2);
+    assert.equal((await fetch(url(ORG_ID, B2, C2), as(MIKE, { method: "DELETE" }))).status, 200, "any member may detach");
+    assert.equal(row().building_id, null);
+    assert.ok(row(), "detaching never deletes the contact");
+
+    // Never across firms, in either direction.
+    assert.equal((await fetch(url(ORG_ID, B1, C3), as(BRAD, { method: "POST" }))).status, 404, "another firm's contact");
+    assert.equal(tbl.org_contacts.find((c) => c.id === C3).building_id, null);
+    assert.equal((await fetch(url(ORG_ID, B_OTHER, C2), as(BRAD, { method: "POST" }))).status, 404, "a building on another firm's board");
+    assert.equal((await fetch(url(OTHER_ORG, B_OTHER, C2), as(NOBODY, { method: "POST" }))).status, 404, "our contact, from the other firm's side");
+    assert.equal(row().building_id, null);
+    assert.equal((await fetch(url(ORG_ID, B1, C2), as(NOBODY, { method: "POST" }))).status, 403);
+    assert.equal((await fetch(url(ORG_ID, B1, C2), { method: "POST" })).status, 401);
+    assert.equal((await fetch(url(ORG_ID, B1, "not-a-uuid"), as(BRAD, { method: "POST" }))).status, 400);
   });
 
   await t.test("the identity edit changes the three fields, never the address, and refuses what an add refuses", async () => {

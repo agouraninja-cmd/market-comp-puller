@@ -263,6 +263,8 @@ function renderBuildingSheetBody(boot) {
 .bs-lease input,.bs-lease select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);min-width:0}
 .bs-lease .wide{grid-column:1/-1}
 .bs-lease-act{display:flex;gap:10px;align-items:center;margin:0 0 12px}
+.bs-attach{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:8px 0 12px}
+.bs-attach select{font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--edge);border-radius:6px;background:var(--card);color:var(--ink);min-width:0;flex:1 1 14rem;max-width:26rem}
 .bs-row .st{font:inherit;font-size:11px;padding:2px 4px;border:1px solid var(--edge);border-radius:4px;background:var(--card);color:var(--ink)}
 .bs-row .due{color:var(--red)}
 .bs-notes form{display:flex;flex-direction:column;gap:8px;margin:10px 0 14px}
@@ -341,7 +343,19 @@ function renderBuildingSheetBody(boot) {
     <section class="bs-sec" id="bsContacts">
       <div class="bs-rule"><span class="lab">Contacts</span><span class="n" id="bsContactsN"></span></div>
       <div id="bsContactsRows"></div>
-      <p class="bs-note hide" id="bsContactsNone">No contact is attached to this building yet.</p>
+      <p class="bs-note hide" id="bsContactsNone">No contact is attached to this building yet. Attach one from the firm\u2019s list \u2014 a contact whose company holds a lease here is offered first.</p>
+      <!-- The attach door (2026-09-02). The firm's list is read when the
+           door is opened, not with the sheet: a sheet is opened far more
+           often than a contact is attached. Contacts already attached here
+           are left out; those whose company matches a lease's tenant on this
+           building are grouped first, which is the "tenant info" the
+           building is meant to hold. Ships closed. -->
+      <form id="bsAttachForm" class="bs-attach hide">
+        <select id="bsAttachPick" aria-label="A contact to attach"><option value="">Choose a contact</option></select>
+        <button type="submit" class="bs-btn" id="bsAttachSave">Attach</button>
+        <button type="button" class="bs-lnk" id="bsAttachCancel">Cancel</button>
+      </form>
+      <p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsAttachAdd">Attach a contact</button></p>
     </section>
 
     <section class="bs-sec bs-notes" id="bsNotes">
@@ -457,9 +471,14 @@ function renderBuildingSheetBody(boot) {
 
     var cons=sheet.contacts||[];
     count("bsContactsN",cons.length,"contact"); none("bsContactsNone",!cons.length);
+    // A contact whose company holds a lease on this building is the tenant,
+    // and the row says so — the lease record and the contact list meet here.
+    var tenantCos={}; leases.forEach(function(l){ if(l.tenant)tenantCos[String(l.tenant).trim().toLowerCase()]=true; });
     $("bsContactsRows").innerHTML=cons.map(function(c){
-      return '<div class="bs-row"><span class="a">'+esc(c.name)+(c.company?" \u00b7 "+esc(c.company):"")+(c.email?" \u00b7 "+esc(c.email):"")+"</span>"+
-        '<span class="m">'+(c.mine?"added by you":(c.addedBy?"added by "+esc(c.addedBy):"added by a colleague"))+"</span></div>";
+      var isTenant=!!(c.company&&tenantCos[String(c.company).trim().toLowerCase()]);
+      return '<div class="bs-row"><span class="a">'+esc(c.name)+(c.company?" \u00b7 "+esc(c.company):"")+(isTenant?" \u00b7 tenant":"")+(c.email?" \u00b7 "+esc(c.email):"")+"</span>"+
+        '<span class="m">'+(c.mine?"added by you":(c.addedBy?"added by "+esc(c.addedBy):"added by a colleague"))+
+        ' \u00b7 <button type="button" class="bs-lnk" data-contact-rm="'+esc(c.id)+'">Detach</button></span></div>';
     }).join("");
 
     var notes=sheet.notes||[];
@@ -593,6 +612,50 @@ function renderBuildingSheetBody(boot) {
       .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
       .then(function(o){ if(o.s!==200){b.disabled=false;msg(o.j.error||"That didn't go through.",true);return;} reload(); })
       .catch(function(){ b.disabled=false; msg("That didn't go through.",true); });
+  });
+
+  // Contacts: attach from the firm's list, detach from this building.
+  function contactUrl(contactId){
+    return "/api/org/buildings/contacts?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id)+"&contact="+encodeURIComponent(contactId);
+  }
+  function attachForm(open){ $("bsAttachForm").className="bs-attach"+(open?"":" hide"); $("bsAttachAdd").className="bs-lnk"+(open?" hide":""); }
+  $("bsAttachAdd").addEventListener("click",function(){
+    if(!org||!building)return;
+    fetch("/api/org/contacts?id="+encodeURIComponent(org.id),{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200){msg((o.j&&o.j.error)||"Couldn\u2019t load the firm\u2019s contacts.",true);return;}
+        var here={}; (sheet.contacts||[]).forEach(function(c){here[String(c.id)]=true});
+        var tenants={}; (sheet.leases||[]).forEach(function(l){ if(l.tenant)tenants[String(l.tenant).trim().toLowerCase()]=true; });
+        var all=(o.j.contacts||[]).filter(function(c){return !here[String(c.id)]});
+        var likely=all.filter(function(c){return !!(c.company&&tenants[String(c.company).trim().toLowerCase()])});
+        var rest=all.filter(function(c){return likely.indexOf(c)<0});
+        if(!all.length){ msg(o.j.contacts&&o.j.contacts.length?"Every contact on the firm\u2019s list is already attached here.":"The firm\u2019s contact list is empty. Add contacts on the Workspace first.",true); return; }
+        var opt=function(c){return '<option value="'+esc(c.id)+'">'+esc(c.name+(c.company?" \u00b7 "+c.company:""))+"</option>"};
+        $("bsAttachPick").innerHTML='<option value="">Choose a contact</option>'+
+          (likely.length?'<optgroup label="Tenants on this building\u2019s leases">'+likely.map(opt).join("")+"</optgroup>":"")+
+          (rest.length?(likely.length?'<optgroup label="Everyone else">':"")+rest.map(opt).join("")+(likely.length?"</optgroup>":""):"");
+        msg(""); attachForm(true);
+      })
+      .catch(function(){ msg("That didn\u2019t reach the server.",true); });
+  });
+  $("bsAttachCancel").addEventListener("click",function(){ attachForm(false); });
+  $("bsAttachForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    if(!org||!building)return;
+    var id=$("bsAttachPick").value; if(!id)return;
+    fetch(contactUrl(id),{method:"POST",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){msg(o.j.error||"That didn\u2019t go through.",true);return;} msg(o.j.moved?"Attached \u2014 moved here from another building.":"Attached."); attachForm(false); reload(); })
+      .catch(function(){ msg("That didn\u2019t reach the server. Nothing was changed.",true); });
+  });
+  $("bsContactsRows").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button[data-contact-rm]"):null; if(!b||!org)return;
+    b.disabled=true;
+    fetch(contactUrl(b.getAttribute("data-contact-rm")),{method:"DELETE",credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ if(o.s!==200){b.disabled=false;msg(o.j.error||"That didn\u2019t go through.",true);return;} msg("Detached. The contact stays on the firm\u2019s list."); reload(); })
+      .catch(function(){ b.disabled=false; msg("That didn\u2019t go through.",true); });
   });
 
   apply(BOOT);

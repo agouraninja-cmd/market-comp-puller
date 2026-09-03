@@ -2227,6 +2227,35 @@ test("portfolio upsert and cap", async (t) => {
     assert.equal(cfg.pro.portfolioValues, false);
   });
 
+  await t.test("add by address, no report: the row lands empty, an existing row is answered not rewritten, and a city is refused", async () => {
+    const a = await post({ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Office" });
+    const ab = await a.json();
+    assert.equal(a.status, 200, JSON.stringify(ab));
+    assert.equal(ab.existed, false);
+    assert.deepEqual(ab.snapshots, [], "no valuation was taken, so none is recorded");
+    const again = await (await post({ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Office" })).json();
+    assert.equal(again.existed, true);
+    assert.equal(again.id, ab.id, "answered with the row it already has");
+    const list = (await (await fetch(srv.base + "/api/portfolio", { headers: { cookie } })).json()).items;
+    assert.equal(list.filter((i) => i.address === "500 S Capitol Blvd, Boise, ID").length, 1, "one row, however many times it is added");
+    // A stored report is never replaced by an empty one.
+    const real = reportPayload("501 S Capitol Blvd, Boise, ID", "Office");
+    const r = await (await post({ payload: real, snapshot: { likely: 2000000, low: 1800000, high: 2200000 } })).json();
+    const byAddr = await (await post({ address: "501 S Capitol Blvd, Boise, ID", propertyType: "Office" })).json();
+    assert.equal(byAddr.existed, true);
+    assert.equal(byAddr.id, r.id);
+    assert.equal(byAddr.snapshots.length, 1, "the valuation it holds is untouched");
+    const item = await (await fetch(srv.base + "/api/portfolio?id=" + r.id, { headers: { cookie } })).json();
+    assert.equal(item.payload.data.comps.length, 1, "and so is its report");
+    // Refusals, the firm buildings form's three.
+    assert.equal((await post({ address: "Boise, ID", propertyType: "Office" })).status, 400, "a city is not a property");
+    assert.equal((await post({ address: "500 S Capitol Blvd", propertyType: "Office" })).status, 400, "no market to place it in");
+    assert.equal((await post({ address: "500 S Capitol Blvd, Boise, ID", propertyType: "Castle" })).status, 400, "not a type the vault knows");
+    assert.equal((await post({ address: "500 S Capitol Blvd, Boise, ID" })).status, 400);
+    // Leave the book as the cap subtests below expect to find it.
+    for (const id of [ab.id, r.id]) await fetch(srv.base + "/api/portfolio?id=" + id, { method: "DELETE", headers: { cookie } });
+  });
+
   await t.test("POST without id inserts once, then updates the same address+type", async () => {
     const payload = reportPayload("100 Main St, Boise, ID", "Industrial");
     const a = await post({ payload, snapshot: { likely: 1000000, low: 900000, high: 1100000, median_psf: 80 } });

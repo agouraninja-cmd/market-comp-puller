@@ -769,9 +769,10 @@ function loadContacts(o) {
   return load(CONTACTS_RE,
     "this.render = renderContacts; this.setOpen = setContactAddOpen;",
     "const COLLAPSE_AT = 8; let currentUser = __user; function myFirm() { return __firm; }\n" +
+    "let firmBuildings = __buildings;\n" +
     "function contactDiscussHref(c) { return '/messages?say=' + encodeURIComponent(c.name); }\n" +
     "function contactsMsg() {}",
-    { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+    { fetch, __buildings: o.buildings || [], __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
 }
 const CT = (i) => ({ id: "c" + i, name: "Person " + i, company: "Co " + i, email: "p" + i + "@x.com", mine: i === 0, addedBy: "Mike" });
@@ -808,6 +809,19 @@ test("under the cap there is no fold; no firm or a failed read hides the section
   ctx = loadContacts({ status: 503, body: { error: "down" } });
   await ctx.render();
   assert.equal(ctx.dom.hidden("deskContacts"), true, "'could not read' is not 'no contacts'");
+});
+
+test("a contact attached to a building carries a door to that building's sheet", async () => {
+  const ctx = loadContacts({
+    body: { contacts: [Object.assign(CT(0), { buildingId: "b1" }), Object.assign(CT(1), { buildingId: "b-unknown" }), CT(2)] },
+    buildings: [{ id: "b1", address: "1210 N 17th St, Boise, ID" }],
+  });
+  await ctx.render();
+  const rows = ctx.dom.el("contactRows").children[0].children;
+  const links = (row) => (row.children || []).filter((el) => el.tagName === "A").map((a) => [a.href, a.textContent]);
+  assert.deepEqual(links(rows[0]).filter((l) => l[0].startsWith("/building/")), [["/building/b1", "at 1210 N 17th St, Boise, ID"]]);
+  assert.equal(links(rows[1]).filter((l) => l[0].startsWith("/building/")).length, 0, "a building the desk does not hold gets no door, never a broken one");
+  assert.equal(links(rows[2]).filter((l) => l[0].startsWith("/building/")).length, 0);
 });
 
 test("the add/import form ships closed behind one control, with one writer", () => {

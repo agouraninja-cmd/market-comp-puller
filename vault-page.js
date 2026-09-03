@@ -251,6 +251,7 @@ tfoot .lab{font-size:var(--t6);letter-spacing:.07em;text-transform:uppercase;col
 .msg.ok{background:var(--ok-bg);border-color:var(--ok-rule);color:var(--ok-text)}
 .msg.bad{background:var(--err-bg);border-color:var(--err-rule);color:var(--err-text)}
 #pdfTable tbody tr.need-fix td,#pdfTable tbody tr.need-fix:hover td{background:var(--err-bg)}
+#pdfTable tbody tr.pdf-src td,#pdfTable tbody tr.pdf-src:hover td{padding-top:12px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);background:none;border-bottom:0}
 .msg ul{margin:var(--s3) 0 0;padding-left:var(--s6)}
 .msg li{margin-top:var(--s1);font-variant-numeric:tabular-nums}
 #gate .msg{max-width:44ch;margin-top:var(--s7)}
@@ -659,9 +660,9 @@ a.btn.ghost:hover{color:var(--ink)}
       <div class="drop" id="drop">
         <p class="drop-k">Import a spreadsheet, PDF or screenshot</p>
         <button class="btn" id="pick">Choose a spreadsheet, PDF or screenshot</button>
-        <p>or drop a .csv, .pdf or an image here &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
+        <p>or drop files here &mdash; several at once is fine &middot; <a href="/api/vault/template" id="tpl">download the template</a></p>
         <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
-        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" class="hide"/>
+        <input type="file" id="file" accept=".csv,.pdf,.png,.jpg,.jpeg,.webp,text/csv,application/pdf,image/png,image/jpeg,image/webp" multiple class="hide"/>
       </div>
       <div id="res"></div>
 
@@ -685,11 +686,12 @@ a.btn.ghost:hover{color:var(--ink)}
           <label>Price <input id="addComp_price" type="text"/></label>
           <label>Size (SF) <input id="addComp_size_sqft" type="text"/></label>
           <label>Cap rate <input id="addComp_cap_rate" type="text" placeholder="optional"/></label>
-          <label>Tenancy <input id="addComp_tenancy" type="text" placeholder="optional"/></label>
+          <label title="Who occupies the building: Single tenant, Multi-tenant or Owner-user. Optional.">Tenancy <input id="addComp_tenancy" type="text" placeholder="Single tenant, Multi-tenant or Owner-user"/></label>
           <label>Year built <input id="addComp_year_built" type="text" placeholder="optional"/></label>
           <label class="span-all">Notes <input id="addComp_notes" type="text" placeholder="optional"/></label>
-          <label>Lat <input id="addComp_lat" type="text" placeholder="optional"/></label>
-          <label>Lng <input id="addComp_lng" type="text" placeholder="optional"/></label>
+          <!-- Spelled out (2026-09-02): "Lat" and "Lng" were the question. -->
+          <label title="Latitude in decimal degrees. Optional; with longitude, it keeps this address off third-party geocoders.">Latitude <input id="addComp_lat" type="text" placeholder="43.6187 (optional)"/></label>
+          <label title="Longitude in decimal degrees. Optional; with latitude, it keeps this address off third-party geocoders.">Longitude <input id="addComp_lng" type="text" placeholder="-116.2146 (optional)"/></label>
           <div class="span-all" id="addTypeFields"></div>
           <div class="formact span-all">
             <button class="btn" id="addCompBtn" type="button">Add comp</button>
@@ -896,12 +898,25 @@ a.btn.ghost:hover{color:var(--ink)}
          ------------------------------------------------------------------ -->
     <div class="deck" id="deckProps">
       <span class="dlab">Your properties</span><span class="dln"></span>
-      <a class="dact" href="/">+ Run a report</a>
+      <button class="dact" id="propAddToggle" aria-expanded="false" aria-controls="propAddForm">+ Add a property</button>
     </div>
 
     <section id="propsSec">
       <p class="sub hide" id="propsIntro" style="margin-top:0">The buildings you own or track.
         Each keeps the value from every report you have run on it. Only you can see this.</p>
+      <!-- Add by address, no search (2026-09-02). The firm's buildings form
+           on the Workspace had this door; the personal book did not — a
+           property reached it only through a report. Ships closed (the
+           #addSec rule); setPropAddOpen is its one writer. -->
+      <div class="form hide" id="propAddForm" style="margin-top:var(--s4)">
+        <label class="span2">Address <input id="pAddr" type="text" maxlength="300" placeholder="100 Main St, Boise, ID"/></label>
+        <label>Type <select id="pType"></select></label>
+        <div class="formact span-all">
+          <button class="btn" id="pAdd" type="button">Add property</button>
+          <button class="btn ghost" id="pCancel" type="button">Cancel</button>
+          <span class="fine">No search runs. Use Refresh on the row when you want a value, or <a href="/">run a report</a>.</span>
+        </div>
+      </div>
       <div class="strip hide" id="propsStrip"></div>
       <p class="note hide" id="propsAttn"></p>
       <!-- The "Add to firm" door's answer (Three Spaces, slice 3). Its own
@@ -915,8 +930,9 @@ a.btn.ghost:hover{color:var(--ink)}
       <div class="msg bad hide" id="propsErr">Couldn&rsquo;t load your properties just now.
         Nothing has been lost. Refresh in a moment.</div>
       <div class="invite hide" id="propsEmpty">
-        <p>Nothing here yet. Your portfolio holds the properties you own. Run a report and
-          use <strong>Save to portfolio</strong>, or add one from your recent searches.</p>
+        <p>Nothing here yet. Your portfolio holds the properties you own. Add one by address
+          with <strong>+ Add a property</strong> above, run a report and use <strong>Save to portfolio</strong>,
+          or add one from your recent searches.</p>
       </div>
       <div class="tw hide" id="propsWrap"><table id="propsTbl">
         <thead><tr id="propsHead"></tr></thead>
@@ -1519,6 +1535,22 @@ a.btn.ghost:hover{color:var(--ink)}
   function sheetLabel(k){
     return EDIT_LABELS[k]||(typeof TARGET_LABELS!=="undefined"&&TARGET_LABELS[k])||k;
   }
+  // One-line hints for the columns brokers stall on (owner's wishlist,
+  // 2026-09-02: "what is lat and lng", "what does tenancy mean"). Rendered as
+  // title= on every header that names the column — the spreadsheet, the
+  // compact table, the confirm table — and on the add form's labels, so the
+  // answer is wherever the question is asked. Not a fourth label map: a hint
+  // explains a column, it never names one.
+  var FIELD_HINTS={
+    tenancy:"Who occupies the building: Single tenant, Multi-tenant or Owner-user. Free text, optional; never used in the math.",
+    lat:"Latitude in decimal degrees, e.g. 43.6187. Optional. With longitude, it keeps this address off third-party geocoders.",
+    lng:"Longitude in decimal degrees, e.g. -116.2146. Optional. With latitude, it keeps this address off third-party geocoders.",
+    cap_rate:"The sale cap rate as a percentage, e.g. 5.75.",
+    rent_basis:"Whether the rent is quoted per year or per month. Required with a rent; never guessed, because the wrong one is 12x off.",
+    lease_type:"NNN, FS (full service) or MG (modified gross).",
+    option_notice_date:"The date by which the tenant must give notice to renew \\u2014 the deadline that matters."
+  };
+  function fieldHint(k){ return FIELD_HINTS[k]||""; }
 
   // The compact table's editable columns: its own columns, minus the two it
   // derives. market is parsed from the address BY THE SERVER (marketOf, which
@@ -1659,7 +1691,7 @@ a.btn.ghost:hover{color:var(--ink)}
   function headCell(k,label,num){
     var on=k===sortK;
     var arrow=on?' <span class="ar">'+(sortAsc?"\\u25b2":"\\u25bc")+"</span>":"";
-    return '<th data-k="'+k+'"'+(num?' class="num"':"")+">"+esc(label)+arrow+"</th>";
+    return '<th data-k="'+k+'"'+(num?' class="num"':"")+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(label)+arrow+"</th>";
   }
   // The bar is on in BOTH views now. Cells that can be typed into but look
   // like text need one line saying so — there is no Edit button left to make
@@ -2819,6 +2851,9 @@ a.btn.ghost:hover{color:var(--ink)}
     // panel stays open with every dropdown as they left it.
     function failed(msg,errs){
       $("pick").disabled=false;
+      // A refused import stops the batch: the rest are named, not attempted
+      // past a message the broker has not read yet.
+      var more=dropQueue(); if(more)msg=msg+" "+more;
       if(viaMapper&&mapInfo){
         $("mapGo").textContent="Import";
         $("mapGo").disabled=false;
@@ -2868,7 +2903,9 @@ a.btn.ghost:hover{color:var(--ink)}
         // and a skip nobody is told about is the one thing this module does
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
-        $("res").innerHTML='<div class="msg '+(j.skipped?"bad":"ok")+'">'+esc(bits.join(" \\u00b7 "))+errList(j)+"</div>";
+        var line=bits.join(" \\u00b7 ");
+        if(batchOn)batchLog.push(name+": "+line);
+        $("res").innerHTML=batchPrefix()+(batchOn&&!j.skipped?"":'<div class="msg '+(j.skipped?"bad":"ok")+'">'+(batchOn?"":esc(line))+errList(j)+"</div>");
         // Offered only where there is a firm to push to and something new
         // landed. The button carries the import's id so the click can put
         // exactly that import on screen before the ordinary Share-N path
@@ -2886,6 +2923,9 @@ a.btn.ghost:hover{color:var(--ink)}
           sheetUploadId=j.uploadId;
         }
         load();
+        // The next spreadsheet in a batch starts only now, with these rows
+        // actually stored.
+        drainCsvQueue();
       })
       .catch(function(){ failed("The upload did not reach the server. Nothing was saved.",""); });
   }
@@ -2918,7 +2958,7 @@ a.btn.ghost:hover{color:var(--ink)}
       return;
     }
     if(isExtractFile(file)){ extractFile(file); return; }
-    $("pick").disabled=true; $("res").innerHTML='<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
+    $("pick").disabled=true; $("res").innerHTML=batchPrefix()+'<div class="msg ok">Reading '+esc(file.name)+"&hellip;</div>";
     var fr=new FileReader();
     fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
     fr.onload=function(){
@@ -2945,32 +2985,127 @@ a.btn.ghost:hover{color:var(--ink)}
     fr.readAsText(file);
   }
 
+  // One file to the extract route: resolves {s,j}, rejects on an unreadable
+  // file or an unreachable server. Shared by the single-file path and the
+  // batch below so the two cannot post different shapes.
+  function readExtract(file){
+    return new Promise(function(resolve,reject){
+      var fr=new FileReader();
+      fr.onerror=function(){ reject(new Error("read")); };
+      fr.onload=function(){
+        var url=String(fr.result||"");
+        var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
+        fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
+          headers:{"content-type":"application/json"},
+          body:JSON.stringify({filename:file.name,file:b64})})
+          .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+          .then(resolve,reject);
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+
   function extractFile(file){
     setAddOpen(true);
     $("pick").disabled=true;
-    $("res").innerHTML='<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
-    var fr=new FileReader();
-    fr.onerror=function(){ $("pick").disabled=false; $("res").innerHTML='<div class="msg bad">Could not read that file.</div>'; };
-    fr.onload=function(){
-      var url=String(fr.result||"");
-      var b64=url.indexOf(",")>=0?url.split(",")[1]:url;
-      fetch("/api/vault/extract",{method:"POST",credentials:"same-origin",
-        headers:{"content-type":"application/json"},
-        body:JSON.stringify({filename:file.name,file:b64})})
-        .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+    $("res").innerHTML=batchPrefix()+'<div class="msg ok">Reading the table in '+esc(file.name)+"&hellip;</div>";
+    readExtract(file)
+      .then(function(o){
+        $("pick").disabled=false;
+        if(o.s!==200){
+          $("res").innerHTML=batchPrefix()+'<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that file. Nothing was saved.")+"</div>";
+          return;
+        }
+        $("res").innerHTML=batchPrefix();
+        openPdfPreview(o.j);
+      })
+      .catch(function(){ $("pick").disabled=false;
+        $("res").innerHTML=batchPrefix()+'<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Several files at once (2026-09-02).
+  //
+  // The one file input takes many, and so does the drop zone. PDFs and
+  // screenshots are read one after another — each its own /extract call,
+  // because that route is rate-limited and a merged upload is not a thing it
+  // takes — and land in ONE confirm table, with a row naming each file above
+  // its rows. Spreadsheets QUEUE and go through the ordinary path one at a
+  // time, because the mapper is a screen a broker answers and two of them
+  // cannot be open at once. Order: the extract batch first, then the CSVs,
+  // and the next CSV starts only when the previous import has STORED its
+  // rows (doImport's success) — never on a failure or a cancel, which drop
+  // the rest of the queue by name rather than carrying on past a refusal
+  // the broker has not read yet.
+  //
+  // #res is one line at a time everywhere else, and a batch would overwrite
+  // "Imported 12 comps" from a.csv with "Reading b.csv…". So a batch keeps a
+  // log, and every write to #res during one starts with it (batchPrefix).
+  // ---------------------------------------------------------------------------
+  var csvQueue=[], batchOn=false, batchLog=[];
+  function batchPrefix(){
+    return batchOn&&batchLog.length?batchLog.map(function(l){return '<div class="msg ok">'+esc(l)+"</div>"}).join(""):"";
+  }
+  function drainCsvQueue(){
+    var next=csvQueue.shift();
+    if(next)upload(next);
+  }
+  // Drops what is still waiting and says which files those were, so a stop
+  // in the middle of a batch is never a silent one.
+  function dropQueue(){
+    if(!csvQueue.length)return "";
+    var names=csvQueue.map(function(f){return f.name});
+    csvQueue=[];
+    return names.length+" more file"+(names.length===1?"":"s")+" you chose "+(names.length===1?"was":"were")+" not imported: "+names.join(", ")+".";
+  }
+  function uploadMany(list){
+    var all=Array.prototype.slice.call(list||[]).filter(Boolean);
+    if(!all.length)return;
+    csvQueue=[]; batchLog=[];
+    if(all.length===1){ batchOn=false; upload(all[0]); return; }
+    batchOn=true;
+    var bad=[],big=[],ex=[],csvs=[];
+    all.forEach(function(f){
+      if(!isExtractFile(f)&&!isCsvFile(f))bad.push(f.name);
+      else if(f.size>4*1024*1024)big.push(f.name);
+      else if(isExtractFile(f))ex.push(f);
+      else csvs.push(f);
+    });
+    if(bad.length)batchLog.push("Skipped "+bad.join(", ")+" \\u2014 use a .csv, a .pdf, or a screenshot (PNG, JPEG or WebP).");
+    if(big.length)batchLog.push("Skipped "+big.join(", ")+" \\u2014 over the 4 MB limit.");
+    setAddOpen(true);
+    $("res").innerHTML=batchPrefix();
+    csvQueue=csvs;
+    if(ex.length){ extractMany(ex); return; }
+    drainCsvQueue();
+  }
+  function extractMany(list){
+    setAddOpen(true);
+    $("pick").disabled=true;
+    var rows=[],names=[],failed=[],i=0;
+    function done(){
+      $("pick").disabled=false;
+      if(failed.length)batchLog.push("Could not read "+failed.join(", ")+". Nothing was saved from "+(failed.length===1?"it":"them")+".");
+      $("res").innerHTML=batchPrefix();
+      if(!names.length){ drainCsvQueue(); return; }
+      openPdfPreview({filename:names.length===1?names[0]:names.length+" files: "+names.join(", "),rows:rows,files:names.length});
+    }
+    function step(){
+      if(i>=list.length){ done(); return; }
+      var file=list[i++];
+      $("res").innerHTML=batchPrefix()+'<div class="msg ok">Reading the table in '+esc(file.name)+" ("+i+" of "+list.length+")&hellip;</div>";
+      readExtract(file)
         .then(function(o){
-          $("pick").disabled=false;
-          if(o.s!==200){
-            $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"Could not read that file. Nothing was saved.")+"</div>";
-            return;
+          if(o.s!==200){ failed.push(file.name+((o.j&&o.j.error)?" ("+o.j.error+")":"")); }
+          else{
+            ((o.j&&o.j.rows)||[]).forEach(function(r){ r.source=file.name; rows.push(r); });
+            names.push(file.name);
           }
-          $("res").innerHTML="";
-          openPdfPreview(o.j);
+          step();
         })
-        .catch(function(){ $("pick").disabled=false;
-          $("res").innerHTML='<div class="msg bad">Could not reach the server to read that file. Nothing was saved.</div>'; });
-    };
-    fr.readAsDataURL(file);
+        .catch(function(){ failed.push(file.name); step(); });
+    }
+    step();
   }
 
   var mapInfo=null;
@@ -3253,7 +3388,8 @@ a.btn.ghost:hover{color:var(--ink)}
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();
-    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+    var more=dropQueue();
+    $("res").innerHTML=batchPrefix()+'<div class="msg ok">Cancelled. Nothing was saved.'+(more?" "+esc(more):"")+'</div>';
   });
 
   // The confirm table's own display rule, and it is cellDisplay's CONVENTION
@@ -3352,8 +3488,14 @@ a.btn.ghost:hover{color:var(--ink)}
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
     $("pdfName").textContent=pdfPending.filename||"";
-    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th>"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    $("pdfHead").innerHTML="<tr><th></th>"+cols.map(function(k){return "<th"+(fieldHint(k)?' title="'+escA(fieldHint(k))+'"':"")+">"+esc(tLabel(k))+"</th>";}).join("")+"</tr>";
+    var multi=(pdfPending.files||0)>1, lastSrc=null;
     $("pdfBody").innerHTML=rows.map(function(r,i){
+      // A merged batch names each file above its rows. Not a column: a cell
+      // would ride into the upload as a field, and the file is not a fact
+      // about the deal.
+      var head="";
+      if(multi&&r.source&&r.source!==lastSrc){ lastSrc=r.source; head='<tr class="pdf-src"><td colspan="'+(cols.length+1)+'">'+esc(r.source)+"</td></tr>"; }
       var tint=r.error!=null?' class="need-fix"':"";
       var cb='<input type="checkbox" data-i="'+i+'"'+(r.checked?" checked":"")+"/>";
       var cells=cols.map(function(k){
@@ -3361,7 +3503,7 @@ a.btn.ghost:hover{color:var(--ink)}
         return '<td><input type="text" data-i="'+i+'" data-k="'+escA(k)+
           '" data-raw="'+escA(raw)+'" value="'+escA(pdfDisplay(k,raw))+'"/></td>';
       }).join("");
-      return "<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
+      return head+"<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
     }).join("");
     var n=rows.length, ready=0, fail=0, allDate=true;
     rows.forEach(function(r){
@@ -3450,7 +3592,8 @@ a.btn.ghost:hover{color:var(--ink)}
   });
   $("pdfCancel").addEventListener("click",function(){
     closePdfPreview();
-    $("res").innerHTML='<div class="msg ok">Cancelled. Nothing was saved.</div>';
+    var more=dropQueue();
+    $("res").innerHTML=batchPrefix()+'<div class="msg ok">Cancelled. Nothing was saved.'+(more?" "+esc(more):"")+'</div>';
   });
 
   $("pick").addEventListener("click",function(){ $("file").click() });
@@ -3458,12 +3601,12 @@ a.btn.ghost:hover{color:var(--ink)}
   // page, so an upload started here lands in the same handler and the same
   // result message.
   $("bookPick").addEventListener("click",function(){ $("file").click() });
-  $("file").addEventListener("change",function(e){ upload(e.target.files[0]); e.target.value=""; });
+  $("file").addEventListener("change",function(e){ uploadMany(e.target.files); e.target.value=""; });
   ["dragenter","dragover"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.add("over"); })});
   ["dragleave","drop"].forEach(function(ev){ $("drop").addEventListener(ev,function(e){
     e.preventDefault(); $("drop").classList.remove("over"); })});
-  $("drop").addEventListener("drop",function(e){ upload(e.dataTransfer.files[0]) });
+  $("drop").addEventListener("drop",function(e){ uploadMany(e.dataTransfer.files) });
   // The dropzone now sits in a panel that is closed by default, so a file
   // dragged at the page would have nowhere to land and the feature would look
   // deleted. Dragging a FILE anywhere over the window opens the panel; from
@@ -4477,9 +4620,12 @@ a.btn.ghost:hover{color:var(--ink)}
       var snaps=Array.isArray(item.snapshots)?item.snapshots:[];
       var last=snaps[snaps.length-1]||null,prev=snaps.length>1?snaps[snaps.length-2]:null;
       var href="/?property="+encodeURIComponent(item.id);
-      var lastTs=last&&last.ts?last.ts:item.updated_at;
-      var sub=esc(item.property_type||"")+" · checked "+
-        esc(new Date(lastTs).toLocaleDateString());
+      // "checked" only when a valuation was actually taken. A row added by
+      // address, or from a recent search with no value, says so rather than
+      // claiming a check nobody ran.
+      var sub=esc(item.property_type||"")+(last&&last.ts
+        ? " · checked "+esc(new Date(last.ts).toLocaleDateString())
+        : " · not valued yet");
       // The standing market page for this property's market + type. The
       // server attaches market_page only when one exists, so absence renders
       // nothing; the slug is shape-checked before it becomes an href, like
@@ -4593,6 +4739,43 @@ a.btn.ghost:hover{color:var(--ink)}
         loadFirmBuildings();
       })
       .catch(function(){b.disabled=false;b.textContent="Add to firm";propsMsg("That didn't reach the server. Nothing was changed.",true);});
+  });
+
+  // Add a property by address (2026-09-02). No search runs; the row lands
+  // without a valuation and says so. Types are PROP_TYPES, the watchlist
+  // form's own list, so the two selects cannot disagree.
+  var propAddOpen=false;
+  $("pType").innerHTML='<option value="">Property type</option>'+PROP_TYPES.map(function(t){return '<option value="'+escA(t)+'">'+esc(t)+"</option>"}).join("");
+  function setPropAddOpen(open){
+    propAddOpen=!!open;
+    $("propAddForm").className="form"+(propAddOpen?"":" hide");
+    var t=$("propAddToggle");
+    if(t.setAttribute)t.setAttribute("aria-expanded",propAddOpen?"true":"false");
+    t.textContent=propAddOpen?"Close":"+ Add a property";
+    if(propAddOpen&&$("pAddr").focus)$("pAddr").focus();
+  }
+  // Stated at load, not only in the markup: the closed state is then a fact
+  // the one writer made, wherever the page is drawn.
+  setPropAddOpen(false);
+  $("propAddToggle").addEventListener("click",function(){ setPropAddOpen(!propAddOpen); });
+  $("pCancel").addEventListener("click",function(){ setPropAddOpen(false); });
+  $("pAdd").addEventListener("click",function(){
+    var address=String($("pAddr").value||"").trim(),type=$("pType").value;
+    if(!address){propsMsg("Type the property\u2019s street address.",true);return;}
+    if(!type){propsMsg("Which kind of property is it?",true);return;}
+    $("pAdd").disabled=true;
+    fetch("/api/portfolio",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+      body:JSON.stringify({address:address,propertyType:type})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        $("pAdd").disabled=false;
+        if(o.s!==200){propsMsg((o.j&&o.j.error)||"That did not go through.",true);return;}
+        $("pAddr").value="";
+        propsMsg(o.j&&o.j.existed?address+" is already in your portfolio.":"Added "+address+". Use Refresh on its row when you want a value.",false);
+        setPropAddOpen(false);
+        loadProps();
+      })
+      .catch(function(){$("pAdd").disabled=false;propsMsg("That did not reach the server. Nothing was changed.",true);});
   });
 
   $("propsRows").addEventListener("click",function(e){

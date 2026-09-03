@@ -3016,6 +3016,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
             class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
 
+          <!-- Shown only when fillBrandForm() poured a suggestion into an
+               empty field (2026-09-02, "one profile"): the member must know
+               these came from somewhere, are not saved, and will print. -->
+          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and vault details. Nothing is saved until you press Save, and these details print on your reports.</p>
           <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
 
           <div class="mt-2 flex flex-wrap items-center gap-3">
@@ -13581,6 +13585,14 @@ async function renderMyDesk() {
       const email = document.getElementById("compBrokerEmail");
       if (!email.value) email.value = currentUser.email;
       if (!name.value && currentUser.name) name.value = currentUser.name;
+      // And the firm and phone from the saved report branding, else what the
+      // branding card was itself offered (2026-09-02, "one profile"). Into
+      // empty fields only; the submission is still what they send.
+      const brand = currentBranding || currentSuggested || {};
+      const company = document.getElementById("compBrokerCompany");
+      const phone = document.getElementById("compBrokerPhone");
+      if (company && !company.value && brand.firmName) company.value = brand.firmName;
+      if (phone && !phone.value && brand.phone) phone.value = brand.phone;
     }
   });
   document.getElementById("brokerProfileToggle").addEventListener("change", async (e) => {
@@ -14596,9 +14608,24 @@ async function renderMyDesk() {
     if (state.canCreate) {
       box.classList.remove("hidden");
       createBox.classList.remove("hidden");
+      // Guarded like updateBrandScopeUI guards myFirm: test/org-desk.test.js
+      // slices this function into a sandbox without the branding block.
+      if (typeof seedFirmNameInput === "function") seedFirmNameInput();
       return;
     }
     box.classList.add("hidden");
+  }
+
+  // The create-a-firm box is offered the firm name the branding card holds,
+  // else the one it was suggested (2026-09-02, "one profile") — into an
+  // EMPTY field only, never over something typed. Called from the create
+  // state and again when the branding read lands, since either can be first.
+  function seedFirmNameInput() {
+    const el = document.getElementById("firmNameInput");
+    const createBox = document.getElementById("firmCreate");
+    if (!el || !createBox || createBox.classList.contains("hidden") || el.value) return;
+    const known = (currentBranding && currentBranding.firmName) || (currentSuggested && currentSuggested.firmName) || "";
+    if (known) el.value = known;
   }
 
   function renderFirmInvites(invites) {
@@ -15692,14 +15719,37 @@ async function renderMyDesk() {
     disclaimer: document.getElementById("brandDisclaimer").value,
   });
 
-  function fillBrandForm(brand) {
+  // What GET /api/branding offered for the form's EMPTY fields — the vault's
+  // credit identity, the member's firm, the account (2026-09-02, "one
+  // profile, reused everywhere"). A suggestion, never a save: the member
+  // still presses Save on a form they can read, which is what keeps the
+  // vault's "stated, never inherited" rule while the facts stop being
+  // retyped. brandSeeded records that the form holds something unsaved, so
+  // the summary line cannot claim a letterhead exists.
+  let currentSuggested = null;
+  let brandSeeded = false;
+
+  function fillBrandForm(brand, suggested) {
     const b = brand || {};
-    document.getElementById("brandFirm").value = b.firmName || "";
-    document.getElementById("brandPreparer").value = b.preparerName || "";
-    document.getElementById("brandPhone").value = b.phone || "";
-    document.getElementById("brandEmail").value = b.email || "";
-    document.getElementById("brandLicense").value = b.licenseNumber || "";
-    document.getElementById("brandDisclaimer").value = b.disclaimer || "";
+    const s = suggested || {};
+    brandSeeded = false;
+    // A saved value first, else the suggestion, else blank. Seeding is
+    // per FIELD, so a saved profile missing its license still picks the
+    // vault's up.
+    const pick = (id, saved, hint) => {
+      const el = document.getElementById(id);
+      if (saved) { el.value = saved; return; }
+      el.value = hint || "";
+      if (hint) brandSeeded = true;
+    };
+    pick("brandFirm", b.firmName, s.firmName);
+    pick("brandPreparer", b.preparerName, s.preparerName);
+    pick("brandPhone", b.phone, s.phone);
+    pick("brandEmail", b.email, s.email);
+    pick("brandLicense", b.licenseNumber, s.licenseNumber);
+    pick("brandDisclaimer", b.disclaimer, s.disclaimer);
+    const note = document.getElementById("brandSeedNote");
+    if (note) note.classList.toggle("hidden", !brandSeeded);
     const img = document.getElementById("brandLogoPreview");
     if (pendingLogo) { img.src = pendingLogo; img.classList.remove("hidden"); }
     else { img.src = ""; img.classList.add("hidden"); }
@@ -15731,7 +15781,10 @@ async function renderMyDesk() {
     if (b.licenseNumber) bits.push("license shown");
     // Named rather than counted: "3 details saved" tells a member nothing
     // about what is going on their reports.
-    el.textContent = bits.length ? bits.join(" · ") : "No branding saved yet";
+    // A seeded, unsaved form must not read as a letterhead that exists: the
+    // summary is written from the live form, so it says so.
+    const unsaved = brandSeeded && !currentBranding && brandScope === "mine";
+    el.textContent = bits.length ? bits.join(" · ") + (unsaved ? " · suggested, not saved yet" : "") : "No branding saved yet";
   }
 
   function renderBrandPreview() {
@@ -15791,7 +15844,11 @@ async function renderMyDesk() {
     brandScope = scope;
     const src = scope === "firm" ? currentFirmBranding : currentBranding;
     pendingLogo = (src && src.logo) || "";
-    fillBrandForm(src);
+    // The firm's form is offered the firm's own name (orgs.name) for an
+    // empty firm name — and nothing else: the rest of a member's details are
+    // not the firm's.
+    const firmSeed = { firmName: ((typeof myFirm === "function" && myFirm()) || {}).name || "" };
+    fillBrandForm(src, scope === "firm" ? firmSeed : currentSuggested);
     renderBrandPreview();
     const msg = document.getElementById("brandMsg");
     if (msg) msg.textContent = "";
@@ -15813,7 +15870,7 @@ async function renderMyDesk() {
     if (!manage && brandScope === "firm") {
       brandScope = "mine";
       pendingLogo = (currentBranding && currentBranding.logo) || "";
-      fillBrandForm(currentBranding);
+      fillBrandForm(currentBranding, currentSuggested);
       renderBrandPreview();
     }
     row.classList.toggle("hidden", !manage);
@@ -15881,6 +15938,8 @@ async function renderMyDesk() {
         // The firm fallback (041), riding the same response. null when there
         // is none — the server sends null, never {}.
         currentFirmBranding = (body.firm && Object.keys(body.firm).length) ? body.firm : null;
+        // What the account already knows, for empty fields. null when nothing.
+        currentSuggested = (body.suggested && Object.keys(body.suggested).length) ? body.suggested : null;
         // Fill only the scope the form is showing. In practice this load runs
         // once per identity while brandScope is still "mine" (scope resets at
         // every auth transition, and the brandingLoaded guard stops refetches),
@@ -15888,10 +15947,13 @@ async function renderMyDesk() {
         // after someone has switched to the firm profile mid-edit.
         if (brandScope === "mine") {
           pendingLogo = (currentBranding && currentBranding.logo) || "";
-          fillBrandForm(currentBranding);
+          fillBrandForm(currentBranding, currentSuggested);
           renderBrandPreview();
         }
         updateBrandScopeUI();
+        // The create-a-firm box may already be on screen, empty, having
+        // rendered before this read landed.
+        seedFirmNameInput();
         brandingLoaded = true;
         // A report can already be on screen — rendered before this fetch
         // resolved (page load), or rendered while signed out and still up
@@ -15982,6 +16044,10 @@ async function renderMyDesk() {
       if (!r.ok) { msg.textContent = body.error || "That didn't save."; return; }
       const saved = (body.branding && Object.keys(body.branding).length) ? body.branding : null;
       if (firm) currentFirmBranding = saved; else currentBranding = saved;
+      // Whatever was seeded is saved now, so it is no longer a suggestion.
+      brandSeeded = false;
+      const seedNote = document.getElementById("brandSeedNote");
+      if (seedNote) seedNote.classList.add("hidden");
       msg.textContent = "Saved.";
       renderBrandPreview();
       updateBrandScopeUI();

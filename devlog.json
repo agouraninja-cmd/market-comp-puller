@@ -3961,5 +3961,11 @@
     "type": "feature",
     "title": "Add a property to your portfolio by address, without running a report",
     "details": "The firm's buildings form on the Workspace had this door; the personal book did not — a property could only reach it through a report. POST /api/portfolio now takes { address, propertyType } alone and files the ordinary row holding an empty report, the shape the next search fills in, so the match key, the cap and the verified-key rules apply unchanged. A property already in the book is answered (existed: true) and never rewritten, because an empty report must not replace the one a search stored. Refuses a type outside the vault's vocabulary, an address with no street number, and one the market parser cannot place. The vault's properties deck gains the door, closed by default; rows with no valuation now say 'not valued yet' rather than 'checked' with a date nobody checked on."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "One profile, reused everywhere: the branding card fills itself, and the vault identity, the submission form and the create-a-firm box read from it",
+    "details": "The same firm, name, email and license were asked for in five places and none read another. GET /api/branding now carries a suggestion built from what the account already holds — the vault's credit identity first, then the member's firm, then the account — and the branding form pours it into empty fields only, with a note saying where it came from, that nothing is saved until Save, and that it prints on reports. The vault identity form is offered the saved branding's firm, name and license while no credit is stated; the comp-submission modal takes the firm and phone from the saved branding; creating a firm starts from the branding's firm name. Every one of these is a prefill the member reads and saves, never a write between tables, which keeps the vault's rule that a credit is stated, never inherited. The summary line says 'suggested, not saved yet' while the form holds a seed and no profile exists."
   }
 ]

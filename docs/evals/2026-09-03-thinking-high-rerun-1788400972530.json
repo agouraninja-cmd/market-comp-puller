@@ -1,0 +1,118 @@
+{
+  "label": "thinking-high-rerun",
+  "model": "gemini-3.8-flash",
+  "provider": "gemini",
+  "thinkingLevel": "high",
+  "ranAt": "2026-09-03T02:02:52.529Z",
+  "base": "http://127.0.0.1:3171",
+  "setSize": 3,
+  "targetSelection": "first 3 (3 targets)",
+  "corpusWiped": false,
+  "subjectSizesWiped": false,
+  "summary": {
+    "targets": 3,
+    "scored": 2,
+    "failures": 1,
+    "failedTargets": [
+      {
+        "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+        "error": "HTTP 502: Comp search is temporarily unavailable. The team has been alerted — please try again shortly."
+      }
+    ],
+    "metrics": {
+      "comps": 10,
+      "pricedSales": 9,
+      "provenanceScore": 0.8074999999999999,
+      "estimateRate": 0.1,
+      "aggregateRate": 0,
+      "inWindowRate": 1,
+      "marketMatchRate": 0.9,
+      "sizeRate": 1,
+      "summaryChars": 385,
+      "valueDriversChars": 215,
+      "marketTrendChars": 124.5,
+      "priceDiscoveryChars": 137.5,
+      "durationMs": 109278.5,
+      "costUsd": 0.08502525,
+      "billedCalls": 1,
+      "inputTokens": 11760.5,
+      "outputTokens": 19865.5,
+      "thoughtTokens": 17645.5,
+      "reportTokens": 2220,
+      "thoughtShare": 0.888498598253374
+    },
+    "valuationPossibleRate": 1,
+    "subjectSizeFoundRate": 0
+  },
+  "results": [
+    {
+      "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+      "ok": true,
+      "metrics": {
+        "comps": 10,
+        "pricedSales": 8,
+        "valuationPossible": true,
+        "provenanceScore": 0.7649999999999999,
+        "tierCounts": {
+          "listing": 7,
+          "estimate": 2,
+          "news": 1
+        },
+        "estimateRate": 0.2,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 401,
+        "valueDriversChars": 228,
+        "marketTrendChars": 133,
+        "priceDiscoveryChars": 137,
+        "costUsd": 0.0886365,
+        "billedCalls": 1,
+        "inputTokens": 11767,
+        "outputTokens": 20846,
+        "thoughtTokens": 18416,
+        "reportTokens": 2430,
+        "thoughtShare": 0.8834308740285907,
+        "durationMs": 126156
+      }
+    },
+    {
+      "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+      "ok": false,
+      "error": "HTTP 502: Comp search is temporarily unavailable. The team has been alerted — please try again shortly."
+    },
+    {
+      "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 10,
+        "pricedSales": 10,
+        "valuationPossible": true,
+        "provenanceScore": 0.8499999999999999,
+        "tierCounts": {
+          "listing": 10
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 0.8,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 369,
+        "valueDriversChars": 202,
+        "marketTrendChars": 116,
+        "priceDiscoveryChars": 138,
+        "costUsd": 0.081414,
+        "billedCalls": 1,
+        "inputTokens": 11754,
+        "outputTokens": 18885,
+        "thoughtTokens": 16875,
+        "reportTokens": 2010,
+        "thoughtShare": 0.8935663224781573,
+        "durationMs": 92401
+      }
+    }
+  ]
+}

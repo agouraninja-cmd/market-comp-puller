@@ -149,6 +149,15 @@ const { marketOf, marketForLog, US_STATES, siblingMarkets,
 // about markets and takes this as an injected predicate.
 const MARKET_KEY_RE = /^[^,]+,\s[A-Z]{2}$/;
 const addressHasMarket = (address) => MARKET_KEY_RE.test(marketOf(address));
+// A "City, ST" a broker typed or picked — the whole-file completion for a
+// spreadsheet's bare street addresses — canonicalized with the SAME parse that
+// keys a comp, so "boise, id" completes rows as "Boise, ID" and lands in the
+// same bucket as everything else filed there. Null when it is not a market at
+// all, which the routes refuse before any row is read.
+const canonicalMarket = (v) => {
+  const m = marketOf(String(v == null ? "" : v).trim().slice(0, 80));
+  return MARKET_KEY_RE.test(m) ? m : null;
+};
 // What counts as somebody looking at a market, and how those rows add up into
 // the figure a Pro subscriber sees on My Desk. Pure and tested, because every
 // line of it is a way the number could flatter us — see its header.
@@ -15836,6 +15845,43 @@ function scheduleVaultGeocode(userId, addressKeys) {
   }).catch(() => {});
 }
 
+// The markets a broker's own records already name, for suggesting a "City,
+// ST" to the bare addresses in a file they are importing (2026-09-02).
+// broker-vault.js's suggestMarketCompletion is DB-blind and takes these
+// injected; this is the only place the two tables are read for it. Two
+// reads, each failing to [] on its own — a suggestion must never fail an
+// inspect or an extract, and a broker with no coverage rows still has a
+// vault. Both user-scoped, like every vault read.
+async function brokerMarketLists(userId) {
+  if (!DB_CONFIGURED || !userId) return { vault: [], coverage: [] };
+  const uid = encodeURIComponent(userId);
+  const [comps, cov] = await Promise.allSettled([
+    sbRequest("GET", `broker_comps?user_id=eq.${uid}&select=market&limit=1000`),
+    sbRequest("GET", `broker_coverage?user_id=eq.${uid}&select=market&limit=500`),
+  ]);
+  const distinct = (r) => {
+    if (r.status !== "fulfilled" || !Array.isArray(r.value)) return [];
+    return [...new Set(r.value.map((x) => x && x.market).filter(Boolean))].sort();
+  };
+  return { vault: distinct(comps), coverage: distinct(cov) };
+}
+
+// What /api/vault/inspect and /api/vault/extract answer beside the rows:
+// how many of a file's addresses have no city and state, a sample of them
+// (back to the broker who just uploaded them, nobody else), and the "City,
+// ST" candidates in the order suggestMarketCompletion ranks them. The two
+// table reads above are paid only when something is actually incomplete, so
+// an ordinary inspect costs no extra round trips.
+async function marketSuggestFor(userId, addresses) {
+  const deps = { hasMarket: addressHasMarket, marketOf };
+  const probe = VAULT.suggestMarketCompletion(addresses, deps);
+  if (!probe.incomplete.length) return { count: 0, sample: [], candidates: [] };
+  const lists = await brokerMarketLists(userId);
+  const out = VAULT.suggestMarketCompletion(addresses,
+    { ...deps, vaultMarkets: lists.vault, coverageMarkets: lists.coverage });
+  return { count: out.incomplete.length, sample: out.incomplete.slice(0, 10), candidates: out.candidates };
+}
+
 // How often each published comp has been cited in a report, read from the
 // count comp_submissions has kept since migration 003 and bumpCitedCounts has
 // been incrementing all along.
@@ -19925,7 +19971,9 @@ const server = http.createServer((req, res) =>
 
     // Read a broker's own CSV and report its shape, so they can map their
     // columns onto ours. Stores NOTHING: a broker who cancels leaves no trace.
-    // The only persistence it touches is READING their remembered mapping.
+    // The only persistence it touches is READING their remembered mapping —
+    // and, when the file holds addresses with no city and state, READING the
+    // markets their own vault and coverage already name, to suggest one.
     if (req.method === "POST" && path === "/api/vault/inspect") {
       let body = "";
       let tooBig = false;
@@ -19943,10 +19991,17 @@ const server = http.createServer((req, res) =>
           if (rateLimited("vaultinspect:" + clientIp(req), 60)) {
             return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
           }
-          const { csv } = JSON.parse(body || "{}");
+          const { csv, mapping } = JSON.parse(body || "{}");
           const info = VAULT.inspectCsv(String(csv || ""));
           if (!info.ok) return sendJson(res, 400, { error: info.error });
+          // Optional: the mapper re-asks with its current mapping as the
+          // address columns change, since a City column mapped onto the
+          // address parts is what makes a bare street whole.
+          const map = mapping && typeof mapping === "object" && !Array.isArray(mapping) ? mapping : null;
+          const marketSuggest = await marketSuggestFor(user.id,
+            VAULT.csvAddresses(String(csv || ""), { mapping: map }));
           sendJson(res, 200, {
+            marketSuggest,
             headers: info.headers,
             normalized: info.normalized,
             samples: info.samples,
@@ -20029,11 +20084,19 @@ const server = http.createServer((req, res) =>
             logEvent("vault_extract", { source: `empty:${kind}:0` });
             return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that file." });
           }
-          const rows = VAULT.classifyExtractRows(parsed.rows);
+          // hasMarket injected exactly as /api/vault/upload injects it, so a
+          // bare street address is marked not-ready on the confirm table
+          // rather than failing after Import (test/routes.test.js pins the
+          // call shape). The extract prompt itself still never guesses a
+          // city: the completion offered beside it is the broker's act.
+          const rows = VAULT.classifyExtractRows(parsed.rows, { hasMarket: addressHasMarket });
+          const marketSuggest = await marketSuggestFor(user.id,
+            rows.map((r, i) => ({ index: i, address: r.values && r.values.address })));
           logEvent("vault_extract", { source: `ok:${kind}:${rows.length}` });
           sendJson(res, 200, {
             filename: String(filename || "").trim().slice(0, 200),
             rows,
+            marketSuggest,
           });
         } catch (err) {
           // Same guard as /api/vault/inspect: V8 quotes the input in a
@@ -20125,6 +20188,61 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // "Are these streets really in that city?" for the market a broker just
+    // picked to complete a file's bare addresses (2026-09-02). The completed
+    // address goes to geocodeCensus — our own in-process call, memoized, so
+    // the import's later geocode of the same building is a cache hit — and
+    // NOWHERE else: never Nominatim, never the browser (the private-comp
+    // geocoding contract, migration 017). The page calls it only AFTER a
+    // pick, so a street paired with a city nobody chose never leaves the
+    // process; ten addresses at most; and the answer is a badge, never a
+    // gate — a Census miss on a rural or new address is ordinary, so "0 of
+    // 10 found" is information the broker weighs, not a refusal. Reads no
+    // vault rows, writes nothing, logs no address. Through openVault for the
+    // one testable 401 -> 403 -> 503 ladder, like /api/vault/benchmarks.
+    if (req.method === "POST" && path === "/api/vault/confirm-market") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (!(await openVault())) return;
+          if (rateLimited("vaultcm:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          let parsed;
+          try { parsed = JSON.parse(body || "{}"); }
+          catch { return sendJson(res, 400, { error: "Invalid JSON." }); }
+          const market = canonicalMarket(parsed.market);
+          if (!market) {
+            return sendJson(res, 400, { error: 'Write the market as "City, ST", like "Boise, ID".' });
+          }
+          const cut = market.lastIndexOf(",");
+          const city = market.slice(0, cut).trim();
+          const state = market.slice(cut + 1).trim();
+          const addresses = (Array.isArray(parsed.addresses) ? parsed.addresses : [])
+            .map((a) => String(a == null ? "" : a).trim().slice(0, 200))
+            .filter(Boolean)
+            .slice(0, 10);
+          const results = await Promise.all(addresses.map(async (a) => {
+            const full = VAULT.composeAddress(a, city, state);
+            let hit = null;
+            try { hit = await geocodeCensus(full); } catch { hit = null; }
+            return { address: full, confirmed: !!hit };
+          }));
+          sendJson(res, 200, {
+            market,
+            checked: results.length,
+            confirmed: results.filter((r) => r.confirmed).length,
+            results,
+          });
+        } catch (err) {
+          console.error("vault confirm-market error:", err.message);
+          sendJson(res, 500, { error: "Could not check those addresses." });
+        }
+      });
+      return;
+    }
+
     // Upload. The body is JSON carrying the file's text, not multipart — the
     // browser reads the file with FileReader and posts it. Multipart would be
     // a few hundred lines of hand-rolled parsing in a repo with no
@@ -20155,6 +20273,21 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 400, { error: made.error || "Nothing to import." });
           }
           const csv = made.csv;
+          // The broker's whole-file answer for a CSV's bare street addresses
+          // (the mapper's market row, 2026-09-02). Canonicalized HERE with the
+          // parse that keys a comp, and a value that is not a market at all
+          // is refused before any row is read — it would have completed every
+          // bare row into a refusal. The confirm table's rows carry their
+          // completed addresses in the rows themselves, so the rows door
+          // never takes it, exactly as it never takes `mapping`.
+          let completeWith = null;
+          if (!parsedBody.rows && parsedBody.completeWith != null &&
+              String(parsedBody.completeWith).trim() !== "") {
+            completeWith = canonicalMarket(parsedBody.completeWith);
+            if (!completeWith) {
+              return sendJson(res, 400, { error: 'Write the market as "City, ST", like "Boise, ID".' });
+            }
+          }
           // `mapping` absent means today's behaviour byte for byte, so
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
@@ -20175,6 +20308,7 @@ const server = http.createServer((req, res) =>
             // checked here. Confirm-table rows carry their own values per
             // row, so they never send these.
             constants: parsedBody.rows ? null : (constants || null),
+            completeWith,
           });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
@@ -20284,6 +20418,12 @@ const server = http.createServer((req, res) =>
             // page can say they were ignored rather than dropping them
             // silently; see isCommentRow in broker-vault.js.
             commented: parsed.commented,
+            // Bare addresses completed with the broker's whole-file answer
+            // AND stored, and the canonical market they were completed as —
+            // the result line says so, since a row that arrived as "123 Main
+            // St" and was filed under Boise, ID is a fact worth stating.
+            completed: parsed.completed,
+            completedAs: completeWith || "",
             errors: parsed.errors,
           });
         } catch (err) {

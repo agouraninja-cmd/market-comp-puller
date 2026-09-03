@@ -726,6 +726,20 @@ a.btn.ghost:hover{color:var(--ink)}
            the rows most likely to be wrong are the ones nobody would check.
            Same shape as #pdfBasisRow, for the same reason. -->
       <div id="mapConst" class="hide" style="margin:10px 0"></div>
+      <!-- Addresses with no city or state (2026-09-02). A firm's own sheet
+           writes "123 Main St" because everyone there knows which city; the
+           import would refuse every such row by line number. Asked once,
+           here, with the markets the broker's own records already name —
+           this file first, then their vault, then their coverage — and
+           nothing chosen: the blank option is today's behaviour (those rows
+           are left out and named). The pick is a suggestion the broker makes
+           true; the server re-validates every completed row regardless. -->
+      <div id="mapMarket" class="hide" style="margin:10px 0"><div class="crow">
+        <label for="mapMarketPick" id="mapMarketAsk"></label>
+        <select id="mapMarketPick" aria-label="City and state for the addresses that have none"></select>
+        <input type="text" id="mapMarketOther" class="hide" list="mktList" placeholder="City, ST" aria-label="Another city and state"/>
+        <span class="note" id="mapMarketCheck"></span>
+      </div></div>
       <p id="mapMsg" class="msg bad hide"></p>
       <div class="formact mapact">
         <button class="btn" id="mapGo">Import</button>
@@ -753,6 +767,17 @@ a.btn.ghost:hover{color:var(--ink)}
           <option value="monthly">monthly</option>
         </select>
         — filled into rows that don't say.
+      </p>
+      <!-- The sheet-level city and state (2026-09-02): #pdfBasisRow's shape
+           for the address. A photographed sheet prints bare streets for the
+           same reason a spreadsheet does, and the extract prompt is told
+           never to guess a city — so the completion is the broker's act,
+           made here, stamped visibly into the address cells of exactly the
+           rows that need it. A hand-typed address always wins. -->
+      <p class="note hide" id="pdfMarketRow"><span id="pdfMarketAsk"></span>
+        <select id="pdfMarketPick" aria-label="City and state for the addresses that have none"></select>
+        <input type="text" id="pdfMarketOther" class="hide" list="mktList" placeholder="City, ST" aria-label="Another city and state"/>
+        <span id="pdfMarketCheck"></span>
       </p>
       <div class="tw"><table id="pdfTable">
         <thead id="pdfHead"></thead>
@@ -2832,7 +2857,7 @@ a.btn.ghost:hover{color:var(--ink)}
   var pending = null;   // {name, csv} held while the broker maps
   var pdfPending = null; // extract result held while the broker confirms
 
-  function doImport(name, csv, mapping, onOk, rows, constants){
+  function doImport(name, csv, mapping, onOk, rows, constants, completeWith){
     // Whether this import came from the mapping screen decides where its
     // result can be SEEN: #res lives inside #addSec, which is hidden while
     // the panel is open, so a failure written there would be invisible.
@@ -2854,6 +2879,10 @@ a.btn.ghost:hover{color:var(--ink)}
       // Omitted entirely when nothing was answered, so a file that needed none
       // of this sends byte for byte what it always did.
       if(constants&&Object.keys(constants).length) payload.constants=constants;
+      // The whole-file "City, ST" for the bare addresses, only when one was
+      // picked. Confirm-table rows carry their completed addresses in the
+      // rows themselves, which is why this lives in the CSV branch.
+      if(completeWith) payload.completeWith=completeWith;
     }
     // Line-numbered problems are the point: a broker fixing a spreadsheet
     // needs to know WHICH row, in the numbering Excel shows them.
@@ -2920,6 +2949,9 @@ a.btn.ghost:hover{color:var(--ink)}
         // and a skip nobody is told about is the one thing this module does
         // not do.
         if(j.commented)bits.push(j.commented+" note line"+(j.commented===1?"":"s")+" ignored");
+        // A row that arrived as "123 Main St" and was filed under Boise, ID
+        // is a fact worth stating beside the count.
+        if(j.completed)bits.push(j.completed+" address"+(j.completed===1?"":"es")+" completed as "+j.completedAs);
         var line=bits.join(" \\u00b7 ");
         if(batchOn)batchLog.push(name+": "+line);
         $("res").innerHTML=batchPrefix()+(batchOn&&!j.skipped?"":'<div class="msg '+(j.skipped?"bad":"ok")+'">'+(batchOn?"":esc(line))+errList(j)+"</div>");
@@ -2989,8 +3021,13 @@ a.btn.ghost:hover{color:var(--ink)}
             $("res").innerHTML='<div class="msg bad">'+esc((o.j&&o.j.error)||"That file could not be read.")+"</div>";
             return;
           }
-          // A file already in our own column names skips the screen entirely.
-          if(o.j.cleanTemplate){ doImport(file.name,csv,null); return; }
+          // A file already in our own column names skips the screen entirely
+          // — unless it holds addresses with no city or state, in which case
+          // the screen has exactly one question to ask (every column already
+          // mapped) and importing straight away would refuse those rows by
+          // line number with the answer sitting right here.
+          var ms=o.j.marketSuggest;
+          if(o.j.cleanTemplate&&!(ms&&ms.count)){ doImport(file.name,csv,null); return; }
           pending={name:file.name,csv:csv};
           openMapper(o.j);
         })
@@ -3099,13 +3136,14 @@ a.btn.ghost:hover{color:var(--ink)}
   function extractMany(list){
     setAddOpen(true);
     $("pick").disabled=true;
-    var rows=[],names=[],failed=[],i=0;
+    var rows=[],names=[],failed=[],suggests=[],i=0;
     function done(){
       $("pick").disabled=false;
       if(failed.length)batchLog.push("Could not read "+failed.join(", ")+". Nothing was saved from "+(failed.length===1?"it":"them")+".");
       $("res").innerHTML=batchPrefix();
       if(!names.length){ drainCsvQueue(); return; }
-      openPdfPreview({filename:names.length===1?names[0]:names.length+" files: "+names.join(", "),rows:rows,files:names.length});
+      openPdfPreview({filename:names.length===1?names[0]:names.length+" files: "+names.join(", "),rows:rows,files:names.length,
+        marketSuggest:mergeMarketSuggests(suggests)});
     }
     function step(){
       if(i>=list.length){ done(); return; }
@@ -3117,12 +3155,103 @@ a.btn.ghost:hover{color:var(--ink)}
           else{
             ((o.j&&o.j.rows)||[]).forEach(function(r){ r.source=file.name; rows.push(r); });
             names.push(file.name);
+            if(o.j&&o.j.marketSuggest)suggests.push(o.j.marketSuggest);
           }
           step();
         })
         .catch(function(){ failed.push(file.name); step(); });
     }
     step();
+  }
+
+  // One confirm table for several files means one market question: counts
+  // summed, samples pooled, candidates deduped in the server's own order —
+  // this file, then the vault, then coverage.
+  function mergeMarketSuggests(list){
+    var out={count:0,sample:[],candidates:[]},seen={};
+    (list||[]).forEach(function(s){
+      out.count+=(s&&s.count)||0;
+      ((s&&s.sample)||[]).forEach(function(r){ if(out.sample.length<10)out.sample.push(r); });
+    });
+    ["file","vault","coverage"].forEach(function(src){
+      (list||[]).forEach(function(s){ ((s&&s.candidates)||[]).forEach(function(c){
+        if(c.source!==src||seen[c.market])return; seen[c.market]=true; out.candidates.push(c);
+      }); });
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The "City, ST" completion (2026-09-02), shared by the mapper's market row
+  // and the confirm table's. Everything here is a SUGGESTION until a person
+  // picks: nothing writes an address on its own, and the server re-validates
+  // every completed row through the same hasMarket gate as any other.
+  // ---------------------------------------------------------------------------
+  // ⚠ MIRROR of broker-vault.js's MARKET_REFUSAL, for the same reason
+  // RENT_BASIS_NEEDLE below mirrors its refusal: the needle is how the
+  // selector knows which part of a row's error IT can cure. Pinned by test
+  // against the module's own constant.
+  var MARKET_NEEDLE="needs a city and a two-letter state";
+  var MARKET_SOURCE_LABEL={file:"Elsewhere in this file",vault:"In your vault",coverage:"Markets you cover"};
+  // ⚠ MIRROR of broker-vault.js's composeAddress RULE — append only what is
+  // missing, never repeat a segment the address already carries — so the
+  // address a cell shows after a pick is the address the import stores.
+  // Pinned by test against the module on the three shapes that matter.
+  function joinMarket(bare,market){
+    var parts=String(bare||"").split(",").map(function(s){return s.trim()}).filter(Boolean);
+    var m=String(market||"").trim(), cut=m.lastIndexOf(",");
+    var add=cut<0?[m]:[m.slice(0,cut).trim(),m.slice(cut+1).trim()];
+    add.forEach(function(v){
+      if(!v)return;
+      var have=parts.some(function(p){return p.toLowerCase()===v.toLowerCase()});
+      if(!have)parts.push(v);
+    });
+    return parts.join(", ");
+  }
+  // A courtesy check only ("Boise, ID"-shaped); the server canonicalizes case
+  // and refuses anything it cannot key.
+  function looksLikeMarket(v){ return /^[^,]+,\\s*[A-Za-z]{2}$/.test(String(v||"").trim()); }
+  function marketOptionsHtml(suggest,chosen){
+    var cands=(suggest&&suggest.candidates)||[],groups={};
+    var html='<option value=""'+(chosen?"":" selected")+'>&mdash; leave those rows out &mdash;</option>';
+    cands.forEach(function(c){ (groups[c.source]=groups[c.source]||[]).push(c); });
+    ["file","vault","coverage"].forEach(function(s){
+      if(!groups[s])return;
+      html+='<optgroup label="'+escA(MARKET_SOURCE_LABEL[s])+'">'+groups[s].map(function(c){
+        var n=c.source==="file"&&c.count?" ("+c.count+" row"+(c.count===1?"":"s")+")":"";
+        return '<option value="'+escA(c.market)+'"'+(chosen===c.market?" selected":"")+">"+esc(c.market)+n+"</option>";
+      }).join("")+"</optgroup>";
+    });
+    html+='<option value="__other"'+(chosen==="__other"?" selected":"")+">Another City, ST\\u2026</option>";
+    return html;
+  }
+  function pickedMarket(selId,otherId){
+    var v=$(selId).value||"";
+    if(v==="__other")return String($(otherId).value||"").trim();
+    return v;
+  }
+  // "Are these streets in that city?" — a badge, never a gate. Fire-and-
+  // forget to our own census proxy, and only AFTER a pick, so a street paired
+  // with a city nobody chose never leaves the process. A reply that arrives
+  // after a later pick is dropped.
+  var confirmSeq=0;
+  function confirmMarket(addresses,market,badgeId){
+    var el=$(badgeId), seq=++confirmSeq;
+    if(!market||!addresses.length){ el.textContent=""; return; }
+    el.textContent="Checking\\u2026";
+    fetch("/api/vault/confirm-market",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({market:market,addresses:addresses.slice(0,10)})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(seq!==confirmSeq)return;
+        if(o.s!==200||!o.j){ el.textContent=""; return; }
+        var n=o.j.checked||0,k=o.j.confirmed||0;
+        el.textContent=k
+          ? k+" of "+n+" found in "+o.j.market
+          : "0 of "+n+" found \\u2014 the geocoder often misses rural and new addresses; keep it if you\\u2019re sure";
+      })
+      .catch(function(){ if(seq===confirmSeq)el.textContent=""; });
   }
 
   var mapInfo=null;
@@ -3209,6 +3338,55 @@ a.btn.ghost:hover{color:var(--ink)}
   // <select> were the only place it was kept. Reset per file by openMapper: a
   // new spreadsheet must never inherit the last one's answers.
   var constAnswers={}, constShown="";
+  // The market question's state. marketSig is the address trio of the
+  // current mapping (which columns feed address, City and State): the
+  // question depends on nothing else, so inspect is re-asked only when that
+  // changes, and a reply for a trio no longer current is dropped.
+  var marketSuggest=null, marketAnswer="", marketSig="";
+  function trioSig(m){
+    var by={};
+    Object.keys(m||{}).forEach(function(k){ by[m[k]]=k; });
+    return [by.address||"",by.address_city||"",by.address_state||""].join("|");
+  }
+  function reinspectMarket(sig){
+    if(!pending)return;
+    fetch("/api/vault/inspect",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({csv:pending.csv,mapping:currentMapping()})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(sig!==marketSig||!mapInfo)return;
+        if(o.s===200)marketSuggest=(o.j&&o.j.marketSuggest)||null;
+        syncMarketRow();
+      })
+      .catch(function(){});
+  }
+  function syncMarketRow(){
+    var s=marketSuggest, n=s?(s.count||0):0;
+    if(!n||!mapInfo){ $("mapMarket").classList.add("hide"); return; }
+    var sample=(s.sample||[]).slice(0,3).map(function(r){
+      return '\\u201c'+esc(r.address)+'\\u201d (line '+esc(r.line)+")";
+    }).join(", ");
+    $("mapMarketAsk").innerHTML=n+" address"+(n===1?" has":"es have")+" no city or state"+
+      (sample?" \\u2014 "+sample+(n>3?", \\u2026":""):"")+". Add one to those rows:";
+    $("mapMarketPick").innerHTML=marketOptionsHtml(s,marketAnswer);
+    $("mapMarketOther").classList.toggle("hide",marketAnswer!=="__other");
+    $("mapMarket").classList.remove("hide");
+  }
+  function mapMarketPicked(){
+    var m=pickedMarket("mapMarketPick","mapMarketOther");
+    var addrs=((marketSuggest&&marketSuggest.sample)||[]).map(function(r){return r.address});
+    if(m&&looksLikeMarket(m))confirmMarket(addrs,m,"mapMarketCheck");
+    else { confirmSeq++; $("mapMarketCheck").textContent=""; }
+  }
+  $("mapMarketPick").addEventListener("change",function(){
+    marketAnswer=$("mapMarketPick").value||"";
+    $("mapMarketOther").classList.toggle("hide",marketAnswer!=="__other");
+    mapMarketPicked();
+    refreshMapper();
+  });
+  $("mapMarketOther").addEventListener("input",refreshMapper);
+  $("mapMarketOther").addEventListener("change",mapMarketPicked);
   function syncConstants(wants){
     var key=wants.join(",");
     if(key!==constShown){
@@ -3293,6 +3471,15 @@ a.btn.ghost:hover{color:var(--ink)}
     });
     // A new file starts with no answers, and no question row rendered.
     constAnswers={}; constShown=""; $("mapConst").innerHTML="";
+    // The market question starts from the inspect that opened the screen,
+    // which read the file's own column names — so its answer is current for
+    // exactly that trio, and refreshMapper re-asks the moment the mapping
+    // feeds the address from anywhere else.
+    marketSuggest=info.marketSuggest||null; marketAnswer=""; $("mapMarketOther").value="";
+    $("mapMarketCheck").textContent="";
+    var ident={};
+    ["address","address_city","address_state"].forEach(function(t){ if((info.normalized||[]).indexOf(t)>=0)ident[t]=t; });
+    marketSig=trioSig(ident);
     refreshMapper();
     $("mapSec").scrollIntoView({behavior:"smooth",block:"start"});
   }
@@ -3327,6 +3514,9 @@ a.btn.ghost:hover{color:var(--ink)}
     syncConstants(offering);
     var answered=currentConstants();
     var missing=unclaimed.filter(function(t){return !answered[t]});
+    var sig=trioSig(m);
+    if(sig!==marketSig){ marketSig=sig; reinspectMarket(sig); }
+    syncMarketRow();
     // Naming the ignored columns is half the point: importing while quietly
     // dropping a column is the silent failure this screen exists to end. It
     // names the RAW header, never the normalized key — "column_4" is our
@@ -3375,6 +3565,13 @@ a.btn.ghost:hover{color:var(--ink)}
           " to be added before this file can be imported.");
       }
     }
+    // A typed completion that is not "City, ST"-shaped would complete every
+    // bare row into a refusal; an EMPTY one is no answer (those rows are left
+    // out, as they always were).
+    if(marketAnswer==="__other"){
+      var typed=String($("mapMarketOther").value||"").trim();
+      if(typed&&!looksLikeMarket(typed))lines.push('Write the market as City, ST, like "Boise, ID".');
+    }
     if(lines.length){
       $("mapMsg").textContent=lines.join(" ");
       $("mapMsg").classList.remove("hide");
@@ -3401,7 +3598,8 @@ a.btn.ghost:hover{color:var(--ink)}
     // The panel closes on SUCCESS only. Closing here would clear the mapping,
     // the held file and every dropdown before knowing whether the import
     // worked, leaving a re-pick and a full re-map as the only way back.
-    doImport(p.name,p.csv,currentMapping(),closeMapper,null,currentConstants());
+    doImport(p.name,p.csv,currentMapping(),closeMapper,null,currentConstants(),
+      pickedMarket("mapMarketPick","mapMarketOther"));
   });
   $("mapCancel").addEventListener("click",function(){
     closeMapper();
@@ -3474,13 +3672,18 @@ a.btn.ghost:hover{color:var(--ink)}
   // server re-validates every imported row regardless (normalizeRow's verdict
   // is recomputed at import, never trusted from this screen).
   var RENT_BASIS_NEEDLE="rent_basis is required with a rent";
-  function stripBasisError(err){
+  function stripError(err,needle){
     if(err==null)return null;
     var parts=String(err).split("; ").filter(function(p){
-      return p.indexOf(RENT_BASIS_NEEDLE)<0;
+      return p.indexOf(needle)<0;
     });
     return parts.length?parts.join("; "):null;
   }
+  function stripBasisError(err){ return stripError(err,RENT_BASIS_NEEDLE); }
+  // A row the sheet-level market may write into: the server flagged its
+  // address as bare, and nobody has typed into that cell since. A stamped
+  // row stays eligible so a re-pick corrects it; a typed one never is.
+  function pdfNeedsMarket(r){ return !!r&&r.needsMarket===true&&!r.addressTyped; }
   // A row the sheet-level basis may write into: it has a rent, and its basis
   // is either absent or something THIS selector wrote earlier (stampedBasis),
   // so re-choosing corrects a mis-pick without ever touching a cell a person
@@ -3501,6 +3704,9 @@ a.btn.ghost:hover{color:var(--ink)}
       // re-renders the table, and a checkbox the broker set by hand must
       // survive that.
       if(typeof r.checked!=="boolean")r.checked=r.error==null;
+      // What the row arrived with, so a re-pick recomposes from the bare
+      // street and "leave those rows out" can put it back.
+      if(r.needsMarket===true&&r.bare==null)r.bare=String(r.values.address||"");
     });
     var cols=pdfColumns(rows);
     $("pdfCount").textContent=String(rows.length);
@@ -3522,18 +3728,31 @@ a.btn.ghost:hover{color:var(--ink)}
       }).join("");
       return head+"<tr"+tint+"><td>"+cb+"</td>"+cells+"</tr>";
     }).join("");
-    var n=rows.length, ready=0, fail=0, allDate=true;
+    var n=rows.length, ready=0, fail=0, allDate=true, allCity=true;
     rows.forEach(function(r){
       if(r.error==null)ready++;
-      else { fail++; if(!/date/i.test(String(r.error)))allDate=false; }
+      else {
+        fail++;
+        if(!/date/i.test(String(r.error)))allDate=false;
+        if(stripError(r.error,MARKET_NEEDLE)!=null)allCity=false;
+      }
     });
-    var failBit=fail?(allDate?fail+" need a date":fail+" need a fix"):"";
+    var failBit=fail?(allCity?fail+" need a city":allDate?fail+" need a date":fail+" need a fix"):"";
     $("pdfStrip").textContent=n+" found \\u00b7 "+ready+" ready"+(failBit?" \\u00b7 "+failBit:"");
     // The sheet-level basis row, only when a row can actually take it, with
     // the current choice surviving a re-render.
     var needsBasis=rows.some(pdfNeedsBasis);
     $("pdfBasisRow").classList.toggle("hide",!needsBasis);
     $("pdfBasis").value=pdfPending.rentBasis||"";
+    // The sheet-level market row, only when a row can actually take it, the
+    // current choice surviving a re-render exactly as the basis does.
+    var needCity=rows.filter(pdfNeedsMarket).length;
+    $("pdfMarketRow").classList.toggle("hide",!needCity);
+    if(needCity){
+      $("pdfMarketAsk").textContent=needCity+" address"+(needCity===1?" has":"es have")+" no city or state. Add one to those rows:";
+      $("pdfMarketPick").innerHTML=marketOptionsHtml(pdfPending.marketSuggest,pdfPending.market||"");
+      $("pdfMarketOther").classList.toggle("hide",(pdfPending.market||"")!=="__other");
+    }
     $("pdfMsg").innerHTML="";
     $("pdfMsg").classList.add("hide");
     // Re-renders (the basis selector) must not smooth-scroll the page back to
@@ -3561,7 +3780,11 @@ a.btn.ghost:hover{color:var(--ink)}
         });
         inp.addEventListener("input",function(){
           inp.setAttribute("data-raw",inp.value);
-          if(pdfPending.rows[i])pdfPending.rows[i].values[inp.getAttribute("data-k")]=inp.value;
+          var row=pdfPending.rows[i], k=inp.getAttribute("data-k");
+          if(row)row.values[k]=inp.value;
+          // A hand-typed address always wins: the market selector may never
+          // write into this cell again, and its stamp is no longer its own.
+          if(row&&k==="address"){ row.addressTyped=true; row.stampedMarket=false; }
         });
         inp.addEventListener("blur",function(){
           inp.value=pdfDisplay(inp.getAttribute("data-k"),inp.getAttribute("data-raw")||"");
@@ -3594,6 +3817,47 @@ a.btn.ghost:hover{color:var(--ink)}
     });
     openPdfPreview(pdfPending);
   });
+
+  // Choosing a market writes it into the address of every row that arrived
+  // bare — visibly, cell by cell, through the same append-only rule the
+  // import applies — and cures the rows whose ONLY blocker it was. Choosing
+  // the blank option puts those rows back exactly as they arrived. Then the
+  // completed streets are checked against our own census proxy, as a badge.
+  function applyPdfMarket(){
+    if(!pdfPending)return;
+    var chosen=pickedMarket("pdfMarketPick","pdfMarketOther");
+    if(chosen&&!looksLikeMarket(chosen))return;
+    var bare=[];
+    (pdfPending.rows||[]).forEach(function(r){
+      if(!pdfNeedsMarket(r))return;
+      if(!chosen){
+        // Back to how it arrived: the bare street, unchecked, and the
+        // refusal restored in the module's own words (so a later pick can
+        // find it again). Other cures — a basis stamped meanwhile — stand.
+        if(!r.stampedMarket)return;
+        r.values.address=r.bare; r.stampedMarket=false; r.checked=false;
+        r.error=(r.error?r.error+"; ":"")+'"'+r.bare+'" '+MARKET_NEEDLE;
+        return;
+      }
+      bare.push(r.bare);
+      r.values.address=joinMarket(r.bare,chosen);
+      r.stampedMarket=true;
+      var left=stripError(r.error,MARKET_NEEDLE);
+      if(left!==r.error){ r.error=left; if(left==null)r.checked=true; }
+    });
+    openPdfPreview(pdfPending);
+    if(chosen)confirmMarket(bare,chosen,"pdfMarketCheck");
+    else { confirmSeq++; $("pdfMarketCheck").textContent=""; }
+  }
+  $("pdfMarketPick").addEventListener("change",function(){
+    if(!pdfPending)return;
+    pdfPending.market=$("pdfMarketPick").value||"";
+    $("pdfMarketOther").classList.toggle("hide",pdfPending.market!=="__other");
+    // "Another…" waits for the text; the cells change when it is entered.
+    if(pdfPending.market==="__other")return;
+    applyPdfMarket();
+  });
+  $("pdfMarketOther").addEventListener("change",applyPdfMarket);
 
   function closePdfPreview(){
     $("pdfSec").classList.add("hide");

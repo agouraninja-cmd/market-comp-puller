@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "A vault import offers a city and state for addresses that have none",
+    "details": "A firm's own spreadsheet or comp sheet writes \"123 Main St\" because everyone there knows which city, and both import doors refused every such row — the CSV by line number, the confirm table only after Import. Now the mapper and the confirm table each ask once, offering the markets the broker's own records already name (this file first, then their vault, then their coverage) or a typed City, ST. Nothing is applied until a person picks; the CSV door completes on the server through the same append-only compose and the same market check as any other row, the confirm table stamps the completion visibly into the address cells with a hand-typed address always winning, and after a pick the completed streets are checked against our own Census call as a badge — “7 of 9 found in Boise, ID” — never a gate. The import's result line says how many addresses were completed and as what."
+  },
+  {
     "date": "2026-09-01",
     "type": "fix",
     "title": "Four more suites that held every server they booted until the end of the block",

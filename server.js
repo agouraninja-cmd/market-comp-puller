@@ -174,6 +174,10 @@ const { reportKeyOf, reportIdFor } = require("./report-id");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
+// Building-level facts on that dimension (migration 050): what a broker's own
+// deals on one building agree on, applied at READ time only. Pure, tested,
+// dual-exported so /vault prefills from the same rule.
+const BFACTS = require("./building-facts");
 // Which brokers cover which markets — the public directory rules. Pure and
 // tested: the consent gate (broker_profiles.public, not coverage) and the
 // no-contact-details allowlist are both rules about a real person, so they are
@@ -16303,6 +16307,13 @@ async function linkVaultProperties(userId, comps) {
         { prefer: "return=minimal" });
     }
 
+    // What this building's deals agree on (migration 050), recomputed for
+    // every building this touch reached — the sibling rows are read fresh,
+    // because the comps in hand are only the ones just written. Awaited, so
+    // the page's reload after an add or an edit already sees the derivation
+    // rather than catching it one load later.
+    await deriveBuildingFacts(userId, [...index.keys()]);
+
     // The buildings this import left unlocated get the import-time geocode
     // (spec §3 step 2). Scheduled AFTER the broker-coordinate PATCHes above,
     // so the lat=is.null read already excludes every building the broker
@@ -16406,6 +16417,67 @@ async function marketSuggestFor(userId, addresses) {
   const out = VAULT.suggestMarketCompletion(addresses,
     { ...deps, vaultMarkets: lists.vault, coverageMarkets: lists.coverage });
   return { count: out.incomplete.length, sample: out.incomplete.slice(0, 10), candidates: out.candidates };
+}
+
+// Building-level facts (migration 050; spec
+// docs/superpowers/specs/2026-09-03-vault-building-facts-design.md).
+//
+// What one building's deals AGREE on, derived by the pure building-facts.js
+// from the broker's OWN rows and stored on broker_properties.facts. DERIVED,
+// NEVER STATED: nothing a broker types lands here directly, which is what
+// makes recompute (rather than the coordinate PATCH's fill-only guard) the
+// right write — there is no stated value to protect. Recomputed whenever the
+// building is touched: every upload, add and edit reaches linkVaultProperties.
+// A DELETE does not, so a fact stated only on a deleted deal lingers until the
+// building is next touched — accepted in v1 and named in the spec's §4.
+//
+// THE PRIVACY WALL HOLDS: the read is scoped by user_id first, the PATCH is
+// scoped by user_id first, and the only rows consulted are this broker's own.
+// Two brokers on one building keep separate property rows (016's rule) and
+// therefore separate facts. Nothing here reaches the corpus, a share, or a
+// firm — applyFacts runs only in vaultCompsForReport and vaultReadPayload.
+//
+// One READ per chunk of buildings, then one PATCH per building — the same
+// count the property_id link already makes on an import.
+const FACTS_SELECT = ["id", "address_key", "transaction", "deal_date"]
+  .concat(BFACTS.BUILDING_FIELDS).join(",");
+// Per vault read: a book uploaded before 050 shipped derives on its first
+// open, riding the read that already holds the property rows.
+const VAULT_FACTS_BACKFILL_CAP = 200;
+
+async function deriveBuildingFacts(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = [...new Set((Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean))];
+  for (let i = 0; i < keys.length; i += 100) {
+    const slice = keys.slice(i, i + 100);
+    const quoted = slice.map((k) => `"${String(k).replace(/"/g, '""')}"`).join(",");
+    const rows = await sbRequest("GET",
+      `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+      `&address_key=in.(${encodeURIComponent(quoted)})&select=${FACTS_SELECT}`);
+    const byKey = new Map();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (!r || !r.address_key) continue;
+      if (!byKey.has(r.address_key)) byKey.set(r.address_key, []);
+      byKey.get(r.address_key).push(r);
+    }
+    for (const key of slice) {
+      const facts = BFACTS.deriveFacts(byKey.get(key) || []);
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(key)}`,
+        { facts }, { prefer: "return=minimal" });
+    }
+  }
+}
+
+// Fire-and-forget, scheduleVaultGeocode's contract: never awaited on a read
+// path, never throws, no-op without a database. The read-time backfill for
+// buildings whose facts have never been derived.
+function scheduleBuildingFacts(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = (Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean);
+  if (!keys.length) return;
+  Promise.resolve().then(() => deriveBuildingFacts(userId, keys)).catch(() => {});
 }
 
 // How often each published comp has been cited in a report, read from the
@@ -16533,6 +16605,13 @@ async function vaultReadPayload(req, params) {
   if (uploadsR.status === "rejected") throw uploadsR.reason;
   const rows = compsR.value || [];
   await attachCitedCounts(rows);
+  // The building's facts (050), stitched from the dimension and applied at
+  // READ time: an empty building-level cell shows what the broker stated on
+  // another deal at that address, named in `inherited` so the page can say
+  // so. Stored rows are untouched. attachPropertyCoords never throws, so a
+  // failed stitch costs the inheritance and never the vault.
+  const applied = (await attachPropertyCoords(user.id, rows))
+    .map((c) => BFACTS.applyFacts(c, c && c.facts));
 
   return { status: 200, body: {
     // Through the API's own shape, never the raw storage rows. This is the
@@ -16541,7 +16620,7 @@ async function vaultReadPayload(req, params) {
     // vault-api.js absorbs the difference. Today it is a pass-through and the
     // response is byte-identical — the shape change belongs to the restructure,
     // not to introducing the seam.
-    comps: VAULTAPI.toApiComps(rows),
+    comps: VAULTAPI.toApiComps(applied),
     uploads: uploadsR.value || [],
     // The header line: "N comps · 0 published · visible only to you".
     // The published count is the trust proof the whole tier rests on, so
@@ -16657,7 +16736,12 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 
     const rows = await sbRequest("GET", query);
     if (!Array.isArray(rows) || !rows.length) return [];
-    return await attachPropertyCoords(user.id, rows);
+    // Inherit at READ time (050): a priced sale with no size of its own takes
+    // the building's, and with it a $/SF computed from its own price, so it
+    // joins the valuation instead of counting for nothing. Stored rows are
+    // untouched; toReportComp's allowlist drops `facts` and `inherited`.
+    return (await attachPropertyCoords(user.id, rows))
+      .map((c) => BFACTS.applyFacts(c, c && c.facts));
   } catch (err) {
     // Deliberately quiet about the rows and loud about the failure: the
     // message may name a column, never a comp.
@@ -16868,7 +16952,15 @@ async function attachPropertyCoords(userId, comps) {
       // vault read in this file is user-scoped and an unscoped one is the
       // shape of the next mistake.
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source,address`);
+      `&id=in.(${encodeURIComponent(list)})&select=id,address_key,lat,lng,geo_source,address,facts`);
+
+    // Buildings whose facts have never been derived (a book from before 050)
+    // derive now, fire-and-forget, the same way the unlocated ones geocode
+    // below. A building with nothing derivable still gets an empty object,
+    // so this never re-runs for it.
+    scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
+      .filter((p) => p && p.facts == null && p.address_key)
+      .map((p) => p.address_key).slice(0, VAULT_FACTS_BACKFILL_CAP));
 
     // Books uploaded before import-time geocoding shipped (2026-08-29) would
     // otherwise stay unlocated forever unless re-uploaded. This read already
@@ -16887,11 +16979,22 @@ async function attachPropertyCoords(userId, comps) {
     // identical flaw exportRowsWithCoords was extracted to fix on the
     // export path (2026-08-10).
     const byId = BLEND.propertyCoordsById(props);
-    if (!byId.size) return comps;
+    // The building's facts ride the same stitch (050). Stitched, not yet
+    // APPLIED: this function serves the share path too, and a firm copy
+    // carries what the broker stated, never an inherited value — the two
+    // callers that inherit call BFACTS.applyFacts themselves.
+    const factsById = new Map();
+    for (const p of Array.isArray(props) ? props : []) {
+      if (p && p.id != null && p.facts && typeof p.facts === "object") factsById.set(p.id, p.facts);
+    }
+    if (!byId.size && !factsById.size) return comps;
 
     return comps.map((c) => {
-      const hit = c && c.property_id ? byId.get(c.property_id) : null;
-      return hit ? { ...c, ...hit } : c;
+      if (!c || !c.property_id) return c;
+      const hit = byId.get(c.property_id);
+      const facts = factsById.get(c.property_id);
+      if (!hit && !facts) return c;
+      return { ...c, ...(hit || {}), ...(facts ? { facts } : {}) };
     });
   } catch (err) {
     console.error("vault coordinate stitch failed (comps still blend):", err.message);
@@ -26611,6 +26714,10 @@ const server = http.createServer((req, res) =>
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.
     "/gut-check.js": { file: "gut-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Same rule, same page: /vault prefills a known building's cells through
+    // the global BFACTS, the one copy of "which fields inherit" the server
+    // also fills with, so it must never be stale relative to the page.
+    "/building-facts.js": { file: "building-facts.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },

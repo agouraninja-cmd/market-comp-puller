@@ -2999,7 +2999,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button type="button" id="brandLogoRemove" class="text-sm text-[#68707E] hover:text-[#374253]">Remove logo</button>
             <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
           </div>
-          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG. Resized automatically for print.</p>
+          <!-- Or read it off the firm's website (2026-09-02): the server picks
+               the page's declared icon and the result runs through the SAME
+               resizer a chosen file does. Nothing is saved until Save. -->
+          <div class="flex flex-wrap items-center gap-2 mt-2">
+            <input id="brandLogoSite" type="text" inputmode="url" placeholder="yourfirm.com" aria-label="Your firm's web address" maxlength="300"
+              class="w-52 min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button type="button" id="brandLogoImport"
+              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Import logo from website</button>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG, chosen from your computer or read from your website. Resized automatically for print.</p>
 
           <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
@@ -15485,7 +15494,17 @@ async function renderMyDesk() {
       if (file.size > 5e6) return reject(new Error("That image is very large. Please choose one under 5MB."));
       const fr = new FileReader();
       fr.onerror = () => reject(new Error("Could not read that file."));
-      fr.onload = () => {
+      fr.onload = () => resolve(resizeLogoDataUri(String(fr.result || "")));
+      fr.readAsDataURL(file);
+    });
+  }
+
+  // ONE resizer for both doors — a chosen file and a logo read off the
+  // firm's website (2026-09-02) — so an imported logo obeys exactly the size
+  // rules a chosen one does.
+  function resizeLogoDataUri(dataUri) {
+    return new Promise((resolve, reject) => {
+      {
         const img = new Image();
         img.onerror = () => reject(new Error("That file is not an image we can read."));
         img.onload = () => {
@@ -15509,9 +15528,8 @@ async function renderMyDesk() {
           }
           resolve(out);
         };
-        img.src = String(fr.result || "");
-      };
-      fr.readAsDataURL(file);
+        img.src = String(dataUri || "");
+      }
     });
   }
 
@@ -15996,6 +16014,40 @@ async function renderMyDesk() {
       renderBrandPreview();
     } catch (ex) {
       msg.textContent = ex.message;
+    }
+  });
+
+  // Import a logo from the firm's website (2026-09-02). The server reads the
+  // page, picks its icon and answers a data URI; it then takes the same
+  // resizer a chosen file does, lands in the preview, and is kept only on
+  // Save. A refusal is the server's own sentence — it names the fix.
+  document.getElementById("brandLogoImport").addEventListener("click", async () => {
+    const btn = document.getElementById("brandLogoImport");
+    const msg = document.getElementById("brandMsg");
+    const site = document.getElementById("brandLogoSite").value.trim();
+    if (!site) { msg.textContent = "Enter your firm's web address first."; return; }
+    btn.disabled = true;
+    msg.textContent = "Reading " + site + "…";
+    try {
+      const r = await fetch("/api/branding/logo-from-site", {
+        method: "POST", credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ url: site }),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) { msg.textContent = body.error || "Couldn't read that site."; return; }
+      pendingLogo = await resizeLogoDataUri(body.logo);
+      const img = document.getElementById("brandLogoPreview");
+      img.src = pendingLogo;
+      img.classList.remove("hidden");
+      renderBrandPreview();
+      msg.textContent = body.kind === "og:image"
+        ? "Read the site's preview image from " + site + " — check it looks like your logo, then press Save."
+        : "Logo read from " + site + ". Press Save to keep it.";
+    } catch (ex) {
+      msg.textContent = ex.message || "That didn't reach the server.";
+    } finally {
+      btn.disabled = false;
     }
   });
 

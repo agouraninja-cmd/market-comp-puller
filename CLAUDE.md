@@ -538,6 +538,14 @@ dependency. `.env` is git-ignored — never commit it.
   keeps its own endpoint, so there is one override and one thing it can move.
   Not a secret and authorizes nothing (the API key still does), but it decides
   where a billed request is posted, so treat it as trusted config.
+- `LOGO_IMPORT_ALLOW_PRIVATE` — **test-only**, unset in production. Lets
+  `POST /api/branding/logo-from-site` fetch a loopback or private address,
+  which the route's DNS guard refuses by design; `test/logo-import-run.test.js`
+  stands its stub firm website up on 127.0.0.1 and could not reach the fetch
+  path without it (the link check's suites route around the same guard by
+  citing bot-walled hosts, which this feature has no equivalent of). Not a
+  secret and authorizes nothing, but it switches off an SSRF guard, so treat
+  it as trusted config the way `RESEND_API_URL` is.
 - `ACCOUNT_WALL` — optional `on`/`off`, **default ON** (live since 2026-08-05).
   Makes the app account-only. Since 2026-08-08 a visitor with no `cn_session`
   cookie gets a **real page rendered at `/` with a 200** (since 2026-09-01
@@ -3010,6 +3018,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   test-pinned: the summary line reads "suggested, not saved yet" while the
   form holds a seed and no profile exists, and a delete blanks the form
   rather than re-seeding it.
+  **A logo can be read off the firm's website (2026-09-02).** `POST
+  /api/branding/logo-from-site { url }` fetches the page, picks its declared
+  icon and answers a data URI; the branding card's "Import logo from website"
+  control runs it through `resizeLogoDataUri` — the ONE resizer, which the
+  chosen-file door now also calls — into the preview, kept only on Save.
+  Rules in the pure `logo-import.js` (`test/logo-import.test.js`): the
+  address must be public (localhost, IP literals, single-label hosts and
+  embedded credentials are refused before any DNS); candidates are
+  apple-touch-icon, then icons at least 64px, then the undeclared
+  `/apple-touch-icon.png`, then og:image (measured on github.com: its declared
+  icons are too small and its og:image is a homepage banner), then tiny
+  icons, six at most, and
+  `.ico`/`.svg`/`.gif` hrefs are never fetched; the BYTES decide, sniffed
+  by account-avatar.js's `sniffImage`, a PNG narrower than 48px refused as a
+  favicon, a PNG more than three times wider than tall refused as a banner,
+  anything over 2MB skipped. server.js owns the fetch and it is the
+  source-link check's discipline: every host resolved with
+  `lookupWithTimeout` and refused on a private answer (`privateAddress`),
+  redirects followed BY HAND with that guard re-run per hop, every body read
+  under a byte cap (`readCapped`), a 6s timeout, our own UA. The site is
+  fetched by our server only — no third-party logo service sees a firm's
+  domain. `test/logo-import-run.test.js` runs it against a stub site
+  (touch icon found; `.ico`-only and over-cap sites 404 naming the fix;
+  redirect followed; unreachable 502; and, WITHOUT the test-only
+  `LOGO_IMPORT_ALLOW_PRIVATE`, a loopback address refused before any fetch).
   **The firm fallback (2026-08-29; migration 041, `org_branding`).** A firm's
   owner/admin saves one profile for the org (`GET|PUT|DELETE
   /api/org/branding`, write gated on `ORG.canManageMembers`, validation

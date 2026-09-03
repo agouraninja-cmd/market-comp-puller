@@ -3967,5 +3967,11 @@
     "type": "feature",
     "title": "One profile, reused everywhere: the branding card fills itself, and the vault identity, the submission form and the create-a-firm box read from it",
     "details": "The same firm, name, email and license were asked for in five places and none read another. GET /api/branding now carries a suggestion built from what the account already holds — the vault's credit identity first, then the member's firm, then the account — and the branding form pours it into empty fields only, with a note saying where it came from, that nothing is saved until Save, and that it prints on reports. The vault identity form is offered the saved branding's firm, name and license while no credit is stated; the comp-submission modal takes the firm and phone from the saved branding; creating a firm starts from the branding's firm name. Every one of these is a prefill the member reads and saves, never a write between tables, which keeps the vault's rule that a credit is stated, never inherited. The summary line says 'suggested, not saved yet' while the form holds a seed and no profile exists."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Import a logo from the firm's website",
+    "details": "On the branding card, type the firm's web address and the server reads the page, picks its declared icon (apple-touch-icon first, then icons of a usable size, then og:image, then the undeclared /apple-touch-icon.png; .ico and .svg never) and hands it back as a picture that runs through the same resizer a chosen file does, into the preview, kept only on Save. The fetch follows the source-link check's discipline: every host DNS-resolved and refused on a private or loopback answer, redirects followed by hand with the guard re-run per hop, bodies read under a byte cap, a six-second timeout. The bytes decide what is accepted — sniffed as PNG/JPEG/WebP, a PNG narrower than 48px refused as a favicon. The site is fetched by our own server only; no third-party logo service sees a firm's domain. Rules in the pure logo-import.js; the whole path proven against a stub site, including that without the test-only LOGO_IMPORT_ALLOW_PRIVATE a loopback address is refused before any fetch."
   }
 ]

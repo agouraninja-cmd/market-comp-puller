@@ -3973,5 +3973,17 @@
     "type": "feature",
     "title": "Import a logo from the firm's website",
     "details": "On the branding card, type the firm's web address and the server reads the page, picks its declared icon (apple-touch-icon first, then icons of a usable size, then og:image, then the undeclared /apple-touch-icon.png; .ico and .svg never) and hands it back as a picture that runs through the same resizer a chosen file does, into the preview, kept only on Save. The fetch follows the source-link check's discipline: every host DNS-resolved and refused on a private or loopback answer, redirects followed by hand with the guard re-run per hop, bodies read under a byte cap, a six-second timeout. The bytes decide what is accepted — sniffed as PNG/JPEG/WebP, a PNG narrower than 48px refused as a favicon. The site is fetched by our own server only; no third-party logo service sees a firm's domain. Rules in the pure logo-import.js; the whole path proven against a stub site, including that without the test-only LOGO_IMPORT_ALLOW_PRIVATE a loopback address is refused before any fetch."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "feature",
+    "title": "Export a report as a PowerPoint deck",
+    "details": "A PowerPoint button beside Excel on the report toolbar, for signed-in members. Five slides of native, editable text and tables rather than a picture of the page: the valuation ledger with its basis, trust line and approaches; the market summary, trend, price drivers and price-discovery read; the comp table with source-confidence badges, ten rows a slide; the comp map and the market-position chart as images; and a sources-and-method slide. Co-branded like every other export — the member's letterhead and logo when entitled, the CompNinja attribution and the automated-estimate line on every slide regardless. It costs the same monthly allowance slot as the CSV of the same report, and it reads only the exportable comps, so a private vault comp never reaches the file and the deck says how many it left out. Built in the browser by PptxGenJS, loaded on first click the way the Excel export loads its library."
+  },
+  {
+    "date": "2026-09-02",
+    "type": "fix",
+    "title": "The printed and PNG comp map had no pins",
+    "details": "Since the export raster moved to retina tiles on 2026-08-26, its pins were measured from the doubled tile origin while being projected at the frame's own zoom, so every pin landed about 120,000 pixels off the canvas. The PDF and the PNG shipped a clean basemap with nothing on it, which reads as a map rather than as a bug. Found while building the PowerPoint export's map slide, which uses the same raster. The pins now subtract the logical origin, and a test pins the arithmetic."
   }
 ]

@@ -707,6 +707,71 @@ function rankExpectedCounts(assetClass) {
   return { macro, class: cls };
 }
 
+// The ranking layer for the /markets map: one entry per market that Census
+// gives us a point and a land area for.
+//
+// EVERY market, not only the scored ones. An unscored market rides with
+// band:null and draws as a hollow ring, which is the same rule the momentum
+// pins already keep - "a pin cannot render NOTHING (the pin is also the
+// navigation), so the hollow ring makes no color claim, and it is
+// deliberately not flat's grey". Without this the tier toggle would be a
+// control that does nothing: only primary markets have readings loaded, so
+// Secondary and Tertiary would both show an empty map rather than 146 markets
+// nobody has measured yet.
+//
+// EVERY ASSET CLASS RIDES, one read per class per market, so the map can
+// switch class without a round trip. Each read carries the BAND this server
+// decided: the browser is handed words and never a scale to interpret, which
+// is the rule the carved areas already keep ("market-area.js is deliberately
+// server-side").
+//
+// Six bands per market rather than one because the class picker is a control,
+// not a URL - /markets carries no class state, and re-rendering the page to
+// recolour 196 circles would be a request for something already computed.
+//
+// Radius is the EQUIVALENT-AREA circle: pi*r^2 equals the CBSA's real land
+// area, so the circle is a true claim about scale and no claim about shape.
+const RANK_MAP_CLASS = "industrial";      // what the picker starts on
+const RANK_AREAS = (() => {
+  if (!RANK_CONFIGURED) return [];
+  try {
+    // One pass per class, once, at boot. 6 x 196 markets of arithmetic on a
+    // file read at startup, and the result cannot change while the process
+    // lives.
+    const perClass = {};
+    for (const cls of RANKPAGE.ASSET_CLASSES) {
+      perClass[cls] = new Map(rankRowsFor(cls).map((r) => [r.cbsa, r]));
+    }
+    const out = [];
+    for (const mk of (RANK_TIERS.markets || [])) {
+      const g = mk.cbsa || {};
+      if (!Number.isFinite(g.lat) || !Number.isFinite(g.lng) || !Number.isFinite(g.land_sq_mi)) continue;
+      // Only classes that actually scored appear. An absent key is "not
+      // measured for this class", which the agreement rule treats as silence
+      // rather than as disagreement - absence never argues.
+      const reads = {};
+      for (const cls of RANKPAGE.ASSET_CLASSES) {
+        const row = perClass[cls].get(g.code);
+        if (row && typeof row.score === "number" && row.band) {
+          reads[cls] = { b: row.band, s: Math.round(row.score * 100) / 100 };
+        }
+      }
+      out.push({
+        cbsa: g.code, market: mk.market, state: mk.state, tier: mk.tier,
+        lat: g.lat, lng: g.lng,
+        // Metres, for L.circle. Rounded to the kilometre: a metre of
+        // precision on a 40-mile radius is noise that only costs bytes.
+        r: Math.round(Math.sqrt(g.land_sq_mi / Math.PI) * 1609.344 / 1000) * 1000,
+        ...(Object.keys(reads).length ? { reads } : {}),
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error("[rank] map areas not built:", e && e.message);
+    return [];
+  }
+})();
+
 // The Market explorer's door into the rankings, rendered ONCE at startup.
 //
 // /markets is not cached the way /rankings is (no maxAge on its sendShellPage),
@@ -10117,6 +10182,44 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mfilter input::placeholder{color:var(--ink-3)}
 .mfilter input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
 .mcount{color:var(--ink-mute);font-size:13px;margin-top:10px;min-height:1.2em}
+/* The /markets map's two controls: which LAYER, and which TIER. Segmented
+   radio groups - a choice among alternatives, working with no JavaScript, and
+   announced as a group by a screen reader without any aria of our own. The
+   inputs are visually hidden but still focusable, so the ring lands on the
+   label via :focus-visible + adjacent sibling. */
+.mmap-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;
+  padding:0 0 12px;border-bottom:1px solid var(--hair);margin:0 0 12px}
+.mmap-seg{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:0}
+.mmap-seg legend{float:left;font-size:11px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 9px 0 0;padding:0;line-height:26px}
+.mmap-seg input{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.mmap-seg label{display:inline-block;padding:4px 11px;font-size:13px;color:var(--ink-2);
+  background:var(--card);border:1px solid var(--edge);cursor:pointer;user-select:none}
+.mmap-seg label + input + label,.mmap-seg input + label{border-left-width:0}
+.mmap-seg input:first-of-type + label{border-left-width:1px;border-radius:4px 0 0 4px}
+.mmap-seg input:last-of-type + label{border-radius:0 4px 4px 0}
+.mmap-seg label:hover{background:var(--wash);color:var(--ink)}
+.mmap-seg input:checked + label{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.mmap-seg input:focus-visible + label{outline:2px solid var(--red);outline-offset:1px}
+/* The asset-class dropdown. Six options is too many for a segmented row
+   beside two other controls, so this is a real <select> - native, keyboard
+   and screen-reader complete, and correct on a phone without any work. */
+.mmap-sel{display:inline-flex;align-items:center;gap:9px}
+.mmap-sel-lab{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3)}
+.mmap-sel select{font:inherit;font-size:13px;color:var(--ink);background:var(--card);
+  border:1px solid var(--edge);border-radius:4px;padding:4px 8px;cursor:pointer;line-height:1.4}
+.mmap-sel select:hover{background:var(--wash)}
+.mmap-sel select:focus-visible{outline:2px solid var(--red);outline-offset:1px}
+.mmap-count{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;margin-left:auto}
+.mmap-note{margin-top:10px}
+/* The card a ranked circle opens. */
+.rkpop{font-size:12.5px;color:var(--ink-2);margin-top:2px}
+@media(max-width:640px){
+  .mmap-tools{gap:8px 12px}
+  .mmap-count{margin-left:0;flex-basis:100%}
+}
 /* /markets momentum map. Pin fill is the market's stored direction through
    freshDirection, on the same tokens as the .mdirv-* badge words. The hollow
    pin is an ABSENCE of claim ("no recent read"): it must never share flat's
@@ -11369,6 +11472,168 @@ const MARKETS_DIR_MAP_JS = `(function(){
   // street level.
   map.fitBounds(bounds, { padding: [36, 36], maxZoom: 6 });
 
+  // ---------------------------------------------------------------------
+  // RANKED MARKET AREAS, and the two toggles over them.
+  //
+  // A CIRCLE RATHER THAN A PIN, because a market is a place with an extent
+  // and a dot says nothing about how much ground it covers. The radius is
+  // the equivalent-area one - pi*r^2 equals the metro's real land area, sent
+  // down per market - so Riverside-San Bernardino draws the largest circle
+  // on this map because its CBSA genuinely reaches into the Mojave. True
+  // about SIZE, silent about SHAPE: a CBSA is not round, and this makes no
+  // claim that it is.
+  //
+  // Circles sit in a pane BELOW the markers (overlayPane is 400, markerPane
+  // 600; this is 380), so a translucent area never swallows the pin on top
+  // of it and "Both" reads as two layers rather than a pile.
+  var rank = (data && data.rank) || [];
+  var RANK_WORD = { expanding: "Expanding", flat: "Flat", contracting: "Contracting" };
+  // Labels, from a lookup rather than concatenated out of the data: markup
+  // built from a whitelist stays inert whatever the payload says. Same rule
+  // DIR_CLASS above already keeps.
+  var CLASS_LABEL = {
+    industrial: "Industrial", office: "Office", retail: "Retail",
+    multifamily: "Multifamily", land: "Land", residential: "Residential",
+  };
+  var rankLayer = L.layerGroup();
+  var rankShapes = [];
+  var pinPane = null;
+
+  function fmtSigned(v) {
+    return typeof v === "number" ? (v >= 0 ? "+" : "\u2212") + Math.abs(v).toFixed(2) : "";
+  }
+  // MIRRORS the three tokens areaStyle and the pins already use, so one
+  // market cannot be green as a circle and red as a pin. Change one, change
+  // all three - the same warning areaStyle carries.
+  function rankStyle(band) {
+    var fills = {
+      expanding: tok("--green", "#15803D"),
+      flat: tok("--ink-mute", "#5B6472"),
+      contracting: tok("--red-fill", "#B91C1C"),
+    };
+    if (fills[band]) {
+      return { color: fills[band], weight: 1, opacity: 0.75, fillColor: fills[band], fillOpacity: 0.14 };
+    }
+    // No band means nothing measured. A dashed hollow ring making no color
+    // claim, and deliberately NOT flat's grey fill: "nothing measured" must
+    // never look like "the market is flat". The hollow-pin rule, area-shaped.
+    var none = tok("--ink-3", "#64748B");
+    return { color: none, weight: 1, opacity: 0.5, dashArray: "3 4", fill: false };
+  }
+
+  // The band for the chosen class. A direct lookup, because one class is
+  // chosen at a time - there is no fold here and deliberately no second copy
+  // of market-area.js's agreement rule, which exists for a city SHAPE holding
+  // several markets and is a different question from this one.
+  function readFor(a, cls) {
+    return (a && a.reads && a.reads[cls]) || null;
+  }
+
+  // The card, rebuilt when the class changes: it names the class it is
+  // reporting, so a score can never be read against the wrong one.
+  function rankPopup(a, cls) {
+    var miles = Math.round(a.r / 1609.344);
+    var head = "<b>" + esc(a.market + ", " + a.state) + "</b>" +
+      '<div class="rkpop">' + esc(a.tier) + " market \u00b7 about " + miles + " mi of radius</div>";
+    var r = readFor(a, cls);
+    if (!r) {
+      return head + '<div class="rkpop">Not measured for ' + esc(CLASS_LABEL[cls] || cls) +
+        " yet \u2014 which is not the same as reading flat.</div>";
+    }
+    return head +
+      '<div class="rkpop">' + esc(CLASS_LABEL[cls] || cls) + " \u00b7 <b>" + fmtSigned(r.s) +
+      "</b> " + esc(RANK_WORD[r.b] || r.b) + "</div>" +
+      '<div><a href="/rankings/' + esc(cls) + "/" + esc(a.cbsa) +
+      '">See the full ranking \u2192</a></div>';
+  }
+
+  if (rank.length) {
+    try {
+      map.createPane("rankPane");
+      map.getPane("rankPane").style.zIndex = 380;
+    } catch (e) {}
+    rank.forEach(function (a) {
+      var c = L.circle([a.lat, a.lng], { radius: a.r, pane: "rankPane" });
+      rankShapes.push({ shape: c, tier: a.tier, data: a });
+      c.addTo(rankLayer);
+    });
+  }
+
+  function pick(name, fallback) {
+    var el = document.querySelector('input[name="' + name + '"]:checked');
+    return el ? el.value : fallback;
+  }
+
+  // The chosen asset class. Falls back to the class the server rendered the
+  // control on, so a browser that never ran the change handler still styles
+  // against the class the markup says is selected.
+  function pickedClass() {
+    var el = document.getElementById("mmClass");
+    return (el && el.value) || (data && data.rankClass) || "industrial";
+  }
+
+  function applyView() {
+    var layer = pick("mmlayer", "both");
+    var tier = pick("mmtier", "all");
+    var cls = pickedClass();
+    var showAreas = layer === "both" || layer === "areas";
+    var showPins = layer === "both" || layer === "points";
+
+    if (showAreas && !map.hasLayer(rankLayer)) rankLayer.addTo(map);
+    if (!showAreas && map.hasLayer(rankLayer)) map.removeLayer(rankLayer);
+
+    var shown = 0, measured = 0;
+    rankShapes.forEach(function (r) {
+      var on = showAreas && (tier === "all" || r.tier === tier);
+      var read = readFor(r.data, cls);
+      var band = read && read.b;
+      // Restyled rather than added and removed: churning membership of a
+      // 196-shape group on every click is the slow path, and a hidden circle
+      // must also stop swallowing clicks meant for the map beneath it.
+      if (on) {
+        r.shape.setStyle(rankStyle(band));
+        r.shape.setPopupContent
+          ? r.shape.setPopupContent(rankPopup(r.data, cls))
+          : r.shape.bindPopup(rankPopup(r.data, cls));
+        shown++;
+        if (band) measured++;
+      } else {
+        r.shape.setStyle({ opacity: 0, fillOpacity: 0, weight: 0 });
+      }
+      try { r.shape.setInteractive(on); } catch (e) {}
+    });
+
+
+    // The comp-coverage pins are the ORIGINAL layer and are deliberately not
+    // tiered: they are the cities CompNinja holds comps for, which is a
+    // different fact from population rank. Hiding the PANE keeps every
+    // marker, its click handler and the pixel spread computed above intact.
+    if (pinPane) pinPane.style.display = showPins ? "" : "none";
+
+    var el = document.getElementById("mmapCount");
+    if (el) {
+      // "50 primary markets \u00b7 49 measured" - the gap is the honest part,
+      // and it moves with the class picker: a market measured for industrial
+      // may be unmeasured for office.
+      el.textContent = showAreas
+        ? shown + (tier === "all" ? " market areas" : " " + tier + " markets") +
+          " \u00b7 " + measured + " measured for " + (CLASS_LABEL[cls] || cls).toLowerCase()
+        : "";
+    }
+  }
+
+  if (rank.length) {
+    try { pinPane = map.getPane("markerPane"); } catch (e) {}
+    ["mmlayer", "mmtier"].forEach(function (n) {
+      [].forEach.call(document.querySelectorAll('input[name="' + n + '"]'), function (r) {
+        r.addEventListener("change", applyView);
+      });
+    });
+    var sel = document.getElementById("mmClass");
+    if (sel) sel.addEventListener("change", applyView);
+    applyView();
+  }
+
   // CLICK A PIN, SEE THE CITY. A pin click flies to the city, reveals its
   // real municipal boundary colored by the one claim that shape may make
   // (momentum, market-area.js — solid for agreement, the Mixed style where
@@ -11400,6 +11665,11 @@ const MARKETS_DIR_MAP_JS = `(function(){
     Object.keys(revealed).forEach(function (k) {
       revealed[k].layer.setStyle(areaStyle(revealed[k].momentum));
     });
+    // The ranked circles are computed tokens too, so they flip with the
+    // theme alongside the carved areas. applyView rather than a bare
+    // setStyle: it re-reads the toggles, so a hidden tier stays hidden
+    // instead of being painted back into view by a theme change.
+    applyView();
   };
   function tok(name, fallback) {
     var v = "";
@@ -12588,8 +12858,54 @@ function renderMarketDirectoryHTML(signedIn) {
   }));
   // Two pins is the floor for a map that reads as a map (mirrors the market
   // page's "no pins, no card" rule); below it the grid is the whole page.
+  //
+  // TWO INDEPENDENT CONTROLS, because they answer different questions and
+  // combining them into one list of five options would make "ranked primary
+  // markets with comp coverage" unreachable:
+  //
+  //   Show   - which LAYER: ranked market areas, the comp coverage already
+  //            here, or both.
+  //   Tier   - which markets, by population rank.
+  //
+  // Radio inputs rather than buttons: this is a choice among alternatives, it
+  // works with no JavaScript running, and a screen reader announces the group
+  // and the selected member without any aria of our own.
+  const rankLayerUi = RANK_AREAS.length
+    ? `<div class="mmap-tools">` +
+      `<fieldset class="mmap-seg"><legend>Show</legend>` +
+      [["both", "Both"], ["areas", "Ranked areas"], ["points", "Comp coverage"]]
+        .map(([v, lbl], i) =>
+          `<input type="radio" name="mmlayer" id="mml-${v}" value="${v}"${i === 0 ? " checked" : ""}/>` +
+          `<label for="mml-${v}">${lbl}</label>`).join("") +
+      `</fieldset>` +
+      `<fieldset class="mmap-seg"><legend>Tier</legend>` +
+      [["all", "All"], ["primary", "Primary"], ["secondary", "Secondary"], ["tertiary", "Tertiary"]]
+        .map(([v, lbl], i) =>
+          `<input type="radio" name="mmtier" id="mmt-${v}" value="${v}"${i === 0 ? " checked" : ""}/>` +
+          `<label for="mmt-${v}">${lbl}</label>`).join("") +
+      `</fieldset>` +
+      // ONE CLASS AT A TIME, and a plain <select> because six options is too
+      // many for a segmented row beside two other controls.
+      //
+      // Multi-select was built here and taken out again (owner's call), and
+      // the reason is worth keeping: a circle can only be one colour, so
+      // choosing industrial AND office needs a rule for what the circle then
+      // claims. Every honest answer is a worse answer - a third "mixed"
+      // colour that says less than either read, or a silent pick of one class
+      // over the other. One class, named on the control, is unambiguous.
+      `<label class="mmap-sel"><span class="mmap-sel-lab">Asset class</span>` +
+      `<select name="mmclass" id="mmClass">` +
+      RANKPAGE.ASSET_CLASSES.map((c) =>
+        `<option value="${c}"${c === RANK_MAP_CLASS ? " selected" : ""}>` +
+        `${RANKPAGE.CLASS_LABEL[c]}</option>`).join("") +
+      `</select></label>` +
+      `<span class="mmap-count" id="mmapCount" role="status" aria-live="polite"></span>` +
+      `</div>`
+    : "";
+
   const mapUi = pins.length >= 2
     ? `<div class="mmap-card" id="mktsMapCard">` +
+      rankLayerUi +
       `<div id="mktsMap" class="mmap" aria-label="Map of covered markets, colored by market momentum"></div>` +
       `<div class="mmap-legend">` +
       `<span class="mml"><span class="mmap-pin mmap-pin-expanding mml-s"></span>Expanding</span>` +
@@ -12599,11 +12915,16 @@ function renderMarketDirectoryHTML(signedIn) {
       `<span class="mml"><span class="mmap-pin mmap-pin-none mml-s"></span>No recent read</span>` +
       `<span class="mml mmap-hint">Click a pin to see that city's area and markets</span>` +
       `</div>` +
+      (RANK_AREAS.length
+        ? `<p class="mcount mmap-note">Each circle covers the same land area as its metro &mdash; ` +
+          `a true claim about size, not about shape. A hollow ring is a market nothing has been ` +
+          `measured for in the chosen classes, which is not the same as a market reading flat.</p>`
+        : "") +
       (pins.length < slugs.length
         ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`
         : "") +
       `</div>` +
-      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins, areas }).replace(/</g, "\\u003c")}</script>` +
+      `<script id="mktsMapData" type="application/json">${JSON.stringify({ pins, areas, rank: RANK_AREAS, rankClass: RANK_MAP_CLASS }).replace(/</g, "\\u003c")}</script>` +
       `<script>${BASEMAP_JS}</script>` +
       `<script>${MARKETS_DIR_MAP_JS}</script>`
     : "";

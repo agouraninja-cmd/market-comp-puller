@@ -505,9 +505,10 @@ function renderYourRead(m, cls) {
         + '<p class="rk-yours-act"><a class="btn sm" href="' + href + '">Edit your read</a> '
         + '<a class="rk-export-alt" href="' + href + '?clear=1">or remove it &rarr;</a></p>'
       : '<p class="rk-comp-story">Nothing is written for this market yet, so the score above is '
-        + "the public data and nothing else. A read of your own is where the judgement that is not "
-        + "in any government series goes &mdash; a fabricator breaking ground, a port expansion, a "
-        + "submarket you have walked and the data has not caught up with.</p>"
+        + "the public data and nothing else. A read of your own is for the SPECIFIC, CHECKABLE "
+        + "events that move a market before they reach a government series &mdash; a fabricator "
+        + "breaking ground, a port expansion, a rail spur, an entitlement that just cleared, a "
+        + "single tenant taking a million feet.</p>"
         + '<p class="rk-yours-act"><a class="btn sm" href="' + href + '">Write your read</a> '
         + '<span class="rk-note">Worth ' + w + "% here. It changes your firm&rsquo;s view of this "
         + "market and nothing else &mdash; the public score stays exactly as it is.</span></p>")

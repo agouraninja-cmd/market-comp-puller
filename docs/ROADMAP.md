@@ -219,6 +219,21 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-09-02: four import doors polished for the September goal** (the
+  owner's "make it easier to upload data" theme; plan in
+  `~/.claude/plans/`, spec-less by choice because every slice reshapes a
+  surface that already existed). The confirm table triages — clean rows are
+  text with Edit, refused rows say why, Import sits at the top — which is
+  the whole of the measured 4m51s cause list except the two waiting on
+  decisions above; Excel workbooks import (xlsx.js typed mode reads dates and
+  percents through the workbook's styles); rows pasted from Excel, CoStar or
+  an email import through the same mapper; the mapper folds to a summary
+  when every column was matched, and remembers a mapping per file shape
+  (migration 049). **Still owed: the stopwatch.** Re-time the 12-row
+  exercise against this table and write it beside the 4m51s; that number is
+  the acceptance test, and Week 2 Monday on the September file is where it
+  is scheduled.
+
 - **2026-08-29: the default provider streams, the vault locates its own
   buildings, and the confirm table stops making people translate figures.**
   Three items on this file moved in one day.

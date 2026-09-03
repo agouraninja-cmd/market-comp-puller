@@ -1461,6 +1461,7 @@ a.btn.ghost:hover{color:var(--ink)}
     $("fFirmLab").className=myFirm?"":"hide";
     if(!myFirm)$("fFirm").value="";
     renderFirmPrivacy();
+    identitySuggest=o.j.identitySuggest||null;
     renderIdentity(o.j.identity);
     renderRollup();
     // GET /api/vault caps at 1000 rows. Past that the rollup really is
@@ -2359,6 +2360,10 @@ a.btn.ghost:hover{color:var(--ink)}
   // (No backticks anywhere in this block: the whole page is one template
   // literal, and one stray backtick ends it — see the file's header note.)
   var identity={display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
+  // The report branding's firm, name and license, sent by vaultReadPayload
+  // only while no credit is stated. Offered into the form, never saved by
+  // itself (2026-09-02, "one profile").
+  var identitySuggest=null;
 
   function renderIdentity(idn){
     identity=idn||{display_name:"",company:"",license_number:"",creditedTo:"",canPublish:false};
@@ -2388,7 +2393,19 @@ a.btn.ghost:hover{color:var(--ink)}
       $("idCompany").value=identity.company||"";
       $("idName").value=identity.display_name||"";
       $("idLicense").value=identity.license_number||"";
-      $("idMsg").className="msg bad hide";
+      // The credit is STATED, never inherited (creditName's rule), so this
+      // never writes a table: an unstated identity is filled in from the
+      // member's own report branding for them to read and save. Only into
+      // empty fields, only while nothing is stated, and the line says where
+      // the values came from.
+      var s=identitySuggest||{},seeded=false;
+      if(!identity.creditedTo){
+        if(!$("idCompany").value&&s.company){$("idCompany").value=s.company;seeded=true;}
+        if(!$("idName").value&&s.display_name){$("idName").value=s.display_name;seeded=true;}
+        if(!$("idLicense").value&&s.license_number){$("idLicense").value=s.license_number;seeded=true;}
+      }
+      $("idMsg").textContent=seeded?"Filled in from your report branding \u2014 check it, then save.":"";
+      $("idMsg").className=seeded?"msg":"msg bad hide";
     }
     $("idForm").className=open?"":"hide";
     if(open)$("idCompany").focus();

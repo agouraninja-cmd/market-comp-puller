@@ -2537,12 +2537,53 @@ async function findBrandingProfile(userId) {
 // asymmetry is safe here because nothing ever upserts over this value — the
 // blank-on-next-save hazard that forces the strict 503 on the own-profile
 // read has no analogue on a fallback nobody writes back.
+// The caller's ACTIVE memberships, oldest first — the one ordering rule
+// shared by the firm-branding fallback and the branding suggestion, so the
+// two can never disagree about which firm is "the member's firm".
+async function activeMembershipsFor(user) {
+  if (!user || !user.email || !DB_CONFIGURED) return [];
+  return (await orgMembershipsFor(user.email))
+    .filter((r) => ORG.isActive(r))
+    .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+}
+
+// The member's oldest active firm as { id, name }, or null. Fails open.
+async function oldestActiveFirmFor(user) {
+  try {
+    const first = (await activeMembershipsFor(user))[0];
+    if (!first) return null;
+    const rows = await sbRequest("GET",
+      `orgs?id=eq.${encodeURIComponent(first.org_id)}&select=id,name&limit=1`);
+    const org = (rows || [])[0];
+    return org ? { id: org.id, name: org.name || "" } : null;
+  } catch (e) {
+    console.error("Firm lookup for branding failed:", e.message);
+    return null;
+  }
+}
+
+// What the branding card is offered for its EMPTY fields (2026-09-02, "one
+// profile"): the vault's credit identity, the member's firm, the account.
+// BRANDING.suggestBrand owns the precedence. Fails open to the account alone:
+// a suggestion is a courtesy and must never fail the branding read.
+async function suggestedBrandFor(user) {
+  if (!user) return null;
+  try {
+    const [profile, firm] = await Promise.all([
+      DB_CONFIGURED ? findBrokerProfile(user.email, user.id) : null,
+      DB_CONFIGURED ? oldestActiveFirmFor(user) : null,
+    ]);
+    return BRANDING.suggestBrand({ user, brokerProfile: profile, firm });
+  } catch (e) {
+    console.error("Branding suggestion failed:", e.message);
+    return BRANDING.suggestBrand({ user });
+  }
+}
+
 async function findOrgBrandingFor(user) {
   if (!user || !user.email || !DB_CONFIGURED) return null;
   try {
-    const memberships = (await orgMembershipsFor(user.email))
-      .filter((r) => ORG.isActive(r))
-      .sort((a, b) => String(a.joined_at || "").localeCompare(String(b.joined_at || "")));
+    const memberships = await activeMembershipsFor(user);
     if (!memberships.length) return null;
     const ids = [...new Set(memberships.map((r) => String(r.org_id)).filter(Boolean))];
     const rows = await sbRequest("GET",
@@ -15772,7 +15813,7 @@ async function vaultReadPayload(req, params) {
   // so the offset pages stably inside a date tie (the export's own rule).
   query += `&order=deal_date.desc.nullslast,id.asc&limit=${limit}&offset=${offset}`;
 
-  const [entR, compsR, uploadsR, profileR, firmR, sharedR] = await Promise.allSettled([
+  const [entR, compsR, uploadsR, profileR, firmR, sharedR, brandR] = await Promise.allSettled([
     entitlementsFor(req),
     DB_CONFIGURED ? sbRequest("GET", query) : Promise.resolve(null),
     DB_CONFIGURED ? sbRequest("GET", `broker_uploads?user_id=eq.${encodeURIComponent(user.id)}` +
@@ -15789,6 +15830,10 @@ async function vaultReadPayload(req, params) {
     // state that offers no control rather than a broken one.
     DB_CONFIGURED ? orgMembershipsFor(user.email) : Promise.resolve(null),
     DB_CONFIGURED ? sharedCompIdsFor(user.id) : Promise.resolve(null),
+    // The member's saved report branding, offered to an UNSTATED credit
+    // identity (2026-09-02, "one profile"). Settled like the rest: a
+    // suggestion must never be able to fail a vault.
+    DB_CONFIGURED ? findBrandingProfile(user.id) : Promise.resolve(null),
   ]);
   // entitlementsFor fails closed internally; if it somehow rejects, closed
   // here too — an error must never open a vault.
@@ -15864,6 +15909,19 @@ async function vaultReadPayload(req, params) {
         creditedTo: VAULT.creditName(p),
         canPublish: VAULT.canPublishAs(p).ok,
       };
+    })(),
+    // The report branding's firm, name and license, offered to the identity
+    // form ONLY while nothing has been stated (2026-09-02, "one profile").
+    // The credit stays stated, never inherited: this fills a form the broker
+    // reads and saves, and it is the branding they typed, never the account
+    // name creditName's comment warns about. null once a credit exists, so a
+    // statement is never second-guessed.
+    identitySuggest: (() => {
+      const p = (profileR.status === "fulfilled" && profileR.value) || null;
+      if (VAULT.creditName(p)) return null;
+      const b = BRANDING.normalizeBrand(brandR.status === "fulfilled" ? brandR.value : null);
+      if (!b || !b.firmName) return null;
+      return { company: b.firmName, display_name: b.preparerName || "", license_number: b.licenseNumber || "" };
     })(),
     // The firm's half of the header, and the per-comp control. `firm: null`
     // is the ordinary case — a broker in no firm — and the page renders
@@ -18504,9 +18562,14 @@ const server = http.createServer((req, res) =>
         // branding yet" is a normal state, not an error. `firm` is null when
         // there is nothing — the browser branches on it, and {} would read as
         // a brand that normalizes to nothing.
+        // And what the account already knows, for the form's EMPTY fields
+        // (2026-09-02, "one profile"). Offered, never written: the member
+        // still presses Save. null when nothing is known.
+        const suggested = await suggestedBrandFor(user);
         return sendJson(res, 200, {
           branding: BRANDING.normalizeBrand(row) || {},
           firm: BRANDING.normalizeBrand(firmRow),
+          suggested,
         });
       })().catch((err) => {
         console.error("Branding read failed:", err.message);

@@ -120,6 +120,31 @@ test("the firm branding profile, end to end", async (t) => {
     assert.equal(out.firm, null);
   });
 
+  await t.test("GET /api/branding offers what the account knows, and writes nothing", async () => {
+    // Mike has no branding and no vault identity: the firm's name and his
+    // own email are offered. Written nowhere.
+    const before = tables.branding_profiles ? tables.branding_profiles.length : 0;
+    const mine = await (await fetch(srv.base + "/api/branding", as(MIKE))).json();
+    assert.equal(mine.suggested.firmName, "Colliers Boise", "the firm he belongs to");
+    assert.equal(mine.suggested.email, MIKE.email);
+    assert.equal("phone" in mine.suggested, false);
+    assert.deepEqual(mine.branding, {}, "a suggestion is not a profile");
+    assert.equal((tables.branding_profiles || []).length, before, "and nothing was written");
+    // An outsider in no firm gets only the account.
+    const out = await (await fetch(srv.base + "/api/branding", as(OUTSIDER))).json();
+    assert.equal(out.suggested.email, OUTSIDER.email);
+    assert.equal("firmName" in out.suggested, false);
+    // A stated vault identity beats the firm: Brad said his firm is Hawkins Ridge.
+    tables.broker_profiles = tables.broker_profiles || [];
+    tables.broker_profiles.push({ id: "bp-brad", email: BRAD.email.toLowerCase(), user_id: BRAD.id, slug: "hawkins-ridge-cre",
+      display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", public: false, license_number: "01899123" });
+    const brad = await (await fetch(srv.base + "/api/branding", as(BRAD))).json();
+    assert.equal(brad.suggested.firmName, "Hawkins Ridge CRE");
+    assert.equal(brad.suggested.preparerName, "Chuck Hawkins");
+    assert.equal(brad.suggested.licenseNumber, "01899123");
+    tables.broker_profiles.pop();
+  });
+
   await t.test("a share by a member with no profile of their own snapshots the FIRM's mark", async () => {
     const r = await fetch(srv.base + "/api/share",
       as(BRAD, { method: "POST", body: JSON.stringify(REPORT) }));

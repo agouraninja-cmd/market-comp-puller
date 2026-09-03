@@ -36,7 +36,7 @@ function comp(o) {
     price: 1000000, size_sqft: 10000, price_per_sqft: 100, published: false,
   }, o);
 }
-function boot(comps, identity) {
+function boot(comps, identity, extra) {
   return { s: 200, j: {
     comps, uploads: [],
     counts: { returned: comps.length, published: comps.filter((c) => c.published).length },
@@ -45,6 +45,9 @@ function boot(comps, identity) {
     // The credit identity, as vaultReadPayload serves it. Default is the
     // unstated case, which is what every pre-existing test wants.
     identity: identity || { display_name: "", company: "", creditedTo: "" },
+    // Anything else vaultReadPayload serves that one test wants to set
+    // (identitySuggest, say) rides in here.
+    ...(extra || {}),
   } };
 }
 // The page's own inline script, as the browser would receive it.
@@ -417,7 +420,7 @@ function jsonResponse(status, body) {
 async function runPage(comps, benchResult, opts, identity) {
   opts = opts || {};
   const calls = [];
-  const bootPayload = boot(comps, identity);
+  const bootPayload = boot(comps, identity, opts.bootExtra);
   if (opts.uploads) bootPayload.j.uploads = opts.uploads;
   // A firm and the shelf lookup, in the shape vaultReadPayload serves them,
   // so the push button and the Firm filter can be EXECUTED here rather than
@@ -2203,6 +2206,33 @@ test("an unstated identity says so, and offers to fix it", async () => {
   const line = doc.getElementById("creditLine").innerHTML;
   assert.match(line, /need a name to credit/i);
   assert.match(line, /id="idEdit"/, "there must be a control to state one");
+});
+
+test("an unstated identity is offered the member's report branding — filled in, never saved", async () => {
+  const suggest = { company: "Hawkins Ridge CRE", display_name: "Chuck Hawkins", license_number: "01899123" };
+  const { doc, calls } = await runPage([comp({})], null, { bootExtra: { identitySuggest: suggest } });
+  doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(doc.getElementById("idCompany").value, "Hawkins Ridge CRE");
+  assert.equal(doc.getElementById("idName").value, "Chuck Hawkins");
+  assert.equal(doc.getElementById("idLicense").value, "01899123");
+  assert.match(doc.getElementById("idMsg").textContent, /Filled in from your report branding/);
+  assert.ok(!doc.getElementById("idMsg").classList.contains("hide"), "the line says where the values came from");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/identity") === 0).length, 0,
+    "opening the form writes nothing — the credit is stated by the Save click, never inherited");
+});
+
+test("a stated identity is never second-guessed by the branding, and a plain open stays quiet", async () => {
+  const stated = { display_name: "Chuck Hawkins", company: "Hawkins Ridge CRE", license_number: "", creditedTo: "Hawkins Ridge CRE" };
+  const { doc } = await runPage([comp({})], null,
+    { bootExtra: { identitySuggest: { company: "Somebody Else LLC", display_name: "X", license_number: "999" } } }, stated);
+  doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(doc.getElementById("idCompany").value, "Hawkins Ridge CRE");
+  assert.equal(doc.getElementById("idLicense").value, "", "even an empty field stays empty once a credit is stated");
+  assert.ok(doc.getElementById("idMsg").classList.contains("hide"));
+  const bare = await runPage([comp({})]);
+  bare.doc.getElementById("creditLine").fire("click", { target: { id: "idEdit" } });
+  assert.equal(bare.doc.getElementById("idCompany").value, "");
+  assert.ok(bare.doc.getElementById("idMsg").classList.contains("hide"), "nothing to offer, nothing said");
 });
 
 test("the identity form ships closed in the markup", () => {

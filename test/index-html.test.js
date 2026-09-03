@@ -1072,6 +1072,30 @@ test("the workspace header does not say who you are at all", () => {
 // everything the member owns. Collapsing it took the page from 2371px to
 // 1859px. None of this surface was pinned before.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// One profile, reused everywhere (2026-09-02). The branding form fills its
+// EMPTY fields from what the account already holds (GET /api/branding's
+// `suggested`), says so, and never lets a seeded-but-unsaved form read as a
+// letterhead that exists. The submission modal and the create-a-firm box read
+// the same facts back.
+// ----------------------------------------------------------------------------
+test("the branding form fills empty fields from what the account knows, and says so", () => {
+  assert.ok(html.includes("function fillBrandForm(brand, suggested)"), "the fill takes the suggestion as its second argument");
+  assert.match(html, /id="brandSeedNote" class="hidden /, "the seed note ships hidden and only fillBrandForm reveals it");
+  assert.equal((html.match(/fillBrandForm\(currentBranding, currentSuggested\)/g) || []).length, 2,
+    "the load and the scope fallback both pour the suggestion into the member's own scope");
+  assert.ok(html.includes("fillBrandForm(null)"), "a delete still blanks the form rather than re-seeding it");
+  const sum = html.slice(html.indexOf("function renderBrandSummary"), html.indexOf("function renderBrandPreview"));
+  assert.match(sum, /suggested, not saved yet/, "the summary must not claim a letterhead exists for a seeded form");
+  const at = html.indexOf('getElementById("brokerSubmitBtn").addEventListener');
+  const sub = html.slice(at, at + 1400);
+  assert.match(sub, /compBrokerCompany/);
+  assert.match(sub, /compBrokerPhone/);
+  assert.match(sub, /currentBranding \|\| currentSuggested/, "saved branding first, then the suggestion");
+  assert.ok(html.includes("function seedFirmNameInput()"), "the create-a-firm box is seeded through one function");
+  assert.equal((html.match(/seedFirmNameInput\(\);/g) || []).length, 2, "called from the create state and from the branding read, whichever lands second");
+});
+
 test("report branding is collapsed behind a summary that states what is saved", () => {
   const at = html.indexOf('id="deskBranding"');
   assert.ok(at > -1, "the branding section is still there");

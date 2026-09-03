@@ -2990,6 +2990,26 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   scoped to the property they bought (the sale is retired; the grants are
   not), not a live Pro subscription, so this cannot be folded into
   `/api/config`.
+  **One profile, reused everywhere (2026-09-02).** The product asked for the
+  same facts in five places — this card, the firm's branding, the vault's
+  credit identity, the account, the comp-submission modal — and none read
+  another. Now `GET /api/branding` also carries `suggested`
+  (`BRANDING.suggestBrand`, pure: the vault's `broker_profiles` company,
+  name and license first, then the member's oldest active firm's `orgs.name`,
+  then the account's name and email; never `org_branding`, which already
+  applies at render time and would freeze as a copy), and `fillBrandForm`
+  pours it into EMPTY fields only, with `#brandSeedNote` saying where it
+  came from and that it prints. The reverse door: `vaultReadPayload` sends
+  `identitySuggest` from the member's saved branding ONLY while no credit is
+  stated, and the identity form fills from it; the submission modal takes
+  firm and phone from the saved branding; the create-a-firm box takes the
+  firm name. **Every one of these is a prefill the member reads and saves,
+  never a write** — that is what keeps the vault's "stated, never inherited"
+  rule (`creditName`'s comment: a copied signup name was once published as
+  somebody's firm) while the facts stop being retyped. Two honesty rules,
+  test-pinned: the summary line reads "suggested, not saved yet" while the
+  form holds a seed and no profile exists, and a delete blanks the form
+  rather than re-seeding it.
   **The firm fallback (2026-08-29; migration 041, `org_branding`).** A firm's
   owner/admin saves one profile for the org (`GET|PUT|DELETE
   /api/org/branding`, write gated on `ORG.canManageMembers`, validation

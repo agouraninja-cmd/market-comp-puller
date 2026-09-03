@@ -126,4 +126,37 @@ function validateForSave(raw) {
   return { row };
 }
 
-module.exports = { brandForRender, normalizeBrand, validateForSave, TEXT_LIMITS, LOGO_SAVE_MAX, LOGO_RENDER_MAX };
+/**
+ * What the account already knows, shaped like a brand, for a form to offer
+ * into its EMPTY fields (2026-09-02, "one profile, reused everywhere").
+ *
+ * A SUGGESTION, never a save: nothing here reaches a table until the member
+ * presses Save on a form they can read. That is what keeps the vault's rule
+ * that a credit is stated, never inherited — the same facts are offered, and
+ * the statement is still the click.
+ *
+ * Sources, in order: the vault's credit identity (broker_profiles) first,
+ * because a broker who stated their firm there meant it; then the firm they
+ * belong to (orgs.name); then the account. Never org_branding: that mark
+ * already applies at render time as a fallback, and copying it into a
+ * personal row would freeze a copy that stops tracking the firm's edits.
+ * Phone, logo and disclaimer are never suggested — nothing holds them.
+ *
+ * @param {object} user           { name, email }
+ * @param {object} brokerProfile  broker_profiles row: { company, display_name, license_number }
+ * @param {object} firm           { name } — the member's oldest active firm
+ */
+function suggestBrand({ user, brokerProfile, firm } = {}) {
+  const u = user || {};
+  const p = brokerProfile || {};
+  const f = firm || {};
+  const out = {};
+  const put = (key, v) => { const s = clean(v, TEXT_LIMITS[key]); if (s) out[key] = s; };
+  put("firmName", p.company || f.name);
+  put("preparerName", p.display_name || u.name);
+  put("email", u.email);
+  put("licenseNumber", p.license_number);
+  return Object.keys(out).length ? out : null;
+}
+
+module.exports = { brandForRender, normalizeBrand, validateForSave, suggestBrand, TEXT_LIMITS, LOGO_SAVE_MAX, LOGO_RENDER_MAX };

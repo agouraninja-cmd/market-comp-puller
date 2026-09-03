@@ -203,10 +203,11 @@ test("with no lens, the card says so and reassures what writing one does", () =>
   assert.match(txt, /No firm read has been written/);
   assert.match(txt, /public score stays exactly as it is/,
     "a member must know their read changes only their own view");
-  // The panel replaced a table row, and the reason it is a panel is that a
-  // member has to be able to see this component is theirs to write.
-  assert.match(txt, /Write your read/,
-    "the one editable component must offer the edit");
+  // The panel replaced a table row so a member can see this component is
+  // theirs. It names the weight rather than offering a button, because the
+  // editor is not built - see "the panel links nowhere" below.
+  assert.match(txt, /Worth 25% here/,
+    "the one member-owned component must say what it is worth");
 });
 
 test("every reading is traceable to a dated, named series", () => {
@@ -522,24 +523,42 @@ test("an empty component says so instead of rendering a bare zero", () => {
 // ---------------------------------------------------------------------------
 // Your read: the one component a member can change.
 
-test("an unwritten read invites writing and states what it is worth", () => {
+test("an unwritten read says what it is and what it is worth", () => {
   const html = P.renderYourRead(
     { cbsa: "14460", narrative: null, weights: { narrative: 0.25 } }, "office");
-  assert.match(html, /href="\/rankings\/office\/14460\/read"/, "no way to write one");
-  assert.ok(html.includes("Write your read"));
-  assert.ok(html.includes("25%"), "the weight is the reason to bother");
+  assert.ok(html.includes("25%"), "the weight is what makes the em dash legible");
   assert.ok(html.includes("public score stays exactly as it is"),
     "a member must know their read does not alter the public number");
+  assert.ok(html.includes("not open yet"),
+    "and must be told why there is nothing to click");
 });
 
-test("a written read says what it moved, and offers to change it", () => {
+// THE ONE THAT KEEPS THIS HONEST. The panel shipped for one commit with a
+// "Write your read" button pointing at /rankings/<class>/<cbsa>/read, a route
+// that does not exist -- a 404 behind the button naming the thing a member
+// most wants to do. Nothing here may link anywhere until the editor is real,
+// and this fails the moment somebody adds an href back without the route.
+test("the panel links nowhere while the editor does not exist", () => {
+  for (const m of [
+    { cbsa: "14460", narrative: null, weights: { narrative: 0.25 } },
+    { cbsa: "14460", narrative: 0.6, score: 0.4, publicScore: 0.25,
+      bandMovedByNarrative: true, lens: { name: "Q3 fabricator build" },
+      weights: { narrative: 0.25 } },
+  ]) {
+    const html = P.renderYourRead(m, "office");
+    assert.ok(!/<a\s/.test(html),
+      "no anchor may ship in this panel until /rankings/<class>/<cbsa>/read answers");
+    assert.ok(!html.includes("/read"), "and no route may be named that 404s");
+  }
+});
+
+test("a written read says what it moved", () => {
   const html = P.renderYourRead({
     cbsa: "14460", narrative: 0.6, score: 0.4, publicScore: 0.25,
     bandMovedByNarrative: true, lens: { name: "Q3 fabricator build", updated: "2026-09-01" },
     weights: { narrative: 0.25 },
   }, "office");
   assert.ok(html.includes("Q3 fabricator build"));
-  assert.ok(html.includes("Edit your read"));
   assert.ok(html.includes("across a band boundary"),
     "crossing a band is the change worth naming");
 });

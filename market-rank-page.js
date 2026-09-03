@@ -481,11 +481,18 @@ function renderComponent(opts) {
 // So it gets its own panel, its own verb, and a state that says which of the
 // two it is in. The weight is stated in both states, because the reason to
 // write one is that it moves the number by a known amount.
+// NO LINK UNTIL THERE IS SOMEWHERE TO GO. This panel carried a "Write your
+// read" button to /rankings/<class>/<cbsa>/read for one commit, and that route
+// does not exist yet - a 404 behind a button that names the thing a member
+// most wants to do. The panel still says what the component is, what it is
+// worth and what writing one would change, because that is the honest half and
+// it is what makes the em dash legible rather than broken. The button comes
+// back with the editor, in the same commit, and `href` below is the one line
+// that changes.
 function renderYourRead(m, cls) {
   const w = Math.round(((m.weights && m.weights.narrative) || 0) * 100);
   const has = typeof m.narrative === "number" && isFinite(m.narrative);
   const lens = m.lens || null;
-  const href = "/rankings/" + cls + "/" + esc(m.cbsa) + "/read";
 
   return '<div class="card rk-comp rk-yours">'
     + '<div class="rk-comp-head">'
@@ -502,16 +509,14 @@ function renderYourRead(m, cls) {
         + ". It moves this market from " + fmtScore(m.publicScore) + " to "
         + fmtScore(m.score) + (m.bandMovedByNarrative ? ", across a band boundary" : "")
         + ".</p>"
-        + '<p class="rk-yours-act"><a class="btn sm" href="' + href + '">Edit your read</a> '
-        + '<a class="rk-export-alt" href="' + href + '?clear=1">or remove it &rarr;</a></p>'
       : '<p class="rk-comp-story">Nothing is written for this market yet, so the score above is '
         + "the public data and nothing else. A read of your own is for the SPECIFIC, CHECKABLE "
         + "events that move a market before they reach a government series &mdash; a fabricator "
         + "breaking ground, a port expansion, a rail spur, an entitlement that just cleared, a "
         + "single tenant taking a million feet.</p>"
-        + '<p class="rk-yours-act"><a class="btn sm" href="' + href + '">Write your read</a> '
-        + '<span class="rk-note">Worth ' + w + "% here. It changes your firm&rsquo;s view of this "
-        + "market and nothing else &mdash; the public score stays exactly as it is.</span></p>")
+        + '<p class="rk-yours-act"><span class="rk-note">Worth ' + w + "% here, and reserved for "
+        + "it: a read of your own changes your firm&rsquo;s view of this market and nothing else "
+        + "&mdash; the public score stays exactly as it is. Writing one is not open yet.</span></p>")
     + "</div>";
 }
 

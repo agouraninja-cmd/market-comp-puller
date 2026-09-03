@@ -192,7 +192,8 @@ const BACKTEST = require("./backtest");
 // Report branding — the member's mark (logo, firm name, contact info,
 // disclaimer) that can be applied to a report they hold an entitlement for.
 // Pure and tested; server.js owns the route (GET|PUT|DELETE /api/branding).
-const BRANDING = require("./branding.js");
+const BRANDING = require("./branding");
+const LOGO = require("./logo-import");
 // Account profile photo — the picture in the account circle. Pure and tested;
 // server.js owns the route (GET|PUT|DELETE /api/account/avatar) and the
 // avatar_rev field on GET /api/account/me.
@@ -2578,6 +2579,96 @@ async function suggestedBrandFor(user) {
     console.error("Branding suggestion failed:", e.message);
     return BRANDING.suggestBrand({ user });
   }
+}
+
+// --- Logo import: a logo off the firm's own website (2026-09-02) ----------
+//
+// The member types their firm's address; we read the page, pick its declared
+// icon (LOGO.logoCandidates) and hand the bytes back as a data URI for the
+// branding form to resize, preview and — only on Save — keep. The rules
+// that matter are the fetch's, and they are the source-link check's: every
+// host is DNS-resolved first and private or loopback answers are refused
+// (lookupWithTimeout / privateAddress, the same two functions), redirects
+// are followed BY HAND with that guard re-run on every hop, and every body
+// is read under a byte cap. The site is fetched by our server only; no
+// third-party logo service ever sees a firm's domain.
+//
+// LOGO_IMPORT_ALLOW_PRIVATE is TEST-ONLY (RESEND_API_URL's precedent): the
+// stub site the run test stands up is on loopback, which the guard refuses
+// by design. Never set it in production.
+const LOGO_IMPORT_ALLOW_PRIVATE = /^(1|true|on)$/i.test(String(process.env.LOGO_IMPORT_ALLOW_PRIVATE || ""));
+const LOGO_IMPORT_UA = "CompNinjaLogoImport/1.0 (+https://compninja.co)";
+const LOGO_IMPORT_TIMEOUT_MS = 6000;
+
+async function siteHostAllowed(url) {
+  if (LOGO_IMPORT_ALLOW_PRIVATE) return true;
+  let host;
+  try { host = new URL(url).hostname; } catch (_) { return false; }
+  let addrs;
+  try { addrs = await lookupWithTimeout(host, LOGO_IMPORT_TIMEOUT_MS); } catch (_) { return false; }
+  return addrs.length > 0 && !addrs.some((a) => privateAddress(a.address, a.family));
+}
+
+// Read a body up to `max` bytes and stop; a page or a picture past that is
+// not worth having, and an unbounded read is how one URL exhausts a dyno.
+async function readCapped(r, max) {
+  const reader = r.body && r.body.getReader ? r.body.getReader() : null;
+  if (!reader) return Buffer.from(await r.arrayBuffer()).subarray(0, max);
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(Buffer.from(value));
+    total += value.length;
+    if (total >= max) { try { await reader.cancel(); } catch (_) { /* closed */ } break; }
+  }
+  return Buffer.concat(chunks).subarray(0, max);
+}
+
+async function fetchSite(url, { accept, max, hops = 2 }) {
+  let current = url;
+  for (let i = 0; i <= hops; i++) {
+    if (!(await siteHostAllowed(current))) return { refused: true };
+    const r = await fetch(current, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(LOGO_IMPORT_TIMEOUT_MS),
+      headers: { "user-agent": LOGO_IMPORT_UA, accept },
+    });
+    if (r.status >= 300 && r.status < 400 && r.headers.get("location")) {
+      try { if (r.body) await r.body.cancel(); } catch (_) { /* closed */ }
+      let next;
+      try { next = new URL(r.headers.get("location"), current).toString(); } catch (_) { return { status: r.status }; }
+      if (!/^https?:/i.test(next)) return { status: r.status };
+      current = next;
+      continue;
+    }
+    if (!r.ok) { try { if (r.body) await r.body.cancel(); } catch (_) { /* closed */ } return { status: r.status }; }
+    return { ok: true, url: current, bytes: await readCapped(r, max) };
+  }
+  return { status: 310 };
+}
+
+async function importLogoFromSite(url) {
+  let page;
+  try {
+    page = await fetchSite(url, { accept: "text/html,*/*;q=0.5", max: LOGO.PAGE_MAX });
+  } catch (_) {
+    return { status: 502, code: "unreachable", error: "Couldn't reach that site. Check the address, or choose a file instead." };
+  }
+  if (page.refused) return { status: 400, code: "refused", error: "Enter a public web address, like yourfirm.com." };
+  if (!page.ok) return { status: 502, code: "unreachable", error: `That site didn't answer (${page.status}). Choose a file instead.` };
+  for (const c of LOGO.logoCandidates(page.bytes.toString("utf8"), page.url)) {
+    try {
+      // One byte past the cap is read on purpose, so acceptLogoBytes can
+      // tell "exactly at the cap" from "over it".
+      const img = await fetchSite(c.url, { accept: "image/png,image/jpeg,image/webp,image/*;q=0.5", max: LOGO.LOGO_FETCH_MAX + 1, hops: 1 });
+      if (!img.ok) continue;
+      const got = LOGO.acceptLogoBytes(img.bytes);
+      if (got) return { kind: c.kind, url: c.url, dataUri: got.dataUri };
+    } catch (_) { /* next candidate */ }
+  }
+  return { status: 404, code: "none", error: "No usable logo found on that site. Choose a file instead." };
 }
 
 async function findOrgBrandingFor(user) {
@@ -18522,6 +18613,40 @@ const server = http.createServer((req, res) =>
       } catch (err) {
         console.error("seen error:", err);
         return sendJson(res, 500, { error: "Could not update the watchlist." });
+      }
+    });
+    return;
+  }
+
+  // --- POST /api/branding/logo-from-site — a logo off the firm's website ----
+  //
+  // See importLogoFromSite. Signed-in only and rate-limited (it makes our
+  // server fetch an address a member typed); NOT gated on canBrand, the same
+  // reasoning as saving a profile — the gate is on applying a mark. Answers
+  // the picture as a data URI; nothing is stored here.
+  if (req.url.split("?")[0] === "/api/branding/logo-from-site" && req.method === "POST") {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (c) => { body += c; if (body.length > 4e3) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const user = await getSessionUser(req);
+        if (!user) return sendJson(res, 401, { error: "Please sign in." });
+        if (rateLimited("brandlogo:" + clientIp(req), 10)) return sendJson(res, 429, { error: "Too many tries. Please wait a minute." });
+        let parsed;
+        try { parsed = JSON.parse(body || "{}"); } catch (_) { return sendJson(res, 400, { error: "Bad request." }); }
+        const site = LOGO.normalizeSiteUrl(parsed && parsed.url, { allowPrivate: LOGO_IMPORT_ALLOW_PRIVATE });
+        if (site.error) return sendJson(res, 400, { error: site.error });
+        const found = await importLogoFromSite(site.url);
+        if (found.error) {
+          logEvent("brand_logo_import", { source: found.code || "none" });
+          return sendJson(res, found.status || 404, { error: found.error });
+        }
+        logEvent("brand_logo_import", { source: "ok:" + found.kind });
+        return sendJson(res, 200, { ok: true, logo: found.dataUri, source: found.url, kind: found.kind });
+      } catch (err) {
+        console.error("Logo import failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't read that site just now. Choose a file instead." });
       }
     });
     return;

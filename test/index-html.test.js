@@ -1096,6 +1096,20 @@ test("the branding form fills empty fields from what the account knows, and says
   assert.equal((html.match(/seedFirmNameInput\(\);/g) || []).length, 2, "called from the create state and from the branding read, whichever lands second");
 });
 
+test("a logo can be read off the firm's website, through the same resizer a chosen file takes", () => {
+  assert.match(html, /id="brandLogoSite"[^>]*inputmode="url"/, "the address field");
+  assert.ok(html.includes('id="brandLogoImport"'), "the import control");
+  const at = html.indexOf('getElementById("brandLogoImport").addEventListener');
+  assert.ok(at > -1, "the import handler is gone");
+  const handler = html.slice(at, at + 1600);
+  assert.match(handler, /fetch\("\/api\/branding\/logo-from-site"/);
+  assert.match(handler, /pendingLogo = await resizeLogoDataUri\(body\.logo\)/, "the imported picture obeys the chosen-file size rules");
+  assert.match(handler, /Press Save to keep it/, "it is kept only on Save");
+  // ONE resizer: the file door reads the file and hands the data URI to it.
+  assert.equal((html.match(/function resizeLogoDataUri\(/g) || []).length, 1);
+  assert.match(html, /fr\.onload = \(\) => resolve\(resizeLogoDataUri\(String\(fr\.result \|\| ""\)\)\);/);
+});
+
 test("report branding is collapsed behind a summary that states what is saved", () => {
   const at = html.indexOf('id="deskBranding"');
   assert.ok(at > -1, "the branding section is still there");

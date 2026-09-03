@@ -1,0 +1,140 @@
+{
+  "label": "thinking-medium-1788400338311",
+  "model": "gemini-3.8-flash",
+  "provider": "gemini",
+  "thinkingLevel": "medium",
+  "ranAt": "2026-09-03T01:56:15.560Z",
+  "base": "http://127.0.0.1:3170",
+  "setSize": 3,
+  "targetSelection": "first 3 (3 targets)",
+  "corpusWiped": false,
+  "subjectSizesWiped": false,
+  "summary": {
+    "targets": 3,
+    "scored": 3,
+    "failures": 0,
+    "failedTargets": [],
+    "metrics": {
+      "comps": 9.333333333333334,
+      "pricedSales": 7.333333333333333,
+      "provenanceScore": 0.8416666666666665,
+      "estimateRate": 0.08333333333333333,
+      "aggregateRate": 0,
+      "inWindowRate": 0.7916666666666666,
+      "marketMatchRate": 0.8055555555555555,
+      "sizeRate": 1,
+      "summaryChars": 422.6666666666667,
+      "valueDriversChars": 225,
+      "marketTrendChars": 128.33333333333334,
+      "priceDiscoveryChars": 145.33333333333334,
+      "durationMs": 78869,
+      "costUsd": 0.0653285,
+      "billedCalls": 1,
+      "inputTokens": 10096.666666666666,
+      "outputTokens": 15016.333333333334,
+      "thoughtTokens": 12951,
+      "reportTokens": 2065.3333333333335,
+      "thoughtShare": 0.8619015540149334
+    },
+    "valuationPossibleRate": 1,
+    "subjectSizeFoundRate": 0
+  },
+  "results": [
+    {
+      "target": "Industrial / 1200 W Industrial Blvd, Dallas, TX",
+      "ok": true,
+      "metrics": {
+        "comps": 8,
+        "pricedSales": 8,
+        "valuationPossible": true,
+        "provenanceScore": 0.9249999999999999,
+        "tierCounts": {
+          "listing": 4,
+          "public_record": 4
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 1,
+        "marketMatchRate": 1,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 420,
+        "valueDriversChars": 221,
+        "marketTrendChars": 135,
+        "priceDiscoveryChars": 132,
+        "costUsd": 0.062355375,
+        "billedCalls": 1,
+        "inputTokens": 10736,
+        "outputTokens": 14078,
+        "thoughtTokens": 12215,
+        "reportTokens": 1863,
+        "thoughtShare": 0.8676658616280721,
+        "durationMs": 84031
+      }
+    },
+    {
+      "target": "Industrial / 4050 E Franklin Rd, Nampa, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 12,
+        "pricedSales": 8,
+        "valuationPossible": true,
+        "provenanceScore": 0.8374999999999999,
+        "tierCounts": {
+          "listing": 11,
+          "news": 1
+        },
+        "estimateRate": 0,
+        "aggregateRate": 0,
+        "inWindowRate": 0.5,
+        "marketMatchRate": 0.9166666666666666,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 431,
+        "valueDriversChars": 233,
+        "marketTrendChars": 135,
+        "priceDiscoveryChars": 180,
+        "costUsd": 0.0741255,
+        "billedCalls": 1,
+        "inputTokens": 9950,
+        "outputTokens": 17430,
+        "thoughtTokens": 15122,
+        "reportTokens": 2308,
+        "thoughtShare": 0.8675846242111303,
+        "durationMs": 76924
+      }
+    },
+    {
+      "target": "Industrial / 1010 Yellowstone Ave, Pocatello, ID",
+      "ok": true,
+      "metrics": {
+        "comps": 8,
+        "pricedSales": 6,
+        "valuationPossible": true,
+        "provenanceScore": 0.7625,
+        "tierCounts": {
+          "estimate": 2,
+          "listing": 6
+        },
+        "estimateRate": 0.25,
+        "aggregateRate": 0,
+        "inWindowRate": 0.875,
+        "marketMatchRate": 0.5,
+        "sizeRate": 1,
+        "subjectSizeFound": false,
+        "summaryChars": 417,
+        "valueDriversChars": 221,
+        "marketTrendChars": 115,
+        "priceDiscoveryChars": 124,
+        "costUsd": 0.059504625,
+        "billedCalls": 1,
+        "inputTokens": 9604,
+        "outputTokens": 13541,
+        "thoughtTokens": 11516,
+        "reportTokens": 2025,
+        "thoughtShare": 0.8504541762055978,
+        "durationMs": 75652
+      }
+    }
+  ]
+}

@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-02",
+    "type": "improvement",
+    "title": "Gemini 3.8 Flash measured and not adopted: production stays on 3.7 low",
+    "details": "Owner asked for a comparison before shipping the switch. Four arms over the same three Industrial eval targets, fresh searches on an isolated server: 3.7 low (production), 3.8 low, 3.8 medium, 3.8 high. Per report: 3.7 low 12.9s and $0.0084 with a 0% estimate rate; 3.8 low 21.5s and $0.0097 with more comps but a 12% estimate rate and lower provenance; 3.8 medium 79s and $0.065; 3.8 high 92-126s and $0.085 where it finished, and the Nampa search died twice with Gemini's own Internal error mid-stream after 70-90 grounded searches. Decision: stay on gemini-3.7-flash at THINKING_LEVEL=low; PR #270 closed unmerged. The full record, the per-address figures and the sample's caveats are in docs/evals/2026-09-02-gemini-3-8-decision.md, with the five run summaries beside it. One harness note recorded there: compare-thinking.js wipes fallback files in the runner's checkout while the server writes them in --dir, so the worktree's subject-sizes.json and comp-corpus.jsonl carry between arms unless wiped by hand."
+  },
+  {
     "date": "2026-09-01",
     "type": "fix",
     "title": "Four more suites that held every server they booted until the end of the block",

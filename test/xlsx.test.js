@@ -243,3 +243,115 @@ test("sniffSpreadsheet reads the bytes, never the name", () => {
   const xls = Buffer.alloc(16); xls[0] = 0xd0; xls[1] = 0xcf; xls[2] = 0x11; xls[3] = 0xe0;
   assert.strictEqual(sniffSpreadsheet(xls), "xls");
 });
+
+// ---------------------------------------------------------------------------
+// Typed mode (2026-09-02): dates and percents through the workbook's styles.
+// The vault's door. Every case below is a way a number could be read WRONG
+// silently, which is the failure this file's header exists to refuse.
+// ---------------------------------------------------------------------------
+const { classifyNumFmt, serialToIso, percentToText, plainNumber } = require("../xlsx.js");
+const { parseDate } = require("../broker-vault.js");
+
+// One numeric cell in A1, with an optional style index.
+const numCell = (v, s) => `<c r="A1"${s != null ? ` s="${s}"` : ""}><v>${v}</v></c>`;
+const typedA1 = (cellXml, opts) =>
+  readXlsxGrid(book(SHEET(`<row r="1">${cellXml}</row>`), opts), { typed: true }).rows[0][0];
+const untypedA1 = (cellXml, opts) =>
+  readXlsxGrid(book(SHEET(`<row r="1">${cellXml}</row>`), opts)).rows[0][0];
+
+test("typed: a builtin date style reads a serial as a day; untyped leaves the digits", () => {
+  const opts = { styles: { xfs: [0, 14] } };
+  assert.strictEqual(typedA1(numCell(45730, 1), opts), "2025-03-14");
+  assert.strictEqual(untypedA1(numCell(45730, 1), opts), "45730", "the contacts caller is unchanged");
+});
+
+test("typed: a custom date format reads the serial, not the display", () => {
+  assert.strictEqual(typedA1(numCell(45730, 1), { styles: { numFmts: { 164: "m/d/yyyy" }, xfs: [0, 164] } }), "2025-03-14");
+  // A two-digit-year display still stores the full serial.
+  assert.strictEqual(typedA1(numCell(45730, 1), { styles: { numFmts: { 164: "m/d/yy" }, xfs: [0, 164] } }), "2025-03-14");
+  assert.strictEqual(typedA1(numCell(45730, 1), { styles: { numFmts: { 165: "[$-409]d-mmm-yy;@" }, xfs: [0, 165] } }), "2025-03-14");
+});
+
+test("typed: the 1904 epoch moves the same serial by four years and a day", () => {
+  const styles = { xfs: [0, 14] };
+  assert.strictEqual(typedA1(numCell(45730, 1), { styles, date1904: true }), "2029-03-15");
+  assert.strictEqual(typedA1(numCell(45730, 1), { styles }), "2025-03-14");
+});
+
+test("typed: the time-of-day fraction is dropped", () => {
+  assert.strictEqual(typedA1(numCell(45730.75, 1), { styles: { xfs: [0, 22] } }), "2025-03-14");
+});
+
+test("typed: a percent style arrives as the percentage Excel shows", () => {
+  assert.strictEqual(typedA1(numCell(0.0625, 1), { styles: { xfs: [0, 9] } }), "6.25");
+  assert.strictEqual(typedA1(numCell(0.057, 1), { styles: { xfs: [0, 10] } }), "5.7", "no float tail");
+  assert.strictEqual(typedA1(numCell(1, 1), { styles: { numFmts: { 164: "0.00%" }, xfs: [0, 164] } }), "100");
+});
+
+test("typed: a serial in a General cell stays a serial, which the vault then refuses by name", () => {
+  assert.strictEqual(typedA1(numCell(45678)), "45678");
+  assert.strictEqual(typedA1(numCell(45678, 0), { styles: { xfs: [0] } }), "45678");
+  const verdict = parseDate("45678");
+  assert.equal(verdict.ok, false);
+  assert.match(verdict.error, /YYYY-MM-DD/);
+});
+
+test("typed: a time-only style is not a date and keeps its digits", () => {
+  assert.strictEqual(typedA1(numCell(0.5, 1), { styles: { xfs: [0, 18] } }), "0.5");
+  assert.strictEqual(typedA1(numCell(0.5, 1), { styles: { xfs: [0, 45] } }), "0.5");
+  assert.strictEqual(typedA1(numCell(0.5, 1), { styles: { numFmts: { 164: "[h]:mm:ss" }, xfs: [0, 164] } }), "0.5");
+});
+
+test("typed: scientific notation and float tails become the digits a person would type", () => {
+  assert.strictEqual(typedA1(numCell("1.25E+6")), "1250000");
+  assert.strictEqual(typedA1(numCell("5.7000000000000002")), "5.7");
+  assert.strictEqual(untypedA1(numCell("1.25E+6")), "1.25E+6", "untyped: verbatim");
+});
+
+test("typed: a workbook with no styles part reads every number plain, without throwing", () => {
+  assert.strictEqual(typedA1(numCell(45730, 1)), "45730");
+});
+
+test("typed: an ISO date cell type takes its day", () => {
+  assert.strictEqual(typedA1(`<c r="A1" t="d"><v>2025-03-14T00:00:00</v></c>`), "2025-03-14");
+});
+
+test("typed: shared strings and a contacts sheet read identically in both modes", () => {
+  const a = readXlsxGrid(contactsBook()).rows.map((r) => [...r]);
+  const b = readXlsxGrid(contactsBook(), { typed: true }).rows.map((r) => [...r]);
+  assert.deepStrictEqual(a, b);
+});
+
+test("serialToIso: the Lotus gap and the range edges", () => {
+  assert.strictEqual(serialToIso(1, false), "1900-01-01");
+  assert.strictEqual(serialToIso(59, false), "1900-02-28");
+  assert.strictEqual(serialToIso(60, false), null, "the phantom 29 February 1900");
+  assert.strictEqual(serialToIso(61, false), "1900-03-01");
+  assert.strictEqual(serialToIso(0, false), null);
+  assert.strictEqual(serialToIso(0, true), "1904-01-01");
+  assert.strictEqual(serialToIso(-1, true), null);
+  assert.strictEqual(serialToIso("x", false), null);
+});
+
+test("percentToText and plainNumber trim what Excel stores to what it shows", () => {
+  assert.strictEqual(percentToText(0.0625), "6.25");
+  assert.strictEqual(percentToText(0.057), "5.7");
+  assert.strictEqual(plainNumber("1.25E+6"), "1250000");
+  assert.strictEqual(plainNumber(-116.2023), "-116.2023");
+});
+
+test("classifyNumFmt: builtins, and custom codes with their literals and sections stripped", () => {
+  const nf = new Map([
+    [164, "m/d/yyyy"], [165, `"$"#,##0.00`], [166, "0.0%"], [167, "h:mm"], [168, "[h]:mm:ss"],
+    [169, `"m"0`], [170, "[Red]#,##0;[Blue]-#,##0"], [171, `_("$"* #,##0.00_);_("$"* \\(#,##0.00\\)`],
+    [172, "mmmm"], [173, "yyyy-mm-dd h:mm"], [174, "0.00E+00"], [175, "@"], [176, "General"],
+  ]);
+  const want = {
+    0: "plain", 9: "percent", 10: "percent", 14: "date", 22: "date", 18: "time", 45: "time", 58: "date",
+    164: "date", 165: "plain", 166: "percent", 167: "time", 168: "time", 169: "plain", 170: "plain",
+    171: "plain", 172: "date", 173: "date", 174: "plain", 175: "plain", 176: "plain", 999: "plain",
+  };
+  for (const id of Object.keys(want)) {
+    assert.strictEqual(classifyNumFmt(Number(id), nf), want[id], "numFmtId " + id);
+  }
+});

@@ -63,10 +63,10 @@ const ORGLEASES = require("./org-leases.js");
 const CONTACTS = require("./org-contacts.js");
 // Reading an .xlsx: the ZIP and the XML by hand, on built-in zlib, because
 // every library that does this is an npm dependency and this repo has none
-// outside desktop-app/. Text only — it deliberately does not interpret Excel
-// date serials, which is why it serves the contacts list (four text fields)
-// and must not be pointed at the vault without that work being done first.
-// See its header.
+// outside desktop-app/. Two modes (see its header): untyped, which serves the
+// contacts list (four text fields) and leaves every number as the digits
+// Excel stored; and `{ typed: true }`, which reads dates and percents through
+// the workbook's styles and is what the vault's inspect route uses (2026-09-02).
 const XLSX = require("./xlsx.js");
 // One Excel file, bounded. Sized under readOrgBody(2e6): base64 costs a third
 // more than the bytes it carries, so a 1 MB file arrives as ~1.4 MB of JSON
@@ -19388,17 +19388,55 @@ const server = http.createServer((req, res) =>
     return;
   }
 
-  // The broker's last confirmed CSV column mapping. A convenience only: it
-  // pre-fills the mapping screen, which they still confirm, so a stale mapping
-  // can never import the wrong thing. Both halves swallow their errors for that
-  // reason — losing it costs a few seconds, and failing an upload over it would
-  // cost the broker their spreadsheet.
-  async function getCsvMapping(userId) {
+  // One Excel file, base64 in a JSON body, as a grid of rows. Shared by the
+  // firm contacts import (untyped, 1 MB) and the vault's inspect route (typed,
+  // 4 MB) so the refusal copy lives in one place. Answers { ok, grid } or
+  // { ok: false, status, error }. xlsx.js writes its refusals FOR the person
+  // holding the file and names what to do about each one, so those are passed
+  // through — but only the ones it recognises as its own (a `code`). An
+  // unexpected throw is ours, not theirs, and gets the generic line.
+  //
+  // NOTHING IS STORED OF THE FILE ITSELF, on either caller: it is decoded,
+  // read into a grid, and dropped.
+  function xlsxGridFromBase64(b64, maxBytes, opts) {
+    let bytes;
+    try { bytes = Buffer.from(String(b64 || "").replace(/^data:[^;,]*;base64,/i, ""), "base64"); }
+    catch (_) { return { ok: false, status: 400, error: "That file could not be read." }; }
+    if (!bytes.length) return { ok: false, status: 400, error: "That file is empty." };
+    if (bytes.length > maxBytes) {
+      const mb = Math.round(maxBytes / (1024 * 1024));
+      return { ok: false, status: 413, error: `That spreadsheet is too large. Files up to ${mb} MB import here; a bigger one can be saved as CSV.` };
+    }
+    try {
+      return { ok: true, grid: XLSX.readXlsxGrid(bytes, opts || {}).rows };
+    } catch (e) {
+      const mine = e && typeof e.code === "string" && e.code !== "";
+      if (!mine) console.error("xlsx read failed:", e && e.message);
+      return { ok: false, status: 400, error: mine ? e.message : "That spreadsheet could not be read. Saving it as CSV will work." };
+    }
+  }
+
+  // The broker's confirmed CSV column mappings, one per FILE SHAPE (migration
+  // 049 — `signature` is VAULT.headerSignature of the file's header row). A
+  // convenience only: it pre-fills the mapping screen, which they still
+  // confirm, so a stale mapping can never import the wrong thing. Both halves
+  // swallow their errors for that reason — losing it costs a few seconds, and
+  // failing an upload over it would cost the broker their spreadsheet.
+  //
+  // The exact shape wins; failing that, the most recently saved mapping of
+  // any shape, which is what one-per-broker always returned and is harmless
+  // because openMapper applies only the keys this file actually has. It used
+  // to be one row per broker, so alternating between a CoStar export and
+  // their own tracking sheet overwrote one mapping with the other every time.
+  async function getCsvMapping(userId, signature) {
     if (!DB_CONFIGURED || !userId) return null;
     try {
       const rows = await sbRequest("GET",
-        `broker_csv_mappings?user_id=eq.${encodeURIComponent(userId)}&select=mapping&limit=1`);
-      const m = rows && rows[0] && rows[0].mapping;
+        `broker_csv_mappings?user_id=eq.${encodeURIComponent(userId)}&select=mapping,signature&order=updated_at.desc&limit=25`);
+      const list = Array.isArray(rows) ? rows : [];
+      const sig = String(signature || "");
+      const hit = (sig && list.find((r) => r && r.signature === sig)) || list[0];
+      const m = hit && hit.mapping;
       return m && typeof m === "object" && !Array.isArray(m) ? m : null;
     } catch (e) {
       console.warn("csv mapping read failed:", e.message);
@@ -19406,7 +19444,7 @@ const server = http.createServer((req, res) =>
     }
   }
 
-  async function saveCsvMapping(userId, mapping) {
+  async function saveCsvMapping(userId, mapping, signature) {
     if (!DB_CONFIGURED || !userId) return;
     if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return;
     try {
@@ -19415,8 +19453,8 @@ const server = http.createServer((req, res) =>
       // to PostgREST's implicit primary-key default; an unverified default
       // makes this fail silently into the catch below with nothing
       // reaching the broker.
-      await sbRequest("POST", "broker_csv_mappings?on_conflict=user_id",
-        [{ user_id: userId, mapping, updated_at: new Date().toISOString() }],
+      await sbRequest("POST", "broker_csv_mappings?on_conflict=user_id,signature",
+        [{ user_id: userId, signature: String(signature || ""), mapping, updated_at: new Date().toISOString() }],
         { prefer: "resolution=merge-duplicates,return=minimal" });
     } catch (e) {
       console.warn("csv mapping write failed:", e.message);
@@ -19943,18 +19981,47 @@ const server = http.createServer((req, res) =>
           if (rateLimited("vaultinspect:" + clientIp(req), 60)) {
             return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
           }
-          const { csv } = JSON.parse(body || "{}");
-          const info = VAULT.inspectCsv(String(csv || ""));
+          const payload = JSON.parse(body || "{}");
+          // Three shapes arrive here and all three become comma CSV text
+          // BEFORE anything reads them (2026-09-02): a CSV, an Excel workbook
+          // (`xlsx`, base64, read typed so dates and percents arrive as the
+          // figures Excel shows), and cells pasted from Excel or an email,
+          // which are tab-separated. Converting here, once, is what keeps
+          // /api/vault/upload at one input: the browser is handed the text
+          // back (`csv`, only when converted — it is the broker's own file,
+          // over the same session, and nothing is stored) and posts THAT to
+          // upload, so the bytes the mapping was confirmed against are the
+          // bytes it is applied to.
+          let csv;
+          let converted = false;
+          let source = "csv";
+          if (typeof payload.xlsx === "string") {
+            const got = xlsxGridFromBase64(payload.xlsx, VAULT.MAX_EXTRACT_BYTES, { typed: true });
+            if (!got.ok) return sendJson(res, got.status, { error: got.error });
+            csv = VAULT.gridToCsv(got.grid);
+            converted = true;
+            source = "xlsx";
+          } else {
+            const norm = VAULT.normalizeDelimited(String(payload.csv || ""));
+            csv = norm.csv;
+            converted = norm.converted;
+            if (converted) source = "tsv";
+          }
+          const info = VAULT.inspectCsv(csv);
           if (!info.ok) return sendJson(res, 400, { error: info.error });
+          // Which door a broker's book came through is a product question
+          // this event is the only place to count. PII-free: a word.
+          if (source !== "csv") logEvent("vault_inspect", { source });
           sendJson(res, 200, {
             headers: info.headers,
             normalized: info.normalized,
             samples: info.samples,
             suggested: info.suggested,
             ambiguous: info.ambiguous,
-            remembered: await getCsvMapping(user.id),
+            remembered: await getCsvMapping(user.id, VAULT.headerSignature(csv)),
             cleanTemplate: info.cleanTemplate,
             rowCount: info.rowCount,
+            ...(converted ? { csv } : {}),
             // Served rather than hard-coded in vault-page.js so the dropdown
             // cannot drift from TEMPLATE_COLUMNS + OPTIONAL_SPEC_COLUMNS.
             // Adding a per-type field stays a one-place change.
@@ -20209,7 +20276,9 @@ const server = http.createServer((req, res) =>
           // produced nothing usable is never offered back to them next time.
           // Row uploads (PDF confirm) ignore mapping entirely — do not overwrite
           // the broker's remembered CSV mapping.
-          if (mapping && !parsedBody.rows) saveCsvMapping(user.id, mapping);
+          // Keyed on the file's header shape (049), computed from the CSV
+          // this route actually received and never taken from the client.
+          if (mapping && !parsedBody.rows) saveCsvMapping(user.id, mapping, VAULT.headerSignature(csv));
 
           // `market` is attached HERE, with server.js's own marketOf() and no
           // other parse, so broker_comps.market agrees byte for byte with
@@ -23273,29 +23342,11 @@ const server = http.createServer((req, res) =>
             //
             // NOTHING IS STORED OF THE FILE ITSELF. It is decoded, read into a
             // grid, and dropped; only the contacts a person confirmed by
-            // importing are written, exactly as on the CSV path.
-            let bytes;
-            try { bytes = Buffer.from(body.xlsx, "base64"); }
-            catch (_) { return sendJson(res, 400, { error: "That file could not be read." }); }
-            if (!bytes.length) return sendJson(res, 400, { error: "That file is empty." });
-            if (bytes.length > MAX_CONTACTS_XLSX_BYTES) {
-              return sendJson(res, 413, { error: "That spreadsheet is too large. Files up to 1 MB import here; a bigger one can be saved as CSV." });
-            }
-
-            let grid;
-            try {
-              grid = XLSX.readXlsxGrid(bytes).rows;
-            } catch (e) {
-              // xlsx.js writes its refusals FOR the person holding the file and
-              // names what to do about each one, so they are passed through —
-              // but only the ones it recognises as its own. An unexpected
-              // throw is ours, not theirs, and gets the generic line.
-              const mine = e && typeof e.code === "string" && e.code !== "";
-              if (!mine) console.error("xlsx read failed:", e && e.message);
-              return sendJson(res, 400, {
-                error: mine ? e.message : "That spreadsheet could not be read. Saving it as CSV will work.",
-              });
-            }
+            // importing are written, exactly as on the CSV path. Untyped:
+            // four text fields, and a number here is a number, never a date.
+            const got = xlsxGridFromBase64(body.xlsx, MAX_CONTACTS_XLSX_BYTES);
+            if (!got.ok) return sendJson(res, got.status, { error: got.error });
+            const grid = got.grid;
 
             const parsed = CONTACTS.parseContactsGrid(grid, {
               isCommentRow: VAULT.isCommentRow,

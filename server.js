@@ -26231,8 +26231,8 @@ const server = http.createServer((req, res) =>
       });
       return sendShellPage(req, res, (signedIn) => marketShell({
         title: `${row.market}, ${row.state} — ${RANKPAGE.CLASS_LABEL[cls]} market ranking | CompNinja`,
-        description: `How ${row.market} scores for ${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, `
-          + `built from public government data with every input shown.`,
+        description: `How ${row.market} ranks for ${RANKPAGE.CLASS_LABEL[cls].toLowerCase()} on `
+          + `macroeconomic fundamentals, with every indicator, weighting and source shown.`,
         canonical: `${SITE_URL}/rankings/${cls}/${row.cbsa}`,
         head: `<style>${RANKPAGE.RANK_CSS}</style>`,
         body, signedIn, current: "/markets",
@@ -26243,7 +26243,10 @@ const server = http.createServer((req, res) =>
     return sendShellPage(req, res, (signedIn) => marketShell({
       title: `${RANKPAGE.CLASS_LABEL[cls]} market rankings | CompNinja`,
       description: `${rows.filter((r) => typeof r.score === "number").length} US markets ranked for `
-        + `${RANKPAGE.CLASS_LABEL[cls].toLowerCase()}, from public government data. Every score shows its parts.`,
+        // Plain text, no entities: marketShell escapes the description into the
+        // meta tag, so an &mdash; here reaches a search result as "&mdash;".
+        + `${RANKPAGE.CLASS_LABEL[cls].toLowerCase()} on macroeconomic fundamentals: employment, wages `
+        + `and home prices, weighted by asset class. Every input shown.`,
       canonical: `${SITE_URL}/rankings/${cls}`,
       head: `<style>${RANKPAGE.RANK_CSS}</style>`,
       body, signedIn, current: "/markets",

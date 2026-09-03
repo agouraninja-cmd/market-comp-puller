@@ -199,8 +199,8 @@ function renderRankingsBody(assetClass, rows, meta) {
   // the step was one-way and the browser's back button was the only exit.
   return `<p style="margin:0 0 6px"><a href="/markets">&larr; Market explorer</a></p>`
     + `<h1>Market rankings</h1>`
-    + `<p class="sub">${scored.length} markets scored for ${esc(CLASS_LABEL[cls].toLowerCase())}, `
-    + `from public government data. Every score shows its parts.</p>`
+    + `<p class="sub">${scored.length} markets ranked on macroeconomic fundamentals, weighted `
+    + `for ${esc(CLASS_LABEL[cls].toLowerCase())}. Every score breaks out to its components.</p>`
 
     + assetTabs(cls)
     + classGap
@@ -228,7 +228,7 @@ function renderRankingsBody(assetClass, rows, meta) {
     + `${Math.round((meta.weights.macro || 0) * 100)}% macro, `
     + `${Math.round((meta.weights.class || 0) * 100)}% class-specific, `
     + `${Math.round((meta.weights.narrative || 0) * 100)}% your read. `
-    + `Readings as of ${esc(meta.generated || "unknown")}.</p>`
+    + `Data as of ${esc(meta.generated || "unknown")}.</p>`
 
     + (unscored
         ? `<p class="rk-note">${unscored} further market${unscored === 1 ? "" : "s"} `
@@ -385,9 +385,10 @@ function renderExplorerEntry(assetClass, rows, meta) {
   return `<div class="rke">`
     + `<div class="rke-head">`
     + `<h2>Market rankings</h2>`
-    + `<p>${scored.length} US markets scored from public government data &mdash; employment, `
-    + `labor force, wages and house prices &mdash; weighted differently for every asset class. `
-    + `Every score shows its parts, so it can be checked rather than taken on trust.</p>`
+    + `<p>${scored.length} US markets ranked on macroeconomic fundamentals &mdash; employment `
+    + `and labor force growth, wage trends and home price appreciation &mdash; with weightings `
+    + `calibrated to each asset class. Every score breaks out to its components, each traceable `
+    + `to the published series behind it.</p>`
     + `</div>`
 
     // Not the ledger's tabs: nothing is aria-current here, because the reader
@@ -403,7 +404,7 @@ function renderExplorerEntry(assetClass, rows, meta) {
     + `<p class="rke-more"><a href="/rankings/${cls}">See all ${scored.length} markets &rarr;</a></p>`
     + `</div>`
 
-    + (m.generated ? `<p class="rke-foot">Readings as of ${esc(m.generated)}.</p>` : "")
+    + (m.generated ? `<p class="rke-foot">Data as of ${esc(m.generated)}.</p>` : "")
     + `</div>`;
 }
 

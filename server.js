@@ -7218,7 +7218,7 @@ function clientErrorMessage(err) {
 // ANTHROPIC_API_KEY set the request carries a literal `x-api-key: "undefined"`
 // and Anthropic answers 401. If ANTHROPIC_API_KEY also happens to be set,
 // the request still fails, because MODEL is this module's constant and
-// under Gemini it holds a Gemini model id ("gemini-3.7-flash" by default),
+// under Gemini it holds a Gemini model id ("gemini-3.8-flash" by default),
 // which Anthropic 404s on as an unrecognized model. Either way the existing
 // failure path (every error here surfaces to the caller) falls through to
 // solo()'s full re-search, which does go through PROVIDER correctly. The

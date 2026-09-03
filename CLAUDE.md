@@ -1039,13 +1039,13 @@ dependency. `.env` is git-ignored — never commit it.
   deploys failed back to back while every page answered 200. `MODEL` is read once at startup from an env var
   nobody can see from here, and a provider's `defaultModel` moves with the
   code, so a checkout only proves what the source says. The Gemini default is
-  `gemini-3.7-flash` (moved from 3.6 on 2026-08-13). Rollback is
-  `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.6-flash`.
+  `gemini-3.8-flash` (moved from 3.7 on 2026-09-02; 3.6 → 3.7 on 2026-08-13). Rollback is
+  `SEARCH_PROVIDER=anthropic` or `MODEL=gemini-3.7-flash`.
 - `THINKING_LEVEL` — optional `low`/`medium`/`high`. **Production runs
   `low`** as of 2026-08-22, set in Render's environment rather than in code,
   so rollback is unsetting it with no deploy. Unset means the request is
   byte-identical to what it was before this knob existed and the vendor's own
-  default applies (`medium` on gemini-3.7-flash).
+  default applies (`medium` on gemini-3.7-flash when measured).
   **It is the largest wall-clock setting this deployment has**, and the
   reason is that on Gemini thought tokens are generated and billed as
   OUTPUT: a measured call spent 4,207 in / **928 out / 6,473 thought**, so

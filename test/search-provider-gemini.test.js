@@ -6,8 +6,8 @@ const P = require("../search-provider-gemini");
 const A = require("../search-provider-anthropic");
 const FIXTURE = require("./fixtures/gemini-response.json");
 
-test("defaults to gemini-3.7-flash", () => {
-  assert.equal(P.defaultModel, "gemini-3.7-flash",
+test("defaults to gemini-3.8-flash", () => {
+  assert.equal(P.defaultModel, "gemini-3.8-flash",
     "comp and market searches both take PROVIDER.defaultModel");
 });
 

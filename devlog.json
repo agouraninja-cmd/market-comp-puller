@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-02",
+    "type": "improvement",
+    "title": "The default search model is Gemini 3.8 Flash",
+    "details": "Owner's call. search-provider-gemini.js's defaultModel moved from gemini-3.7-flash to gemini-3.8-flash, so comp reports, the Market Explorer and bulk valuation all pick it up together (they share PROVIDER.defaultModel). Verified against the models endpoint before switching: the id exists on the project's key and reports the same 1M-in / 65k-out limits and thinking support as 3.7, so deadlineTokens() and the low/medium/high thinking list carry over unchanged. The pricing constant is carried over from 3.7 and not re-verified for 3.8, and its comment says so. Nothing else changed: MODEL still overrides, and the rollback is MODEL=gemini-3.7-flash in Render with no deploy. GET /healthz reports the live model, which is how the deploy is confirmed. Not eval-measured — run-eval.js --compare against a 3.7 run is the way to score it if report quality looks different."
+  },
+  {
     "date": "2026-09-01",
     "type": "fix",
     "title": "Four more suites that held every server they booted until the end of the block",

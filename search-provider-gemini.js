@@ -3,7 +3,8 @@
 // Gemini half of the provider seam. Same pure contract as
 // search-provider-anthropic.js: no fetch, no timers, no env reads.
 //
-// Prices are per million tokens for gemini-3.7-flash. These are Google's
+// Prices are per million tokens for gemini-3.7-flash, carried over unchanged
+// to gemini-3.8-flash on 2026-09-02 (not re-verified for it). These are Google's
 // INTRODUCTORY rate, in effect through 2026-12-31 ($0.75 in / $3.75 out);
 // standard pricing ($1.50 / $7.50, the values this constant held until
 // 2026-08-19) takes over 2027-01-01 and this must flip back then, or every
@@ -70,7 +71,7 @@ function buildRequestBody({ model, prompt, maxComps, thinkingLevel, stream }) {
     //
     // thinking_level is OMITTED unless the deployment set one, so the default
     // request stays byte-identical to what it was before the knob existed and
-    // the vendor's own default (medium on 3.7 Flash) keeps applying. Lowering
+    // the vendor's own default (medium on 3.7 Flash when measured) keeps applying. Lowering
     // it only ever reduces generated tokens, so deadlineTokens() below stays
     // a safe ceiling either way.
     generation_config: {
@@ -415,7 +416,11 @@ module.exports = {
     "aistudio.google.com/apikey, and the Google Cloud billing account behind the project " +
     "that owns GEMINI_API_KEY. Search grounding requires a PAID-tier project: a free-tier " +
     "key authenticates and runs the model but 429s on every grounded search.",
-  defaultModel: "gemini-3.7-flash",
+  // gemini-3.8-flash since 2026-09-02 (owner's call; 3.7 from 2026-08-13, 3.6
+  // before that). Same 1M-in / 65k-out limits and thinking support as 3.7 per
+  // the models endpoint, so deadlineTokens() and thinkingLevels carry over.
+  // Rollback is MODEL=gemini-3.7-flash, no deploy.
+  defaultModel: "gemini-3.8-flash",
   capabilities,
   buildRequestBody,
   requestInit,

@@ -13117,7 +13117,7 @@ function renderPrivacyPageHTML(signedIn) {
     `<strong>OpenStreetMap</strong>, and <strong>CARTO</strong> provide map imagery and tiles.</li>` +
     `<li>The <strong>US Census Bureau</strong> and <strong>Nominatim</strong> provide address ` +
     `geocoding.</li>` +
-    `<li><strong>cdnjs</strong> provides content delivery for the export feature.</li>` +
+    `<li><strong>cdnjs</strong> and <strong>jsdelivr</strong> provide content delivery for the export feature.</li>` +
     `</ul>` +
 
     `<h2>5. Cookies and Local Storage</h2>` +
@@ -13221,7 +13221,7 @@ function renderHomeHTML({ signedIn = false } = {}) {
           "Estimated value range",
           "Source badge on every comp",
           "Private comp vault",
-          "CSV and XLSX export",
+          "CSV, XLSX and PowerPoint export",
           "PDF report export",
         ],
         // Stays a free Offer: a free tier genuinely exists, and turning this

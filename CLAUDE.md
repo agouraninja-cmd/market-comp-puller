@@ -2986,7 +2986,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   over-length field or a non-image logo rather than truncating it, and
   `brandForRender` decides what a given render is allowed to show. The mark
   appears everywhere a report does once entitled — the on-screen letterhead,
-  the print footer, the PNG export, and both the CSV and XLSX exports — and
+  the print footer, the PNG export, and the CSV, XLSX and PPTX exports — and
   the license number renders on all of those, not just the desk preview.
   **Co-branded, never white-label**: the surfaces (not `branding.js`) always
   add the CompNinja attribution and the automated-estimate line, on top of
@@ -4148,6 +4148,35 @@ private row has not earned. Two rules matter when editing anything down here:
   the broker vault above. Moving `/api/geocode` to POST ranked above it and
   **shipped 2026-08-17** — see that route's entry above; the address a private
   comp sends to our own proxy no longer lands in a URL.
+
+**PowerPoint export** (2026-09-02; `exportPptx` in index.html). One more
+format of the same report, for the reason the others could not serve: the
+PNG is one flat picture, the PDF is a print of the web page and the XLSX is
+data with no story, and a broker who needed a deck screenshotted the hero into
+one by hand. Five slides of NATIVE text and tables — value (the hero's
+ledger, basis, trust line and approaches), market summary and drivers, the
+comp table paginated ten rows a slide, the comp map and market-position chart
+as images, and sources & method. Built in the browser by **PptxGenJS 4.0.1,
+lazy-loaded from jsdelivr** on first click exactly as the Excel export loads
+SheetJS from cdnjs (it is not on cdnjs; jsdelivr is named beside cdnjs in the
+privacy policy's third-parties list, and `test/public-pages.test.js` pins
+that line). The button is `#pptxBtn`, revealed for signed-in members only
+with the Excel button. Five rules, all pinned in `test/index-html.test.js`:
+it goes through `gatedExport` and so costs the same allowance slot as the
+CSV of that report (`POST /api/export` takes no format); rows come from
+`exportableComps()`, never the included set, and the deck says how many
+private comps it left out with the CSV's reader-vs-owner wording; branding
+rides `activeBrand()` and every slide's footer carries the CompNinja
+attribution from `pptxFrame`, so no slide can omit it; the ledger is READ
+OFF THE HERO'S DOM rather than recomputed, because `renderOwnerHero` already
+resolved every branch (per-unit, income-only, the leases-only rent range, the
+dashes) and a second computation would be a second answer; and it is always
+light — `PPTX_CHART_VARS` mirrors theme.js's light tokens for the chart's
+`var()` colours and a test holds the two together. The map slide is the
+print/PNG raster (`ensureStaticMap`) re-encoded to PNG because PowerPoint
+does not render WebP; building it is how the pinless-raster bug below was
+found. Verified by opening the file in PowerPoint through its COM interface
+and exporting each slide to PNG (a PowerShell one-liner, no dependency).
 
 ### Non-obvious flows to know before editing
 

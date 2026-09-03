@@ -1757,7 +1757,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                while it was a real entitlement in entitlements.js with no UI
                drawing a logo anywhere; the bullet is back now that it does
                (branding.js, GET|PUT|DELETE /api/branding, the letterhead on
-               screen/print/PNG/CSV/XLSX, 2026-08-08). The exports bullet came
+               screen/print/PNG/CSV/XLSX/PPTX, 2026-08-08). The exports bullet came
                back on 2026-08-03 when the monthly cap became real. -->
           <!-- "Unlimited comps" is a claim about the GATE, not about search
                depth: entitlements.js returns maxComps "all", so Pro is never
@@ -1848,7 +1848,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
-            <tr><td>CSV, image, PDF and Excel exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
+            <tr><td>CSV, image, PDF, Excel and PowerPoint exports</td><td class="c">5 / month</td><td class="c">Unlimited</td></tr>
             <tr><td>Private vault for your own comps</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Address Explorer</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
             <tr><td>Your firm's branding on reports</td><td class="c"><span class="no">&ndash;</span></td><td class="c">&#10003;</td></tr>
@@ -3632,6 +3632,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           title="Comps, valuation, and assumptions as a 3-sheet workbook">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 6"/><path d="m15 13-6 6"/></svg>
           Excel
+        </button>
+        <!-- Signed-in only, the Excel button's door (refreshAccountUI). A deck
+             is a professional deliverable, and the anonymous toolbar does not
+             grow for it. Icon INSIDE the button: flashExportDone swaps
+             innerHTML. -->
+        <button id="pptxBtn"
+          class="hidden btn-live inline-flex items-center gap-1.5 text-sm font-medium text-[#5A6473] bg-white hover:text-[#1A2433] border border-[#D8D4C9] rounded px-3 py-2.5"
+          title="Value, market, comps, map and sources as an editable deck">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="m7 12 3-3 3 3 4-4"/></svg>
+          PowerPoint
         </button>
         <!-- Monthly export allowance. Hidden entirely for Pro, for anyone with
              the tier switched off, and until we've actually been told a number —
@@ -11339,15 +11349,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     tiles.forEach((t) => { if (t.labels) ctx.drawImage(t.labels, t.left, t.top, 128, 128); });
     // Comps first, subject last — the red pin is the one mark that must never
     // end up underneath another.
+    //
+    // The pins are projected at fit.z, the LOGICAL zoom, so the origin they
+    // are measured from must be the logical one too — ox/oy above are in
+    // tile-zoom (fit.z + 1) pixels, i.e. doubled. From 2026-08-26 to
+    // 2026-09-02 this subtracted the doubled origin and every pin landed
+    // ~120,000 px off the canvas: the PDF and the PNG shipped a pinless
+    // basemap, which reads as a map with nothing on it rather than as a bug.
+    // Found by the PowerPoint export, whose map slide is the same raster.
+    const px = fit.cx - SMAP_W / 2, py = fit.cy - SMAP_H / 2;
     pts.forEach((p) => {
       if (p.subject) return;
       const q = smapProject(p.lat, p.lng, fit.z);
-      smapCompPin(ctx, q.x - ox, q.y - oy, p.num);
+      smapCompPin(ctx, q.x - px, q.y - py, p.num);
     });
     pts.forEach((p) => {
       if (!p.subject) return;
       const q = smapProject(p.lat, p.lng, fit.z);
-      smapSubjectPin(ctx, q.x - ox, q.y - oy);
+      smapSubjectPin(ctx, q.x - px, q.y - py);
     });
     smapAttribution(ctx);
     // WebP, falling back to PNG. Measured on a downtown Boise set at these
@@ -12508,6 +12527,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (typeof applySettingsAccountUI === "function") applySettingsAccountUI();
     const xb = document.getElementById("xlsxBtn");
     if (xb) xb.classList.toggle("hidden", !on);
+    const pb = document.getElementById("pptxBtn");
+    if (pb) pb.classList.toggle("hidden", !on);
     if (typeof renderMyDesk === "function") renderMyDesk();
     // Recent searches follow identity for the same reason the desk does: the
     // list is per-account, so signing out must drop the previous member's
@@ -17200,7 +17221,7 @@ async function renderMyDesk() {
         // Same rule as the pricing tile: name only what ships. Report branding
         // was withheld here while it was granted by entitlements.js with no
         // UI to draw it; it is named to a paying member now that it renders
-        // everywhere a report does (screen, print, PNG, CSV, XLSX).
+        // everywhere a report does (screen, print, PNG, CSV, XLSX, PPTX).
         //
         // The vault IS named, for the same reason: it ships, every Pro
         // member has one (`const broker = pro` in entitlements.js), and a
@@ -19434,6 +19455,365 @@ async function renderMyDesk() {
   }
   document.getElementById("xlsxBtn").addEventListener("click", gatedExport(exportXlsx));
 
+  // ----------------------------------------------------------------------------
+  // PowerPoint export (2026-09-02). The PNG is one flat picture, the PDF is a
+  // print of the web page and the XLSX is data with no story; a deck is what a
+  // broker actually puts in front of a seller, a buyer or a lender, and until
+  // this they screenshotted the hero into one by hand. Five slides of NATIVE
+  // text boxes and tables — value, market, comps, map & chart, sources — that
+  // a broker can restyle, reorder or drop into a listing pitch.
+  //
+  // Three rules it inherits rather than re-derives:
+  //  - Rows come from exportableComps(), never includedComps(): a broker's
+  //    private vault comp is kept out of every file the app produces, and the
+  //    deck says how many it left out (the CSV's reader-vs-owner split).
+  //  - It is one more format of the same report, so it rides gatedExport()
+  //    and costs the same allowance slot as the CSV of that report.
+  //  - Co-branded, never white label: the member's letterhead when entitled
+  //    (activeBrand), the CompNinja attribution on every slide regardless.
+  //
+  // The ledger is read off the hero's rendered DOM rather than recomputed:
+  // renderOwnerHero already resolved every branch — dollar range, per-unit,
+  // income-only, the leases-only rent range where lastValuation stays null,
+  // and the no-range dashes — and a second computation here would be a
+  // second answer. Exports are always light (theme.test.js's PNG rule), so
+  // every colour below is a light-palette literal and the chart's var()
+  // tokens are resolved through PPTX_CHART_VARS before rasterizing.
+  //
+  // PptxGenJS is not on cdnjs; jsdelivr is named beside cdnjs in the privacy
+  // policy's third-parties list. Loaded on first click like SheetJS.
+  let pptxGenPromise = null;
+  function loadPptxGenJs() {
+    if (window.PptxGenJS) return Promise.resolve();
+    if (!pptxGenPromise) {
+      pptxGenPromise = new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js";
+        s.onload = resolve;
+        s.onerror = () => {
+          pptxGenPromise = null;   // a retry re-attempts rather than failing forever
+          reject(new Error("Could not load the PowerPoint library. Check your connection and try again."));
+        };
+        document.head.appendChild(s);
+      });
+    }
+    return pptxGenPromise;
+  }
+
+  const PPTX_ATTRIBUTION = "Prepared with CompNinja · an automated estimate, not an appraisal.";
+  const PPTX_FONT = "Calibri";   // installed everywhere PowerPoint is; Inter is not
+  // Light-palette literals, hex without "#" as PptxGenJS wants them.
+  const PPTX_INK = "1A2433", PPTX_MUTE = "5A6473", PPTX_INK3 = "68707E", PPTX_RED = "B91C1C",
+        PPTX_LINE = "D8D4C9", PPTX_WASH = "F5F4EF", PPTX_PAPER = "FBFBF9", PPTX_CARD = "FFFFFF";
+  // ⚠ MIRROR of theme.js's LIGHT values for the tokens renderMarketChart's SVG
+  // uses. test/index-html.test.js pins each entry to THEME_TOKENS[name].light,
+  // because a drift here is a chart with a black fill in a broker's deck.
+  const PPTX_CHART_VARS = {
+    "--line": "#E4E2DA", "--red-fill": "#B91C1C", "--ink": "#1A2433", "--card": "#ffffff",
+    "--ink-mute": "#5A6473", "--ink-3": "#68707E", "--red": "#B91C1C",
+  };
+
+  // PowerPoint does not render WebP, and the static map (drawStaticMap) and a
+  // brand logo can both be WebP. Re-encode through a canvas; null on failure.
+  function toPngDataUri(src) {
+    return new Promise((resolve) => {
+      if (!src) return resolve(null);
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          c.getContext("2d").drawImage(img, 0, 0);
+          resolve({ data: c.toDataURL("image/png"), w: c.width, h: c.height });
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    });
+  }
+
+  // The market-position chart is an inline SVG coloured with var(--token).
+  // Serialized on its own it has no stylesheet, so the tokens are replaced
+  // with light literals and the animation classes (which start at opacity 0)
+  // are stripped before it is drawn to a canvas. Null on failure.
+  function pptxSvgToPng(svgEl) {
+    return new Promise((resolve) => {
+      try {
+        const clone = svgEl.cloneNode(true);
+        clone.querySelectorAll("[class]").forEach((n) => n.removeAttribute("class"));
+        clone.querySelectorAll("[style]").forEach((n) => n.removeAttribute("style"));
+        const vb = String(clone.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+        const w = vb[2] > 0 ? vb[2] : 800, h = vb[3] > 0 ? vb[3] : 300;
+        clone.setAttribute("width", String(w));
+        clone.setAttribute("height", String(h));
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        const xml = new XMLSerializer().serializeToString(clone)
+          .replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => PPTX_CHART_VARS[v] || "#1A2433");
+        const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const c = document.createElement("canvas");
+            c.width = w * 2; c.height = h * 2;
+            const ctx = c.getContext("2d");
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(img, 0, 0, c.width, c.height);
+            resolve({ data: c.toDataURL("image/png"), w, h });
+          } catch (e) { resolve(null); }
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+        img.src = url;
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  // One slide with the title rule, the logo when there is one, and the footer
+  // every slide carries: the member's line on the left, the CompNinja
+  // attribution on the right. Returns the slide; content goes between y 1.05
+  // and y 6.85 on a 13.33 x 7.5 in canvas.
+  function pptxFrame(pptx, ctx, title) {
+    const slide = pptx.addSlide();
+    slide.background = { color: PPTX_PAPER };
+    slide.addText(title, { x: 0.5, y: 0.3, w: ctx.logo ? 10.4 : 12.33, h: 0.5, fontFace: PPTX_FONT,
+      fontSize: 20, bold: true, color: PPTX_INK, margin: 0, valign: "middle" });
+    if (ctx.logo) {
+      slide.addImage({ data: ctx.logo.data, x: 11.13, y: 0.22, w: 1.7, h: 0.66,
+        sizing: { type: "contain", w: 1.7, h: 0.66 } });
+    }
+    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 0.92, w: 12.33, h: 0, line: { color: PPTX_LINE, width: 0.75 } });
+    slide.addShape(pptx.ShapeType.line, { x: 0.5, y: 6.95, w: 12.33, h: 0, line: { color: PPTX_LINE, width: 0.75 } });
+    slide.addText(ctx.brandLine, { x: 0.5, y: 7.0, w: 7.3, h: 0.35, fontFace: PPTX_FONT, fontSize: 9,
+      color: PPTX_INK3, margin: 0, valign: "middle" });
+    slide.addText(PPTX_ATTRIBUTION, { x: 7.83, y: 7.0, w: 5.0, h: 0.35, fontFace: PPTX_FONT, fontSize: 9,
+      color: PPTX_INK3, align: "right", margin: 0, valign: "middle" });
+    return slide;
+  }
+
+  async function exportPptx() {
+    if (!currentComps.length || !currentMeta) return;
+    const btn = document.getElementById("pptxBtn");
+    btn.disabled = true;
+    try {
+      await loadPptxGenJs();
+      const txt = (id) => { const el = document.getElementById(id); return el ? el.textContent.trim() : ""; };
+      const meta = currentMeta;
+      const parsed = currentParsed || {};
+      const brand = activeBrand();
+      const logo = brand && brand.logo ? await toPngDataUri(brand.logo) : null;
+      // Co-branding, not white label: the member's line still names CompNinja
+      // as the one that computed the number, as the CSV's does.
+      const brandLine = brand
+        ? [brand.firmName, brand.preparerName, brand.phone, brand.email,
+            brand.licenseNumber ? "Lic. " + brand.licenseNumber : ""].filter(Boolean).join(" · ")
+          + " · Valuation by CompNinja"
+        : "CompNinja · compninja.co";
+      const ctx = { brandLine, logo };
+      const dateStr = new Date(meta.generatedAt || Date.now()).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+      const T = (extra) => Object.assign({ fontFace: PPTX_FONT, color: PPTX_INK, margin: 0 }, extra || {});
+      const KICKER = (text, extra) => ({ text, options: Object.assign({ fontSize: 9, bold: true, color: PPTX_INK3, charSpacing: 1.5, breakLine: true, paraSpaceAfter: 4 }, extra || {}) });
+
+      const pptx = new PptxGenJS();
+      pptx.layout = "LAYOUT_WIDE";
+      pptx.title = `${meta.address} — CompNinja valuation`;
+
+      // ---- 1 · Value ---------------------------------------------------------
+      {
+        const s = pptxFrame(pptx, ctx, "Valuation");
+        s.addText(meta.address, T({ x: 0.5, y: 1.05, w: 12.33, h: 0.6, fontSize: 26, bold: true, valign: "middle" }));
+        s.addText(`${metaLine(meta)} · Generated ${dateStr}`, T({ x: 0.5, y: 1.65, w: 12.33, h: 0.35, fontSize: 11, color: PPTX_MUTE }));
+        s.addText(txt("ownerHeroTitle").toUpperCase(), T({ x: 0.5, y: 2.2, w: 12.33, h: 0.35, fontSize: 11, bold: true, color: PPTX_RED, charSpacing: 1.5 }));
+        [["Low", "ownerLow", "ownerLowPpsf"], ["Likely", "ownerMid", "ownerMidPpsf"], ["High", "ownerHigh", "ownerHighPpsf"]]
+          .forEach(([label, figId, subId], i) => {
+            const x = 0.5 + i * 4.11, mid = i === 1;
+            s.addShape(pptx.ShapeType.rect, { x, y: 2.6, w: 4.11, h: 1.55, fill: { color: mid ? PPTX_WASH : PPTX_CARD }, line: { color: PPTX_LINE, width: 0.75 } });
+            s.addText(label.toUpperCase(), T({ x: x + 0.2, y: 2.7, w: 3.7, h: 0.3, fontSize: 9, bold: true, color: PPTX_INK3, charSpacing: 1.5 }));
+            s.addText(txt(figId) || "-", T({ x: x + 0.2, y: 3.0, w: 3.7, h: 0.7, fontSize: mid ? 30 : 26, bold: true, valign: "middle" }));
+            s.addText(txt(subId), T({ x: x + 0.2, y: 3.72, w: 3.7, h: 0.3, fontSize: 9, color: PPTX_MUTE }));
+          });
+        const basis = txt("ownerBasis");
+        if (basis) s.addText(basis, T({ x: 0.5, y: 4.25, w: 12.33, h: 0.3, fontSize: 9, color: PPTX_MUTE }));
+        const trust = txt("ownerTrust");
+        if (trust) s.addText(trust, T({ x: 0.5, y: 4.55, w: 12.33, h: 0.6, fontSize: 11, valign: "top" }));
+        // The approaches ledger: the ones that produced a figure first, the
+        // collapsed absences (in #apOff) after, muted — the screen's order.
+        const rows = [];
+        document.querySelectorAll("#ownerApproaches tr:not(.ap-head)").forEach((tr) => {
+          const lab = tr.querySelector(".ap-lab");
+          if (!lab) return;
+          const label = lab.textContent.replace(/:\s*$/, "");
+          const td = tr.querySelector("td");
+          const text = td ? td.textContent.replace(lab.textContent, "").replace(/\s*Source\s*$/, "").trim() : "";
+          const num = tr.querySelector("td.num");
+          const muted = Boolean(tr.closest("#apOff")) || tr.classList.contains("muted");
+          rows.push({ label, text, value: num ? num.textContent.trim() : "", muted });
+        });
+        if (rows.length) {
+          const color = (r) => (r.muted ? PPTX_INK3 : PPTX_INK);
+          const table = [[
+            { text: "Approach", options: { bold: true, color: PPTX_INK3, fontSize: 8, fill: { color: PPTX_WASH } } },
+            { text: "", options: { fill: { color: PPTX_WASH } } },
+            { text: "Indicated value", options: { bold: true, color: PPTX_INK3, fontSize: 8, align: "right", fill: { color: PPTX_WASH } } },
+          ]].concat(rows.slice(0, 5).map((r) => [
+            { text: r.label, options: { bold: !r.muted, color: color(r), fontSize: 9 } },
+            { text: r.text, options: { color: color(r), fontSize: 8 } },
+            { text: r.value, options: { bold: !r.muted, color: color(r), fontSize: 9, align: "right" } },
+          ]));
+          s.addTable(table, { x: 0.5, y: 5.2, w: 12.33, colW: [2.6, 7.4, 2.33], fontFace: PPTX_FONT,
+            border: { type: "solid", color: PPTX_LINE, pt: 0.5 }, margin: 0.05, valign: "middle", autoPage: false });
+        }
+      }
+
+      // ---- 2 · Market ---------------------------------------------------------
+      {
+        const summary = txt("summaryText");
+        const trend = txt("marketTrend");
+        const drivers = Array.from(document.querySelectorAll("#driversList p"))
+          .map((p) => p.textContent.replace(/^\s*[•·]\s*/, "").trim()).filter(Boolean);
+        const pdEl = document.getElementById("priceDiscovery");
+        const pdNote = pdEl && !pdEl.classList.contains("hidden") ? txt("priceDiscoveryNote") : "";
+        const pdDir = txt("priceDiscoveryDir").replace(/^\s*·\s*/, "");
+        const urEl = document.getElementById("userRead");
+        const urNote = urEl && !urEl.classList.contains("hidden") ? txt("userReadNote") : "";
+        const urDir = txt("userReadDir").replace(/^\s*·\s*/, "");
+        if (summary || trend || drivers.length || pdNote || urNote) {
+          const s = pptxFrame(pptx, ctx, "Market summary");
+          if (summary) s.addText(summary, T({ x: 0.5, y: 1.1, w: 6.6, h: 5.6, fontSize: 13, valign: "top", paraSpaceAfter: 6 }));
+          const right = [];
+          if (trend) right.push({ text: trend, options: { bold: true, fontSize: 12, breakLine: true, paraSpaceAfter: 8 } });
+          if (drivers.length) {
+            right.push(KICKER("WHAT IS DRIVING PRICES HERE"));
+            drivers.forEach((d) => right.push({ text: d, options: { fontSize: 11, bullet: true, breakLine: true, paraSpaceAfter: 4 } }));
+          }
+          if (pdNote) {
+            right.push(KICKER("PRICE DISCOVERY" + (pdDir ? " · " + pdDir.toUpperCase() : ""), { paraSpaceBefore: 8 }));
+            right.push({ text: pdNote, options: { fontSize: 11, breakLine: true } });
+          }
+          if (urNote) {
+            right.push(KICKER((meta.shared ? "OWNER'S READ" : "YOUR READ") + (urDir ? " · " + urDir.toUpperCase() : ""), { paraSpaceBefore: 8 }));
+            right.push({ text: urNote, options: { fontSize: 11, breakLine: true } });
+          }
+          if (right.length) s.addText(right, T({ x: 7.4, y: 1.1, w: 5.43, h: 5.6, valign: "top" }));
+        }
+      }
+
+      // ---- 3..n · Comparables --------------------------------------------------
+      {
+        // exportableComps(), never the included set: the deck is the single
+        // easiest file to forward, and a private vault comp must not be in it.
+        const comps = exportableComps();
+        const cols = COLUMNS;
+        const weight = (c) => (c.key === "address" ? 2.6 : c.key === "notes" ? 2.6 : c.key === "source_url" ? 1.6
+          : c.key === "tenancy" ? 1.5 : c.key === "price_or_rate" ? 1.3 : c.key === "dock_doors" ? 1.2 : 1);
+        const total = cols.reduce((a, c) => a + weight(c), 0) + 1.1;
+        const colW = cols.map((c) => 12.33 * weight(c) / total).concat([12.33 * 1.1 / total]);
+        const cellOpts = { fontSize: 8, color: PPTX_INK };
+        const header = cols.map((c) => ({ text: c.label, options: { bold: true, fontSize: 8, color: PPTX_INK3, fill: { color: PPTX_WASH }, align: c.numeric ? "right" : "left" } }))
+          .concat([{ text: "Source confidence", options: { bold: true, fontSize: 8, color: PPTX_INK3, fill: { color: PPTX_WASH } } }]);
+        const body = comps.map((comp) => cols.map((c) => ({ text: String(exportCellValue(comp, c) ?? ""), options: Object.assign({ align: c.numeric ? "right" : "left" }, cellOpts) }))
+          .concat([{ text: (SOURCE_TIERS[compTier(comp)] || {}).label || "", options: cellOpts }]));
+        // Counts and the private-comp disclosure, as the CSV's title row says
+        // them; the deck travels on its own, so it says "report owner".
+        const cc = curationCounts();
+        const bits = [comps.length === 1 ? "1 comparable" : `${comps.length} comparables`];
+        if (reportCurrency.code !== "USD") {
+          bits.push(showUsd && reportCurrency.rate
+            ? `Prices converted to USD where unambiguous, at 1 ${reportCurrency.code} = ${fmtRate(reportCurrency.rate)}`
+            : `Prices in ${reportCurrency.code}`);
+        }
+        if (cc.excluded > 0) bits.push(`${cc.included} of ${cc.total} comps, ${cc.excluded} excluded by report owner`);
+        if (cc.added > 0) bits.push(`${cc.added} comp${cc.added === 1 ? "" : "s"} added by report owner`);
+        const privOut = privateIncludedCount();
+        if (privOut > 0) {
+          bits.push(meta.shared
+            ? `${privOut} comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, from the sender's own records`
+            : `${privOut} private vault comp${privOut === 1 ? "" : "s"} counted in the valuation but not listed here, visible only to the report owner`);
+        }
+        const PER = 10;
+        const pages = Math.max(1, Math.ceil(body.length / PER));
+        const noun = meta.txFocus === "leases" ? "Comparable leases" : meta.txFocus === "sales" ? "Comparable sales" : "Comparable sales & leases";
+        for (let p = 0; p < pages; p++) {
+          const s = pptxFrame(pptx, ctx, pages > 1 ? `${noun} (${p + 1} of ${pages})` : noun);
+          s.addText(bits.join(" · "), T({ x: 0.5, y: 1.05, w: 12.33, h: 0.35, fontSize: 9, color: PPTX_MUTE, valign: "middle" }));
+          const slice = body.slice(p * PER, (p + 1) * PER);
+          s.addTable([header].concat(slice.length ? slice : [[{ text: "No comparables to list.", options: cellOpts }]]),
+            { x: 0.5, y: 1.45, w: 12.33, colW, fontFace: PPTX_FONT, rowH: 0.34,
+              border: { type: "solid", color: PPTX_LINE, pt: 0.5 }, margin: 0.04, valign: "middle", autoPage: false });
+        }
+      }
+
+      // ---- 4 · Map & market position ------------------------------------------
+      {
+        await ensureStaticMap();
+        const mapEl = document.getElementById("mapStatic");
+        const map = mapEl && mapEl.getAttribute("src") ? await toPngDataUri(mapEl.getAttribute("src")) : null;
+        const svg = document.querySelector("#chartWrap svg");
+        const chartCard = document.getElementById("chartCard");
+        const chart = svg && chartCard && !chartCard.classList.contains("hidden") ? await pptxSvgToPng(svg) : null;
+        if (map || chart) {
+          const s = pptxFrame(pptx, ctx, map && chart ? "Comp map & market position" : map ? "Comp map" : "Market position");
+          const fit = (img, x, y, maxW, maxH) => {
+            const r = Math.min(maxW / img.w, maxH / img.h);
+            const w = img.w * r, h = img.h * r;
+            s.addImage({ data: img.data, x: x + (maxW - w) / 2, y, w, h });
+            return h;
+          };
+          const cap = (text, x, y, w) => s.addText(text, T({ x, y, w, h: 0.5, fontSize: 9, color: PPTX_MUTE, valign: "top" }));
+          const MAP_CAP = "Red pin = the subject; numbered dots match the comps table.";
+          const CHART_CAP = "Sale comps by price per square foot, with the comp median and the subject's range.";
+          if (map && chart) {
+            const h1 = fit(map, 0.5, 1.15, 7.4, 4.9);
+            cap(MAP_CAP, 0.5, 1.2 + h1, 7.4);
+            const h2 = fit(chart, 8.2, 1.15, 4.63, 4.9);
+            cap(CHART_CAP, 8.2, 1.2 + h2, 4.63);
+          } else {
+            const h = fit(map || chart, 0.5, 1.15, 12.33, 5.0);
+            cap(map ? MAP_CAP : CHART_CAP, 0.5, 1.2 + h, 12.33);
+          }
+        }
+      }
+
+      // ---- 5 · Sources & method -------------------------------------------------
+      {
+        const s = pptxFrame(pptx, ctx, "Sources & method");
+        const how = txt("ownerTrustHow");
+        const left = [];
+        if (how) {
+          left.push(KICKER("HOW THIS RANGE IS CALCULATED"));
+          left.push({ text: how, options: { fontSize: 10, breakLine: true } });
+        }
+        const searchBits = [];
+        if (parsed.transactions_reviewed) searchBits.push(`${parsed.transactions_reviewed} transactions reviewed`);
+        if (parsed.search_radius) searchBits.push(`search radius ${parsed.search_radius}`);
+        if (meta.months) searchBits.push(`last ${meta.months} month${meta.months === 1 ? "" : "s"}`);
+        if (searchBits.length) {
+          left.push(KICKER("THE SEARCH", { paraSpaceBefore: 8 }));
+          left.push({ text: searchBits.join(" · "), options: { fontSize: 10, breakLine: true } });
+        }
+        if (left.length) s.addText(left, T({ x: 0.5, y: 1.1, w: 7.0, h: 5.7, valign: "top" }));
+        const right = [KICKER("SOURCE CONFIDENCE")];
+        const present = new Set(exportableComps().map((c) => compTier(c)).filter(Boolean));
+        Object.keys(SOURCE_TIERS).filter((k) => present.has(k)).forEach((k) => {
+          right.push({ text: SOURCE_TIERS[k].label + ": ", options: { fontSize: 10, bold: true } });
+          right.push({ text: SOURCE_TIERS[k].legend, options: { fontSize: 10, breakLine: true, paraSpaceAfter: 3 } });
+        });
+        if (brand && brand.disclaimer) right.push({ text: brand.disclaimer, options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        right.push({ text: "Automated estimate, not an appraisal. Verify independently before underwriting.", options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        right.push({ text: "CompNinja · compninja.co", options: { fontSize: 10, color: PPTX_MUTE, breakLine: true, paraSpaceBefore: 8 } });
+        s.addText(right, T({ x: 7.83, y: 1.1, w: 5.0, h: 5.7, valign: "top" }));
+      }
+
+      await pptx.writeFile({ fileName: exportFileName("pptx") });
+      flashExportDone(btn, "Saved");
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  } // end exportPptx
+  document.getElementById("pptxBtn").addEventListener("click", gatedExport(exportPptx));
+
   // The trust line's mechanics toggle. Registered once at module scope, not in
   // renderOwnerHero — that function runs on every render and every edit to a
   // subject field, and an addEventListener there would stack a new handler on
@@ -19673,8 +20053,8 @@ async function renderMyDesk() {
 
   // ----------------------------------------------------------------------------
   // Export allowance. Free accounts get a number of REPORTS per month; Pro is
-  // unlimited. Counted per report, so the same analysis as CSV, image, PDF and
-  // Excel costs one, not four.
+  // unlimited. Counted per report, so the same analysis as CSV, image, PDF,
+  // Excel and PowerPoint costs one, not five.
   //
   // Honour system, and deliberately so: every export is produced in this
   // browser, so the server can only be asked "may I?" — it can never withhold

@@ -2725,3 +2725,80 @@ test("this file still owns the reveal, and cannot throw if the injection is miss
   assert.equal(guards.length, 2,
     "both open-modal guards must tolerate an absent modal");
 });
+
+// ---------------------------------------------------------------------------
+// The PowerPoint export (2026-09-02). One more format of the same report, so
+// the rules it must share with the CSV, the XLSX and the PNG are pinned here
+// rather than trusted: the private-comp filter, the one export gate, the
+// signed-in door, the always-light palette and the attribution.
+test("the PowerPoint export shares the Excel button's door and the one export gate", () => {
+  assert.match(html, /<button id="pptxBtn"\s+class="hidden /, "the button ships hidden");
+  assert.match(html, /const pb = document\.getElementById\("pptxBtn"\);\s*if \(pb\) pb\.classList\.toggle\("hidden", !on\);/,
+    "refreshAccountUI reveals it with the Excel button");
+  assert.match(html, /gatedExport\(exportPptx\)/, "wired through gatedExport, which is what consumes an export");
+  assert.match(html, /<button id="pptxBtn"[\s\S]{0,600}?<svg[\s\S]{0,600}?PowerPoint\s*<\/button>/,
+    "the icon sits inside the button (flashExportDone swaps innerHTML)");
+});
+
+test("the PowerPoint export keeps private comps out and says how many it left out", () => {
+  const fn = html.match(/async function exportPptx\(\)[\s\S]*?\n  \} \/\/ end exportPptx\n/);
+  assert.ok(fn, "index.html must define exportPptx() closed by its end marker");
+  assert.match(fn[0], /exportableComps\(\)/, "rows come from exportableComps");
+  assert.doesNotMatch(fn[0], /\bincludedComps\(\)/, "never includedComps");
+  assert.match(fn[0], /privateIncludedCount\(\)/, "the disclosure counts what was withheld");
+  assert.match(fn[0], /from the sender's own records/, "the shared-report wording");
+  assert.match(fn[0], /visible only to the report owner/, "the owner wording");
+  assert.match(fn[0], /await ensureStaticMap\(\)/, "the map comes from the export raster, never the Leaflet pane");
+  assert.match(fn[0], /activeBrand\(\)/, "branding through the one mirror of brandForRender");
+  assert.match(fn[0], /Valuation by CompNinja/, "co-branded, never white label");
+});
+
+test("every PowerPoint slide carries the CompNinja attribution, and the loader is pinned", () => {
+  assert.match(html, /const PPTX_ATTRIBUTION = "Prepared with CompNinja · an automated estimate, not an appraisal\.";/);
+  const frame = html.match(/function pptxFrame\(pptx, ctx, title\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(frame, "pptxFrame builds every slide");
+  assert.match(frame[0], /PPTX_ATTRIBUTION/, "the footer is on the frame, so no slide can omit it");
+  assert.match(html, /s\.src = "https:\/\/cdn\.jsdelivr\.net\/npm\/pptxgenjs@4\.0\.1\/dist\/pptxgen\.bundle\.js";/,
+    "the library version is pinned");
+  const loader = html.match(/function loadPptxGenJs\(\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(loader);
+  assert.match(loader[0], /pptxGenPromise = null;/, "a failed load nulls the promise so a retry re-attempts");
+});
+
+test("the PowerPoint chart palette mirrors theme.js's light tokens", () => {
+  // The market-position chart is coloured with var(--token) and is rasterized
+  // outside the page's stylesheet, so the export resolves each token itself.
+  // A drift here is a chart with a black fill in a broker's deck, and exports
+  // are always light (the PNG rule in theme.test.js), so LIGHT is the side.
+  const { THEME_TOKENS } = require("../theme");
+  const m = html.match(/const PPTX_CHART_VARS = \{([\s\S]*?)\};/);
+  assert.ok(m, "index.html must define PPTX_CHART_VARS");
+  const entries = [...m[1].matchAll(/"--([a-z0-9-]+)": "(#[0-9a-fA-F]{6})"/g)];
+  assert.ok(entries.length >= 5, "the map names the chart's tokens");
+  for (const [, name, hex] of entries) {
+    assert.ok(THEME_TOKENS[name], "theme.js has no token named " + name);
+    assert.equal(hex.toLowerCase(), THEME_TOKENS[name].light.toLowerCase(), "--" + name + " must be theme.js's light value");
+  }
+  // And every token the chart actually uses is in the map.
+  const chart = html.match(/function renderMarketChart\(\)[\s\S]*?getElementById\("chartWrap"\)\.innerHTML = svg;/);
+  assert.ok(chart, "index.html must define renderMarketChart()");
+  const used = new Set([...chart[0].matchAll(/var\((--[a-z0-9-]+)\)/g)].map((x) => x[1]));
+  const mapped = new Set(entries.map(([, name]) => "--" + name));
+  for (const v of used) assert.ok(mapped.has(v), "the chart uses " + v + " and PPTX_CHART_VARS does not map it");
+});
+
+test("the static map's pins are measured from the LOGICAL origin, not the doubled tile origin", () => {
+  // drawStaticMap fetches tiles one zoom deeper than the frame (retina), so
+  // its tile origin ox/oy is in doubled pixels, while every pin is projected
+  // at the frame's own zoom. Subtracting the doubled origin from a logical
+  // projection put every pin ~120,000 px off the canvas, and the PDF and PNG
+  // shipped a pinless basemap for a week (2026-08-26 to 2026-09-02) with
+  // nothing on screen to say so. Pinned here because the failure is a map
+  // that merely looks empty.
+  const fn = html.match(/async function drawStaticMap\(pts\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(fn, "index.html must define drawStaticMap()");
+  assert.match(fn[0], /const px = fit\.cx - SMAP_W \/ 2, py = fit\.cy - SMAP_H \/ 2;/, "a logical origin is derived");
+  assert.match(fn[0], /smapCompPin\(ctx, q\.x - px, q\.y - py, p\.num\)/, "comp pins use it");
+  assert.match(fn[0], /smapSubjectPin\(ctx, q\.x - px, q\.y - py\)/, "the subject pin uses it");
+  assert.doesNotMatch(fn[0], /Pin\(ctx, q\.x - ox/, "no pin subtracts the doubled tile origin");
+});

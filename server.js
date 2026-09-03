@@ -5104,41 +5104,122 @@ function touchMsgThread(threadId, when) {
   ).catch((err) => console.error("Thread touch failed (the message is stored):", err.message));
 }
 
-// The EXTERNAL side of the inbox (2026-09-01): the deal rooms this member
-// OWNS, shaped as conversation rows for /messages. Branded External on
+// The EXTERNAL side of the inbox (2026-09-01): the deal rooms this member is
+// in, shaped as conversation rows for /messages. Branded External on
 // screen (owner's word), and the target state is that Messages absorbs the
 // broker side of the hub entirely — this list is step 1 of that migration,
 // and the vault's own hub section comes out once Messages can do every job
 // it does.
 //
+// BOTH SIDES OF THE ROOM (2026-09-02). It was owner-scoped, and the half it
+// left out was the half the whole feature exists for: a client invited by
+// email could open the link, sign up with that address, and find nothing in
+// Messages, because the only list that named their room read
+// hubs?owner_user_id=eq.me. The access rules always recognized them (018's
+// identity rule, hub-access.js), so this was never a permission bug and
+// always a discovery one. Reported by a real recipient, 2026-09-02.
+//
 // A read-only VIEW over the hub tables, never a second store: the thread
 // itself is still read and written through the existing /api/hub routes, so
 // the client's page, the note emails, the tokens and the audit trail are
-// untouched. Owner-scoped by construction (hubs?owner_user_id=eq.me), which
-// is the same wall the hub's own list read has always had.
+// untouched. The two sides are read by the two different questions that
+// define them — owner_user_id for mine, a participant row for theirs — and
+// `owner` on every row is what the client gates the broker-only controls on.
+//
+// WHAT A GUEST ROW MUST NOT CARRY is the rest of the guest list. The other
+// addresses in a broker's deal room are that broker's client relationships
+// and none of a fellow guest's business — the same owner-only rule GET
+// /api/hub draws around its `people` block, drawn here in the same place so
+// the two cannot drift. A guest row is named after the BROKER instead, which
+// is who they think they are talking to anyway.
 //
 // FAILS OPEN TO EMPTY, per part: a member's firm conversations must never be
 // taken down by a hub read, so every failure here costs the External section
 // and nothing else.
 async function externalThreadsFor(user) {
   if (!DB_CONFIGURED || !user || !user.id) return [];
-  const hubs = (await sbRequest("GET",
-    `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
-    `&select=id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`)) || [];
-  if (!hubs.length) return [];
-  const ids = hubs.map((h) => String(h.id));
   const me = MSG.normalizeEmail(user.email);
+
+  // A row read, then the hubs it names — deliberately NOT
+  // listHubsForParticipant's embedded select, which is the same question
+  // asked in one round trip for My Desk. Two flat reads because this list
+  // caps and sorts across both sides below and wants the hub rows in that
+  // shape anyway, and because an embed is the one thing the test fake cannot
+  // resolve: proving the recipient's row lands in the inbox matters more
+  // here than saving a request on a page-load path that already fans out.
+  const ownedQ = `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
+    `&select=id,owner_user_id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`;
+  const guestQ = `hub_participants?email=eq.${encodeURIComponent(me)}` +
+    `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=200`;
+
+  // One side failing must not take the other down with it: a broker's own
+  // rooms are still theirs when the participant read blows up, and a client's
+  // room is still theirs when the owner read does.
+  const [owned, invitedRows] = await Promise.all([
+    sbRequest("GET", ownedQ).catch((err) => {
+      console.error("External owned read failed (rooms shared with them still list):", err.message);
+      return [];
+    }),
+    me
+      ? sbRequest("GET", guestQ).catch((err) => {
+        console.error("External invitation read failed (their own rooms still list):", err.message);
+        return [];
+      })
+      : Promise.resolve([]),
+  ]);
+
+  const ownedIds = new Set((owned || []).map((h) => String(h.id)));
+  // A hub the caller OWNS is never also a room shared with them, even if
+  // their own address sits in their own participant list — GET /api/hubs'
+  // dedupe, and for the same reason: one room, one row.
+  const invitedIds = [...new Set((invitedRows || [])
+    .map((r) => String(r.hub_id || "")).filter(Boolean))]
+    .filter((id) => !ownedIds.has(id));
+  let guests = [];
+  if (invitedIds.length) {
+    try {
+      guests = (await sbRequest("GET",
+        `hubs?id=in.(${pgInList(invitedIds)})` +
+        `&select=id,owner_user_id,title,status,closed_at,updated_at` +
+        `&order=updated_at.desc&limit=50`)) || [];
+    } catch (err) {
+      console.error("External shared-room read failed (their own rooms still list):", err.message);
+    }
+    // The second half of the dedupe, on the hub's own answer rather than on
+    // the participant row's.
+    guests = guests.filter((h) => h &&
+      !(h.owner_user_id && String(h.owner_user_id) === String(user.id)));
+  }
+
+  // Sorted and capped ACROSS both sides before anything is read per room:
+  // the preview below costs one request each, so the fan-out has to be
+  // bounded here rather than by each half separately.
+  const rooms = [
+    ...(owned || []).map((h) => ({ hub: h, owner: true })),
+    ...guests.map((h) => ({ hub: h, owner: false })),
+  ].sort((a, b) => String(b.hub.updated_at || "").localeCompare(String(a.hub.updated_at || "")))
+    .slice(0, 50);
+  if (!rooms.length) return [];
+
+  const ids = rooms.map((r) => String(r.hub.id));
+  const mineIds = rooms.filter((r) => r.owner).map((r) => String(r.hub.id));
+  const ownerIds = [...new Set(rooms.filter((r) => !r.owner)
+    .map((r) => String(r.hub.owner_user_id || "")).filter(Boolean))];
 
   let parts = [];
   let notify = [];
   try {
     [parts, notify] = await Promise.all([
-      sbRequest("GET",
-        `hub_participants?hub_id=in.(${pgInList(ids)})` +
-        `&select=hub_id,email,removed_at&limit=1000`),
-      // The owner's own seen stamps (040) — the hub's read mark, which is why
+      // ONLY the rooms this member owns. See the header: a guest row carries
+      // the broker and nobody else.
+      mineIds.length
+        ? sbRequest("GET",
+          `hub_participants?hub_id=in.(${pgInList(mineIds)})` +
+          `&select=hub_id,email,removed_at&limit=1000`)
+        : Promise.resolve([]),
+      // The reader's own seen stamps (040) — the hub's read mark, which is why
       // opening a conversation from the inbox clears its badge: GET /api/hub
-      // stamps this on every read.
+      // stamps this on every read, for a guest and for the owner alike.
       sbRequest("GET",
         `hub_notify?hub_id=in.(${pgInList(ids)})` +
         `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
@@ -5165,9 +5246,26 @@ async function externalThreadsFor(user) {
     }
   }
 
+  // The brokers behind the guest rows, by user id rather than by email: a
+  // hub names its owner that way, and a room whose owner account is gone
+  // simply has nobody to name it after (the hub's own "ownerless" state).
+  const owners = new Map();
+  if (ownerIds.length) {
+    try {
+      const rows = await sbRequest("GET",
+        `users?id=in.(${pgInList(ownerIds)})&select=id,name,email&limit=${ownerIds.length}`);
+      for (const u of rows || []) {
+        owners.set(String(u.id), { email: MSG.normalizeEmail(u.email), name: u.name || "" });
+      }
+    } catch (err) {
+      console.error("External owner read failed (the room still lists):", err.message);
+    }
+  }
+
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
   const out = [];
-  for (const h of hubs) {
+  for (const room of rooms) {
+    const h = room.hub;
     // Recent notes only: the preview and the unread count both live in the
     // tail of the conversation, and the thread itself is read through
     // /api/hub when opened. Capped, so a long-running deal costs the same as
@@ -5181,19 +5279,36 @@ async function externalThreadsFor(user) {
       console.error("External preview read failed (the row stays):", err.message);
     }
     const latest = msgs[0] || null;
-    const people = parts
-      .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
-      .map((p) => {
-        const e = MSG.normalizeEmail(p.email);
-        return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
-      });
+    let people;
+    if (room.owner) {
+      people = parts
+        .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
+        .map((p) => {
+          const e = MSG.normalizeEmail(p.email);
+          return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
+        });
+    } else {
+      // The broker, alone. It is not a guest list, it is who this room is
+      // with — and the stream needs it to put a name on their messages
+      // instead of the local part of an address.
+      const b = owners.get(String(h.owner_user_id || "")) || null;
+      people = b && b.email
+        ? [{ email: b.email, name: MSG.displayName({ name: b.name, email: b.email }) }]
+        : [];
+    }
     out.push({
       id: String(h.id),
+      // Is this the broker's room or somebody else's? Every owner-only
+      // control on the page hangs off this, so it is the server's answer and
+      // not the browser's guess — the same stance GET /api/hub takes with
+      // canWrite and canAdd.
+      owner: room.owner === true,
       // The PEOPLE name the row, the firm-messaging rule carried outside the
       // firm. The deal's title is context and falls back in only when there
       // is nobody to name it after yet.
       label: MSG.peopleLabel(people.map((p) => p.name)) ||
-        String(h.title || "").trim() || "No one invited yet",
+        String(h.title || "").trim() ||
+        (room.owner ? "No one invited yet" : "Shared with you"),
       title: String(h.title || ""),
       closed: h.status === "closed" || Boolean(h.closed_at),
       lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
@@ -5204,6 +5319,36 @@ async function externalThreadsFor(user) {
   }
   out.sort((a, b) => String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || "")));
   return out;
+}
+
+// Is there an External side for this person at all? Two ids, no previews, no
+// names — the cheapest possible form of the question, because the only caller
+// is the /messages page boot deciding whether a reader with no firm gets the
+// page or the wall. The list route asks the expensive version a moment later
+// and is the source of truth; this one only has to be right about empty.
+//
+// FAILS TO FALSE, and that is the safe direction here: a hub read that dies
+// leaves a firmless reader looking at the same wall they saw yesterday, and
+// the client's own fetch (which fails open to a 503 message, not a wall) is
+// what corrects it.
+async function hasExternalRooms(user) {
+  if (!DB_CONFIGURED || !user || !user.id) return false;
+  const me = MSG.normalizeEmail(user.email);
+  try {
+    const [owned, guest] = await Promise.all([
+      sbRequest("GET",
+        `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`),
+      me
+        ? sbRequest("GET",
+          `hub_participants?email=eq.${encodeURIComponent(me)}` +
+          `&removed_at=is.null&select=hub_id&limit=1`)
+        : Promise.resolve([]),
+    ]);
+    return Boolean((owned && owned.length) || (guest && guest.length));
+  } catch (err) {
+    console.error("External room check failed (the boot falls back to the wall):", err.message);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -24740,7 +24885,22 @@ const server = http.createServer((req, res) =>
     // IS a database read: asked the other way round, an outage would report
     // itself as "you are not in a firm", which is the misreport-an-outage-as-
     // absence trap the hub list and the lead inbox each had to fix.
-    const openMessaging = async () => {
+    // Reaches the screen verbatim, so it is product copy: it names what is
+    // missing and it does not imply anything is for sale. ONE copy of it,
+    // because the list route now decides for itself when to send it.
+    const NO_FIRM = {
+      error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+      code: "no_firm",
+    };
+
+    // `firmOptional` is for the LIST route alone (2026-09-02). A person can
+    // be in a deal room without being in a firm — that is the ordinary case
+    // for a client who was invited by email and then signed up — and walling
+    // them out of /messages is what made their conversation unfindable. Every
+    // other route here still needs a firm, because everything they touch is
+    // a firm thread; the external half is read and written through /api/hub,
+    // which carries its own gate.
+    const openMessaging = async (opts) => {
       const user = await getSessionUser(req);
       if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
       if (!DB_CONFIGURED) {
@@ -24749,12 +24909,8 @@ const server = http.createServer((req, res) =>
       }
       const firm = await messagingFirmOf(user);
       if (!firm) {
-        sendJson(res, 403, {
-          // Reaches the screen verbatim, so it is product copy: it names what
-          // is missing and it does not imply anything is for sale.
-          error: "Messages are for your firm. Create one, or accept an invitation, to start.",
-          code: "no_firm",
-        });
+        if (opts && opts.firmOptional) return { user, orgId: "", membership: null };
+        sendJson(res, 403, NO_FIRM);
         return null;
       }
       return { user, orgId: firm.orgId, membership: firm.membership };
@@ -24853,9 +25009,39 @@ const server = http.createServer((req, res) =>
     // --- GET /api/messages — my threads and my firm's people ----------------
     if (req.method === "GET" && msgPath === "/api/messages") {
       (async () => {
-        const g = await openMessaging();
+        const g = await openMessaging({ firmOptional: true });
         if (!g) return;
         const ent = await entitlementsFor(req);
+
+        // A reader with no firm has no internal side at all, so the firm
+        // reads are skipped rather than asked with an empty id. They are
+        // still owed their deal rooms: the External list is read first, and
+        // the no_firm refusal is sent only when there is nothing on either
+        // side to show. Somebody who has never been in a firm and has never
+        // been sent comps sees exactly the wall they saw before.
+        if (!g.orgId) {
+          let external = [];
+          try {
+            external = await externalThreadsFor(g.user);
+          } catch (err) {
+            // The same fail-open stance as the firm path, one step further
+            // out: with no firm there is nothing else on this page, so a hub
+            // read that dies must not be reported as "you are in no firm".
+            console.error("External conversations read failed (no firm):", err.message);
+            return sendJson(res, 503, { error: "Couldn't load your messages. Please try again in a minute." });
+          }
+          if (!external.length) return sendJson(res, 403, NO_FIRM);
+          return sendJson(res, 200, {
+            ok: true,
+            firm: null,
+            me: { id: String(g.user.id), email: String(g.user.email || "") },
+            external,
+            canAttachComps: ent.canUseVault === true,
+            people: [],
+            threads: [],
+          });
+        }
+
         const [mine, people, org] = await Promise.all([
           msgThreadIdsFor(g.user.id),
           rosterFor(g.orgId),
@@ -27262,10 +27448,17 @@ const server = http.createServer((req, res) =>
         if (!user) boot = { s: 401, j: { error: "Please sign in." } };
         else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Messages are unavailable right now. Please try again in a minute." } };
         else if (!(await messagingFirmOf(user))) {
-          boot = { s: 403, j: {
-            error: "Messages are for your firm. Create one, or accept an invitation, to start.",
-            code: "no_firm",
-          } };
+          // A firm is not the only way to have a conversation here
+          // (2026-09-02). A client invited into a deal room by email, who
+          // then signed up with that address, is in no firm and has messages
+          // waiting — pre-rendering the wall for them is what made those
+          // messages unreachable, since the wall never re-fetches.
+          boot = (await hasExternalRooms(user))
+            ? { s: 200, j: {} }
+            : { s: 403, j: {
+              error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+              code: "no_firm",
+            } };
         } else boot = { s: 200, j: {} };
       } catch (err) {
         console.error("messages boot failed:", err.message);

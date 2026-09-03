@@ -684,18 +684,29 @@ function renderMessagesBody(boot) {
   function applyComposerMode(){
     var external = state.openKind === "external";
     var row = external ? extRow() : null;
+    // WHOSE room this is. External used to mean "mine", so the two questions
+    // were one; a guest's room joined the list on 2026-09-02 and they came
+    // apart. The server answers it (owner, on the row) rather than the page
+    // guessing from an email match.
+    var mine = external && !!row && row.owner === true;
     var closed = external && (!state.canWriteExt || (row && row.closed));
     $("msgInput").disabled = closed;
     $("msgInput").placeholder = closed ? "This conversation is closed" : "Write a message";
     $("msgSend").disabled = closed;
     $("msgMailNote").className = external && !closed ? "msg-hint" : "msg-hint msg-hide";
-    $("msgAttach").className = state.canAttach && !closed ? "msg-btn sm" : "msg-btn sm msg-hide";
-    // The guest list is the OWNER'S panel and every External row is owned, so
-    // it shows for every external conversation — closed included, since who
+    // Sending comps into a deal room is the BROKER'S act — POST /api/hub/items
+    // is owner-only — so a guest's room gets no Attach button rather than one
+    // whose only outcome is "Only the broker who created this hub can send
+    // comps into it". Inside the firm it stays exactly as it was.
+    $("msgAttach").className = state.canAttach && !closed && (!external || mine)
+      ? "msg-btn sm" : "msg-btn sm msg-hide";
+    // The guest list is the OWNER'S panel — closed rooms included, since who
     // was in a closed deal is still worth reading; the panel disables its own
-    // write controls.
-    $("msgPeopleBtn").className = external ? "msg-btn sm" : "msg-btn sm msg-hide";
-    if (!external) $("msgPeoplePanel").className = "msg-panel msg-hide";
+    // write controls. A guest never sees it, because the other addresses in
+    // the room are the broker's client relationships and none of theirs: the
+    // same wall GET /api/hub draws, which simply sends them no people.
+    $("msgPeopleBtn").className = mine ? "msg-btn sm" : "msg-btn sm msg-hide";
+    if (!mine) $("msgPeoplePanel").className = "msg-panel msg-hide";
     if (closed) { $("msgPicker").className = "msg-panel msg-hide"; }
   }
 
@@ -731,7 +742,9 @@ function renderMessagesBody(boot) {
     if (!state.threads.length && !state.external.length) {
       $("msgThreads").innerHTML =
         '<div class="msg-empty"><h3>No conversations yet</h3>' +
-        '<p>Start one with somebody at your firm. Everything you send stays here.</p></div>';
+        '<p>' + (state.firm
+          ? "Start one with somebody at your firm. Everything you send stays here."
+          : "Everything shared with you shows up here.") + '</p></div>';
       return;
     }
     if (!list.length && !ext.length) {
@@ -743,15 +756,20 @@ function renderMessagesBody(boot) {
     // deal rooms sees exactly the list they saw yesterday, and the labels are
     // what says which side of the wall a row is on. Internal is the firm;
     // External is the people outside it that this member shares comps with.
-    var both = state.external.length > 0;
-    if (both && list.length) html += '<div class="msg-sect">Internal</div>';
+    // The group labels exist only once there are two groups to tell apart,
+    // and that is judged on what is actually being drawn: a reader whose
+    // only conversations are deal rooms (a client, now that a guest's rooms
+    // list) would otherwise get a lone "External" heading over the whole
+    // list, external to a firm they are not in.
+    var both = list.length > 0 && ext.length > 0;
+    if (both) html += '<div class="msg-sect">Internal</div>';
     for (var i = 0; i < list.length; i++) {
       var t = list[i];
       html += threadRowHtml(t, "data-thread",
         state.openKind === "internal" && t.id === state.openId,
         t.preview || "No messages yet");
     }
-    if (ext.length) html += '<div class="msg-sect">External</div>';
+    if (both) html += '<div class="msg-sect">External</div>';
     for (var k = 0; k < ext.length; k++) {
       var x = ext[k];
       // The deal's title is the second line when nothing has been said yet;
@@ -801,7 +819,7 @@ function renderMessagesBody(boot) {
     if (state.tab === "comps") return;
     if (!state.openId) {
       $("msgStream").innerHTML = '<div class="msg-empty"><h3>Select a conversation</h3>' +
-        '<p>Or start a new one with somebody at your firm.</p></div>';
+        (state.firm ? '<p>Or start a new one with somebody at your firm.</p>' : "") + '</div>';
       return;
     }
     if (!state.messages.length) {
@@ -1055,14 +1073,25 @@ function renderMessagesBody(boot) {
         return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
       });
       ungate();
-      // The firm as a quiet line at the foot of the column, not as the
-      // headline. Counts only people who have actually joined, because a
-      // pending invitation is not somebody you can talk to.
-      var joined = state.people.filter(function(p){ return !p.pending && p.userId; }).length;
-      var waiting = state.people.length - joined;
-      $("msgFirmLine").textContent = ((state.firm && state.firm.name) || "Your firm") + " · " +
-        joined + (joined === 1 ? " colleague" : " colleagues") +
-        (waiting ? ", " + waiting + " invited" : "");
+      // NO FIRM, AND STILL A PAGE (2026-09-02): a client who was invited into
+      // a deal room by email and signed up with that address belongs here,
+      // and everything on this column that only makes sense inside a firm
+      // goes quiet rather than failing when pressed. New opens firm threads,
+      // so it is the first thing to go.
+      if (!state.firm) {
+        $("msgNewBtn").className = "msg-btn sm msg-hide";
+        $("msgFirmLine").textContent = "Deal rooms shared with you";
+      } else {
+        $("msgNewBtn").className = "msg-btn sm";
+        // The firm as a quiet line at the foot of the column, not as the
+        // headline. Counts only people who have actually joined, because a
+        // pending invitation is not somebody you can talk to.
+        var joined = state.people.filter(function(p){ return !p.pending && p.userId; }).length;
+        var waiting = state.people.length - joined;
+        $("msgFirmLine").textContent = ((state.firm && state.firm.name) || "Your firm") + " · " +
+          joined + (joined === 1 ? " colleague" : " colleagues") +
+          (waiting ? ", " + waiting + " invited" : "");
+      }
       applyComposerMode();
       renderThreads();
     });
@@ -1559,7 +1588,10 @@ function renderMessagesBody(boot) {
       // into it; arriving bare on a phone leaves the reader on the list.
       if (wantedX) { openExternal(wantedX, true, true); return; }
       if (wanted) { openThread(wanted, true, true); return; }
-      if (state.draft) {
+      // A draft needs somebody to say it to, and the picker only searches a
+      // firm. A reader with none keeps the draft and lands on their rooms
+      // instead of on a panel that can find nobody.
+      if (state.draft && state.firm) {
         // A draft with nobody to say it to yet (a discovery door, slice 8):
         // pick the colleague first. The draft survives into the thread that
         // opens, and the person still presses Send.

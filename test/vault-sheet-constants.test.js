@@ -74,12 +74,14 @@ test("composeAddress only ever appends what is missing", () => {
   assert.strictEqual(c("6200 W Gowen Rd", "Boise", ""), "6200 W Gowen Rd, Boise");
 });
 
-test("a spelled-out state is left alone, not invented into a code", () => {
-  // market.js keeps state CODES and reads "..., Boise, Idaho" as a market
-  // called "Idaho". Expanding it here would be this module inventing geography
-  // it deliberately knows nothing about, so the row is refused downstream
-  // instead — where the message names the two-letter code as the fix.
+test("a spelled-out state is left alone here, and market.js reads it", () => {
+  // Expanding "Idaho" in this module would be it inventing geography it
+  // deliberately knows nothing about, so the name passes through as typed.
+  // Until 2026-09-03 market.js then read "..., Boise, Idaho" as a market
+  // called "Idaho" and the row was refused; it reads state names now, so the
+  // composed address keys under the real market and the row imports.
   assert.strictEqual(VAULT.composeAddress("1 A St", "Boise", "Idaho"), "1 A St, Boise, Idaho");
+  assert.strictEqual(marketOf("1 A St, Boise, Idaho"), "Boise, ID");
   const out = VAULT.parseUpload([
     "Property Address,City,State,Kind,SF,Closed",
     "1 A St,Boise,Idaho,Industrial,1000,03/15/2026",
@@ -88,8 +90,9 @@ test("a spelled-out state is left alone, not invented into a code", () => {
                kind: "property_type", sf: "size_sqft", closed: "deal_date" },
     constants: { transaction: "Sale" }, hasMarket,
   });
-  assert.strictEqual(out.rows.length, 0);
-  assert.match(out.errors[0], /two-letter/);
+  assert.strictEqual(out.rows.length, 1);
+  assert.strictEqual(out.rows[0].address, "1 A St, Boise, Idaho");
+  assert.strictEqual(marketOf(out.rows[0].address), "Boise, ID");
 });
 
 test("a value in the row always beats the whole-file answer", () => {

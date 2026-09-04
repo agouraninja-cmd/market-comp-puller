@@ -153,22 +153,28 @@ test("completeWith is inert without the predicate", () => {
 
 test("a completion this module cannot read is refused with the ordinary message", () => {
   const csv = [HEAD, row("6200 W Gowen Rd")].join("\n");
-  for (const bad of ["Boise", "Boise, Idaho"]) {
+  for (const bad of ["Boise", "Boise, Nowhere"]) {
     const out = VAULT.parseUpload(csv, { hasMarket, completeWith: bad });
     assert.strictEqual(out.rows.length, 0, `${bad} must not file the row anywhere`);
     assert.strictEqual(out.completed, 0);
-    assert.match(out.errors[0], /needs a city and a two-letter state/);
+    assert.match(out.errors[0], /needs a city and state/);
   }
   // And the message names the string the completion PRODUCED, so the broker
-  // sees what "Boise, Idaho" turned their row into.
-  const out = VAULT.parseUpload(csv, { hasMarket, completeWith: "Boise, Idaho" });
-  assert.match(out.errors[0], /6200 W Gowen Rd, Boise, Idaho/);
+  // sees what "Boise, Nowhere" turned their row into.
+  const out = VAULT.parseUpload(csv, { hasMarket, completeWith: "Boise, Nowhere" });
+  assert.match(out.errors[0], /6200 W Gowen Rd, Boise, Nowhere/);
+  // "Boise, Idaho" WAS in the refused set until 2026-09-03; market.js reads
+  // a spelled-out state now, so that completion files the row under its
+  // real market rather than under a market called "Idaho".
+  const ok = VAULT.parseUpload(csv, { hasMarket, completeWith: "Boise, Idaho" });
+  assert.strictEqual(ok.rows.length, 1);
+  assert.strictEqual(ok.completed, 1);
 });
 
 test("the refusal fragment the page mirrors is exported and still the message's own", () => {
   const csv = [HEAD, row("6200 W Gowen Rd")].join("\n");
   const out = VAULT.parseUpload(csv, { hasMarket });
-  assert.strictEqual(VAULT.MARKET_REFUSAL, "needs a city and a two-letter state");
+  assert.strictEqual(VAULT.MARKET_REFUSAL, "needs a city and state");
   assert.ok(out.errors[0].includes(VAULT.MARKET_REFUSAL));
 });
 

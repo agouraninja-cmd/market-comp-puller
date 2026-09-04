@@ -174,7 +174,7 @@ test("suggested market completion, end to end", async (t) => {
       // The row arrives bare and stays bare: the page completes confirm-table
       // rows in the cells themselves, so the whole-file answer does not apply.
       assert.equal(status, 400);
-      assert.match(body.error, /needs a city and a two-letter state/);
+      assert.match(body.error, /needs a city and state/);
     } finally { await stop(); }
   });
 

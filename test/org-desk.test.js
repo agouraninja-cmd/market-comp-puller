@@ -1120,6 +1120,61 @@ test("an unattributed firm comp still says which firm, and invents no name", () 
 });
 
 // ---------------------------------------------------------------------------
+// The Firm branding row in Membership & settings (2026-09-03)
+// ---------------------------------------------------------------------------
+const BRAND_SCOPE_RE = /  function updateBrandScopeUI\(\) \{[\s\S]*?\n  \}/;
+const BRAND_BITS_RE = /  function brandBits\(b\) \{[\s\S]*?\n  \}/;
+
+function loadBrandScope({ firm, mine, firmProfile }) {
+  const bits = html.match(BRAND_BITS_RE);
+  assert.ok(bits, "brandBits is still in index.html");
+  return load(BRAND_SCOPE_RE,
+    "this.fn = updateBrandScopeUI;",
+    "let brandScope = 'mine'; let pendingLogo = '';\n" +
+    "let currentBranding = __mine; let currentFirmBranding = __firmProfile; let currentSuggested = null;\n" +
+    "const BRAND_SCOPE_ON = 'on'; const BRAND_SCOPE_OFF = 'off';\n" +
+    "function myFirm() { return __firm; }\n" +
+    "function fillBrandForm() {} function renderBrandPreview() {}\n" +
+    bits[0],
+    { __firm: firm, __mine: mine || null, __firmProfile: firmProfile || null });
+}
+
+const FIRM_PROFILE = { firmName: "Colliers Boise", logo: "data:image/png;base64,AAAA" };
+
+test("the firm branding row is shown to whom the letterhead reaches, the button to who can set it", () => {
+  // No firm: nothing, whatever profiles exist.
+  let ctx = loadBrandScope({ firm: null, firmProfile: FIRM_PROFILE });
+  ctx.fn();
+  assert.equal(ctx.dom.hidden("firmBrandWrap"), true, "no firm, no row");
+
+  // A plain member of a firm that has a letterhead: told what it is, no button.
+  ctx = loadBrandScope({ firm: { name: "Colliers Boise", canManage: false }, firmProfile: FIRM_PROFILE });
+  ctx.fn();
+  assert.equal(ctx.dom.hidden("firmBrandWrap"), false);
+  assert.equal(ctx.dom.text("firmBrandState"), "Firm branding: Colliers Boise · logo set");
+  assert.equal(ctx.dom.hidden("firmBrandEditBtn"), true, "a member who cannot set it gets no button");
+
+  // A plain member of a firm with no letterhead: nothing to read, nothing to do.
+  ctx = loadBrandScope({ firm: { name: "Colliers Boise", canManage: false } });
+  ctx.fn();
+  assert.equal(ctx.dom.hidden("firmBrandWrap"), true, "a fact nobody can act on is not shown");
+
+  // An owner/admin with no letterhead yet: the invitation.
+  ctx = loadBrandScope({ firm: { name: "Colliers Boise", canManage: true } });
+  ctx.fn();
+  assert.equal(ctx.dom.hidden("firmBrandWrap"), false);
+  assert.equal(ctx.dom.text("firmBrandState"), "No firm branding yet — colleagues without their own print unbranded");
+  assert.equal(ctx.dom.hidden("firmBrandEditBtn"), false);
+  assert.equal(ctx.dom.text("firmBrandEditBtn"), "Set up firm branding");
+
+  // An owner/admin with one: the same summary the Account card shows, and Edit.
+  ctx = loadBrandScope({ firm: { name: "Colliers Boise", canManage: true }, firmProfile: FIRM_PROFILE });
+  ctx.fn();
+  assert.equal(ctx.dom.text("firmBrandState"), "Firm branding: Colliers Boise · logo set");
+  assert.equal(ctx.dom.text("firmBrandEditBtn"), "Edit firm branding");
+});
+
+// ---------------------------------------------------------------------------
 // The markup these functions reach for
 // ---------------------------------------------------------------------------
 test("every id the firm code reaches for exists in index.html", async () => {
@@ -1144,6 +1199,9 @@ test("every id the firm code reaches for exists in index.html", async () => {
   const billing = loadBilling({ o1: { seats: 5, used: 2, status: "active", canBill: true } });
   billing.fn({ id: "o1" });
   collect(billing);
+  const brand = loadBrandScope({ firm: { name: "F", canManage: true }, firmProfile: FIRM_PROFILE });
+  brand.fn();
+  collect(brand);
   const shelf = loadShelf({ body: { items: [ITEM({})], truncated: true } });
   await shelf.render();
   collect(shelf);

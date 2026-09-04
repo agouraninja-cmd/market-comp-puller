@@ -1140,6 +1140,43 @@ test("report branding is collapsed behind a summary that states what is saved", 
     "both load-failure paths must open the box so the message is visible");
 });
 
+test("the firm section carries a door to the firm's branding, and only a door", () => {
+  // The firm's letterhead was the one firm-level setting not in Membership &
+  // settings (2026-09-03): it was edited under Account, behind a collapsed
+  // box, behind a scope toggle. The fix is a ROW that states the firm's
+  // branding and opens that same form in firm scope — never a second form.
+  const at = html.indexOf('id="firmAutoShare"');
+  assert.ok(at > -1, "the auto-share block is still there");
+  const sec = html.slice(at, html.indexOf('id="firmBilling"', at));
+  for (const id of ["firmBrandWrap", "firmBrandState", "firmBrandEditBtn"]) {
+    assert.ok(sec.includes('id="' + id + '"'), id + " sits in Membership & settings, between auto-share and seats");
+  }
+  // No second form: none of the branding inputs may appear in the firm block.
+  const firmBlock = html.slice(html.indexOf('id="deskFirm"'), html.indexOf("/deckFirm"));
+  for (const id of ["brandFirm", "brandLogoFile", "brandSave"]) {
+    assert.ok(!firmBlock.includes('id="' + id + '"'), id + " must stay in the one form under Account");
+  }
+  // The row is rendered by the function that already follows both loads.
+  const fnAt = html.indexOf("function updateBrandScopeUI");
+  const fn = html.slice(fnAt, html.indexOf("\n  }\n", fnAt));
+  assert.ok(fn.includes('"firmBrandState"') && fn.includes('"firmBrandEditBtn"'),
+    "updateBrandScopeUI renders the firm row");
+  // The two lines that describe a profile read ONE rule.
+  const summaryAt = html.indexOf("function renderBrandSummary");
+  const summary = html.slice(summaryAt, html.indexOf("\n  }\n", summaryAt));
+  assert.ok(summary.includes("brandBits("), "the collapsed summary reads brandBits");
+  assert.ok(fn.includes("brandBits("), "the firm row reads brandBits");
+  // The door switches scope and opens the box; it does not save anything.
+  const doorAt = html.indexOf('getElementById("firmBrandEditBtn").addEventListener');
+  assert.ok(doorAt > -1, "the door has a click handler");
+  const door = html.slice(doorAt, doorAt + 600);
+  assert.ok(door.includes("closeFirmModal()"), "the door closes the Firm account panel it sits in");
+  assert.ok(door.includes("if (!onDesk()) enterDesk()"), "from a report page the door first opens the workspace");
+  assert.ok(door.includes('setBrandScope("firm")'), "the door selects firm scope");
+  assert.ok(door.includes("openBrandBox()"), "the door opens the collapsed box");
+  assert.ok(!door.includes("fetch("), "the door never writes");
+});
+
 test("the workspace subtitle describes the page it introduces", () => {
   assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault."),
     "the subtitle names what the workspace actually holds");

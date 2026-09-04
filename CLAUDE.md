@@ -3056,7 +3056,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   SEPARATE table read by a separate function, never columns on `orgs` —
   `orgsByIds`/`findOrg` name their SELECT columns, the 030/036 hazard. It
   rides `GET /api/branding` as `firm` and the share snapshot inherits it
-  (auto-share included). Two rules a future editor will otherwise break:
+  (auto-share included). **Since 2026-09-03 the Firm account panel carries a
+  door to it**: a Firm branding row in Membership & settings states the
+  firm's current letterhead (`brandBits`, the same words the Account card's
+  collapsed summary uses, off one rule) and, for an owner/admin, an Edit
+  control that closes the panel, opens the workspace's ONE branding form in
+  firm scope and lands there. The row never edits and the form never moved,
+  so `setBrandScope` stays the single writer; the row is rendered by
+  `updateBrandScopeUI()`, shown to every member the letterhead reaches and
+  to anyone who can set one (the `#firmBilling` rule: a fact nobody can act
+  on is not shown). Personal branding and the Plan card stay under Account
+  on purpose — both are the member's own. Two rules a future editor will
+  otherwise break:
   - **A shared report renders the sender's snapshot and never the viewer's
     own profile.** `POST /api/share` looks up the sender's saved profile at
     share time (only when `user && ent.canBrand`) and writes it into

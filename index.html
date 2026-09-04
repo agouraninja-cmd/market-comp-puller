@@ -2309,6 +2309,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
               <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
             </div>
           </div>
+          <!-- Firm branding (041, door added 2026-09-03). The setting itself
+               lives in the ONE branding form on the workspace, under Account
+               (one form, two save targets — setBrandScope is the writer);
+               this row is the Firm account panel's door to it, because every
+               other firm-level setting is in this panel and the letterhead
+               is what every colleague's report prints. Shown to every member
+               the letterhead reaches and to anyone who can set one; the
+               button only to the latter. Rendered by updateBrandScopeUI(),
+               which already runs after both the firm read and the branding
+               read. The button closes this panel and lands on the form: it
+               never edits, so the form stays the one place that does. -->
+          <div id="firmBrandWrap" class="hidden mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <span id="firmBrandState" class="text-[#4C5665]"></span>
+            <button id="firmBrandEditBtn" type="button"
+              class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Edit firm branding</button>
+          </div>
           <!-- Seats. Shown to every member (the count explains an invite
                refusal before it happens), but only the owner is offered the
                controls — checkout and the portal both refuse anyone else, and
@@ -15990,8 +16006,10 @@ async function renderMyDesk() {
   // state (not just the last-saved profile), so it updates as they type.
   // Co-branded, never white label: the CompNinja line at the bottom is not
   // built from member data and this function does not take a flag to hide it.
-  // Opens the collapsed branding box. Used only where something INSIDE it has
-  // to be read — a failed load writes into #brandMsg, which is in there.
+  // Opens the collapsed branding box. Used where something INSIDE it has to
+  // be read — a failed load writes into #brandMsg, which is in there — and by
+  // the firm section's door (#firmBrandEditBtn), which lands the member on
+  // the form in firm scope.
   function openBrandBox() {
     const box = document.getElementById("brandBox");
     if (box) box.open = true;
@@ -16002,15 +16020,23 @@ async function renderMyDesk() {
   // choose/remove and every keystroke — so the summary cannot drift from the
   // form the way a separately-called updater would. textContent throughout:
   // the firm name is the member's own text.
-  function renderBrandSummary(b) {
-    const el = document.getElementById("brandSummary");
-    if (!el) return;
+  // What a profile puts on a report, named rather than counted: "3 details
+  // saved" tells a member nothing about what is going on their reports. ONE
+  // rule for both lines that describe a profile — the collapsed summary
+  // below and the Firm branding row in Membership & settings — so the two
+  // can never say different things about the same letterhead.
+  function brandBits(b) {
     const bits = [];
     if (b.firmName) bits.push(b.firmName);
     if (b.logo) bits.push("logo set");
     if (b.licenseNumber) bits.push("license shown");
-    // Named rather than counted: "3 details saved" tells a member nothing
-    // about what is going on their reports.
+    return bits;
+  }
+
+  function renderBrandSummary(b) {
+    const el = document.getElementById("brandSummary");
+    if (!el) return;
+    const bits = brandBits(b);
     // A seeded, unsaved form must not read as a letterhead that exists: the
     // summary is written from the live form, so it says so.
     const unsaved = brandSeeded && !currentBranding && brandScope === "mine";
@@ -16121,10 +16147,44 @@ async function renderMyDesk() {
     note.textContent = fallbackOn
       ? `Your reports use ${(firm && firm.name) || "your firm"}'s branding until you save your own.`
       : "";
+    // The firm section's door (2026-09-03): the Firm branding row in
+    // Membership & settings, beside the other firm-level settings. Shown to
+    // every member the letterhead reaches (a firm profile exists) and to
+    // anyone who can set one; a member who can do neither sees nothing —
+    // the #firmBilling rule. This row never edits: the button opens the one
+    // form above in firm scope, so setBrandScope stays the single writer.
+    const wrap = document.getElementById("firmBrandWrap");
+    const state = document.getElementById("firmBrandState");
+    const editBtn = document.getElementById("firmBrandEditBtn");
+    if (wrap && state && editBtn) {
+      const profile = currentFirmBranding;
+      const show = Boolean(firm && (manage || profile));
+      wrap.classList.toggle("hidden", !show);
+      state.textContent = !show ? ""
+        : profile ? `Firm branding: ${brandBits(profile).join(" · ")}`
+        : "No firm branding yet — colleagues without their own print unbranded";
+      editBtn.classList.toggle("hidden", !manage);
+      editBtn.textContent = profile ? "Edit firm branding" : "Set up firm branding";
+    }
   }
 
   document.getElementById("brandScopeMine").addEventListener("click", () => setBrandScope("mine"));
   document.getElementById("brandScopeFirm").addEventListener("click", () => setBrandScope("firm"));
+  // The door from the Firm account panel: close the panel, make sure the
+  // workspace is the view on screen (the account menu, and so the panel, is
+  // reachable from a report page too), switch the one form to firm scope,
+  // open it and land there. An instant jump, the #deskRunReport rule: paired
+  // with a focus() it must land exactly once.
+  document.getElementById("firmBrandEditBtn").addEventListener("click", () => {
+    closeFirmModal();
+    if (!onDesk()) enterDesk();
+    setBrandScope("firm");
+    openBrandBox();
+    const sec = document.getElementById("deskBranding");
+    if (sec && sec.scrollIntoView) sec.scrollIntoView({ block: "start" });
+    const f = document.getElementById("brandFirm");
+    if (f) f.focus({ preventScroll: true });
+  });
 
   function loadBranding() {
     // See the comment on brandingLoaded: renderMyDesk() re-runs for reasons

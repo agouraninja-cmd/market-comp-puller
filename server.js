@@ -11057,13 +11057,6 @@ const marketBar = (signedIn = false, current = "") =>
       `Tools<span class="car">▾</span></summary>` +
       `<div class="dd">${toolLinksHtml(current)}</div></details>`
     : "") +
-  // Pricing sits in the bar itself rather than one click inside Explore. It is
-  // the question a prospect arrives with, and a B2B site that hides its price
-  // behind a browse menu reads as one that would rather not say. The
-  // visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
-  // (`live && !isPro`), so it still hides for a Pro member and on a deployment
-  // with no billing configured; only the position moved.
-  ACCOUNT_NAV_PRICING +
   // Markets is a public page with 27-odd standing snapshots and, until now, no
   // header link on any surface — it was reachable from the footers and from
   // one line inside the app. It renders for every visitor because it is the
@@ -11112,6 +11105,23 @@ const marketBar = (signedIn = false, current = "") =>
       // Hidden until ACCOUNT_NAV_JS asks. index.html carries the twin.
       `<a href="/messages"${current === "/messages" ? ' aria-current="page"' : ""}>Messages<span id="navMsgDot" class="navdot" hidden aria-label="unread conversations"></span></a>`
     : "") +
+  // Pricing sits in the bar itself rather than one click inside Explore. It is
+  // the question a prospect arrives with, and a B2B site that hides its price
+  // behind a browse menu reads as one that would rather not say.
+  //
+  // BELOW the member's own rows since 2026-09-04 (owner's report). It used to
+  // be emitted above the signed-in block, which in the rail put it at the very
+  // top of the sidebar -- the first row a member read on every page that is
+  // not the workspace, above Workspace, Vault and Messages, because those
+  // three are what the member actually navigates between. It renders here
+  // instead, directly under Messages and above the Tools group. Nothing
+  // changes for a stranger: the block above emits nothing for them, so Pricing
+  // still follows Explore and Tools exactly as before.
+  //
+  // The visibility rule is UNCHANGED and still lives in ACCOUNT_NAV_JS
+  // (`live && !isPro`), so it hides for a Pro member and on a deployment with
+  // no billing configured; only the position moved.
+  ACCOUNT_NAV_PRICING +
   // The tools group's label -- see RAIL_CSS's .navsec rule. Emitted for every
   // visitor and shown only in the rail, so the markup stays identical in both
   // modes and a stranger's horizontal bar never grows a section heading.

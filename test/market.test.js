@@ -54,6 +54,44 @@ test("marketOf returns a comma-less address as-is (the known non-canonical echo)
   assert.equal(M.marketOf("1394 North 28th st washougal"), "1394 North 28th st washougal");
 });
 
+// --- 2026-09-03: state names and the comma-less shape ----------------------
+// The desk's "add a building by address" form refused "1210 N 17th st Boise
+// Idaho 83702", an address with the city and state plainly in it. Model
+// output and geocoders write "City, ST"; people write what they say.
+
+test("marketOf reads a spelled-out state, with or without a zip", () => {
+  assert.equal(M.marketOf("6200 W Gowen Rd, Boise, Idaho"), "Boise, ID");
+  assert.equal(M.marketOf("6200 W Gowen Rd, Boise, Idaho 83716"), "Boise, ID");
+  assert.equal(M.marketOf("1 Main St, Charleston, West Virginia"), "Charleston, WV");
+  assert.equal(M.marketOf("1 Main St, Richmond, Virginia"), "Richmond, VA");
+  assert.equal(M.marketOf("1 Main St, Washington, District of Columbia"), "Washington, DC");
+});
+
+test("marketOf reads a comma-less address when a street suffix delimits the city", () => {
+  assert.equal(M.marketOf("1210 N 17th st Boise Idaho 83702"), "Boise, ID");
+  assert.equal(M.marketOf("1210 N 17th St Boise ID"), "Boise, ID");
+  assert.equal(M.marketOf("1210 N 17th St Boise ID 83702-1234"), "Boise, ID");
+  assert.equal(M.marketOf("100 Main St Garden City ID"), "Garden City, ID");
+  assert.equal(M.marketOf("100 Main St Ste 200 Boise ID"), "Boise, ID");
+  assert.equal(M.marketOf("100 Main St #4 Boise ID"), "Boise, ID");
+  assert.equal(M.marketOf("100 Main St N Boise ID"), "Boise, ID");
+  assert.equal(M.marketOf("100 Main St Boise ID USA"), "Boise, ID");
+});
+
+test("a suffix word ending a city name is walked past, not read as the street", () => {
+  assert.equal(M.marketOf("100 Main St Federal Way WA"), "Federal Way, WA");
+  assert.equal(M.marketOf("100 Main St Mountlake Terrace Washington"), "Mountlake Terrace, WA");
+});
+
+test("marketOf refuses to guess a comma-less city with nothing delimiting it", () => {
+  // "Broadway Boise" is not a city. Miss rather than misfile.
+  assert.equal(M.marketOf("100 Broadway Boise ID"), "100 Broadway Boise ID");
+  // A state at the tail with no city before it is not a market.
+  assert.equal(M.marketOf("100 Main St Idaho"), "100 Main St Idaho");
+  // A tail that only looks like a state code.
+  assert.equal(M.marketOf("100 Main St Boise ZZ"), "100 Main St Boise ZZ");
+});
+
 test("marketOf caps the fallback at 60 chars", () => {
   const long = "x".repeat(200);
   assert.equal(M.marketOf(long).length, 60);

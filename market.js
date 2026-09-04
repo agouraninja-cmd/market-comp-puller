@@ -40,25 +40,120 @@ const CA_PROVINCES = new Set([
   "AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT",
 ]);
 
+// Spelled-out state names, so "Boise, Idaho" keys as "Boise, ID" (2026-09-03).
+// A person typing their own building writes the state the way they say it;
+// only model output and geocoders reliably write the code. Kept to the states
+// (no province names): the corpus never holds a Canadian row today, and the
+// key for one is the code either way.
+const STATE_NAME_TO_CODE = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", "district of columbia": "DC",
+  florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL",
+  indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA",
+  maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI",
+  minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT",
+  nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+  ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA",
+  "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN",
+  texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA",
+  "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+};
+// Longest first, so "West Virginia" is tried before "Virginia".
+const STATE_NAME_ALT = Object.keys(STATE_NAME_TO_CODE)
+  .sort((a, b) => b.length - a.length)
+  .map((n) => n.replace(/ /g, "\\s+"))
+  .join("|");
+// A segment (or a comma-less tail) that begins with a state — code or name —
+// optionally followed by a zip. Returns the code, or null.
+const SEG_STATE_RE = new RegExp(`^(?:([A-Za-z]{2})|(${STATE_NAME_ALT}))\\b`, "i");
+function stateCodeAtStart(segment) {
+  const m = segment.match(SEG_STATE_RE);
+  if (!m) return null;
+  if (m[1]) {
+    const code = m[1].toUpperCase();
+    return US_STATES.has(code) || CA_PROVINCES.has(code) ? code : null;
+  }
+  return STATE_NAME_TO_CODE[m[2].toLowerCase().replace(/\s+/g, " ")] || null;
+}
+
+// The comma-less shape: "1210 N 17th st Boise Idaho 83702". Without commas
+// nothing says where the street ends and the city begins, so the city is
+// read ONLY when a street suffix or a unit designator delimits it — after the
+// last such token, the remaining words before the state are the city. An
+// address with no delimiter ("100 Broadway Boise ID") is left unparsed, the
+// vault's miss-rather-than-guess rule: a building filed under "Broadway
+// Boise, ID" is worse than one refused with the shape named.
+//
+// Deliberately NOT in the list: words that sit INSIDE city names ("Circle"
+// in Circle Pines, "Point", "Park", "City"). A delimiter that ends a city
+// name ("Federal Way", "Mountlake Terrace") is harmless — it leaves an empty
+// tail, and the scan keeps walking back to the previous one.
+const STREET_SUFFIX = new Set([
+  "st", "street", "ave", "avenue", "av", "rd", "road", "blvd", "boulevard",
+  "dr", "drive", "ln", "lane", "ct", "court", "pl", "place", "pkwy", "parkway",
+  "hwy", "highway", "cir", "ter", "terrace", "trl", "trail", "way", "plz",
+  "plaza", "expy", "expressway", "fwy", "freeway", "tpke", "turnpike",
+]);
+// A unit designator takes the token after it ("Ste 200", "Apt 3B", "# 12").
+const UNIT_WORD = new Set([
+  "suite", "ste", "unit", "apt", "apartment", "bldg", "building", "fl",
+  "floor", "rm", "room", "spc", "space", "lot", "trailer",
+]);
+const POST_DIRECTIONAL = new Set(["n", "s", "e", "w", "ne", "nw", "se", "sw"]);
+const TAIL_STATE_RE = new RegExp(
+  `\\s+(?:([A-Za-z]{2})|(${STATE_NAME_ALT}))(?:\\s+\\d{5}(?:-\\d{4})?)?$`, "i");
+function commalessMarket(cleaned) {
+  const m = cleaned.match(TAIL_STATE_RE);
+  if (!m) return null;
+  const code = m[1]
+    ? (US_STATES.has(m[1].toUpperCase()) || CA_PROVINCES.has(m[1].toUpperCase())
+      ? m[1].toUpperCase() : null)
+    : STATE_NAME_TO_CODE[m[2].toLowerCase().replace(/\s+/g, " ")];
+  if (!code) return null;
+  const words = cleaned.slice(0, m.index).split(" ").filter(Boolean);
+  for (let i = words.length - 1; i >= 0; i--) {
+    const w = words[i].toLowerCase().replace(/\.$/, "");
+    let after;
+    if (STREET_SUFFIX.has(w)) after = i + 1;
+    else if (UNIT_WORD.has(w) || /^#/.test(w)) after = /^#\S/.test(w) ? i + 1 : i + 2;
+    else continue;
+    let city = words.slice(after);
+    if (city.length > 1 && POST_DIRECTIONAL.has(city[0].toLowerCase())) city = city.slice(1);
+    if (!city.length || city.length > 4) continue;
+    if (!city.every((c) => /^[A-Za-z][A-Za-z.'\-]*$/.test(c))) continue;
+    return { city: city.join(" "), code };
+  }
+  return null;
+}
+
+function canonicalKey(city, code) {
+  return `${city.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase())}, ${code}`;
+}
+
 // Best-effort "City, ST" from a freeform address. Aggregate market interest
 // only — never the street address.
 function marketOf(address) {
   const cleaned = String(address || "")
     .replace(/\([^)]*\)/g, " ")                       // and the commas inside them
-    .replace(/,\s*(?:USA|U\.S\.A\.|United States|Canada)\s*$/i, "")
+    .replace(/,?\s*(?:USA|U\.S\.A\.|United States|Canada)\s*$/i, "")
     .replace(/\s+/g, " ")
     .trim();
   const parts = cleaned.split(",").map((s) => s.trim()).filter(Boolean);
   for (let i = parts.length - 1; i >= 1; i--) {
-    const st = (parts[i].match(/^([A-Za-z]{2})\b/) || [])[1];
-    if (!st) continue;
-    const code = st.toUpperCase();
-    if (!US_STATES.has(code) && !CA_PROVINCES.has(code)) continue;
+    const code = stateCodeAtStart(parts[i]);
+    if (!code) continue;
     // "Ontario/San Bernardino County" -> "Ontario": one city per key, so a
     // dual-named submarket doesn't fragment into its own bucket.
     const city = parts[i - 1].split("/")[0].trim();
     if (!city) continue;
-    return `${city.toLowerCase().replace(/(^|[\s.'\-])[a-z]/g, (ch) => ch.toUpperCase())}, ${code}`;
+    return canonicalKey(city, code);
+  }
+  // No comma carried a state. A comma-less address may still name one at
+  // its tail; see commalessMarket for what it will and will not read.
+  if (parts.length === 1) {
+    const hit = commalessMarket(parts[0]);
+    if (hit) return canonicalKey(hit.city, hit.code);
   }
   // No recognizable state: fall back to the trailing segment rather than the
   // whole string, which keeps the leading street number out of the key. (A

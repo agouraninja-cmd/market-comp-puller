@@ -9568,14 +9568,21 @@ function authBoot(signedIn) {
 //   decide what the cookie is worth. An invalid session answers 401 on
 //   /api/account/me and the payload is dropped whole — a signed-out page
 //   carries nothing.
-// - ONE deadline covers the whole fan-out (DESK_BOOT_DEADLINE_MS, 1500ms;
+// - ONE deadline covers the whole fan-out (DESK_BOOT_DEADLINE_MS, 2500ms;
 //   env-overridable so a test can prove the page ships without it): past it
-//   the page goes out without whatever has not answered. The page is never
-//   held longer than the desk would have taken to arrive anyway.
+//   the page goes out without whatever has not answered. Sized against the
+//   live deployment, where a database round trip is ~100ms and the slowest
+//   desk route answered in over a second: a deadline under that would drop
+//   exactly the reads the desk then waits on anyway, from the browser.
 // - Only JSON GETs on the allowlist below, only status-200 bodies under
 //   DESK_BOOT_MAX_BODY, keyed by the exact URL string the client will ask
-//   for — the org-scoped set is built from the /api/org answer with the same
-//   encodeURIComponent the client uses.
+//   for. The org-scoped set is keyed by the firm the SESSION resolves to
+//   in-process (activeMembershipsFor — two cached-or-cheap reads), so every
+//   URL goes out in ONE wave rather than the firm's six waiting on
+//   /api/org's ~8 round trips. That hint decides only which URL STRINGS to
+//   prefetch, never access: the routes still enforce membership, and if the
+//   hint ever named a different firm than /api/org's `orgs[0]` the keys
+//   would simply go unused and the client would fetch live.
 // - The visitor's IP rides x-forwarded-for on the loopback request, so the
 //   per-IP limiters see the person and not 127.0.0.1 for everybody; the
 //   fan-out marks itself with a header so it can never nest.
@@ -9583,7 +9590,7 @@ function authBoot(signedIn) {
 //   `</script>` cannot end the script early.
 // ---------------------------------------------------------------------------
 const DESK_BOOT_MARKER = "<!--DESK_BOOT-->";
-const DESK_BOOT_DEADLINE_MS = Number(process.env.DESK_BOOT_DEADLINE_MS) || 1500;
+const DESK_BOOT_DEADLINE_MS = Number(process.env.DESK_BOOT_DEADLINE_MS) || 2500;
 const DESK_BOOT_MAX_BODY = 300 * 1024;
 const DESK_BOOT_HEADER = "x-cn-desk-boot";
 // What index.html asks for on a workspace load, in the order it asks. Keep in
@@ -9623,11 +9630,20 @@ async function deskBootPayload(req) {
       out[p] = { status: 200, body: JSON.parse(text) };
     } catch (_) { /* left out: the client fetches it */ }
   };
-  await Promise.all(DESK_BOOT_URLS.map(read));
+  // The firm hint, resolved in-process so the org-scoped reads can leave
+  // with the rest (see the rules above). Both reads fail soft: no user or
+  // no firm means the base wave alone, which is exactly a solo member's
+  // page. The session lookup is cached, so this costs one round trip.
+  let firmId = null;
+  try {
+    const user = await getSessionUser(req);
+    if (!user) return null;
+    const first = (await activeMembershipsFor(user))[0];
+    if (first && first.org_id) firmId = String(first.org_id);
+  } catch (_) { firmId = null; }
+  const urls = firmId ? DESK_BOOT_URLS.concat(DESK_BOOT_ORG_URLS(encodeURIComponent(firmId))) : DESK_BOOT_URLS;
+  await Promise.all(urls.map(read));
   if (!out["/api/account/me"]) return null;
-  const org = out["/api/org"];
-  const firm = org && Array.isArray(org.body.orgs) ? org.body.orgs[0] : null;
-  if (firm && firm.id) await Promise.all(DESK_BOOT_ORG_URLS(encodeURIComponent(String(firm.id))).map(read));
   return out;
 }
 function deskBootScript(payload) {
@@ -24084,8 +24100,12 @@ const server = http.createServer((req, res) =>
       (async () => {
         const user = await openOrg();
         if (!user) return;
-        const rows = await orgMembershipsFor(user.email);
-        const ent = await entitlementsFor(req);
+        // Together, not in turn (2026-09-04): the membership list and the
+        // entitlements read nothing from each other, and every database
+        // round trip here is ~100ms on the live deployment. Measured from a
+        // member's browser: this route answered in 560-1090ms, and it heads
+        // the workspace's longest chain.
+        const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
         const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
@@ -25526,20 +25546,28 @@ const server = http.createServer((req, res) =>
         // messages, so they are one read per thread rather than two. Capped at
         // the number of threads a person can plausibly be in; past that the
         // list is the wrong tool and the firm wants the shelf.
-        const out = [];
-        for (const t of threads.slice(0, 100)) {
+        // The per-thread reads go out TOGETHER (2026-09-04). In turn, this
+        // was one ~100ms round trip per thread on the live deployment — the
+        // route measured 1.3-2.1s from a member's browser, the slowest read
+        // on the workspace, and the one every first paint waited for.
+        // Readability is decided BEFORE any read, so an unreadable thread
+        // still costs nothing; document order is preserved by index.
+        const readable = threads.slice(0, 100).map((t) => {
           const rows = byThread.get(String(t.id)) || [];
           const mineRow = MSG.memberRowOf(rows, g.user.id);
           const verdict = MSG.canReadThread({ thread: t, orgId: g.orgId, memberRow: mineRow });
-          if (!verdict.ok) continue;
-          const recent = await msgMessageRows(t.id, "");
+          return verdict.ok ? { t, rows, mineRow } : null;
+        }).filter(Boolean);
+        const recents = await Promise.all(readable.map(({ t }) => msgMessageRows(t.id, "")));
+        const out = readable.map(({ t, rows, mineRow }, i) => {
+          const recent = recents[i];
           const latest = recent.length ? recent[recent.length - 1] : null;
           const unread = MSG.unreadCount(recent, {
             lastReadAt: mineRow && mineRow.last_read_at,
             userId: g.user.id,
           });
-          out.push(threadPayload(t, rows, g.user.id, latest, unread, names));
-        }
+          return threadPayload(t, rows, g.user.id, latest, unread, names);
+        });
         // The deal rooms this member owns, as External conversations. Its own
         // try: a hub read failing must cost the External section and never
         // the firm's own messages.

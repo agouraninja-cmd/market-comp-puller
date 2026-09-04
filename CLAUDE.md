@@ -4174,8 +4174,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   The owner's ask was "instantly". So for a cookie holder on `/` or
   `/desk` (never `/index.html`, never `/r/<id>`), `deskBootPayload` in
   server.js asks the server's OWN routes over loopback with the visitor's
-  cookie — `DESK_BOOT_URLS`, then the six org-scoped URLs once `/api/org`
-  has named the firm — and `deskBootScript` embeds the answers at the
+  cookie — `DESK_BOOT_URLS` plus the six org-scoped URLs, all in ONE wave,
+  keyed by the firm the session resolves to in-process
+  (`activeMembershipsFor`, a hint that decides which URL strings to prefetch
+  and never access) — and `deskBootScript` embeds the answers at the
   `<!--DESK_BOOT-->` marker in `<head>` as `window.DESK_BOOT`, keyed by the
   exact URL. In index.html, **`bootFetch(url, init)`** hands each entry to
   the first GET that would have fetched it and fetches live from then on;
@@ -4191,10 +4193,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `memberOf` and every `user_id` scope apply by construction; **cookie
   presence decides whether to try, the routes decide what it is worth** — a
   dead session 401s on `/api/account/me` and the payload is dropped whole;
-  **one deadline (`DESK_BOOT_DEADLINE_MS`, 1500ms, env-overridable so a
+  **one deadline (`DESK_BOOT_DEADLINE_MS`, 2500ms, env-overridable so a
   test can prove the degrade) covers the whole fan-out**, past which the
   page ships without whatever has not answered, and any URL missing is
-  simply fetched — every failure is the page as it was; **only status-200
+  simply fetched — every failure is the page as it was (sized against the
+  live deployment, where a Supabase round trip measured ~100ms from Render
+  and the slowest desk route answered in over a second, so a shorter
+  deadline would drop exactly the reads the desk then waits on from the
+  browser — and that per-query latency is worth checking against the two
+  regions before optimizing any route further); **only status-200
   JSON GETs under `DESK_BOOT_MAX_BODY`**, with the visitor's IP on
   `x-forwarded-for` (so per-IP limiters see the person, not 127.0.0.1) and
   an `x-cn-desk-boot` header so a fan-out can never nest; and **`<` is
@@ -4206,7 +4213,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   real Pro flag is in" although nothing the desk fills reads it any more,
   so every desk read went out TWICE on every boot; `refreshAccountUI`'s
   call is the fill now, and `refreshProConfig` keeps the checkout-return
-  repaint.
+  repaint. Two routes measured from a member's browser were also fixed:
+  `GET /api/messages` read each thread's messages IN TURN (1.3-2.1s, the
+  slowest read on the workspace) and now reads them together, and
+  `GET /api/org` (560-1090ms) now runs the membership list and the
+  entitlements read side by side.
   **`/desk` is kept working rather than redirected to `/`.** It is linked from
   Stripe checkout returns *with a query string*, the watchlist digest, org
   invite emails and `/bulk`; a 302 would drop the query and dead-end those.

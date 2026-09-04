@@ -1,146 +1,75 @@
-# Market Comp Puller
+# CompNinja
 
-A small web app for pulling commercial real estate comps. A user enters a
-property address and type; the server asks Claude (with web search enabled) to
-find recent comparable sales/leases and returns a clean, structured report.
+A commercial real estate comp and valuation tool, live at
+[compninja.co](https://compninja.co). A visitor enters a property address and
+type; the server asks a model (with web search) for recent comparable sales
+and leases and returns one report that both answers and proves: a value
+range, a plain-English market summary, a comp map, and the full sortable comp
+table with a source-confidence badge on every row. Brokers get a private
+vault for their own comp book, a lead inbox, and a shared shelf for their
+firm.
 
-The Anthropic API key lives **only on the server** — the browser never sees it,
-so this is safe to share with other people.
+Every valuation is an automated estimate, never an appraisal. CompNinja is
+not a licensed broker; the site connects visitors with one.
 
-## How it's put together
-
-```
-Browser (index.html)  ──POST /api/comps──>  server.js  ──>  Anthropic API + web search
-        ^                                       │
-        └──────────── JSON comps ───────────────┘
-```
-
-- **index.html** — the front-end (form, summary card, target-vs-market
-  comparison, sortable comp table, CSV export). No API key, no secrets.
-- **server.js** — zero-dependency Node server. Serves the page and exposes
-  `POST /api/comps`, which holds the key and calls Anthropic server-side.
+The model API key lives **only on the server**. The browser never sees it.
 
 ## Run it locally
 
-Requires **Node.js 18 or newer** (for built-in `fetch`).
+Requires Node.js 18 or newer. There is no build step and no `npm install`:
+the server is plain Node with zero dependencies.
 
 ```bash
-# 1. Add your key
-cp .env.example .env
-#    then edit .env and paste your real ANTHROPIC_API_KEY
-
-# 2. Start the server
-npm start
-
-# 3. Open the app
-#    http://localhost:3000
+cp .env.example .env      # then paste your real API key into .env
+npm start                 # http://localhost:3000
 ```
 
-On Windows PowerShell, step 1 is:
+`npm start` first runs `node --check server.js` and refuses to boot on a
+syntax error. That is the production deploy gate, so keep it.
 
-```powershell
-Copy-Item .env.example .env
-# then edit .env
-```
+Most features degrade to local JSON files when no database is configured.
+The broker vault, permissioned shares and the watchlist digest deliberately
+do not (a local file would be the data loss), so those refuse instead.
+CLAUDE.md's "Configuration" section lists every environment variable and
+what turning each one on changes.
 
-There are no `npm install` dependencies — it runs on plain Node.
-
-## Run it as a desktop app
-
-**For users — the downloadable app:** `desktop-app/` is a standalone
-Electron shell around compninja.co — its own installer, icon, and process,
-no visible browser. Installers (`CompNinja-Setup.exe`, `CompNinja.dmg`,
-`CompNinja.AppImage`) build automatically on a `desktop-v*` tag and publish
-to this repo's GitHub Releases; compninja.co/download links the latest.
-It contains no product code, so installed copies stay current with every
-site deploy. This is the one folder in the repo with npm dependencies
-(dev-only build tools, own package.json — the site itself stays zero-dep).
-
-**For users — no download at all:** the site is also an installable web
-app (PWA) — open compninja.co in Chrome or Edge and click the Install icon
-in the address bar (or the footer's "Install the desktop app" button).
-
-**For the owner/dev**, there is also a local launcher:
+## Test it
 
 ```bash
-npm run desktop
+npm test                                  # the whole suite, about a minute
+node --test test/entitlements.test.js     # one suite, under two seconds
 ```
 
-This boots the local server on a free port and opens CompNinja in a
-chromeless app window (Chromium/Edge/Chrome/Brave `--app` mode, with its own
-profile so sign-in persists like a desktop app's). Closing the window stops
-the server. It is a zero-dependency launcher, same as the rest of the repo —
-no Electron, no `npm install`.
+Nothing needs a real database or mail provider. `test/helpers/fake-supabase.js`
+stands in for both where a suite needs them. CI runs the same suite on every
+push, and a green `test` check is required to merge into `main`.
 
-To open the **hosted** site as an app window instead (no local server, no
-API key needed):
+## Deploy it
 
-```bash
-node desktop.js --url https://compninja.co
-```
+`main` deploys to compninja.co automatically on Render, within minutes, with
+no review. Work on a branch and open a pull request. Supabase migrations in
+`migrations/` are run by hand, and several must run **before** the code
+that reads them deploys; `migrations/README.md` and `migrations/APPLIED.md`
+say which, and `migrations/verify.js` checks the live schema.
 
-On Windows, install a desktop shortcut (uses the CompNinja icon, and finds a
-portable Node install even when it's not on PATH):
+## Where the real documentation is
 
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\install-desktop-shortcut.ps1
-# or, pointed at the hosted site:
-powershell -ExecutionPolicy Bypass -File scripts\install-desktop-shortcut.ps1 -Url https://compninja.co
-```
+| You want | Read |
+|---|---|
+| Your first local copy, step by step | [ONBOARDING.md](ONBOARDING.md) |
+| How anything works, and why it is that way | [CLAUDE.md](CLAUDE.md), the project bible and the authoritative one |
+| What shipped, and when | `devlog.json`, rendered at `/dev` on the site |
+| What is planned or waiting on a decision | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Design specs and plans for shipped and pending work | `docs/superpowers/specs/`, `docs/superpowers/plans/` |
+| Billing and Stripe setup | [PRO-BILLING-SETUP.md](PRO-BILLING-SETUP.md) |
+| The design system and brand | [docs/DESIGN-SYSTEM.md](docs/DESIGN-SYSTEM.md), [docs/BRAND.md](docs/BRAND.md) |
+| The downloadable desktop app | `desktop-app/` (an Electron shell around the live site, the one folder with npm dependencies) |
 
-## Deploy it so others can use it
-
-The app is a standard Node web server, so it runs on most hosts. The only
-required setting is the `ANTHROPIC_API_KEY` environment variable.
-
-**Render (simple option):**
-1. Push this folder to a GitHub repo.
-2. In Render: **New → Web Service**, point it at the repo.
-3. Build command: *(leave blank)* · Start command: `npm start`
-4. Add an environment variable `ANTHROPIC_API_KEY` = your key.
-5. Deploy. Render gives you a public URL to share.
-
-The same pattern works on Railway, Fly.io, Azure App Service, a small VM, etc.
-Set `ANTHROPIC_API_KEY` in the host's environment settings — **do not** commit
-your `.env` file (it's already in `.gitignore`).
-
-## ⚠️ Important: a public app spends your API budget
-
-Because the key is shared by everyone who visits, **every search anyone runs is
-billed to your Anthropic account.**
-
-### Password gate (built in)
-
-Set an `APP_PASSWORD` environment variable and visitors must enter that password
-before they can run searches:
-
-```
-APP_PASSWORD=choose-a-shared-password
-```
-
-- If `APP_PASSWORD` is **set**, the app shows a lock screen and every
-  `/api/comps` request is checked against it.
-- If it's **unset**, the app is open to anyone with the URL (fine for local use;
-  risky for a public link).
-
-This is a lightweight shared-password gate to protect your budget — not a
-full per-user login system. For extra protection on a public URL you can also
-set a monthly spend cap in the Anthropic console, or put the app behind your
-host's access controls.
-
-## Features
-
-- Property-type-aware prompt (Industrial / Office / Retail / Multifamily / Land).
-- Summary card with the market takeaway and average $/SF.
-- **Target vs. Market**: enter your subject property's size + price to see its
-  $/SF and the delta (absolute and %) against the comp average.
-- Sortable comp table (click any column header; numeric columns sort by value).
-- Export to **CSV**, download the report as a **PNG image**, or **Print / save
-  as PDF** — handy for sharing a clean, branded report.
-- Optional **password gate** (see above).
+If a document and the code disagree, the code is right and the document is
+a bug. Fix it in the same commit that made it wrong.
 
 ## Disclaimer
 
-Comps are based on publicly available data pulled via web search. They are a
-starting point, not a system of record (this is **not** CoStar or MLS). Verify
-before use in underwriting.
+Comps come from publicly available data found by web search, plus comps
+brokers have chosen to contribute. They are a starting point, not a system
+of record. Verify before use in underwriting.

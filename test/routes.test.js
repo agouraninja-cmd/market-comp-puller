@@ -1126,6 +1126,10 @@ test("bare environment", async (t) => {
       ["POST",   "/api/vault/benchmarks"],
       ["POST",   "/api/vault/inspect"],
       ["POST",   "/api/vault/extract"],
+      // The "are these streets in that city?" check behind the market
+      // completion: it sends a completed address to our own census call, so
+      // a stranger must not be able to make it do that.
+      ["POST",   "/api/vault/confirm-market"],
       // Writes broker_profiles, whose display_name/company become PUBLIC the
       // moment somebody opts in — so an unauthenticated caller reaching it
       // could put words in a named broker's mouth.

@@ -115,6 +115,30 @@ intent, the devlog states history.
   `commitVaultBatch()` out of `POST /api/vault/upload` the way `runCompSearch`
   came out of `/api/comps` for bulk valuation is what makes the existing
   cascading undo work on a forwarded email with no new code.
+- **The building remembers: building-level facts in the vault** (spec
+  `docs/superpowers/specs/2026-09-03-vault-building-facts-design.md`,
+  **BUILT 2026-09-03** on `feat/building-facts`; migration 050 must run
+  before it deploys). Every fact in the
+  vault is stored on the deal, but year built, clear height, units, lot
+  acres, zoning and class are facts about the BUILDING, so a broker with
+  three deals on one building types them three times and a priced sale
+  missing its size counts for nothing in any median. `broker_properties`
+  (016) is the building dimension and holds nothing about the building,
+  while the firm's `org_buildings` (046) already carries size and year.
+  The shape: one additive jsonb `facts` column on `broker_properties`,
+  DERIVED from the broker's own deals by a pure module (agreement gives a
+  value, disagreement gives a named conflict and no value, size from sales
+  only), and applied at READ time only, so `broker_comps` keeps exactly what
+  was stated, exports and the public records stay stated-only, and a priced
+  sale with an inherited size joins the broker's own report blend and the
+  vault's medians. Prefill on the add form and the confirm table for a
+  building the book already holds ("Known building · 2 deals"), which
+  answers the known-building half of the confirm table's item 3 above with
+  no name field. Complements archive ingestion rather than competing with
+  it: that one is about getting deals in with less effort, this one is about
+  the deals already in being worth more. About a day; the spec's §9 names
+  the two owner calls it defers (stating a fact on the building directly,
+  and whether the firm copy carries the inherited size).
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on

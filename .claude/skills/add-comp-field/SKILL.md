@@ -61,6 +61,20 @@ undefined inside a template literal renders "undefined" as the key — the
 model will write junk keys that survive expansion as unknowns), so add the
 entry in the same edit as `TYPE_COMP_FIELDS`.
 
+### 1c. Say whether it is the BUILDING's or the DEAL's (building-facts.js)
+
+The vault's deals on one building inherit building-level facts from each
+other at read time (migration 050; spec
+`docs/superpowers/specs/2026-09-03-vault-building-facts-design.md`). Every
+`broker_comps` column must be on exactly one side of `BUILDING_FIELDS` /
+`DEAL_FIELDS` in **building-facts.js**, and `test/building-facts.test.js`
+fails the build when a new column is on neither. The rule for choosing: a
+fact inherits only if it would be the same on every deal on that building,
+whoever did the deal and whenever (year built, clear height, units, zoning
+inherit; a price, a rent, a tenancy at the time of the deal never do). A
+field that is the building's on a sale and the suite's on a lease goes in
+`SALE_ONLY` beside `size_sqft`.
+
 ### 2. Run the Supabase migration BEFORE deploying
 
 `harvestComps` writes one flat `comp_corpus` row per comp using
@@ -155,7 +169,7 @@ add an Industrial comp field, add it there too or the demo shows empty cells.
 0. **Run the map consistency check first** — free, instant, no server:
 
    ```bash
-   "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" .claude/skills/add-comp-field/check-field-maps.js
+   node .claude/skills/add-comp-field/check-field-maps.js
    ```
 
    It extracts the four real maps and cross-checks them, catching the failures

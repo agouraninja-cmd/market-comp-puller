@@ -170,6 +170,11 @@ const COLUMNS = [
   // absence is silent (both halves swallow their errors), so the mapper just
   // stops remembering anything — which nobody reports. Named so the tool says.
   ["broker_csv_mappings", ["signature"],                        "049-broker-csv-mappings-signature.sql"],
+  // 050: attachPropertyCoords names facts in its SELECT on every vault read
+  // and report blend. Its absence is silent (the stitch never throws), so
+  // coordinates AND facts would just stop reaching comps. Named so the tool
+  // says.
+  ["broker_properties",   ["facts"],                            "050-broker-property-facts.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

@@ -55,7 +55,10 @@ profile photo: data URI only, bytes sniffed, never a URL) and **`watchlist-diges
 initiative, so every judgment in it is about what a person is worth
 interrupting for), **`deal-date.js`** (the deal-date parser, including the
 Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
-the usable-vs-listed split) — plus **`report-access.js`** (the ONLY function that
+the usable-vs-listed split) and **`building-facts.js`** (what a broker's own
+deals on one building agree on and what an empty cell may inherit from that,
+read-time only — dual-exported like `valuation.js`, since `/vault` prefills
+from the same rule the server fills with) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`org-buildings.js`** (what may be put on a firm's board and how the list is
 summarized: the two keys are the vault's `addressKey` and the portfolio's
@@ -220,12 +223,10 @@ npm start          # prestart runs node --check, then node server.js -> http://l
 boot on a failure — that is the production deploy gate (Render's start command
 is `npm start`). Keep it: it is fast and it catches the one failure that takes
 the site down at boot. Do NOT put `npm test` back in front of it — see the note
-above on the deploys that killed. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
-a **portable (no-admin) copy**, so it's launched by full path instead:
-
-```powershell
-& "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
-```
+above on the deploys that killed. Node is a system install on PATH on the
+owner's Windows machine, so plain `node` and `npm` work in every shell. (It
+was a portable no-admin copy launched by full path until 2026-09; that
+folder is gone, so a `node-portable` path found in an old plan is dead.)
 
 ### Desktop app (`desktop.js`)
 
@@ -330,10 +331,9 @@ here would change.)
   relaunch.
 - Adding **new Tailwind utility classes** to `index.html` requires regenerating
   the vendored **`tailwind.css`** — a class missing from it silently won't
-  style. With node on PATH, run from the project root:
+  style. Run from the project root:
 
   ```powershell
-  $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64;" + $env:Path
   npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i tailwind.input.css -o tailwind.css --minify
   ```
 
@@ -3267,6 +3267,58 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     convention; and addresses street-verbatim with "City, ST" completion
     only when the document itself proves the state — the 2026-08-28
     verdict's dedupe-key instability, made deterministic.
+  - **A bare address is offered its city, never handed one** (2026-09-02).
+    A firm's own sheet writes "123 Main St" because everyone there knows
+    which city, and both import doors refused every such row — the CSV by
+    line number, the confirm table only AFTER Import, since
+    `classifyExtractRows` never asked. Now `POST /api/vault/inspect` and
+    `/api/vault/extract` answer `marketSuggest` (`count`, a `sample` of the
+    bare rows, and `candidates` ranked **this file → the broker's vault →
+    their coverage**, the order in which each is likely to be what the sheet
+    left unsaid), and each door asks ONCE: the mapper's `#mapMarket` row
+    (`CONST_ASK`'s shape) and the confirm table's `#pdfMarketRow`
+    (`#pdfBasisRow`'s shape). Rules, all test-pinned
+    (`test/vault-market-complete.test.js`, `-run.test.js`, the page suite):
+    - **Nothing is applied until a person picks.** The blank option is
+      today's behaviour (those rows are left out and named). The pure
+      `suggestMarketCompletion` writes no address; `marketOf` is INJECTED
+      beside `hasMarket`, and a market string that is not itself canonical
+      is never offered back (a vault row misfiled before `hasMarket` existed
+      must not become a completion).
+    - **The CSV door completes on the SERVER**: `completeWith: "City, ST"`
+      on `/api/vault/upload`, canonicalized by the route (`canonicalMarket`
+      — "boise, id" files as "Boise, ID"; a non-market is 400 before any row
+      is read), then composed inside `parseUpload` right where
+      `composeAddress` runs — only onto an address that still fails
+      `hasMarket` AFTER the mapped City/State columns had their say, so a
+      row naming its own city keeps it — and the result still passes the
+      ordinary `hasMarket` gate, so "Boise, Idaho" is refused with the
+      ordinary message naming the string it produced. `completed` /
+      `completedAs` ride the response and the result line says "N addresses
+      completed as Boise, ID". The rows door never takes it: confirm-table
+      rows carry their completed addresses in the cells, stamped visibly by
+      the selector (`joinMarket`, a ⚠ mirror of `composeAddress`'s
+      append-only rule, pinned on three shapes), a hand-typed address always
+      winning and the blank option putting a stamped row back.
+    - **`MARKET_NEEDLE` is a ⚠ mirror of `MARKET_REFUSAL`**, exported so the
+      page test pins it — `RENT_BASIS_NEEDLE`'s reason.
+    - **`POST /api/vault/confirm-market` is a badge, never a gate.** After a
+      pick, and only then, ≤10 completed streets go to `geocodeCensus` — our
+      own in-process call, never Nominatim, never the browser (migration
+      017's wall) — and the row says "k of n found in Boise, ID". A miss on
+      a rural or new address is ordinary, so "0 of n found" is information,
+      not a refusal. Writes nothing, logs no address, through `openVault`.
+    - **The mapper opens for a clean template that holds bare addresses**
+      (every column already mapped, one question) — the deliberate bend of
+      "the screen is shown only when a header is not ours": that rule's
+      reason was that there was nothing to ask, and now there is. The
+      mapper re-asks inspect only when the address trio of the mapping
+      changes (`trioSig`), since a City column mapped onto `address_city`
+      is what makes a bare street whole and the question then disappears.
+    - **The extract prompt is untouched.** It still never guesses a city
+      the document does not name; the completion is the broker's act.
+    Not built: bulk valuation and the firm-buildings form still refuse a
+    bare address with their own messages (owner's scope, 2026-09-02).
   - **Per-comp editing, adding and export** (2026-08-10). `PATCH|DELETE
     /api/vault/comp?id=` fixes or removes one stored comp; `POST
     /api/vault/comp` adds one by hand (a broker who closed a deal on Tuesday
@@ -3801,6 +3853,50 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       the fake PostgREST and a census stub on `CENSUS_API_URL` (test-only
       env, `RESEND_API_URL`'s precedent — decides where a private address is
       posted, so trusted config, unset in production).
+  - **The building remembers** (2026-09-03; migration
+    `050-broker-property-facts.sql`, **run before deploying**; spec
+    `docs/superpowers/specs/2026-09-03-vault-building-facts-design.md`).
+    Every fact in the vault is stored on the deal, but year built, clear
+    height, units, lot acres, zoning and class are facts about the
+    BUILDING, so a broker with three deals on one building typed them three
+    times and a priced sale missing its size counted for nothing in any
+    median. `broker_properties.facts` (jsonb) is what the broker's own
+    deals on one building AGREE on, derived by the pure, dual-exported
+    **`building-facts.js`** (browser global `BFACTS`, `max-age: 0` like
+    `gut-check.js`) and recomputed by `deriveBuildingFacts` at the tail of
+    `linkVaultProperties` on every upload, add and edit. Five rules, all
+    test-pinned (`test/building-facts.test.js`,
+    `test/vault-building-facts-run.test.js`):
+    - **Inheritance is READ-TIME ONLY.** `applyFacts` runs in exactly two
+      places, `vaultCompsForReport` and `vaultReadPayload`, and writes
+      nothing: `broker_comps` keeps what was stated on each deal, so the
+      export, the public records and the firm copy stay stated-only, and one
+      correction moves every sibling's view with no second write. The comp
+      carries `inherited` (vault-api.js's `DERIVED_FIELDS`, a fourth checked
+      list whose tripwire is that it is a column on NO table) so the page
+      can say a cell is a reading. On `/vault` an inherited cell shows the
+      value muted and italic and HOLDS nothing (raw `""`, a placeholder in
+      spreadsheet mode), so a blur that typed nothing is not a save.
+    - **Disagreement is a CONFLICT, never a winner.** Two deals saying 12
+      and 14 dock doors serve no value and name both; `anchor_tenant` is
+      the one recent-wins exception. Blank is not a vote.
+    - **`size_sqft` derives from SALES only and inherits onto SALES only.**
+      On a lease it is the suite. A size inherited onto a priced sale gets a
+      `$/SF` from THAT deal's own price, never copied from another deal.
+    - **Every `broker_comps` column is on exactly one side** of
+      `BUILDING_FIELDS` / `DEAL_FIELDS`, and the unit test fails the build on
+      a column placed on neither — the `add-comp-field` skill's step 1c.
+    - **The privacy wall is untouched.** Derived from the broker's own rows,
+      read back onto the broker's own rows, user-scoped on both the read and
+      the PATCH; `attachPropertyCoords` stitches `facts` but does not apply
+      them, because it also serves `shareVaultCompsToOrg`. The add form and
+      the confirm table prefill a known building's empty cells
+      (`prefillFromBuilding` / `prefillPdfRow`, "Known building · 2 deals in
+      your book · year built filled in from them") against rows the page
+      already holds — nothing leaves the page to ask which building an
+      address is — and a prefilled value is STATED when saved. A DELETE does
+      not recompute (a lingering fact is still true of the building); a
+      pre-050 book derives on its first vault read.
   - **Gut check** (v4 slice 1, 2026-08-08; spec
     `docs/superpowers/specs/2026-08-08-gut-check-design.md`). A panel on
     `/vault` compares the broker's per-bucket median $/SF and cap rates

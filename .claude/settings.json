@@ -1,0 +1,44 @@
+{
+  "$comment": "COMMITTED, on purpose (since 2026-09-03). Until then this file and hooks/ were git-ignored and claimed to be installed by a setup/ folder that never existed, so a fresh clone got no tailwind regen hook and nothing could recreate it. Machine-specific overrides belong in settings.local.json, which stays ignored. The deny list is a backstop under the rules in CLAUDE.md and the shared-checkout skill, not a replacement for them: a differently-ordered flag can slip past a glob. The patterns deliberately do NOT match `git push --force-with-lease`, which CLAUDE.md sanctions.",
+  "permissions": {
+    "deny": [
+      "Bash(git add -A*)",
+      "Bash(git add --all*)",
+      "Bash(git add .)",
+      "Bash(git push --force)",
+      "Bash(git push --force *)",
+      "Bash(git push -f*)",
+      "Bash(git push * --force)",
+      "Bash(git push * -f)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean *)",
+      "Bash(git stash*)",
+      "Bash(git checkout -- *)",
+      "PowerShell(git add -A*)",
+      "PowerShell(git add --all*)",
+      "PowerShell(git add .)",
+      "PowerShell(git push --force)",
+      "PowerShell(git push --force *)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git push * --force)",
+      "PowerShell(git push * -f)",
+      "PowerShell(git reset --hard*)",
+      "PowerShell(git clean *)",
+      "PowerShell(git stash*)",
+      "PowerShell(git checkout -- *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/regen-tailwind.js"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -149,6 +149,15 @@ const { marketOf, marketForLog, US_STATES, siblingMarkets,
 // about markets and takes this as an injected predicate.
 const MARKET_KEY_RE = /^[^,]+,\s[A-Z]{2}$/;
 const addressHasMarket = (address) => MARKET_KEY_RE.test(marketOf(address));
+// A "City, ST" a broker typed or picked — the whole-file completion for a
+// spreadsheet's bare street addresses — canonicalized with the SAME parse that
+// keys a comp, so "boise, id" completes rows as "Boise, ID" and lands in the
+// same bucket as everything else filed there. Null when it is not a market at
+// all, which the routes refuse before any row is read.
+const canonicalMarket = (v) => {
+  const m = marketOf(String(v == null ? "" : v).trim().slice(0, 80));
+  return MARKET_KEY_RE.test(m) ? m : null;
+};
 // What counts as somebody looking at a market, and how those rows add up into
 // the figure a Pro subscriber sees on My Desk. Pure and tested, because every
 // line of it is a way the number could flatter us — see its header.
@@ -165,6 +174,10 @@ const { reportKeyOf, reportIdFor } = require("./report-id");
 // The property dimension — one row per building per broker (migration 016).
 // Pure and tested; server.js owns the upsert and the user_id scoping.
 const PROPS = require("./broker-properties");
+// Building-level facts on that dimension (migration 050): what a broker's own
+// deals on one building agree on, applied at READ time only. Pure, tested,
+// dual-exported so /vault prefills from the same rule.
+const BFACTS = require("./building-facts");
 // Which brokers cover which markets — the public directory rules. Pure and
 // tested: the consent gate (broker_profiles.public, not coverage) and the
 // no-contact-details allowlist are both rules about a real person, so they are
@@ -5095,41 +5108,122 @@ function touchMsgThread(threadId, when) {
   ).catch((err) => console.error("Thread touch failed (the message is stored):", err.message));
 }
 
-// The EXTERNAL side of the inbox (2026-09-01): the deal rooms this member
-// OWNS, shaped as conversation rows for /messages. Branded External on
+// The EXTERNAL side of the inbox (2026-09-01): the deal rooms this member is
+// in, shaped as conversation rows for /messages. Branded External on
 // screen (owner's word), and the target state is that Messages absorbs the
 // broker side of the hub entirely — this list is step 1 of that migration,
 // and the vault's own hub section comes out once Messages can do every job
 // it does.
 //
+// BOTH SIDES OF THE ROOM (2026-09-02). It was owner-scoped, and the half it
+// left out was the half the whole feature exists for: a client invited by
+// email could open the link, sign up with that address, and find nothing in
+// Messages, because the only list that named their room read
+// hubs?owner_user_id=eq.me. The access rules always recognized them (018's
+// identity rule, hub-access.js), so this was never a permission bug and
+// always a discovery one. Reported by a real recipient, 2026-09-02.
+//
 // A read-only VIEW over the hub tables, never a second store: the thread
 // itself is still read and written through the existing /api/hub routes, so
 // the client's page, the note emails, the tokens and the audit trail are
-// untouched. Owner-scoped by construction (hubs?owner_user_id=eq.me), which
-// is the same wall the hub's own list read has always had.
+// untouched. The two sides are read by the two different questions that
+// define them — owner_user_id for mine, a participant row for theirs — and
+// `owner` on every row is what the client gates the broker-only controls on.
+//
+// WHAT A GUEST ROW MUST NOT CARRY is the rest of the guest list. The other
+// addresses in a broker's deal room are that broker's client relationships
+// and none of a fellow guest's business — the same owner-only rule GET
+// /api/hub draws around its `people` block, drawn here in the same place so
+// the two cannot drift. A guest row is named after the BROKER instead, which
+// is who they think they are talking to anyway.
 //
 // FAILS OPEN TO EMPTY, per part: a member's firm conversations must never be
 // taken down by a hub read, so every failure here costs the External section
 // and nothing else.
 async function externalThreadsFor(user) {
   if (!DB_CONFIGURED || !user || !user.id) return [];
-  const hubs = (await sbRequest("GET",
-    `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
-    `&select=id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`)) || [];
-  if (!hubs.length) return [];
-  const ids = hubs.map((h) => String(h.id));
   const me = MSG.normalizeEmail(user.email);
+
+  // A row read, then the hubs it names — deliberately NOT
+  // listHubsForParticipant's embedded select, which is the same question
+  // asked in one round trip for My Desk. Two flat reads because this list
+  // caps and sorts across both sides below and wants the hub rows in that
+  // shape anyway, and because an embed is the one thing the test fake cannot
+  // resolve: proving the recipient's row lands in the inbox matters more
+  // here than saving a request on a page-load path that already fans out.
+  const ownedQ = `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
+    `&select=id,owner_user_id,title,status,closed_at,updated_at&order=updated_at.desc&limit=50`;
+  const guestQ = `hub_participants?email=eq.${encodeURIComponent(me)}` +
+    `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=200`;
+
+  // One side failing must not take the other down with it: a broker's own
+  // rooms are still theirs when the participant read blows up, and a client's
+  // room is still theirs when the owner read does.
+  const [owned, invitedRows] = await Promise.all([
+    sbRequest("GET", ownedQ).catch((err) => {
+      console.error("External owned read failed (rooms shared with them still list):", err.message);
+      return [];
+    }),
+    me
+      ? sbRequest("GET", guestQ).catch((err) => {
+        console.error("External invitation read failed (their own rooms still list):", err.message);
+        return [];
+      })
+      : Promise.resolve([]),
+  ]);
+
+  const ownedIds = new Set((owned || []).map((h) => String(h.id)));
+  // A hub the caller OWNS is never also a room shared with them, even if
+  // their own address sits in their own participant list — GET /api/hubs'
+  // dedupe, and for the same reason: one room, one row.
+  const invitedIds = [...new Set((invitedRows || [])
+    .map((r) => String(r.hub_id || "")).filter(Boolean))]
+    .filter((id) => !ownedIds.has(id));
+  let guests = [];
+  if (invitedIds.length) {
+    try {
+      guests = (await sbRequest("GET",
+        `hubs?id=in.(${pgInList(invitedIds)})` +
+        `&select=id,owner_user_id,title,status,closed_at,updated_at` +
+        `&order=updated_at.desc&limit=50`)) || [];
+    } catch (err) {
+      console.error("External shared-room read failed (their own rooms still list):", err.message);
+    }
+    // The second half of the dedupe, on the hub's own answer rather than on
+    // the participant row's.
+    guests = guests.filter((h) => h &&
+      !(h.owner_user_id && String(h.owner_user_id) === String(user.id)));
+  }
+
+  // Sorted and capped ACROSS both sides before anything is read per room:
+  // the preview below costs one request each, so the fan-out has to be
+  // bounded here rather than by each half separately.
+  const rooms = [
+    ...(owned || []).map((h) => ({ hub: h, owner: true })),
+    ...guests.map((h) => ({ hub: h, owner: false })),
+  ].sort((a, b) => String(b.hub.updated_at || "").localeCompare(String(a.hub.updated_at || "")))
+    .slice(0, 50);
+  if (!rooms.length) return [];
+
+  const ids = rooms.map((r) => String(r.hub.id));
+  const mineIds = rooms.filter((r) => r.owner).map((r) => String(r.hub.id));
+  const ownerIds = [...new Set(rooms.filter((r) => !r.owner)
+    .map((r) => String(r.hub.owner_user_id || "")).filter(Boolean))];
 
   let parts = [];
   let notify = [];
   try {
     [parts, notify] = await Promise.all([
-      sbRequest("GET",
-        `hub_participants?hub_id=in.(${pgInList(ids)})` +
-        `&select=hub_id,email,removed_at&limit=1000`),
-      // The owner's own seen stamps (040) — the hub's read mark, which is why
+      // ONLY the rooms this member owns. See the header: a guest row carries
+      // the broker and nobody else.
+      mineIds.length
+        ? sbRequest("GET",
+          `hub_participants?hub_id=in.(${pgInList(mineIds)})` +
+          `&select=hub_id,email,removed_at&limit=1000`)
+        : Promise.resolve([]),
+      // The reader's own seen stamps (040) — the hub's read mark, which is why
       // opening a conversation from the inbox clears its badge: GET /api/hub
-      // stamps this on every read.
+      // stamps this on every read, for a guest and for the owner alike.
       sbRequest("GET",
         `hub_notify?hub_id=in.(${pgInList(ids)})` +
         `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
@@ -5156,9 +5250,26 @@ async function externalThreadsFor(user) {
     }
   }
 
+  // The brokers behind the guest rows, by user id rather than by email: a
+  // hub names its owner that way, and a room whose owner account is gone
+  // simply has nobody to name it after (the hub's own "ownerless" state).
+  const owners = new Map();
+  if (ownerIds.length) {
+    try {
+      const rows = await sbRequest("GET",
+        `users?id=in.(${pgInList(ownerIds)})&select=id,name,email&limit=${ownerIds.length}`);
+      for (const u of rows || []) {
+        owners.set(String(u.id), { email: MSG.normalizeEmail(u.email), name: u.name || "" });
+      }
+    } catch (err) {
+      console.error("External owner read failed (the room still lists):", err.message);
+    }
+  }
+
   const seenBy = new Map(notify.map((n) => [String(n.hub_id), n.seen_at]));
   const out = [];
-  for (const h of hubs) {
+  for (const room of rooms) {
+    const h = room.hub;
     // Recent notes only: the preview and the unread count both live in the
     // tail of the conversation, and the thread itself is read through
     // /api/hub when opened. Capped, so a long-running deal costs the same as
@@ -5172,19 +5283,36 @@ async function externalThreadsFor(user) {
       console.error("External preview read failed (the row stays):", err.message);
     }
     const latest = msgs[0] || null;
-    const people = parts
-      .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
-      .map((p) => {
-        const e = MSG.normalizeEmail(p.email);
-        return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
-      });
+    let people;
+    if (room.owner) {
+      people = parts
+        .filter((p) => String(p.hub_id) === String(h.id) && !p.removed_at)
+        .map((p) => {
+          const e = MSG.normalizeEmail(p.email);
+          return { email: e, name: MSG.displayName({ name: byEmail.get(e), email: e }) };
+        });
+    } else {
+      // The broker, alone. It is not a guest list, it is who this room is
+      // with — and the stream needs it to put a name on their messages
+      // instead of the local part of an address.
+      const b = owners.get(String(h.owner_user_id || "")) || null;
+      people = b && b.email
+        ? [{ email: b.email, name: MSG.displayName({ name: b.name, email: b.email }) }]
+        : [];
+    }
     out.push({
       id: String(h.id),
+      // Is this the broker's room or somebody else's? Every owner-only
+      // control on the page hangs off this, so it is the server's answer and
+      // not the browser's guess — the same stance GET /api/hub takes with
+      // canWrite and canAdd.
+      owner: room.owner === true,
       // The PEOPLE name the row, the firm-messaging rule carried outside the
       // firm. The deal's title is context and falls back in only when there
       // is nobody to name it after yet.
       label: MSG.peopleLabel(people.map((p) => p.name)) ||
-        String(h.title || "").trim() || "No one invited yet",
+        String(h.title || "").trim() ||
+        (room.owner ? "No one invited yet" : "Shared with you"),
       title: String(h.title || ""),
       closed: h.status === "closed" || Boolean(h.closed_at),
       lastMessageAt: (latest && latest.created_at) || h.updated_at || null,
@@ -5195,6 +5323,126 @@ async function externalThreadsFor(user) {
   }
   out.sort((a, b) => String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || "")));
   return out;
+}
+
+// Is there an External side for this person at all? Two ids, no previews, no
+// names — the cheapest possible form of the question, because the only caller
+// is the /messages page boot deciding whether a reader with no firm gets the
+// page or the wall. The list route asks the expensive version a moment later
+// and is the source of truth; this one only has to be right about empty.
+//
+// FAILS TO FALSE, and that is the safe direction here: a hub read that dies
+// leaves a firmless reader looking at the same wall they saw yesterday, and
+// the client's own fetch (which fails open to a 503 message, not a wall) is
+// what corrects it.
+async function hasExternalRooms(user) {
+  if (!DB_CONFIGURED || !user || !user.id) return false;
+  const me = MSG.normalizeEmail(user.email);
+  try {
+    const [owned, guest] = await Promise.all([
+      sbRequest("GET",
+        `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}&select=id&limit=1`),
+      me
+        ? sbRequest("GET",
+          `hub_participants?email=eq.${encodeURIComponent(me)}` +
+          `&removed_at=is.null&select=hub_id&limit=1`)
+        : Promise.resolve([]),
+    ]);
+    return Boolean((owned && owned.length) || (guest && guest.length));
+  } catch (err) {
+    console.error("External room check failed (the boot falls back to the wall):", err.message);
+    return false;
+  }
+}
+
+// How many DEAL ROOMS have something new in them for this person.
+//
+// The nav dot used to mean "firm threads with something new" and answered 403
+// to anybody with no firm — so a client, whose only conversations ARE deal
+// rooms, could never be told anything had arrived. That is the same discovery
+// gap #275 closed one layer down: the room lists now, and nothing says when it
+// moves. A broker gets the same benefit, since a client's reply never lit the
+// dot either.
+//
+// A BOOLEAN PER ROOM counted up, the internal side's rule, and the rule for
+// what counts as unread is MSG.externalUnread's — the one the list already
+// uses, so a badge in the nav and a badge on the row cannot disagree.
+//
+// FOUR READS, all bounded, and they are the reason this is a separate function
+// rather than a call to externalThreadsFor: that one reads the messages of
+// each room in turn to build a preview, which is fine on the page somebody
+// asked for and far too much for a dot that rides every page's hydration.
+// Nothing here reads a message BODY.
+//
+// FAILS TO ZERO at every step. A dot is a courtesy; the firm's own count must
+// never be taken down by a hub read, and the alternative to a silent zero is a
+// number nobody can trust.
+async function externalUnreadCount(user) {
+  if (!DB_CONFIGURED || !user || !user.id) return 0;
+  const me = MSG.normalizeEmail(user.email);
+  let owned = [];
+  let invited = [];
+  try {
+    [owned, invited] = await Promise.all([
+      sbRequest("GET",
+        `hubs?owner_user_id=eq.${encodeURIComponent(user.id)}` +
+        `&select=id&order=updated_at.desc&limit=50`),
+      me
+        ? sbRequest("GET",
+          `hub_participants?email=eq.${encodeURIComponent(me)}` +
+          `&removed_at=is.null&select=hub_id&order=invited_at.desc&limit=50`)
+        : Promise.resolve([]),
+    ]);
+  } catch (err) {
+    console.error("External unread rooms read failed (the dot counts the firm only):", err.message);
+    return 0;
+  }
+  // Both sides, deduped and capped the way the inbox caps them. A room the
+  // caller owns AND sits in as a participant is one room and one badge.
+  const ids = [...new Set([
+    ...(owned || []).map((h) => String(h.id)),
+    ...(invited || []).map((r) => String(r.hub_id || "")),
+  ].filter(Boolean))].slice(0, 50);
+  if (!ids.length) return 0;
+
+  let notify = [];
+  let msgs = [];
+  try {
+    [notify, msgs] = await Promise.all([
+      sbRequest("GET",
+        `hub_notify?hub_id=in.(${pgInList(ids)})` +
+        `&email=eq.${encodeURIComponent(me)}&select=hub_id,seen_at`),
+      // ONE read across every room rather than one per room, and no bodies:
+      // the question is whether anything arrived, not what it said. Ordered
+      // newest first so the window holds the recent end of every
+      // conversation, which is the only end that can be unread. A room whose
+      // news is older than the whole window is a room nobody has opened in
+      // 500 messages, and it undercounts rather than inventing a dot.
+      sbRequest("GET",
+        `hub_messages?hub_id=in.(${pgInList(ids)})&deleted_at=is.null` +
+        `&select=hub_id,author_email,created_at&order=created_at.desc&limit=500`),
+    ]);
+  } catch (err) {
+    console.error("External unread read failed (the dot counts the firm only):", err.message);
+    return 0;
+  }
+
+  const seen = new Map((notify || []).map((n) => [String(n.hub_id), n.seen_at]));
+  const byHub = new Map();
+  for (const m of msgs || []) {
+    const k = String(m.hub_id);
+    if (!byHub.has(k)) byHub.set(k, []);
+    byHub.get(k).push(m);
+  }
+  let count = 0;
+  for (const id of ids) {
+    const unread = MSG.externalUnread(byHub.get(id) || [], {
+      seenAt: seen.get(id),
+      email: me,
+    });
+    if (unread) count += 1;
+  }
+  return count;
 }
 
 // ---------------------------------------------------------------------------
@@ -16149,6 +16397,13 @@ async function linkVaultProperties(userId, comps) {
         { prefer: "return=minimal" });
     }
 
+    // What this building's deals agree on (migration 050), recomputed for
+    // every building this touch reached — the sibling rows are read fresh,
+    // because the comps in hand are only the ones just written. Awaited, so
+    // the page's reload after an add or an edit already sees the derivation
+    // rather than catching it one load later.
+    await deriveBuildingFacts(userId, [...index.keys()]);
+
     // The buildings this import left unlocated get the import-time geocode
     // (spec §3 step 2). Scheduled AFTER the broker-coordinate PATCHes above,
     // so the lat=is.null read already excludes every building the broker
@@ -16215,6 +16470,104 @@ function scheduleVaultGeocode(userId, addressKeys) {
     await geocodeVaultPropertyRows(
       userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_CAP));
   }).catch(() => {});
+}
+
+// The markets a broker's own records already name, for suggesting a "City,
+// ST" to the bare addresses in a file they are importing (2026-09-02).
+// broker-vault.js's suggestMarketCompletion is DB-blind and takes these
+// injected; this is the only place the two tables are read for it. Two
+// reads, each failing to [] on its own — a suggestion must never fail an
+// inspect or an extract, and a broker with no coverage rows still has a
+// vault. Both user-scoped, like every vault read.
+async function brokerMarketLists(userId) {
+  if (!DB_CONFIGURED || !userId) return { vault: [], coverage: [] };
+  const uid = encodeURIComponent(userId);
+  const [comps, cov] = await Promise.allSettled([
+    sbRequest("GET", `broker_comps?user_id=eq.${uid}&select=market&limit=1000`),
+    sbRequest("GET", `broker_coverage?user_id=eq.${uid}&select=market&limit=500`),
+  ]);
+  const distinct = (r) => {
+    if (r.status !== "fulfilled" || !Array.isArray(r.value)) return [];
+    return [...new Set(r.value.map((x) => x && x.market).filter(Boolean))].sort();
+  };
+  return { vault: distinct(comps), coverage: distinct(cov) };
+}
+
+// What /api/vault/inspect and /api/vault/extract answer beside the rows:
+// how many of a file's addresses have no city and state, a sample of them
+// (back to the broker who just uploaded them, nobody else), and the "City,
+// ST" candidates in the order suggestMarketCompletion ranks them. The two
+// table reads above are paid only when something is actually incomplete, so
+// an ordinary inspect costs no extra round trips.
+async function marketSuggestFor(userId, addresses) {
+  const deps = { hasMarket: addressHasMarket, marketOf };
+  const probe = VAULT.suggestMarketCompletion(addresses, deps);
+  if (!probe.incomplete.length) return { count: 0, sample: [], candidates: [] };
+  const lists = await brokerMarketLists(userId);
+  const out = VAULT.suggestMarketCompletion(addresses,
+    { ...deps, vaultMarkets: lists.vault, coverageMarkets: lists.coverage });
+  return { count: out.incomplete.length, sample: out.incomplete.slice(0, 10), candidates: out.candidates };
+}
+
+// Building-level facts (migration 050; spec
+// docs/superpowers/specs/2026-09-03-vault-building-facts-design.md).
+//
+// What one building's deals AGREE on, derived by the pure building-facts.js
+// from the broker's OWN rows and stored on broker_properties.facts. DERIVED,
+// NEVER STATED: nothing a broker types lands here directly, which is what
+// makes recompute (rather than the coordinate PATCH's fill-only guard) the
+// right write — there is no stated value to protect. Recomputed whenever the
+// building is touched: every upload, add and edit reaches linkVaultProperties.
+// A DELETE does not, so a fact stated only on a deleted deal lingers until the
+// building is next touched — accepted in v1 and named in the spec's §4.
+//
+// THE PRIVACY WALL HOLDS: the read is scoped by user_id first, the PATCH is
+// scoped by user_id first, and the only rows consulted are this broker's own.
+// Two brokers on one building keep separate property rows (016's rule) and
+// therefore separate facts. Nothing here reaches the corpus, a share, or a
+// firm — applyFacts runs only in vaultCompsForReport and vaultReadPayload.
+//
+// One READ per chunk of buildings, then one PATCH per building — the same
+// count the property_id link already makes on an import.
+const FACTS_SELECT = ["id", "address_key", "transaction", "deal_date"]
+  .concat(BFACTS.BUILDING_FIELDS).join(",");
+// Per vault read: a book uploaded before 050 shipped derives on its first
+// open, riding the read that already holds the property rows.
+const VAULT_FACTS_BACKFILL_CAP = 200;
+
+async function deriveBuildingFacts(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = [...new Set((Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean))];
+  for (let i = 0; i < keys.length; i += 100) {
+    const slice = keys.slice(i, i + 100);
+    const quoted = slice.map((k) => `"${String(k).replace(/"/g, '""')}"`).join(",");
+    const rows = await sbRequest("GET",
+      `broker_comps?user_id=eq.${encodeURIComponent(userId)}` +
+      `&address_key=in.(${encodeURIComponent(quoted)})&select=${FACTS_SELECT}`);
+    const byKey = new Map();
+    for (const r of Array.isArray(rows) ? rows : []) {
+      if (!r || !r.address_key) continue;
+      if (!byKey.has(r.address_key)) byKey.set(r.address_key, []);
+      byKey.get(r.address_key).push(r);
+    }
+    for (const key of slice) {
+      const facts = BFACTS.deriveFacts(byKey.get(key) || []);
+      await sbRequest("PATCH",
+        `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
+        `&address_key=eq.${encodeURIComponent(key)}`,
+        { facts }, { prefer: "return=minimal" });
+    }
+  }
+}
+
+// Fire-and-forget, scheduleVaultGeocode's contract: never awaited on a read
+// path, never throws, no-op without a database. The read-time backfill for
+// buildings whose facts have never been derived.
+function scheduleBuildingFacts(userId, addressKeys) {
+  if (!DB_CONFIGURED || !userId) return;
+  const keys = (Array.isArray(addressKeys) ? addressKeys : []).filter(Boolean);
+  if (!keys.length) return;
+  Promise.resolve().then(() => deriveBuildingFacts(userId, keys)).catch(() => {});
 }
 
 // How often each published comp has been cited in a report, read from the
@@ -16342,6 +16695,13 @@ async function vaultReadPayload(req, params) {
   if (uploadsR.status === "rejected") throw uploadsR.reason;
   const rows = compsR.value || [];
   await attachCitedCounts(rows);
+  // The building's facts (050), stitched from the dimension and applied at
+  // READ time: an empty building-level cell shows what the broker stated on
+  // another deal at that address, named in `inherited` so the page can say
+  // so. Stored rows are untouched. attachPropertyCoords never throws, so a
+  // failed stitch costs the inheritance and never the vault.
+  const applied = (await attachPropertyCoords(user.id, rows))
+    .map((c) => BFACTS.applyFacts(c, c && c.facts));
 
   return { status: 200, body: {
     // Through the API's own shape, never the raw storage rows. This is the
@@ -16350,7 +16710,7 @@ async function vaultReadPayload(req, params) {
     // vault-api.js absorbs the difference. Today it is a pass-through and the
     // response is byte-identical — the shape change belongs to the restructure,
     // not to introducing the seam.
-    comps: VAULTAPI.toApiComps(rows),
+    comps: VAULTAPI.toApiComps(applied),
     uploads: uploadsR.value || [],
     // The header line: "N comps · 0 published · visible only to you".
     // The published count is the trust proof the whole tier rests on, so
@@ -16466,7 +16826,12 @@ async function vaultCompsForReport(user, ent, { market, type, months }) {
 
     const rows = await sbRequest("GET", query);
     if (!Array.isArray(rows) || !rows.length) return [];
-    return await attachPropertyCoords(user.id, rows);
+    // Inherit at READ time (050): a priced sale with no size of its own takes
+    // the building's, and with it a $/SF computed from its own price, so it
+    // joins the valuation instead of counting for nothing. Stored rows are
+    // untouched; toReportComp's allowlist drops `facts` and `inherited`.
+    return (await attachPropertyCoords(user.id, rows))
+      .map((c) => BFACTS.applyFacts(c, c && c.facts));
   } catch (err) {
     // Deliberately quiet about the rows and loud about the failure: the
     // message may name a column, never a comp.
@@ -16677,7 +17042,15 @@ async function attachPropertyCoords(userId, comps) {
       // vault read in this file is user-scoped and an unscoped one is the
       // shape of the next mistake.
       `broker_properties?user_id=eq.${encodeURIComponent(userId)}` +
-      `&id=in.(${encodeURIComponent(list)})&select=id,lat,lng,geo_source,address`);
+      `&id=in.(${encodeURIComponent(list)})&select=id,address_key,lat,lng,geo_source,address,facts`);
+
+    // Buildings whose facts have never been derived (a book from before 050)
+    // derive now, fire-and-forget, the same way the unlocated ones geocode
+    // below. A building with nothing derivable still gets an empty object,
+    // so this never re-runs for it.
+    scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
+      .filter((p) => p && p.facts == null && p.address_key)
+      .map((p) => p.address_key).slice(0, VAULT_FACTS_BACKFILL_CAP));
 
     // Books uploaded before import-time geocoding shipped (2026-08-29) would
     // otherwise stay unlocated forever unless re-uploaded. This read already
@@ -16696,11 +17069,22 @@ async function attachPropertyCoords(userId, comps) {
     // identical flaw exportRowsWithCoords was extracted to fix on the
     // export path (2026-08-10).
     const byId = BLEND.propertyCoordsById(props);
-    if (!byId.size) return comps;
+    // The building's facts ride the same stitch (050). Stitched, not yet
+    // APPLIED: this function serves the share path too, and a firm copy
+    // carries what the broker stated, never an inherited value — the two
+    // callers that inherit call BFACTS.applyFacts themselves.
+    const factsById = new Map();
+    for (const p of Array.isArray(props) ? props : []) {
+      if (p && p.id != null && p.facts && typeof p.facts === "object") factsById.set(p.id, p.facts);
+    }
+    if (!byId.size && !factsById.size) return comps;
 
     return comps.map((c) => {
-      const hit = c && c.property_id ? byId.get(c.property_id) : null;
-      return hit ? { ...c, ...hit } : c;
+      if (!c || !c.property_id) return c;
+      const hit = byId.get(c.property_id);
+      const facts = factsById.get(c.property_id);
+      if (!hit && !facts) return c;
+      return { ...c, ...(hit || {}), ...(facts ? { facts } : {}) };
     });
   } catch (err) {
     console.error("vault coordinate stitch failed (comps still blend):", err.message);
@@ -20344,7 +20728,9 @@ const server = http.createServer((req, res) =>
 
     // Read a broker's own CSV and report its shape, so they can map their
     // columns onto ours. Stores NOTHING: a broker who cancels leaves no trace.
-    // The only persistence it touches is READING their remembered mapping.
+    // The only persistence it touches is READING their remembered mapping —
+    // and, when the file holds addresses with no city and state, READING the
+    // markets their own vault and coverage already name, to suggest one.
     if (req.method === "POST" && path === "/api/vault/inspect") {
       let body = "";
       let tooBig = false;
@@ -20393,7 +20779,16 @@ const server = http.createServer((req, res) =>
           // Which door a broker's book came through is a product question
           // this event is the only place to count. PII-free: a word.
           if (source !== "csv") logEvent("vault_inspect", { source });
+          // Optional: the mapper re-asks with its current mapping as the
+          // address columns change, since a City column mapped onto the
+          // address parts is what makes a bare street whole. Read off the
+          // CONVERTED text, the same bytes the mapping is applied to.
+          const mapping = payload.mapping;
+          const map = mapping && typeof mapping === "object" && !Array.isArray(mapping) ? mapping : null;
+          const marketSuggest = await marketSuggestFor(user.id,
+            VAULT.csvAddresses(csv, { mapping: map }));
           sendJson(res, 200, {
+            marketSuggest,
             headers: info.headers,
             normalized: info.normalized,
             samples: info.samples,
@@ -20477,11 +20872,19 @@ const server = http.createServer((req, res) =>
             logEvent("vault_extract", { source: `empty:${kind}:0` });
             return sendJson(res, 400, { error: parsed.error || "We couldn't find a deals table in that file." });
           }
-          const rows = VAULT.classifyExtractRows(parsed.rows);
+          // hasMarket injected exactly as /api/vault/upload injects it, so a
+          // bare street address is marked not-ready on the confirm table
+          // rather than failing after Import (test/routes.test.js pins the
+          // call shape). The extract prompt itself still never guesses a
+          // city: the completion offered beside it is the broker's act.
+          const rows = VAULT.classifyExtractRows(parsed.rows, { hasMarket: addressHasMarket });
+          const marketSuggest = await marketSuggestFor(user.id,
+            rows.map((r, i) => ({ index: i, address: r.values && r.values.address })));
           logEvent("vault_extract", { source: `ok:${kind}:${rows.length}` });
           sendJson(res, 200, {
             filename: String(filename || "").trim().slice(0, 200),
             rows,
+            marketSuggest,
           });
         } catch (err) {
           // Same guard as /api/vault/inspect: V8 quotes the input in a
@@ -20573,6 +20976,61 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // "Are these streets really in that city?" for the market a broker just
+    // picked to complete a file's bare addresses (2026-09-02). The completed
+    // address goes to geocodeCensus — our own in-process call, memoized, so
+    // the import's later geocode of the same building is a cache hit — and
+    // NOWHERE else: never Nominatim, never the browser (the private-comp
+    // geocoding contract, migration 017). The page calls it only AFTER a
+    // pick, so a street paired with a city nobody chose never leaves the
+    // process; ten addresses at most; and the answer is a badge, never a
+    // gate — a Census miss on a rural or new address is ordinary, so "0 of
+    // 10 found" is information the broker weighs, not a refusal. Reads no
+    // vault rows, writes nothing, logs no address. Through openVault for the
+    // one testable 401 -> 403 -> 503 ladder, like /api/vault/benchmarks.
+    if (req.method === "POST" && path === "/api/vault/confirm-market") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          if (!(await openVault())) return;
+          if (rateLimited("vaultcm:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
+          }
+          let parsed;
+          try { parsed = JSON.parse(body || "{}"); }
+          catch { return sendJson(res, 400, { error: "Invalid JSON." }); }
+          const market = canonicalMarket(parsed.market);
+          if (!market) {
+            return sendJson(res, 400, { error: 'Write the market as "City, ST", like "Boise, ID".' });
+          }
+          const cut = market.lastIndexOf(",");
+          const city = market.slice(0, cut).trim();
+          const state = market.slice(cut + 1).trim();
+          const addresses = (Array.isArray(parsed.addresses) ? parsed.addresses : [])
+            .map((a) => String(a == null ? "" : a).trim().slice(0, 200))
+            .filter(Boolean)
+            .slice(0, 10);
+          const results = await Promise.all(addresses.map(async (a) => {
+            const full = VAULT.composeAddress(a, city, state);
+            let hit = null;
+            try { hit = await geocodeCensus(full); } catch { hit = null; }
+            return { address: full, confirmed: !!hit };
+          }));
+          sendJson(res, 200, {
+            market,
+            checked: results.length,
+            confirmed: results.filter((r) => r.confirmed).length,
+            results,
+          });
+        } catch (err) {
+          console.error("vault confirm-market error:", err.message);
+          sendJson(res, 500, { error: "Could not check those addresses." });
+        }
+      });
+      return;
+    }
+
     // Upload. The body is JSON carrying the file's text, not multipart — the
     // browser reads the file with FileReader and posts it. Multipart would be
     // a few hundred lines of hand-rolled parsing in a repo with no
@@ -20603,6 +21061,21 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 400, { error: made.error || "Nothing to import." });
           }
           const csv = made.csv;
+          // The broker's whole-file answer for a CSV's bare street addresses
+          // (the mapper's market row, 2026-09-02). Canonicalized HERE with the
+          // parse that keys a comp, and a value that is not a market at all
+          // is refused before any row is read — it would have completed every
+          // bare row into a refusal. The confirm table's rows carry their
+          // completed addresses in the rows themselves, so the rows door
+          // never takes it, exactly as it never takes `mapping`.
+          let completeWith = null;
+          if (!parsedBody.rows && parsedBody.completeWith != null &&
+              String(parsedBody.completeWith).trim() !== "") {
+            completeWith = canonicalMarket(parsedBody.completeWith);
+            if (!completeWith) {
+              return sendJson(res, 400, { error: 'Write the market as "City, ST", like "Boise, ID".' });
+            }
+          }
           // `mapping` absent means today's behaviour byte for byte, so
           // gen-market-seed.js and any existing caller are unaffected.
           // parseUpload validates it and refuses the whole file if it is
@@ -20623,6 +21096,7 @@ const server = http.createServer((req, res) =>
             // checked here. Confirm-table rows carry their own values per
             // row, so they never send these.
             constants: parsedBody.rows ? null : (constants || null),
+            completeWith,
           });
           // Nothing usable: report why and write NOTHING, so a wrong-file
           // mistake does not leave an empty batch behind.
@@ -20734,6 +21208,12 @@ const server = http.createServer((req, res) =>
             // page can say they were ignored rather than dropping them
             // silently; see isCommentRow in broker-vault.js.
             commented: parsed.commented,
+            // Bare addresses completed with the broker's whole-file answer
+            // AND stored, and the canonical market they were completed as —
+            // the result line says so, since a row that arrived as "123 Main
+            // St" and was filed under Boise, ID is a fact worth stating.
+            completed: parsed.completed,
+            completedAs: completeWith || "",
             errors: parsed.errors,
           });
         } catch (err) {
@@ -24598,7 +25078,22 @@ const server = http.createServer((req, res) =>
     // IS a database read: asked the other way round, an outage would report
     // itself as "you are not in a firm", which is the misreport-an-outage-as-
     // absence trap the hub list and the lead inbox each had to fix.
-    const openMessaging = async () => {
+    // Reaches the screen verbatim, so it is product copy: it names what is
+    // missing and it does not imply anything is for sale. ONE copy of it,
+    // because the list route now decides for itself when to send it.
+    const NO_FIRM = {
+      error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+      code: "no_firm",
+    };
+
+    // `firmOptional` is for the LIST route alone (2026-09-02). A person can
+    // be in a deal room without being in a firm — that is the ordinary case
+    // for a client who was invited by email and then signed up — and walling
+    // them out of /messages is what made their conversation unfindable. Every
+    // other route here still needs a firm, because everything they touch is
+    // a firm thread; the external half is read and written through /api/hub,
+    // which carries its own gate.
+    const openMessaging = async (opts) => {
       const user = await getSessionUser(req);
       if (!user) { sendJson(res, 401, { error: "Please sign in." }); return null; }
       if (!DB_CONFIGURED) {
@@ -24607,12 +25102,8 @@ const server = http.createServer((req, res) =>
       }
       const firm = await messagingFirmOf(user);
       if (!firm) {
-        sendJson(res, 403, {
-          // Reaches the screen verbatim, so it is product copy: it names what
-          // is missing and it does not imply anything is for sale.
-          error: "Messages are for your firm. Create one, or accept an invitation, to start.",
-          code: "no_firm",
-        });
+        if (opts && opts.firmOptional) return { user, orgId: "", membership: null };
+        sendJson(res, 403, NO_FIRM);
         return null;
       }
       return { user, orgId: firm.orgId, membership: firm.membership };
@@ -24711,9 +25202,39 @@ const server = http.createServer((req, res) =>
     // --- GET /api/messages — my threads and my firm's people ----------------
     if (req.method === "GET" && msgPath === "/api/messages") {
       (async () => {
-        const g = await openMessaging();
+        const g = await openMessaging({ firmOptional: true });
         if (!g) return;
         const ent = await entitlementsFor(req);
+
+        // A reader with no firm has no internal side at all, so the firm
+        // reads are skipped rather than asked with an empty id. They are
+        // still owed their deal rooms: the External list is read first, and
+        // the no_firm refusal is sent only when there is nothing on either
+        // side to show. Somebody who has never been in a firm and has never
+        // been sent comps sees exactly the wall they saw before.
+        if (!g.orgId) {
+          let external = [];
+          try {
+            external = await externalThreadsFor(g.user);
+          } catch (err) {
+            // The same fail-open stance as the firm path, one step further
+            // out: with no firm there is nothing else on this page, so a hub
+            // read that dies must not be reported as "you are in no firm".
+            console.error("External conversations read failed (no firm):", err.message);
+            return sendJson(res, 503, { error: "Couldn't load your messages. Please try again in a minute." });
+          }
+          if (!external.length) return sendJson(res, 403, NO_FIRM);
+          return sendJson(res, 200, {
+            ok: true,
+            firm: null,
+            me: { id: String(g.user.id), email: String(g.user.email || "") },
+            external,
+            canAttachComps: ent.canUseVault === true,
+            people: [],
+            threads: [],
+          });
+        }
+
         const [mine, people, org] = await Promise.all([
           msgThreadIdsFor(g.user.id),
           rosterFor(g.orgId),
@@ -25149,22 +25670,36 @@ const server = http.createServer((req, res) =>
     // the person who last wrote in it. In-app only; nothing here mails.
     if (req.method === "GET" && msgPath === "/api/messages/unread") {
       (async () => {
-        const g = await openMessaging();
+        // FIRM OPTIONAL, like the list route (2026-09-03). The dot used to
+        // 403 anybody with no firm, which is a console error on every page a
+        // client loads and, worse, meant the one reader whose conversations
+        // are ALL deal rooms could never be told something had arrived. A
+        // person with no firm and no rooms gets a plain zero rather than the
+        // list's no_firm refusal: the question here is "is there anything
+        // new", and the honest answer to that is no.
+        const g = await openMessaging({ firmOptional: true });
         if (!g) return;
-        const mine = await msgThreadIdsFor(g.user.id);
-        const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
-        const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
         let count = 0;
-        for (const m of mine) {
-          const last = lastAt.get(String(m.thread_id));
-          if (!last) continue;
-          // The baseline is the last read, or — for a member who has never
-          // opened it — the moment they were added. A thread's
-          // last_message_at is set at creation, so without the second half
-          // every freshly opened, still-empty conversation would count.
-          const since = m.last_read_at || m.added_at || "";
-          if (!since || String(last) > String(since)) count += 1;
+        if (g.orgId) {
+          const mine = await msgThreadIdsFor(g.user.id);
+          const threads = await msgThreadRowsByIds(mine.map((r) => r.thread_id), g.orgId);
+          const lastAt = new Map(threads.map((t) => [String(t.id), t.last_message_at || ""]));
+          for (const m of mine) {
+            const last = lastAt.get(String(m.thread_id));
+            if (!last) continue;
+            // The baseline is the last read, or — for a member who has never
+            // opened it — the moment they were added. A thread's
+            // last_message_at is set at creation, so without the second half
+            // every freshly opened, still-empty conversation would count.
+            const since = m.last_read_at || m.added_at || "";
+            if (!since || String(last) > String(since)) count += 1;
+          }
         }
+        // The External half, added with it. It counts rooms on BOTH sides —
+        // a client's reply never lit this dot for the broker either — and it
+        // fails to zero on its own, so a hub outage costs the deal-room half
+        // of the badge and never the firm's.
+        count += await externalUnreadCount(g.user);
         return sendJson(res, 200, { count });
       })().catch((err) => {
         console.error("Unread count failed:", err.message);
@@ -26283,6 +26818,10 @@ const server = http.createServer((req, res) =>
     // script calls the global GUTCHECK, so this file must never be stale
     // relative to the page that depends on it.
     "/gut-check.js": { file: "gut-check.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // Same rule, same page: /vault prefills a known building's cells through
+    // the global BFACTS, the one copy of "which fields inherit" the server
+    // also fills with, so it must never be stale relative to the page.
+    "/building-facts.js": { file: "building-facts.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // Same maxAge: 0 rule again: index.html's Market Explorer calls the
     // global EXPLOREQ, so this file must never be stale relative to it.
     "/explore-query.js": { file: "explore-query.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
@@ -27120,10 +27659,17 @@ const server = http.createServer((req, res) =>
         if (!user) boot = { s: 401, j: { error: "Please sign in." } };
         else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Messages are unavailable right now. Please try again in a minute." } };
         else if (!(await messagingFirmOf(user))) {
-          boot = { s: 403, j: {
-            error: "Messages are for your firm. Create one, or accept an invitation, to start.",
-            code: "no_firm",
-          } };
+          // A firm is not the only way to have a conversation here
+          // (2026-09-02). A client invited into a deal room by email, who
+          // then signed up with that address, is in no firm and has messages
+          // waiting — pre-rendering the wall for them is what made those
+          // messages unreachable, since the wall never re-fetches.
+          boot = (await hasExternalRooms(user))
+            ? { s: 200, j: {} }
+            : { s: 403, j: {
+              error: "Messages are for your firm. Create one, or accept an invitation, to start.",
+              code: "no_firm",
+            } };
         } else boot = { s: 200, j: {} };
       } catch (err) {
         console.error("messages boot failed:", err.message);

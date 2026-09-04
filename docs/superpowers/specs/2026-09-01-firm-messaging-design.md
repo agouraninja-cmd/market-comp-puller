@@ -251,8 +251,9 @@ migration plan is in this conversation's record: absorb each job into
 Messages, then remove the vault's hub section, leaving at most a
 "send these comps to a client" door that jumps here.
 
-**Known limit:** `/messages` still requires a firm (`openMessaging`'s gate), so
-a solo broker with deal rooms and no firm cannot reach the inbox view of them.
+**Known limit (CLOSED 2026-09-02, see §14):** `/messages` still requires a
+firm (`openMessaging`'s gate), so a solo broker with deal rooms and no firm
+cannot reach the inbox view of them.
 Their deal rooms are unaffected (the vault still lists them). Worth revisiting
 when a real solo broker exists.
 
@@ -364,3 +365,85 @@ second ACL for the same document — the "ACL is never cached" rule.
 Deliberately not built: any email for unread (this is the in-app half only);
 attaching a contact or a report as a structured message item (the schema has
 `msg_comps` only, and a link and a name do the job).
+
+
+## 14. Both sides of a deal room — 2026-09-02
+
+**The report.** A client was invited into a deal room by email. The email
+arrived, the link worked, he signed up with that address, and Messages showed
+him nothing. His words: it would be nice if somebody who receives a message to
+their email can sign up and see that message already there.
+
+**It was never an access bug.** Hub access has been email-first since 018 —
+`hub-access.js` matches a participant row by address, so signing up with the
+invited address is recognized with nothing to reconcile. The room was open to
+him the whole time. It had no door on the page.
+
+Two walls, both discovery, and each one alone was enough:
+
+1. `externalThreadsFor` read `hubs?owner_user_id=eq.me`. External was the
+   rooms a member OWNS and never the rooms they are IN. §11 said
+   "owner-scoped by construction" and meant it as a safety property; the half
+   it excluded was the half the feature exists for.
+2. `/messages` refuses anyone with no firm, and a client invited by email is
+   in no firm by definition. Worse than a wall the browser could correct: the
+   page route PRE-RENDERS that refusal into `BOOT`, and the client gates on it
+   without ever fetching. §11's "known limit" and this report are the same
+   defect seen from two sides.
+
+The only surface that ever named a guest's room was a bare link line under
+"Comp hubs" in My Desk's Sharing deck (`renderDeskHubs`, reading GET
+/api/hubs' `theirs`). The vault's own deck keeps `mine` and drops `theirs`.
+
+**What shipped.** External carries both sides. Every row says whose room it is
+(`owner`), which is the server's answer and not the browser's guess — the same
+stance `GET /api/hub` takes with `canWrite` and `canAdd`. A firmless reader
+gets the page when they have rooms and the same `no_firm` wall when they do
+not; `hasExternalRooms` is the boot's cheap form of that question (two ids, no
+previews), and the list route asks the expensive one a moment later.
+
+**What a guest row must not carry** is the rest of the guest list. The other
+addresses in a broker's deal room are that broker's client relationships and
+none of a fellow guest's business — the owner-only rule `GET /api/hub` already
+draws around its `people` block, drawn again here rather than reasoned about
+twice. A guest row carries the BROKER alone, which is also what puts a name on
+their messages in the stream. The run test asserts a second guest's address is
+absent from the whole payload.
+
+**On the page**, every owner-only control now hangs off `owner` rather than
+off "is this external", which used to be the same question: the guest list
+(`People`), `Attach a comp` (POST /api/hub/items is owner-only, so offering it
+elsewhere is a button whose only outcome is a refusal), the New panel and the
+draft door (both search a firm), and the Internal/External headings, which
+exist to tell two groups apart and are drawn only when there are two — a
+client is not "external" to a firm they are not in.
+
+**Nothing about who may read or post changed.** The room is still read and
+written through `/api/hub`, which carries its own gate; this is still a
+window, never a second room.
+
+## 15. The dot follows the rooms — 2026-09-03
+
+§14 let a client's deal room into their inbox and left the badge behind.
+`GET /api/messages/unread` refused anybody with no firm (a console 403 on
+every page a client loads), and counted firm threads only — so the reader
+whose conversations are ALL deal rooms could never be told something had
+arrived, and a client's reply never lit the dot for the broker either.
+
+It is `firmOptional` now and adds **a boolean per deal room**, both sides.
+Unread is `MSG.externalUnread` against the hub's own seen stamp: the same rule
+and the same stamp the inbox rows use, so the nav badge and the row badge
+cannot disagree, and `GET /api/hub` clears both by being the read.
+
+**Why it is not a call to `externalThreadsFor`:** that reads each room's
+messages in turn to build a preview, which is right on the page somebody asked
+for and far too much for a dot that rides every page's after-paint hydration.
+This is four bounded reads with no message bodies — the room ids on both
+sides, the caller's seen stamps, and ONE read of the recent tail across every
+room. A room whose news falls outside that window is one nobody has opened in
+500 messages; it undercounts rather than inventing a badge.
+
+Every step fails to zero. A hub outage costs the deal-room half of the count
+and never the firm's. A person with no firm and no rooms gets a plain zero
+rather than the list's `no_firm` refusal: the question here is whether
+anything is new, and the honest answer to that is no.

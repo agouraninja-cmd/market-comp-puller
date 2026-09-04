@@ -143,7 +143,21 @@ const API_COMP_FIELDS = Object.freeze([
 // This is the seam doing what its header promises — "the table may change and
 // the API will not". A comp's location physically lives one join away, and
 // nothing downstream needs to know that.
-const PROPERTY_FIELDS = Object.freeze(["lat", "lng", "geo_source"]);
+//
+// `facts` joined them with migration 050: what the broker's own deals on this
+// building AGREE on (building-facts.js), derived and stored on the dimension.
+// It rides every comp on the building so the page can prefill a known
+// building's empty cells without asking the server which building an address
+// is — the lookup runs against rows it already holds.
+const PROPERTY_FIELDS = Object.freeze(["lat", "lng", "geo_source", "facts"]);
+
+// Fields computed at READ time and stored on NO table. `inherited` names the
+// building-level cells building-facts.js's applyFacts filled on this comp
+// from its building's facts, so a cell can say it is showing a value the
+// broker stated on another deal. A fourth checked list rather than a loosened
+// one, for the reason the other three exist: the tests hold each list to its
+// own table, and this one's table is "none" — pinned in both directions.
+const DERIVED_FIELDS = Object.freeze(["inherited"]);
 
 // Fields a comp inherits from the SUBMISSION it was published as, rather than
 // from broker_comps. A third list for the same reason PROPERTY_FIELDS is a
@@ -162,7 +176,7 @@ const SUBMISSION_FIELDS = Object.freeze(["cited_count"]);
 // plus what the property dimension contributes.
 const PUBLIC_COMP_FIELDS = Object.freeze(
   API_COMP_FIELDS.filter((f) => !INTERNAL_FIELDS.includes(f))
-    .concat(PROPERTY_FIELDS).concat(SUBMISSION_FIELDS)
+    .concat(PROPERTY_FIELDS).concat(SUBMISSION_FIELDS).concat(DERIVED_FIELDS)
 );
 
 // One stored row, as the API presents it.
@@ -191,5 +205,5 @@ function toApiComps(rows) {
 module.exports = {
   toApiComp, toApiComps,
   API_COMP_FIELDS, INTERNAL_FIELDS, PUBLIC_COMP_FIELDS, PROPERTY_FIELDS,
-  SUBMISSION_FIELDS,
+  SUBMISSION_FIELDS, DERIVED_FIELDS,
 };

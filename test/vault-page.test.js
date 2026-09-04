@@ -188,6 +188,24 @@ test("the page loads /gut-check.js and guards the global", () => {
     "the inline script must guard its use of the GUTCHECK global");
 });
 
+// Building-level facts (migration 050). The page prefills a known building's
+// cells through the SAME module the server fills with, so the two cannot
+// disagree about which fields inherit — and it must degrade, never throw, if
+// that file fails to load.
+test("the page loads /building-facts.js and guards the global", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  assert.match(html, /<script src="\/building-facts\.js"><\/script>/,
+    "the building-facts module must load before the inline script");
+  const js = pageScript(html);
+  assert.match(js, /typeof BFACTS/, "the inline script must guard its use of the BFACTS global");
+  // The add form's known-building line ships hidden; the confirm table and
+  // the compact table carry their own markers.
+  assert.match(html, /id="addKnown"[^>]*class="note span-all hide"|class="note span-all hide" id="addKnown"/);
+  assert.match(js, /pdf-known/, "the confirm table names a known building");
+  assert.match(js, /class="cell'\+\(inh\?" inh":""\)/, "an inherited cell is marked, not stored");
+  assert.match(html, /#tbl input\.cell\.inh\{/, "the inherited cell has its style");
+});
+
 test("the gut-check panel ships hidden and lives inside the filtered section", () => {
   const html = renderVaultHTML(boot([]), CHROME);
   // Inside #compsSec (so applyFirstRun's hide covers it) and hidden until
@@ -474,6 +492,10 @@ async function runPage(comps, benchResult, opts, identity) {
       if (!info.ok) return Promise.resolve(jsonResponse(400, { error: info.error }));
       return Promise.resolve(jsonResponse(200, Object.assign({}, info, extra, {
         remembered: opts.remembered || null,
+        // Mirrors the real route's market suggestion, through the REAL
+        // module: which addresses have no city and state under the mapping
+        // the page sent, and the candidates in the server's own order.
+        marketSuggest: marketSuggestOf(VAULT.csvAddresses(csv, { mapping: b.mapping || null }), opts),
         // Mirrors the real /api/vault/inspect: address parts ride along so a
         // sheet keeping Address, City and State in three columns can say so,
         // and constantTargets says which required fields may be answered once
@@ -488,6 +510,13 @@ async function runPage(comps, benchResult, opts, identity) {
       return opts.extract
         ? opts.extract(init)
         : Promise.resolve(jsonResponse(200, { filename: "book.pdf", rows: [] }));
+    }
+    if (u.indexOf("/api/vault/confirm-market") === 0) {
+      const req = calls[calls.length - 1].body;
+      const n = (req.addresses || []).length;
+      return opts.confirm
+        ? opts.confirm(init)
+        : Promise.resolve(jsonResponse(200, { market: req.market, checked: n, confirmed: n, results: [] }));
     }
     if (u.indexOf("/api/vault/upload") === 0) {
       return opts.upload ? opts.upload(init, u) : Promise.resolve(jsonResponse(200, { ok: true, imported: 1 }));
@@ -575,6 +604,18 @@ async function runPage(comps, benchResult, opts, identity) {
 }
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+// server.js's addressHasMarket, restated (test/vault-address-market.test.js).
+const { marketOf } = require("../market");
+const hasMarket = (a) => /^[^,]+,\s[A-Z]{2}$/.test(marketOf(a));
+function marketSuggestOf(addresses, opts) {
+  const s = VAULT.suggestMarketCompletion(addresses, {
+    hasMarket, marketOf,
+    vaultMarkets: (opts && opts.vaultMarkets) || [],
+    coverageMarkets: (opts && opts.coverageMarkets) || [],
+  });
+  return { count: s.incomplete.length, sample: s.incomplete.slice(0, 10), candidates: s.candidates };
+}
 
 // Picking a file is the only way into the mapper, so the tests come in that
 // way too: the change handler on the one <input type=file>.
@@ -849,9 +890,12 @@ const MAPPABLE_CSV =
   "Property Address,Type,Deal Type,Sale Date,Sq Ft,Sale Price\n" +
   "1 Main St,Industrial,Sale,2026-01-05,10000,2450000\n";
 // Already in our own column names: the screen must not appear at all.
+// Whole addresses, deliberately: a clean template whose addresses have no
+// city and state now opens the mapper with that one question (2026-09-02),
+// so "1 Main St" alone would no longer be the clean case this file names.
 const CLEAN_CSV =
   "address,property_type,transaction,deal_date\n" +
-  "1 Main St,Industrial,sale,2026-01-05\n";
+  "\"1 Main St, Boise, ID\",Industrial,sale,2026-01-05\n";
 
 test("the ignored line names the broker's own headers, never our synthetic keys", async () => {
   // Live, this read "Will be ignored: deal, closed, column_4,
@@ -1383,7 +1427,7 @@ test("a jpeg and a webp take the same door as a png", async () => {
 // ---------------------------------------------------------------------------
 // Several files at once (2026-09-02)
 // ---------------------------------------------------------------------------
-const MF_CSV = "address,property_type,transaction,deal_date\n100 Main St Boise ID,Industrial,sale,2026-01-09\n";
+const MF_CSV = "address,property_type,transaction,deal_date\n\"100 Main St, Boise, ID\",Industrial,sale,2026-01-09\n";
 const mfSettle = async () => { for (let i = 0; i < 6; i++) await tick(); };
 const mfPick = async (doc, files) => {
   doc.getElementById("file").fire("change", { target: { files, value: "x" } });
@@ -3893,6 +3937,320 @@ test("a shared comp offers Discuss with itself attached; an unshared one offers 
   assert.match(rows, /data-firm="c1" data-on="1">Shared<\/button> <a class="lnk" href="\/messages\?say=About%20100%20Main%20St&amp;comp=c1"/,
     "the shared comp's Discuss seeds the message with the comp attached");
   assert.doesNotMatch(rows, /comp=c2/, "an unshared comp is not discussed — discussing it would be sending it, which is Share's act");
+});
+
+
+// ---------------------------------------------------------------------------
+// Suggested "City, ST" for bare addresses (2026-09-02)
+//
+// A firm's own sheet writes "123 Main St" because everyone there knows which
+// city, and the import refused every such row by line number. The screen now
+// asks once, with the markets the broker's own records already name, and
+// nothing is applied until a person picks. test/vault-market-complete.test.js
+// proves the module; these prove the page: what renders, what is posted, and
+// that a hand-typed address always wins.
+// ---------------------------------------------------------------------------
+
+const BARE_CLEAN_CSV =
+  "address,property_type,transaction,deal_date\n" +
+  "\"1 Main St, Meridian, ID\",Industrial,sale,2026-01-05\n" +
+  "2 Second St,Industrial,sale,2026-01-06\n" +
+  "3 Third St,Industrial,sale,2026-01-07\n";
+
+const BARE_MAPPED_CSV =
+  "Property Address,Town,ST,Type,Deal,Sale Date\n" +
+  "1 Main St,Meridian,ID,Industrial,Sale,2026-01-05\n" +
+  "2 Second St,,,Industrial,Sale,2026-01-06\n";
+
+const marketSelect = (doc, id) => doc.getElementById(id);
+const optionValues = (html) => [...html.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
+
+test("the page's market needle is broker-vault's own refusal — the mirror pin", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const m = /var MARKET_NEEDLE="([^"]+)"/.exec(script);
+  assert.ok(m, "the page must hold the needle as a named constant");
+  assert.equal(m[1], VAULTMOD.MARKET_REFUSAL,
+    "rewording broker-vault.js's refusal silently stops the selector curing anything");
+});
+
+test("joinMarket agrees with composeAddress on the shapes that matter — the mirror pin", () => {
+  const script = pageScript(renderVaultHTML(boot([]), CHROME));
+  const src = /function joinMarket\(bare,market\)\{([\s\S]*?)\n  \}/.exec(script);
+  assert.ok(src, "joinMarket must exist as a named function");
+  const joinMarket = new Function("bare", "market", src[1]);
+  for (const bare of ["1 A St", "1 A St, Boise", "1 A St, Boise, ID", "1 A St, boise"]) {
+    assert.equal(joinMarket(bare, "Boise, ID"), VAULTMOD.composeAddress(bare, "Boise", "ID"),
+      `the address a cell shows after a pick must be the address the import stores (${bare})`);
+  }
+});
+
+test("both market rows are present and hidden on first paint", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  for (const id of ["mapMarket", "mapMarketPick", "mapMarketOther", "mapMarketCheck",
+                    "pdfMarketRow", "pdfMarketPick", "pdfMarketOther", "pdfMarketCheck"]) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} is missing`);
+  }
+  assert.match(html, /id="mapMarket" class="hide"/);
+  assert.match(html, /class="note hide" id="pdfMarketRow"/);
+});
+
+test("a clean template with bare addresses opens the mapper with the one question, and posts nothing", async () => {
+  const { doc, calls } = await runPage([], null, { vaultMarkets: ["Boise, ID"], coverageMarkets: ["Nampa, ID"] });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 0,
+    "importing straight away would refuse those rows with the answer sitting right here");
+  assert.ok(!doc.getElementById("mapSec").classList.contains("hide"), "the mapper opens");
+  const row = doc.getElementById("mapMarket");
+  assert.ok(!row.classList.contains("hide"), "the market row shows");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 addresses have no city or state/);
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 Second St.*line 3/);
+  const opts = doc.getElementById("mapMarketPick").innerHTML;
+  assert.deepEqual(optionValues(opts), ["", "Meridian, ID", "Boise, ID", "Nampa, ID", "__other"],
+    "this file first, then the vault, then coverage, then a free-text door");
+  assert.match(opts, /<option value="" selected>/, "nothing is pre-selected");
+  assert.match(opts, /Elsewhere in this file[\s\S]*In your vault[\s\S]*Markets you cover/);
+  assert.equal(doc.getElementById("mapGo").disabled, false,
+    "Import is not held hostage: blank means those rows are left out, as they always were");
+});
+
+test("a clean template whose addresses are whole still imports without the screen", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, CLEAN_CSV);
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0).length, 1);
+  assert.equal(doc.getElementById("mapBody").innerHTML, "", "the mapping screen was not rendered");
+});
+
+test("picking a market posts completeWith, checks the streets, and the result says so", async () => {
+  const { doc, calls } = await runPage([], null, {
+    vaultMarkets: ["Boise, ID"],
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 3, completed: 2, completedAs: "Boise, ID" })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  const sel = marketSelect(doc, "mapMarketPick");
+  sel.value = "Boise, ID";
+  sel.fire("change");
+  await tick();
+  const confirms = calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0);
+  assert.equal(confirms.length, 1, "the check runs once, after the pick");
+  assert.deepEqual(confirms[0].body, { market: "Boise, ID", addresses: ["2 Second St", "3 Third St"] });
+  assert.match(doc.getElementById("mapMarketCheck").textContent, /2 of 2 found in Boise, ID/);
+
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.equal(up[0].body.completeWith, "Boise, ID");
+  assert.match(doc.getElementById("res").innerHTML, /2 addresses completed as Boise, ID/);
+});
+
+test("with nothing picked the upload carries no completeWith at all", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 1, skipped: 2 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up.length, 1);
+  assert.ok(!("completeWith" in up[0].body), "byte for byte what it always sent");
+  assert.equal(calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0).length, 0,
+    "no pick, so no street ever left for a city nobody chose");
+});
+
+test("a typed market that is not City, ST holds Import; a well-shaped one is posted", async () => {
+  const { doc, calls } = await runPage([], null, {
+    upload: () => Promise.resolve(jsonResponse(200, { ok: true, imported: 3 })),
+    reloadComps: [comp({})],
+  });
+  await chooseFile(doc, BARE_CLEAN_CSV);
+  const sel = marketSelect(doc, "mapMarketPick");
+  sel.value = "__other"; sel.fire("change");
+  assert.ok(!doc.getElementById("mapMarketOther").classList.contains("hide"), "the free-text door opens");
+  const other = doc.getElementById("mapMarketOther");
+  other.value = "Boise"; other.fire("input");
+  assert.equal(doc.getElementById("mapGo").disabled, true);
+  assert.match(doc.getElementById("mapMsg").textContent, /City, ST/);
+  other.value = "Caldwell, ID"; other.fire("input"); other.fire("change");
+  assert.equal(doc.getElementById("mapGo").disabled, false);
+  doc.getElementById("mapGo").fire("click");
+  await tick();
+  const up = calls.filter((c) => c.url.indexOf("/api/vault/upload") === 0);
+  assert.equal(up[0].body.completeWith, "Caldwell, ID");
+});
+
+test("mapping City and State columns makes the question disappear, re-asking inspect only for that", async () => {
+  const { doc, calls } = await runPage([]);
+  await chooseFile(doc, BARE_MAPPED_CSV);
+  const inspects = () => calls.filter((c) => c.url.indexOf("/api/vault/inspect") === 0);
+  // The screen opened from the file's own names; the address trio the
+  // mapper starts with differs (Property Address -> address), so one re-ask.
+  await tick();
+  const n0 = inspects().length;
+  assert.ok(n0 >= 2, "the mapper re-asked with its own mapping");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /2 addresses have no city or state/);
+
+  // A column that is not part of the address trio changes nothing.
+  selectFor(doc, "type").pick("property_type");
+  await tick();
+  assert.equal(inspects().length, n0, "an unrelated column must not re-ask");
+
+  selectFor(doc, "town").pick("address_city");
+  selectFor(doc, "st").pick("address_state");
+  await tick();
+  assert.ok(inspects().length > n0, "the address trio changed, so it re-asked");
+  const last = inspects()[inspects().length - 1].body.mapping;
+  assert.equal(last.town, "address_city");
+  assert.match(doc.getElementById("mapMarketAsk").innerHTML, /1 address has no city or state/,
+    "the row whose City cell is blank is the one still asked about");
+});
+
+// --- the confirm table --------------------------------------------------------
+
+function extractWithMarket(rows, opts) {
+  const classified = VAULTMOD.classifyExtractRows(rows, { hasMarket });
+  return () => Promise.resolve(jsonResponse(200, {
+    filename: "sheet.pdf",
+    rows: classified,
+    marketSuggest: marketSuggestOf(classified.map((r, i) => ({ index: i, address: r.values.address })), opts),
+  }));
+}
+const saleValues = (address, extra) => Object.assign({
+  address, property_type: "Industrial", transaction: "sale", deal_date: "2026-03-12", price: "1000000",
+}, extra || {});
+const addressCells = (doc) => doc.getElementById("pdfBody").querySelectorAll("input")
+  .filter((el) => el.getAttribute("data-k") === "address");
+const checkboxes = (doc) => doc.getElementById("pdfBody").querySelectorAll("input")
+  .filter((el) => el.type === "checkbox");
+// The address a row SHOWS. Since the confirm table triages (2026-09-02) a row
+// that reads clean is text and only a refused or hand-opened row is inputs,
+// so a stamped-and-cured row is read off its text cell.
+function rowAddress(doc, i) {
+  const inp = doc.getElementById("pdfBody").querySelectorAll("input")
+    .find((el) => el.getAttribute("data-k") === "address" && Number(el.getAttribute("data-i")) === i);
+  if (inp) return inp.getAttribute("data-raw");
+  const m = new RegExp("<td class=\"ro\" data-i=\"" + i + "\">([^<]*)</td>").exec(doc.getElementById("pdfBody").innerHTML);
+  return m ? m[1] : null;
+}
+
+test("a bare street on a photographed sheet is not ready, and the market row shows", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("4100 W Franklin Rd"), saleValues("1 Ready Way, Boise, ID")],
+      { vaultMarkets: ["Boise, ID"] }),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  assert.equal(checkboxes(doc)[0].checked, false, "a row the import would refuse must not start checked");
+  assert.equal(checkboxes(doc)[1].checked, true);
+  assert.match(doc.getElementById("pdfStrip").textContent, /1 need a city/);
+  assert.ok(!doc.getElementById("pdfMarketRow").classList.contains("hide"));
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /1 address has no city or state/);
+  assert.deepEqual(optionValues(doc.getElementById("pdfMarketPick").innerHTML), ["", "Boise, ID", "__other"]);
+});
+
+test("the market row renders only when a row can take it", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("1 Ready Way, Boise, ID")]),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  assert.ok(doc.getElementById("pdfMarketRow").classList.contains("hide"));
+});
+
+test("picking a market stamps the address cells, cures the market-only rows, and posts the completed rows", async () => {
+  let posted = null;
+  const { doc, calls } = await runPage([], null, {
+    extract: extractWithMarket([
+      saleValues("4100 W Franklin Rd"),                              // only blocker: the market
+      saleValues("88 Freight Ln", { deal_date: "soon" }),           // a bad date too
+      saleValues("1 Ready Way, Boise, ID"),
+    ], { vaultMarkets: ["Boise, ID"] }),
+    upload: (init) => { posted = JSON.parse(init.body); return Promise.resolve(jsonResponse(200, { ok: true, imported: 2 })); },
+  });
+  await choosePdf(doc, "sheet.pdf");
+  const sel = doc.getElementById("pdfMarketPick");
+  sel.value = "Boise, ID"; sel.fire("change");
+  await tick();
+
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Boise, ID",
+    "the stamp is visible in the row's own address cell (cured, so it now reads as text)");
+  assert.equal(rowAddress(doc, 1), "88 Freight Ln, Boise, ID", "still refused for its date, so still an input");
+  assert.equal(rowAddress(doc, 2), "1 Ready Way, Boise, ID", "a whole address is untouched");
+  const boxes = checkboxes(doc);
+  assert.equal(boxes[0].checked, true, "the row whose ONLY blocker was the market cures itself");
+  assert.equal(boxes[1].checked, false, "a row with another problem keeps it");
+  assert.match(doc.getElementById("pdfStrip").textContent, /1 need a date/);
+  const confirms = calls.filter((c) => c.url.indexOf("/api/vault/confirm-market") === 0);
+  assert.equal(confirms.length, 1);
+  assert.deepEqual(confirms[0].body.addresses, ["4100 W Franklin Rd", "88 Freight Ln"]);
+  assert.match(doc.getElementById("pdfMarketCheck").textContent, /2 of 2 found in Boise, ID/);
+
+  doc.getElementById("pdfGo").click();
+  await tick();
+  assert.ok(posted);
+  assert.deepEqual(posted.rows.map((r) => r.address), ["4100 W Franklin Rd, Boise, ID", "1 Ready Way, Boise, ID"],
+    "the completed address travels IN the row — zero server change, one validation path");
+  assert.ok(!("completeWith" in posted), "the rows door never carries the whole-file answer");
+});
+
+test("a hand-typed address is never overwritten, a re-pick corrects only the stamped ones, and blank puts them back", async () => {
+  const { doc } = await runPage([], null, {
+    extract: extractWithMarket([saleValues("4100 W Franklin Rd"), saleValues("88 Freight Ln")],
+      { vaultMarkets: ["Boise, ID", "Nampa, ID"] }),
+  });
+  await choosePdf(doc, "sheet.pdf");
+  // The broker types the second row's address by hand.
+  const typed = addressCells(doc)[1];
+  typed.value = "88 Freight Ln, Caldwell, ID"; typed.fire("input");
+
+  const sel = doc.getElementById("pdfMarketPick");
+  sel.value = "Boise, ID"; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Boise, ID");
+  assert.equal(rowAddress(doc, 1), "88 Freight Ln, Caldwell, ID",
+    "a typed address always wins");
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /1 address has/,
+    "the typed row is no longer one the selector may write into");
+
+  sel.value = "Nampa, ID"; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd, Nampa, ID",
+    "a stamped row follows a corrected pick, recomposed from the bare street");
+
+  sel.value = ""; sel.fire("change");
+  assert.equal(rowAddress(doc, 0), "4100 W Franklin Rd", "blank puts it back");
+  assert.equal(checkboxes(doc)[0].checked, false, "and it is not ready again");
+  // Two, not one: a hand-typed cell is not re-validated in the browser (the
+  // basis precedent — the server recomputes every verdict at import), so the
+  // typed row keeps the flag it arrived with until then.
+  assert.match(doc.getElementById("pdfStrip").textContent, /2 need a city/);
+});
+
+test("several files merge their market questions into one row", async () => {
+  let n = 0;
+  const { doc } = await runPage([], null, {
+    extract: () => {
+      n++;
+      const rows = n === 1
+        ? [saleValues("1 Bare St"), saleValues("9 Whole St, Meridian, ID")]
+        : [saleValues("2 Bare St"), saleValues("8 Whole St, Boise, ID")];
+      const classified = VAULTMOD.classifyExtractRows(rows, { hasMarket });
+      return Promise.resolve(jsonResponse(200, {
+        filename: n === 1 ? "a.pdf" : "b.png", rows: classified,
+        marketSuggest: marketSuggestOf(classified.map((r, i) => ({ index: i, address: r.values.address })),
+          { coverageMarkets: ["Nampa, ID"] }),
+      }));
+    },
+  });
+  doc.getElementById("file").fire("change", { target: { files: [
+    { name: "a.pdf", type: "application/pdf", size: 1200, dataUrl: "data:application/pdf;base64,JVBERi0x" },
+    { name: "b.png", type: "image/png", size: 1200, dataUrl: "data:image/png;base64,iVBORw0KGgo=" },
+  ], value: "x" } });
+  for (let i = 0; i < 6; i++) await tick();
+  assert.match(doc.getElementById("pdfMarketAsk").textContent, /2 addresses have no city or state/);
+  assert.deepEqual(optionValues(doc.getElementById("pdfMarketPick").innerHTML),
+    ["", "Meridian, ID", "Boise, ID", "Nampa, ID", "__other"],
+    "each file's own markets first, deduped, then the shared coverage");
 });
 
 // ---------------------------------------------------------------------------

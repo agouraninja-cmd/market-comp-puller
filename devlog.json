@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-04",
+    "type": "fix",
+    "title": "A workspace load starts at the top, not wherever the last visit left off",
+    "details": "Once the desk began arriving inside the page, the document was tall enough at load for Chrome to restore the previous scroll position across a refresh — measured: a reload from 1407px down came back at 1407px, the run-a-report chamber at the foot of the workspace, so a member who had just searched and refreshed landed at the bottom. The workspace boot now switches history.scrollRestoration to manual before the load event and scrolls to the top once. A shared report link keeps the browser's own behaviour."
+  },
+  {
+    "date": "2026-09-04",
     "type": "improvement",
     "title": "The workspace arrives with the page: a member's first frame is the finished desk",
     "details": "One paint (yesterday) was still a paint after the page: index.html shipped the same bytes to everybody and then fetched the account, the config and a dozen desk reads, so the desk could not exist before those round trips came back — 1.7s in the film, and no client-side change could move it. Now, for a signed-in visitor on / or /desk, the server asks its own routes over loopback with the visitor's cookie and embeds the answers in the page (window.DESK_BOOT, keyed by URL); the page's reads take those first and fetch live from then on. Filmed at the same 60ms database delay, the first frame after the document is the whole workspace and the page makes no API request at all. Never a second copy of any read — the embedded body is the route's own answer to the same cookie, proven equal by test — with one 2.5s deadline past which the page ships without it, and every failure degrading to the page as it was. Measured on the live site from a member's browser, a database round trip is about 100ms and the desk's routes take three to twelve of them each, so three things were fixed at the source too: every desk read went out twice on every boot (the config load re-ran the desk fill for a flag the desk no longer reads); the conversations list read each thread's messages one at a time (1.3–2.1s, the slowest read on the workspace) and now reads them together; and the firm read runs its membership list and entitlements side by side."

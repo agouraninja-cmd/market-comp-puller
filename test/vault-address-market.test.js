@@ -46,11 +46,24 @@ test("with the predicate, a city-less address is refused rather than misfiled", 
   assert.strictEqual(out.skipped, 1);
   assert.strictEqual(out.errors.length, 1);
   assert.match(out.errors[0], /Line 2:/, "the broker has to be told which row");
-  // "a two-letter state" specifically: market.js keeps state codes, so a
-  // spelled-out "Idaho" lands here too, and "needs a city and state" alone is
-  // baffling advice to somebody who can see both words in their file.
-  assert.match(out.errors[0], /city and a two-letter state/, "and what is actually wrong");
+  // "needs a city and state" alone is baffling advice to somebody who can
+  // see both words in their file, so the message shows the shape too.
+  assert.match(out.errors[0], /city and state/, "and what is actually wrong");
   assert.match(out.errors[0], /Boise, ID/, "and what the fix looks like");
+});
+
+test("a spelled-out state and a comma-less address both pass (2026-09-03)", () => {
+  // The desk's buildings form refused "1210 N 17th st Boise Idaho 83702" —
+  // an address with the city AND the state in it — because market.js only
+  // read the "City, ST" shape. It reads state names and the comma-less tail
+  // now, so the predicate passes and the row keys under the real market.
+  const spelled = [HEAD, "\"6200 W Gowen Rd, Boise, Idaho\",Industrial,sale,03/15/2026,1200000,24500"].join("\n");
+  const commaless = [HEAD, "1210 N 17th st Boise Idaho 83702,Industrial,sale,03/15/2026,1200000,24500"].join("\n");
+  for (const csv of [spelled, commaless]) {
+    const out = VAULT.parseUpload(csv, { hasMarket });
+    assert.strictEqual(out.rows.length, 1, csv);
+    assert.strictEqual(marketOf(out.rows[0].address), "Boise, ID");
+  }
 });
 
 test("a whole address passes the predicate untouched", () => {

@@ -398,11 +398,10 @@ const CONSTANT_APPLIES = {
  * become "6200 W Gowen Rd, Boise, Boise, ID" — that parses to a market of
  * "Boise, ID" by luck today and to nonsense the day the parse changes.
  *
- * Does NOT expand a full state name. market.js keeps state CODES and reads
- * "…, Boise, Idaho" as a market called "Idaho", so a silent expansion here
- * would be this module inventing geography it deliberately knows nothing
- * about. A spelled-out state is left alone and refused downstream, where the
- * message names the two-letter code as the fix.
+ * Does NOT expand a full state name. That is market.js's job (it reads
+ * "…, Boise, Idaho" as "Boise, ID" since 2026-09-03), and a second copy of
+ * that table here would be this module inventing geography it deliberately
+ * knows nothing about. A spelled-out state is passed through as typed.
  */
 function composeAddress(address, city, state) {
   const parts = [text(address, 200)];
@@ -420,7 +419,9 @@ function composeAddress(address, city, state) {
 // table's market selector knows which part of a row's error IT can cure —
 // exported so the page test pins the two together. A reworded refusal here
 // would silently stop curing anything over there.
-const MARKET_REFUSAL = "needs a city and a two-letter state";
+// "city and state", not "two-letter state": market.js reads "Idaho" and the
+// comma-less tail since 2026-09-03, so the code is no longer the requirement.
+const MARKET_REFUSAL = "needs a city and state";
 const marketRefusal = (address) => `"${address}" ${MARKET_REFUSAL}`;
 
 /**
@@ -1477,10 +1478,11 @@ function parseUpload(csvText, { maxRows = MAX_ROWS_PER_UPLOAD, maxErrors = 100, 
     if (hasMarket && !hasMarket(result.row.address)) {
       skipped++;
       if (errors.length < maxErrors) {
-        // Names the two-letter code specifically: market.js keeps state CODES,
-        // so a spelled-out "Idaho" reads as a market called "Idaho" and lands
-        // here too — and "needs a city and state" alone is baffling advice to
-        // somebody who can see both words sitting in their file.
+        // Shows the shape rather than only naming it: "needs a city and
+        // state" alone is baffling advice to somebody who can see both words
+        // sitting in their file. (market.js reads "Boise, Idaho" and the
+        // comma-less "… St Boise ID 83702" since 2026-09-03, so what lands
+        // here is a street alone, or a city the parser could not delimit.)
         errors.push(`Line ${lineNo}: ${marketRefusal(result.row.address)} — write the whole ` +
           `address in one cell, like "${result.row.address}, Boise, ID"`);
       }

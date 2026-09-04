@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-03",
+    "type": "fix",
+    "title": "An address written the way people say it is a market: “Boise Idaho”, “Boise, Idaho”, no commas",
+    "details": "The workspace’s add-a-building form refused “1210 N 17th st Boise Idaho 83702” with “Add the city and state”, an address with both plainly in it. marketOf() only ever read the “City, ST” shape — right for model output and geocoders, wrong for a person typing their own building — and every door that asks addressHasMarket (the firm’s buildings, add-a-property on the vault, the vault CSV) inherited the refusal. It now reads a spelled-out state (“Idaho”, “West Virginia”, “District of Columbia”) in a comma segment or at a comma-less tail, with or without a zip, and reads a comma-less city only when a street suffix or unit designator delimits it (“… 17th st Boise ID”, “… St Ste 200 Boise ID”, “… St Federal Way WA”); “100 Broadway Boise ID” is still left unparsed rather than filed under a city called Broadway Boise. Every existing key is unchanged, so nothing in the corpus re-keys. The vault’s refusal copy no longer says a two-letter state is required."
+  },
+  {
+    "date": "2026-09-03",
     "type": "improvement",
     "title": "The workspace loads in one paint instead of inserting itself a section at a time",
     "details": "A member's workspace used to reveal each section as its own fetch landed, and those fetches ran as a chain ten deep — filmed against a stand-in database with a 60ms round trip, sections appeared at 0.6s, 0.9s, 1.3s, 1.8s, 2.3s, 2.6s, 2.9s and 3.2s. Now the first fill is held behind a calm deck-shaped skeleton and the whole desk appears at once, and the reads run side by side wherever the data allows (the firm read starts beside the shares read; buildings, conversations and the board go out together; only the shelf and the contacts wait for the buildings). Filmed the same way, everything appeared together at 1.7s on the same number of database requests. Later repaints — a saved report, a revoked share — land in place and never blank a desk already on screen, and an 8-second watchdog shows what has landed if a fetch hangs. Also closes a first-frame flash where a member briefly saw the “Sign in” card before the account read answered."

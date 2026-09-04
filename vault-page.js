@@ -3346,7 +3346,7 @@ a.btn.ghost:hover{color:var(--ink)}
   // RENT_BASIS_NEEDLE below mirrors its refusal: the needle is how the
   // selector knows which part of a row's error IT can cure. Pinned by test
   // against the module's own constant.
-  var MARKET_NEEDLE="needs a city and a two-letter state";
+  var MARKET_NEEDLE="needs a city and state";
   var MARKET_SOURCE_LABEL={file:"Elsewhere in this file",vault:"In your vault",coverage:"Markets you cover"};
   // ⚠ MIRROR of broker-vault.js's composeAddress RULE — append only what is
   // missing, never repeat a segment the address already carries — so the

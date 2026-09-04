@@ -802,13 +802,13 @@ test("bare environment", async (t) => {
       "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
     assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
       "the bulk link is not toggled from canBulkValue");
-    // canUseVault still exists and still gates something -- the My Desk vault
-    // card -- so this test can still prove the two flags are separate rather
-    // than one shared answer, which is the thing it is really here for.
-    assert.match(app, /canVault = Boolean\(proConfig && proConfig\.canUseVault\)/,
+    // canUseVault still gates something in this file -- creating a hub
+    // (canCreateHub) -- so the two flags are provably separate answers rather
+    // than one shared one. (Until 2026-09-04 the workspace's vault card was
+    // the consumer asserted here; it left with the Broker deck.)
+    assert.match(app, /return Boolean\(proConfig && proConfig\.canUseVault\)/,
       "the vault's own flag stopped being read at all");
-    assert.match(app, /getElementById\("vaultCard"\)[\s\S]{0,120}canVault/,
-      "the desk's vault card stopped reading canUseVault");
+    assert.ok(!app.includes('id="vaultCard"'), "the workspace vault card is back");
     // The LINK is a different question since 2026-09-01 ("Three Spaces"): it
     // opens to every signed-in member, because /vault now holds their own
     // portfolio and watchlist and those were never Pro. Widened who sees the

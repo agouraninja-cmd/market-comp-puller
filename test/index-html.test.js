@@ -1087,8 +1087,10 @@ test("the branding form fills empty fields from what the account knows, and says
   assert.ok(html.includes("fillBrandForm(null)"), "a delete still blanks the form rather than re-seeding it");
   const sum = html.slice(html.indexOf("function renderBrandSummary"), html.indexOf("function renderBrandPreview"));
   assert.match(sum, /suggested, not saved yet/, "the summary must not claim a letterhead exists for a seeded form");
-  const at = html.indexOf('getElementById("brokerSubmitBtn").addEventListener');
-  const sub = html.slice(at, at + 1400);
+  // The prefill lives on the modal itself since 2026-09-04 (the Broker
+  // deck's button that carried it left the workspace).
+  const at = html.indexOf("function openCompModal()");
+  const sub = html.slice(at, at + 1600);
   assert.match(sub, /compBrokerCompany/);
   assert.match(sub, /compBrokerPhone/);
   assert.match(sub, /currentBranding \|\| currentSuggested/, "saved branding first, then the suggestion");

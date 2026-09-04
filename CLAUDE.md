@@ -4227,6 +4227,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   slowest read on the workspace) and now reads them together, and
   `GET /api/org` (560-1090ms) now runs the membership list and the
   entitlements read side by side.
+  **A workspace load starts at the TOP (2026-09-04).** A consequence of
+  the payload: Chrome restores the scroll position across a reload once the
+  document is tall enough at load, and now it is — measured, a refresh from
+  1407px down came back at 1407px, the run-a-report chamber at the foot of
+  the workspace, so a member who had just searched and refreshed landed "at
+  the bottom". The boot block that opens the workspace sets
+  `history.scrollRestoration = "manual"` BEFORE the load event and scrolls
+  to the top once; only on that branch, so `/r/<id>` keeps the browser's
+  own behaviour. `test/desk-scroll.test.js` pins the one writer.
   **`/desk` is kept working rather than redirected to `/`.** It is linked from
   Stripe checkout returns *with a query string*, the watchlist digest, org
   invite emails and `/bulk`; a 302 would drop the query and dead-end those.

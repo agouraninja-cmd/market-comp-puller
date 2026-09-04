@@ -16284,7 +16284,21 @@ async function renderMyDesk() {
   const _sharedPath = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname);
   if (location.pathname === "/desk"
       || (!_sharedPath && location.pathname === "/" && looksSignedIn())) {
+    // A workspace load starts at the TOP (2026-09-04). Chrome restores the
+    // scroll position across a reload, and once the desk started arriving
+    // inside the page (DESK_BOOT) the document was tall enough at load for
+    // that to succeed — measured: a refresh from 1407px down came back at
+    // 1407px, which is the run-a-report chamber at the foot of the
+    // workspace, so a member who had just searched and refreshed landed
+    // "at the bottom". Before the payload the desk filled in after the
+    // restore point had been consumed, so this never showed. Manual, set
+    // BEFORE the load event (the moment the browser would restore), plus
+    // one explicit scroll for anything already restored during parsing.
+    // Only on this branch: a shared report keeps the browser's own
+    // behaviour, since /r/<id> is somebody else's page and reads like one.
+    if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     showDeskView();
+    window.scrollTo(0, 0);
   }
 
   // Restore the last-searched property type (saved on each submit) so repeat

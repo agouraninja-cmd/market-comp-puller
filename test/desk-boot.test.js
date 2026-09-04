@@ -68,7 +68,7 @@ test("every URL the server embeds is one the page asks for through bootFetch, an
   const list = server.match(/const DESK_BOOT_URLS = \[([\s\S]*?)\];/);
   assert.ok(list, "server.js must declare DESK_BOOT_URLS");
   const urls = [...list[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-  assert.ok(urls.length >= 10, "the base list should name the desk's reads");
+  assert.ok(urls.length >= 8, "the base list should name the desk's reads");
   for (const url of urls) {
     const direct = html.includes(`bootFetch("${url}"`);
     const viaAcct = html.includes(`acctApi("GET", "${url}")`);

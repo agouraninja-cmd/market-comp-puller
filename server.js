@@ -9597,9 +9597,8 @@ const DESK_BOOT_HEADER = "x-cn-desk-boot";
 // step with bootFetch's callers there — a URL listed here that nobody asks
 // for is wasted bytes; one asked for and not listed is one round trip.
 const DESK_BOOT_URLS = [
-  "/api/config", "/api/account/me", "/api/portfolio", "/api/broker/me", "/api/org",
+  "/api/config", "/api/account/me", "/api/portfolio", "/api/org",
   "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
-  "/api/broker/leads",
 ];
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",

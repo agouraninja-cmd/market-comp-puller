@@ -1969,7 +1969,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="text-3xl mb-2">🤝</div>
         <h2 class="text-lg font-semibold text-[#1A2433]">Thanks, we got it.</h2>
         <p class="text-sm text-[#68707E] mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit, and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
-        <p class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
+        <!-- Two tips, one shown (the submit handler picks by currentUser).
+             Both point at the Vault's contributions deck (2026-09-04), which
+             is where a submission's review status and citations live now. -->
+        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Your contributions in <a href="/vault" class="underline">your Vault</a>.</p>
+        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Vault with their review status and citations.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Done</button>
@@ -2669,9 +2673,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           class="btn-live mt-3 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Sign in or create account</button>
       </div>
 
-      <!-- My Desk — the signed-in areas, grouped into five decks (2026-08-21;
-           the vault's Direction-U pattern): Your firm, Your properties,
-           Sharing, Broker, Account. Every section keeps its id and its own
+      <!-- My Desk — the signed-in areas, grouped into decks (2026-08-21;
+           the vault's Direction-U pattern): Your firm, Sharing, Account.
+           A Broker deck (comp contributions + a vault card) sat between the
+           last two until 2026-09-04, when the owner removed it: /vault is a
+           nav row, submissions have the /?submit=comp door, and a how-to
+           feature will do the explaining the card was doing. Every section keeps its id and its own
            hidden toggling — the deck wrappers are presentation only, and
            refreshDeckVisibility() hides any deck whose sections are all
            hidden so a heading never floats over nothing.
@@ -2963,46 +2970,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <!-- Broker deck: the public contributor side (submissions, profile) and
            the private vault door. Each section keeps its own gate — the deck
            hides itself for everyone who is neither. -->
-      <div class="dk-deck" data-deck id="deckBroker">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Broker</span><span class="dk-deck-ln"></span></div>
-      <div id="deskBroker" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Contributions</span>
-          <span id="brokerStats" class="dk-note"></span>
-        </div>
-        <div id="brokerRows" class="mt-2 space-y-1.5"></div>
-        <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
-          <button id="brokerSubmitBtn" type="button"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Submit another comp</button>
-          <label id="brokerProfileWrap" class="hidden flex items-center gap-2 text-[#4C5665] cursor-pointer">
-            <input id="brokerProfileToggle" type="checkbox" class="accent-[#B91C1C]" />
-            <span>Public broker profile</span>
-          </label>
-          <a id="brokerProfileLink" class="hidden text-[#B91C1C] underline" href="#" target="_blank" rel="noopener">View profile</a>
-          <span id="brokerProfileErr" class="hidden text-red-600 text-xs"></span>
-        </div>
-        <p class="text-xs text-[#68707E] mt-1.5">Your public profile shows your name, firm, and contribution stats, never your email or phone.</p>
-      </div>
-
-      <!-- The broker vault, for people who have one. Visibility is
-           refreshBillingUI()'s, off canUseVault — same rule as the
-           account-menu link, and /api/vault re-checks it server-side
-           regardless. An <a>, not a button: /vault is a real page, so
-           middle-click and open-in-new-tab should work. -->
-      <div id="vaultCard" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Broker vault</span></div>
-        <div class="mt-2 dk-card">
-          <div class="text-sm font-semibold text-[#1A2433]">Your private comp data</div>
-          <div id="vaultCardDetail" class="text-xs text-[#68707E] mt-1">Upload your own comps and get them back sortable by property and by market. Visible only to you — nothing here is read into CompNinja&rsquo;s public records.</div>
-          <div id="vaultCardLeads" class="hidden text-xs text-[#68707E] mt-1"></div>
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <a id="vaultOpenBtn" href="/vault"
-              class="btn-live inline-flex items-center text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Open your vault</a>
-          </div>
-        </div>
-      </div>
-      </div><!-- /deckBroker -->
-
       <div class="dk-deck" data-deck id="deckAccount">
         <div class="dk-deck-h"><span class="dk-deck-lab">Account</span><span class="dk-deck-ln"></span></div>
       <!-- Report branding — the mark THIS member's own reports and exports
@@ -12357,7 +12324,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // and set once by the share loader.
   let sharedViewMeta = null;
   let currentUser = null;           // { email, name, avatarRev } | null
-  let vaultLeadsFetched = false;    // once-guard: /api/broker/leads is fetched once per sign-in, not on every refreshBillingUI call
   let pendingPortfolioSave = false; // "Save to portfolio" clicked while signed out
   const portfolioKeys = new Set(); // "address\0type" currently on My Desk
   function portfolioKey(address, type) { return String(address || "") + "\0" + String(type || ""); }
@@ -13573,7 +13539,6 @@ async function renderMyDesk() {
   function renderDeskRest() {
     const quiet = (p) => Promise.resolve(p).catch(() => {});
     return Promise.all([
-      quiet(renderBrokerDesk()),
       quiet(renderShares()),
       quiet(renderDeskHubs()),
       quiet(loadBranding()),
@@ -13765,97 +13730,6 @@ async function renderMyDesk() {
   // stamp it would be mailed about them anyway. vault-page.js's loadMarkets
   // does that now, on the same unseen guard this did.
 
-
-  // ----------------------------------------------------------------------------
-  // Broker desk — appears when the signed-in account's email matches comp
-  // submissions. Server returns only the user's own rows; everything renders
-  // via createElement/textContent (submission text is broker-typed).
-  // ----------------------------------------------------------------------------
-  const BROKER_STATUS_CHIP = {
-    approved: "text-[#06603A] bg-[#E7F5EE] border-[#BFE5D2]",
-    pending:  "text-[#8A6D1A] bg-[#FBF3DC] border-[#EDDFB0]",
-    rejected: "text-[#68707E] bg-[#F1F0EC] border-[#D8D4C9]",
-  };
-  async function renderBrokerDesk() {
-    const box = document.getElementById("deskBroker");
-    if (!currentUser) { box.classList.add("hidden"); return; }
-    let d = null;
-    try { d = await acctApi("GET", "/api/broker/me"); } catch (_) { box.classList.add("hidden"); return; }
-    if (!d.isBroker) { box.classList.add("hidden"); return; }
-    box.classList.remove("hidden");
-    document.getElementById("brokerStats").textContent =
-      `${d.stats.approved} approved · ${d.stats.citations} report citation${d.stats.citations === 1 ? "" : "s"}`;
-    const rowsEl = document.getElementById("brokerRows");
-    rowsEl.innerHTML = "";
-    d.submissions.forEach((sub) => {
-      const row = document.createElement("div");
-      row.className = "dk-person";
-      const addr = document.createElement("span");
-      addr.className = "who";
-      addr.textContent = sub.address;
-      row.appendChild(addr);
-      const meta = document.createElement("span");
-      meta.className = "what";
-      meta.textContent = [sub.property_type, sub.transaction, sub.deal_date].filter(Boolean).join(" · ");
-      row.appendChild(meta);
-      const st = ["approved", "rejected"].includes(sub.status) ? sub.status : "pending";
-      const chip = document.createElement("span");
-      chip.className = "text-[10px] font-semibold uppercase tracking-wide border rounded-full px-2 py-0.5 " + BROKER_STATUS_CHIP[st];
-      chip.textContent = st;
-      row.appendChild(chip);
-      if (sub.cited_count > 0) {
-        const cited = document.createElement("span");
-        cited.className = "text-xs text-[#06603A]";
-        cited.textContent = `cited ${sub.cited_count}×`;
-        row.appendChild(cited);
-      }
-      rowsEl.appendChild(row);
-    });
-    const wrap = document.getElementById("brokerProfileWrap");
-    const toggle = document.getElementById("brokerProfileToggle");
-    const link = document.getElementById("brokerProfileLink");
-    wrap.classList.toggle("hidden", !d.db);
-    toggle.checked = Boolean(d.profile && d.profile.public);
-    link.classList.toggle("hidden", !(d.profile && d.profile.public));
-    if (d.profile) link.href = d.profile.url;
-  }
-  document.getElementById("brokerSubmitBtn").addEventListener("click", () => {
-    openCompModal();
-    // Returning contributor — spare them retyping who they are.
-    if (currentUser) {
-      const name = document.getElementById("compBrokerName");
-      const email = document.getElementById("compBrokerEmail");
-      if (!email.value) email.value = currentUser.email;
-      if (!name.value && currentUser.name) name.value = currentUser.name;
-      // And the firm and phone from the saved report branding, else what the
-      // branding card was itself offered (2026-09-02, "one profile"). Into
-      // empty fields only; the submission is still what they send.
-      const brand = currentBranding || currentSuggested || {};
-      const company = document.getElementById("compBrokerCompany");
-      const phone = document.getElementById("compBrokerPhone");
-      if (company && !company.value && brand.firmName) company.value = brand.firmName;
-      if (phone && !phone.value && brand.phone) phone.value = brand.phone;
-    }
-  });
-  document.getElementById("brokerProfileToggle").addEventListener("change", async (e) => {
-    const toggle = e.target;
-    const err = document.getElementById("brokerProfileErr");
-    err.classList.add("hidden");
-    const want = toggle.checked;
-    toggle.disabled = true;
-    try {
-      const r = await acctApi("POST", "/api/broker/profile", { public: want });
-      const link = document.getElementById("brokerProfileLink");
-      link.href = r.url;
-      link.classList.toggle("hidden", !r.public);
-    } catch (ex) {
-      toggle.checked = !want;
-      err.textContent = ex.message;
-      err.classList.remove("hidden");
-    } finally {
-      toggle.disabled = false;
-    }
-  });
 
   // ----------------------------------------------------------------------------
   // Client sharing — My Desk's two lists: reports this member has shared, and
@@ -17569,7 +17443,9 @@ async function renderMyDesk() {
     // navigation's version of the failure the page's per-deck gate prevents.
     // Signed-in, not entitled: ACCOUNT_NAV_JS says the same thing in one word
     // (`true`, under its own members-only guard) and nav-parity reads both.
-    const canVault = Boolean(proConfig && proConfig.canUseVault);
+    // (No `canVault` read here since 2026-09-04: the workspace's vault card,
+    // its only consumer, left with the Broker deck. The entitlement is still
+    // read where it decides something — canCreateHub and the vault page.)
     document.getElementById("menuVaultLink").classList.toggle("hidden", !currentUser);
     // The unread dot (slice 8): its own endpoint, never a field on /api/config.
     // A member with no firm gets a 403 here, which leaves the dot hidden —
@@ -17583,40 +17459,6 @@ async function renderMyDesk() {
     // Stripe keys gets both tools rather than one.
     document.getElementById("menuBulkLink")
       .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
-    // Same entitlement drives the My Desk card. Signed-in only: the desk's
-    // account-backed areas are already hidden signed out, and a vault card
-    // there would offer a page that answers 401.
-    document.getElementById("vaultCard")
-      .classList.toggle("hidden", !(canVault && currentUser));
-
-    // Lead count on the card: fetched once per sign-in, not on every
-    // refreshBillingUI call — the checkout-return flow polls this function
-    // roughly six times, and /api/broker/leads has nothing new to say between
-    // those polls. Reset to empty/hidden right here, the same place the card
-    // itself is hidden, and re-arm the once-guard so a later sign-in (a
-    // different broker, or the same one again) fetches fresh instead of
-    // showing whatever the previous session left behind.
-    const vaultLeadsEl = document.getElementById("vaultCardLeads");
-    if (!(canVault && currentUser)) {
-      vaultLeadsFetched = false;
-      vaultLeadsEl.textContent = "";
-      vaultLeadsEl.classList.add("hidden");
-    } else if (!vaultLeadsFetched) {
-      vaultLeadsFetched = true;
-      vaultLeadsEl.textContent = "";
-      vaultLeadsEl.classList.add("hidden");
-      // Best-effort, silent on any failure. The server re-checks
-      // canUseVault, so this fetch simply 403s for everyone else.
-      bootFetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
-        if (!j || !Array.isArray(j.leads)) return;
-        const n = j.leads.length;
-        vaultLeadsEl.textContent = n
-          ? `${n} valuation lead${n === 1 ? "" : "s"} in your markets in the last 90 days.`
-          : "";
-        vaultLeadsEl.classList.toggle("hidden", !n);
-      }).catch(() => {});
-    }
-
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.
     if (proConfig && proConfig.exportsRemaining !== undefined) {
@@ -20955,6 +20797,25 @@ async function renderMyDesk() {
     document.getElementById("compFormWrap").classList.remove("hidden");
     document.getElementById("compSuccess").classList.add("hidden");
     document.getElementById("compError").classList.add("hidden");
+    // Returning contributor — spare them retyping who they are. This lived on
+    // the Broker deck's "Submit another comp" button until 2026-09-04, when
+    // that deck left the workspace (owner's call: a how-to feature is coming,
+    // and the deck was explaining rather than doing). The /?submit=comp door
+    // is the way in now, so the prefill belongs to the modal itself. Into
+    // EMPTY fields only; the submission is still what they send. Firm and
+    // phone come from the saved report branding, else what the branding card
+    // was itself offered (2026-09-02, "one profile").
+    if (currentUser) {
+      const name = document.getElementById("compBrokerName");
+      const email = document.getElementById("compBrokerEmail");
+      if (!email.value) email.value = currentUser.email;
+      if (!name.value && currentUser.name) name.value = currentUser.name;
+      const brand = currentBranding || currentSuggested || {};
+      const company = document.getElementById("compBrokerCompany");
+      const phone = document.getElementById("compBrokerPhone");
+      if (company && !company.value && brand.firmName) company.value = brand.firmName;
+      if (phone && !phone.value && brand.phone) phone.value = brand.phone;
+    }
     compModal.classList.remove("hidden");
     document.getElementById("compBrokerName").focus();
   }
@@ -21028,6 +20889,8 @@ async function renderMyDesk() {
         throw new Error(detail || `Request failed (${r.status}).`);
       }
       document.getElementById("compFormWrap").classList.add("hidden");
+      document.getElementById("compTipIn").classList.toggle("hidden", !currentUser);
+      document.getElementById("compTipOut").classList.toggle("hidden", Boolean(currentUser));
       document.getElementById("compSuccess").classList.remove("hidden");
     } catch (err) {
       errEl.textContent = err && err.message ? err.message : "Something went wrong. Please try again.";

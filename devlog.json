@@ -4063,5 +4063,11 @@
     "type": "improvement",
     "title": "Firm account moved into the account menu, under Settings",
     "details": "The firm's membership and settings — the roster, invitations, the create box, auto-share, the shop kind and seats — used to be a section at the foot of the workspace's firm deck. They open from the account menu now, one row under Settings, on every page: the app's menu has a Firm account row and every server-rendered menu links /desk?firm=1, consumed and cleared the way ?settings=1 is. The panel re-reads the firm on every open, so an invitation that arrived while the page sat is there when it opens; an account in no firm is told so, with a pricing door only where something is for sale; and a failed read says it failed rather than \"you have no firm\". Buildings, conversations, contacts and the shelf stay on the workspace."
+  },
+  {
+    "date": "2026-09-04",
+    "type": "improvement",
+    "title": "The Broker deck left the workspace",
+    "details": "The workspace's Broker deck — the comp-contributions list with its public-profile switch, and the \"Your private comp data\" vault card — is gone, on the owner's call: a how-to feature is coming, and the deck was explaining rather than doing. Nothing it linked to went away. The Vault is a nav row on every page, comp submissions still open from the /?submit=comp door (and that form still prefills a signed-in member's name, email, firm and phone — the prefill moved onto the modal itself), and both the submission list and the public broker profile switch moved to the Vault as an ungated \"Your contributions\" deck under Your watchlist — the Vault is the member's own space, and a free contributor can open it. The submit form's thank-you now points there."
   }
 ]

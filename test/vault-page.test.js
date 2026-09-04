@@ -4472,3 +4472,38 @@ test("the mapper folds to a summary when every required field was matched, and o
   assert.match(b.doc.getElementById("mapLead").textContent, /Tell us which/);
   assert.equal(b.doc.getElementById("mapGo").disabled, true);
 });
+
+// ----------------------------------------------------------------------------
+// Your contributions (2026-09-04) — the free deck that replaced the
+// workspace's Broker deck. Everything here is about it staying FREE.
+// ----------------------------------------------------------------------------
+test("the contributions deck is outside the vault lock, and the lock still names the three that are inside", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const js = pageScript(html);
+  assert.match(html, /id="deckContribs"/, "the deck is gone from the page");
+  assert.match(html, /id="contribSec"/);
+  const decks = js.match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
+  assert.ok(decks, "VAULT_DECKS is gone");
+  assert.ok(!/contrib/i.test(decks[1]),
+    "the contributions deck was added to VAULT_DECKS — a free contributor would lose it behind the Pro lock");
+  // It loads with the two other personal decks, on every exit but 401.
+  assert.match(js, /personalLoaded=true; loadProps\(\); loadMarkets\(\); loadContribs\(\);/,
+    "loadContribs must run where loadProps and loadMarkets do, so the 403 and 503 exits reach it");
+  assert.match(js, /fetch\("\/api\/broker\/me"/, "the deck reads /api/broker/me");
+});
+
+test("the deck ships hidden and says the three review words; the switch posts the profile route", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const js = pageScript(html);
+  assert.match(html, /<div class="deck hide" id="deckContribs">/, "a member who never submitted must not see the heading");
+  assert.match(html, /<section id="contribSec" class="hide">/);
+  for (const w of ["approved", "pending", "rejected"]) {
+    assert.ok(js.includes(w), "the status vocabulary lost " + w);
+  }
+  assert.match(js, /fetch\("\/api\/broker\/profile",\{method:"POST"/, "the public-profile switch no longer posts the profile route");
+  assert.match(html, /id="contribPublic" type="checkbox"/);
+  // The door back into the funnel is the site's one public submission door.
+  assert.match(html, /<a class="dact" href="\/\?submit=comp">/);
+  // Fresh JS still compiles with the additions.
+  assert.doesNotThrow(() => new Function(js));
+});

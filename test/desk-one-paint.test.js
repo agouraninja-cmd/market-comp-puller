@@ -55,7 +55,7 @@ function load(user) {
   const src = html.match(DESK_RE);
   assert.ok(src, "could not find renderMyDesk / renderDeskRest in index.html");
   const dom = makeDom();
-  const pending = { portfolio: deferred(), broker: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
+  const pending = { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
   const ctx = vm.createContext({
     document: dom.document,
     console, setTimeout, Promise,
@@ -66,7 +66,6 @@ function load(user) {
     portfolioKeys: new Set(),
     markPortfolioSaved() {},
     syncPortfolioButton() {},
-    renderBrokerDesk: () => pending.broker.promise,
     renderShares: () => pending.shares.promise,
     renderDeskHubs: () => pending.hubs.promise,
     loadBranding: () => pending.branding.promise,
@@ -79,7 +78,7 @@ function load(user) {
   ctx.pending = pending;
   ctx.landAll = (items) => {
     pending.portfolio.resolve({ items: items || [] });
-    pending.broker.resolve(); pending.shares.resolve(); pending.hubs.resolve(); pending.branding.resolve();
+    pending.shares.resolve(); pending.hubs.resolve(); pending.branding.resolve();
   };
   // Everything settles in microtasks once resolved; one macrotask is plenty.
   ctx.settle = () => new Promise((r) => setTimeout(r, 5));
@@ -93,8 +92,8 @@ test("the first fill is held behind the stand-in and revealed once, whole", asyn
   const run = c.run();
   assert.ok(c.dom.hidden("myDesk"), "the desk stays hidden while its reads are out");
   assert.ok(!c.dom.hidden("deskLoading"), "the stand-in shows in its place");
-  // Four of five sections landing is not the desk: it stays held.
-  c.pending.broker.resolve(); c.pending.shares.resolve(); c.pending.hubs.resolve(); c.pending.branding.resolve();
+  // Three of four sections landing is not the desk: it stays held.
+  c.pending.shares.resolve(); c.pending.hubs.resolve(); c.pending.branding.resolve();
   await c.settle();
   assert.ok(c.dom.hidden("myDesk"), "one read still out keeps the desk held");
   c.pending.portfolio.resolve({ items: [] });
@@ -110,7 +109,7 @@ test("a later call for the same identity repaints in place and never blanks the 
   await first;
   assert.ok(!c.dom.hidden("myDesk"));
   // Second call: fresh, still-pending reads — the desk must stay on screen.
-  Object.assign(c.pending, { portfolio: deferred(), broker: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() });
+  Object.assign(c.pending, { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() });
   const second = c.run();
   assert.ok(!c.dom.hidden("myDesk"), "a desk already on screen is not re-hidden by a repaint");
   assert.ok(c.dom.hidden("deskLoading"), "and the stand-in does not come back");
@@ -137,7 +136,7 @@ test("a different account signing in mid-fill owns the reveal", async () => {
   const c = load(BRAD);
   const bradFill = c.run();
   c.currentUser = { id: "u-mike", email: "mike@colliers.com" };
-  const mikePending = { portfolio: deferred(), broker: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
+  const mikePending = { portfolio: deferred(), shares: deferred(), hubs: deferred(), branding: deferred() };
   const bradPending = c.pending;
   Object.assign(c.pending, mikePending);
   const mikeFill = c.run();
@@ -147,7 +146,7 @@ test("a different account signing in mid-fill owns the reveal", async () => {
   await bradFill;
   assert.ok(c.dom.hidden("myDesk"), "Brad's late reads must not reveal Mike's half-filled desk");
   mikePending.portfolio.resolve({ items: [] });
-  mikePending.broker.resolve(); mikePending.shares.resolve(); mikePending.hubs.resolve(); mikePending.branding.resolve();
+  mikePending.shares.resolve(); mikePending.hubs.resolve(); mikePending.branding.resolve();
   await mikeFill;
   assert.ok(!c.dom.hidden("myDesk"));
 });
@@ -157,7 +156,7 @@ test("a renderer that rejects does not hold the desk forever", async () => {
   c.renderShares = () => Promise.reject(new Error("boom"));
   const fill = c.run();
   c.pending.portfolio.resolve({ items: [] });
-  c.pending.broker.resolve(); c.pending.hubs.resolve(); c.pending.branding.resolve();
+  c.pending.hubs.resolve(); c.pending.branding.resolve();
   await fill;
   assert.ok(!c.dom.hidden("myDesk"), "renderDeskRest must swallow a rejection so the reveal still happens");
 });

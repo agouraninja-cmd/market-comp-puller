@@ -23,9 +23,7 @@ ship-time one. Both apply.
    entry shape in CLAUDE.md). Work already committed without one? Add it as
    a follow-up commit — never amend in this shared checkout. Validate
    devlog.json still parses.
-3. **Tests**: `npm test` — or with node off PATH:
-   `& "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" --test`
-   All green or stop here.
+3. **Tests**: `npm test`. All green or stop here.
 4. **New Tailwind utility classes?** The auto-regen hook rebuilds
    `tailwind.css` on edit — do NOT regen manually unless a class is
    actually missing from the vendored file (Select-String each new class).

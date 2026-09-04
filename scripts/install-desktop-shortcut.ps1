@@ -13,9 +13,9 @@
 #   powershell -ExecutionPolicy Bypass -File scripts\install-desktop-shortcut.ps1 -Url https://compninja.co
 #
 # Add -StartMenu to also place it in the Start Menu. Node is found on PATH
-# first, then at the documented portable location from CLAUDE.md
-# ($env:LOCALAPPDATA\node-portable\<version>\node.exe) — the owner's machine
-# runs the portable no-admin copy, which is never on PATH.
+# first (the owner's machine has a system install there), then, as a fallback
+# for a machine without one, at the old portable no-admin location
+# ($env:LOCALAPPDATA\node-portable\<version>\node.exe).
 
 param(
   [string]$Url = "",

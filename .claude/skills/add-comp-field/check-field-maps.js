@@ -1,8 +1,7 @@
 // Consistency check for CompNinja's per-type field maps. Free, no server, no
 // API calls. Run from the repo root:
 //
-//   "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" \
-//     .claude/skills/add-comp-field/check-field-maps.js
+//   node .claude/skills/add-comp-field/check-field-maps.js
 //
 // It extracts the real maps out of server.js and index.html and evaluates them
 // in their own scope (plain eval() would scope `const` to the eval and lose

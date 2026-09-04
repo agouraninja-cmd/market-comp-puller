@@ -20,10 +20,15 @@ eval-runs/
 # Before/after design screenshots (scripts/shot.js) — regenerate, never commit
 screenshots/
 
-# Local Claude Code settings
+# Claude Code: worktrees, caches and any settings.local.json stay local...
 .claude/*
-# ...except skills, which are project knowledge rather than local config
+# ...but skills (project knowledge), the tailwind regen hook and the project
+# settings.json that registers it (plus the destructive-git deny list) are
+# committed, so a fresh clone gets them. Until 2026-09-03 the hook was ignored
+# and existed on exactly one machine.
 !.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
 
 # Captured leads and broker comp submissions (contact info) — never commit
 leads.jsonl
@@ -51,6 +56,10 @@ guest-quota.jsonl
 # revenue figures and, with a live Stripe key, customer payment descriptions.
 # The ledger's inputs are ignored too — see the ledger DATA rule below.
 CompNinja*.xlsx
+# Word exports of the roadmap calendars (docs/ROADMAP-2026-09*.docx) -- the .md
+# beside each is the tracked copy; a binary twin is undiffable and one
+# `git add -A` from being published.
+*.docx
 
 # Ledger DATA — the company's actual finances. This repo is PUBLIC, and these
 # files carry monthly costs, the LLC fee, and (now that Stripe is live) revenue

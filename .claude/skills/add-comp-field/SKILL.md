@@ -169,7 +169,7 @@ add an Industrial comp field, add it there too or the demo shows empty cells.
 0. **Run the map consistency check first** — free, instant, no server:
 
    ```bash
-   "$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe" .claude/skills/add-comp-field/check-field-maps.js
+   node .claude/skills/add-comp-field/check-field-maps.js
    ```
 
    It extracts the four real maps and cross-checks them, catching the failures

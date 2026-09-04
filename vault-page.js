@@ -544,6 +544,10 @@ a.btn.ghost:hover{color:var(--ink)}
 .stg{display:inline-block;font-size:var(--t6);letter-spacing:.08em;text-transform:uppercase;
   font-weight:600;color:var(--ink-2);background:var(--wash);border:1px solid var(--edge);
   border-radius:3px;padding:3px 7px;white-space:nowrap}
+/* A submission's review status, on the contributions deck. Approved borrows
+   the published green on purpose: an approved submission IS a public record. */
+.stg.ok{background:var(--ok-bg);color:var(--ok-text);border-color:transparent}
+.stg.rej{color:var(--ink-3)}
 .dbox{border:1px solid var(--edge);border-radius:var(--r);background:var(--card);
   padding:12px 18px;margin-top:var(--s4);box-shadow:var(--shadow),var(--lift)}
 .dbox>summary{cursor:pointer;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
@@ -1061,6 +1065,47 @@ a.btn.ghost:hover{color:var(--ink)}
     </section>
 
     <!-- ------------------------------------------------------------------
+         Your contributions (2026-09-04). The comps this member handed to the
+         PUBLIC records through the Submit-a-comp modal, each with its review
+         status and how many reports have cited it. It lived on the
+         workspace's Broker deck until the owner removed that deck; this is
+         its home now, and the Vault is the right one -- Workspace is the
+         firm's, the Vault is yours (Three Spaces).
+
+         UNGATED, like the two decks above it and unlike the three that ARE
+         the vault: "has contributed" (/api/broker/me's isBroker) is
+         deliberately a weaker fact than canUseVault (the 2026-08-05 lead
+         inbox spec), and the submit form is the free broker's funnel. So
+         these ids are NOT in VAULT_DECKS, and loadContribs() runs on the 403
+         and 503 exits exactly as loadProps() does. A test holds both.
+
+         Hidden until the read says there is something to show: a member who
+         never submitted a comp is not told so under a heading. The public
+         profile switch sits at the foot because it is ABOUT these rows --
+         it is the second of broker-directory.js's two consents, and it
+         needs one approved comp before the server will honour it.
+         ------------------------------------------------------------------ -->
+    <div class="deck hide" id="deckContribs">
+      <span class="dlab">Your contributions</span><span class="dln"></span>
+      <a class="dact" href="/?submit=comp">+ Submit a comp</a>
+    </div>
+
+    <section id="contribSec" class="hide">
+      <p class="sub" id="contribStats" style="margin-top:0"></p>
+      <div id="contribRows"></div>
+      <div class="dbox" style="margin-top:var(--s4);padding:14px 16px">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+          <input id="contribPublic" type="checkbox" style="margin-top:3px"/>
+          <span><span style="font-weight:600">Public broker profile</span><br/>
+            <span class="note">List you on the market pages you have contributed comps to: your name,
+              firm and contribution stats, never your email or phone. Needs one approved comp.</span></span>
+        </label>
+        <p style="margin:8px 0 0"><a id="contribProfileLink" class="hide" href="#" target="_blank" rel="noopener">View your public profile</a></p>
+        <div class="msg bad hide" id="contribErr"></div>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------------
          The pipeline deck: work coming IN, rather than work already done.
          ONE table, from a lead nobody has claimed through to won or lost —
          see docs/superpowers/specs/2026-08-13-vault-pipeline-deck-design.md.
@@ -1468,7 +1513,7 @@ a.btn.ghost:hover{color:var(--ink)}
     // Once per page visit, not on every filter change or post-import refresh
     // that re-runs load() -- those hit /api/vault, a different endpoint, and
     // re-reading the portfolio on each would be work with no new information.
-    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); }
+    if(!personalLoaded){ personalLoaded=true; loadProps(); loadMarkets(); loadContribs(); }
     else { renderProps(); }
 
     // 403 (not Pro) and 503 (no database) lock the same three decks. The 503
@@ -5533,6 +5578,58 @@ a.btn.ghost:hover{color:var(--ink)}
     fetch("/api/watchlist?id="+encodeURIComponent(b.getAttribute("data-unwatch")),
       {method:"DELETE",credentials:"same-origin"})
       .then(function(){loadMarkets()}).catch(function(){loadMarkets()});
+  });
+
+  // Your contributions: one read of /api/broker/me (signed-in, never Pro).
+  // A failed read hides the deck -- "we could not ask" is not "you have not
+  // contributed" -- and so does isBroker:false, which is the ordinary state
+  // for most members. Submission text is broker-typed, so every field goes
+  // through esc().
+  var CONTRIB_STATUS={approved:"ok",pending:"",rejected:"rej"};
+  function loadContribs(){
+    fetch("/api/broker/me",{credentials:"same-origin"})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){ renderContribs(o.s===200?o.j:null); })
+      .catch(function(){ renderContribs(null); });
+  }
+  function renderContribs(d){
+    var show=Boolean(d&&d.isBroker);
+    $("deckContribs").className=show?"deck":"deck hide";
+    $("contribSec").className=show?"":"hide";
+    if(!show) return;
+    var st=d.stats||{};
+    $("contribStats").textContent=(st.approved||0)+" approved of "+(st.total||0)+
+      " submitted · "+(st.citations||0)+" report citation"+((st.citations||0)===1?"":"s");
+    var subs=d.submissions||[];
+    $("contribRows").innerHTML=subs.length?'<div class="tw" style="margin-top:var(--s4)"><table>'+
+      "<thead><tr><th>Address</th><th>Deal</th><th>Date</th><th>Status</th><th class=\\"num\\">Cited</th></tr></thead><tbody>"+
+      subs.map(function(s){
+        var status=CONTRIB_STATUS.hasOwnProperty(s.status)?s.status:"pending";
+        return "<tr><td>"+esc(s.address||"")+"</td><td>"+
+          esc([s.property_type,s.transaction].filter(Boolean).join(" · "))+"</td><td>"+
+          esc(s.deal_date||"")+'</td><td><span class="stg '+CONTRIB_STATUS[status]+'">'+esc(status)+"</span></td>"+
+          '<td class="num">'+(s.cited_count>0?esc(String(s.cited_count))+"×":"")+"</td></tr>";
+      }).join("")+"</tbody></table></div>":"";
+    var pub=Boolean(d.profile&&d.profile.public);
+    $("contribPublic").checked=pub;
+    $("contribPublic").disabled=!d.db;
+    $("contribProfileLink").className=pub?"":"hide";
+    if(d.profile&&d.profile.url) $("contribProfileLink").href=d.profile.url;
+    $("contribErr").className="msg bad hide";
+  }
+  $("contribPublic").addEventListener("change",function(e){
+    var box=e.target,want=box.checked,err=$("contribErr");
+    err.className="msg bad hide"; box.disabled=true;
+    fetch("/api/broker/profile",{method:"POST",credentials:"same-origin",
+      headers:{"content-type":"application/json"},body:JSON.stringify({public:want})})
+      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200) throw new Error((o.j&&o.j.error)||"That didn't go through.");
+        $("contribProfileLink").href=o.j.url||"#";
+        $("contribProfileLink").className=o.j.public?"":"hide";
+      })
+      .catch(function(ex){ box.checked=!want; err.textContent=ex.message; err.className="msg bad"; })
+      .then(function(){ box.disabled=false; });
   });
 
   $("wType").innerHTML=PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");

@@ -1961,7 +1961,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div class="text-3xl mb-2">🤝</div>
         <h2 class="text-lg font-semibold text-[#1A2433]">Thanks, we got it.</h2>
         <p class="text-sm text-[#68707E] mt-1">Our team reviews every submission, usually within a couple of business days. Once approved, your comp appears with your firm's credit, and you're first in line when an owner in your market asks for a Broker Opinion of Value.</p>
-        <p class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email to track your submissions and see when reports cite your comps.</p>
+        <!-- Two tips, one shown (the submit handler picks by currentUser).
+             Both point at the Vault's contributions deck (2026-09-04), which
+             is where a submission's review status and citations live now. -->
+        <p id="compTipIn" class="hidden text-xs text-[#9AA2AD] mt-2">Track its review and see when reports cite it under Your contributions in <a href="/vault" class="underline">your Vault</a>.</p>
+        <p id="compTipOut" class="text-xs text-[#9AA2AD] mt-2">Tip: create a free CompNinja account with this same email, and your submissions show up in your Vault with their review status and citations.</p>
         <div class="mt-4 flex justify-center gap-3">
           <button id="compAnotherBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Submit another</button>
           <button id="compDoneBtn" type="button" class="btn-live text-sm font-semibold text-[#374253] bg-white hover:bg-[#F5F4EF] border border-[#D8D4C9] rounded-lg px-4 py-2">Done</button>
@@ -2153,25 +2157,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <input id="settingsDigestToggle" type="checkbox" class="accent-[#B91C1C] mt-1" />
         </label>
         <p id="settingsDigestErr" class="hidden text-sm text-red-600 mt-2"></p>
-      </div>
-      <!-- Public broker profile. Moved here 2026-09-04 from the workspace's
-           Broker deck, which the owner removed. The switch is the second of
-           broker-directory.js's TWO CONSENTS (coverage is a lead preference,
-           this is permission to be listed), so it could not simply go with
-           the deck. Shown only to a contributor -- an account whose email
-           matches comp submissions and a deployment with a database --
-           decided by GET /api/broker/me on every open of this panel
-           (applySettingsBrokerRow), never from boot state. -->
-      <div id="settingsBrokerRow" class="hidden mt-4 pt-4 border-t border-[#E4E2DA]">
-        <label class="flex items-start justify-between gap-4 cursor-pointer">
-          <span>
-            <span class="block text-sm font-medium text-[#1A2433]">Public broker profile</span>
-            <span class="block text-xs text-[#68707E] mt-0.5">List you on the market pages you have contributed comps to: your name, firm and contribution stats, never your email or phone.</span>
-          </span>
-          <input id="brokerProfileToggle" type="checkbox" class="accent-[#B91C1C] mt-1" />
-        </label>
-        <a id="brokerProfileLink" class="hidden text-xs text-[#B91C1C] underline mt-2 inline-block" href="#" target="_blank" rel="noopener">View your public profile</a>
-        <p id="brokerProfileErr" class="hidden text-sm text-red-600 mt-2"></p>
       </div>
       <!-- Account, and since 2026-08-29 the ONLY home for the profile photo:
            the workspace header's cluster is gone. Change photo drives the same
@@ -12739,44 +12724,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       document.getElementById("settingsDigestToggle").checked = !currentUser.digestOptout;
     }
   }
-  // The public-profile row (see its markup): asked fresh on every open, and
-  // hidden until the answer says this account has contributed. A failed read
-  // hides it -- "we could not ask" must not read as "you are not a
-  // contributor", but a switch that would 4xx is worse than none.
-  async function applySettingsBrokerRow() {
-    const row = document.getElementById("settingsBrokerRow");
-    const toggle = document.getElementById("brokerProfileToggle");
-    const link = document.getElementById("brokerProfileLink");
-    document.getElementById("brokerProfileErr").classList.add("hidden");
-    row.classList.add("hidden");
-    if (!currentUser) return;
-    let d = null;
-    try { d = await acctApi("GET", "/api/broker/me"); } catch (_) { return; }
-    if (!currentUser || !d || !d.isBroker || !d.db) return;
-    toggle.checked = Boolean(d.profile && d.profile.public);
-    link.classList.toggle("hidden", !(d.profile && d.profile.public));
-    if (d.profile) link.href = d.profile.url;
-    row.classList.remove("hidden");
-  }
-  document.getElementById("brokerProfileToggle").addEventListener("change", async (e) => {
-    const toggle = e.target;
-    const err = document.getElementById("brokerProfileErr");
-    err.classList.add("hidden");
-    const want = toggle.checked;
-    toggle.disabled = true;
-    try {
-      const r = await acctApi("POST", "/api/broker/profile", { public: want });
-      const link = document.getElementById("brokerProfileLink");
-      link.href = r.url;
-      link.classList.toggle("hidden", !r.public);
-    } catch (ex) {
-      toggle.checked = !want;
-      err.textContent = ex.message;
-      err.classList.remove("hidden");
-    } finally {
-      toggle.disabled = false;
-    }
-  });
   function resetSettingsDeleteConfirm() {
     document.getElementById("settingsDeleteConfirm").classList.add("hidden");
     document.getElementById("settingsDeleteErr").classList.add("hidden");
@@ -12789,7 +12736,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("passkeyMsg").classList.add("hidden");
     showAvatarMsg("");
     applySettingsAccountUI();
-    applySettingsBrokerRow();
     document.getElementById("settingsModal").classList.remove("hidden");
     // The email unsubscribe link writes the same digest column this panel's
     // toggle reads, so sync from /me on every open rather than trusting the
@@ -20907,6 +20853,8 @@ async function renderMyDesk() {
         throw new Error(detail || `Request failed (${r.status}).`);
       }
       document.getElementById("compFormWrap").classList.add("hidden");
+      document.getElementById("compTipIn").classList.toggle("hidden", !currentUser);
+      document.getElementById("compTipOut").classList.toggle("hidden", Boolean(currentUser));
       document.getElementById("compSuccess").classList.remove("hidden");
     } catch (err) {
       errEl.textContent = err && err.message ? err.message : "Something went wrong. Please try again.";

@@ -4062,6 +4062,6 @@
     "date": "2026-09-04",
     "type": "improvement",
     "title": "The Broker deck left the workspace",
-    "details": "The workspace's Broker deck — the comp-contributions list with its public-profile switch, and the \"Your private comp data\" vault card — is gone, on the owner's call: a how-to feature is coming, and the deck was explaining rather than doing. Nothing it linked to went away. The Vault is a nav row on every page, comp submissions still open from the /?submit=comp door (and that form still prefills a signed-in member's name, email, firm and phone — the prefill moved onto the modal itself), and the public broker profile switch moved into the Settings panel, where it appears for an account that has contributed comps."
+    "details": "The workspace's Broker deck — the comp-contributions list with its public-profile switch, and the \"Your private comp data\" vault card — is gone, on the owner's call: a how-to feature is coming, and the deck was explaining rather than doing. Nothing it linked to went away. The Vault is a nav row on every page, comp submissions still open from the /?submit=comp door (and that form still prefills a signed-in member's name, email, firm and phone — the prefill moved onto the modal itself), and both the submission list and the public broker profile switch moved to the Vault as an ungated \"Your contributions\" deck under Your watchlist — the Vault is the member's own space, and a free contributor can open it. The submit form's thank-you now points there."
   }
 ]

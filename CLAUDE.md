@@ -3634,6 +3634,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
       JS, is one template literal, so a stray `${` or a single-backslash escape
       emits broken JavaScript and a blank workspace rather than failing loudly.
       That test compiles what the page actually emits.
+  - **Your contributions is the fourth free deck** (2026-09-04). Under Your
+    watchlist, `#deckContribs` lists the comps this member submitted through
+    the public Submit-a-comp modal (`GET /api/broker/me`: status, citations)
+    and carries the public-broker-profile switch, broker-directory.js's
+    second consent. It is deliberately NOT in `VAULT_DECKS`: "has
+    contributed" is a weaker fact than `canUseVault` and the modal is the
+    free broker's funnel, so it renders on the 403 and 503 exits like the
+    properties and watchlist decks. Hidden entirely when `isBroker` is
+    false. It replaced the workspace's Broker deck, removed the same day.
   - **The EMPTY VAULT is the real vault** (2026-08-13; spec
     `docs/superpowers/specs/2026-08-13-vault-empty-workspace-design.md`).
     When a broker has no comps *and* no imports, `applyFirstRun()` still

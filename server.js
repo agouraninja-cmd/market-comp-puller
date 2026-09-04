@@ -9758,7 +9758,9 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     // server-rendered menu -- a query, never a fragment, for ?settings=1's
     // reason. /desk keeps its redirect for a visitor with no session, which
     // is right: unlike Settings the panel has no signed-out rows.
-    `<a id="navFirm" href="/desk?firm=1">Firm account</a>` +
+    // Renamed "Firm & branding" later that day, when Report branding moved
+    // into the same panel — same href, same door.
+    `<a id="navFirm" href="/desk?firm=1">Firm &amp; branding</a>` +
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +

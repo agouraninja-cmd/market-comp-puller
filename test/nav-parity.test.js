@@ -265,7 +265,7 @@ test("a signed-out reader can still find the price", () => {
     "/pricing is not a route any more, so the footer link goes nowhere");
 });
 
-test("Firm account is one row under Settings on both sides of the rail", () => {
+test("Firm & branding is one row under Settings on both sides of the rail", () => {
   // The firm's roster and settings left the workspace on 2026-09-03 for a
   // modal that lives only in index.html, so it needs the same two doors the
   // settings panel has: a row in the app's account menu and a link in every
@@ -275,13 +275,13 @@ test("Firm account is one row under Settings on both sides of the rail", () => {
   const srvAt = SERVER_JS.indexOf('<a id="navSettings" href="/desk?settings=1">Settings</a>');
   assert.notEqual(srvAt, -1, "the shared account menu lost its Settings row");
   const srvNext = SERVER_JS.indexOf("<a id=", srvAt + 1);
-  assert.ok(SERVER_JS.slice(srvNext).startsWith('<a id="navFirm" href="/desk?firm=1">Firm account</a>'),
-    "the shared account menu's next link after Settings is not Firm account");
+  assert.ok(SERVER_JS.slice(srvNext).startsWith('<a id="navFirm" href="/desk?firm=1">Firm &amp; branding</a>'),
+    "the shared account menu's next link after Settings is not Firm & branding");
   const appAt = INDEX_HTML.indexOf('id="menuSettingsBtn"');
   assert.notEqual(appAt, -1, "the app's account menu lost its Settings row");
   const appNext = INDEX_HTML.indexOf("<button", appAt + 1);
-  assert.match(INDEX_HTML.slice(appNext, appNext + 200), /^<button id="menuFirmBtn"[^>]*>Firm account</,
-    "the app's next menu row after Settings is not Firm account");
+  assert.match(INDEX_HTML.slice(appNext, appNext + 200), /^<button id="menuFirmBtn"[^>]*>Firm &amp; branding</,
+    "the app's next menu row after Settings is not Firm & branding");
   // The door is a query the wall can see, consumed and cleared where
   // ?settings=1 is — after the account resolves, so a signed-out arrival
   // opens nothing and a reload does not reopen a closed panel.

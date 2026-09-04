@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-03",
+    "type": "improvement",
+    "title": "Report branding lives in the Firm & branding panel; the workspace is work only",
+    "details": "The branding editor was the last card of a workspace “Account” deck, three decks below the firm’s work, while the firm’s roster and settings had already moved into the account menu’s Firm account panel that morning. Now the panel carries Report branding as its second section — the personal profile for everyone, the firm’s for an owner or admin, in the one form with its scope row — shown in every firm state, so a member in no firm edits their letterhead in the same place. The panel is renamed Firm & branding for that member. The Account deck is gone: its plan card duplicated the Settings panel’s plan row, and the one control it alone had, the admin’s “View as a free user”, moved into that row. Escape now closes the panel instead of blurring an input and then closing the report beneath it. Nothing about how a letterhead is loaded or applied changed."
+  },
+  {
     "date": "2026-09-04",
     "type": "improvement",
     "title": "The workspace arrives with the page: a member's first frame is the finished desk",

@@ -1115,7 +1115,15 @@ test("a logo can be read off the firm's website, through the same resizer a chos
 test("report branding is collapsed behind a summary that states what is saved", () => {
   const at = html.indexOf('id="deskBranding"');
   assert.ok(at > -1, "the branding section is still there");
-  const sec = html.slice(at, html.indexOf('id="billingCard"'));
+  // Inside the Firm & branding panel since 2026-09-03: after the firm
+  // section, before the panel's Close row, and nowhere else.
+  assert.equal(html.split('id="deskBranding"').length - 1, 1, "exactly one branding section");
+  const panelAt = html.indexOf('id="firmModal"');
+  const closeAt = html.indexOf('id="firmClose"');
+  assert.ok(panelAt > -1 && closeAt > -1);
+  assert.ok(panelAt < html.indexOf('id="deskFirm"') && html.indexOf('id="deskFirm"') < at && at < closeAt,
+    "the branding section sits in the panel, after the firm section and before Close");
+  const sec = html.slice(at, closeAt);
   assert.ok(sec.includes('<details id="brandBox"'), "the form collapses");
   assert.ok(sec.includes('id="brandSummary"'), "the collapsed row carries a state line");
   // The rule and the explanation stay OUTSIDE the details, so the deck still
@@ -1140,6 +1148,40 @@ test("report branding is collapsed behind a summary that states what is saved", 
   const load = html.slice(loadAt, html.indexOf("brandingLoadPromise = null", loadAt));
   assert.equal((load.match(/openBrandBox\(\)/g) || []).length, 2,
     "both load-failure paths must open the box so the message is visible");
+});
+
+test("the workspace has no Account deck; the plan lives in Settings, with the admin's way out", () => {
+  // 2026-09-03, owner's call: the workspace is work only. Report branding
+  // moved into the Firm & branding panel and the plan card went, because it
+  // duplicated the Settings panel's plan row — except for ONE control, the
+  // admin's "View as a free user", which CLAUDE.md says must keep working.
+  for (const gone of ['id="deckAccount"', 'id="billingCard"', 'id="billingStatus"', 'id="billingUpgradeBtn"',
+                      'id="billingPortalBtn"', 'id="billingError"']) {
+    assert.ok(!html.includes(gone), gone + " came back");
+  }
+  const rowAt = html.indexOf('id="settingsPlanRow"');
+  const row = html.slice(rowAt, html.indexOf('id="settingsPlanError"', rowAt));
+  assert.ok(row.includes('id="billingAdminOffBtn"'), "the admin's way out of comped Pro sits in the Settings plan row");
+  assert.ok(row.includes("View as a free user"));
+  const fnAt = html.indexOf("function refreshBillingUI");
+  const fn = html.slice(fnAt, html.indexOf("\n  }\n", fnAt));
+  assert.ok(fn.includes('getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro())'),
+    "refreshBillingUI still reveals it for an admin only");
+  assert.ok(html.includes('getElementById("billingAdminOffBtn").addEventListener("click", dropAdminAccess)'));
+  // A failed portal open lands on a line somebody can see.
+  const portalAt = html.indexOf("async function openBillingPortal");
+  assert.ok(html.slice(portalAt, portalAt + 600).includes('errEl || document.getElementById("settingsPlanError")'));
+});
+
+test("Escape closes the Firm & branding panel and never falls through it", () => {
+  // Branding inputs live in the panel now, so Escape from one must close the
+  // panel — not blur, then close the report or leave the desk underneath.
+  const at = html.indexOf("const MODAL_CANCELS = [");
+  const list = html.slice(at, html.indexOf("];", at));
+  assert.ok(list.includes('["firmModal", "firmClose"]'), "the panel is in the Escape list");
+  const guards = html.match(/\["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal"(, "firmModal")?\]/g) || [];
+  assert.equal(guards.length, 2, "both Escape guards are still there");
+  for (const g of guards) assert.ok(g.includes('"firmModal"'), "an Escape guard does not name the panel: " + g);
 });
 
 test("the workspace subtitle describes the page it introduces", () => {

@@ -1087,8 +1087,10 @@ test("the branding form fills empty fields from what the account knows, and says
   assert.ok(html.includes("fillBrandForm(null)"), "a delete still blanks the form rather than re-seeding it");
   const sum = html.slice(html.indexOf("function renderBrandSummary"), html.indexOf("function renderBrandPreview"));
   assert.match(sum, /suggested, not saved yet/, "the summary must not claim a letterhead exists for a seeded form");
-  const at = html.indexOf('getElementById("brokerSubmitBtn").addEventListener');
-  const sub = html.slice(at, at + 1400);
+  // The prefill lives on the modal itself since 2026-09-04 (the Broker
+  // deck's button that carried it left the workspace).
+  const at = html.indexOf("function openCompModal()");
+  const sub = html.slice(at, at + 1600);
   assert.match(sub, /compBrokerCompany/);
   assert.match(sub, /compBrokerPhone/);
   assert.match(sub, /currentBranding \|\| currentSuggested/, "saved branding first, then the suggestion");
@@ -2801,4 +2803,21 @@ test("the static map's pins are measured from the LOGICAL origin, not the double
   assert.match(fn[0], /smapCompPin\(ctx, q\.x - px, q\.y - py, p\.num\)/, "comp pins use it");
   assert.match(fn[0], /smapSubjectPin\(ctx, q\.x - px, q\.y - py\)/, "the subject pin uses it");
   assert.doesNotMatch(fn[0], /Pin\(ctx, q\.x - ox/, "no pin subtracts the doubled tile origin");
+});
+
+// ----------------------------------------------------------------------------
+// Contributions live in the Vault (2026-09-04). The app keeps no copy of the
+// list or the public-profile switch, and the submit form's thank-you points at
+// the place that has them.
+// ----------------------------------------------------------------------------
+test("the public-profile switch has one home, the Vault, and the thank-you points there", () => {
+  assert.ok(!html.includes('id="settingsBrokerRow"'), "the Settings panel grew the public-profile switch back");
+  assert.ok(!html.includes('id="brokerProfileToggle"'), "a second public-profile toggle in the app");
+  assert.ok(!html.includes("/api/broker/profile"), "the app posts the profile route — the Vault's deck owns that switch");
+  // Two tips, one per sign-in state, both naming the Vault.
+  assert.match(html, /id="compTipIn" class="hidden [^"]*"[^>]*>[^<]*<a href="\/vault"/, "the signed-in tip does not link the Vault");
+  assert.match(html, /id="compTipOut"[^>]*>[^<]*Vault/, "the signed-out tip does not name the Vault");
+  const at = html.indexOf('document.getElementById("compSuccess").classList.remove("hidden");');
+  const before = html.slice(at - 400, at);
+  assert.match(before, /compTipIn"\)\.classList\.toggle\("hidden", !currentUser\)/, "the success handler does not pick the tip by sign-in state");
 });

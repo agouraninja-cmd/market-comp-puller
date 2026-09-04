@@ -9574,6 +9574,13 @@ function accountNavSlots({ desk = true, upsell = true } = {}) {
     // It renders inside #navAcct, which is hidden until a session resolves, so
     // it can never be offered to somebody with no account to configure.
     `<a id="navSettings" href="/desk?settings=1">Settings</a>` +
+    // Firm account, added 2026-09-03, right under Settings on the owner's
+    // call. The roster and the firm's settings left the workspace for a
+    // modal in index.html, and this is that modal's door from every
+    // server-rendered menu -- a query, never a fragment, for ?settings=1's
+    // reason. /desk keeps its redirect for a visitor with no session, which
+    // is right: unlike Settings the panel has no signed-out rows.
+    `<a id="navFirm" href="/desk?firm=1">Firm account</a>` +
     (upsell ? `<button id="navUpgrade" class="up" type="button" hidden>Upgrade to Pro</button>` : "") +
     `<button id="navBilling" type="button" hidden>Manage billing</button>` +
     `<button id="navSignOut" type="button">Sign out</button>` +

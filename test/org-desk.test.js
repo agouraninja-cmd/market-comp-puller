@@ -1361,3 +1361,75 @@ test("a firm is created with both answers, and the form is left empty", async ()
   assert.equal(ctx.dom.el("firmNameInput").value, "");
   assert.equal(ctx.dom.el("firmKindSelect").value, "", "the next firm asks the question again");
 });
+
+// ---------------------------------------------------------------------------
+// The Firm account panel (2026-09-03) — the fourth state, said out loud
+// ---------------------------------------------------------------------------
+const OPEN_FIRM_RE = /  async function openFirmModal\(\) \{[\s\S]*?\n  \}/;
+
+function loadOpenFirm({ shows, state, billing, isPro }) {
+  return load(OPEN_FIRM_RE,
+    "this.openFirmModal = openFirmModal; this.asked = () => __asked;",
+    "let firmState = __state; let proConfig = { billing: __billing, isPro: __isPro }; let __asked = 0;\n" +
+    "function billingLive() { return Boolean(proConfig && proConfig.billing); }\n" +
+    // renderFirm is the section's own decider; here it stands in for the
+    // outcome it would have reached — shown, or hidden.
+    "async function renderFirm() { __asked++; document.getElementById('deskFirm').classList.toggle('hidden', !__shows); }",
+    { __shows: shows, __state: state, __billing: billing, __isPro: isPro });
+}
+
+test("the firm panel asks for a fresh read on every open, and shows the section when there is one", async () => {
+  const ctx = loadOpenFirm({ shows: true, state: { orgs: [{ id: "o1" }], invites: [], canCreate: true } });
+  await ctx.openFirmModal();
+  assert.equal(ctx.asked(), 1, "opening the panel did not re-read the firm — an invitation that arrived since would be missed");
+  assert.equal(ctx.dom.hidden("firmModal"), false);
+  assert.equal(ctx.dom.hidden("deskFirm"), false);
+  assert.equal(ctx.dom.hidden("firmModalNone"), true, "'not in a firm' shown beside a roster");
+  assert.equal(ctx.dom.hidden("firmModalErr"), true);
+  assert.equal(ctx.dom.hidden("acctMenu"), true, "the account menu stayed open under the panel");
+});
+
+test("an account in no firm is TOLD so — a panel opened on purpose cannot answer with nothing", async () => {
+  // On the workspace renderFirm hid the section and that was the answer. In
+  // a modal somebody clicked, a blank card reads as broken.
+  const ctx = loadOpenFirm({ shows: false, state: { orgs: [], invites: [], canCreate: false }, billing: true, isPro: false });
+  await ctx.openFirmModal();
+  assert.equal(ctx.dom.hidden("firmModalNone"), false);
+  assert.equal(ctx.dom.hidden("firmModalErr"), true);
+  assert.equal(ctx.dom.hidden("firmModalPricing"), false, "billing is live and the account is free: the pricing door is offered");
+});
+
+test("the pricing door inside that message follows the settings panel's rule", async () => {
+  // Dark deployment: nothing for sale, so no door (the Buy-button rule).
+  let ctx = loadOpenFirm({ shows: false, state: { orgs: [], invites: [], canCreate: false }, billing: false, isPro: false });
+  await ctx.openFirmModal();
+  assert.equal(ctx.dom.hidden("firmModalPricing"), true, "a pricing button on a deployment with no checkout");
+  // Already Pro (say, in no firm and not invited): no door either.
+  ctx = loadOpenFirm({ shows: false, state: { orgs: [], invites: [], canCreate: false }, billing: true, isPro: true });
+  await ctx.openFirmModal();
+  assert.equal(ctx.dom.hidden("firmModalPricing"), true, "a Pro member offered pricing");
+});
+
+test("a failed firm read says it failed — never 'you have no firm'", async () => {
+  const ctx = loadOpenFirm({ shows: false, state: null, billing: true, isPro: false });
+  await ctx.openFirmModal();
+  assert.equal(ctx.dom.hidden("firmModalErr"), false);
+  assert.equal(ctx.dom.hidden("firmModalNone"), true,
+    "an outage was reported as the member having no firm");
+});
+
+test("the firm section lives in the panel, not on the workspace", () => {
+  // The move itself. #deskFirm keeps its id (every renderer and the tests
+  // above reach it by name), so the only thing that says where it is, is
+  // which container encloses it.
+  const modalAt = html.indexOf('id="firmModal"');
+  const deskAt = html.indexOf('id="deskFirm"');
+  const myDeskAt = html.indexOf('id="myDesk"');
+  assert.ok(modalAt > -1 && deskAt > -1 && myDeskAt > -1);
+  assert.ok(modalAt < deskAt && deskAt < myDeskAt,
+    "#deskFirm is not inside #firmModal (which precedes the workspace markup)");
+  assert.equal(html.split('id="deskFirm"').length - 1, 1, "exactly one firm section");
+  // renderShares still hides it on sign-out: the roster names colleagues.
+  assert.ok(html.includes('document.getElementById("deskFirm").classList.add("hidden");'),
+    "a stale roster survives a sign-out");
+});

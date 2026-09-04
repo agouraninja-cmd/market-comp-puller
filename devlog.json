@@ -4039,5 +4039,11 @@
     "type": "fix",
     "title": "The printed and PNG comp map had no pins",
     "details": "Since the export raster moved to retina tiles on 2026-08-26, its pins were measured from the doubled tile origin while being projected at the frame's own zoom, so every pin landed about 120,000 pixels off the canvas. The PDF and the PNG shipped a clean basemap with nothing on it, which reads as a map rather than as a bug. Found while building the PowerPoint export's map slide, which uses the same raster. The pins now subtract the logical origin, and a test pins the arithmetic."
+  },
+  {
+    "date": "2026-09-03",
+    "type": "improvement",
+    "title": "Firm account moved into the account menu, under Settings",
+    "details": "The firm's membership and settings — the roster, invitations, the create box, auto-share, the shop kind and seats — used to be a section at the foot of the workspace's firm deck. They open from the account menu now, one row under Settings, on every page: the app's menu has a Firm account row and every server-rendered menu links /desk?firm=1, consumed and cleared the way ?settings=1 is. The panel re-reads the firm on every open, so an invitation that arrived while the page sat is there when it opens; an account in no firm is told so, with a pricing door only where something is for sale; and a failed read says it failed rather than \"you have no firm\". Buildings, conversations, contacts and the shelf stay on the workspace."
   }
 ]

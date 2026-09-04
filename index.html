@@ -2103,13 +2103,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <!-- Plan, and since 2026-08-30 the app's ONLY pricing control: the nav
            row that used to mirror this button is gone (owner's call), on the
            theme toggle's precedent from the same week — one question, one
-           control. Copy comes from billingStatusCopy() (the desk plan card's
-           generator); "See pricing" obeys the exact `live && !pro` rule the
-           nav row obeyed, and Manage billing follows menuBillingBtn's, both
-           applied inside refreshBillingUI(). The
-           whole row follows the desk card's own rule and disappears on a
-           deployment where nothing is for sale — billingStatusCopy()'s Free
-           branch names caps that a dark deployment does not impose. -->
+           control. Copy comes from billingStatusCopy() (written for the
+           workspace's plan card, which this row outlived on 2026-09-03);
+           "See pricing" obeys the exact `live && !pro` rule the nav row
+           obeyed, and Manage billing follows menuBillingBtn's, both applied
+           inside refreshBillingUI(). The whole row disappears on a
+           deployment where nothing is for sale and nothing is comped —
+           billingStatusCopy()'s Free branch names caps that a dark
+           deployment does not impose. -->
       <div id="settingsPlanRow" class="mt-4 pt-4 border-t border-[#E4E2DA]">
         <div id="settingsPlanTitle" class="text-sm font-medium text-[#1A2433]">Plan</div>
         <p id="settingsPlanDetail" class="text-xs text-[#68707E] mt-0.5"></p>
@@ -2118,6 +2119,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
           <button id="settingsBillingBtn" type="button"
             class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
+          <!-- Admins only. Comped Pro hides every paywall from the one team
+               that needs to see it work; this drops it for the session. It
+               lived on the workspace's plan card until 2026-09-03, when that
+               card went (it duplicated this row) — CLAUDE.md's "keep that
+               button working" rule is why it moved rather than went with it. -->
+          <button id="billingAdminOffBtn" type="button"
+            class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
         </div>
         <p id="settingsPlanError" class="hidden text-sm text-red-600 mt-2"></p>
       </div>
@@ -2217,11 +2225,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        "you are not in a firm" -- which the workspace used to give by
        hiding the section, and which a panel somebody opened on purpose
        cannot give by showing nothing. Wider than Settings (max-w-2xl):
-       the roster is a table of people, and the invite box is a textarea. -->
+       the roster is a table of people, and the invite box is a textarea.
+       Since later the same day it is "Firm & branding": Report branding —
+       the personal profile AND, for an owner/admin, the firm's — lives here
+       as a second section, so the panel carries every firm-level setting
+       and a solo member's letterhead alike, and the workspace holds only
+       work. .mcard scrolls (max-height: calc(100dvh - 32px)), which is what
+       lets a roster and a 570px form share one panel. -->
   <div id="firmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
     <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6">
-      <div class="rd-lab">Firm account</div>
-      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm and how it shares. The firm's buildings, conversations and shelf stay on your workspace.</p>
+      <div class="rd-lab">Firm &amp; branding</div>
+      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm, how it shares, and the branding your reports carry. The firm's buildings, conversations and shelf stay on your workspace.</p>
       <p id="firmModalErr" class="hidden text-sm text-red-600 mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
       <!-- The fourth state. renderFirm() hides #deskFirm for an account that
            is in no firm, holds no invitation and could not create one (the
@@ -2337,6 +2351,116 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
         </div>
       </div>
+      <!-- Report branding — the panel's second section (moved here from the
+           workspace's Account deck on 2026-09-03, owner's call: one home for
+           branding, and the workspace is work only). The mark THIS member's
+           own reports and exports carry (activeBrand applies it; this card
+           only saves it), with the mine/firm scope row for an owner/admin.
+           Shown in EVERY firm state — a solo member sees #firmModalNone above
+           it and edits their personal profile here, since a member of no
+           firm still prints a letterhead. Saving is open to anyone signed
+           in, whether or not they currently hold an entitlement to apply it
+           (see the server route's own comment) — a saved-but-unentitled
+           profile is simply inert. Always co-branded: the CompNinja line in
+           the preview below is not something a member can remove here.
+           The id stays: loadBranding() reads it and hides it on a 401, which
+           is still right in here. Data still loads at sign-in, never on
+           open — reports print the letterhead from currentBranding whether
+           or not this panel was ever opened ("Finding 1", see loadBranding's
+           boot call). -->
+      <div id="deskBranding" class="hidden mt-4">
+        <div class="dk-rule"><span class="rd-lab">Report branding</span></div>
+        <!-- Collapsed since 2026-08-29. Measured on a three-property
+             workspace, this card was 572px tall against 565px for the entire
+             portfolio deck: a set-once-a-year setting taking as much of the
+             page as everything the member owns. The summary carries the
+             current state so it still answers "what is on my reports?"
+             without being opened, which is the only question this section is
+             asked most days. Same reasoning that moved Settings into the
+             account menu on 2026-08-24.
+             Not a <details> around the WHOLE section: the rule and the
+             explanation stay visible, so the deck still reads as furnished
+             rather than as a lone twisty. -->
+        <details id="brandBox" class="mt-2">
+          <summary class="dk-sum">
+            <span id="brandSummary" class="dk-sum-t">No branding saved yet</span>
+            <span class="dk-sum-a">Edit</span>
+          </summary>
+        <p class="text-sm text-[#5A6473] mt-3">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
+        <!-- Firm scope (041). Revealed by updateBrandScopeUI() only for an
+             owner/admin of a firm; everyone else edits their own profile and
+             never sees the row. The one form below edits whichever profile is
+             selected — same fields, same rules, a different save target. -->
+        <div id="brandScopeRow" class="hidden mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Which branding to edit">
+          <button type="button" id="brandScopeMine" aria-pressed="true"
+            class="btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5">My branding</button>
+          <button type="button" id="brandScopeFirm" aria-pressed="false"
+            class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Firm branding</button>
+        </div>
+        <!-- Told only to a member whose reports are actually falling back to
+             the firm's mark — updateBrandScopeUI() owns the condition. -->
+        <p id="brandFirmNote" class="hidden text-sm text-[#5A6473] mt-2"></p>
+        <div class="mt-2 dk-card">
+          <div class="flex flex-wrap items-center gap-3">
+            <!-- Persistent element (fillBrandForm() and the choose/remove
+                 handlers keep referencing this id on every future load), so
+                 the fallback hides it rather than removing it the way a
+                 freshly-built report mark does — there is no separate
+                 firm-name element beside it to take over; the Firm name
+                 input a few lines down is already visible regardless. -->
+            <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-[#D8D4C9] bg-white"
+              onerror="this.classList.add('hidden')" />
+            <button type="button" id="brandLogo"
+              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
+            <button type="button" id="brandLogoRemove" class="text-sm text-[#68707E] hover:text-[#374253]">Remove logo</button>
+            <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
+          </div>
+          <!-- Or read it off the firm's website (2026-09-02): the server picks
+               the page's declared icon and the result runs through the SAME
+               resizer a chosen file does. Nothing is saved until Save. -->
+          <div class="flex flex-wrap items-center gap-2 mt-2">
+            <input id="brandLogoSite" type="text" inputmode="url" placeholder="yourfirm.com" aria-label="Your firm's web address" maxlength="300"
+              class="w-52 min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button type="button" id="brandLogoImport"
+              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Import logo from website</button>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG, chosen from your computer or read from your website. Resized automatically for print.</p>
+
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandPreparer" type="text" placeholder="Prepared by" aria-label="Prepared by" maxlength="80"
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandPhone" type="tel" placeholder="Phone" aria-label="Phone" maxlength="40"
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandEmail" type="email" placeholder="Email" aria-label="Email" maxlength="120"
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <input id="brandLicense" type="text" placeholder="License number" aria-label="License number" maxlength="40"
+              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+          </div>
+          <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
+            class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+
+          <!-- Shown only when fillBrandForm() poured a suggestion into an
+               empty field (2026-09-02, "one profile"): the member must know
+               these came from somewhere, are not saved, and will print. -->
+          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and vault details. Nothing is saved until you press Save, and these details print on your reports.</p>
+          <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
+
+          <div class="mt-2 flex flex-wrap items-center gap-3">
+            <button type="button" id="brandSave"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
+            <button type="button" id="brandDelete" class="text-sm text-[#68707E] hover:text-[#374253]">Remove branding</button>
+          </div>
+
+          <div class="mt-4">
+            <span class="text-xs font-medium text-[#68707E] uppercase tracking-wide">Preview</span>
+            <div id="brandPreview" class="mt-1 border border-[#D8D4C9] rounded-lg bg-white p-3"></div>
+          </div>
+        </div>
+        </details>
+      </div>
+
       <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
         <button id="firmClose" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">Close</button>
       </div>
@@ -2521,7 +2645,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  moved here off the workspace. Right under Settings on purpose,
                  on both sides of the rail (accountNavSlots renders the same
                  row as /desk?firm=1). Signed-in only, like the menu itself. -->
-            <button id="menuFirmBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Firm account</button>
+            <button id="menuFirmBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Firm &amp; branding</button>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -2967,133 +3091,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
       </div><!-- /deckSharing -->
 
-      <!-- Broker deck: the public contributor side (submissions, profile) and
-           the private vault door. Each section keeps its own gate — the deck
-           hides itself for everyone who is neither. -->
-      <div class="dk-deck" data-deck id="deckAccount">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Account</span><span class="dk-deck-ln"></span></div>
-      <!-- Report branding — the mark THIS member's own reports and exports
-           carry (Task 7/8 apply it; this card only saves it). Saving is open
-           to anyone signed in, whether or not they currently hold an
-           entitlement to apply it (see the server route's own comment) — a
-           saved-but-unentitled profile is simply inert. Always co-branded:
-           the CompNinja line in the preview below is not something a member
-           can remove here. -->
-      <div id="deskBranding" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Report branding</span></div>
-        <!-- Collapsed since 2026-08-29. Measured on a three-property
-             workspace, this card was 572px tall against 565px for the entire
-             portfolio deck: a set-once-a-year setting taking as much of the
-             page as everything the member owns. The summary carries the
-             current state so it still answers "what is on my reports?"
-             without being opened, which is the only question this section is
-             asked most days. Same reasoning that moved Settings into the
-             account menu on 2026-08-24.
-             Not a <details> around the WHOLE section: the rule and the
-             explanation stay visible, so the deck still reads as furnished
-             rather than as a lone twisty. -->
-        <details id="brandBox" class="mt-2">
-          <summary class="dk-sum">
-            <span id="brandSummary" class="dk-sum-t">No branding saved yet</span>
-            <span class="dk-sum-a">Edit</span>
-          </summary>
-        <p class="text-sm text-[#5A6473] mt-3">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
-        <!-- Firm scope (041). Revealed by updateBrandScopeUI() only for an
-             owner/admin of a firm; everyone else edits their own profile and
-             never sees the row. The one form below edits whichever profile is
-             selected — same fields, same rules, a different save target. -->
-        <div id="brandScopeRow" class="hidden mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="Which branding to edit">
-          <button type="button" id="brandScopeMine" aria-pressed="true"
-            class="btn-live text-sm font-medium text-white bg-brand-600 rounded-lg px-3 py-1.5">My branding</button>
-          <button type="button" id="brandScopeFirm" aria-pressed="false"
-            class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Firm branding</button>
-        </div>
-        <!-- Told only to a member whose reports are actually falling back to
-             the firm's mark — updateBrandScopeUI() owns the condition. -->
-        <p id="brandFirmNote" class="hidden text-sm text-[#5A6473] mt-2"></p>
-        <div class="mt-2 dk-card">
-          <div class="flex flex-wrap items-center gap-3">
-            <!-- Persistent element (fillBrandForm() and the choose/remove
-                 handlers keep referencing this id on every future load), so
-                 the fallback hides it rather than removing it the way a
-                 freshly-built report mark does — there is no separate
-                 firm-name element beside it to take over; the Firm name
-                 input a few lines down is already visible regardless. -->
-            <img id="brandLogoPreview" alt="Your logo" class="hidden h-9 rounded border border-[#D8D4C9] bg-white"
-              onerror="this.classList.add('hidden')" />
-            <button type="button" id="brandLogo"
-              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Choose a logo</button>
-            <button type="button" id="brandLogoRemove" class="text-sm text-[#68707E] hover:text-[#374253]">Remove logo</button>
-            <input type="file" accept="image/png,image/jpeg" class="hidden" id="brandLogoFile" />
-          </div>
-          <!-- Or read it off the firm's website (2026-09-02): the server picks
-               the page's declared icon and the result runs through the SAME
-               resizer a chosen file does. Nothing is saved until Save. -->
-          <div class="flex flex-wrap items-center gap-2 mt-2">
-            <input id="brandLogoSite" type="text" inputmode="url" placeholder="yourfirm.com" aria-label="Your firm's web address" maxlength="300"
-              class="w-52 min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <button type="button" id="brandLogoImport"
-              class="btn-live text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Import logo from website</button>
-          </div>
-          <p class="text-xs text-[#68707E] mt-1">PNG or JPEG, chosen from your computer or read from your website. Resized automatically for print.</p>
-
-          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <input id="brandFirm" type="text" placeholder="Firm name" aria-label="Firm name" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="brandPreparer" type="text" placeholder="Prepared by" aria-label="Prepared by" maxlength="80"
-              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="brandPhone" type="tel" placeholder="Phone" aria-label="Phone" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="brandEmail" type="email" placeholder="Email" aria-label="Email" maxlength="120"
-              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <input id="brandLicense" type="text" placeholder="License number" aria-label="License number" maxlength="40"
-              class="w-full min-w-0 rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-          </div>
-          <textarea id="brandDisclaimer" rows="2" placeholder="Extra disclaimer for your reports (optional)" aria-label="Disclaimer (optional)" maxlength="300"
-            class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 mt-3 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
-
-          <!-- Shown only when fillBrandForm() poured a suggestion into an
-               empty field (2026-09-02, "one profile"): the member must know
-               these came from somewhere, are not saved, and will print. -->
-          <p id="brandSeedNote" class="hidden text-xs text-[#68707E] mt-2">Filled in from your account and vault details. Nothing is saved until you press Save, and these details print on your reports.</p>
-          <p id="brandMsg" class="text-sm text-[#5A6473] mt-2"></p>
-
-          <div class="mt-2 flex flex-wrap items-center gap-3">
-            <button type="button" id="brandSave"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 disabled:opacity-60">Save</button>
-            <button type="button" id="brandDelete" class="text-sm text-[#68707E] hover:text-[#374253]">Remove branding</button>
-          </div>
-
-          <div class="mt-4">
-            <span class="text-xs font-medium text-[#68707E] uppercase tracking-wide">Preview</span>
-            <div id="brandPreview" class="mt-1 border border-[#D8D4C9] rounded-lg bg-white p-3"></div>
-          </div>
-        </div>
-        </details>
-      </div>
-
-      <!-- Plan + billing. Shown only when the deployment actually sells
-           something (proConfig.billing); everything in it is rendered by
-           refreshBillingUI() from /api/config, never from local state. -->
-      <div id="billingCard" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Plan</span></div>
-        <div class="mt-2 dk-card">
-          <div id="billingStatus" class="text-sm font-semibold text-[#1A2433]"></div>
-          <div id="billingDetail" class="text-xs text-[#68707E] mt-1"></div>
-          <div class="mt-3 flex flex-wrap items-center gap-2">
-            <button id="billingUpgradeBtn" type="button"
-              class="hidden btn-live text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">Upgrade to Pro</button>
-            <button id="billingPortalBtn" type="button"
-              class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">Manage billing</button>
-            <!-- Admins only. Comped Pro hides every paywall from the one team
-                 that needs to see it work; this drops it for the session. -->
-            <button id="billingAdminOffBtn" type="button"
-              class="hidden text-sm font-medium text-[#1A2433] border border-[#D8D4C9] hover:bg-[#FBFBF9] rounded-lg px-3 py-1.5">View as a free user</button>
-          </div>
-          <p id="billingError" class="hidden text-sm text-red-600 mt-2"></p>
-        </div>
-      </div>
-      </div><!-- /deckAccount -->
       </section>
     </section>
 
@@ -13635,9 +13632,11 @@ async function renderMyDesk() {
     markNavCurrent();
   }
   // Desk deck visibility (2026-08-21). The desk's sections are grouped under
-  // five [data-deck] headings, but each section keeps its own hidden toggling,
-  // written from a dozen render functions (renderShares, renderFirm,
-  // refreshBillingUI, …). A deck whose sections are all hidden must hide too —
+  // [data-deck] headings (two since 2026-09-03: Your firm and Sharing — the
+  // Account deck's branding card moved into the Firm & branding panel and its
+  // plan card, a duplicate of the Settings row, went), but each section keeps
+  // its own hidden toggling, written from a dozen render functions
+  // (renderShares, renderFirm, …). A deck whose sections are all hidden must hide too —
   // a serif heading over an ink rule with nothing under it is the stray-rule
   // trap /vault's .deck.hide exists for. Recomputed from a MutationObserver
   // rather than called at the end of every render function, so a future
@@ -16528,6 +16527,10 @@ async function renderMyDesk() {
     ["acctModal", "acctCancel"],
     ["settingsModal", "settingsClose"],
     ["testerModal", "testerCancel"],
+    // The Firm & branding panel (2026-09-03). Missing until the branding
+    // form moved in: Escape from a focused input there blurred it, and the
+    // next press closed the REPORT under the panel.
+    ["firmModal", "firmClose"],
   ];
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -16559,7 +16562,7 @@ async function renderMyDesk() {
     // Every modal, not just the four this list began with: pricingModal and
     // shareModal were missing, so Escape on the pricing modal closed the
     // REPORT underneath it while the modal stayed up.
-    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal"]
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal", "firmModal"]
         .some((id) => { const el = document.getElementById(id); return el && !el.classList.contains("hidden"); })) return;
     // A focused form control keeps Escape for itself — just drop focus.
     const ae = document.activeElement;
@@ -16587,7 +16590,7 @@ async function renderMyDesk() {
     if (e.key !== "Escape" || !onDesk()) return;
     if (e.defaultPrevented) return;
     if (document.getElementById("compMap").classList.contains("map-fullscreen")) return;
-    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal"]
+    if (["leadModal", "acctModal", "compModal", "confirmModal", "pricingModal", "shareModal", "settingsModal", "testerModal", "firmModal"]
         .some((id) => { const el = document.getElementById(id); return el && !el.classList.contains("hidden"); })) return;
     const ae = document.activeElement;
     if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) { ae.blur(); return; }
@@ -17266,10 +17269,10 @@ async function renderMyDesk() {
   }
 
   async function openBillingPortal(btn, errEl) {
-    // errEl: where a failure lands. Defaults to the desk plan card's line;
-    // the settings panel passes its own, because an error written to an
-    // element on a hidden desk is an error nobody sees.
-    const err = errEl || document.getElementById("billingError");
+    // errEl: where a failure lands. Defaults to the Settings panel's plan
+    // line (the workspace plan card it used to default to went on
+    // 2026-09-03); the account menu's Manage billing has no line of its own.
+    const err = errEl || document.getElementById("settingsPlanError");
     if (err) err.classList.add("hidden");
     const label = btn && btn.textContent;
     if (btn) { btn.disabled = true; btn.textContent = "Opening…"; }
@@ -17480,33 +17483,20 @@ async function renderMyDesk() {
     }
     updateExportAllowance();
 
-    const card = document.getElementById("billingCard");
-    // Comped visitors (admins and beta testers) see the card even where
-    // billing isn't live (a dev box with no Stripe keys): comped Pro applies
-    // there too, so the way back out of it has to as well. Any future comped
-    // path needs the same OR here, or its plan-card copy is unreachable on a
+    // The settings panel's plan row — the ONLY plan surface since 2026-09-03,
+    // when the workspace's plan card went (it duplicated this row, and the
+    // workspace is work only). Same button rules menuBillingBtn follows, so
+    // this stays a surface, never a second decider — and since 2026-08-30 it
+    // is the app's only pricing door, the nav row it used to mirror having
+    // gone. It paints signed out too — billingStatusCopy() has an honest
+    // "Not signed in" branch — but where nothing is for sale and nothing is
+    // comped the Free branch would name caps the deployment does not impose,
+    // so the row goes away rather than describe a paywall that is not there.
+    // Comped visitors (admins and beta testers) see it even where billing
+    // isn't live (a dev box with no Stripe keys): comped Pro applies there
+    // too, so the way back out of it has to as well. Any future comped path
+    // needs the same OR here, or its plan copy is unreachable on a
     // Stripe-less deployment.
-    const showCard = Boolean(currentUser) && (live || isAdminPro() || isTesterPro());
-    card.classList.toggle("hidden", !showCard);
-    if (showCard) {
-      const copy = billingStatusCopy();
-      document.getElementById("billingStatus").textContent = copy.title;
-      document.getElementById("billingDetail").textContent = copy.detail;
-      document.getElementById("billingUpgradeBtn").classList.toggle("hidden", pro);
-      document.getElementById("billingPortalBtn").classList.toggle("hidden", !hasBillingHistory());
-      // Admin-only: it clears the cn_admin cookie, which a tester never has.
-      document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
-    }
-
-    // The settings panel's plan row: the same copy generator as the desk
-    // card and the same button rules menuBillingBtn follows, so this stays a
-    // third surface, never a second decider — and since 2026-08-30 it is the
-    // app's only pricing door, the nav row it used to mirror having gone. Unlike the desk
-    // card it also paints signed out — billingStatusCopy() has an honest
-    // "Not signed in" branch — but it shares the card's dark-deployment
-    // rule: where nothing is for sale and nothing is comped, the Free
-    // branch would name caps the deployment does not impose, so the row
-    // goes away rather than describe a paywall that is not there.
     const showPlanRow = live || isAdminPro() || isTesterPro();
     document.getElementById("settingsPlanRow").classList.toggle("hidden", !showPlanRow);
     if (showPlanRow) {
@@ -17515,6 +17505,8 @@ async function renderMyDesk() {
       document.getElementById("settingsPlanDetail").textContent = planCopy.detail;
       document.getElementById("settingsUpgradeBtn").classList.toggle("hidden", !live || pro);
       document.getElementById("settingsBillingBtn").classList.toggle("hidden", !live || !hasBillingHistory());
+      // Admin-only: it clears the cn_admin cookie, which a tester never has.
+      document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
     }
   }
 
@@ -17796,8 +17788,6 @@ async function renderMyDesk() {
     document.getElementById("acctMenu").classList.add("hidden");
     openBillingPortal(e.currentTarget);
   });
-  document.getElementById("billingUpgradeBtn").addEventListener("click", openPricingModal);
-  document.getElementById("billingPortalBtn").addEventListener("click", (e) => openBillingPortal(e.currentTarget));
   document.getElementById("billingAdminOffBtn").addEventListener("click", dropAdminAccess);
 
   // Every locked surface in the app — the comp table's locked notice, the

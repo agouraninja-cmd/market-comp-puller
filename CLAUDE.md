@@ -1163,9 +1163,10 @@ Four rules, all in `entitlements.js` and covered by `npm test`:
   cookie must never widen a bypass a browser was not meant to have.
 
 `POST /api/admin-access {clear:true}` drops it again, which is what the "View as
-a free user" button on the plan card does. Keep that button working: the team is
-permanently on the far side of the paywall, so it is the only way anyone
-internal ever renders one.
+a free user" button in the Settings panel's plan row does (it sat on the
+workspace's plan card until that card went on 2026-09-03). Keep that button
+working: the team is permanently on the far side of the paywall, so it is the
+only way anyone internal ever renders one.
 
 This is not the only comped-Pro door: `TESTER_PASSKEY` (above) comps Pro to a
 signed-in account without any dashboard access, and stores the grant on the
@@ -1628,7 +1629,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   home view and on a report) and `#searchSection` (hidden by the wall's boot
   CSS while the list still renders signed out), toggled at exactly the four
   seams that toggle `#searchDeckHead`; `test/index-html.test.js` counts
-  them. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm account panel on 2026-09-03 —
+  them. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm & branding panel on 2026-09-03 —
   and Buildings stays first. Recorded for later, not built: a firm-level
   "needs attention" band (lease critical dates + unread conversations —
   `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
@@ -3056,7 +3057,18 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   SEPARATE table read by a separate function, never columns on `orgs` —
   `orgsByIds`/`findOrg` name their SELECT columns, the 030/036 hazard. It
   rides `GET /api/branding` as `firm` and the share snapshot inherits it
-  (auto-share included). Two rules a future editor will otherwise break:
+  (auto-share included). **The editor lives in the account menu's Firm &
+  branding panel since 2026-09-03** (owner's call; it was the last card of
+  a workspace "Account" deck whose other card, the plan card, duplicated the
+  Settings row — both went, and the workspace is work only). ONE form, the
+  mine/firm scope row for an owner/admin, shown in every firm state so a
+  solo member edits their personal letterhead in the same place; the panel
+  was renamed from "Firm account" for exactly that member. `#deskBranding`
+  keeps its id (`loadBranding` reads it), and `loadBranding()` still runs
+  at sign-in and in `renderDeskRest`, never on panel open — reports print
+  `currentBranding` whether or not the panel was ever opened. Escape closes
+  the panel (`MODAL_CANCELS` and both Escape guards name `firmModal`).
+  Two rules a future editor will otherwise break:
   - **A shared report renders the sender's snapshot and never the viewer's
     own profile.** `POST /api/share` looks up the sender's saved profile at
     share time (only when `user && ent.canBrand`) and writes it into

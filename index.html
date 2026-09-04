@@ -15020,11 +15020,39 @@ async function renderMyDesk() {
       .toggle("hidden", !(b.canBill && b.status && b.status !== "none"));
   }
 
+  // One door to the firm's Stripe portal, shared by the portal button and by
+  // Add seats whenever a plan already exists — seat changes on a live plan
+  // happen THERE, not through a second checkout, because a second checkout
+  // opens a second subscription and the firm is billed twice while the app
+  // shows one plan. /api/checkout refuses that case too (`already_subscribed`);
+  // this routing just spares the owner a refusal on the way to the right door.
+  async function openFirmPortal(firm, msg) {
+    msg.textContent = "Opening…";
+    try {
+      const res = await fetch("/api/billing-portal", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orgId: firm.id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error || "That didn't go through.");
+      location.href = body.url;
+    } catch (e) {
+      msg.textContent = e.message || "That didn't go through.";
+    }
+  }
+
   document.getElementById("firmBuySeatsBtn").addEventListener("click", async () => {
     const firm = myFirm();
     const b = firm && firmState.billing ? firmState.billing[firm.id] : null;
     const msg = document.getElementById("firmBillingMsg");
     if (!firm || !b) return;
+    // A live plan changes its seats in the portal — see openFirmPortal. Only
+    // a firm with no plan (or a fully-ended one) starts a checkout. "none" is
+    // the hand-granted case; "cancelled" is terminal, the lapsed firm coming
+    // back.
+    if (b.status && b.status !== "none" && b.status !== "cancelled") {
+      return openFirmPortal(firm, msg);
+    }
     // Defaulted to the headcount, never below it: buying fewer seats than the
     // firm already has would drop named colleagues to free the moment the
     // webhook lands, which is a downgrade nobody in the room asked for. The
@@ -15045,6 +15073,11 @@ async function renderMyDesk() {
         body: JSON.stringify({ plan: "firm_monthly", orgId: firm.id, seats }),
       });
       const body = await res.json().catch(() => ({}));
+      // Stale page state: a plan bought in another tab since this one loaded.
+      // The server said "portal", so go there rather than print a dead end.
+      if (res.status === 409 && body.code === "already_subscribed") {
+        return openFirmPortal(firm, msg);
+      }
       if (!res.ok) throw new Error(body.error || "That didn't go through.");
       location.href = body.url;
     } catch (e) {
@@ -15056,18 +15089,7 @@ async function renderMyDesk() {
     const firm = myFirm();
     const msg = document.getElementById("firmBillingMsg");
     if (!firm) return;
-    msg.textContent = "Opening…";
-    try {
-      const res = await fetch("/api/billing-portal", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ orgId: firm.id }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.error || "That didn't go through.");
-      location.href = body.url;
-    } catch (e) {
-      msg.textContent = e.message || "That didn't go through.";
-    }
+    openFirmPortal(firm, msg);
   });
 
   async function saveFirmSetting(patch) {

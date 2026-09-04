@@ -503,6 +503,12 @@
   {
     "date": "2026-08-26",
     "type": "fix",
+    "title": "A firm that already pays changes its seats in the portal, never in a second checkout",
+    "details": "Both subscription rows are keyed on who owns them — a person's on their account, a firm's on the firm — so buying a second plan never sits beside the first: it overwrites it, while Stripe keeps billing both. The idempotency key from earlier today closes the double-click; this closes the deliberate case. A firm with a live plan clicking Add seats now goes straight to the Stripe billing portal, where changing the quantity actually works, and /api/checkout refuses the same case by name (already_subscribed) for any browser with stale state. The same refusal covers a person with an active plan starting a second one — the page never offered that, so this only makes the API agree with the page. Two boundaries were drawn deliberately: a plan that fully ended does not block a lapsed firm from coming back (and it keeps its old Stripe customer record), and a firm owner's personal Pro never blocks the firm buying seats — Pro is exactly what entitles them to buy."
+  },
+  {
+    "date": "2026-08-26",
+    "type": "fix",
     "title": "A double-clicked Buy can no longer become two subscriptions",
     "details": "Checkout now sends Stripe an idempotency key, so two requests carrying the same purchase get one subscription instead of two. The failure it prevents is the quiet kind: org_subscriptions is keyed on the firm, so a second subscription would overwrite the first and the firm would be billed twice while every screen still showed one plan. The key is a hash of the request itself rather than a hand-assembled string, which is what makes the other half safe — Stripe refuses a key reused with different parameters, and the fields that vary are easy to miss by hand (the return origin differs between two hostnames, and the customer field changes shape the moment a customer record exists). Buying more seats later is a different request, so it gets a different key and still works. It does not stop somebody buying a second subscription on purpose; a firm that already has one should be sent to its billing portal, which is a separate change."
   },

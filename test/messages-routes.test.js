@@ -254,7 +254,9 @@ test("the unread dot sits beside Messages on BOTH rails, hidden until asked, and
   // reads.
   const navJs = SERVER_JS.slice(SERVER_JS.indexOf("const ACCOUNT_NAV_JS"), SERVER_JS.indexOf("const ACCOUNT_NAV_JS") + 12000);
   assert.match(navJs, /fetch\("\/api\/messages\/unread"/, "ACCOUNT_NAV_JS does not ask for the count");
-  assert.match(INDEX_HTML, /fetch\("\/api\/messages\/unread"/, "index.html does not ask for the count");
+  // Through bootFetch since 2026-09-04, so a member's page can carry the
+  // count with it (see DESK_BOOT in server.js); the URL is the same.
+  assert.match(INDEX_HTML, /bootFetch\("\/api\/messages\/unread"/, "index.html does not ask for the count");
   const configAt = SERVER_JS.indexOf('req.url === "/api/config"');
   assert.ok(configAt > 0);
   assert.doesNotMatch(SERVER_JS.slice(configAt, configAt + 6000), /msg_|unread/, "/api/config grew a messaging read");

@@ -176,7 +176,11 @@ function load(re, exports, prefix, extras) {
     console,
     setTimeout,
   }, extras || {}));
-  new vm.Script((prefix || "") + "\n" + src[0] + "\n" + exports,
+  // The renderers read through bootFetch (2026-09-04), which in the page
+  // consults the serve-time payload first. There is no payload here, so it
+  // is the sandbox's fetch — the one each test hands in — by another name.
+  const bootFetch = "function bootFetch(url, init) { return fetch(url, init); }\n";
+  new vm.Script(bootFetch + (prefix || "") + "\n" + src[0] + "\n" + exports,
     { filename: "index.html" }).runInContext(ctx);
   ctx.dom = dom;
   return ctx;

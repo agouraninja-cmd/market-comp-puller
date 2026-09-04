@@ -4165,6 +4165,48 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   nothing else. `showDeskView` decides the sign-in card and the stand-in on
   `looksSignedIn()` for the boot rule's own reason: on `currentUser` a
   member's first frame was the "Sign in" card, filmed at 0.3s.
+  **The workspace's data ships WITH the page (2026-09-04; `DESK_BOOT`).**
+  One paint was still a paint AFTER the page: index.html ships one set of
+  bytes to everybody and then asks for its account, its config and a dozen
+  desk reads, so the desk could not exist before those round trips came
+  back — 1.7s in the film above, and no client-side change could move it,
+  because a browser cannot fetch what it has not yet been told to ask for.
+  The owner's ask was "instantly". So for a cookie holder on `/` or
+  `/desk` (never `/index.html`, never `/r/<id>`), `deskBootPayload` in
+  server.js asks the server's OWN routes over loopback with the visitor's
+  cookie — `DESK_BOOT_URLS`, then the six org-scoped URLs once `/api/org`
+  has named the firm — and `deskBootScript` embeds the answers at the
+  `<!--DESK_BOOT-->` marker in `<head>` as `window.DESK_BOOT`, keyed by the
+  exact URL. In index.html, **`bootFetch(url, init)`** hands each entry to
+  the first GET that would have fetched it and fetches live from then on;
+  `acctApi`, `initGate`'s config read, the account bootstrap and every desk
+  renderer read through it. Filmed at the same 60ms database delay: the
+  first frame after the document IS the finished workspace, and the page
+  makes no API request at all. Five rules, all in
+  `test/desk-boot-run.test.js` (a real server behind the fake PostgREST)
+  and `test/desk-boot.test.js` (bootFetch executed, the two URL lists held
+  together): **it is never a second copy of a read** — the embedded body is
+  the route's own answer to the same cookie, and the run test deep-equals
+  every entry against a live GET, so the session, entitlements, `openOrg`,
+  `memberOf` and every `user_id` scope apply by construction; **cookie
+  presence decides whether to try, the routes decide what it is worth** — a
+  dead session 401s on `/api/account/me` and the payload is dropped whole;
+  **one deadline (`DESK_BOOT_DEADLINE_MS`, 1500ms, env-overridable so a
+  test can prove the degrade) covers the whole fan-out**, past which the
+  page ships without whatever has not answered, and any URL missing is
+  simply fetched — every failure is the page as it was; **only status-200
+  JSON GETs under `DESK_BOOT_MAX_BODY`**, with the visitor's IP on
+  `x-forwarded-for` (so per-IP limiters see the person, not 127.0.0.1) and
+  an `x-cn-desk-boot` header so a fan-out can never nest; and **`<` is
+  escaped in the JSON** so a contact named `</script>` cannot close the
+  script (exercised, not just asserted). The cost is TTFB: the page waits
+  on the desk's reads instead of the browser waiting for them a beat later,
+  which is the same wait moved earlier, minus a dozen browser round trips.
+  Found on the way and fixed: `initGate` re-ran the desk fill "once the
+  real Pro flag is in" although nothing the desk fills reads it any more,
+  so every desk read went out TWICE on every boot; `refreshAccountUI`'s
+  call is the fill now, and `refreshProConfig` keeps the checkout-return
+  repaint.
   **`/desk` is kept working rather than redirected to `/`.** It is linked from
   Stripe checkout returns *with a query string*, the watchlist digest, org
   invite emails and `/bulk`; a 302 would drop the query and dead-end those.

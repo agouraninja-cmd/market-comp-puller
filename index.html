@@ -72,6 +72,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        the real answer arrives, so an expired session can never leave CSS
        hiding a control the JS wants back. -->
   <!--AUTH_BOOT-->
+  <!-- The workspace's data, for a member (2026-09-04). server.js replaces
+       this with window.DESK_BOOT = { "<url>": { status, body } } — the
+       answers its own routes gave for this visitor, gathered before the page
+       was sent — and bootFetch() below hands each one to the first caller
+       that would have fetched that URL. That is what puts the desk in the
+       FIRST frame instead of a beat after it. Empty for everybody else, and
+       the page fetches as before for any URL not in it. -->
+  <!--DESK_BOOT-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -5505,7 +5513,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   async function initGate() {
     let cfg = { authRequired: false };
     try {
-      const r = await fetch("/api/config");
+      const r = await bootFetch("/api/config");
       cfg = await r.json();
       proConfigResolved = true;   // a real answer, not the boot-time default
     } catch (_) { /* if config fails, treat as open */ }
@@ -5531,15 +5539,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // been initialized by the time this line runs.
     refreshBillingUI();
     applySearchLock();
-    // refreshAccountUI may already have painted My Desk against the boot-time
-    // { enabled: false } default (values on). Re-paint once the real flag is
-    // in, and only while the desk is showing — a home-page load already GETs
-    // /api/portfolio from that first paint and does not need a second.
-    if (typeof renderMyDesk === "function" && currentUser
-        && document.getElementById("deskView")
-        && !document.getElementById("deskView").classList.contains("hidden")) {
-      renderMyDesk();
-    }
+    // This used to re-run the desk fill "once the real Pro flag is in",
+    // from the days the desk drew portfolio values gated on it. Nothing the
+    // desk fills reads proConfig any more (the values moved to /vault, and
+    // the plan card is refreshBillingUI's, called just above), so the call had
+    // become a second, identical fill of every section on every boot —
+    // filmed: each of the ten desk reads went out twice, the second batch
+    // 150ms behind the first (2026-09-04). refreshAccountUI's call is the one
+    // that fills the desk; a checkout return still repaints it from
+    // refreshProConfig, where the flag genuinely changes what is shown.
 
     if (!cfg.authRequired) return;            // no password configured
 
@@ -12421,8 +12429,36 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // to offer.
   let exitToLandingOnCancel = false;
 
+  // A fetch that first looks in what the page ARRIVED with (2026-09-04). For a
+  // member, server.js embeds the answers its own routes give for this visitor
+  // (a global keyed by the exact URL — see the DESK_BOOT marker comment in
+  // <head> and deskBootPayload in server.js), so the workspace's
+  // reads resolve in the same tick the script runs and the desk is in the
+  // FIRST frame. Three rules: an entry is handed out ONCE, to the first caller
+  // that would have fetched it, and that URL fetches live from then on (a
+  // repaint after a save must see the save); only a GET may take one; and a
+  // URL not in the payload is fetched exactly as before, which is what every
+  // failure on the server side degrades to. A function declaration, because
+  // initGate() calls it near the top of this script, above any `const`.
+  function bootFetch(url, init) {
+    const store = window.DESK_BOOT;
+    const method = (init && init.method) || "GET";
+    if (store && method === "GET" && Object.prototype.hasOwnProperty.call(store, url)) {
+      const hit = store[url];
+      delete store[url];
+      return Promise.resolve({
+        ok: hit.status >= 200 && hit.status < 300,
+        status: hit.status,
+        headers: { get: (k) => (String(k).toLowerCase() === "content-type" ? "application/json" : null) },
+        json: () => Promise.resolve(hit.body),
+        text: () => Promise.resolve(JSON.stringify(hit.body)),
+      });
+    }
+    return fetch(url, init);
+  }
+
   async function acctApi(method, url, bodyObj) {
-    const r = await fetch(url, {
+    const r = await bootFetch(url, {
       method,
       headers: bodyObj ? { "content-type": "application/json" } : undefined,
       body: bodyObj ? JSON.stringify(bodyObj) : undefined,
@@ -13206,7 +13242,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // Bootstrap: who am I? Then honor a /#reset=<token> link.
   (async () => {
     try {
-      const r = await fetch("/api/account/me", { cache: "no-store" });
+      const r = await bootFetch("/api/account/me", { cache: "no-store" });
       currentUser = r.ok ? await r.json() : null;
     } catch (_) { currentUser = null; }
     refreshAccountUI();
@@ -13873,7 +13909,7 @@ async function renderMyDesk() {
     };
     let res;
     try {
-      res = await fetch("/api/shares");
+      res = await bootFetch("/api/shares");
     } catch (_) {
       return bail(true);
     }
@@ -13965,7 +14001,7 @@ async function renderMyDesk() {
     if (!firm) { box.classList.add("hidden"); firmShelfItems = []; return; }
     let data = null;
     try {
-      const res = await fetch(`/api/org/shelf?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(`/api/org/shelf?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     if (!data) { box.classList.add("hidden"); firmShelfItems = []; return; }
@@ -14197,7 +14233,7 @@ async function renderMyDesk() {
     if (!firm) { box.classList.add("hidden"); dealBoard = null; return; }
     let data = null;
     try {
-      const res = await fetch(`/api/org/board?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(`/api/org/board?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below, the same way a non-ok response is */ }
     // A failed read and a firm that has shared nothing both end here, and both
@@ -14267,7 +14303,7 @@ async function renderMyDesk() {
     if (!firm) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); return; }
     let data = null;
     try {
-      const res = await fetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     // A failed read hides the section rather than rendering an empty list:
@@ -14356,7 +14392,7 @@ async function renderMyDesk() {
     if (!firm) { box.classList.add("hidden"); return; }
     let data = null;
     try {
-      const res = await fetch("/api/messages", { credentials: "same-origin" });
+      const res = await bootFetch("/api/messages", { credentials: "same-origin" });
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     if (!data) { box.classList.add("hidden"); return; }
@@ -14478,7 +14514,7 @@ async function renderMyDesk() {
     if (!dot) return;
     if (!currentUser) { dot.hidden = true; return; }
     try {
-      const res = await fetch("/api/messages/unread", { credentials: "same-origin" });
+      const res = await bootFetch("/api/messages/unread", { credentials: "same-origin" });
       if (!res.ok) { dot.hidden = true; return; }
       const j = await res.json();
       const n = Number(j && j.count) || 0;
@@ -14597,7 +14633,7 @@ async function renderMyDesk() {
     if (!firm) { box.classList.add("hidden"); return; }
     let data = null;
     try {
-      const res = await fetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     // A failed read hides the panel rather than rendering an empty list — the
@@ -14763,7 +14799,7 @@ async function renderMyDesk() {
     if (!force && firmLoad) return firmLoad;
     firmLoad = (async () => {
       try {
-        const res = await fetch("/api/org");
+        const res = await bootFetch("/api/org");
         if (!res.ok) return null;
         const data = await res.json();
         firmState = {
@@ -14900,7 +14936,7 @@ async function renderMyDesk() {
     wrap.innerHTML = "";
     let data = null;
     try {
-      const res = await fetch(`/api/org/members?id=${encodeURIComponent(firm.id)}`);
+      const res = await bootFetch(`/api/org/members?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
     if (!data) {
@@ -15641,7 +15677,7 @@ async function renderMyDesk() {
     if (!currentUser) return;
     let data;
     try {
-      const res = await fetch("/api/hubs");
+      const res = await bootFetch("/api/hubs");
       // 401/403 mean "not for you" and stay silent, as before. Anything else
       // is a failure, and this list stays hidden rather than rendering as
       // though the member has no hubs — the same correction the vault's deck
@@ -16145,7 +16181,7 @@ async function renderMyDesk() {
     const token = ++brandingLoadToken;
     brandingLoadPromise = (async () => {
       try {
-        const r = await fetch("/api/branding", { credentials: "same-origin" });
+        const r = await bootFetch("/api/branding", { credentials: "same-origin" });
         if (token !== brandingLoadToken) return; // superseded mid-fetch — discard
         if (r.status === 401) { wrap.classList.add("hidden"); brandingLoaded = true; return; }
         const body = await r.json().catch(() => ({}));
@@ -17571,7 +17607,7 @@ async function renderMyDesk() {
       vaultLeadsEl.classList.add("hidden");
       // Best-effort, silent on any failure. The server re-checks
       // canUseVault, so this fetch simply 403s for everyone else.
-      fetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
+      bootFetch("/api/broker/leads").then((r) => (r.ok ? r.json() : null)).then((j) => {
         if (!j || !Array.isArray(j.leads)) return;
         const n = j.leads.length;
         vaultLeadsEl.textContent = n

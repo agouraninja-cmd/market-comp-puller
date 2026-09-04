@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-04",
+    "type": "improvement",
+    "title": "The workspace arrives with the page: a member's first frame is the finished desk",
+    "details": "One paint (yesterday) was still a paint after the page: index.html shipped the same bytes to everybody and then fetched the account, the config and a dozen desk reads, so the desk could not exist before those round trips came back — 1.7s in the film, and no client-side change could move it. Now, for a signed-in visitor on / or /desk, the server asks its own routes over loopback with the visitor's cookie and embeds the answers in the page (window.DESK_BOOT, keyed by URL); the page's reads take those first and fetch live from then on. Filmed at the same 60ms database delay, the first frame after the document is the whole workspace and the page makes no API request at all. Never a second copy of any read — the embedded body is the route's own answer to the same cookie, proven equal by test — with one 1.5s deadline past which the page ships without it, and every failure degrading to the page as it was. Also found and fixed: every desk read went out twice on every boot, because the config load re-ran the desk fill for a flag the desk no longer reads."
+  },
+  {
     "date": "2026-09-03",
     "type": "fix",
     "title": "An address written the way people say it is a market: “Boise Idaho”, “Boise, Idaho”, no commas",

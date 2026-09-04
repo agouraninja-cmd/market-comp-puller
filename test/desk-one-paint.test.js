@@ -194,7 +194,7 @@ test("the firm-scoped reads run together, and only the two that need the buildin
   const at = html.indexOf("async function renderShares()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
   // The membership read starts beside the shares read, not after it.
-  assert.ok(fn.indexOf("const firmReady = renderFirm()") < fn.indexOf('fetch("/api/shares")'),
+  assert.ok(fn.indexOf("const firmReady = renderFirm()") < fn.indexOf('bootFetch("/api/shares")'),
     "renderFirm must start before the shares fetch");
   // Every early exit waits for it before hiding the firm sections.
   assert.ok(fn.includes("const bail = async (err) => {\n      await firmReady;\n      hideAll();"),

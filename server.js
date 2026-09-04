@@ -9542,6 +9542,101 @@ function authBoot(signedIn) {
     `</script>\n`;
 }
 
+// ---------------------------------------------------------------------------
+// The workspace's data, served WITH the page (2026-09-04).
+//
+// A member's first frame used to be an empty workspace: index.html ships one
+// set of bytes to everybody, then asks /api/account/me, /api/config and a
+// dozen desk reads, so the desk could not exist before those round trips came
+// back — filmed at 1.7s after the one-paint change, and never sooner, because
+// a browser cannot fetch what it has not yet been told to ask for. The owner's
+// ask was "instantly", and the only way the desk is in the FIRST frame is if
+// its data arrives inside the HTML.
+//
+// This asks the server's OWN routes, over loopback, with the visitor's cookie
+// — never a second copy of any read. Every access rule those routes enforce
+// (the session, entitlements, openOrg, memberOf, the user_id scoping on every
+// read) applies unchanged, because it is literally the route answering, and
+// test/desk-boot-run.test.js proves each embedded body equal to a live GET of
+// the same URL with the same cookie. The client consumes each entry exactly
+// once, the first time it would have fetched that URL (bootFetch in
+// index.html), and fetches live from then on; a URL missing from the payload
+// is simply fetched, so every failure here degrades to the page as it was.
+//
+// Five rules:
+// - Cookie PRESENCE decides whether to try (the wall's rule); the routes
+//   decide what the cookie is worth. An invalid session answers 401 on
+//   /api/account/me and the payload is dropped whole — a signed-out page
+//   carries nothing.
+// - ONE deadline covers the whole fan-out (DESK_BOOT_DEADLINE_MS, 1500ms;
+//   env-overridable so a test can prove the page ships without it): past it
+//   the page goes out without whatever has not answered. The page is never
+//   held longer than the desk would have taken to arrive anyway.
+// - Only JSON GETs on the allowlist below, only status-200 bodies under
+//   DESK_BOOT_MAX_BODY, keyed by the exact URL string the client will ask
+//   for — the org-scoped set is built from the /api/org answer with the same
+//   encodeURIComponent the client uses.
+// - The visitor's IP rides x-forwarded-for on the loopback request, so the
+//   per-IP limiters see the person and not 127.0.0.1 for everybody; the
+//   fan-out marks itself with a header so it can never nest.
+// - `<` is escaped in the JSON, so a shelf address or a contact name holding
+//   `</script>` cannot end the script early.
+// ---------------------------------------------------------------------------
+const DESK_BOOT_MARKER = "<!--DESK_BOOT-->";
+const DESK_BOOT_DEADLINE_MS = Number(process.env.DESK_BOOT_DEADLINE_MS) || 1500;
+const DESK_BOOT_MAX_BODY = 300 * 1024;
+const DESK_BOOT_HEADER = "x-cn-desk-boot";
+// What index.html asks for on a workspace load, in the order it asks. Keep in
+// step with bootFetch's callers there — a URL listed here that nobody asks
+// for is wasted bytes; one asked for and not listed is one round trip.
+const DESK_BOOT_URLS = [
+  "/api/config", "/api/account/me", "/api/portfolio", "/api/broker/me", "/api/org",
+  "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
+  "/api/broker/leads",
+];
+const DESK_BOOT_ORG_URLS = (id) => [
+  `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
+  `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+];
+async function deskBootPayload(req) {
+  if (!parseCookies(req)[SESSION_COOKIE]) return null;
+  if (req.headers[DESK_BOOT_HEADER]) return null;
+  const addr = server.address();
+  if (!addr || typeof addr.port !== "number") return null;
+  const base = `http://127.0.0.1:${addr.port}`;
+  const deadline = Date.now() + DESK_BOOT_DEADLINE_MS;
+  const headers = {
+    cookie: req.headers.cookie,
+    "x-forwarded-for": clientIp(req),
+    [DESK_BOOT_HEADER]: "1",
+    accept: "application/json",
+  };
+  const out = {};
+  const read = async (p) => {
+    const left = deadline - Date.now();
+    if (left <= 0) return;
+    try {
+      const r = await fetch(base + p, { headers, signal: AbortSignal.timeout(left), redirect: "manual" });
+      if (r.status !== 200 || !/^application\/json/i.test(r.headers.get("content-type") || "")) return;
+      const text = await r.text();
+      if (text.length > DESK_BOOT_MAX_BODY) return;
+      out[p] = { status: 200, body: JSON.parse(text) };
+    } catch (_) { /* left out: the client fetches it */ }
+  };
+  await Promise.all(DESK_BOOT_URLS.map(read));
+  if (!out["/api/account/me"]) return null;
+  const org = out["/api/org"];
+  const firm = org && Array.isArray(org.body.orgs) ? org.body.orgs[0] : null;
+  if (firm && firm.id) await Promise.all(DESK_BOOT_ORG_URLS(encodeURIComponent(String(firm.id))).map(read));
+  return out;
+}
+function deskBootScript(payload) {
+  if (!payload) return "";
+  const json = JSON.stringify(payload)
+    .replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  return `<script>window.DESK_BOOT=${json};</script>`;
+}
+
 // Inter, for the one marketShell page that has always loaded it. MARKET_CSS
 // names the family in body{} and NO server-rendered page fetches it — they all
 // fall back to system-ui, which is what they were designed against. /vault was
@@ -26909,11 +27004,20 @@ const server = http.createServer((req, res) =>
         return res.end(renderHomeHTML({ signedIn: false }));
       }
     }
+    // The workspace's data, gathered while the file is read (see
+    // deskBootPayload). Only the two URLs that OPEN the workspace, and only
+    // with a cookie — /index.html and /r/<id> never show a desk, and an
+    // anonymous visitor has nothing to boot. Never throws: a failure is an
+    // empty marker and the page as it was.
+    const deskBootP = (staticPath === "/" || staticPath === "/desk")
+      ? deskBootPayload(req).catch(() => null)
+      : Promise.resolve(null);
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);
         return res.end("index.html not found");
       }
+      deskBootP.then((deskBoot) => {
       // no-store: the whole front-end is this one file, so a stale cached copy
       // means users silently miss every update. It's small; always fetch fresh.
       // /desk is a personal workspace — noindex it (header only; the shared
@@ -26945,6 +27049,10 @@ const server = http.createServer((req, res) =>
         // only — see authBoot above for why that is safe and why index.html
         // being no-store is what makes it safe.
         .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
+        // The workspace's own data, right after the auth hint and for the
+        // same reason: a member's first frame should be their desk, not a
+        // page that fetches one. Empty for everybody else.
+        .replace(DESK_BOOT_MARKER, deskBootScript(deskBoot))
         // Fourth: the bulk run view (markup + its own CSS + BULKRUN), so a
         // pasted list can render its run where a report would go. It carries
         // its own <style> because index.html never receives MARKET_CSS.
@@ -26958,6 +27066,7 @@ const server = http.createServer((req, res) =>
       }
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
+      });
     });
     return;
   }

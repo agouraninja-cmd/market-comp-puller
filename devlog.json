@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-04",
+    "type": "change",
+    "title": "The hubs deck leaves the vault: a deal room has one home, Messages",
+    "details": "Owner's call, after the two doors question had sat open since #255: 'remove the hub from the broker vault and just have it live in the new messaging category.' The vault's hubs deck (markup, the create form, the invite-link panel, loadHubs/renderHubs/hubsFailed/showInvites and the copy handler) is deleted outright, not replaced with a pointer, and VAULT_DECKS is two decks. Every job the deck did already existed in Messages: list, create and invite, guest list with opened status, remove, close, one-time links when mail fails, and sending comps in. The one thing removal would have lost is the two fields the vault's form carried that the New panel did not, area (market and subject address) and property type, so those went into the New panel first, optional and under the vault form's own field names, so the create route is untouched and a room started here reads on the client's page and on My Desk exactly as one started from the vault did. My Desk's list of rooms shared with you now opens each one in Messages (/messages?x=<id>) rather than the room's own page, and is headed Shared with you; the token door at /hub/<id> is untouched for the emailed link. What is genuinely gone: the deck's at-a-glance 'Opened 3 of 5' across every room. Messages shows that per room in the People panel and nowhere across rooms."
+  },
+  {
+    "date": "2026-09-04",
     "type": "fix",
     "title": "Signing in lands on your workspace, not the marketing page",
     "details": "A fresh load of / has opened the workspace for a member since August 28, but signing in happens in a modal over a page that is already painted, and nothing re-asked the question — so the one visitor who had just proved they hold an account was the one left on the landing stack. It now asks again at the only other moment the answer can change, using the same condition the boot rule uses. A sign-in that was interrupting something — a checkout, a market search, a portfolio save, an address typed into a shared report, or a report already on screen — still finishes what it started instead."

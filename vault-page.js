@@ -574,8 +574,8 @@ a.btn.ghost:hover{color:var(--ink)}
     <p class="empty" style="padding:0">Loading your vault&hellip;</p></div></div>
 
   <div id="app" class="hide">
-    <!-- Shown in place of the three decks that ARE the vault -- the book, the
-         pipeline, the hubs -- when this page's own read refuses. The other two
+    <!-- Shown in place of the two decks that ARE the vault -- the book and the
+         pipeline -- when this page's own read refuses. The other two
          decks below it ("Your properties", "Your watchlist") are a member's own
          portfolio and watchlist, which moved here off /desk on 2026-09-01 and
          were never part of Pro, so they render regardless. A member must not
@@ -588,7 +588,7 @@ a.btn.ghost:hover{color:var(--ink)}
          string is one of three that have to agree -- the other two are the Pro
          tile's bullets and the plan-card copy in index.html. -->
     <div id="vaultLocked" class="invite hide">
-      <p><strong>Your book, your pipeline and your hubs are part of Pro.</strong>
+      <p><strong>Your book and your pipeline are part of Pro.</strong>
         Upload closed deals, keep them private, and see them inside your own reports.</p>
       <p>Your properties and your watchlist are below either way &mdash; those are yours.</p>
       <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
@@ -964,9 +964,9 @@ a.btn.ghost:hover{color:var(--ink)}
 
          Three things are deliberately different from the desk versions.
 
-         They are NOT gated on canUseVault. The page's own read -- the book,
-         the pipeline, the hubs -- still is, and apply() locks those three
-         decks alone. A member must never open their own space and find
+         They are NOT gated on canUseVault. The page's own read -- the book
+         and the pipeline -- still is, and apply() locks those two decks
+         alone. A member must never open their own space and find
          their own saved properties behind a paywall.
 
          A property row is a LINK to /?property=<id>, not a button that opens
@@ -1206,66 +1206,6 @@ a.btn.ghost:hover{color:var(--ink)}
       </details>
     </section>
 
-    <!-- ------------------------------------------------------------------
-         The hubs deck: work going OUT to a client, where the pipeline deck
-         above is work coming in. Third and last, because a hub only exists
-         once there is a client to send comps to.
-
-         Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-         NOT the connection hub at /brokers.
-
-         The invite links are the delivery mechanism, not a convenience.
-         Outbound email is off (EMAIL_FROM is unset until a domain is
-         verified in Resend), so a link that is not copied out of this panel
-         reaches nobody, and it cannot be recovered later: only the hash of
-         each token is stored. #hubInvites therefore says so out loud rather
-         than rendering a link and trusting the broker to notice it.
-         ------------------------------------------------------------------ -->
-    <div class="deck" id="deckHubs">
-      <span class="dlab">Your hubs</span><span class="dln"></span>
-      <button class="dact" id="hubToggle" aria-expanded="false" aria-controls="hubAddSec">+ New hub</button>
-    </div>
-
-    <section id="hubSec">
-      <p class="sub hide" id="hubIntro" style="margin-top:0">A hub is where you and a client
-        work one requirement: send comps, keep notes on each one, and skip the email thread.
-        Only the people you invite can open it.</p>
-
-      <div id="hubAddSec" class="addpanel hide">
-        <div class="form">
-          <label class="span2">What is this hub for
-            <input id="hubTitle" type="text" placeholder="Warehouse requirement, 20k to 40k SF"/></label>
-          <label class="span2">Property or area
-            <input id="hubAddr" type="text" placeholder="City, ST"/></label>
-          <label>Type <select id="hubType"></select></label>
-          <label class="span2">Invite by email
-            <input id="hubEmails" type="text" placeholder="client@firm.com, colleague@firm.com"/></label>
-          <div class="formact span-all">
-            <button class="btn" id="hubAdd">Create hub</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- OUTSIDE the panel, unlike #addSec's #res, and on purpose: this one
-           is never hidden, so a create that failed cannot write its error into
-           something the broker just closed. -->
-      <div id="hubMsg"></div>
-
-      <!-- Shown once, right after a hub is created, and never fetched back:
-           the raw tokens exist only in this response. -->
-      <div id="hubInvites" class="hide"></div>
-
-      <div id="hubEmpty" class="invite hide">
-        <p>No hubs yet. Create one when you have comps to put in front of a client.</p>
-      </div>
-
-      <div class="tw hide" id="hubTableWrap"><table id="hubTbl">
-        <thead><tr>
-          <th>Hub</th><th>Market</th><th>Type</th>
-          <th class="num">People</th><th>Opened</th><th>Updated</th><th></th>
-        </tr></thead><tbody id="hubRows"></tbody>
-      </table></div>
-    </section>
   </div>
   <!-- The privacy sentence the old footer carried. It is page CONTENT, not
        chrome -- the one promise this page exists to make -- so it stays with
@@ -1473,11 +1413,14 @@ a.btn.ghost:hover{color:var(--ink)}
 
   function gate(html){ $("gate").innerHTML=html; $("gate").className=""; $("app").className="hide"; }
 
-  // The three decks that ARE the vault. Hidden, not emptied: an upsell where a
+  // The two decks that ARE the vault. Hidden, not emptied: an upsell where a
   // comps table should be is a table that is not there, and #vaultLocked above
-  // says the same thing once, in one place.
+  // says the same thing once, in one place. There were three until
+  // 2026-09-04: the hubs deck came out, because every job it did had moved to
+  // /messages (External conversations) and two doors onto one room is one
+  // door too many. A broker's deal rooms are read through /api/messages now.
   var VAULT_DECKS=["trustLine","deckBook","bookEmpty","addSec","rollupSec","compsSec",
-    "deckPipe","pipeSec","deckHubs","hubSec"];
+    "deckPipe","pipeSec"];
 
   function lockVaultDecks(msg){
     VAULT_DECKS.forEach(function(id){
@@ -1488,8 +1431,8 @@ a.btn.ghost:hover{color:var(--ink)}
       if(el.className.indexOf("hide")<0) el.className=(el.className+" hide").trim();
     });
     $("vaultLocked").className="invite";
-    // The page subtitle describes the book, the pipeline and the hubs. With
-    // all three locked it would be describing a page that is not on screen.
+    // The page subtitle describes the book and the pipeline. With both
+    // locked it would be describing a page that is not on screen.
     $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
     if(msg) $("vaultLocked").insertAdjacentHTML("afterbegin",
       '<p class="note">'+esc(msg)+"</p>");
@@ -4960,191 +4903,6 @@ a.btn.ghost:hover{color:var(--ink)}
     compMsg("Import removed.");
   }
 
-  // ---- The hubs deck --------------------------------------------------------
-  //
-  // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-  // NOT the connection hub at /brokers.
-  //
-  // Fetched rather than booted, unlike the comps above. The boot payload is
-  // built by vaultReadPayload, which reads the vault and nothing else; adding a
-  // second query to it would make every /vault paint wait on a table most
-  // brokers have no rows in. A hub list arriving a beat late is invisible; a
-  // slower vault is not.
-  var hubs=[];
-  // This page has no page-wide show() helper: everything else toggles .hide
-  // directly or reassigns className. One local, named so it cannot be mistaken
-  // for a shared utility that does not exist.
-  var hubShow=function(el,on){ if(el)el.classList.toggle("hide",!on); };
-  function hubMsg(t,bad){
-    var n=$("hubMsg");
-    n.innerHTML=t?'<div class="msg'+(bad?" bad":"")+'">'+esc(t)+"</div>":"";
-  }
-
-  function renderHubs(){
-    var rows=$("hubRows");
-    hubShow($("hubIntro"),true);
-    if(!hubs.length){
-      hubShow($("hubEmpty"),true);hubShow($("hubTableWrap"),false);rows.innerHTML="";return;
-    }
-    hubShow($("hubEmpty"),false);hubShow($("hubTableWrap"),true);
-    rows.innerHTML=hubs.map(function(h){
-      // A hub nobody has opened yet is the one fact a broker acts on: it means
-      // the link never got sent, or got sent and ignored. Counting participants
-      // who have a first_viewed_at answers it without a second column.
-      var people=(h.participants||[]).length;
-      var seen=(h.participants||[]).filter(function(p){return p.firstViewedAt}).length;
-      return "<tr>"+
-        "<td>"+esc(h.title||h.subjectAddress||"Untitled hub")+
-          (h.status==="closed"?' <span class="chip">Closed</span>':"")+"</td>"+
-        "<td>"+esc(h.market||"")+"</td>"+
-        "<td>"+esc(h.propertyType||"")+"</td>"+
-        '<td class="num">'+seen+" of "+people+"</td>"+
-        "<td>"+esc(dateShort(h.createdAt))+"</td>"+
-        "<td>"+esc(dateShort(h.updatedAt))+"</td>"+
-        '<td><a class="btn ghost" href="/hub/'+encodeURIComponent(h.id)+'">Open</a></td>'+
-      "</tr>";
-    }).join("");
-  }
-
-  // UTC, not local. Every other date on this page is a UTC calendar day (the
-  // pipeline slices its timestamps to ten characters), and these arrive as
-  // midnight-UTC stamps, so a local render puts a hub created on the 11th
-  // under "Aug 10" for every broker west of Greenwich. Caught in a browser:
-  // the seeded 2026-08-11 hub read Aug 10.
-  function dateShort(s){
-    if(!s)return "";
-    var d=new Date(s);
-    return isNaN(d.getTime())?"":d.toLocaleDateString("en-US",
-      {month:"short",day:"numeric",timeZone:"UTC"});
-  }
-
-  function loadHubs(){
-    fetch("/api/hubs",{credentials:"same-origin"})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        // 401/403 stay silent: the whole page is already gated, and a member
-        // who cannot see hubs gets nothing to act on from a refusal here.
-        if(o.s===401||o.s===403){hubs=[];renderHubs();return;}
-        // EVERYTHING ELSE SAYS SO. This used to fall into the same branch, so
-        // a 503 rendered "No hubs yet. Create one when you have comps to put in
-        // front of a client." — an outage reading as "you have none", to the
-        // one person who would know it was wrong. It happened for real during
-        // a deploy on 2026-08-14 and cost a confused ten minutes.
-        //
-        // It is also backwards from this repo's own rule: the lead inbox
-        // refuses with a 503 rather than showing an empty inbox, "because an
-        // empty inbox on error would misreport demand as zero". Same argument,
-        // same answer.
-        if(o.s!==200){hubsFailed((o.j&&o.j.error)||"Your hubs could not be loaded.");return;}
-        hubs=o.j.mine||[];renderHubs();
-      })
-      .catch(function(){hubsFailed("Your hubs could not be reached.");});
-  }
-
-  // A failed load is NOT an empty list. The invitation stays hidden, because
-  // "create your first hub" is the wrong thing to say to somebody whose hubs
-  // we simply could not fetch.
-  function hubsFailed(text){
-    hubs=[];
-    var rows=$("hubRows"); if(rows)rows.innerHTML="";
-    hubShow($("hubTableWrap"),false);
-    hubShow($("hubEmpty"),false);
-    hubShow($("hubIntro"),true);
-    hubMsg(text,true);
-  }
-
-  $("hubType").innerHTML='<option value=""></option>'+
-    PROP_TYPES.map(function(t){return "<option>"+t+"</option>"}).join("");
-
-  $("hubToggle").addEventListener("click",function(){
-    var open=$("hubAddSec").classList.contains("hide");
-    hubShow($("hubAddSec"),open);
-    $("hubToggle").setAttribute("aria-expanded",open?"true":"false");
-  });
-
-  $("hubAdd").addEventListener("click",function(){
-    var title=$("hubTitle").value.trim();
-    var addr=$("hubAddr").value.trim();
-    if(!title&&!addr)return hubMsg("Give the hub a name or an address first.",true);
-    var emails=$("hubEmails").value.split(/[,;\\s]+/).filter(Boolean);
-    $("hubAdd").disabled=true;
-    fetch("/api/hubs",{method:"POST",credentials:"same-origin",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({title:title,subjectAddress:addr,
-        propertyType:$("hubType").value,participants:emails})})
-      .then(function(r){return r.json().then(function(j){return{s:r.status,j:j}})})
-      .then(function(o){
-        $("hubAdd").disabled=false;
-        if(o.s!==201)return hubMsg(o.j.error||"That hub could not be created.",true);
-        $("hubTitle").value="";$("hubAddr").value="";$("hubEmails").value="";
-        hubShow($("hubAddSec"),false);
-        $("hubToggle").setAttribute("aria-expanded","false");
-        hubMsg("");
-        showInvites(o.j);
-        loadHubs();
-      })
-      .catch(function(){$("hubAdd").disabled=false;
-        hubMsg("That didn't reach the server. No hub was created.",true);});
-  });
-
-  // The one place a raw invite token is ever visible. It is not stored and
-  // cannot be shown again, so this says that plainly instead of leaving a
-  // broker to discover it by closing the panel.
-  function showInvites(j){
-    var list=(j.invites||[]);
-    var box=$("hubInvites");
-    // The copy depends on whether the server actually MAILED them, which it
-    // reports as the emailed flag. This used to hard-code "CompNinja does not email
-    // them yet" — true when hubs shipped, and a lie the day a domain is
-    // verified in Resend, told to the one person relying on it.
-    // THREE cases, because "we did not try" and "we tried and it failed" are
-    // different things to tell a broker. emailed is now the send's own answer
-    // rather than a restatement of the configuration, so a partial failure is
-    // reportable and names who still needs a link.
-    var failed = Array.isArray(j.emailFailed) ? j.emailFailed : [];
-    var head = j.emailed
-      ? '<p class="note">Your hub is ready, and each person has been emailed their link. '+
-        'The links are below if you would rather send them yourself; they cannot be shown again.</p>'
-      : failed.length && failed.length < list.length
-        ? '<p class="note">Your hub is ready, but '+esc(failed.join(", "))+
-          ' could not be emailed. Copy their link below and send it yourself; '+
-          'these links cannot be shown again.</p>'
-        : '<p class="note">Your hub is ready. Copy each link and send it to that '+
-          'person yourself: CompNinja could not email them, '+
-          'and these links cannot be shown again.</p>';
-    if(!list.length){
-      box.innerHTML=head+'<p class="note"><a href="/hub/'+encodeURIComponent(j.id)+
-        '">Open the hub</a> and add people to it when you are ready.</p>';
-      hubShow(box,true);return;
-    }
-    box.innerHTML=head+list.map(function(i,n){
-      return '<div class="row" style="align-items:center;gap:var(--s2)">'+
-        "<span>"+esc(i.email)+"</span>"+
-        '<input type="text" readonly value="'+escA(i.url)+'" '+
-          'id="inv'+n+'" style="flex:1;min-width:240px"/>'+
-        '<button class="btn ghost" data-copy="inv'+n+'">Copy</button>'+
-      "</div>";
-    }).join("");
-    hubShow(box,true);
-  }
-
-  $("hubInvites").addEventListener("click",function(e){
-    var b=e.target.closest("button[data-copy]");if(!b)return;
-    var inp=$(b.getAttribute("data-copy"));if(!inp)return;
-    // select() first, and it is the fallback rather than the decoration:
-    // clipboard.writeText needs a secure context and a permission that can be
-    // refused, and a broker who cannot copy the link cannot send it at all.
-    inp.focus();inp.select();
-    var done=function(){b.textContent="Copied";setTimeout(function(){b.textContent="Copy"},1500)};
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(inp.value).then(done).catch(function(){
-        try{document.execCommand("copy");done();}catch(_){}
-      });
-    }else{
-      try{document.execCommand("copy");done();}catch(_){}
-    }
-  });
-
   // ---------------------------------------------------------------------
   // YOUR PROPERTIES -- the portfolio, moved off /desk on 2026-09-01.
   //
@@ -5657,8 +5415,6 @@ a.btn.ghost:hover{color:var(--ink)}
         msg.innerHTML='<div class="msg bad">Couldn’t reach the server. Please try again.</div>';
       });
   });
-
-  loadHubs();
 
   // The server bakes the first answer into the page (window.__VAULT_BOOT__)
   // so the workspace renders in the same paint as the title, with no fetch

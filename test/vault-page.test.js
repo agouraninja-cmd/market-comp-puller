@@ -2767,29 +2767,6 @@ test("the gut check abstains on a leasing book rather than judging rent against 
     "no benchmark exists for rent, so the panel must not draw a verdict");
 });
 
-test("a failed hub load says so instead of inviting you to create your first hub", () => {
-  // The bug: 401/403/503 all fell into one branch, so a 503 rendered
-  // "No hubs yet. Create one when you have comps to put in front of a client."
-  // An outage read as "you have none" — to the one person who would know it
-  // was wrong. It happened for real during a deploy on 2026-08-14.
-  //
-  // It is also backwards from this repo's own rule: the lead inbox refuses
-  // with a 503 rather than showing an empty inbox, "because an empty inbox on
-  // error would misreport demand as zero".
-  const fs = require("node:fs");
-  const path = require("node:path");
-  const src = fs.readFileSync(path.join(__dirname, "..", "vault-page.js"), "utf8");
-  assert.match(src, /function hubsFailed\(text\)\{/);
-  // Not-for-you stays silent; everything else speaks.
-  assert.match(src, /if\(o\.s===401\|\|o\.s===403\)\{hubs=\[\];renderHubs\(\);return;\}/);
-  assert.match(src, /if\(o\.s!==200\)\{hubsFailed\(/);
-  assert.match(src, /\.catch\(function\(\)\{hubsFailed\(/);
-  // And the invitation must be HIDDEN on failure — "create your first hub" is
-  // the wrong thing to say to somebody whose hubs we could not fetch.
-  const fn = src.match(/function hubsFailed\(text\)\{[\s\S]*?\n  \}/)[0];
-  assert.match(fn, /hubShow\(\$\("hubEmpty"\),false\)/);
-});
-
 // ---------------------------------------------------------------------------
 // Find: one box over a book the page already holds
 //
@@ -4477,7 +4454,7 @@ test("the mapper folds to a summary when every required field was matched, and o
 // Your contributions (2026-09-04) — the free deck that replaced the
 // workspace's Broker deck. Everything here is about it staying FREE.
 // ----------------------------------------------------------------------------
-test("the contributions deck is outside the vault lock, and the lock still names the three that are inside", () => {
+test("the contributions deck is outside the vault lock, and the lock still names the two that are inside", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   const js = pageScript(html);
   assert.match(html, /id="deckContribs"/, "the deck is gone from the page");

@@ -186,6 +186,12 @@ function renderMessagesBody(boot) {
 /* Selected people, as removable chips above the list. */
 .msg-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .msg-chips:empty{margin-bottom:0}
+/* The area and type row of an external conversation. Two controls, one
+   line, sharing the text input's own box so the panel reads as one form. */
+.msg-newmeta{display:flex;gap:8px}
+.msg-newmeta input[type=text]{flex:1;min-width:0}
+.msg-newmeta select{box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
+  background:var(--card);color:var(--ink);font:inherit;font-size:13px;padding:0 8px;max-width:44%}
 .msg-panel input[type=text]{width:100%;box-sizing:border-box;border:1px solid var(--edge);border-radius:6px;
   padding:7px 10px;font:inherit;font-size:13px;margin-bottom:8px;background:var(--card);color:var(--ink)}
 .msg-panelfoot{display:flex;gap:8px;align-items:center;margin-top:10px}
@@ -263,6 +269,22 @@ function renderMessagesBody(boot) {
            set of comps with you", which reads fine. -->
       <input id="msgNewAbout" class="msg-hide" type="text" maxlength="200"
         placeholder="What's this about? Optional. They see it.">
+      <!-- The vault's hub form carried these two (2026-09-04, when that form
+           came out and this became the only way to start a deal room).
+           Optional, like the line above. The area becomes the room's market
+           and subject address, the type its property type, and both show on
+           the client's page under the title and on My Desk beside it.
+           Without them a room started here was thinner than one started
+           from the vault, which was the one thing removal would have lost. -->
+      <div class="msg-newmeta msg-hide" id="msgNewMeta">
+        <input id="msgNewArea" type="text" maxlength="300"
+          placeholder="Property or area, like Boise, ID. Optional.">
+        <select id="msgNewType" aria-label="Property type">
+          <option value="">Type, optional</option>
+          <option>Industrial</option><option>Office</option><option>Retail</option>
+          <option>Multifamily</option><option>Land</option><option>Residential</option>
+        </select>
+      </div>
       <div class="msg-panelfoot">
         <button class="msg-btn primary sm" id="msgNewGo" type="button">Start</button>
         <button class="msg-btn sm" id="msgNewCancel" type="button">Cancel</button>
@@ -1250,6 +1272,7 @@ function renderMessagesBody(boot) {
     // room whoever else is in it.
     var external = state.pickedExt.length > 0;
     $("msgNewAbout").className = external ? "" : "msg-hide";
+    $("msgNewMeta").className = external ? "msg-newmeta" : "msg-newmeta msg-hide";
     $("msgNewGo").textContent = external
       ? "Start external conversation"
       : (state.picked.length === 1
@@ -1278,15 +1301,6 @@ function renderMessagesBody(boot) {
   }
   function renderNewPeople(){
     var people = joinedPeople();
-    if (!people.length) {
-      // A firm of one still has clients. This used to end at "there is no one
-      // to message", which is the wrong sentence for the broker who most
-      // wants a deal room.
-      $("msgNewPeople").innerHTML = '<div class="msg-hint">Nobody else has joined your firm yet. ' +
-        'Invitations to colleagues are managed on your <a href="/desk">workspace</a>.</div>' +
-        (state.canAttach ? inviteRowHtml() : "");
-      return;
-    }
     var q = ($("msgNewSearch").value || "").trim().toLowerCase();
     var list = people.filter(function(p){
       if (!q) return true;
@@ -1327,7 +1341,18 @@ function renderMessagesBody(boot) {
       // second place to type the same thing.
       door = inviteRowHtml();
     }
-    if (!html) {
+    if (!people.length) {
+      // A firm of one still has clients. This used to RETURN EARLY with this
+      // line and the muted invite row, before the typed-email door above was
+      // ever built — so a broker with no colleagues could type a client's
+      // address and never be offered the row that starts the room. That was
+      // a dead end while the vault's own form existed; on 2026-09-04 that
+      // form came out and this became the only way to start a deal room, so
+      // the door has to open here too. The sentence stays, as the list's
+      // stand-in; the door is decided above, the same way for everyone.
+      html = '<div class="msg-hint">Nobody else has joined your firm yet. ' +
+        'Invitations to colleagues are managed on your <a href="/desk">workspace</a>.</div>';
+    } else if (!html) {
       html = '<div class="msg-hint">Nobody in your firm matches that.' +
         (state.canAttach ? ' A full email address invites somebody outside it.' : '') + '</div>';
     }
@@ -1338,6 +1363,8 @@ function renderMessagesBody(boot) {
     state.pickedExt = [];
     $("msgNewSearch").value = "";
     $("msgNewAbout").value = "";
+    $("msgNewArea").value = "";
+    $("msgNewType").value = "";
     $("msgNewMsg").textContent = "";
     $("msgNewPanel").className = "msg-panel";
     setNewDoorCopy();
@@ -1361,7 +1388,14 @@ function renderMessagesBody(boot) {
           if (pplList[k].userId === state.picked[i] && emails.indexOf(pplList[k].email) < 0) emails.push(pplList[k].email);
         }
       }
-      api("POST", "/api/hubs", { title: ($("msgNewAbout").value || "").trim(), participants: emails })
+      api("POST", "/api/hubs", {
+        title: ($("msgNewAbout").value || "").trim(),
+        // Same field names the vault's form sent, so the create route's
+        // marketOf() and property_type handling are untouched.
+        subjectAddress: ($("msgNewArea").value || "").trim(),
+        propertyType: $("msgNewType").value || "",
+        participants: emails,
+      })
         .then(function(o){
           $("msgNewGo").disabled = false;
           if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }

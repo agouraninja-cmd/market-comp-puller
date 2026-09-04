@@ -447,3 +447,28 @@ Every step fails to zero. A hub outage costs the deal-room half of the count
 and never the firm's. A person with no firm and no rooms gets a plain zero
 rather than the list's `no_firm` refusal: the question here is whether
 anything is new, and the honest answer to that is no.
+
+
+## 16. One door — 2026-09-04
+
+§12's withdrawn half, done: the vault's hubs deck is **deleted**, not pointed
+at Messages (owner's call: "remove it entirely"). `VAULT_DECKS` is two decks,
+the lock copy says "Your book and your pipeline are part of Pro", and nothing
+on /vault reads `/api/hubs` any more.
+
+**What went in first, so nothing was lost:** the New panel carries the two
+optional fields the vault's form had and this panel did not — the area (the
+room's market and subject address, through `marketOf()` on the server) and the
+property type. Same field names as the vault's form sent, so `POST /api/hubs`
+did not change. Without them a room started from Messages was thinner than
+one started from the vault: the client's page fell back to "Comp hub" as a
+heading and My Desk lost its "Industrial · Boise, ID".
+
+**My Desk's list of rooms shared with you** stays, headed "Shared with you",
+and opens each room in Messages (`/messages?x=<id>`) instead of the room's own
+page. The token door at `/hub/<id>` is untouched: it is the emailed link's
+door, not a second inbox.
+
+**What is genuinely gone:** the deck's table showed "Opened 3 of 5" across
+every room at a glance. Messages shows opened status per room, in the People
+panel, and nowhere across rooms. Named here so nobody rediscovers it as a bug.

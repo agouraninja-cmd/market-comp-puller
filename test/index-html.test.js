@@ -644,9 +644,15 @@ test("the desk hub list has no empty state, and never shows one", () => {
   // desk of somebody who came for their portfolio.
   assert.ok(!/deskHubsLoadError|classList\.remove\("hidden"\)[\s\S]{0,40}rr/.test(fn[0]),
     "renderDeskHubs must fail silently");
-  // theirs, never mine: a broker's own hubs live on /vault.
+  // theirs, never mine: a broker's own rooms live in /messages.
   assert.match(fn[0], /data\.theirs/);
   assert.ok(!/data\.mine/.test(fn[0]), "the desk shows the tenant side only");
+  // And each row opens the conversation in Messages, where a client's rooms
+  // have listed since #275 — not the room's own page. The token door at
+  // /hub/<id> is for the emailed link and is not what this list is for.
+  assert.match(fn[0], /link\.href = "\/messages\?x=" \+ encodeURIComponent\(h\.id\)/,
+    "the desk list must open rooms in Messages");
+  assert.ok(!/"\/hub\/" \+ encodeURIComponent/.test(fn[0]), "the desk list still links to the old hub page");
 });
 
 test("hub rows render user-authored text through textContent, never innerHTML", () => {

@@ -10839,7 +10839,17 @@ const NAV_LINKS = [
 // Market explorer — /markets is labelled "Market explorer" in every nav and
 // "Markets" in every footer. Two rows to one URL is the drift a single list
 // exists to prevent.
+//
+// "Run a report" joined it 2026-09-04 (owner's), and it is the entry that
+// changes what the other two mean: the comp finder used to live at `/` and
+// nowhere else, so "the thing this product does" had no URL of its own and
+// could only be reached by going home. It has one now (/run-report, the same
+// app forced to its home stack -- see the static handler), which is what lets
+// `/` become the workspace for a member without taking the form away from
+// anybody. It leads the list because it is the tool, and the other two are
+// the browse surfaces around it.
 const TOOL_LINKS = [
+  ["/run-report", "Run a report"],
   ["/markets", "Market explorer"],
   ["/1031-exchange", "1031 exchange guide"],
 ];
@@ -10963,7 +10973,10 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building"]);
+// /run-report is in the list for the plainest reason of all: it IS the
+// report form, so a button offering to take you there is a button that
+// does nothing.
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building", "/run-report"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -11133,7 +11146,17 @@ const marketBar = (signedIn = false, current = "") =>
       // one nobody buys.
       `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk valuation</a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
-      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/">Run a report</a>`)
+      // POINTS AT /run-report SINCE 2026-09-04, not at `/`. The old href was
+      // already the weaker half of a true statement: "/" opens the WORKSPACE
+      // for a member (2026-08-28), so the red button named after the product's
+      // one action delivered a member to a page headed Workspace and trusted
+      // the search desk at the top of it to be what they came for. Now that
+      // the form has a URL of its own the button can name its own
+      // destination, and "Run a report" means one place in this product
+      // instead of two. The reasoning it must NOT undo is the one above: this
+      // was never the way home and it is less so now, which is why Workspace
+      // stays a row on every bar that renders this.
+      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/run-report">Run a report</a>`)
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must
@@ -26942,7 +26965,15 @@ const server = http.createServer((req, res) =>
   // A fragment can never reach a server, but /brokers has always stripped one
   // defensively and this keeps that behavior when those routes moved here.
   const pagePath = staticPath.split("#")[0];
-  if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
+  // /run-report joined the list 2026-09-04 (owner's). It is the SAME document
+  // as `/` — the comp finder has always been markup inside index.html, not a
+  // page of its own — served at a URL that index.html's boot rule does not
+  // recognise as a workspace, so it lands on the home stack (hero, the finder,
+  // the market box) for a member and a stranger alike. That is the whole
+  // mechanism: no second copy of the form to keep in step with #compForm, and
+  // no third view to write. See index.html's "Which view a fresh load lands
+  // on" for the other half.
+  if (req.method === "GET" && (staticPath === "/" || staticPath === "/index.html" || staticPath === "/desk" || staticPath === "/run-report" || /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath))) {
     // Account wall: an anonymous visitor meets the landing page, not the app.
     //
     // Cookie PRESENCE only, never getSessionUser() — that helper reads the
@@ -27000,7 +27031,22 @@ const server = http.createServer((req, res) =>
       // rule about those does not bend for a query string.
       const settings = qs.get("settings") === "1" && staticPath !== "/desk";
       const shared = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(staticPath);
-      if (!shared && auth !== "signup" && auth !== "signin" && submit !== "comp"
+      // The sixth door: /run-report (2026-09-04). A PATH rather than a query
+      // param, because unlike the five above it this one is linked from the
+      // chrome — it is a row in the signed-out Tools menu, so it is the one
+      // door a stranger is actually invited through. Answering it with the
+      // landing page would send somebody who clicked "Run a report" to a page
+      // about running reports, which is the /desk-to-marketing-copy mistake
+      // fixed on 2026-08-13, pointed the other way.
+      //
+      // What they get is the app with the account wall's own card standing
+      // where the form is (applySearchLock) — "Create a free account to run a
+      // report", which is the honest answer and already the one this file
+      // gives every anonymous visitor who reaches index.html. Nothing about
+      // ENFORCEMENT moves: GUEST_SEARCH_LIMIT is still 0 under the wall and
+      // /api/comps still refuses an anonymous search.
+      const runReport = staticPath === "/run-report";
+      if (!shared && !runReport && auth !== "signup" && auth !== "signin" && submit !== "comp"
           && pricing !== "1" && !settings) {
         if (staticPath === "/desk") {
           // To the SIGN-IN door, not the front door (changed 2026-08-13).
@@ -27054,7 +27100,15 @@ const server = http.createServer((req, res) =>
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
         "cache-control": "no-store",
-        ...(staticPath === "/desk" ? { "x-robots-tag": "noindex, nofollow" } : {}),
+        // /run-report noindexed alongside it (2026-09-04) for a different
+        // reason: it is not private, it is a DUPLICATE. index.html declares
+        // its canonical as `/` and this URL serves index.html byte for byte,
+        // so leaving it indexable offers Google a second copy of the home page
+        // that says it is the home page — the self-declared-duplicate soft
+        // error the sitemap comment names. It stays out of sitemap.xml for the
+        // same reason.
+        ...(staticPath === "/desk" || staticPath === "/run-report"
+          ? { "x-robots-tag": "noindex, nofollow" } : {}),
       });
       // Two serve-time rewrites. The Explore menu's browse links are injected
       // from NAV_LINKS (declared above marketBar) in place of the marker

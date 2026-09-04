@@ -2608,6 +2608,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
+        <!-- The comp finder's own URL (2026-09-04, owner's). This file HOLDS
+             the finder — it is the markup a few hundred lines below — so the
+             row points at a path the server maps straight back to this same
+             document (/run-report), which boots on the home stack instead of
+             the workspace. The row is what makes that reachable from inside
+             the app, where `/` is the workspace for anybody signed in.
+             BELOW Market explorer, never above: test/nav-parity.test.js
+             measures the source distance from the `navsec` label to
+             `<a href="/markets"` and a row inserted between them breaks the
+             one rule that keeps both nav authors emitting the same group.
+             Renders for every reader of this file, exactly as the 1031 row
+             below does and for the same reason: this file is one set of bytes
+             served to members and strangers alike, and the wall's signup card
+             is a better answer for a stranger than a missing link. -->
+        <a href="/run-report" class="hover:text-[#1A2433]">Run a report</a>
         <!-- A bar row for EVERY reader of this file since 2026-09-02.
              It was a bar row for a member and an Explore menu item for a
              stranger (owner's, 2026-08-30), toggled after paint. The menu half
@@ -13039,6 +13054,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     if (e.key === "Escape") closeExploreMenu();
   });
 
+  // Where a fresh sign-in LANDS (2026-09-04, owner's report: "when I first log
+  // into CompNinja I land on this page, but I really want to land on the
+  // workspace").
+  //
+  // The bug was never the route. A fresh LOAD of "/" has opened the workspace
+  // for a member since 2026-08-28 (see "Which view a fresh load lands on"),
+  // but signing in happens in a modal over a page that is already painted, and
+  // nothing here ever re-asked that question — so the one visitor who had just
+  // proved they are a member was the one left on the marketing stack. This
+  // asks it again at the only other moment the answer can change.
+  //
+  // Deliberately the SAME condition as the boot rule and the popstate
+  // listener, so the three cannot drift into three different ideas of where a
+  // member belongs. That is also why it is a path test rather than "always go
+  // to the desk": /run-report is somewhere a member went ON PURPOSE to run a
+  // report, and /r/<id> is somebody else's report — neither is an invitation
+  // to be moved.
+  //
+  // And never over the top of a report. A visitor who signed in to save or
+  // share what is on screen must not have it swapped for an empty workspace;
+  // that is a lost report as far as they can tell.
+  function landAfterAuth() {
+    if (!looksSignedIn()) return;
+    if (location.pathname !== "/" && location.pathname !== "/desk") return;
+    if (!document.getElementById("results").classList.contains("hidden")) return;
+    enterDesk();
+  }
+
   document.getElementById("acctForm").addEventListener("submit", async (e) => {
     e.preventDefault();
     const err = document.getElementById("acctError");
@@ -13150,6 +13193,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         // everything else anyway. Otherwise the search the guest gate
         // interrupted resumes now, through the Explorer IIFE's seam.
         runPendingMarketExplore(firePendingExplore);
+      }
+      // LAST, and only when nothing above claimed the sign-in. Every one of
+      // those flags is somebody who told us where they were going before they
+      // were asked to sign in — a checkout, a market search, a portfolio save,
+      // an address typed into the shared-report card — and the workspace is
+      // not it. The import prompt is the fifth: it leaves the modal OPEN on a
+      // question, so its two buttons call this themselves once it is answered.
+      if (!firePendingSave && !firePendingPlan && !firePendingExplore && !fireSharedAddress
+          && document.getElementById("acctImport").classList.contains("hidden")) {
+        landAfterAuth();
       }
     } catch (ex) {
       err.textContent = ex.message;
@@ -13371,8 +13424,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     closeAcctModal();
     refreshRecents();
     if (typeof renderMyDesk === "function") renderMyDesk();
+    // The rows just landed in Recent searches, which is a workspace deck —
+    // so this is the one sign-in where the destination is also where the
+    // thing that just happened is visible.
+    landAfterAuth();
   });
-  document.getElementById("acctImportNo").addEventListener("click", closeAcctModal);
+  document.getElementById("acctImportNo").addEventListener("click", () => {
+    closeAcctModal();
+    landAfterAuth();
+  });
 
   // ----------------------------------------------------------------------------
   // My Desk — portfolio grid. Fetches summaries; opening a card pulls the full

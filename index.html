@@ -1447,14 +1447,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-card { border: 1px solid var(--edge); border-radius: 6px; background: var(--card); padding: 16px; }
     /* A collapsed settings row: the current state on the left, the way in on
        the right. list-style:none plus the ::-webkit-details-marker reset kills
-       the default triangle in both engines. */
+       the default triangle in both engines. The row keeps its whole box when
+       open (2026-09-04): it used to drop its bottom edge to merge with a card
+       directly beneath, but the intro line and the scope row sit between the
+       two, so it read as a half-drawn frame with a stray "Edit ✕" on it. The
+       affordance is a WORD, Edit or Close, written by the box's toggle
+       handler rather than a ::after glyph. */
     .dk-sum { display: flex; align-items: baseline; gap: 12px; cursor: pointer; list-style: none; padding: 10px 14px; border: 1px solid var(--edge); border-radius: 6px; background: var(--card); }
     .dk-sum::-webkit-details-marker { display: none; }
     .dk-sum:hover { background: var(--wash); }
     .dk-sum-t { font-size: 13px; color: var(--ink-body); min-width: 0; }
     .dk-sum-a { margin-left: auto; flex: 0 0 auto; font-size: 11.5px; color: var(--red); }
-    details[open] > .dk-sum { border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
-    details[open] > .dk-sum .dk-sum-a::after { content: " \2715"; }
     /* The merged shared-reports table (2026-08-21): dk-stmt's statement look,
        but cells top-align because a row can carry a viewer list or the
        inline people editor, and the detail row needs its own quiet berth. */
@@ -2384,7 +2387,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <details id="brandBox" class="mt-2">
           <summary class="dk-sum">
             <span id="brandSummary" class="dk-sum-t">No branding saved yet</span>
-            <span class="dk-sum-a">Edit</span>
+            <span id="brandSumAct" class="dk-sum-a">Edit</span>
           </summary>
         <p class="text-sm text-[#5A6473] mt-3">Add your firm's logo and contact info to the reports you unlock. CompNinja's own mark stays on the page alongside yours.</p>
         <!-- Firm scope (041). Revealed by updateBrandScopeUI() only for an
@@ -15905,6 +15908,14 @@ async function renderMyDesk() {
     const box = document.getElementById("brandBox");
     if (box) box.open = true;
   }
+  // The summary row's affordance says what a click does next: Edit while the
+  // box is closed, Close while it is open. Written from the toggle event, so
+  // it is right however the box was opened — the click, openBrandBox(), or
+  // a failed load opening it to show #brandMsg.
+  document.getElementById("brandBox").addEventListener("toggle", (e) => {
+    const act = document.getElementById("brandSumAct");
+    if (act) act.textContent = e.currentTarget.open ? "Close" : "Edit";
+  });
 
   // The collapsed row's state line. Hangs off renderBrandPreview because that
   // already runs everywhere the state can change — load, save, delete, logo

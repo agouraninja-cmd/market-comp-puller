@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-04",
+    "type": "fix",
+    "title": "The Report branding summary row is a whole box, and says Close while open",
+    "details": "Open, the collapsed branding row dropped its bottom edge to merge with a card directly beneath it — but the intro line and the mine/firm scope row sit between the two, so on the Firm & branding panel it read as a half-drawn frame with a stray “Edit ✕” on it. The row keeps its box in both states and the affordance is a word the box’s toggle event writes: Edit while closed, Close while open."
+  },
+  {
     "date": "2026-09-03",
     "type": "improvement",
     "title": "Report branding lives in the Firm & branding panel; the workspace is work only",

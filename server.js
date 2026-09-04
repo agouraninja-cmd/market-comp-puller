@@ -9542,6 +9542,116 @@ function authBoot(signedIn) {
     `</script>\n`;
 }
 
+// ---------------------------------------------------------------------------
+// The workspace's data, served WITH the page (2026-09-04).
+//
+// A member's first frame used to be an empty workspace: index.html ships one
+// set of bytes to everybody, then asks /api/account/me, /api/config and a
+// dozen desk reads, so the desk could not exist before those round trips came
+// back — filmed at 1.7s after the one-paint change, and never sooner, because
+// a browser cannot fetch what it has not yet been told to ask for. The owner's
+// ask was "instantly", and the only way the desk is in the FIRST frame is if
+// its data arrives inside the HTML.
+//
+// This asks the server's OWN routes, over loopback, with the visitor's cookie
+// — never a second copy of any read. Every access rule those routes enforce
+// (the session, entitlements, openOrg, memberOf, the user_id scoping on every
+// read) applies unchanged, because it is literally the route answering, and
+// test/desk-boot-run.test.js proves each embedded body equal to a live GET of
+// the same URL with the same cookie. The client consumes each entry exactly
+// once, the first time it would have fetched that URL (bootFetch in
+// index.html), and fetches live from then on; a URL missing from the payload
+// is simply fetched, so every failure here degrades to the page as it was.
+//
+// Five rules:
+// - Cookie PRESENCE decides whether to try (the wall's rule); the routes
+//   decide what the cookie is worth. An invalid session answers 401 on
+//   /api/account/me and the payload is dropped whole — a signed-out page
+//   carries nothing.
+// - ONE deadline covers the whole fan-out (DESK_BOOT_DEADLINE_MS, 2500ms;
+//   env-overridable so a test can prove the page ships without it): past it
+//   the page goes out without whatever has not answered. Sized against the
+//   live deployment, where a database round trip is ~100ms and the slowest
+//   desk route answered in over a second: a deadline under that would drop
+//   exactly the reads the desk then waits on anyway, from the browser.
+// - Only JSON GETs on the allowlist below, only status-200 bodies under
+//   DESK_BOOT_MAX_BODY, keyed by the exact URL string the client will ask
+//   for. The org-scoped set is keyed by the firm the SESSION resolves to
+//   in-process (activeMembershipsFor — two cached-or-cheap reads), so every
+//   URL goes out in ONE wave rather than the firm's six waiting on
+//   /api/org's ~8 round trips. That hint decides only which URL STRINGS to
+//   prefetch, never access: the routes still enforce membership, and if the
+//   hint ever named a different firm than /api/org's `orgs[0]` the keys
+//   would simply go unused and the client would fetch live.
+// - The visitor's IP rides x-forwarded-for on the loopback request, so the
+//   per-IP limiters see the person and not 127.0.0.1 for everybody; the
+//   fan-out marks itself with a header so it can never nest.
+// - `<` is escaped in the JSON, so a shelf address or a contact name holding
+//   `</script>` cannot end the script early.
+// ---------------------------------------------------------------------------
+const DESK_BOOT_MARKER = "<!--DESK_BOOT-->";
+const DESK_BOOT_DEADLINE_MS = Number(process.env.DESK_BOOT_DEADLINE_MS) || 2500;
+const DESK_BOOT_MAX_BODY = 300 * 1024;
+const DESK_BOOT_HEADER = "x-cn-desk-boot";
+// What index.html asks for on a workspace load, in the order it asks. Keep in
+// step with bootFetch's callers there — a URL listed here that nobody asks
+// for is wasted bytes; one asked for and not listed is one round trip.
+const DESK_BOOT_URLS = [
+  "/api/config", "/api/account/me", "/api/portfolio", "/api/org",
+  "/api/shares", "/api/hubs", "/api/branding", "/api/recents", "/api/messages/unread",
+];
+const DESK_BOOT_ORG_URLS = (id) => [
+  `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
+  `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+];
+async function deskBootPayload(req) {
+  if (!parseCookies(req)[SESSION_COOKIE]) return null;
+  if (req.headers[DESK_BOOT_HEADER]) return null;
+  const addr = server.address();
+  if (!addr || typeof addr.port !== "number") return null;
+  const base = `http://127.0.0.1:${addr.port}`;
+  const deadline = Date.now() + DESK_BOOT_DEADLINE_MS;
+  const headers = {
+    cookie: req.headers.cookie,
+    "x-forwarded-for": clientIp(req),
+    [DESK_BOOT_HEADER]: "1",
+    accept: "application/json",
+  };
+  const out = {};
+  const read = async (p) => {
+    const left = deadline - Date.now();
+    if (left <= 0) return;
+    try {
+      const r = await fetch(base + p, { headers, signal: AbortSignal.timeout(left), redirect: "manual" });
+      if (r.status !== 200 || !/^application\/json/i.test(r.headers.get("content-type") || "")) return;
+      const text = await r.text();
+      if (text.length > DESK_BOOT_MAX_BODY) return;
+      out[p] = { status: 200, body: JSON.parse(text) };
+    } catch (_) { /* left out: the client fetches it */ }
+  };
+  // The firm hint, resolved in-process so the org-scoped reads can leave
+  // with the rest (see the rules above). Both reads fail soft: no user or
+  // no firm means the base wave alone, which is exactly a solo member's
+  // page. The session lookup is cached, so this costs one round trip.
+  let firmId = null;
+  try {
+    const user = await getSessionUser(req);
+    if (!user) return null;
+    const first = (await activeMembershipsFor(user))[0];
+    if (first && first.org_id) firmId = String(first.org_id);
+  } catch (_) { firmId = null; }
+  const urls = firmId ? DESK_BOOT_URLS.concat(DESK_BOOT_ORG_URLS(encodeURIComponent(firmId))) : DESK_BOOT_URLS;
+  await Promise.all(urls.map(read));
+  if (!out["/api/account/me"]) return null;
+  return out;
+}
+function deskBootScript(payload) {
+  if (!payload) return "";
+  const json = JSON.stringify(payload)
+    .replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  return `<script>window.DESK_BOOT=${json};</script>`;
+}
+
 // Inter, for the one marketShell page that has always loaded it. MARKET_CSS
 // names the family in body{} and NO server-rendered page fetches it — they all
 // fall back to system-ui, which is what they were designed against. /vault was
@@ -23989,8 +24099,12 @@ const server = http.createServer((req, res) =>
       (async () => {
         const user = await openOrg();
         if (!user) return;
-        const rows = await orgMembershipsFor(user.email);
-        const ent = await entitlementsFor(req);
+        // Together, not in turn (2026-09-04): the membership list and the
+        // entitlements read nothing from each other, and every database
+        // round trip here is ~100ms on the live deployment. Measured from a
+        // member's browser: this route answered in 560-1090ms, and it heads
+        // the workspace's longest chain.
+        const [rows, ent] = await Promise.all([orgMembershipsFor(user.email), entitlementsFor(req)]);
         const mine = rows.filter((r) => ORG.isActive(r));
         const pending = rows.filter((r) => ORG.isPending(r));
         const firms = await orgsByIds([...mine, ...pending].map((r) => r.org_id));
@@ -25431,20 +25545,28 @@ const server = http.createServer((req, res) =>
         // messages, so they are one read per thread rather than two. Capped at
         // the number of threads a person can plausibly be in; past that the
         // list is the wrong tool and the firm wants the shelf.
-        const out = [];
-        for (const t of threads.slice(0, 100)) {
+        // The per-thread reads go out TOGETHER (2026-09-04). In turn, this
+        // was one ~100ms round trip per thread on the live deployment — the
+        // route measured 1.3-2.1s from a member's browser, the slowest read
+        // on the workspace, and the one every first paint waited for.
+        // Readability is decided BEFORE any read, so an unreadable thread
+        // still costs nothing; document order is preserved by index.
+        const readable = threads.slice(0, 100).map((t) => {
           const rows = byThread.get(String(t.id)) || [];
           const mineRow = MSG.memberRowOf(rows, g.user.id);
           const verdict = MSG.canReadThread({ thread: t, orgId: g.orgId, memberRow: mineRow });
-          if (!verdict.ok) continue;
-          const recent = await msgMessageRows(t.id, "");
+          return verdict.ok ? { t, rows, mineRow } : null;
+        }).filter(Boolean);
+        const recents = await Promise.all(readable.map(({ t }) => msgMessageRows(t.id, "")));
+        const out = readable.map(({ t, rows, mineRow }, i) => {
+          const recent = recents[i];
           const latest = recent.length ? recent[recent.length - 1] : null;
           const unread = MSG.unreadCount(recent, {
             lastReadAt: mineRow && mineRow.last_read_at,
             userId: g.user.id,
           });
-          out.push(threadPayload(t, rows, g.user.id, latest, unread, names));
-        }
+          return threadPayload(t, rows, g.user.id, latest, unread, names);
+        });
         // The deal rooms this member owns, as External conversations. Its own
         // try: a hub read failing must cost the External section and never
         // the firm's own messages.
@@ -26909,11 +27031,20 @@ const server = http.createServer((req, res) =>
         return res.end(renderHomeHTML({ signedIn: false }));
       }
     }
+    // The workspace's data, gathered while the file is read (see
+    // deskBootPayload). Only the two URLs that OPEN the workspace, and only
+    // with a cookie — /index.html and /r/<id> never show a desk, and an
+    // anonymous visitor has nothing to boot. Never throws: a failure is an
+    // empty marker and the page as it was.
+    const deskBootP = (staticPath === "/" || staticPath === "/desk")
+      ? deskBootPayload(req).catch(() => null)
+      : Promise.resolve(null);
     fs.readFile(path.join(__dirname, "index.html"), (err, data) => {
       if (err) {
         res.writeHead(500);
         return res.end("index.html not found");
       }
+      deskBootP.then((deskBoot) => {
       // no-store: the whole front-end is this one file, so a stale cached copy
       // means users silently miss every update. It's small; always fetch fresh.
       // /desk is a personal workspace — noindex it (header only; the shared
@@ -26945,6 +27076,10 @@ const server = http.createServer((req, res) =>
         // only — see authBoot above for why that is safe and why index.html
         // being no-store is what makes it safe.
         .replace(AUTH_BOOT_MARKER, authBoot(Boolean(parseCookies(req)[SESSION_COOKIE])))
+        // The workspace's own data, right after the auth hint and for the
+        // same reason: a member's first frame should be their desk, not a
+        // page that fetches one. Empty for everybody else.
+        .replace(DESK_BOOT_MARKER, deskBootScript(deskBoot))
         // Fourth: the bulk run view (markup + its own CSS + BULKRUN), so a
         // pasted list can render its run where a report would go. It carries
         // its own <style> because index.html never receives MARKET_CSS.
@@ -26958,6 +27093,7 @@ const server = http.createServer((req, res) =>
       }
       if (SITE_URL !== DEFAULT_SITE_URL) html = html.split(DEFAULT_SITE_URL).join(SITE_URL);
       res.end(html);
+      });
     });
     return;
   }

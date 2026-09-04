@@ -785,6 +785,74 @@ const RANK_AREAS = (() => {
   }
 })();
 
+// Which CBSA contains a market page's city, and therefore which TIER its card
+// belongs to.
+//
+// The tier control filters the grid as well as the map, so every card needs a
+// tier. A market page is a CITY ("Industrial - Ontario, CA") and the ranking
+// is a METRO, and the two do not share a key: Ontario and Fontana are both in
+// Riverside-San Bernardino-Ontario, and neither is named "Riverside".
+//
+// Three stages, cheapest first, and each one is a fact rather than a guess:
+//
+//   1. Exact label + state. Fifteen of seventeen cities, and the only stage
+//      that can be wrong is the one a city name alone would get wrong - which
+//      is why it checks the STATE too. There are three Columbuses.
+//   2. The CBSA's own name contains the city, same state. Census names a
+//      metro after its largest places, so "Ontario, CA" is inside
+//      "Riverside-San Bernardino-Ontario, CA" by Census's own wording.
+//   3. The city's point falls inside the metro's equivalent-area circle,
+//      nearest centroid wins. This is the only INFERENCE of the three, and it
+//      is what catches Fontana - a real Riverside-CBSA city that appears in
+//      nobody's name. It needs the geography added in the Gazetteer pull.
+//
+// A city none of the three resolves keeps its card and carries no tier, so it
+// shows under "All" and vanishes under a specific tier. That is the honest
+// behaviour: we do not know which metro it is in, so we do not claim one.
+const RANK_TIER_BY_CITY = (() => {
+  if (!RANK_CONFIGURED) return new Map();
+  const markets = (RANK_TIERS.markets || []);
+  const exact = new Map();
+  for (const m of markets) exact.set((m.market + ", " + m.state).toLowerCase(), m);
+
+  const milesBetween = (aLat, aLng, bLat, bLng) => {
+    const R = 3958.8, rad = (d) => (d * Math.PI) / 180;
+    const dLat = rad(bLat - aLat), dLng = rad(bLng - aLng);
+    const x = Math.sin(dLat / 2) ** 2
+      + Math.cos(rad(aLat)) * Math.cos(rad(bLat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  };
+
+  return {
+    for(city, state, coords) {
+      const key = String(city || "").toLowerCase() + ", " + String(state || "").toLowerCase();
+      const hit = exact.get(key);
+      if (hit) return hit;
+
+      const lc = String(city || "").toLowerCase();
+      const st = String(state || "");
+      if (lc) {
+        const named = markets.find((m) => String(m.cbsa.name || "").toLowerCase().includes(lc)
+          && String(m.cbsa.name || "").includes(st));
+        if (named) return named;
+      }
+
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+        let best = null, bestMiles = Infinity;
+        for (const m of markets) {
+          const g = m.cbsa;
+          if (!Number.isFinite(g.lat) || !Number.isFinite(g.land_sq_mi)) continue;
+          const d = milesBetween(coords.lat, coords.lng, g.lat, g.lng);
+          const radius = Math.sqrt(g.land_sq_mi / Math.PI);
+          if (d <= radius && d < bestMiles) { bestMiles = d; best = m; }
+        }
+        if (best) return best;
+      }
+      return null;
+    },
+  };
+})();
+
 // The Market explorer's door into the rankings, rendered ONCE at startup.
 //
 // /markets is not cached the way /rankings is (no maxAge on its sendShellPage),
@@ -10468,6 +10536,14 @@ table.stmt th[data-k]:hover{color:var(--ink)}
 .mmap-sel select:hover{background:var(--wash)}
 .mmap-sel select:focus-visible{outline:2px solid var(--red);outline-offset:1px}
 .mmap-count{font-size:12px;color:var(--ink-3);font-variant-numeric:tabular-nums;margin-left:auto}
+/* The map controls hide a card with a CLASS, while the text filter above the
+   grid hides one with style.display. Two mechanisms on purpose: either may
+   hide a card without overwriting the other's decision, so filtering by
+   "primary" and then typing "warehouse" narrows twice instead of the second
+   one undoing the first. !important because the inline display the text
+   filter writes would otherwise win. */
+.mcard.mmhide{display:none!important}
+.mmap-grid-note{display:block;margin-top:6px;color:var(--ink-2)}
 .mmap-note{margin-top:10px}
 /* The card a ranked circle opens. */
 .rkpop{font-size:12.5px;color:var(--ink-2);margin-top:2px}
@@ -11819,6 +11895,64 @@ const MARKETS_DIR_MAP_JS = `(function(){
     return el ? el.value : fallback;
   }
 
+  // THE GRID BELOW THE MAP.
+  //
+  // Snapshot cards are market PAGES and cover four types; the class control
+  // offers six, because the RANKING covers six. Choosing land or residential
+  // therefore empties the grid, and that is a true answer - we publish no land
+  // snapshots - so it is said in words rather than left as a blank space that
+  // reads like a bug.
+  //
+  // A card with no data-tier is a city no metro could be established for. It
+  // shows under "All" and hides under a named tier: we do not know which metro
+  // it belongs to, so we do not claim one.
+  //
+  // The text filter above the grid is left completely alone. It is the
+  // visitor's own query and these controls must never silently clear it - the
+  // two narrow together, which is what a reader typing "warehouse" into a
+  // primary-market view expects.
+  // LOOKED UP LAZILY, and that is not a micro-optimisation.
+  //
+  // This script is emitted with the MAP, which sits ABOVE the grid in the
+  // body: measured on the rendered page, the script is at byte 122,917 and
+  // the first .mcard at 133,706. Querying at parse time therefore found zero
+  // cards, cached the empty list, and every later call returned early - the
+  // controls moved the circles and left the grid untouched, silently, with
+  // nothing thrown. (The text filter below the grid never had this problem
+  // because it is emitted after the cards it filters.)
+  //
+  // Resolved on first use and cached from then on, so a page whose grid never
+  // arrives simply never filters one.
+  var cards = null;
+  var gridNote = null;
+  function filterCards(tier, cls) {
+    if (!cards || !cards.length) {
+      cards = [].slice.call(document.querySelectorAll(".mcard"));
+      gridNote = document.getElementById("mmapGridNote");
+    }
+    if (!cards.length) return;
+    var shown = 0;
+    cards.forEach(function (el) {
+      var okTier = tier === "all" || el.getAttribute("data-tier") === tier;
+      var okType = el.getAttribute("data-type") === cls;
+      // .mmhide rather than style.display, so the text filter above keeps its
+      // own display control and the two can hide a card independently
+      // without either one overwriting the other's decision.
+      if (okTier && okType) { el.classList.remove("mmhide"); shown++; }
+      else { el.classList.add("mmhide"); }
+    });
+    if (gridNote) {
+      var label = CLASS_LABEL[cls] || cls;
+      gridNote.textContent = shown
+        ? shown + " " + label.toLowerCase() + " snapshot" + (shown === 1 ? "" : "s")
+          + (tier === "all" ? "" : " in " + tier + " markets")
+        : "No " + label.toLowerCase() + " snapshots"
+          + (tier === "all" ? " yet" : " in " + tier + " markets")
+          + ". The ranking above covers six asset classes; the snapshots below cover the four "
+          + "CompNinja has comps for.";
+    }
+  }
+
   // The chosen asset class. Falls back to the class the server rendered the
   // control on, so a browser that never ran the change handler still styles
   // against the class the markup says is selected.
@@ -11865,6 +11999,11 @@ const MARKETS_DIR_MAP_JS = `(function(){
     // marker, its click handler and the pixel spread computed above intact.
     if (pinPane) pinPane.style.display = showPins ? "" : "none";
 
+    // The grid below. Tier and class narrow it; the layer toggle does not,
+    // because that one is about which map layers are drawn and says nothing
+    // about which markets a reader is interested in.
+    filterCards(tier, cls);
+
     var el = document.getElementById("mmapCount");
     if (el) {
       // "50 primary markets \u00b7 49 measured" - the gap is the honest part,
@@ -11886,7 +12025,17 @@ const MARKETS_DIR_MAP_JS = `(function(){
     });
     var sel = document.getElementById("mmClass");
     if (sel) sel.addEventListener("change", applyView);
+
+    // The map is drawn immediately - its circles exist by now - but the GRID
+    // is still being parsed, so the first pass would style the circles
+    // correctly and leave all 27 cards showing under a class that matches
+    // eight of them. Every later call is fine: the change handler runs long
+    // after the document is complete. So the map is styled now and the grid
+    // is caught up with once the cards exist.
     applyView();
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", applyView);
+    }
   }
 
   // CLICK A PIN, SEE THE CITY. A pin click flies to the city, reveals its
@@ -13053,7 +13202,19 @@ function renderMarketDirectoryHTML(signedIn) {
       ? `<img class="mthumb" src="${escHtml(thumb.src)}" alt="" width="${MARKETHERO.HERO_THUMB_WIDTH}" ` +
         `height="${MARKETHERO.HERO_THUMB_HEIGHT}" loading="lazy" decoding="async"/>`
       : "";
-    return `<a class="mcard${thumb ? " haspic" : ""}" href="/market/${s}" data-q="${escHtml(haystack)}">` +
+    // data-type and data-tier are what the map's controls filter on. The type
+    // is the card's own word; the tier is resolved through
+    // RANK_TIER_BY_CITY, and is empty when no metro could be established -
+    // which shows the card under "All" and hides it under a named tier.
+    const tierRow = RANK_TIER_BY_CITY.for
+      ? RANK_TIER_BY_CITY.for(p.city, p.state, MARKETHERO.coordsFor(p.city, p.state, {
+          coords: (Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+            ? { lat: Number(p.lat), lng: Number(p.lng) } : null,
+        }))
+      : null;
+    return `<a class="mcard${thumb ? " haspic" : ""}" href="/market/${s}" data-q="${escHtml(haystack)}"` +
+      ` data-type="${escHtml(String(p.type || "").toLowerCase())}"` +
+      ` data-tier="${escHtml(tierRow ? tierRow.tier : "")}">` +
       pic +
       `<div class="mbody">` +
       `<div class="t">${escHtml(p.type)} · ${escHtml(p.city)}, ${escHtml(p.state)}</div>` +
@@ -13173,7 +13334,8 @@ function renderMarketDirectoryHTML(signedIn) {
       (RANK_AREAS.length
         ? `<p class="mcount mmap-note">Each circle covers the same land area as its metro &mdash; ` +
           `a true claim about size, not about shape. A hollow ring is a market nothing has been ` +
-          `measured for in the chosen classes, which is not the same as a market reading flat.</p>`
+          `measured for in the chosen classes, which is not the same as a market reading flat. ` +
+          `<span class="mmap-grid-note" id="mmapGridNote" role="status" aria-live="polite"></span></p>`
         : "") +
       (pins.length < slugs.length
         ? `<p class="mcount">Showing ${pins.length} of ${slugs.length} markets on the map — the rest are in the list below.</p>`
@@ -13221,13 +13383,17 @@ function renderMarketDirectoryHTML(signedIn) {
       `cards.forEach(function(el){` +
       `var hay=el.getAttribute('data-q')||'';` +
       `var hit=terms.every(function(t){return hay.indexOf(t)!==-1});` +
-      `el.style.display=hit?'':'none';if(hit)n++;});` +
+      // .mmhide is the map controls' doing (class and tier). This owns
+      // style.display and never touches that class, so the two narrow
+      // together: a card must satisfy BOTH to be counted or opened.
+      `el.style.display=hit?'':'none';` +
+      `if(hit&&!el.classList.contains('mmhide'))n++;});` +
       `c.textContent=!terms.length?'':(n?n+' of '+total+' markets':'No markets match. Try a city, a state, or a property type.');}` +
       `q.addEventListener('input',run);` +
       // Enter opens the first match, so a filtered-to-one list needs no mouse.
       `q.addEventListener('keydown',function(e){` +
       `if(e.key!=='Enter')return;e.preventDefault();` +
-      `var first=cards.filter(function(el){return el.style.display!=='none'})[0];` +
+      `var first=cards.filter(function(el){return el.style.display!=='none'&&!el.classList.contains('mmhide')})[0];` +
       `if(first)window.location.href=first.getAttribute('href');});` +
       `run();})();</script>`
     : "";

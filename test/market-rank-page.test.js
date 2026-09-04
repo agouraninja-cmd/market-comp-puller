@@ -629,3 +629,108 @@ test("one market's export carries every indicator and its series", () => {
   assert.ok(flat.includes("51.2%"), "a level keeps its unit");
   assert.ok(!flat.includes("+51.2"), "and never gains a + sign");
 });
+
+
+// ---------------------------------------------------------------------------
+// Switching asset class must not lose the market you are reading.
+
+// A member on Salt Lake City who wants its office read was thrown back to a
+// list of fifty markets and had to find Salt Lake City again. The class is the
+// thing the control names; the market is not, and a control should only change
+// what it names.
+test("the class tabs on a market card keep that market", () => {
+  const html = P.renderMarketCardBody({ ...CARD, cbsa: "41620", narrative: null,
+    score: 0.27, publicScore: 0.27, band: "expanding", publicBand: "expanding" });
+  for (const c of P.ASSET_CLASSES) {
+    assert.ok(html.includes(`href="/rankings/${c}/41620"`),
+      `${c} tab dropped the market and points at the ledger`);
+  }
+});
+
+// The ledger has no market to keep, so its tabs stay class-only. Passing a
+// cbsa there would be a link to a market the reader has not chosen.
+test("the ledger's class tabs carry no market", () => {
+  const html = render();
+  for (const c of P.ASSET_CLASSES) {
+    assert.ok(html.includes(`href="/rankings/${c}"`), `${c} tab missing from the ledger`);
+  }
+  assert.ok(!/rk-tab" href="\/rankings\/[a-z]+\/\d/.test(html),
+    "a ledger tab must not point at some particular market");
+});
+
+// ---------------------------------------------------------------------------
+// The ledger's tier filter.
+
+test("every scored row carries its tier and its true rank", () => {
+  const html = render();
+  const rows = html.match(/<tr data-tier="[a-z]+" data-rank="\d+">/g) || [];
+  const scored = ROWS.filter((r) => typeof r.score === "number");
+  assert.equal(rows.length, scored.length, "one data-tier row per scored market");
+  assert.ok(html.includes('data-tier="primary"'));
+  assert.ok(html.includes('data-tier="secondary"'));
+});
+
+// THE ONE THAT MATTERS MOST HERE. Renumbering the visible rows 1..n inside a
+// filter would say Boise is the 2nd best industrial market in the country when
+// it is the 61st -- the filter would be quietly rewriting the ranking it
+// exists to look through.
+test("the rank column is the place in the FULL ranking, not the filtered view", () => {
+  const html = render();
+  const ranks = (html.match(/data-rank="(\d+)"/g) || []).map((m) => Number(m.match(/\d+/)[0]));
+  assert.deepEqual(ranks, ranks.slice().sort((a, b) => a - b), "ranks must ascend");
+  assert.equal(ranks[0], 1, "and start at the top of the whole ranking");
+  // The Hartford row is 3rd overall and 2nd among secondary markets. Its
+  // printed rank must be 3 either way.
+  const hartford = html.slice(html.indexOf("Hartford") - 200, html.indexOf("Hartford"));
+  assert.match(hartford, /data-rank="3"/);
+});
+
+test("the tier control offers every tier and counts each honestly", () => {
+  const html = render();
+  for (const t of ["all", "primary", "secondary", "tertiary"]) {
+    assert.ok(html.includes(`id="rkt-${t}"`), `no ${t} option`);
+  }
+  const counts = (html.match(/rk-tab-n">(\d+)/g) || []).map((m) => Number(m.match(/\d+/)[0]));
+  const scored = ROWS.filter((r) => typeof r.score === "number");
+  assert.equal(counts[0], scored.length, "All must count every scored market");
+  // Tertiary holds only the unscored Eagle Pass, so it must read 0 rather than
+  // being omitted: a tier offering nothing is a fact about the data.
+  assert.equal(counts[3], 0, "a tier with nothing measured must show 0, not vanish");
+});
+
+// The counts come from SCORED rows. An unscored market is not in the table, so
+// counting it would promise a row the filter cannot show.
+test("the tier counts exclude markets that are not in the table", () => {
+  const html = render();
+  const counts = (html.match(/rk-tab-n">(\d+)/g) || []).map((m) => Number(m.match(/\d+/)[0]));
+  assert.ok(counts[0] < ROWS.length, "Eagle Pass is unscored and must not be counted");
+});
+
+// Progressive enhancement, and the reason the filter is client-side at all:
+// every row is already in the HTML, so with no JavaScript the full table is
+// still the answer.
+test("the whole table ships in the HTML, so no-JS still reads it", () => {
+  const html = render();
+  for (const r of ROWS.filter((x) => typeof x.score === "number")) {
+    assert.ok(html.includes(`${r.market}, ${r.state}`), `${r.market} missing from the markup`);
+  }
+});
+
+// A "/" inside an inline <script> is a hazard this repo has met before (the
+// 1031 widget's regex). Both scripts here are plain string work.
+test("the ledger's inline scripts carry no regex literal", () => {
+  const html = render();
+  const scripts = html.match(/<script>[\s\S]*?<\/script>/g) || [];
+  assert.ok(scripts.length >= 1, "expected the tier filter's script on the ledger");
+  for (const sc of scripts) {
+    // The BODY, stripped of the wrapper the match itself carries. Without
+    // this the closing-tag check below is trivially true of every script,
+    // which is exactly the shape of test that passes forever and guards
+    // nothing.
+    const src = sc.slice("<script>".length, -"</script>".length);
+    assert.ok(!/=\s*\/[^/*\s][^\n]*\/[gimsuy]*[;.,)]/.test(src),
+      "a regex literal in an inline script: " + src.slice(0, 120));
+    assert.ok(!src.includes("</script"),
+      "a script body must not contain a closing tag -- it would end the block early");
+  }
+});

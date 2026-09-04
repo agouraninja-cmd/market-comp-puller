@@ -67,6 +67,16 @@ table.rk td.num,table.rk th.num{text-align:right;font-variant-numeric:tabular-nu
 .rk-cov{display:inline-block;width:46px;height:6px;border-radius:2px;background:var(--hair);
   overflow:hidden;vertical-align:middle}
 .rk-cov i{display:block;height:100%;background:var(--ink-3)}
+/* The tier filter reuses .rk-tab's look on a <label>, so the two rows of
+   controls above the table read as one system. The radio itself is hidden
+   from sight but not from focus, so the ring lands on the label. */
+.rk-tiers input[type=radio]{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+  overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.rk-tiers label.rk-tab{cursor:pointer;user-select:none}
+.rk-tiers input:checked + label.rk-tab{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.rk-tiers input:focus-visible + label.rk-tab{outline:2px solid var(--red);outline-offset:1px}
+.rk-tab-n{margin-left:6px;font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
+.rk-tier-note{font-size:12px;color:var(--ink-3);margin-left:4px}
 .rk-note{font-size:13px;color:var(--ink-2);margin:14px 0 0}
 .rk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:12px 0 0;font-size:12px;color:var(--ink-3)}
 /* --- One market's component panels ------------------------------------- */
@@ -164,11 +174,104 @@ function coverageBar(cov) {
     + `<i style="width:${pct}%"></i></span>`;
 }
 
-function assetTabs(current) {
+// `cbsa` keeps you on the market you are reading.
+//
+// Without it every tab on a market card pointed at /rankings/<class> - the
+// LEDGER - so a member looking at Salt Lake City who wanted its office read
+// was thrown back to a list of fifty markets and had to find Salt Lake City
+// again. The class is the thing being changed; the market is not, and a
+// control should only change what it names. Every market is in every class's
+// list, so /rankings/office/41620 always resolves.
+function assetTabs(current, cbsa) {
+  const suffix = cbsa ? "/" + esc(cbsa) : "";
   return `<div class="rk-controls"><span style="font-size:13px;color:var(--ink-2);font-weight:600">Asset class</span>`
     + ASSET_CLASSES.map((c) =>
-      `<a class="rk-tab" href="/rankings/${c}"${c === current ? ' aria-current="page"' : ""}>`
+      `<a class="rk-tab" href="/rankings/${c}${suffix}"${c === current ? ' aria-current="page"' : ""}>`
       + `${CLASS_LABEL[c]}</a>`).join("")
+    + `</div>`;
+}
+
+// The ledger's tier filter, in the browser.
+//
+// Every row is already in the HTML - fifty of them - so this hides rows rather
+// than asking the server for a shorter list. The class is a URL because it is
+// a different RANKING; the tier is not, because it is the same ranking with
+// fewer rows on screen.
+//
+// THE RANK COLUMN KEEPS ITS ORIGINAL NUMBER. Renumbering the visible rows
+// 1..n would say Boise is the 2nd best industrial market in the country when
+// it is the 61st - the filter would be quietly rewriting the ranking it
+// exists to look through. data-rank carries the real place and the cell is
+// never touched.
+//
+// The hash carries the choice so a narrowed view is still a link somebody can
+// send, and it is read back on load. No regex: a "/" inside an inline script
+// is a hazard this repo has met before, and plain string work reads better.
+const TIER_FILTER_JS = `(function(){
+  var boxes = document.querySelectorAll('input[name="rktier"]');
+  var note = document.getElementById("rkTierNote");
+  if (!boxes.length) return;
+  var rows = [].slice.call(document.querySelectorAll("table.rk tbody tr[data-tier]"));
+  if (!rows.length) return;
+
+  function chosen() {
+    for (var i = 0; i < boxes.length; i++) if (boxes[i].checked) return boxes[i].value;
+    return "all";
+  }
+  function apply(writeHash) {
+    var want = chosen(), shown = 0;
+    rows.forEach(function (tr) {
+      var on = want === "all" || tr.getAttribute("data-tier") === want;
+      tr.style.display = on ? "" : "none";
+      if (on) shown++;
+    });
+    if (note) {
+      note.textContent = want === "all" ? "" :
+        shown + " of " + rows.length + " markets \u00b7 rank is the place in the full ranking";
+    }
+    if (writeHash) {
+      try {
+        if (want === "all") history.replaceState(null, "", location.pathname + location.search);
+        else history.replaceState(null, "", "#tier=" + want);
+      } catch (e) {}
+    }
+  }
+
+  // Read the hash on load, so a shared link opens on the tier it names.
+  var h = String(location.hash || "");
+  if (h.indexOf("#tier=") === 0) {
+    var want = h.slice(6);
+    for (var i = 0; i < boxes.length; i++) {
+      if (boxes[i].value === want) { boxes[i].checked = true; break; }
+    }
+  }
+  [].forEach.call(boxes, function (b) {
+    b.addEventListener("change", function () { apply(true); });
+  });
+  apply(false);
+})();`;
+
+// The tier control on the ledger. Counts come from the SCORED rows, so a tier
+// offering "0" is visibly a tier nothing has been measured in rather than a
+// button that silently empties the table.
+//
+// Progressive enhancement: with no JavaScript the radios render, nothing
+// filters, and the full table is the answer - which is the same table the page
+// would have shown anyway.
+function tierFilter(rows) {
+  const scored = (rows || []).filter((r) => typeof r.score === "number");
+  const counts = scored.reduce((a, r) => { a[r.tier] = (a[r.tier] || 0) + 1; return a; }, {});
+  const opts = [["all", "All", scored.length]]
+    .concat(["primary", "secondary", "tertiary"]
+      .map((t) => [t, t.charAt(0).toUpperCase() + t.slice(1), counts[t] || 0]));
+
+  return `<div class="rk-controls rk-tiers">`
+    + `<span style="font-size:13px;color:var(--ink-2);font-weight:600">Market tier</span>`
+    + opts.map(([v, lbl, n2], i) =>
+        `<input type="radio" name="rktier" id="rkt-${v}" value="${v}"${i === 0 ? " checked" : ""}/>`
+        + `<label class="rk-tab" for="rkt-${v}">${lbl}`
+        + `<span class="rk-tab-n">${n2}</span></label>`).join("")
+    + `<span class="rk-tier-note" id="rkTierNote" role="status" aria-live="polite"></span>`
     + `</div>`;
 }
 
@@ -190,7 +293,11 @@ function renderRankingsBody(assetClass, rows, meta) {
   const body = scored.map((r, i) => {
     const moved = r.bandMovedByNarrative
       ? ` <span class="rk-tier" title="Your read changed which band this market is in">moved</span>` : "";
-    return `<tr>`
+    // data-tier is what the tier filter reads, and data-rank holds the
+    // market's place in the FULL ranking so a filtered view can keep it.
+    // Renumbering 1..n inside a filter would say Boise is the 2nd best
+    // industrial market in the country when it is the 61st.
+    return `<tr data-tier="${esc(r.tier)}" data-rank="${i + 1}">`
       + `<td class="num">${i + 1}</td>`
       + `<td class="rk-mkt"><a href="/rankings/${cls}/${esc(r.cbsa)}">${esc(r.market)}, ${esc(r.state)}</a>`
       + `<span class="rk-tier">${esc(r.tier)}</span></td>`
@@ -234,6 +341,7 @@ function renderRankingsBody(assetClass, rows, meta) {
     + `for ${esc(CLASS_LABEL[cls].toLowerCase())}. Every score breaks out to its components.</p>`
 
     + assetTabs(cls)
+    + tierFilter(rows)
     + classGap
 
     + `<div class="rk-scroll"><table class="rk">`
@@ -271,7 +379,9 @@ function renderRankingsBody(assetClass, rows, meta) {
     + `<p class="disc">Rankings are computed from public government data and, where a firm has `
     + `written one, that firm&rsquo;s own read of the market. They are an automated indicator, not `
     + `an appraisal, not investment advice, and not a substitute for underwriting a specific `
-    + `property. Every input and weight is shown so the number can be checked.</p>`;
+    + `property. Every input and weight is shown so the number can be checked.</p>`
+
+    + `<script>${TIER_FILTER_JS}</script>`;
 }
 
 
@@ -554,7 +664,9 @@ function renderMarketCardBody(m) {
     + `<p class="sub">${esc(label)} &middot; ${esc(m.tier)} market &middot; `
     + `${esc(m.cbsaName || "")}${m.population ? " &middot; population " + Number(m.population).toLocaleString() : ""}</p>`
 
-    + assetTabs(cls)
+    // Switching class here stays on this market rather than returning to the
+    // ledger - see assetTabs.
+    + assetTabs(cls, m.cbsa)
 
     + `<div class="card"><h2 style="margin-top:0">Score</h2>`
     + `<p style="font-size:34px;font-weight:600;margin:0 0 4px;font-variant-numeric:tabular-nums">`

@@ -1150,6 +1150,20 @@ test("report branding is collapsed behind a summary that states what is saved", 
     "both load-failure paths must open the box so the message is visible");
 });
 
+test("the branding summary row keeps its box when open and says Close, not Edit ✕", () => {
+  // 2026-09-04, owner's complaint on the live panel: the open row dropped its
+  // bottom edge to merge with a card that is not directly beneath it, and
+  // carried a stray glyph. The row is a whole box in both states and the
+  // affordance is a word the toggle handler writes.
+  assert.ok(!html.includes("details[open] > .dk-sum"), "no open-state override on the summary box");
+  assert.ok(!/\.dk-sum-a::after/.test(html), "no glyph appended to the affordance");
+  assert.ok(html.includes('<span id="brandSumAct" class="dk-sum-a">Edit</span>'));
+  const at = html.indexOf('getElementById("brandBox").addEventListener("toggle"');
+  assert.ok(at > -1, "the box's toggle event writes the affordance");
+  const h = html.slice(at, at + 300);
+  assert.ok(h.includes('"Close" : "Edit"'), "Close while open, Edit while closed");
+});
+
 test("the workspace has no Account deck; the plan lives in Settings, with the admin's way out", () => {
   // 2026-09-03, owner's call: the workspace is work only. Report branding
   // moved into the Firm & branding panel and the plan card went, because it

@@ -1389,6 +1389,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* First section under a deck heading sits closer than the mt-8 the
        sections carry between themselves — the heading already separates. */
     .dk-deck > .dk-deck-h + * { margin-top: 18px; }
+    /* The workspace's stand-in (2026-09-03). Shown ONLY while the first fill
+       for an identity is in flight — see renderMyDesk — and swapped for the
+       whole desk in one paint when it lands. Shaped like a deck so the page
+       does not jump when the real one replaces it; .skeleton is the report's
+       own loading treatment, reused rather than copied. */
+    .dk-skel { margin-top: 48px; }
+    .dk-skel .dk-deck-ln { opacity: .25; }
+    .dk-skel-lab { display: inline-block; width: 128px; height: 20px; }
+    .dk-skel-card { height: 72px; margin-top: 16px; }
     /* The chamber's desk-context header (2026-08-29): the demoted search form
        reads as one more deck of the workspace. Lives inside #searchSection so
        the wall's boot CSS hides it with its parent.
@@ -2524,6 +2533,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            refreshDeckVisibility() still hides the whole heading for a member
            who is in no firm and holds no invitation. A solo member therefore
            sees no change at all. -->
+      <!-- Stand-in for the desk below while its data is read (2026-09-03).
+           Hidden until renderMyDesk's first fill for an identity starts, and
+           hidden again the moment the whole desk is ready. The desk used to
+           reveal one section per fetch, ten fetches deep, which read as the
+           page inserting parts. aria-hidden: it says nothing a reader needs. -->
+      <div id="deskLoading" class="hidden dk-skel" aria-hidden="true">
+        <div class="dk-deck-h"><span class="skeleton dk-skel-lab"></span><span class="dk-deck-ln"></span></div>
+        <div class="skeleton dk-skel-card"></div>
+        <div class="skeleton dk-skel-card"></div>
+      </div>
       <section id="myDesk" class="hidden mt-4">
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
@@ -13336,11 +13355,54 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     document.getElementById("compForm").requestSubmit();
   }
 
+  // ONE PAINT (2026-09-03). The desk used to reveal itself a section at a
+  // time: renderMyDesk unhid #myDesk on entry, then every renderer unhid its
+  // own section when its own fetch landed, and those fetches ran as a chain
+  // ten deep (portfolio, then shares, then the firm, then its buildings, then
+  // its conversations, then its shelf, then its board, then its contacts).
+  // On screen that was the page inserting parts for a second or two, which
+  // the owner read as the workspace being slow to load.
+  //
+  // Now the FIRST fill for an identity is held: #myDesk stays hidden and
+  // #deskLoading (a skeleton the shape of a deck) stands in, every renderer
+  // still writes into its hidden section exactly as before, and the desk is
+  // revealed once, when the whole batch has settled. Two things make that a
+  // speed-up rather than a delay: the batch now runs concurrently wherever
+  // the data allows (renderDeskRest and renderShares, below), so the desk is
+  // ready sooner than its LAST section used to be; and every later call for
+  // the same identity — a report saved, a share revoked, refreshAccountUI
+  // re-running — repaints in place with nothing held, so a desk already on
+  // screen never blanks.
+  //
+  // DESK_FILL_MAX_MS is the watchdog: a renderer that never settles (a fetch
+  // hung at the edge) must not hold the whole workspace hostage, so past it
+  // the desk shows what it has. Every renderer already fails soft, so this
+  // only ever fires on a hang, never on an error.
+  let deskFilledFor = null;
+  const DESK_FILL_MAX_MS = 8000;
+  const deskIdentity = (u) => (u && (u.id || u.email)) || null;
+
 async function renderMyDesk() {
     const desk = document.getElementById("myDesk");
-    if (!currentUser) { desk.classList.add("hidden"); return; }
-    desk.classList.remove("hidden");
+    const loading = document.getElementById("deskLoading");
+    if (!currentUser) {
+      desk.classList.add("hidden");
+      // The stand-in stays up for a visitor who LOOKS signed in while the
+      // account read is still out (the boot path calls this before it has
+      // answered); once auth is known and there is nobody, it goes.
+      loading.classList.toggle("hidden", !looksSignedIn());
+      deskFilledFor = null;
+      return;
+    }
     applyAvatarUI(currentUser);
+    const ident = deskIdentity(currentUser);
+    const held = deskFilledFor !== ident;
+    if (held) {
+      desk.classList.add("hidden");
+      loading.classList.remove("hidden");
+    } else {
+      desk.classList.remove("hidden");
+    }
 
     // The portfolio is STILL READ here, and the read is the whole reason this
     // survived the move to /vault (2026-09-01, "Three Spaces"). It is not for
@@ -13354,26 +13416,42 @@ async function renderMyDesk() {
     // from a read that did not happen turns an outage into an invitation to
     // create duplicates. Same rule the rows used to follow when they were
     // here: an outage is never reported as an absence.
-    let items = null;
-    try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
-    if (items) {
-      portfolioKeys.clear();
-      items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
-      syncPortfolioButton();
-    }
-    renderDeskRest();
+    const portfolio = (async () => {
+      let items = null;
+      try { items = (await acctApi("GET", "/api/portfolio")).items || []; } catch (_) {}
+      if (items) {
+        portfolioKeys.clear();
+        items.forEach((item) => markPortfolioSaved(item.address, item.property_type));
+        syncPortfolioButton();
+      }
+    })();
+    // The rest of the desk does not depend on the portfolio read (see
+    // renderDeskRest), so the two run side by side rather than in sequence.
+    const work = Promise.all([portfolio, renderDeskRest()]);
+    if (!held) { await work; return; }
+    await Promise.race([work, new Promise((r) => setTimeout(r, DESK_FILL_MAX_MS))]);
+    // Signed out, or somebody else signed in, while this fill was in flight:
+    // that later call owns the desk now, and revealing here would show this
+    // identity's sections under that one's name.
+    if (deskIdentity(currentUser) !== ident) return;
+    deskFilledFor = ident;
+    loading.classList.add("hidden");
+    desk.classList.remove("hidden");
   }
 
   // The rest of the desk, which does not depend on the portfolio read — so a
   // failed one must not take the shares table and the firm sections down with
-  // it. Kept as its own function after the portfolio rows left, because it is
-  // still reached from renderMyDesk's one exit and a future section added
-  // here should not have to know that.
+  // it. Returns the batch: renderMyDesk holds the first reveal on it, so a
+  // section added here is held with the rest for free — and must, like these
+  // four, never reject, which `quiet` guarantees on its behalf.
   function renderDeskRest() {
-    renderBrokerDesk();
-    renderShares();
-    renderDeskHubs();
-    loadBranding();
+    const quiet = (p) => Promise.resolve(p).catch(() => {});
+    return Promise.all([
+      quiet(renderBrokerDesk()),
+      quiet(renderShares()),
+      quiet(renderDeskHubs()),
+      quiet(loadBranding()),
+    ]);
   }
 
   // ----------------------------------------------------------------------------
@@ -13436,7 +13514,15 @@ async function renderMyDesk() {
     deskView.classList.remove("hidden");
     deskView.classList.add("fade-in"); // re-fires on every unhide; closes stay instant
     renderHistory();
-    document.getElementById("deskSignIn").classList.toggle("hidden", Boolean(currentUser));
+    // looksSignedIn(), not currentUser (2026-09-03): this runs from the boot
+    // path before /api/account/me has answered, and on currentUser alone a
+    // member's first frame was the "Sign in" card — filmed at 0.3s, gone at
+    // 0.6s — under a header that already showed their account. The cookie
+    // hint the wall relies on is enough to keep the card down; the stand-in
+    // below holds the space until the account read lands, and refreshAccountUI
+    // writes the truth for both when it does.
+    document.getElementById("deskSignIn").classList.toggle("hidden", looksSignedIn());
+    document.getElementById("deskLoading").classList.toggle("hidden", !(looksSignedIn() && !currentUser));
     renderMyDesk();
     applySearchLock();
     markNavCurrent();
@@ -13681,39 +13767,54 @@ async function renderMyDesk() {
       document.getElementById("deskFirm").classList.add("hidden");
     };
     if (!currentUser) { hideAll(); return; }
+    // The membership read starts NOW, beside the shares read, not after it
+    // (2026-09-03): the two answer different questions and neither needs the
+    // other, and the firm read heads the longest chain on the page (firm →
+    // buildings → shelf), so a round trip spent waiting for the shares before
+    // starting it was a round trip on every member's first paint. Every early
+    // exit below still waits for it before hideAll(): renderFirm unhides
+    // #deskFirm when it lands, and hiding first would be undone by a read
+    // still in flight.
+    const firmReady = renderFirm().catch(() => {});
+    const bail = async (err) => {
+      await firmReady;
+      hideAll();
+      if (err) errEl.classList.remove("hidden");
+    };
     let res;
     try {
       res = await fetch("/api/shares");
     } catch (_) {
-      hideAll();
-      errEl.classList.remove("hidden");
-      return;
+      return bail(true);
     }
-    if (res.status === 401) { hideAll(); return; } // sign-in card already covers this
-    if (!res.ok) { hideAll(); errEl.classList.remove("hidden"); return; }
+    if (res.status === 401) return bail(false); // sign-in card already covers this
+    if (!res.ok) return bail(true);
     const data = await res.json().catch(() => null);
-    if (!data) { hideAll(); errEl.classList.remove("hidden"); return; }
+    if (!data) return bail(true);
     sharesBox.classList.remove("hidden");
     renderSharesTable(
       Array.isArray(data.mine) ? data.mine : [],
       Array.isArray(data.sharedWithMe) ? data.sharedWithMe : []
     );
-    // AWAITED, then the shelf: renderFirm is what loads the membership, and
-    // renderFirmShelf reads it through myFirm(). Firing them together showed
-    // the shelf for whatever firm was in memory from the last render — which
-    // on a sign-out-then-sign-in is somebody else's.
-    await renderFirm();
-    // Buildings before the shelf: they are the deck's first section, and the
-    // shelf's rows offer "Add to firm" only for addresses not already listed,
-    // so the list has to be in memory before those rows are drawn.
-    await renderBuildings();
-    await renderDeskThreads();
-    await renderFirmShelf();
-    // Last, and for renderFirmShelf's own reason: the board reads myFirm() too,
-    // so it has to come after the membership load. Its own read is independent
-    // of the shelf's, so a slow board never holds the shelf back.
-    await renderDealBoard();
-    await renderContacts();
+    // AWAITED before anything firm-scoped: renderFirm is what loads the
+    // membership, and everything below reads it through myFirm(). Firing them
+    // together showed the shelf for whatever firm was in memory from the last
+    // render — which on a sign-out-then-sign-in is somebody else's.
+    await firmReady;
+    // The firm-scoped reads run TOGETHER (2026-09-03); each needs only the
+    // membership just loaded. Two exceptions, and only these two: the shelf's
+    // rows offer "Add to firm" only for addresses not already listed, and the
+    // contact rows map building_id to an address off the buildings read, so
+    // the shelf and the contacts wait for the buildings — and for nothing
+    // else. The board reads myFirm() too, which is why it sits here and not
+    // beside the shares above.
+    const buildings = renderBuildings();
+    await Promise.all([
+      buildings,
+      renderDeskThreads(),
+      renderDealBoard(),
+      buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
+    ]);
   }
 
   // ---------------------------------------------------------------------------

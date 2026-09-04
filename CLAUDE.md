@@ -4138,6 +4138,33 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     shared report is somebody else's link and must never open the reader's own
     desk. `popstate` mirrors the same rule, so Back to `/` does not drop a
     member on marketing.
+  **The workspace fills in ONE PAINT (2026-09-03).** It used to reveal itself
+  a section at a time — `renderMyDesk` unhid `#myDesk` on entry, every
+  renderer unhid its own section when its own fetch landed, and the fetches
+  ran as a chain ten deep (portfolio → shares → firm → buildings →
+  conversations → shelf → board → contacts). Filmed against the stand-in
+  database with a 60ms round trip, sections appeared at 0.6s, 0.9s, 1.3s,
+  1.8s, 2.3s, 2.6s, 2.9s and 3.2s; the owner described it as the page
+  inserting parts. Now the FIRST fill for an identity is held: `#myDesk`
+  stays hidden, `#deskLoading` (a `.skeleton` the shape of a deck) stands
+  in, and the desk is revealed once when `renderDeskRest`'s batch settles —
+  filmed the same way, everything appeared together at 1.7s, on the same 130
+  database requests. Four rules, all in `test/desk-one-paint.test.js`, which
+  EXECUTES `renderMyDesk` with renderers the test lands by hand: a later call
+  for the same identity repaints in place and never re-hides a desk already
+  on screen (`deskFilledFor`); a sign-out or a different sign-in mid-fill
+  means the stale fill reveals nothing; `renderDeskRest` returns its batch
+  and swallows a rejection, so a section added there is held for free and
+  can never hold the desk forever; and `DESK_FILL_MAX_MS` (8s) races the
+  batch, so a hung fetch shows what has landed rather than nothing. The
+  concurrency is the other half of the speed-up: `renderShares` starts the
+  membership read beside the shares read (every early exit awaits it before
+  `hideAll()`, or the in-flight read undoes the hide), and the firm-scoped
+  reads go out together — the shelf and the contacts wait for the buildings
+  (the "Add to firm" doors and the building_id → address map) and for
+  nothing else. `showDeskView` decides the sign-in card and the stand-in on
+  `looksSignedIn()` for the boot rule's own reason: on `currentUser` a
+  member's first frame was the "Sign in" card, filmed at 0.3s.
   **`/desk` is kept working rather than redirected to `/`.** It is linked from
   Stripe checkout returns *with a query string*, the watchlist digest, org
   invite emails and `/bulk`; a 302 would drop the query and dead-end those.

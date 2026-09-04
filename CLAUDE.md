@@ -1628,7 +1628,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   home view and on a report) and `#searchSection` (hidden by the wall's boot
   CSS while the list still renders signed out), toggled at exactly the four
   seams that toggle `#searchDeckHead`; `test/index-html.test.js` counts
-  them. Contacts keeps its place — after the deal board, before Membership —
+  them. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm account panel on 2026-09-03 —
   and Buildings stays first. Recorded for later, not built: a firm-level
   "needs attention" band (lease critical dates + unread conversations —
   `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`

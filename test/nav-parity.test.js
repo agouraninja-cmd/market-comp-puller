@@ -264,3 +264,33 @@ test("a signed-out reader can still find the price", () => {
   assert.match(SERVER_JS, /pagePath === "\/pricing"|req\.url[^\n]*"\/pricing"/,
     "/pricing is not a route any more, so the footer link goes nowhere");
 });
+
+test("Firm account is one row under Settings on both sides of the rail", () => {
+  // The firm's roster and settings left the workspace on 2026-09-03 for a
+  // modal that lives only in index.html, so it needs the same two doors the
+  // settings panel has: a row in the app's account menu and a link in every
+  // server-rendered one. Both sit DIRECTLY under Settings, because "right
+  // under Settings" is where the owner asked for it and a row that is there
+  // on one page and elsewhere on the next is the seam this file exists for.
+  const srvAt = SERVER_JS.indexOf('<a id="navSettings" href="/desk?settings=1">Settings</a>');
+  assert.notEqual(srvAt, -1, "the shared account menu lost its Settings row");
+  const srvNext = SERVER_JS.indexOf("<a id=", srvAt + 1);
+  assert.ok(SERVER_JS.slice(srvNext).startsWith('<a id="navFirm" href="/desk?firm=1">Firm account</a>'),
+    "the shared account menu's next link after Settings is not Firm account");
+  const appAt = INDEX_HTML.indexOf('id="menuSettingsBtn"');
+  assert.notEqual(appAt, -1, "the app's account menu lost its Settings row");
+  const appNext = INDEX_HTML.indexOf("<button", appAt + 1);
+  assert.match(INDEX_HTML.slice(appNext, appNext + 200), /^<button id="menuFirmBtn"[^>]*>Firm account</,
+    "the app's next menu row after Settings is not Firm account");
+  // The door is a query the wall can see, consumed and cleared where
+  // ?settings=1 is — after the account resolves, so a signed-out arrival
+  // opens nothing and a reload does not reopen a closed panel.
+  assert.match(INDEX_HTML, /get\("firm"\) === "1"/,
+    "index.html does not read the door the shared menu points at");
+  const at = INDEX_HTML.indexOf("function refreshAccountUI()");
+  const body = INDEX_HTML.slice(at, INDEX_HTML.indexOf("\n  }\n", at));
+  assert.match(body, /pendingFirmPanel/, "the panel must open from refreshAccountUI, like settings");
+  assert.match(body, /if \(currentUser\) openFirmModal\(\);/,
+    "the firm panel opened for a visitor with no account to show a firm for");
+  assert.match(body, /qs\.delete\("firm"\)/, "the param is not cleared, so a reload reopens the panel");
+});

@@ -2192,6 +2192,145 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     </div>
   </div>
 
+  <!-- Firm account (2026-09-03, owner's call). The firm's roster,
+       invitations, the create box and its settings -- auto-share, the shop
+       kind, seats -- used to be the "Membership & settings" section at the
+       foot of the workspace's firm deck. They are the firm's plumbing rather
+       than its work, so they open from the account menu now, right under
+       Settings, on that panel's own pattern: a row in the app's menu, and
+       /desk?firm=1 from every server-rendered menu (a query the wall can
+       see, consumed and cleared in refreshAccountUI exactly as ?settings=1
+       is). #deskFirm keeps its id and renderFirm() still owns which of its
+       three states shows; openFirmModal() adds only the fourth answer --
+       "you are not in a firm" -- which the workspace used to give by
+       hiding the section, and which a panel somebody opened on purpose
+       cannot give by showing nothing. Wider than Settings (max-w-2xl):
+       the roster is a table of people, and the invite box is a textarea. -->
+  <div id="firmModal" class="hidden fixed inset-0 z-[1200] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4 no-print">
+    <div class="mcard bg-white rounded-xl shadow-xl border border-[#E4E2DA] w-full max-w-2xl p-6">
+      <div class="rd-lab">Firm account</div>
+      <p class="text-sm text-[#5A6473] mt-1">Who is in your firm and how it shares. The firm's buildings, conversations and shelf stay on your workspace.</p>
+      <p id="firmModalErr" class="hidden text-sm text-red-600 mt-4">Couldn't load your firm just now. Nothing has changed. Close this and try again in a moment.</p>
+      <!-- The fourth state. renderFirm() hides #deskFirm for an account that
+           is in no firm, holds no invitation and could not create one (the
+           paywall for firms lives in the pricing modal). On the workspace
+           that read as nothing; here it has to say so. The pricing door
+           obeys settingsUpgradeBtn's rule, live && !pro, applied on open. -->
+      <div id="firmModalNone" class="hidden mt-4">
+        <p class="text-sm text-[#4C5665]">You're not part of a firm yet. A firm is a shared shelf: reports colleagues share with it land on everyone's workspace, while each person's own reports, vault and watchlist stay theirs. Ask a colleague who has one to invite you, or start one on a Pro plan.</p>
+        <button id="firmModalPricing" type="button"
+          class="hidden btn-live mt-3 text-sm font-medium text-white bg-[#B91C1C] hover:bg-[#991B1B] rounded-lg px-3 py-1.5">See pricing</button>
+      </div>
+      <div id="deskFirm" class="hidden mt-4">
+        <div class="dk-rule">
+          <span class="rd-lab">Membership &amp; settings</span>
+          <span id="firmStats" class="dk-note"></span>
+        </div>
+
+        <!-- 1. An invitation waiting. Above the create box on purpose: someone
+                who was invited should accept, not start a rival firm. -->
+        <div id="firmInvites" class="hidden mt-2 space-y-1.5"></div>
+
+        <!-- 2. No firm yet. -->
+        <div id="firmCreate" class="hidden mt-2">
+          <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
+          <!-- The shop question (036, third kind 037), asked once, here. It
+               has no default on purpose: the answer decides the words every
+               colleague reads from then on, the creator is the only person who
+               knows it, and a preselected option is a question answered by
+               silence. The empty first option is not a value the server
+               accepts. -->
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+            <label for="firmKindSelect">What kind of shop is this?</label>
+            <select id="firmKindSelect"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+              <option value="">Choose one</option>
+              <option value="broker">Broker shop</option>
+              <option value="development">Development shop</option>
+            </select>
+          </div>
+          <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
+          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <input id="firmNameInput" type="text" maxlength="80" placeholder="Your firm's name" aria-label="Firm name"
+              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
+            <button id="firmCreateBtn" type="button"
+              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Create firm</button>
+          </div>
+          <p id="firmCreateErr" class="hidden text-red-600 text-xs mt-1.5"></p>
+        </div>
+
+        <!-- 3. A member. -->
+        <div id="firmMembers" class="hidden mt-2">
+          <div id="firmMemberRows" class="space-y-1.5"></div>
+          <div id="firmInviteWrap" class="hidden mt-3">
+            <textarea id="firmInviteEmails" rows="2" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
+              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
+            <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+              <button id="firmInviteBtn" type="button"
+                class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Invite colleagues</button>
+              <span id="firmInviteMsg" class="text-xs text-[#68707E]"></span>
+            </div>
+          </div>
+          <!-- The auto-share switches. Two of them, and which you see depends
+               on what you may set: the firm default is an owner/admin control,
+               the personal one is everybody's. Rendered by
+               renderFirmAutoShare(). -->
+          <div id="firmAutoShare" class="mt-3 space-y-1.5">
+            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
+              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
+              <span>Share new reports with the firm by default</span>
+            </label>
+            <!-- Which shop this firm is. An owner/admin control, because it
+                 re-labels every colleague's desk; everyone else reads the
+                 answer as a line of text (renderFirmShop). -->
+            <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmShopSelect">This firm is a</label>
+              <select id="firmShopSelect"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                <option value="broker">Broker shop</option>
+                <option value="development">Development shop</option>
+              </select>
+              <span id="firmShopState" class="text-xs text-[#68707E]"></span>
+            </div>
+            <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
+              <label for="firmAutoShareSelect">My new reports</label>
+              <select id="firmAutoShareSelect"
+                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
+                <!-- The first two options produce the SAME outcome while the
+                     firm default is on, so each one says what it does rather
+                     than naming a mode: "follow" states the firm's current
+                     setting (renderFirmAutoShare writes it in), "always" says
+                     what it survives. Two labels that read as one choice were
+                     read as a redundant option (owner, 2026-09-01). -->
+                <option id="firmAutoShareFollow" value="follow">Use the firm's setting</option>
+                <option value="always">Always share, even if the firm turns it off</option>
+                <option value="never">Never share automatically</option>
+              </select>
+              <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
+            </div>
+          </div>
+          <!-- Seats. Shown to every member (the count explains an invite
+               refusal before it happens), but only the owner is offered the
+               controls — checkout and the portal both refuse anyone else, and
+               a button that can only fail is worse than no button. Rendered by
+               renderFirmBilling(). -->
+          <div id="firmBilling" class="hidden mt-3 flex flex-wrap items-center gap-4 text-sm">
+            <span id="firmSeats" class="text-[#4C5665]"></span>
+            <button id="firmBuySeatsBtn" type="button"
+              class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add seats</button>
+            <button id="firmPortalBtn" type="button"
+              class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
+            <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
+          </div>
+          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
+        </div>
+      </div>
+      <div class="mt-5 flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+        <button id="firmClose" type="button" class="text-sm text-[#5A6473] hover:text-[#1A2433]">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- The tester badge and its modal are injected here at serve time from
        server.js's TESTER_BADGE_* constants -- markup, its own plain CSS and
        its handlers -- because /vault and /bulk emit the SAME block through
@@ -2366,6 +2505,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <!-- Change photo and Delete account… moved into the settings
                  panel (2026-08-23); this row is the door to them. -->
             <button id="menuSettingsBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Settings</button>
+            <!-- Firm account (2026-09-03): membership and the firm's settings,
+                 moved here off the workspace. Right under Settings on purpose,
+                 on both sides of the rail (accountNavSlots renders the same
+                 row as /desk?firm=1). Signed-in only, like the menu itself. -->
+            <button id="menuFirmBtn" type="button" class="block w-full text-left px-3 py-1.5 hover:bg-[#F5F4EF]">Firm account</button>
             <!-- Mutually exclusive: you are either being sold Pro or managing
                  the subscription you already have. refreshBillingUI() owns both. -->
             <button id="menuUpgradeBtn" type="button" class="hidden block w-full text-left px-3 py-1.5 font-medium text-[#B91C1C] hover:bg-[#F5F4EF]">Upgrade to Pro</button>
@@ -2749,122 +2893,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="contactRows" class="mt-3"></div>
         <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
-
-      <!-- The firm itself: create one, accept an invitation, see who is in it.
-           Three states in one section, exactly one visible at a time
-           (renderFirm owns that). Deliberately BELOW the firm shelf: this is
-           the plumbing, the shelf is the point. The deck heading says "Your
-           firm", so this section's own label names what it actually holds. -->
-      <div id="deskFirm" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Membership &amp; settings</span>
-          <span id="firmStats" class="dk-note"></span>
-        </div>
-
-        <!-- 1. An invitation waiting. Above the create box on purpose: someone
-                who was invited should accept, not start a rival firm. -->
-        <div id="firmInvites" class="hidden mt-2 space-y-1.5"></div>
-
-        <!-- 2. No firm yet. -->
-        <div id="firmCreate" class="hidden mt-2">
-          <p class="text-sm text-[#5A6473]">A firm is a shared shelf. Reports you share with it show up for every colleague, while your own reports and desk stay yours.</p>
-          <!-- The shop question (036, third kind 037), asked once, here. It
-               has no default on purpose: the answer decides the words every
-               colleague reads from then on, the creator is the only person who
-               knows it, and a preselected option is a question answered by
-               silence. The empty first option is not a value the server
-               accepts. -->
-          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
-            <label for="firmKindSelect">What kind of shop is this?</label>
-            <select id="firmKindSelect"
-              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-              <option value="">Choose one</option>
-              <option value="broker">Broker shop</option>
-              <option value="development">Development shop</option>
-            </select>
-          </div>
-          <p id="firmKindNote" class="text-xs text-[#68707E] mt-1.5"></p>
-          <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
-            <input id="firmNameInput" type="text" maxlength="80" placeholder="Your firm's name" aria-label="Firm name"
-              class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none" />
-            <button id="firmCreateBtn" type="button"
-              class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Create firm</button>
-          </div>
-          <p id="firmCreateErr" class="hidden text-red-600 text-xs mt-1.5"></p>
-        </div>
-
-        <!-- 3. A member. -->
-        <div id="firmMembers" class="hidden mt-2">
-          <div id="firmMemberRows" class="space-y-1.5"></div>
-          <div id="firmInviteWrap" class="hidden mt-3">
-            <textarea id="firmInviteEmails" rows="2" placeholder="colleague@yourfirm.com, analyst@yourfirm.com" aria-label="Colleagues to invite"
-              class="w-full rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none"></textarea>
-            <div class="mt-3 flex flex-wrap items-center gap-4 text-sm">
-              <button id="firmInviteBtn" type="button"
-                class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Invite colleagues</button>
-              <span id="firmInviteMsg" class="text-xs text-[#68707E]"></span>
-            </div>
-          </div>
-          <!-- The auto-share switches. Two of them, and which you see depends
-               on what you may set: the firm default is an owner/admin control,
-               the personal one is everybody's. Rendered by
-               renderFirmAutoShare(). -->
-          <div id="firmAutoShare" class="mt-3 space-y-1.5">
-            <label id="firmDefaultWrap" class="hidden flex items-center gap-2 text-sm text-[#4C5665] cursor-pointer">
-              <input id="firmDefaultToggle" type="checkbox" class="accent-[#B91C1C]" />
-              <span>Share new reports with the firm by default</span>
-            </label>
-            <!-- Which shop this firm is. An owner/admin control, because it
-                 re-labels every colleague's desk; everyone else reads the
-                 answer as a line of text (renderFirmShop). -->
-            <div id="firmShopWrap" class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
-              <label for="firmShopSelect">This firm is a</label>
-              <select id="firmShopSelect"
-                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-                <option value="broker">Broker shop</option>
-                <option value="development">Development shop</option>
-              </select>
-              <span id="firmShopState" class="text-xs text-[#68707E]"></span>
-            </div>
-            <div class="flex flex-wrap items-center gap-4 text-sm text-[#4C5665]">
-              <label for="firmAutoShareSelect">My new reports</label>
-              <select id="firmAutoShareSelect"
-                class="rounded-lg border border-[#D8D4C9] px-3 py-2 focus:ring-2 focus:ring-brand-600 focus:border-brand-600 outline-none">
-                <!-- The first two options produce the SAME outcome while the
-                     firm default is on, so each one says what it does rather
-                     than naming a mode: "follow" states the firm's current
-                     setting (renderFirmAutoShare writes it in), "always" says
-                     what it survives. Two labels that read as one choice were
-                     read as a redundant option (owner, 2026-09-01). -->
-                <option id="firmAutoShareFollow" value="follow">Use the firm's setting</option>
-                <option value="always">Always share, even if the firm turns it off</option>
-                <option value="never">Never share automatically</option>
-              </select>
-              <span id="firmAutoShareState" class="text-xs text-[#68707E]"></span>
-            </div>
-          </div>
-          <!-- Seats. Shown to every member (the count explains an invite
-               refusal before it happens), but only the owner is offered the
-               controls — checkout and the portal both refuse anyone else, and
-               a button that can only fail is worse than no button. Rendered by
-               renderFirmBilling(). -->
-          <div id="firmBilling" class="hidden mt-3 flex flex-wrap items-center gap-4 text-sm">
-            <span id="firmSeats" class="text-[#4C5665]"></span>
-            <button id="firmBuySeatsBtn" type="button"
-              class="hidden btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add seats</button>
-            <button id="firmPortalBtn" type="button"
-              class="hidden text-sm text-[#5A6473] hover:text-[#1A2433] underline">Manage firm billing</button>
-            <span id="firmBillingMsg" class="text-xs text-[#68707E]"></span>
-          </div>
-          <p class="text-xs text-[#68707E] mt-1.5">Colleagues see only what someone shares with the firm. Your own reports, portfolio, watchlist and private vault stay yours. Automatic sharing never applies to reports you have already run.</p>
-        </div>
-      </div>
       </div><!-- /deckFirm -->
 
       <!-- "Your properties" and "Your watchlist" used to be a deck here.
            They moved to /vault on 2026-09-01 ("Three Spaces"): this page is
-           the FIRM's record now -- its shelf, its deal board, its contacts,
-           its roster -- and a portfolio and a watchlist are one member's own.
+           the FIRM's record now -- its shelf, its deal board, its contacts -- and a portfolio and a watchlist are one member's own.
            Nothing about the data moved. portfolio_items and watchlist_items
            are still user-scoped and still read through the same routes; only
            the surface did. renderMyDesk still READS the portfolio, because
@@ -12367,6 +12400,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   // see -- a fragment never reaches the server. Read at parse time, before
   // anything can rewrite the URL, and consumed once by refreshAccountUI.
   let pendingSettingsPanel = new URLSearchParams(location.search).get("settings") === "1";
+  // And the firm account panel (2026-09-03), same door shape: every
+  // server-rendered account menu links /desk?firm=1, and the modal it opens
+  // lives only in this file.
+  let pendingFirmPanel = new URLSearchParams(location.search).get("firm") === "1";
 
   // Set when THIS page load arrived through the /?auth=signin door. That door
   // is a full navigation off whatever page the visitor was reading, because
@@ -12582,6 +12619,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       const rest = qs.toString();
       history.replaceState({}, "", location.pathname + (rest ? "?" + rest : ""));
     }
+    // ?firm=1, the same door for the firm account panel (2026-09-03). Unlike
+    // settings it opens for a MEMBER only: the panel is a roster and a set of
+    // firm controls, and for a signed-out visitor there is nothing to show.
+    // The param is cleared either way, for the same reload reason.
+    if (pendingFirmPanel) {
+      pendingFirmPanel = false;
+      if (currentUser) openFirmModal();
+      const qs = new URLSearchParams(location.search);
+      qs.delete("firm");
+      const rest = qs.toString();
+      history.replaceState({}, "", location.pathname + (rest ? "?" + rest : ""));
+    }
   }
 
   // Show/hide the password field. The one writer of that state, so the input
@@ -12741,6 +12790,47 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     resetSettingsDeleteConfirm();
     document.getElementById("settingsModal").classList.add("hidden");
   }
+  // The firm account panel (2026-09-03). It shows #deskFirm -- the section
+  // renderFirm() has always owned, now living inside this modal -- and asks
+  // for a FRESH firm read on every open, because an invitation can arrive
+  // while the page sits. renderFirm() hides the section for an account in no
+  // firm with no invitation and no way to create one; a panel opened on
+  // purpose cannot answer with nothing, so that state gets #firmModalNone,
+  // and a failed read gets #firmModalErr rather than the same words ("we
+  // could not ask" is not "you have no firm", the org-desk rule).
+  async function openFirmModal() {
+    document.getElementById("acctMenu").classList.add("hidden");
+    const modal = document.getElementById("firmModal");
+    const none = document.getElementById("firmModalNone");
+    const err = document.getElementById("firmModalErr");
+    none.classList.add("hidden");
+    err.classList.add("hidden");
+    modal.classList.remove("hidden");
+    await renderFirm();
+    if (modal.classList.contains("hidden")) return; // closed while loading
+    if (!document.getElementById("deskFirm").classList.contains("hidden")) return;
+    if (firmState) {
+      none.classList.remove("hidden");
+      // settingsUpgradeBtn's own rule: a pricing door only where something
+      // is for sale and this account has not bought it.
+      document.getElementById("firmModalPricing").classList.toggle("hidden",
+        !(billingLive() && !(proConfig && proConfig.isPro)));
+    } else {
+      err.classList.remove("hidden");
+    }
+  }
+  function closeFirmModal() {
+    document.getElementById("firmModal").classList.add("hidden");
+  }
+  document.getElementById("menuFirmBtn").addEventListener("click", openFirmModal);
+  document.getElementById("firmClose").addEventListener("click", closeFirmModal);
+  document.getElementById("firmModal").addEventListener("click", (e) => {
+    if (e.target === e.currentTarget) closeFirmModal();
+  });
+  document.getElementById("firmModalPricing").addEventListener("click", () => {
+    closeFirmModal();
+    openUpgradePrompt();
+  });
   // The account menu's Settings row is the only door in the chrome (the
   // header gear it shipped beside was redundant with it and came out
   // 2026-08-24), and that menu is signed-in only. A signed-out visitor -- on

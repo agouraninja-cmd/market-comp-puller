@@ -541,8 +541,9 @@ test("bare environment", async (t) => {
   // Home and Workspace were two rows to one page; the rail stacks them
   // adjacent, which is what made the duplication visible.
   //
-  // "Run a report" still points at "/" and is still NOT the way home — that
-  // reasoning was right and is unchanged. What replaces Home is Workspace: a
+  // "Run a report" is still NOT the way home — that reasoning was right and is
+  // unchanged. What moved (2026-09-04) is only its destination: it points at
+  // /run-report, the finder's own URL, rather than at "/". What replaces Home is Workspace: a
   // destination, in the same position, one row down. (The CTA itself comes
   // off four pages as of 2026-08-30 — see the next test — which is why the
   // page checked here is /brokers-firms, where it stays. Checking it on /markets
@@ -577,7 +578,7 @@ test("bare environment", async (t) => {
     for (const p of ["/vault", "/markets", "/1031-exchange", "/bulk", "/buildings"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-      assert.ok(!/class="btn sm" href="\/">Run a report/.test(nav),
+      assert.ok(!/class="btn sm" href="\/run-report">Run a report/.test(nav),
         p + " still carries the Run a report CTA in its header");
       // Dropping it is only safe because the way back is still a row, not a
       // button — the same argument that let Home go for members.
@@ -595,8 +596,15 @@ test("bare environment", async (t) => {
     for (const p of ["/brokers-firms", "/pricing", "/market/industrial-ontario-ca"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-      assert.match(nav, /class="btn sm" href="\/">Run a report/,
-        p + " lost the CTA; only the four working pages drop it");
+      // /run-report since 2026-09-04, not "/". The button is named after the
+      // product's one action and "/" is the WORKSPACE for a member, so the
+      // old href delivered them to a page headed Workspace and relied on the
+      // search desk at the top of it being what they wanted. The finder has
+      // its own URL now. Asserted as the literal href rather than as "some
+      // link called Run a report", because the failure worth catching is the
+      // button quietly going back to pointing at home.
+      assert.match(nav, /class="btn sm" href="\/run-report">Run a report/,
+        p + " lost the CTA; only the working pages drop it");
     }
   });
 

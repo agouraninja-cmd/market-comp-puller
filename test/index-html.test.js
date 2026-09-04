@@ -952,6 +952,60 @@ test("Run a report jumps to the chamber and seats the caret, deterministically",
   }
 });
 
+test("a fresh sign-in lands on the workspace, and only where that is the answer", () => {
+  // The owner's report (2026-09-04): "when I first log into CompNinja I land
+  // on this page, but I really want to land on the workspace."
+  //
+  // The route was never wrong. A fresh LOAD of "/" has opened the workspace
+  // for a member since 2026-08-28, but signing in happens in a modal over an
+  // already-painted page and nothing re-asked the question — so the one
+  // visitor who had just PROVED they are a member was the one left on the
+  // marketing stack.
+  assert.match(html, /function landAfterAuth\(\) \{/,
+    "there is no single owner of where a sign-in lands");
+  const fn = html.slice(html.indexOf("function landAfterAuth() {"));
+  const body = fn.slice(0, fn.indexOf("\n  }") + 4);
+
+  // 1. The SAME condition as the boot rule and the popstate listener. Three
+  //    descriptions of one fact — where a member belongs — and the failure
+  //    mode is that they drift apart rather than that any one of them breaks.
+  //    /run-report is excluded BY that condition and deliberately so: it is
+  //    somewhere a member went on purpose to run a report, and moving them off
+  //    it would undo the page added on the same day.
+  assert.ok(body.includes('location.pathname !== "/" && location.pathname !== "/desk"'),
+    "landAfterAuth does not ask the boot rule's question, so /r/<id> or /run-report can be hijacked");
+  assert.ok(body.includes("enterDesk()"),
+    "it goes somewhere other than through the one function that owns the view swap");
+
+  // 2. Never over the top of a report. Somebody who signed in to save or share
+  //    what is on screen must not have it swapped for an empty workspace —
+  //    from where they sit that is a lost report.
+  assert.ok(body.includes('getElementById("results").classList.contains("hidden")'),
+    "a sign-in over a rendered report would replace it with the workspace");
+
+  // 3. It runs LAST in the auth handler and only when nothing else claimed the
+  //    sign-in. Every one of those flags is somebody who said where they were
+  //    going before they were asked for an account.
+  const submit = html.slice(html.indexOf('getElementById("acctForm").addEventListener'));
+  const call = submit.indexOf("landAfterAuth();");
+  assert.ok(call > -1, "the auth handler never calls it");
+  const guard = submit.slice(0, call);
+  for (const flag of ["firePendingSave", "firePendingPlan", "firePendingExplore", "fireSharedAddress"]) {
+    assert.ok(guard.lastIndexOf("!" + flag) > guard.lastIndexOf("const " + flag),
+      flag + " does not gate the landing, so a pending action is thrown away for a workspace");
+  }
+  assert.ok(guard.includes('getElementById("acctImport").classList.contains("hidden")'),
+    "the import prompt leaves the modal open on a question; landing behind it hides the question");
+
+  // 4. ...which is why the prompt's two exits call it themselves.
+  for (const id of ["acctImportYes", "acctImportNo"]) {
+    const at = html.indexOf(id + '").addEventListener');
+    assert.ok(at > -1, id + " has no handler");
+    assert.ok(html.slice(at, at + 1400).includes("landAfterAuth()"),
+      id + " answers the import question and then strands the new member on the landing page");
+  }
+});
+
 test("?refresh=1 replays the search; ?property alone reopens the saved report", () => {
   // /vault lists a member's portfolio since 2026-09-01 and its rows are links,
   // because that page can neither render a report nor replay a search -- both

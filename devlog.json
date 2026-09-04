@@ -2,6 +2,18 @@
   {
     "date": "2026-09-04",
     "type": "fix",
+    "title": "Signing in lands on your workspace, not the marketing page",
+    "details": "A fresh load of / has opened the workspace for a member since August 28, but signing in happens in a modal over a page that is already painted, and nothing re-asked the question — so the one visitor who had just proved they hold an account was the one left on the landing stack. It now asks again at the only other moment the answer can change, using the same condition the boot rule uses. A sign-in that was interrupting something — a checkout, a market search, a portfolio save, an address typed into a shared report, or a report already on screen — still finishes what it started instead."
+  },
+  {
+    "date": "2026-09-04",
+    "type": "feature",
+    "title": "Run a report is a page of its own at /run-report",
+    "details": "The comp finder has always been markup inside the home page, so the one thing the product does had no URL and could only be reached by going home — awkward ever since / became the workspace for a member. It has one now: the same app served at /run-report, which boots on the hero and the finder instead of the workspace. It is a row in the signed-out Tools menu beside Market explorer and the 1031 guide, a row in the app's own Tools group, and the destination of the red “Run a report” button in every header, which used to point at /. Signing in there keeps you there."
+  },
+  {
+    "date": "2026-09-04",
+    "type": "fix",
     "title": "Pricing sits under Workspace, Vault and Messages in the sidebar",
     "details": "On every page but the workspace, Pricing was the first row in the signed-in rail — above the three destinations a member actually navigates between — because the shared header emitted it before the member's own rows. It now renders directly under Messages and above the Tools group. Nothing changed for a signed-out visitor, whose bar has no member rows for it to sit under, and nothing changed about who sees it: the row still hides for a Pro member and on a deployment with no billing configured."
   },

@@ -146,6 +146,46 @@ test("the wall serves the landing page at the root", async (t) => {
       "/markets is where a walled visitor most needs the way back");
   });
 
+  // The wall's sixth door (2026-09-04). Unlike ?auth=, ?submit=comp,
+  // ?pricing=1 and ?settings=1 this one is a PATH, and it is the only door the
+  // chrome itself links: /run-report is a row in the signed-out Tools menu, so
+  // a stranger is invited through it. Answering "Run a report" with the page
+  // that argues you should run reports is the /desk-to-marketing-copy mistake
+  // of 2026-08-13 pointed the other way.
+  await t.test("/run-report is a door through the wall, not a bounce to the landing page", async () => {
+    const r = await get("/run-report");
+    assert.equal(r.status, 200, "the door must not redirect");
+    const html = await r.text();
+    assert.ok(isApp(html), "a stranger who clicked Run a report is owed the app, not the pitch");
+    assert.ok(!isLanding(html), "the landing page is what this door exists to avoid");
+    // And the door is a door, not a hole. The app's own account-wall card is
+    // what stands where the form is; ENFORCEMENT never moved (the wall forces
+    // GUEST_SEARCH_LIMIT to 0 and /api/comps still refuses), so the assertion
+    // that matters is that the card SHIPS, which is what applySearchLock
+    // reveals for a visitor with no session.
+    assert.match(html, /id="searchLock"/,
+      "the app arrived with no wall card, so an anonymous visitor is shown a form that cannot run");
+    // A second copy of the home page's bytes at a second URL, and index.html
+    // declares its canonical as `/`. Left indexable that is a self-declared
+    // duplicate, the soft error the sitemap comment names.
+    assert.match(r.headers.get("x-robots-tag") || "", /noindex/,
+      "/run-report is index.html at a second URL and must not be offered to a crawler");
+  });
+
+  // The finder's URL is in the stranger's Tools menu on the pages that render
+  // one. index.html has no dropdown of its own, so this has to be asked of a
+  // server-rendered page rather than of the door above.
+  await t.test("a stranger finds Run a report in Tools, and only there", async () => {
+    const html = await (await get("/markets")).text();
+    const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
+    const menus = (nav.match(/<div class="dd">[\s\S]*?<\/div>/g) || []).join("");
+    const rows = nav.replace(/<details[\s\S]*?<\/details>/g, "");
+    assert.match(menus, /<a href="\/run-report">Run a report<\/a>/,
+      "the stranger's Tools menu lost the finder");
+    assert.ok(!/run-report/.test(rows),
+      "Run a report is a menu item AND a row for a stranger -- one link, two places");
+  });
+
   // This pair of assertions moved to /brokers-firms on 2026-09-02, when
   // /how-it-works was retired. The rule is unchanged and is worth keeping
   // under test on SOME page that is neither `/` nor the workspace: an

@@ -223,12 +223,10 @@ npm start          # prestart runs node --check, then node server.js -> http://l
 boot on a failure — that is the production deploy gate (Render's start command
 is `npm start`). Keep it: it is fast and it catches the one failure that takes
 the site down at boot. Do NOT put `npm test` back in front of it — see the note
-above on the deploys that killed. `npm start` only works if `node` is on PATH. On the owner's Windows machine Node is
-a **portable (no-admin) copy**, so it's launched by full path instead:
-
-```powershell
-& "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64\node.exe" server.js
-```
+above on the deploys that killed. Node is a system install on PATH on the
+owner's Windows machine, so plain `node` and `npm` work in every shell. (It
+was a portable no-admin copy launched by full path until 2026-09; that
+folder is gone, so a `node-portable` path found in an old plan is dead.)
 
 ### Desktop app (`desktop.js`)
 
@@ -333,10 +331,9 @@ here would change.)
   relaunch.
 - Adding **new Tailwind utility classes** to `index.html` requires regenerating
   the vendored **`tailwind.css`** — a class missing from it silently won't
-  style. With node on PATH, run from the project root:
+  style. Run from the project root:
 
   ```powershell
-  $env:Path = "$env:LOCALAPPDATA\node-portable\node-v24.16.0-win-x64;" + $env:Path
   npx --yes tailwindcss@3.4.17 -c tailwind.config.js -i tailwind.input.css -o tailwind.css --minify
   ```
 

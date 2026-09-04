@@ -35,11 +35,6 @@ owner's behalf.
 
 ## The checklist
 
-Node isn't on PATH in the plain Bash environment on the owner's machine —
-use the portable path
-(`$LOCALAPPDATA/node-portable/node-v24.16.0-win-x64/node.exe`, or the
-PowerShell equivalent) for any `node` command below if a bare `node` fails.
-
 ### 1. Branch & worktree hygiene
 
 ```

@@ -1,0 +1,19 @@
+# Line endings. The test suite and the Render deploy both run on Linux, and a
+# CRLF checkout fails a dozen tests (anything that compares a file's bytes or
+# splits a template on "\n"). The owner's Windows machine has the system-level
+# core.autocrlf=true, so until this file existed the only thing keeping
+# checkouts LF was an unversioned .git/config entry -- and ten files still
+# landed in the index as CRLF. This normalizes every text file to LF in the
+# repo AND in the working tree, on every clone, whatever the local config says.
+* text=auto eol=lf
+
+# Binaries: never normalized, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.docx binary
+*.xlsx binary
+
+# Generated, minified, one line: a diff of it is noise.
+tailwind.css -diff

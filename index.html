@@ -3089,7 +3089,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            opposite of the shared-reports table above, which teaches a
            feature this member can use themselves. -->
       <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Comp hubs</span></div>
+        <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
         <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
       </div>
       </div><!-- /deckSharing -->
@@ -15447,9 +15447,9 @@ async function renderMyDesk() {
   // Spec: docs/superpowers/specs/2026-08-13-messaging-hub-design.md
   // NOT the connection hub at /brokers.
   //
-  // A broker's own hubs are on /vault beside the pipeline deck, because
-  // creating one is gated on canUseVault and this page is seen by every free
-  // account. This list is what a tenant sees, and a tenant is the person this
+  // A broker's own rooms live in /messages (External), where creating one is
+  // gated on canUseVault; this page is seen by every free account. This list
+  // is what a tenant sees, and a tenant is the person this
   // whole feature exists to reach.
   //
   // Two rules, both different from the share lists above:
@@ -15574,7 +15574,11 @@ async function renderMyDesk() {
       const row = document.createElement("div");
       row.className = "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-[#4C5665]";
       const link = document.createElement("a");
-      link.href = "/hub/" + encodeURIComponent(h.id);
+      // Into Messages, not the room's own page (2026-09-04): every
+      // conversation a member is in lives on one screen now, and a client's
+      // rooms have listed there since #275. The token door at /hub/<id> is
+      // untouched for the emailed link.
+      link.href = "/messages?x=" + encodeURIComponent(h.id);
       link.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
       // textContent, never innerHTML — a hub title is typed by the broker who
       // created it, so it is user-authored text like an address or an email.

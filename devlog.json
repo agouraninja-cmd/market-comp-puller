@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-04",
+    "type": "change",
+    "title": "The hubs deck leaves the vault: a deal room has one home, Messages",
+    "details": "Owner's call, after the two doors question had sat open since #255: 'remove the hub from the broker vault and just have it live in the new messaging category.' The vault's hubs deck (markup, the create form, the invite-link panel, loadHubs/renderHubs/hubsFailed/showInvites and the copy handler) is deleted outright, not replaced with a pointer, and VAULT_DECKS is two decks. Every job the deck did already existed in Messages: list, create and invite, guest list with opened status, remove, close, one-time links when mail fails, and sending comps in. The one thing removal would have lost is the two fields the vault's form carried that the New panel did not, area (market and subject address) and property type, so those went into the New panel first, optional and under the vault form's own field names, so the create route is untouched and a room started here reads on the client's page and on My Desk exactly as one started from the vault did. My Desk's list of rooms shared with you now opens each one in Messages (/messages?x=<id>) rather than the room's own page, and is headed Shared with you; the token door at /hub/<id> is untouched for the emailed link. What is genuinely gone: the deck's at-a-glance 'Opened 3 of 5' across every room. Messages shows that per room in the People panel and nowhere across rooms."
+  },
+  {
+    "date": "2026-09-04",
     "type": "fix",
     "title": "The Report branding summary row is a whole box, and says Close while open",
     "details": "Open, the collapsed branding row dropped its bottom edge to merge with a card directly beneath it — but the intro line and the mine/firm scope row sit between the two, so on the Firm & branding panel it read as a half-drawn frame with a stray “Edit ✕” on it. The row keeps its box in both states and the affordance is a word the box’s toggle event writes: Edit while closed, Close while open."
@@ -4088,4 +4094,4 @@
     "title": "The Broker deck left the workspace",
     "details": "The workspace's Broker deck — the comp-contributions list with its public-profile switch, and the \"Your private comp data\" vault card — is gone, on the owner's call: a how-to feature is coming, and the deck was explaining rather than doing. Nothing it linked to went away. The Vault is a nav row on every page, comp submissions still open from the /?submit=comp door (and that form still prefills a signed-in member's name, email, firm and phone — the prefill moved onto the modal itself), and both the submission list and the public broker profile switch moved to the Vault as an ungated \"Your contributions\" deck under Your watchlist — the Vault is the member's own space, and a free contributor can open it. The submit form's thank-you now points there."
   }
-]
+]\n

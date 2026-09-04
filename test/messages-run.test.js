@@ -240,6 +240,32 @@ test("firm messaging, end to end", async (t) => {
     assert.equal(row2.closed, true, "the closed room must say so in the list");
   });
 
+  await t.test("a room started with an area and a type keeps both, the way the vault's form did", async () => {
+    // The vault's hub form is gone (2026-09-04). This is the same create
+    // route with the same two optional fields, now sent from the New panel;
+    // the row must come out the way the vault's form left it, so a room
+    // started here reads on the client's page and on My Desk exactly as
+    // before. market is marketOf(subjectAddress), the vault upload's rule.
+    const made = await post(BRAD, "/api/hubs", {
+      title: "Flex space near the airport",
+      subjectAddress: "Boise, ID",
+      propertyType: "Industrial",
+      participants: ["flex@client.com"],
+    });
+    assert.equal(made.s, 201);
+    const row = ctx.tables.hubs.filter((h) => h.id === made.j.id)[0];
+    assert.ok(row, "the hub row was not written");
+    assert.equal(row.subject_address, "Boise, ID");
+    assert.equal(row.property_type, "Industrial");
+    assert.ok(row.market, "market was not derived from the area");
+    // And the thinner case still works: nothing but people, as before.
+    const bare = await post(BRAD, "/api/hubs", { title: "", subjectAddress: "", propertyType: "", participants: ["bare@client.com"] });
+    assert.equal(bare.s, 201);
+    const bareRow = ctx.tables.hubs.filter((h) => h.id === bare.j.id)[0];
+    assert.equal(bareRow.property_type, null);
+    assert.equal(bareRow.subject_address, null);
+  });
+
   await t.test("a colleague on a free seat gets messaging and not the vault", async () => {
     // canUseOrg's rule one surface over: reading and taking part needs no
     // entitlement at all. A firm whose junior broker cannot be messaged does

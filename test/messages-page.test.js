@@ -182,6 +182,50 @@ test("a reader with no firm gets their rooms, and nothing that needs a firm", ()
   assert.match(js, /var both = list\.length > 0 && ext\.length > 0;/);
 });
 
+// ---------------------------------------------------------------------------
+// The only way to start a deal room (2026-09-04)
+// ---------------------------------------------------------------------------
+// The vault's hub form is gone, and it carried two fields this panel did not:
+// the area (the room's market and subject address) and the property type.
+// Without them a room started here was thinner than one started from the
+// vault — the client's page fell back to "Comp hub" as a heading and My Desk
+// lost its "Industrial · Boise, ID". Both optional, both sent under the
+// field names the vault's form used, so the create route is untouched.
+test("the New panel carries the area and type the vault's form used to, and sends them", () => {
+  const html = renderMessagesBody({ s: 200, j: {} });
+  assert.match(html, /id="msgNewArea"/, "the area field is gone from the panel");
+  assert.match(html, /id="msgNewType"/, "the type select is gone from the panel");
+  const js = scriptOf(html);
+  // Shown and hidden WITH the about line: these are external-only, like it.
+  assert.match(js, /\$\("msgNewMeta"\)\.className = external \? "msg-newmeta" : "msg-newmeta msg-hide";/);
+  // Sent under the vault form's names — subjectAddress feeds marketOf() on
+  // the server, propertyType is stored as typed.
+  const send = js.slice(js.indexOf('api("POST", "/api/hubs"'), js.indexOf('api("POST", "/api/hubs"') + 400);
+  assert.match(send, /subjectAddress: \(\$\("msgNewArea"\)\.value \|\| ""\)\.trim\(\)/);
+  assert.match(send, /propertyType: \$\("msgNewType"\)\.value \|\| ""/);
+  // And cleared when the panel opens, with the rest of it.
+  const open = js.slice(js.indexOf("function openNewPanel(){"), js.indexOf("function openNewPanel(){") + 400);
+  assert.match(open, /\$\("msgNewArea"\)\.value = "";/);
+  assert.match(open, /\$\("msgNewType"\)\.value = "";/);
+});
+
+test("a firm of one is still offered the typed-email door", () => {
+  // renderNewPeople used to return early when nobody else had joined the
+  // firm, before the typed-email row was built — so a solo broker could type
+  // a client's address and never be offered the row that starts the room.
+  // With the vault's hub form gone (2026-09-04) this panel is the ONLY way
+  // to start a deal room, so the door is decided the same way for everyone
+  // and the "nobody has joined" sentence is just the list's stand-in.
+  const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
+  const fn = js.slice(js.indexOf("function renderNewPeople(){"), js.indexOf("function openNewPanel(){"));
+  assert.ok(!/if \(!people\.length\) \{[\s\S]{0,600}return;/.test(fn),
+    "renderNewPeople returns early for a firm of one, before the typed-email door");
+  const door = fn.indexOf("data-extpick=");
+  const solo = fn.indexOf("Nobody else has joined your firm yet.");
+  assert.ok(door > 0 && solo > door, "the door must be decided before the firm-of-one sentence is chosen");
+  assert.match(fn, /\$\("msgNewPeople"\)\.innerHTML = html \+ door;/);
+});
+
 test("the list is sorted unread first, then most recent, after every read", () => {
   const js = scriptOf(renderMessagesBody({ s: 200, j: {} }));
   const at = js.indexOf("state.threads = j.threads || [];");

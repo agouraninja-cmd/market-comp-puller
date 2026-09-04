@@ -24,8 +24,10 @@ const TOKEN = "vault-decks-token";
 const TOKEN_HASH = crypto.createHash("sha256").update(TOKEN).digest("hex");
 
 const PERSONAL = ["deckProps", "propsSec", "deckMarkets", "mktSec"];
-const GATED = ["trustLine", "deckBook", "compsSec", "deckPipe", "pipeSec",
-  "deckHubs", "hubSec"];
+// Two decks since 2026-09-04: the hubs deck left for /messages, and its ids
+// must NOT come back into this list, or the lock would name elements that no
+// longer exist and the test would prove nothing about them.
+const GATED = ["trustLine", "deckBook", "compsSec", "deckPipe", "pipeSec"];
 
 function bootBody(boot) {
   return renderVaultBody(boot);
@@ -67,7 +69,7 @@ test("both personal decks are in the markup for every visitor", () => {
   }
 });
 
-test("the lock list is the three vault decks and NOTHING personal", () => {
+test("the lock list is the two vault decks and NOTHING personal", () => {
   const html = bootBody({ s: 403, j: { portfolioValues: false } });
   const m = html.match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
   assert.ok(m, "VAULT_DECKS moved or was renamed — the per-deck gate's one list");

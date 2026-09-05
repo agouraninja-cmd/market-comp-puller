@@ -8802,7 +8802,27 @@ function bulkItemRow(it) {
     // Kept so a run already on somebody's screen keeps its working link.
     portfolio_item_id: it.portfolio_item_id || null,
     finished_at: it.finished_at || null,
+    // The row's own inputs (051), for the CSV. Allowlisted field by field —
+    // never the raw jsonb — so a key the parser was never taught cannot reach
+    // a file through storage.
+    subject: bulkSubjectRow(it.subject),
   };
+}
+
+function bulkSubjectRow(s) {
+  if (!s || typeof s !== "object") return null;
+  const out = {};
+  if (Number(s.asking) > 0) out.asking = Number(s.asking);
+  if (Number(s.noi) > 0) out.noi = Number(s.noi);
+  if (Number(s.capRate) > 0) out.capRate = Number(s.capRate);
+  if (s.details && typeof s.details === "object" && !Array.isArray(s.details)) {
+    const d = {};
+    for (const [k, v] of Object.entries(s.details)) {
+      if (/^[a-z_]{1,40}$/.test(k) && v != null && String(v).trim()) d[k] = String(v).slice(0, 40);
+    }
+    if (Object.keys(d).length) out.details = d;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function listBulkJobs(userId) {
@@ -8867,6 +8887,38 @@ async function bulkListPayload(user, ent) {
   const jobs = [];
   for (const j of await listBulkJobs(user.id)) {
     jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
+  }
+  // Each run's total for the Earlier-runs ledger (2026-09-04), from ONE
+  // grouped items read rather than a column on bulk_jobs: this list is read
+  // at boot and after a run finishes, never on the 4-second poll, so the
+  // "denormalize because we poll" argument 036 makes for done_count does not
+  // apply — and a stored sum would need a read-modify-write per row under
+  // BULK_CONCURRENCY plus a recompute in every later row mutation (a typed
+  // size, a retry), a drift risk forever for a query saved twice a session.
+  // The figure is BULK.summarize over the same rows the strip sums, so the
+  // ledger and the open run can never quote two totals for one job.
+  // Best-effort: a failed read leaves `summary` off and the ledger shows no
+  // figure, never a zero.
+  if (jobs.length) {
+    try {
+      const ids = jobs.map((j) => j.id);
+      const rows = await sbRequest("GET",
+        `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+        `&job_id=in.(${pgInList(ids)})&status=eq.done` +
+        `&select=job_id,status,value_low,value_likely,value_high` +
+        `&limit=${BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES}`);
+      const byJob = new Map();
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (!byJob.has(r.job_id)) byJob.set(r.job_id, []);
+        byJob.get(r.job_id).push(r);
+      }
+      for (const j of jobs) {
+        const s = BULK.summarize(byJob.get(j.id) || []);
+        j.summary = { valued: s.valued, low: s.low, likely: s.likely, high: s.high };
+      }
+    } catch (err) {
+      console.error("bulk list totals failed (ledger shows no figure):", err.message);
+    }
   }
   // Best-effort: a failed count reports the full ceiling, matching the route's
   // own fail-open, so the page can never be more pessimistic than the gate.
@@ -9123,10 +9175,16 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
  * Work a whole job. Fire-and-forget from the route: it is awaited by nobody
  * and must therefore never reject.
  */
-async function runBulkJob(job, items, user, ent) {
+async function runBulkJob(job, items, user, ent, opts) {
   const control = { cancelled: false };
   bulkRunning.set(String(job.id), control);
   const t0 = Date.now();
+  // `opts.doneBefore` (2026-09-04): a per-row RETRY re-runs one item of a job
+  // that already finished, so `done` has to start where the job stood rather
+  // than at zero — otherwise the retry's own heartbeat and final patch would
+  // write done_count 1 onto a fifty-row job. The route passes
+  // job.done_count - 1 (the row it put back in the queue).
+  const doneBefore = opts && Number.isFinite(Number(opts.doneBefore)) ? Math.max(0, Number(opts.doneBefore)) : 0;
 
   // Read once per JOB, not once per address. The radius-blend corpus rows are
   // a whole-type read (2000 rows) and the vault/firm comps are per market, so
@@ -9162,7 +9220,7 @@ async function runBulkJob(job, items, user, ent) {
     console.error("bulk radius corpus read failed:", err.message);
   }
 
-  let done = 0;
+  let done = doneBefore;
   const queue = items.slice();
   const worker = async () => {
     for (;;) {
@@ -20855,6 +20913,94 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // Retry ONE failed row (2026-09-04). It mutates the existing row and job
+    // rather than starting a one-row job: a new job would leave the old row
+    // failed forever and list two runs for one list. Only a FAILED row — a
+    // done-but-unvalued one ("no priced sales") would come back from cache
+    // with the same answer; its fix is a longer lookback, which is a new run.
+    //
+    // Every guard runs BEFORE anything is written, so a refusal leaves the
+    // job exactly as it was. Then the row goes back to `queued` with its
+    // created_at bumped to now — which is what makes the retry count as one
+    // of today's attempted addresses (bulkAddressesUsedToday windows on
+    // created_at) with no schema change — and the job back to `running` with
+    // done_count one lower, the baseline runBulkJob starts from. Ordinary
+    // cache, not `fresh`: a failed row wrote no cache entry, so it is a real
+    // search anyway, and cache makes an accidental double retry free.
+    if (req.method === "POST" && path === "/api/bulk/item/retry") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user, ent } = opened;
+          if (rateLimited("bulk:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { id } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const rows = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=eq.${encodeURIComponent(String(id))}&limit=1`);
+          const item = rows && rows[0];
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          if (item.status !== "failed") {
+            return sendJson(res, 409, {
+              error: "Only an address whose search failed can be retried. A row with no priced sales needs a longer lookback — run the list again.",
+              code: "not_failed",
+            });
+          }
+          const job = await getBulkJob(user.id, item.job_id);
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const live = await reapStalledBulkJob(user.id, await activeBulkJob(user.id));
+          if (live && live.status === "running") {
+            return sendJson(res, 409, {
+              error: "A bulk run is already going. Wait for it to finish, or cancel it first.",
+              code: "job_running", job: bulkJobRow(live),
+            });
+          }
+          let usedToday = 0;
+          try {
+            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
+          } catch (err) {
+            console.error("bulk daily count failed (allowing the retry):", err.message);
+          }
+          if (usedToday >= BULK_DAILY_ADDRESSES) {
+            return sendJson(res, 429, {
+              error: `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`,
+              code: "daily_limit", left_today: 0, daily_limit: BULK_DAILY_ADDRESSES,
+            });
+          }
+          if (!providerApiKey()) {
+            return sendJson(res, 503, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
+          }
+
+          const now = new Date().toISOString();
+          await patchBulkItem(user.id, item.id, {
+            status: "queued", error: null,
+            value_low: null, value_likely: null, value_high: null,
+            psf_low: null, psf_mid: null, psf_high: null,
+            sale_comps: null, comp_count: null, finished_at: null, created_at: now,
+          });
+          const doneBefore = Math.max(0, (Number(job.done_count) || 0) - 1);
+          await patchBulkJob(user.id, job.id, {
+            status: "running", done_count: doneBefore, finished_at: null, heartbeat_at: now,
+          });
+          const running = { ...job, status: "running", done_count: doneBefore, finished_at: null };
+          const queued = { ...item, status: "queued", error: null, created_at: now };
+          logEvent("bulk_retry", { prop_type: job.property_type, market: marketOf(item.address) });
+          runBulkJob(running, [queued], user, ent, { doneBefore })
+            .catch((err) => console.error("bulk retry crashed:", err.message));
+          return sendJson(res, 200, { ok: true, job: bulkJobRow(running) });
+        } catch (err) {
+          console.error("bulk retry error:", err.message);
+          sendJson(res, 400, { error: "Bad request." });
+        }
+      });
+      return;
+    }
+
     if (req.method === "POST" && path === "/api/bulk/item/size") {
       let body = "";
       req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
@@ -21025,16 +21171,50 @@ const server = http.createServer((req, res) =>
         if (!job) return sendJson(res, 404, { error: "Not found." });
         const items = await listBulkItems(user.id, id);
         const stamp = String(job.created_at || "").slice(0, 10);
+        // The run's name in the filename, so a folder of downloads is not
+        // twelve files called compninja-bulk-2026-09-04.csv. Slugged to
+        // [a-z0-9-], 40 chars, because it is going inside a quoted header.
+        const slug = String(job.label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
         res.writeHead(200, {
           "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="compninja-bulk-${stamp}.csv"`,
+          "content-disposition": `attachment; filename="compninja-bulk-${slug ? slug + "-" : ""}${stamp}.csv"`,
           "cache-control": "no-store",
           "x-robots-tag": "noindex, nofollow",
         });
-        res.end(BULK.exportCsv(job, items.map(bulkItemRow)));
+        // The type's detail keys become columns after the classic sixteen
+        // (bulk.js's EXPORT_SUBJECT_COLUMNS note); the file says its focus too.
+        const spec = TYPE_COMP_FIELDS[job.property_type];
+        res.end(BULK.exportCsv(job, items.map(bulkItemRow), { detailKeys: spec ? spec.fields : [] }));
       })().catch((err) => {
         console.error("bulk export error:", err.message);
         sendJson(res, 500, { error: "Could not build that file." });
+      });
+      return;
+    }
+
+    // Rename a run (2026-09-04). The label is the member's own name for the
+    // receipt — free text, never shown publicly, 120 chars like the POST's.
+    // Empty clears it, and the page falls back to "<type> run" as it always
+    // did. User-scoped like every other write here.
+    if (req.method === "PATCH" && path === "/api/bulk") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id, label } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const job = await getBulkJob(user.id, String(id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const labelOk = String(label == null ? "" : label).trim().slice(0, 120) || null;
+          await patchBulkJob(user.id, job.id, { label: labelOk });
+          return sendJson(res, 200, { job: bulkJobRow({ ...job, label: labelOk }) });
+        } catch (err) {
+          console.error("bulk PATCH error:", err.message);
+          sendJson(res, 400, { error: "Bad request." });
+        }
       });
       return;
     }

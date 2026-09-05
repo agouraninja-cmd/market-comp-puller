@@ -9123,10 +9123,16 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
  * Work a whole job. Fire-and-forget from the route: it is awaited by nobody
  * and must therefore never reject.
  */
-async function runBulkJob(job, items, user, ent) {
+async function runBulkJob(job, items, user, ent, opts) {
   const control = { cancelled: false };
   bulkRunning.set(String(job.id), control);
   const t0 = Date.now();
+  // `opts.doneBefore` (2026-09-04): a per-row RETRY re-runs one item of a job
+  // that already finished, so `done` has to start where the job stood rather
+  // than at zero — otherwise the retry's own heartbeat and final patch would
+  // write done_count 1 onto a fifty-row job. The route passes
+  // job.done_count - 1 (the row it put back in the queue).
+  const doneBefore = opts && Number.isFinite(Number(opts.doneBefore)) ? Math.max(0, Number(opts.doneBefore)) : 0;
 
   // Read once per JOB, not once per address. The radius-blend corpus rows are
   // a whole-type read (2000 rows) and the vault/firm comps are per market, so
@@ -9162,7 +9168,7 @@ async function runBulkJob(job, items, user, ent) {
     console.error("bulk radius corpus read failed:", err.message);
   }
 
-  let done = 0;
+  let done = doneBefore;
   const queue = items.slice();
   const worker = async () => {
     for (;;) {
@@ -20820,6 +20826,94 @@ const server = http.createServer((req, res) =>
     //
     // IT UPDATES BOTH PLACES. The bulk row and the desk property disagreeing
     // about what a building is worth is worse than either being wrong alone.
+    // Retry ONE failed row (2026-09-04). It mutates the existing row and job
+    // rather than starting a one-row job: a new job would leave the old row
+    // failed forever and list two runs for one list. Only a FAILED row — a
+    // done-but-unvalued one ("no priced sales") would come back from cache
+    // with the same answer; its fix is a longer lookback, which is a new run.
+    //
+    // Every guard runs BEFORE anything is written, so a refusal leaves the
+    // job exactly as it was. Then the row goes back to `queued` with its
+    // created_at bumped to now — which is what makes the retry count as one
+    // of today's attempted addresses (bulkAddressesUsedToday windows on
+    // created_at) with no schema change — and the job back to `running` with
+    // done_count one lower, the baseline runBulkJob starts from. Ordinary
+    // cache, not `fresh`: a failed row wrote no cache entry, so it is a real
+    // search anyway, and cache makes an accidental double retry free.
+    if (req.method === "POST" && path === "/api/bulk/item/retry") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user, ent } = opened;
+          if (rateLimited("bulk:" + clientIp(req), 20)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { id } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const rows = await sbRequest("GET",
+            `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+            `&id=eq.${encodeURIComponent(String(id))}&limit=1`);
+          const item = rows && rows[0];
+          if (!item) return sendJson(res, 404, { error: "Not found." });
+          if (item.status !== "failed") {
+            return sendJson(res, 409, {
+              error: "Only an address whose search failed can be retried. A row with no priced sales needs a longer lookback — run the list again.",
+              code: "not_failed",
+            });
+          }
+          const job = await getBulkJob(user.id, item.job_id);
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const live = await reapStalledBulkJob(user.id, await activeBulkJob(user.id));
+          if (live && live.status === "running") {
+            return sendJson(res, 409, {
+              error: "A bulk run is already going. Wait for it to finish, or cancel it first.",
+              code: "job_running", job: bulkJobRow(live),
+            });
+          }
+          let usedToday = 0;
+          try {
+            usedToday = await bulkAddressesUsedToday(user.id, BULK_DAILY_ADDRESSES);
+          } catch (err) {
+            console.error("bulk daily count failed (allowing the retry):", err.message);
+          }
+          if (usedToday >= BULK_DAILY_ADDRESSES) {
+            return sendJson(res, 429, {
+              error: `You have valued ${BULK_DAILY_ADDRESSES} addresses today, which is the daily limit. It resets at midnight UTC.`,
+              code: "daily_limit", left_today: 0, daily_limit: BULK_DAILY_ADDRESSES,
+            });
+          }
+          if (!providerApiKey()) {
+            return sendJson(res, 503, { error: `Server is missing the ${PROVIDER.apiKeyEnv} environment variable.` });
+          }
+
+          const now = new Date().toISOString();
+          await patchBulkItem(user.id, item.id, {
+            status: "queued", error: null,
+            value_low: null, value_likely: null, value_high: null,
+            psf_low: null, psf_mid: null, psf_high: null,
+            sale_comps: null, comp_count: null, finished_at: null, created_at: now,
+          });
+          const doneBefore = Math.max(0, (Number(job.done_count) || 0) - 1);
+          await patchBulkJob(user.id, job.id, {
+            status: "running", done_count: doneBefore, finished_at: null, heartbeat_at: now,
+          });
+          const running = { ...job, status: "running", done_count: doneBefore, finished_at: null };
+          const queued = { ...item, status: "queued", error: null, created_at: now };
+          logEvent("bulk_retry", { prop_type: job.property_type, market: marketOf(item.address) });
+          runBulkJob(running, [queued], user, ent, { doneBefore })
+            .catch((err) => console.error("bulk retry crashed:", err.message));
+          return sendJson(res, 200, { ok: true, job: bulkJobRow(running) });
+        } catch (err) {
+          console.error("bulk retry error:", err.message);
+          sendJson(res, 400, { error: "Bad request." });
+        }
+      });
+      return;
+    }
+
     if (req.method === "POST" && path === "/api/bulk/item/size") {
       let body = "";
       req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });

@@ -340,6 +340,29 @@ test("reading a finished run", async (t) => {
     assert.equal(row.portfolio_item_id, PF_1, "so the row can link to its own report");
   });
 
+  await t.test("a retry is refused before it touches the row: not-failed, no key, and not yours", async () => {
+    // The guards run BEFORE the row is put back in the queue, so a refusal
+    // leaves the job exactly as it was — asserted on the table, not the
+    // status code alone.
+    const body = await (await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(PAT))).json();
+    const doneRow = body.items.find((it) => it.status === "done");
+    const failedRow = body.items.find((it) => it.status === "failed");
+    const r1 = await fetch(srv.base + "/api/bulk/item/retry", as(PAT, { method: "POST", body: JSON.stringify({ id: doneRow.id }) }));
+    assert.equal(r1.status, 409);
+    assert.equal((await r1.json()).code, "not_failed");
+    // This harness has no provider key, so the failed row is refused at the
+    // key guard (503) — after the status and one-live-job checks, before the
+    // queue write. The row must still read failed and the job done.
+    const r2 = await fetch(srv.base + "/api/bulk/item/retry", as(PAT, { method: "POST", body: JSON.stringify({ id: failedRow.id }) }));
+    assert.equal(r2.status, 503, await r2.text());
+    assert.equal(ctx.tables.bulk_job_items.find((it) => it.id === failedRow.id).status, "failed");
+    assert.equal(ctx.tables.bulk_jobs.find((j) => j.id === JOB_ID).status, "done");
+    // Another member is refused at the gate (SAM is free) and touches nothing.
+    const r3 = await fetch(srv.base + "/api/bulk/item/retry", as(SAM, { method: "POST", body: JSON.stringify({ id: failedRow.id }) }));
+    assert.ok(r3.status === 403 || r3.status === 404, String(r3.status));
+    assert.equal(ctx.tables.bulk_job_items.find((it) => it.id === failedRow.id).status, "failed");
+  });
+
   await t.test("another member cannot read, export or delete it", async () => {
     // Scoped by user_id, like every other read in this app. Without it,
     // knowing a job id would be enough.

@@ -875,14 +875,15 @@ test("the workspace leads and the chamber follows, in DOM order", () => {
 });
 
 // ----------------------------------------------------------------------------
-// Recent searches follows the chamber (2026-09-02). It led the workspace,
-// above "Your firm", which put a personal list first on a firm-first page and
-// the two halves of one act at opposite ends of it. It is its own block
+// Recent searches follows the chamber (2026-09-02), and both are OFF the
+// workspace (owner's call, 2026-09-04): the workspace is the firm's record,
+// and Bulk valuation is the comp-report tool. The list is its own block
 // outside #deskView and #searchSection (see the markup comment), so nothing
-// hides it for free: every seam that hides the desk header has to hide it
-// too, and this counts them.
+// hides it for free: every seam that changes the view has to decide about
+// it, and this counts them. Exactly ONE reveal, in showHomeView — the view
+// that shows the chamber the list is the output of.
 // ----------------------------------------------------------------------------
-test("Recent searches sits under the chamber and follows the desk header's seams", () => {
+test("Recent searches sits under the chamber, shows on the home view only, and is off the workspace", () => {
   const iDesk = html.indexOf('id="deskView"');
   const iChamber = html.indexOf('id="searchSection"');
   const iDeck = html.indexOf('id="historyDeck"');
@@ -892,66 +893,97 @@ test("Recent searches sits under the chamber and follows the desk header's seams
   assert.ok(iDesk < iChamber && iChamber < iDeck && iDeck < iWrap && iWrap < iStatus,
     "workspace, then the chamber, then its recent searches, then status");
   assert.ok(iDeck > html.indexOf("</section>", iDesk), "the history deck is OUTSIDE #deskView, which hides wholesale");
-  assert.match(html, /id="historyDeck" class="hidden /, "ships hidden; showDeskView reveals it");
-  const hides = (html.match(/getElementById\("historyDeck"\)\.classList\.add\("hidden"\)/g) || []).length;
-  const headHides = (html.match(/getElementById\("searchDeckHead"\)\.classList\.add\("hidden"\)/g) || []).length;
-  assert.equal(hides, headHides, "every seam that hides the desk header hides the recent searches with it");
-  assert.ok(hides >= 3, "showHomeView, beginAssembly and renderResults");
-  assert.equal((html.match(/getElementById\("historyDeck"\)\.classList\.remove\("hidden"\)/g) || []).length, 1,
-    "one reveal, in showDeskView");
-});
-
-test("the chamber wears its desk header only while the workspace is on screen", () => {
-  // The header sits inside #searchSection (so the wall's boot CSS hides it
-  // with its parent) but BEFORE the rd-form span the Mock-A test measures,
-  // and it is dk-deck-h, never rd-chamber-head — that count must stay two.
-  const head = html.slice(html.indexOf('id="searchSection"'), html.indexOf('class="rd-form rd-desk"'));
-  assert.match(head, /id="searchDeckHead"[^>]*class="hidden dk-deck-h"/);
-  assert.match(head, /Run a report/);
-  // dk-deck-h sets display:flex in the style block, which loads AFTER
-  // tailwind.css, so at equal specificity it beats Tailwind's .hidden — the
-  // header rendered on the signed-out home until this override existed
-  // (caught by a byte-compare screenshot, the vault's ".deck.hide" trap).
-  assert.ok(html.includes("#searchDeckHead.hidden { display: none; }"),
-    "the hidden state needs its own higher-specificity rule or the header shows signed out");
-  // Plain-string pins (not regexes): the needles are full of ")(. characters,
-  // and an escaping slip here would pin nothing while looking like it did.
-  const reveal = 'getElementById("searchDeckHead").classList.remove("hidden")';
-  const retire = 'getElementById("searchDeckHead").classList.add("hidden")';
-  const show = html.slice(html.indexOf("function showDeskView"), html.indexOf("function showHomeView"));
-  assert.ok(show.includes(reveal), "desk view reveals the chamber's workspace rule");
-  const homeFn = html.slice(html.indexOf("function showHomeView"), html.indexOf("function showHomeView") + 1200);
-  assert.ok(homeFn.includes(retire), "plain home must not carry a workspace heading over the form");
-  // A rendering report yields the workspace at BOTH seams; the stray rule
-  // would otherwise float over the chamber while comps stream in.
+  assert.match(html, /id="historyDeck" class="hidden /, "ships hidden; showHomeView reveals it");
+  const hide = 'getElementById("historyDeck").classList.add("hidden")';
+  const reveal = 'getElementById("historyDeck").classList.remove("hidden")';
+  assert.equal(html.split(hide).length - 1, 3, "three hides: showDeskView, beginAssembly and renderResults");
+  assert.equal(html.split(reveal).length - 1, 2, "two reveals: showHomeView, and the boot block's home-stack branch");
+  const desk = html.slice(html.indexOf("function showDeskView"), html.indexOf("function showHomeView"));
+  assert.ok(desk.includes(hide), "the workspace hides the recent searches");
+  assert.ok(!desk.includes(reveal), "and never reveals them");
+  const homeFn = html.slice(html.indexOf("function showHomeView"), html.indexOf("function showHomeView") + 1400);
+  assert.ok(homeFn.includes(reveal), "the home view reveals them under the chamber");
+  assert.ok(homeFn.includes("renderHistory();"), "and renders the rows so they are current when the view opens");
+  // The load-time twin: /run-report (and a member kept home by a pending
+  // address) is the finder standing alone, so the list shows there too — but
+  // never under a shared report, which the branch excludes by name.
+  const bootAt = html.indexOf("const _sharedPath = ");
+  const boot = html.slice(bootAt, bootAt + 1600);
+  assert.match(boot, /\} else if \(!_sharedPath\) \{[\s\S]{0,900}?getElementById\("historyDeck"\)\.classList\.remove\("hidden"\);\s*renderHistory\(\);/,
+    "the boot block reveals the list on the home stack, never for /r/<id>");
+  // A rendering report yields the workspace at BOTH seams; the list would
+  // otherwise sit under the comps while they stream in.
   for (const fn of ["function beginAssembly", "renderMap(parsed, meta)"]) {
     const at = html.indexOf(fn);
     assert.ok(at > -1, fn + " not found");
     const windowTxt = fn === "function beginAssembly" ? html.slice(at, at + 6000) : html.slice(at - 2000, at);
-    assert.ok(windowTxt.includes(retire), fn + " must retire the chamber's workspace rule");
+    assert.ok(windowTxt.includes(hide), fn + " must hide the recent searches");
   }
 });
 
-test("Run a report jumps to the chamber and seats the caret, deterministically", () => {
+// ----------------------------------------------------------------------------
+// The chamber is OFF the workspace (owner's call, 2026-09-04). From
+// 2026-08-28 it showed under the firm decks wearing a "Run a report" deck
+// header (#searchDeckHead), and a test here held that showDeskView revealed
+// it. Reversed: the workspace is the firm's record and Bulk valuation is the
+// comp-report tool. The form still exists — it is the REAL #compForm, read by
+// every report restore — and shows on the home view, which every report door
+// enters through leaveDesk(). The desk header is gone WITH the chamber, not
+// left hidden: a heading for a section that is never on this view is a
+// stray rule waiting to leak.
+// ----------------------------------------------------------------------------
+test("the workspace hides the search chamber and the desk header is gone with it", () => {
+  const hide = 'getElementById("searchSection").classList.add("hidden")';
+  const reveal = 'getElementById("searchSection").classList.remove("hidden")';
+  const desk = html.slice(html.indexOf("function showDeskView"), html.indexOf("function showHomeView"));
+  assert.ok(desk.includes(hide), "showDeskView hides the chamber");
+  assert.ok(!desk.includes(reveal), "and does not reveal it");
+  // showHomeView still shows it — the home stack is hero, chamber, homeInfo.
+  const homeFn = html.slice(html.indexOf("function showHomeView"), html.indexOf("function showHomeView") + 1400);
+  assert.ok(homeFn.includes('["hero", "searchSection", "homeInfo"]'), "the home view shows the chamber standalone");
+  assert.ok(!html.includes("searchDeckHead"), "the chamber's workspace deck header is gone, not hidden");
+  // The chamber's own head count is untouched: two rd-chamber-head, the
+  // building chamber and the market chamber (the Mock-A test measures them).
+  const span = html.slice(html.indexOf('id="searchSection"'), html.indexOf('id="historyDeck"'));
+  assert.equal(span.split("rd-chamber-head").length - 1, 2);
+});
+
+test("a pending landing address keeps a member on the home view, where the form is", () => {
+  // A market page's "value a property here" form sends a member to "/?type="
+  // with the address in pendingLandingAddress.v1. With the chamber off the
+  // workspace, opening the workspace would consume that address into a
+  // hidden form. The boot rule reads the key (and only reads it — the
+  // consumer below the auth bootstrap still clears it) and stays on home.
+  // Anchored on the boot block's own first statement, not on the comment's
+  // title — landAfterAuth's comment quotes that title and sits earlier.
+  const at = html.indexOf("const _sharedPath = ");
+  assert.ok(at > -1);
+  const block = html.slice(at, at + 900);
+  assert.match(block, /sessionStorage\.getItem\("pendingLandingAddress\.v1"\)/, "the boot rule reads the pending address");
+  assert.doesNotMatch(block, /removeItem\("pendingLandingAddress\.v1"\)/, "and never clears it — the consumer does");
+  assert.match(block, /!_sharedPath && !_pendingLanding && location\.pathname === "\/" && looksSignedIn\(\)/,
+    "a pending address is an exception to the member-at-/ rule, beside the shared-report one");
+  assert.match(block, /location\.pathname === "\/desk"\n/, "/desk itself is unconditional — asking for the desk is asking for the desk");
+});
+
+test("the workspace header's red door is a link to Bulk valuation, labelled by its destination", () => {
   const at = html.indexOf('id="deskRunReport"');
-  assert.ok(at > -1, "the workspace header offers the shortcut");
-  const listener = html.slice(html.indexOf('deskRunReport").addEventListener'));
-  const body = listener.slice(0, 600);
-  assert.ok(body.includes('getElementById("searchSection").scrollIntoView'), "the shortcut goes to the chamber");
-  // Instant on purpose: a smooth scroll paired with a focus proved able to
-  // silently go nowhere, and a shortcut that half-works is worse than one
-  // that jumps. No smooth here also satisfies prefers-reduced-motion.
-  assert.ok(!body.includes("smooth"), "the jump is instant, never a glide that can half-happen");
-  assert.ok(body.includes('getElementById("address").focus({ preventScroll: true })'),
-    "the caret lands in the address field without fighting the jump");
-  // Red, on the owner's call (2026-08-29): with the profile cluster gone from
-  // that row it is the only control on it, and it starts the same act as the
-  // red button at the foot of the chamber. The classes have to be ones the
-  // file already uses somewhere else -- tailwind.css is a purged vendored
-  // build, so a colour that appears only here would silently not paint.
-  const runBtn = html.slice(at, html.indexOf(">", html.indexOf("Run a report", at)));
-  assert.match(runBtn, /bg-brand-600/, "the workspace shortcut is red");
-  assert.match(runBtn, /hover:bg-brand-700/, "and it has the matching hover");
+  assert.ok(at > -1, "the workspace header offers the door");
+  const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+  assert.match(tag, /^<a\b/, "a real link, so middle-click and Ctrl-click work");
+  assert.match(tag, /href="\/bulk"/, "it leads to Bulk valuation, the comp-report tool since 2026-09-04");
+  // "Run a report" names /run-report on every bar and in the rail
+  // (TOOL_LINKS); the same label leading somewhere else is the drift that
+  // list exists to prevent, so this door says where it goes.
+  const label = html.slice(html.indexOf(">", at) + 1, html.indexOf("</a>", at));
+  assert.equal(label.trim(), "Bulk valuation →");
+  assert.ok(!html.includes('deskRunReport").addEventListener'), "no click handler: the chamber it used to scroll to is off this view");
+  // Red, on the owner's call (2026-08-29): it is the only control on that
+  // row. The classes have to be ones the file already uses somewhere else --
+  // tailwind.css is a purged vendored build, so a colour that appears only
+  // here would silently not paint.
+  assert.match(tag, /bg-brand-600/, "the workspace door is red");
+  assert.match(tag, /hover:bg-brand-700/, "and it has the matching hover");
   for (const cls of ["bg-brand-600", "hover:bg-brand-700"]) {
     const uses = html.split(cls).length - 1;
     assert.ok(uses > 1, cls + " must be used elsewhere too, or the purge drops it");
@@ -1259,8 +1291,8 @@ test("Escape closes the Firm & branding panel and never falls through it", () =>
 });
 
 test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault."),
-    "the subtitle names what the workspace actually holds");
+  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from Bulk valuation."),
+    "the subtitle names what the workspace actually holds, and where the report runner went (2026-09-04)");
   assert.ok(!html.includes("Your firm's shelf, and everything you have shared."),
     "the 2026-08-29 line named two of the eight sections and must not come back");
   assert.ok(!html.includes("Your recent searches and tracked properties."),

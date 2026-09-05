@@ -1406,16 +1406,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-skel .dk-deck-ln { opacity: .25; }
     .dk-skel-lab { display: inline-block; width: 128px; height: 20px; }
     .dk-skel-card { height: 72px; margin-top: 16px; }
-    /* The chamber's desk-context header (2026-08-29): the demoted search form
-       reads as one more deck of the workspace. Lives inside #searchSection so
-       the wall's boot CSS hides it with its parent.
-       The .hidden line below is LOAD-BEARING, not belt-and-braces: dk-deck-h
-       sets display:flex in this style block, which loads after tailwind.css,
-       so at equal specificity it beats Tailwind's .hidden and the header
-       showed on the signed-out home — vault-page.js's ".deck.hide" cascade
-       trap, caught here by a screenshot, not by reading. */
-    #searchDeckHead { margin: 44px 0 14px; }
-    #searchDeckHead.hidden { display: none; }
     /* The workspace ledger, promoted a full step (2026-08-29): with the
        workspace leading the page, this strip was its opening statement.
        It went to /vault on 2026-09-01 ("Three Spaces") with the portfolio it
@@ -2750,16 +2740,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
-          <!-- The chamber moved below the workspace (2026-08-29); this is the
-               daily user's shortcut back to it, so demotion never costs a hunt.
-               Red as of 2026-08-29, on the owner's call: with the profile
-               cluster gone from this row it is the only control left here, and
-               it starts the same act as the red button at the foot of the
-               chamber it jumps to. Utility classes are the ones #watchAddBtn
-               already uses — the vendored tailwind.css is purged and a class
-               that appears nowhere else in this file styles nothing. -->
-          <button type="button" id="deskRunReport"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Run a report ↓</button>
+          <!-- The workspace's one door to a comp report, and it leads OFF the
+               page (owner's call, 2026-09-04): the search chamber and the
+               recent-searches deck came off the workspace, and Bulk valuation
+               is the comp-report tool — one address or fifty, the same run.
+               Until then this was a scroll-to shortcut ("Run a report ↓") to
+               the chamber at the foot of the page. Labelled by its
+               DESTINATION, never "Run a report": that phrase names /run-report
+               on every bar and in the rail (server.js's TOOL_LINKS), and one
+               label leading to two places is the drift that list exists to
+               prevent. A real link, not a button with a location.href handler,
+               so middle-click and Ctrl-click open it where the browser is
+               told to. Red as of 2026-08-29, on the owner's call: it is the
+               only control left on this row. Utility classes are the ones
+               #watchAddBtn already uses — the vendored tailwind.css is purged
+               and a class that appears nowhere else in this file styles
+               nothing. -->
+          <a id="deskRunReport" href="/bulk"
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Bulk valuation →</a>
           <!-- The photo pipeline's one entry, and all that is left of the
                profile cluster that used to sit here — circle, greeting, Add a
                photo / Remove.
@@ -2791,8 +2789,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            the report runner, so the old line described about a fifth of the
            page it introduces. Rewritten again on 2026-09-02, once buildings,
            conversations and contacts had joined the firm deck and the
-           portfolio had left for the Vault. -->
-      <p class="text-sm text-[#5A6473] mt-3">Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault.</p>
+           portfolio had left for the Vault, and on 2026-09-04, when the
+           report runner left too — comp reports run from Bulk valuation. -->
+      <p class="text-sm text-[#5A6473] mt-3">Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from Bulk valuation.</p>
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -3116,16 +3115,17 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
          owner-approved 2026-08-14). #compForm is the building chamber only;
          Market Explorer is a sibling so Enter there cannot submit a report.
          Every field id is unchanged. -->
+    <!-- NOT part of the workspace (owner's call, 2026-09-04). From 2026-08-28
+         to 2026-09-04 showDeskView showed this section under the firm decks,
+         wearing a "Run a report" deck header (deleted with it, not hidden);
+         the owner took the chamber and the recent-searches deck off the
+         workspace and made Bulk valuation the comp-report tool. The section
+         still exists because it is the REAL #compForm, read by targetRange(),
+         the footprint estimate, every report restore and the confirm dialog:
+         opening a saved or recent report (openPortfolioItem, openHistoryReport,
+         rerunHistory) still goes through leaveDesk() -> showHomeView(), which
+         is where this form shows for a member now. -->
     <div id="searchSection" class="relative z-10 mt-4 no-print enter enter-2">
-      <!-- Desk-context header: shown only while the workspace is on screen,
-           so the demoted chamber reads as one more deck of it. showDeskView
-           reveals it; showHomeView, beginAssembly and renderResults all hide
-           it, because a report screen and the plain home must not carry a
-           stray workspace rule over the form. Deliberately dk-deck-h, never
-           rd-chamber-head: a test counts exactly two of those in this span. -->
-      <div id="searchDeckHead" class="hidden dk-deck-h">
-        <span class="dk-deck-lab">Run a report</span><span class="dk-deck-ln"></span>
-      </div>
       <div class="rd-form rd-desk">
       <form id="compForm" class="rd-desk-build">
         <div class="rd-chamber-head">
@@ -3493,18 +3493,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
     </div>
 
-    <!-- Recent searches — UNDER the chamber since 2026-09-02, as its output.
-         It sat at the top of the workspace, above "Your firm": a personal
-         list leading a page the 2026-08-28 decision made firm-first, and the
-         two halves of one act (run a search, reopen one) at opposite ends of
-         the page. It is its own block, OUTSIDE both neighbours on purpose:
-         #deskView hides wholesale on the home view and on a report, and the
-         wall's boot CSS hides #searchSection for a locked visitor while this
-         list still renders signed out. So it is toggled at exactly the four
-         seams that toggle #searchDeckHead — showDeskView, showHomeView,
-         beginAssembly, renderResults — and test/index-html.test.js counts
-         them, because a fifth seam that forgot it would leave a stray list
-         under a report.
+    <!-- Recent searches — UNDER the chamber since 2026-09-02, as its output,
+         and OFF the workspace since 2026-09-04 (owner's call, with the chamber
+         itself — see #searchSection above). It sat at the top of the
+         workspace, above "Your firm": a personal list leading a page the
+         2026-08-28 decision made firm-first. It is its own block, OUTSIDE
+         both neighbours on purpose: #deskView hides wholesale on the home
+         view and on a report, and the wall's boot CSS hides #searchSection
+         for a locked visitor while this list still renders signed out. So it
+         is toggled at exactly the seams that change the view — showHomeView
+         and the boot block's home-stack branch reveal it, showDeskView,
+         beginAssembly and renderResults hide it — and test/index-html.test.js
+         counts them, because a seam that forgot it would leave a stray list
+         under a report or on the workspace.
 
          Search history — one row per property, stored in this browser only.
          The newest few keep their full report (Open is free); older rows keep
@@ -5833,7 +5834,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // shelf. This is the earlier of the two seams — assembly puts cards on
     // screen up to a minute before renderResults repaints wholesale.
     document.getElementById("deskView").classList.add("hidden");
-    document.getElementById("searchDeckHead").classList.add("hidden");
     document.getElementById("historyDeck").classList.add("hidden");
     // The rail's Workspace row stops being the current page here, not only in
     // showHomeView: a report yields the workspace at this seam a minute before
@@ -11748,13 +11748,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // The pitch has already landed once there's a report to read — hide it
     // so the report starts near the top instead of below a sales headline.
     document.getElementById("hero").classList.add("hidden");
-    // And the workspace yields to the report for the same reason. Since the
-    // search desk stays visible on the workspace (2026-08-28), a search can
-    // now be started from there — without this the finished report would
-    // render BELOW the firm shelf and the deal board, which is both a long
-    // scroll and the wrong thing on top. "My Desk" brings the workspace back.
+    // And the workspace yields to the report for the same reason. The search
+    // chamber left the workspace on 2026-09-04, but a report can still start
+    // while the desk is showing (?recent=, ?property=&refresh=1, a chip) —
+    // without this the finished report would render BELOW the firm shelf and
+    // the deal board, which is both a long scroll and the wrong thing on top.
+    // "Workspace" brings the desk back.
     document.getElementById("deskView").classList.add("hidden");
-    document.getElementById("searchDeckHead").classList.add("hidden");
     document.getElementById("historyDeck").classList.add("hidden");
     markNavCurrent();          // the report is not a nav destination — see beginAssembly
     renderMap(parsed, meta);   // after unhide, so Leaflet can measure the container
@@ -13640,23 +13640,18 @@ async function renderMyDesk() {
   }
   function showDeskView() {
     document.getElementById("hero").classList.add("hidden");
-    // The search desk STAYS (2026-08-28). It used to be hidden here, which
-    // meant the workspace — the page a member is meant to live on — had no way
-    // to start the one thing the product does; you had to leave it first.
-    //
-    // Showing the REAL form rather than a compact copy is the whole point:
-    // #compForm is one form with one set of ids, read by targetRange(), the
-    // footprint estimate, every report restore and the confirm dialog. A
-    // second "launcher" would be a second address input to keep in step, and
-    // the first to drift. applySearchLock() below still governs it, so the
-    // wall's signup card still wins where it should.
-    document.getElementById("searchSection").classList.remove("hidden");
-    // The chamber sits BELOW the workspace since 2026-08-29 and wears a deck
-    // header there, so it reads as the workspace's own "Run a report" section
-    // rather than a page of its own that happens to follow one.
-    document.getElementById("searchDeckHead").classList.remove("hidden");
-    // And the recent-searches deck under it (2026-09-02) — see #historyDeck.
-    document.getElementById("historyDeck").classList.remove("hidden");
+    // The search chamber and the recent-searches deck are OFF the workspace
+    // (owner's call, 2026-09-04). From 2026-08-28 they showed here, under the
+    // firm decks, so a member could start a report without leaving the page;
+    // the owner wants the workspace to be the firm's record and Bulk valuation
+    // to be the comp-report tool, and #deskRunReport in the header points
+    // there. The form is not gone — it is the REAL #compForm, read by
+    // targetRange(), the footprint estimate, every report restore and the
+    // confirm dialog — it shows on the home view, which every report door
+    // (openPortfolioItem, openHistoryReport, rerunHistory) enters through
+    // leaveDesk(). applySearchLock() below still governs it there.
+    document.getElementById("searchSection").classList.add("hidden");
+    document.getElementById("historyDeck").classList.add("hidden");
     document.getElementById("results").classList.add("hidden");
     document.getElementById("homeInfo").classList.add("hidden");
     hideStatus();
@@ -13664,7 +13659,6 @@ async function renderMyDesk() {
     const deskView = document.getElementById("deskView");
     deskView.classList.remove("hidden");
     deskView.classList.add("fade-in"); // re-fires on every unhide; closes stay instant
-    renderHistory();
     // looksSignedIn(), not currentUser (2026-09-03): this runs from the boot
     // path before /api/account/me has answered, and on currentUser alone a
     // member's first frame was the "Sign in" card — filmed at 0.3s, gone at
@@ -13680,10 +13674,12 @@ async function renderMyDesk() {
   }
   function showHomeView() {
     document.getElementById("deskView").classList.add("hidden");
-    // Home shows the chamber standalone; the workspace rule over it would be
-    // a heading for a section that is not on screen.
-    document.getElementById("searchDeckHead").classList.add("hidden");
-    document.getElementById("historyDeck").classList.add("hidden");
+    // Home shows the chamber standalone, with its recent searches under it
+    // (2026-09-04: the list followed the chamber off the workspace, and this
+    // is the one view that reveals it — a report and the workspace both hide
+    // it). renderHistory() here so the rows are current when the view opens.
+    document.getElementById("historyDeck").classList.remove("hidden");
+    renderHistory();
     // fade-in is added here rather than in markup so it doesn't double-animate
     // against the .enter page-load entrance on first paint.
     ["hero", "searchSection", "homeInfo"].forEach((id) => {
@@ -13766,17 +13762,8 @@ async function renderMyDesk() {
     enterDesk({ markSeen: true });
   });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
-  // The workspace header's shortcut to the demoted chamber. The scroll is an
-  // instant jump ON PURPOSE: paired with a focus() it must land exactly once,
-  // and a smooth scroll plus a focus proved unverifiable together (in an
-  // emulated viewport the glide silently went nowhere while the caret sat in
-  // an off-screen field — the worst outcome a shortcut can have). An instant
-  // jump cannot half-happen, and it is what prefers-reduced-motion would ask
-  // for anyway. preventScroll keeps the focus from fighting the jump.
-  document.getElementById("deskRunReport").addEventListener("click", () => {
-    document.getElementById("searchSection").scrollIntoView({ block: "start" });
-    document.getElementById("address").focus({ preventScroll: true });
-  });
+  // #deskRunReport is a plain link to /bulk since 2026-09-04 and has no
+  // handler: the chamber it used to scroll to is no longer on this view.
 
   // ----------------------------------------------------------------------------
   // renderWatchFeed and the watch-market form moved to /vault on 2026-09-01
@@ -16337,9 +16324,16 @@ async function renderMyDesk() {
   //
   // /desk has always opened the workspace. Since 2026-08-28 so does "/" FOR A
   // MEMBER: home is the firm's workspace, not the search page. That is the
-  // whole reorganization in one line — and it is only safe because the
-  // workspace now carries the real search desk at its top (see showDeskView),
-  // so landing here still puts the address field in front of the visitor.
+  // whole reorganization in one line. Until 2026-09-04 the workspace carried
+  // the real search desk too; the owner took it off (Bulk valuation is the
+  // comp-report tool now), which leaves one door that still needs the form:
+  // a market page's "value a property here" form sends a member to "/?type="
+  // with the address in pendingLandingAddress.v1, and consuming that into a
+  // form the workspace hides would lose it. So a pending address keeps the
+  // member on the HOME view — the chamber standalone, the address already in
+  // the box — and the workspace is one click away, as it is after any report.
+  // Read here and NOT removed: the consumer below the auth bootstrap still
+  // owns the key and clears it.
   //
   // Read from AUTH_BOOT, not currentUser: this runs before the account
   // bootstrap resolves, and AUTH_BOOT already carries cookie presence decided
@@ -16368,11 +16362,24 @@ async function renderMyDesk() {
   // restored during parsing. Only on this branch: a shared report keeps the
   // browser's own behaviour, since /r/<id> is somebody else's page.
   const _sharedPath = /^\/r\/[A-Za-z0-9_-]{6,32}$/.test(location.pathname);
+  let _pendingLanding = false;
+  try { _pendingLanding = Boolean((sessionStorage.getItem("pendingLandingAddress.v1") || "").trim()); } catch (_) {}
   if (location.pathname === "/desk"
-      || (!_sharedPath && location.pathname === "/" && looksSignedIn())) {
+      || (!_sharedPath && !_pendingLanding && location.pathname === "/" && looksSignedIn())) {
     if ("scrollRestoration" in history) history.scrollRestoration = "manual";
     showDeskView();
     window.scrollTo(0, 0);
+  } else if (!_sharedPath) {
+    // The home stack is the markup's default, so nothing "shows" it — but the
+    // recent-searches deck ships hidden (it must never sit under a shared
+    // report, and /r/<id> is excluded here for that reason), and this is the
+    // finder standing alone at /run-report, or a member kept here by a
+    // pending address, which is exactly where that deck belongs since it
+    // left the workspace (2026-09-04). showHomeView() does the same for the
+    // view swaps; this is the load-time twin, and test/index-html.test.js
+    // counts the two reveals by name.
+    document.getElementById("historyDeck").classList.remove("hidden");
+    renderHistory();
   }
 
   // Restore the last-searched property type (saved on each submit) so repeat

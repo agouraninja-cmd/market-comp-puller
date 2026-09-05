@@ -223,9 +223,14 @@ test("home is the workspace for a member, and the search desk comes with it", ()
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 
   // The reorganization in one line: "/" opens the workspace for a signed-in
-  // visitor. It is only safe because showDeskView keeps the search desk —
-  // landing on a home page with no address field would be worse than the page
-  // it replaced, so these two facts are asserted together, deliberately.
+  // visitor. From 2026-08-28 to 2026-09-04 showDeskView kept the search desk
+  // on the workspace, and this test held the two facts together. The owner
+  // then took the chamber and the recent-searches deck OFF the workspace
+  // (Bulk valuation is the comp-report tool), so the desk now HIDES the form
+  // and the header's #deskRunReport leads to /bulk instead — asserted in
+  // test/index-html.test.js. What survives here: the boot rule, and that the
+  // desk view makes a decision about the form rather than leaving whatever
+  // the previous view left showing.
   assert.match(
     html,
     /location\.pathname === "\/" && looksSignedIn\(\)/,
@@ -233,8 +238,13 @@ test("home is the workspace for a member, and the search desk comes with it", ()
   );
   assert.match(
     html,
-    /showDeskView[\s\S]{0,900}?getElementById\("searchSection"\)\.classList\.remove\("hidden"\)/,
-    "showDeskView leaves the search desk visible",
+    /function showDeskView\(\)[\s\S]{0,1400}?getElementById\("searchSection"\)\.classList\.add\("hidden"\)/,
+    "showDeskView hides the search desk (2026-09-04)",
+  );
+  assert.doesNotMatch(
+    html,
+    /function showDeskView\(\)[\s\S]{0,1400}?getElementById\("searchSection"\)\.classList\.remove\("hidden"\)/,
+    "the workspace must not reveal the chamber again",
   );
 
   // Read from the boot hint, not currentUser: this runs before the account

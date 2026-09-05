@@ -1628,8 +1628,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   its own `#historyDeck`, outside both `#deskView` (hidden wholesale on the
   home view and on a report) and `#searchSection` (hidden by the wall's boot
   CSS while the list still renders signed out), toggled at exactly the four
-  seams that toggle `#searchDeckHead`; `test/index-html.test.js` counts
-  them. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm & branding panel on 2026-09-03 —
+  seams that change the view; `test/index-html.test.js` counts them. **Since
+  2026-09-04 it is off the workspace altogether, with the chamber** — see the
+  `GET /` bullet below: `showHomeView` is its one reveal. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm & branding panel on 2026-09-03 —
   and Buildings stays first. Recorded for later, not built: a firm-level
   "needs attention" band (lease critical dates + unread conversations —
   `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
@@ -4141,15 +4142,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `GET /robots.txt`, `GET /sitemap.xml` — SEO endpoints built from `SITE_URL`.
 - `GET /` — serves `index.html`. **For a signed-in member `/` opens the
   WORKSPACE, not the search page** (2026-08-28) — the firm's shelf, the deal
-  board and their own properties, with the real search desk above them. That
-  is the whole firm-first reorganization, and three rules hold it up:
-  - **The search desk stays visible on the workspace.** `showDeskView()` used
-    to hide `#searchSection`; it now shows it. Landing a member on a home page
-    with no address field would be worse than the page it replaced, so the
-    route change was only made after this one. It is the REAL `#compForm`, not
-    a compact copy — one form, one set of ids, read by `targetRange()`, the
-    footprint estimate, every report restore and the confirm dialog. A second
-    "launcher" would be a second address input to keep in step.
+  board and their own properties. That is the whole firm-first
+  reorganization, and three rules hold it up:
+  - **The search desk is OFF the workspace (owner's call, 2026-09-04), and
+    so is Recent searches.** From 2026-08-28 to 2026-09-04 `showDeskView()`
+    showed `#searchSection` under the firm decks, wearing a "Run a report"
+    deck header (`#searchDeckHead`, deleted with it), and `#historyDeck`
+    under that; the argument was that a member's home page must not lack an
+    address field. Two things changed the answer: the finder got a URL of its
+    own the same day (`/run-report`, PR #291 — the rail's "Run a report" row
+    and the red CTA on every bar point there), and the owner wants the
+    workspace to be the firm's record with **Bulk valuation as the
+    comp-report tool** — the workspace header's one red control,
+    `#deskRunReport`, is a plain `<a href="/bulk">` labelled "Bulk valuation
+    →" (never "Run a report", which names `/run-report` everywhere else; one
+    label to two places is the drift `TOOL_LINKS` exists to prevent). So
+    `showDeskView()` HIDES `#searchSection` and `#historyDeck`; the history
+    deck is revealed in exactly two places, `showHomeView()` and the boot
+    block's home-stack branch (so `/run-report` shows it under the finder,
+    and `/r/<id>` never does), and three seams hide it (desk,
+    `beginAssembly`, `renderResults`; `test/index-html.test.js` counts both
+    lists). The form is not gone — it is the
+    REAL `#compForm`, not a compact copy: one form, one set of ids, read by
+    `targetRange()`, the footprint estimate, every report restore and the
+    confirm dialog — and every report door (`openPortfolioItem`,
+    `openHistoryReport`, `rerunHistory`, `?recent=`, `?property=`) still
+    enters through `leaveDesk()` → `showHomeView()`, which shows it. One
+    exception to the member-at-`/` boot rule came with this: a **pending
+    landing address** (`pendingLandingAddress.v1`, written by a market page's
+    "value a property here" form) keeps the member on the HOME view, because
+    consuming it into a hidden form would lose it; the boot block only READS
+    the key, the consumer below the auth bootstrap still clears it. Free
+    members note: `/bulk` is Pro-only (`canBulkValue`), so for them the
+    workspace door answers with the upgrade page and `/run-report` in the
+    rail is the single-report door.
   - **A report yields the workspace** rather than rendering under it, at BOTH
     seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
     Without both, comps stream in below the firm shelf.

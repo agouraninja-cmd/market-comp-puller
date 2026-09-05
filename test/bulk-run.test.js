@@ -329,6 +329,64 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
 // serialization funnel moved out of the handler into finishReportForViewer
 // (2026-08-21) and was re-merged by hand against main's telemetry.
 // ---------------------------------------------------------------------------
+// The single form's inputs ride a bulk run (2026-09-04, migration 051): the
+// job's focus and the row's own facts. What must be true end to end: the
+// focus and the type details reach the search, the asking price / NOI / cap
+// rate do NOT (they never reach /api/comps either), and all of them land in
+// the stored recent's meta.subject so the reopened report shows its income
+// approach exactly as a hand-run one would.
+test("a one-address run carries the form's focus and subject into the search and the stored report", async (t) => {
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const { srv, tables, stub } = ctx;
+
+  const refused = await fetch(srv.base + "/api/bulk", as({
+    method: "POST",
+    body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID 83702", type: "Industrial", months: 24, txFocus: "rentals" }),
+  }));
+  assert.equal(refused.status, 400, "an unknown focus is refused by name, never run as both");
+
+  const started = await fetch(srv.base + "/api/bulk", as({
+    method: "POST",
+    body: JSON.stringify({
+      text: "1201 W Idaho St, Boise, ID 83702",
+      type: "Industrial", months: 24, txFocus: "sales",
+      subject: { sizeSqft: 21000, asking: 3125000, noi: 210000, capRate: 6.25,
+        details: { clear_height: "32", dock_doors: "6", units: "48" } },
+    }),
+  }));
+  const body = await started.json();
+  assert.equal(started.status, 200, JSON.stringify(body));
+  assert.equal(body.job.tx_focus, "sales", "the job row carries the focus");
+  const finished = await waitForJob(srv.base, body.job.id);
+  assert.equal(finished.job.status, "done");
+  const row = finished.items[0];
+  assert.equal(row.status, "done", row.error || "");
+  assert.equal(row.size_sqft, 21000, "the form's size wins over the looked-up one, as on the form");
+
+  // The stored job and item, as the database holds them.
+  assert.equal(tables.bulk_jobs[0].tx_focus, "sales");
+  assert.deepEqual(tables.bulk_job_items[0].subject,
+    { asking: 3125000, noi: 210000, capRate: 6.25, details: { clear_height: "32", dock_doors: "6" } },
+    "units is not an Industrial field and must not be stored");
+
+  // The search saw the focus and the details, and nothing private.
+  assert.equal(stub.calls.length, 1);
+  const asked = stub.calls[0].asked;
+  assert.match(asked, /clear_height|Clear height|clear height/i, "the type details reach the prompt as on the single form");
+  assert.equal(/210000|210,000/.test(asked), false, "the NOI must never reach the model");
+  assert.equal(/6\.25/.test(asked), false, "the cap rate must never reach the model");
+
+  // The stored recent, which is what the reopened report renders from.
+  const saved = tables.recent_searches.find((x) => x.id === row.recent_item_id);
+  assert.ok(saved, "the row links to its stored report");
+  assert.equal(saved.payload.meta.txFocus, "sales");
+  assert.deepEqual(saved.payload.meta.subject, {
+    sizeMin: 21000, sizeMax: 21000, priceMin: 3125000, priceMax: 3125000,
+    noi: 210000, capRate: 6.25, details: { clear_height: "32", dock_doors: "6" },
+  });
+});
+
 test("an internal caller is handed the call's real spend, and a cache hit is not", async (t) => {
   const ctx = await bootAll();
   t.after(() => ctx.stop());

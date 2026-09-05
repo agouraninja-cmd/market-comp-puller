@@ -3159,6 +3159,35 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   (`singleJob` / `onRunState`). Every field id and handler survived the
   redesign, and `test/bulk-inline.test.js` pins the single-source rule for
   the run view, so the workspace's inline run inherits the ledger chips.
+  **It takes every input the single form did (2026-09-04 evening; migration
+  `051-bulk-job-options.sql`, run before deploying).** `bulk_jobs.tx_focus`
+  (both/sales/leases) is the JOB's, like type and months; `bulk_job_items
+  .subject` (jsonb: `asking`, `noi`, `capRate`, `details`) is the ROW's. The
+  visible settings row is Property type · Focus · Lookback · Market note; the
+  rest folds behind ONE derived line (`refreshMore`, the form's settings-line
+  rule: "size from public records · no asking price · no NOI"): Property SF,
+  Asking price, NOI, Cap rate, the type's own fields (`BULK_SUBJECT_FIELDS`, a
+  mirror of index.html's `TYPE_SUBJECT_FIELDS` that `test/bulk-inline.test.js`
+  evaluates and compares field for field — the add-comp-field skill's list
+  grows by one), and the run's name. Five rules: **the per-property fields
+  apply to a ONE-address run only** — the browser sends `subject` only then
+  and the route applies it only then — while a list's rows bring their own
+  through the upload's columns (`asking_price`, `noi`, `cap_rate`, and the
+  type's keys as headers, read by `parseAddressList` with `detailKeys`
+  INJECTED and the size column's warn-never-drop rule); **the focus is
+  refused by name, never defaulted** (`normalizeTxFocus` returns null for a
+  typo; empty is `both`); **asking price, NOI and cap rate never reach the
+  model** — the worker hands `runCompSearch` only `txFocus` and the sanitized
+  `subjectDetails`, exactly as `/api/comps` does, and the three ride into the
+  stored recent's `meta.subject` for the report's client-side income and
+  asking cross-checks (`test/bulk-run.test.js` asserts both halves against
+  the stub provider); **an unvalued row is filed and linked too** (a
+  leases-only search has its whole answer in the report, 3f), with the
+  leases case saying so instead of "no priced sale comps"; and **the insert
+  names `tx_focus`/`subject` only for non-default values**, so a plain run
+  still starts before 051 has run, while a run that uses them 400s at
+  PostgREST into "Could not start that run" — migrate first. Not done: a
+  per-address property type (one type per job, as 036 argues).
   Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
@@ -4172,11 +4201,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     →", the same label and destination as the red CTA on every
     server-rendered bar. **`/run-report` is in NO nav** (owner's call, the
     same evening): it was a Tools row for one day, and a second "run a
-    report" door was two doors to one act. The route still answers, because
-    `bulk-page.js` links it once, from its foot, as the full single-property
-    form for the inputs a bulk row has no column for (NOI, cap rate, a
-    sales-only or leases-only focus, the per-type subject details) — carrying
-    those into the bulk job would need job-table columns and is not done.
+    report" door was two doors to one act. The route still answers but is
+    linked from nowhere: `bulk-page.js` linked it from its foot for a few
+    hours as the form with the inputs a bulk row lacked, and that evening
+    the bulk page took every one of those inputs (migration 051 — see the
+    Bulk valuation section), so the link went with its reason.
     On `/bulk`, one address is a report: the button reads "Run the report", a
     one-address run started on the page opens `/?recent=<id>` the moment it
     lands (`singleJob`/`onRunState` in `BULK_JS`; a failed one stays as a row

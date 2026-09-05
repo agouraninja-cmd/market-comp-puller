@@ -145,7 +145,7 @@ const BULK_CSS = `
 .bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
 /* Borderless fields: the card's hairlines draw the cells, so a box inside a
    box would be two borders for one input. */
-.bulk textarea,.bulk input[type=text],.bulk select{width:100%;box-sizing:border-box;padding:2px 0;
+.bulk textarea,.bulk input[type=text],.bulk input[type=number],.bulk select{width:100%;box-sizing:border-box;padding:2px 0;
   font:inherit;font-size:14px;color:var(--ink);background:transparent;border:0;outline:0}
 .bulk textarea{min-height:132px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:14px;line-height:1.7;padding:0}
@@ -172,6 +172,21 @@ const BULK_CSS = `
 .bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
   border-radius:4px;color:var(--ink);text-decoration:none;vertical-align:1px}
+/* The folded details (2026-09-04). The summary is a row of the desk like the
+   head row above it — label, the derived line, a red Change — and opens onto
+   the same .row/.cell cells the visible settings use. */
+.bulk details.more{border-top:1px solid var(--hair)}
+.bulk details.more summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:14px;
+  padding:11px 16px;user-select:none}
+.bulk details.more summary::-webkit-details-marker{display:none}
+.bulk details.more summary:hover{background:var(--wash)}
+.bulk .moreline{flex:1;font-size:13px;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bulk .chg{font-size:13px;color:var(--red);text-decoration:underline;text-underline-offset:2px}
+.bulk details.more[open] .chg{visibility:hidden}
+.bulk details.more .row{border-top:1px solid var(--hair)}
+.bulk .cell.wide{grid-column:1 / -1}
+.bulk .listnote{margin:0;padding:11px 16px;border-top:1px solid var(--hair);font-size:13px;line-height:1.5;color:var(--ink)}
+.bulk .listnote code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
 @media (max-width:760px){
   .bulk .row{grid-template-columns:1fr}
   .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}
@@ -312,14 +327,64 @@ function renderBulkPageBody(boot) {
           </select>
         </div>
         <div class="cell">
-          <label for="bulkNote">Focus <span class="opt">(optional)</span></label>
-          <input type="text" id="bulkNote" maxlength="200" placeholder="e.g. within 2.5 miles"/>
+          <label for="bulkFocus">Focus</label>
+          <select id="bulkFocus">
+            <option value="both" selected>Sales &amp; leases</option>
+            <option value="sales">Sales only</option>
+            <option value="leases">Leases only</option>
+          </select>
         </div>
         <div class="cell">
-          <label for="bulkLabel">Name this run <span class="opt">(optional)</span></label>
-          <input type="text" id="bulkLabel" maxlength="120" placeholder="e.g. Q3 portfolio review"/>
+          <label for="bulkNote">Market note <span class="opt">(optional)</span></label>
+          <input type="text" id="bulkNote" maxlength="200" placeholder="e.g. within 2.5 miles"/>
         </div>
       </div>
+
+      <!-- The single form's other inputs (2026-09-04, owner's: "all of the
+           input options"), folded the way the form folds them — behind one
+           line that STATES the current values, so a reader who never opens it
+           still learns the size is looked up. #moreLine is derived by
+           refreshMore(), never written once (the form's own rule for its
+           settings line). The per-property fields describe ONE property, so
+           they show for a one-address run; a list is told which upload
+           columns carry the same facts per row, and the fields fold away. -->
+      <details class="more" id="bulkMore">
+        <summary>
+          <span class="dlab">Details for comps</span>
+          <span class="moreline" id="moreLine"></span>
+          <span class="chg">Change</span>
+        </summary>
+        <div id="perAddress">
+          <div class="row">
+            <div class="cell">
+              <label for="bulkSize">Property SF</label>
+              <input type="number" id="bulkSize" min="0" step="any" placeholder="from public records"/>
+            </div>
+            <div class="cell">
+              <label for="bulkAsking">Asking price <span class="opt">(optional)</span></label>
+              <input type="number" id="bulkAsking" min="0" step="any" placeholder="e.g. 3125000"/>
+            </div>
+            <div class="cell">
+              <label for="bulkNoi">NOI <span class="opt">(optional)</span></label>
+              <input type="number" id="bulkNoi" min="0" step="any" placeholder="e.g. 210000"/>
+            </div>
+            <div class="cell">
+              <label for="bulkCap">Cap rate % <span class="opt">(optional)</span></label>
+              <input type="number" id="bulkCap" min="0" step="0.01" placeholder="e.g. 6.25"/>
+            </div>
+          </div>
+          <!-- The type's own fields, rendered by renderSubjectFields() from
+               BULK_SUBJECT_FIELDS whenever the type changes. -->
+          <div class="row" id="bulkSubjectFields"></div>
+        </div>
+        <p class="listnote" id="listNote" hidden></p>
+        <div class="row">
+          <div class="cell wide">
+            <label for="bulkLabel">Name this run <span class="opt">(optional)</span></label>
+            <input type="text" id="bulkLabel" maxlength="120" placeholder="e.g. Q3 portfolio review"/>
+          </div>
+        </div>
+      </details>
 
       <!-- The cost said beside the button, BEFORE the click. -->
       <div class="go-row">
@@ -333,14 +398,7 @@ function renderBulkPageBody(boot) {
     <p class="foot">Every figure here is an automated estimate produced from comparable sales,
       not an appraisal, and each one carries the same caveats as the report behind it — open a
       row to see its comps and how the range was reached. Addresses with no
-      priced sale comps in the window are reported as such rather than valued at zero.
-      <!-- The one door left to the single-property form (owner's, 2026-09-04
-           evening). A bulk row has no column for an NOI, a cap rate, a
-           sales-only or leases-only focus or the per-type subject details,
-           and those inputs still live on the real #compForm at /run-report —
-           which index.html serves at that path and nothing else links. -->
-      Need an NOI, a cap rate, a sales-only or leases-only focus, or the property-detail fields?
-      <a href="/run-report">Use the single-property form</a>.</p>
+      priced sale comps in the window are reported as such rather than valued at zero.</p>
   </div>
 </div>
 <script>${BULK_RUN_JS.replace(/<\/script>/gi, "<\\/script>")}
@@ -495,7 +553,8 @@ function renderJob(){
   if(!job){$("bkJobDeck").className="deck hide";return;}
   $("bkJobDeck").className="deck";
   $("bkJobTitle").textContent=job.label||"This run";
-  $("bkJobMeta").innerHTML=esc(job.property_type)+" \\u00b7 "+esc(String(job.months))+"-month lookback \\u00b7 "+
+  var focus=job.tx_focus==="sales"?"Sales only \\u00b7 ":job.tx_focus==="leases"?"Leases only \\u00b7 ":"";
+  $("bkJobMeta").innerHTML=esc(job.property_type)+" \\u00b7 "+focus+esc(String(job.months))+"-month lookback \\u00b7 "+
     statusChip(job.status)+' <span class="sub">'+job.done_count+" of "+job.total+" done</span>";
   renderTotals(summary||{total:items.length,valued:0,failed:0,low:0,likely:0,high:0});
   $("bkRows").innerHTML="<thead><tr><th></th><th>Address</th><th>Likely value</th><th>$/SF</th>"+
@@ -665,8 +724,115 @@ var LEFT=null,DAILY=null;
 // from the list below is being looked at as a row, not re-run, so it stays.
 var singleJob=null;
 
+// The per-type subject fields, a MIRROR of index.html's TYPE_SUBJECT_FIELDS
+// (this file cannot require index.html and index.html is not a module).
+// test/bulk-inline.test.js evaluates both literals and fails the build if
+// they differ, so a field added to the form through the add-comp-field skill
+// fails here until it is added too. Keys are TYPE_COMP_FIELDS keys, which is
+// what the server whitelists them against.
+var BULK_SUBJECT_FIELDS={
+  Industrial: [
+    { key: "clear_height", label: "Clear height (ft)", type: "number", placeholder: "e.g. 32" },
+    { key: "dock_doors",   label: "Dock doors",        type: "number", placeholder: "e.g. 6" },
+  ],
+  Office: [
+    { key: "building_class", label: "Building class",   type: "select", options: ["", "Class A", "Class B", "Class C"] },
+    { key: "floor_plate",    label: "Floor plate (SF)", type: "number", placeholder: "e.g. 18000" },
+  ],
+  Retail: [
+    { key: "center_type",   label: "Center type",   type: "select", options: ["", "Neighborhood center", "Strip center", "Power center", "Single-tenant NNN", "Urban storefront"] },
+    { key: "anchor_tenant", label: "Anchor tenant", type: "text",   placeholder: "e.g. Kroger" },
+  ],
+  Multifamily: [
+    { key: "units", label: "Unit count", type: "number", placeholder: "e.g. 48" },
+  ],
+  Land: [
+    { key: "lot_acres", label: "Acres",  type: "number", placeholder: "e.g. 2.4" },
+    { key: "zoning",    label: "Zoning", type: "text",   placeholder: "e.g. M-1" },
+  ],
+  Residential: [
+    { key: "beds_baths", label: "Beds / baths", type: "text", placeholder: "e.g. 4 bd / 3 ba" },
+    { key: "condition", label: "Condition", type: "select",
+      options: ["", "Needs work", "Original", "Updated", "Renovated"] },
+  ],
+};/*END_SUBJECT_FIELDS*/
+
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+
+// The type's own fields, as cells. Rebuilt on every type change, so the
+// inputs never keep the previous type's shape (index.html's
+// syncSubjectFieldsToType rule).
+function renderSubjectFields(type){
+  var host=$("bulkSubjectFields");if(!host)return;
+  var fields=BULK_SUBJECT_FIELDS[type]||[];
+  host.hidden=!fields.length;
+  host.innerHTML=fields.map(function(f){
+    var id="bulkSubj_"+f.key;
+    var ctl=f.type==="select"
+      ? '<select id="'+id+'" data-subject-key="'+esc(f.key)+'">'+(f.options||[]).map(function(o){
+          return '<option value="'+esc(o)+'">'+(o?esc(o):"\\u2014")+"</option>";}).join("")+"</select>"
+      : '<input type="'+(f.type==="number"?"number":"text")+'" id="'+id+'" data-subject-key="'+esc(f.key)+'"'+
+        (f.type==="number"?' min="0" step="any"':' maxlength="40"')+' placeholder="'+esc(f.placeholder||"")+'"/>';
+    return '<div class="cell"><label for="'+id+'">'+esc(f.label)+' <span class="opt">(optional)</span></label>'+ctl+"</div>";
+  }).join("");
+  Array.prototype.forEach.call(host.querySelectorAll("[data-subject-key]"),function(el){
+    el.addEventListener("input",refreshMore);el.addEventListener("change",refreshMore);});
+  refreshMore();
+}
+
+// What a one-address run sends beside the address: index.html's meta.subject
+// shape (minus curation), read straight off the fields. Empty strings are
+// left out so the server stores nothing for an untouched form.
+function readSubject(){
+  var n=function(id){var v=Number(($(id)||{}).value);return v>0?v:null;};
+  var details={};
+  Array.prototype.forEach.call(document.querySelectorAll("#bulkSubjectFields [data-subject-key]"),function(el){
+    var v=String(el.value||"").trim();if(v)details[el.getAttribute("data-subject-key")]=v;});
+  return {sizeSqft:n("bulkSize"),asking:n("bulkAsking"),noi:n("bulkNoi"),capRate:n("bulkCap"),details:details};
+}
+
+var FOCUS_WORDS={both:"Sales & leases",sales:"Sales only",leases:"Leases only"};
+
+// The folded line, DERIVED every time (the form's settings-line rule): a
+// summary written once describes a run that is not the one about to start.
+function refreshMore(){
+  var line=$("moreLine");if(!line)return;
+  var list=parsedCount>1;
+  if(list){
+    line.textContent="per row, from your file's columns \\u00b7 "+(($("bulkLabel")||{}).value?"named":"unnamed run");
+    return;
+  }
+  var s=readSubject();
+  var parts=[];
+  parts.push(s.sizeSqft?Math.round(s.sizeSqft).toLocaleString("en-US")+" SF":"size from public records");
+  parts.push(s.asking?"asking $"+Math.round(s.asking).toLocaleString("en-US"):"no asking price");
+  parts.push(s.noi&&s.capRate?"NOI and cap rate set":s.noi?"NOI set":s.capRate?"cap rate set":"no NOI");
+  var dn=Object.keys(s.details).length;
+  var type=($("bulkType")||{}).value||"";
+  if(dn)parts.push(dn+" "+type+" detail"+(dn===1?"":"s"));
+  line.textContent=parts.join(" \\u00b7 ");
+}
+
+// The per-property fields describe one property. Past one address they fold
+// away and the note says which upload columns carry the same facts per row.
+function refreshPerAddress(){
+  var list=parsedCount>1;
+  var per=$("perAddress"),note=$("listNote");
+  if(per)per.hidden=list;
+  if(note){
+    note.hidden=!list;
+    if(list){
+      var type=($("bulkType")||{}).value||"";
+      var keys=(BULK_SUBJECT_FIELDS[type]||[]).map(function(f){return f.key;});
+      note.innerHTML="For a list, each row brings its own facts through the file's columns: "+
+        "<code>size_sqft</code>, <code>asking_price</code>, <code>noi</code>, <code>cap_rate</code>"+
+        (keys.length?" and "+keys.map(function(k){return "<code>"+esc(k)+"</code>";}).join(", "):"")+
+        ". Rows without them are looked up as usual.";
+    }
+  }
+  refreshMore();
+}
 
 function refreshCount(){
   parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
@@ -676,6 +842,7 @@ function refreshCount(){
   // one that WOULD overwrite something should not be a stray keystroke.
   var ex=$("useExample");
   if(ex)ex.className=$("bulkText").value===""?"lnk":"lnk hide";
+  refreshPerAddress();
   // One run at a time, and the button says so rather than letting somebody
   // press it into a 409. The server enforces it either way; this is the
   // Buy-button rule — a control that can only fail is worse than none.
@@ -785,10 +952,16 @@ function run(){
   }
   var btn=$("run");btn.disabled=true;
   BULKRUN.msg("Starting\\u2026",false);
-  BULKRUN.api("POST","/api/bulk",{
+  // The subject rides ONLY for a one-address run: the fields describe a
+  // property, and a list's rows carry their own through the upload's columns
+  // (the server enforces the same rule, so this is a courtesy, not a gate).
+  var body={
     text:$("bulkText").value,type:$("bulkType").value,
-    months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value
-  }).then(function(d){
+    months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value,
+    txFocus:$("bulkFocus").value
+  };
+  if(parsedCount===1)body.subject=readSubject();
+  BULKRUN.api("POST","/api/bulk",body).then(function(d){
     var one=Boolean(d.job&&d.job.total===1);
     singleJob=one?d.job.id:null;
     BULKRUN.msg(one
@@ -810,6 +983,7 @@ function run(){
 function fillTypes(){
   $("bulkType").innerHTML=TYPES.map(function(t){
     return '<option value="'+esc(t)+'">'+esc(t)+"</option>";}).join("");
+  renderSubjectFields($("bulkType").value);
 }
 
 function gate(msg,actionHtml){
@@ -838,6 +1012,9 @@ function start(boot){
   if(live)BULKRUN.poll(live.id);
 
   $("bulkText").addEventListener("input",refreshCount);
+  $("bulkType").addEventListener("change",function(){renderSubjectFields($("bulkType").value);refreshPerAddress();});
+  ["bulkSize","bulkAsking","bulkNoi","bulkCap","bulkLabel"].forEach(function(id){
+    $(id).addEventListener("input",refreshMore);});
   $("useExample").addEventListener("click",function(){fillExamples();});
   // Tab fills the box — but ONLY while it is empty, and never with a modifier.
   //

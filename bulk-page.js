@@ -65,7 +65,7 @@ const BULK_RUN_CSS = `
 .bk-run .msg{font-size:13px;margin:12px 0 0;color:var(--ink,#1A2433)}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}
 .bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:6px;
-  font-size:12.5px;color:var(--ink-mute,#68707E)}
+  font-size:12.5px;color:var(--ink,#1A2433)}
 .bk-run .notes ul{margin:6px 0 0;padding-left:18px}
 .bk-run .acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
 .bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:13px;
@@ -73,19 +73,19 @@ const BULK_RUN_CSS = `
 .bk-run .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
   background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:6px;overflow:hidden;margin:0 0 16px}
 .bk-run .strip div{background:var(--paper,#FBFBF9);padding:10px 12px}
-.bk-run .strip .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute,#68707E)}
+.bk-run .strip .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
 .bk-run .strip .v{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
 .bk-run table{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink,#1A2433)}
-.bk-run th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute,#68707E);
+.bk-run th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
   font-weight:500;padding:6px 8px;border-bottom:1px solid var(--ink,#1A2433)}
 .bk-run td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top}
 .bk-run td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bk-run td a{color:var(--red,#B91C1C)}
 .bk-run .chip{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-  padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink-mute,#68707E)}
+  padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
 .bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
 .bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
-.bk-run .sub{color:var(--ink-mute,#68707E);font-size:11.5px}
+.bk-run .sub{color:var(--ink,#1A2433);font-size:11.5px}
 .bk-run .runs{padding:0;margin:0}
 .bk-run .runs li{padding:9px 0;border-top:1px solid var(--line,#E4E2DA);list-style:none;
   display:flex;justify-content:space-between;gap:14px;align-items:baseline}
@@ -101,31 +101,36 @@ const BULK_RUN_CSS = `
 .bk-run input.szin:hover{border-color:var(--line,#E4E2DA)}
 .bk-run input.szin:focus{border-color:var(--red,#B91C1C);background:var(--paper,#FBFBF9);outline:none}
 .bk-run input.szin::placeholder{color:var(--red,#B91C1C);opacity:1}
-.bk-run input.szin[disabled]{color:var(--ink-mute,#68707E)}
+.bk-run input.szin[disabled]{color:var(--ink,#1A2433)}
 `;
 
 // The /bulk form's own styles — the paste box, the settings row, the gate.
 // index.html never receives these: it has its own form.
 const BULK_CSS = `
 .bulk{max-width:1100px}
-.bulk .lede{color:var(--ink-mute);font-size:13.5px;margin:0 0 18px;max-width:62ch}
+.bulk .lede{color:var(--ink);font-size:13.5px;margin:0 0 18px;max-width:62ch}
 .bulk label{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink-mute);margin:0 0 5px}
+  color:var(--ink);margin:0 0 5px}
 .bulk textarea,.bulk input[type=text],.bulk select{width:100%;padding:9px 10px;font:inherit;font-size:14px;
   color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px}
 .bulk textarea{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5}
 .bulk .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:14px 0}
 .bulk button.go{background:var(--red);color:#fff;border:0;border-radius:6px;padding:10px 18px;
   font:inherit;font-size:14px;font-weight:600;cursor:pointer}
-.bulk button.go[disabled]{opacity:.45;cursor:default}
-.bulk .cost{color:var(--ink-mute);font-size:12.5px}
+/* Never dimmed (owner's call, 2026-09-04): "no parts of the bulk valuation
+   dim". The button is solid red in every state; when it cannot run, the cost
+   line beside it says why, and an empty box answers a click with a message
+   (see run()) rather than with a control that looks switched off. The same
+   call is why every muted colour in this file is full ink. */
+.bulk button.go[disabled]{cursor:default}
+.bulk .cost{color:var(--ink);font-size:12.5px}
 .bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink-mute);font-size:12px;max-width:70ch}
+  color:var(--ink);font-size:12px;max-width:70ch}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
-  border-radius:4px;color:var(--ink-mute);text-decoration:none;vertical-align:1px}
+  border-radius:4px;color:var(--ink);text-decoration:none;vertical-align:1px}
 `;
 
 /**
@@ -603,7 +608,10 @@ function refreshCount(){
   // Buy-button rule — a control that can only fail is worse than none.
   var st=BULKRUN.state();
   var busy=Boolean(st.job&&st.job.status==="running");
-  $("run").disabled=busy||parsedCount===0;
+  // Not disabled on an empty box (owner's, 2026-09-04: nothing here is dim).
+  // run() answers an empty click with a message and the caret instead. Busy
+  // and over-cap still disable, with the cost line saying why.
+  $("run").disabled=busy;
   // One address is a report, not a "valuation of one": the button says what
   // will actually happen, since a single run opens its report when it lands.
   $("run").textContent=parsedCount===1?"Run the report"
@@ -696,6 +704,11 @@ function loadList(){
 }
 
 function run(){
+  if(parsedCount===0){
+    BULKRUN.msg("Type or paste at least one address first.",true);
+    $("bulkText").focus();
+    return;
+  }
   var btn=$("run");btn.disabled=true;
   BULKRUN.msg("Starting\\u2026",false);
   BULKRUN.api("POST","/api/bulk",{

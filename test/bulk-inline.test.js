@@ -162,6 +162,19 @@ test("a one-address run opens its report; a list, a failure, and an old run do n
   assert.match(page, /<a href="\/run-report">Use the single-property form<\/a>/);
 });
 
+// Nothing on the bulk page is dim (owner's, 2026-09-04): no faded disabled
+// button, no muted grey text. An empty box answers a click with a message.
+test("no part of the bulk page is dimmed", () => {
+  assert.ok(!/opacity:\s*\.\d/.test(MOD.BULK_CSS), "the disabled button must not fade");
+  assert.ok(!MOD.BULK_CSS.includes("--ink-mute"), "the page's own styles use full ink");
+  assert.ok(!MOD.BULK_RUN_CSS.includes("--ink-mute"), "the run view's styles use full ink");
+  const js = MOD.BULK_JS;
+  assert.ok(!js.includes("busy||parsedCount===0"), "an empty box no longer disables the button");
+  const runAt = js.indexOf("function run(){");
+  assert.ok(js.slice(runAt, runAt + 300).includes('"Type or paste at least one address first."'),
+    "an empty click is answered with a message, not a dead control");
+});
+
 test("both browser modules compile, on both pages", () => {
   for (const name of ["BULK_RUN_JS", "BULK_JS"]) {
     assert.doesNotThrow(() => new vm.Script(MOD[name]), name + " does not parse");

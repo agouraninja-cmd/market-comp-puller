@@ -69,6 +69,59 @@ const STALL_MS = 15 * 60 * 1000;
 const ADDRESS_HEADERS = ["address", "property_address", "site_address", "street_address", "property", "location"];
 const SIZE_HEADERS = ["size_sqft", "size", "sqft", "sq_ft", "square_feet", "building_size", "building_sf", "rsf", "gla", "sf"];
 const LABEL_HEADERS = ["label", "name", "property_name", "id", "reference", "ref"];
+// The single-property form's per-property inputs, as upload columns
+// (2026-09-04): bulk is the comp-report tool, so a list can bring the facts
+// the form asks for one address at a time. Same normalizeHeader spellings as
+// the three lists above. The per-TYPE detail columns (units, clear_height,
+// lot_acres…) are not listed here: their keys come in as `opts.detailKeys`,
+// because TYPE_COMP_FIELDS is server.js's and this module requires nothing
+// of the server's.
+const ASKING_HEADERS = ["asking_price", "asking", "ask", "list_price", "price"];
+const NOI_HEADERS = ["noi", "net_operating_income"];
+const CAP_RATE_HEADERS = ["cap_rate", "cap", "caprate", "going_in_cap"];
+
+// The whole job's transaction focus, exactly the single form's three values.
+// Empty means the default; anything else unrecognized is null, so the route
+// refuses it by name rather than quietly running "both" for a typo.
+const TX_FOCUSES = ["both", "sales", "leases"];
+function normalizeTxFocus(v) {
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  if (!s) return "both";
+  return TX_FOCUSES.includes(s) ? s : null;
+}
+
+/**
+ * The per-property facts for ONE row, from the form (a one-address run) —
+ * the shape index.html keeps in meta.subject, minus the size, which has its
+ * own column and its own precedence. Numbers are cleaned, never guessed: a
+ * cap rate above 100 or an asking price of "call" is dropped, and the
+ * per-type details are whitelisted to the keys the caller names (the
+ * server re-runs sanitizeSubjectDetails on them for enum normalization).
+ * Returns null when nothing survives, so a caller can store nothing.
+ */
+function normalizeSubject(raw, detailKeys) {
+  const r = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const keys = Array.isArray(detailKeys) ? detailKeys : [];
+  const money = (v) => {
+    const n = typeof v === "string" ? (VAULT.parseMoney(v).value) : Number(v);
+    return Number.isFinite(n) && n > 0 && n < 1e12 ? Math.round(n) : null;
+  };
+  const out = {};
+  const asking = money(r.asking);
+  if (asking) out.asking = asking;
+  const noi = money(r.noi);
+  if (noi) out.noi = noi;
+  const cap = typeof r.capRate === "string" ? (VAULT.parsePercent(r.capRate).value) : Number(r.capRate);
+  if (Number.isFinite(cap) && cap > 0 && cap <= 100) out.capRate = Math.round(cap * 1000) / 1000;
+  const d = r.details && typeof r.details === "object" && !Array.isArray(r.details) ? r.details : {};
+  const details = {};
+  for (const k of keys) {
+    const v = String(d[k] == null ? "" : d[k]).trim().slice(0, 40);
+    if (v) details[k] = v;
+  }
+  if (Object.keys(details).length) out.details = details;
+  return Object.keys(out).length ? out : null;
+}
 
 function headerIndex(headers, names) {
   for (let i = 0; i < headers.length; i++) {
@@ -134,6 +187,14 @@ function parseAddressList(text, opts) {
   const hasHeader = addrCol >= 0 && grid.length > 1;
   const sizeCol = hasHeader ? headerIndex(headers, SIZE_HEADERS) : -1;
   const labelCol = hasHeader ? headerIndex(headers, LABEL_HEADERS) : -1;
+  // The form's other inputs, per row (2026-09-04). Only a header can carry
+  // them — a pasted list is addresses and nothing else.
+  const askCol = hasHeader ? headerIndex(headers, ASKING_HEADERS) : -1;
+  const noiCol = hasHeader ? headerIndex(headers, NOI_HEADERS) : -1;
+  const capCol = hasHeader ? headerIndex(headers, CAP_RATE_HEADERS) : -1;
+  const detailKeys = Array.isArray(o.detailKeys) ? o.detailKeys.map(String) : [];
+  const detailCols = {};
+  for (const k of detailKeys) detailCols[k] = hasHeader ? headerIndex(headers, [k]) : -1;
 
   // Line numbers are reported back to the person who pasted the list, so they
   // count from 1 and include the header — the number they see in the file.
@@ -188,7 +249,44 @@ function parseAddressList(text, opts) {
       }
     }
     const label = hasHeader && labelCol >= 0 ? String(cells[labelCol] || "").trim().slice(0, 120) : "";
+
+    // The row's own property facts, when the file has columns for them. A
+    // cell that does not parse is WARNED about and left out, the size rule:
+    // the row still runs, but a number somebody typed and we ignored must not
+    // vanish silently.
+    let subject = null;
+    if (hasHeader) {
+      const s = {};
+      const moneyAt = (col, label, key) => {
+        if (col < 0) return;
+        const raw = String(cells[col] || "").trim();
+        if (!raw) return;
+        const p = VAULT.parseMoney(raw);
+        if (!p.ok) warnings.push({ line, address: rawAddress.slice(0, 300), reason: `${label} "${raw.slice(0, 40)}" isn't a number — left out.` });
+        else if (p.value > 0) s[key] = Math.round(p.value);
+      };
+      moneyAt(askCol, "Asking price", "asking");
+      moneyAt(noiCol, "NOI", "noi");
+      if (capCol >= 0) {
+        const raw = String(cells[capCol] || "").trim();
+        if (raw) {
+          const p = VAULT.parsePercent(raw);
+          if (!p.ok) warnings.push({ line, address: rawAddress.slice(0, 300), reason: `Cap rate "${raw.slice(0, 40)}" isn't a percentage — left out.` });
+          else if (p.value > 0) s.capRate = p.value;
+        }
+      }
+      const details = {};
+      for (const k of detailKeys) {
+        const col = detailCols[k];
+        if (col < 0) continue;
+        const v = String(cells[col] || "").trim().slice(0, 40);
+        if (v) details[k] = v;
+      }
+      if (Object.keys(details).length) s.details = details;
+      if (Object.keys(s).length) subject = s;
+    }
     rows.push({
+      subject,
       address: rawAddress.slice(0, 300),
       // A size the broker already knows is worth carrying: it skips the
       // model's own two-search size lookup on that address (see
@@ -383,6 +481,9 @@ module.exports = {
   JOB_STATUSES,
   ITEM_STATUSES,
   STALL_MS,
+  TX_FOCUSES,
+  normalizeTxFocus,
+  normalizeSubject,
   parseAddressList,
   looksLikeAddress,
   dedupeKey,

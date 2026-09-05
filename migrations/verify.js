@@ -175,6 +175,11 @@ const COLUMNS = [
   // coordinates AND facts would just stop reaching comps. Named so the tool
   // says.
   ["broker_properties",   ["facts"],                            "050-broker-property-facts.sql"],
+  // 051: the bulk insert names tx_focus / subject only for a non-default
+  // run, so their absence is a 400 on exactly the runs that use the new
+  // options and silence on every other. Named so the tool says.
+  ["bulk_jobs",           ["tx_focus"],                         "051-bulk-job-options.sql"],
+  ["bulk_job_items",      ["subject"],                          "051-bulk-job-options.sql"],
   // 017 puts the building's location on the dimension so a private comp can be
   // mapped without its address being geocoded. Same silent shape as the rest
   // of this list: the coordinate PATCH is inside linkVaultProperties(), which

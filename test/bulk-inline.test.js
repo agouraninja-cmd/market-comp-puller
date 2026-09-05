@@ -157,9 +157,10 @@ test("a one-address run opens its report; a list, a failure, and an old run do n
   const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
   assert.match(page, /One address opens its comp report\. A list becomes a portfolio/);
   assert.ok(js.includes('parsedCount===1?"Run the report"'), "one address is 'Run the report', not 'Run 1 valuation'");
-  // The single-property form's one remaining door, and the only /run-report
-  // link anywhere on the site.
-  assert.match(page, /<a href="\/run-report">Use the single-property form<\/a>/);
+  // The foot's door to the single-property form went with the inputs it
+  // pointed at (2026-09-04 evening): this page asks for all of them now, so
+  // /run-report is linked from nowhere.
+  assert.equal(page.includes("/run-report"), false, "the bulk page still links the single-property form");
 });
 
 // Nothing on the bulk page is dim (owner's, 2026-09-04): no faded disabled
@@ -173,6 +174,32 @@ test("no part of the bulk page is dimmed", () => {
   const runAt = js.indexOf("function run(){");
   assert.ok(js.slice(runAt, runAt + 300).includes('"Type or paste at least one address first."'),
     "an empty click is answered with a message, not a dead control");
+});
+
+// The bulk page carries the single form's inputs (2026-09-04). Its per-type
+// field map is a MIRROR of index.html's TYPE_SUBJECT_FIELDS — this file
+// cannot require index.html — so the two literals are evaluated and compared,
+// and a field added to the form through the add-comp-field skill fails here
+// until the bulk page names it too.
+test("the bulk page's subject fields are index.html's, field for field", () => {
+  const idx = INDEX.match(/const TYPE_SUBJECT_FIELDS = (\{[\s\S]*?\n  \});/);
+  assert.ok(idx, "index.html's TYPE_SUBJECT_FIELDS literal not found");
+  const blk = MOD.BULK_JS.match(/var BULK_SUBJECT_FIELDS=(\{[\s\S]*?\});\/\*END_SUBJECT_FIELDS\*\//);
+  assert.ok(blk, "bulk-page.js's BULK_SUBJECT_FIELDS literal not found");
+  // JSON round-tripped: objects from two vm contexts have two Object
+  // prototypes, and strict deepEqual compares those too.
+  const a = JSON.parse(JSON.stringify(vm.runInNewContext("(" + idx[1] + ")")));
+  const b = JSON.parse(JSON.stringify(vm.runInNewContext("(" + blk[1] + ")")));
+  assert.deepEqual(b, a, "bulk-page.js's per-type fields drifted from index.html's");
+  // And the form's other inputs are all on the page, under the folded line.
+  const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
+  for (const id of ["bulkFocus", "bulkSize", "bulkAsking", "bulkNoi", "bulkCap", "bulkNote", "bulkLabel", "bulkSubjectFields", "moreLine", "perAddress", "listNote"]) {
+    assert.ok(page.includes('id="' + id + '"'), "/bulk lost #" + id);
+  }
+  assert.match(page, /<option value="both" selected>Sales &amp; leases<\/option>/);
+  // The subject rides ONLY for a one-address run; the focus rides always.
+  assert.ok(MOD.BULK_JS.includes("if(parsedCount===1)body.subject=readSubject();"));
+  assert.ok(MOD.BULK_JS.includes('txFocus:$("bulkFocus").value'));
 });
 
 test("both browser modules compile, on both pages", () => {

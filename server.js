@@ -8755,6 +8755,7 @@ function bulkJobRow(job) {
     status: job.status,
     property_type: job.property_type,
     months: job.months,
+    tx_focus: job.tx_focus || "both",
     note: job.note || "",
     label: job.label || null,
     total: Number(job.total) || 0,
@@ -8942,7 +8943,14 @@ async function runBulkItem(item, ctx) {
       // make a bulk row's range thinner than the report it links to — the one
       // difference between the two screens nobody could explain.
       maxComps: 12,
-      txFocus: "both", subjectSizeSqft: size, subjectDetails: {},
+      // The job's focus and the row's own per-type details (051) reach the
+      // search exactly as the single form's do. The row's asking price, NOI
+      // and cap rate deliberately do NOT: /api/comps never receives those
+      // either — they are the report's client-side income and asking
+      // cross-checks, and they travel into the recent search's meta.subject
+      // in saveBulkValuationToRecents.
+      txFocus: job.tx_focus || "both", subjectSizeSqft: size,
+      subjectDetails: sanitizeSubjectDetails(job.property_type, (item.subject && item.subject.details) || {}),
       // The per-market vault read the worker already holds (compsForMarket):
       // a bulk row is archive-assisted on exactly the evidence its own report
       // will blend. Firm-shared comps deliberately do NOT count — an admin
@@ -8976,14 +8984,26 @@ async function runBulkItem(item, ctx) {
     });
 
     if (!valued) {
+      // The report still exists and still has comps — a leases-only search
+      // has its whole answer in it (the rent range is client-side, 3f) — so
+      // it is filed and linked exactly as a valued row's is (2026-09-04).
+      let unvaluedRecentId = null;
+      try {
+        unvaluedRecentId = await saveBulkValuationToRecents(user, job, item, report, null);
+      } catch (err) {
+        console.error("bulk recent save failed:", err.message);
+      }
       await patchBulkItem(user.id, item.id, {
         status: "done", finished_at: new Date().toISOString(),
         cached: searched.kind !== "fresh", market,
         comp_count: Array.isArray(report.comps) ? report.comps.length : 0,
         sale_comps: 0,
+        ...(unvaluedRecentId ? { recent_item_id: unvaluedRecentId } : {}),
         // Customer copy, not a developer message: it is printed in the row
         // and again in the CSV that outlives the screen.
-        error: "No priced sale comps in this window — try a longer lookback.",
+        error: (job.tx_focus === "leases")
+          ? "Leases-only search — open the report for the rent range."
+          : "No priced sale comps in this window — try a longer lookback.",
       });
       return;
     }
@@ -9064,11 +9084,20 @@ async function saveBulkValuationToRecents(user, job, item, report, valued) {
       type: job.property_type,
       note: job.note || "",
       months: job.months,
-      txFocus: "both",
+      txFocus: job.tx_focus || "both",
+      // The row's own facts (051) land where a hand-run report keeps them, so
+      // the reopened report shows its income approach, its asking-price
+      // check and its per-type details exactly as if they had been typed.
+      // `valued` is null for an unvalued row; the size then falls back to
+      // what the row itself carried.
       subject: {
-        sizeMin: valued.size_sqft || null,
-        sizeMax: valued.size_sqft || null,
-        priceMin: null, priceMax: null, noi: null, capRate: null, details: {},
+        sizeMin: (valued && valued.size_sqft) || (Number(item.size_sqft) > 0 ? Number(item.size_sqft) : null),
+        sizeMax: (valued && valued.size_sqft) || (Number(item.size_sqft) > 0 ? Number(item.size_sqft) : null),
+        priceMin: (item.subject && item.subject.asking) || null,
+        priceMax: (item.subject && item.subject.asking) || null,
+        noi: (item.subject && item.subject.noi) || null,
+        capRate: (item.subject && item.subject.capRate) || null,
+        details: (item.subject && item.subject.details) || {},
       },
       assumptions: null,
       curation: null,
@@ -10846,10 +10875,10 @@ const NAV_LINKS = [
 // back out the same day: Bulk valuation is the comp-report tool now (one
 // address or fifty, the same run -- see bulk-page.js), so a second "run a
 // report" row was two doors to one act. The /run-report ROUTE still answers
-// (the static handler below), because bulk-page.js links it as the full
-// single-property form for the inputs a bulk row has no column for (NOI, a
-// cap rate, a sales-only or leases-only focus); it is just no longer in any
-// nav. The red CTA in marketBar points at /bulk for the same reason.
+// (the static handler below) but is linked from nowhere: bulk-page.js linked
+// it for a few hours as the form with the inputs a bulk row lacked, and the
+// same evening the bulk page took every one of those inputs (migration 051),
+// so the link went with its reason. The red CTA in marketBar points at /bulk.
 const TOOL_LINKS = [
   ["/markets", "Market explorer"],
   ["/1031-exchange", "1031 exchange guide"],
@@ -20616,21 +20645,48 @@ const server = http.createServer((req, res) =>
             return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
           }
 
-          const { text, type, months, note, label } = JSON.parse(body || "{}");
+          const { text, type, months, note, label, txFocus, subject } = JSON.parse(body || "{}");
           const typeOk = VAULT.PROPERTY_TYPES.find((t) => t === String(type));
           if (!typeOk) {
             return sendJson(res, 400, { error: `Pick a property type: ${VAULT.PROPERTY_TYPES.join(", ")}.` });
           }
+          // The single form's Focus select, for the whole job (2026-09-04).
+          // Refused by name rather than defaulted: the no-fallthrough rule.
+          const txOk = BULK.normalizeTxFocus(txFocus);
+          if (!txOk) {
+            return sendJson(res, 400, { error: "Focus must be sales, leases or both." });
+          }
           const monthsOk = ENT.clampLookback(months, ent);
           const noteOk = String(note || "").trim().slice(0, 200);
           const labelOk = String(label || "").trim().slice(0, 120);
+          const detailKeys = TYPE_COMP_FIELDS[typeOk].fields;
 
-          const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses });
+          const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses, detailKeys });
           if (!parsed.rows.length) {
             return sendJson(res, 400, {
               error: "No usable addresses in that list.",
               skipped: parsed.skipped, warnings: parsed.warnings,
             });
+          }
+          // The form's per-property fields (size, asking price, NOI, cap rate,
+          // the type's details) apply to a ONE-address run only — they
+          // describe a property, and a list's rows bring their own through
+          // the upload's columns. Whitelisted twice: normalizeSubject to the
+          // type's keys, then sanitizeSubjectDetails for the enum values,
+          // exactly as /api/comps treats subjectDetails.
+          if (parsed.rows.length === 1 && subject && typeof subject === "object") {
+            const one = parsed.rows[0];
+            const s = BULK.normalizeSubject(subject, detailKeys);
+            if (s) one.subject = { ...(one.subject || {}), ...s };
+            const sz = Number(subject.sizeSqft);
+            if (sz > 0 && !one.size_sqft) one.size_sqft = Math.round(sz);
+          }
+          for (const r of parsed.rows) {
+            if (r.subject && r.subject.details) {
+              const clean = sanitizeSubjectDetails(typeOk, r.subject.details);
+              if (Object.keys(clean).length) r.subject.details = clean; else delete r.subject.details;
+              if (!Object.keys(r.subject).length) r.subject = null;
+            }
           }
 
           // One live job per member. Checked against the DATABASE, and a
@@ -20684,9 +20740,14 @@ const server = http.createServer((req, res) =>
           }
 
           const now = new Date().toISOString();
+          // tx_focus and subject (migration 051) are named ONLY when they
+          // carry a non-default value, so a default run still starts against
+          // a schema 051 has not reached; a run that USES them 400s at
+          // PostgREST into the 503 below until it has. Migrate first anyway.
           const jobRows = await sbRequest("POST", "bulk_jobs", {
             user_id: user.id, property_type: typeOk, months: monthsOk,
             note: noteOk, label: labelOk || null,
+            ...(txOk !== "both" ? { tx_focus: txOk } : {}),
             status: "running", total: parsed.rows.length, done_count: 0,
             heartbeat_at: now, created_at: now,
           }, { prefer: "return=representation" });
@@ -20697,6 +20758,7 @@ const server = http.createServer((req, res) =>
             parsed.rows.map((r, i) => ({
               job_id: job.id, user_id: user.id, position: i,
               address: r.address, label: r.label, size_sqft: r.size_sqft,
+              ...(r.subject ? { subject: r.subject } : {}),
               status: "queued", created_at: now,
             })), { prefer: "return=representation" });
           if (!Array.isArray(itemRows) || !itemRows.length) {

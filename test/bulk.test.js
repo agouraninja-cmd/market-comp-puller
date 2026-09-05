@@ -318,6 +318,70 @@ test("036 relies on no implicit string concatenation", () => {
     "036 has adjacent string literals across a newline — join them into one");
 });
 
+// ---------------------------------------------------------------------------
+// The single form's inputs on a bulk run (2026-09-04, migration 051)
+// ---------------------------------------------------------------------------
+
+test("the focus is the form's three values, and a typo is refused, not defaulted", () => {
+  assert.equal(BULK.normalizeTxFocus(""), "both", "empty is the default");
+  assert.equal(BULK.normalizeTxFocus(undefined), "both");
+  assert.equal(BULK.normalizeTxFocus(" Sales "), "sales");
+  assert.equal(BULK.normalizeTxFocus("leases"), "leases");
+  assert.equal(BULK.normalizeTxFocus("rentals"), null, "an unknown focus must be refused by the route, never run as both");
+  assert.deepEqual(BULK.TX_FOCUSES, ["both", "sales", "leases"]);
+});
+
+test("a one-address run's subject is cleaned, whitelisted and never guessed", () => {
+  const s = BULK.normalizeSubject({
+    asking: "$3,125,000", noi: 210000, capRate: "6.25%",
+    details: { clear_height: " 32 ", dock_doors: "6", units: "48", evil: "x" },
+  }, ["clear_height", "dock_doors"]);
+  assert.deepEqual(s, { asking: 3125000, noi: 210000, capRate: 6.25, details: { clear_height: "32", dock_doors: "6" } });
+  // Nothing typed stores nothing, so an untouched form is not a row of nulls.
+  assert.equal(BULK.normalizeSubject({ asking: "", noi: null, details: {} }, ["units"]), null);
+  assert.equal(BULK.normalizeSubject(null, ["units"]), null);
+  // A cap rate above 100 and an asking price of "call" are dropped, not stored.
+  assert.equal(BULK.normalizeSubject({ capRate: 625, asking: "call broker" }, []), null);
+  // Keys outside the type's own are never stored, whatever the client sent.
+  assert.equal(BULK.normalizeSubject({ details: { user_id: "u-2" } }, ["units"]), null);
+});
+
+test("an upload's columns carry each row's asking price, NOI, cap rate and type details", () => {
+  const csv = [
+    "address,size_sqft,asking_price,noi,cap_rate,clear_height,dock_doors",
+    "1201 W Idaho St, Boise, ID 83702|20000|$3,125,000|210000|6.25%|32|6",
+    "900 N Cole Rd, Boise, ID|18000|call||abc|28|",
+  ].map((l, i) => (i === 0 ? l : l.split("|").map((c) => (c.includes(",") ? `"${c}"` : c)).join(","))).join("\n");
+  const out = BULK.parseAddressList(csv, { detailKeys: ["clear_height", "dock_doors"] });
+  assert.equal(out.rows.length, 2);
+  assert.deepEqual(out.rows[0].subject, { asking: 3125000, noi: 210000, capRate: 6.25, details: { clear_height: "32", dock_doors: "6" } });
+  // Row 2: the unparseable asking price and cap rate are WARNED about and left
+  // out; the row still runs with what did parse.
+  assert.deepEqual(out.rows[1].subject, { details: { clear_height: "28" } });
+  const reasons = out.warnings.filter((w) => w.line === 3).map((w) => w.reason);
+  assert.equal(reasons.length, 2, JSON.stringify(out.warnings));
+  assert.match(reasons.join(" "), /Asking price "call"/);
+  assert.match(reasons.join(" "), /Cap rate "abc"/);
+  // A pasted list has no columns and therefore no subject.
+  const pasted = BULK.parseAddressList("1201 W Idaho St, Boise, ID 83702", { detailKeys: ["units"] });
+  assert.equal(pasted.rows[0].subject, null);
+  // Detail keys the caller did not name are not read, even when a column has them.
+  const other = BULK.parseAddressList("address,units\n1201 W Idaho St, Boise, ID 83702,48".replace("Boise, ID", "\"Boise, ID\""), { detailKeys: ["clear_height"] });
+  assert.equal(other.rows[0].subject, null);
+});
+
+test("051 is additive, re-runs cleanly and uses no implicit concatenation", () => {
+  const sql051 = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "migrations", "051-bulk-job-options.sql"), "utf8");
+  const live = sql051.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n").toLowerCase();
+  for (const forbidden of ["drop table", "drop column", "rename to", "rename column", "truncate", "delete from"]) {
+    assert.equal(live.includes(forbidden), false, `051 contains "${forbidden}"`);
+  }
+  assert.match(live, /alter table bulk_jobs\s+add column if not exists tx_focus text not null default 'both'/);
+  assert.match(live, /alter table bulk_job_items\s+add column if not exists subject jsonb/);
+  assert.deepEqual(live.match(/'\s*\n\s*'/g) || [], []);
+});
+
 // The same off-by-N as the vault's, from the same cause: parseCsv drops blank
 // rows, so the array index counts surviving rows rather than file lines. The
 // number is surfaced in skipped[] and warnings[] to the person who pasted the

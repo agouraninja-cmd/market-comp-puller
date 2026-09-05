@@ -24,6 +24,7 @@ const fake = require("./helpers/fake-supabase");
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+const { xlsxFromRows } = require("./helpers/make-xlsx.js");
 
 // UUID-shaped throughout, because several routes guard an id with isUuidish()
 // before it reaches a Postgres uuid cast — a `job-1` would be 404'd by the
@@ -289,6 +290,53 @@ test("the per-member daily ceiling", async (t) => {
       const html = await (await fetch(ctx.srv.base + "/bulk", as(PAT))).text();
       assert.match(html, /"leftToday":2/, "the boot payload carries it, so nothing pops in");
     } finally { await ctx.stop(); }
+  });
+});
+
+// An Excel workbook is read into the paste box as CSV text (2026-09-04), so
+// every rule the form applies to a paste applies to it unchanged.
+test("an Excel list is read into the box as CSV", async (t) => {
+  const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: [] }));
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  await t.test("a real .xlsx comes back as CSV text, header and addresses intact", async () => {
+    const xlsx = xlsxFromRows([
+      ["Address", "Size SqFt", "Asking Price"],
+      ["1201 W Idaho St, Boise, ID 83702", 20000, 3125000],
+      ["900 N Cole Rd, Boise, ID", null, null],
+    ]);
+    const r = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: xlsx.toString("base64") }),
+    }));
+    assert.equal(r.status, 200, await r.clone().text());
+    const body = await r.json();
+    assert.equal(body.rows, 2);
+    const lines = body.csv.trim().split("\n");
+    assert.match(lines[0], /^Address,Size SqFt,Asking Price/);
+    assert.match(lines[1], /"1201 W Idaho St, Boise, ID 83702",20000,3125000/);
+    // And the text it hands back is exactly what POST /api/bulk would parse:
+    // an address with commas is one address, and the size column is read.
+    const BULK = require("../bulk.js");
+    const parsed = BULK.parseAddressList(body.csv, { detailKeys: [] });
+    assert.equal(parsed.rows.length, 2);
+    assert.equal(parsed.rows[0].address, "1201 W Idaho St, Boise, ID 83702");
+    assert.equal(parsed.rows[0].size_sqft, 20000);
+    assert.equal(parsed.rows[0].subject.asking, 3125000);
+  });
+
+  await t.test("garbage is refused by name, and an oversize file says to save as CSV", async () => {
+    const bad = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: Buffer.from("not a workbook").toString("base64") }),
+    }));
+    assert.equal(bad.status, 400);
+    const big = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: Buffer.alloc(1024 * 1024 + 10, 65).toString("base64") }),
+    }));
+    assert.equal(big.status, 413);
+    assert.match((await big.json()).error, /CSV/);
+    const none = await fetch(srv.base + "/api/bulk/inspect", as(PAT, { method: "POST", body: "{}" }));
+    assert.equal(none.status, 400);
   });
 });
 

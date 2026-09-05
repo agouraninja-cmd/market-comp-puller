@@ -3188,6 +3188,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   still starts before 051 has run, while a run that uses them 400s at
   PostgREST into "Could not start that run" — migrate first. Not done: a
   per-address property type (one type per job, as 036 argues).
+  **Excel lists and "Add valued rows to portfolio" (2026-09-04).** `POST
+  /api/bulk/inspect { xlsx }` reads a workbook's first sheet through
+  `xlsxGridFromBase64` (typed, 1 MB — the vault import's helper) and hands
+  back CSV TEXT that the page drops into `#bulkText`; its own route rather
+  than a field on the run, because the count, the cost line and the
+  one-address subject rule all run on the box BEFORE the button, and this way
+  every rule a paste obeys applies to a spreadsheet unchanged. Nothing is
+  stored. The `#bkAddAll` link on a finished run lives in the SHARED run view
+  (so the inline homepage run has it and the single-source tests hold) and
+  walks the one sanctioned door per valued row — `GET /api/recents?id=`, then
+  `POST /api/portfolio` with the payload and the row's own value as the
+  opening snapshot — so the match key, the 100/500 cap and the verified-key
+  rule apply by construction and a property already in the book is counted
+  as `existed`, never duplicated. It is an explicit act behind a confirm
+  naming the count: the 2026-08-31 rule ("a portfolio is what you own")
+  stands, and no bulk route writes to the portfolio.
   **A failed row can be retried alone** (`POST /api/bulk/item/retry {id}`,
   2026-09-04): it mutates the EXISTING row and job, never a one-row job (which
   would leave the old row failed forever and list two runs for one list).
@@ -3228,7 +3244,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   type's `TYPE_COMP_FIELDS` keys. The filename carries the run's label as a
   slug (`compninja-bulk-q3-review-2026-09-04.csv`).
   Routes: `GET|PATCH|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
-  `POST /api/bulk/item/retry`,
+  `POST /api/bulk/item/retry`, `POST /api/bulk/inspect`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
   catches the three drifting). Every finished row is also upserted into

@@ -217,6 +217,7 @@ function renderBulkRunMarkup(opts) {
     <p class="acts">
       <button type="button" class="lnk hide" id="bkCancel">Cancel the rest</button>
       <a class="lnk" id="bkDl" href="#" style="display:none">Download CSV</a>
+      <a class="lnk hide" id="bkAddAll" href="#">Add valued rows to portfolio</a>
       <a class="lnk" href="/desk">Open your workspace</a>${past ? "" : `
       <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}
     </p>
@@ -299,8 +300,8 @@ function renderBulkPageBody(boot) {
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
         <p class="links" style="margin:0">
-          <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
-          <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
+          <input type="file" id="bulkFile" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hide"/>
+          <button type="button" class="lnk" id="pickFile">Upload a CSV, text or Excel file</button>
           <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
                for somebody whose hands are already in the box; this is how it is
                DISCOVERED, and how anyone who cannot or would rather not press
@@ -592,6 +593,51 @@ function renderJob(){
   var dl=$("bkDl");
   dl.href="/api/bulk/export.csv?id="+encodeURIComponent(job.id);
   dl.style.display=job.done_count>0?"":"none";
+  // Offered only once the run has stopped and something was valued: an
+  // affordance over nothing is a control that does nothing.
+  var aa=$("bkAddAll");
+  if(aa)aa.className=(job.status!=="running"&&portfolioCandidates().length)?"lnk":"lnk hide";
+}
+
+// "Add valued rows to portfolio" (owner's call, 2026-09-04). A portfolio is
+// what you OWN, so this is an explicit act with a confirm naming the count,
+// never something a run does on its own. It walks the one sanctioned door —
+// GET the stored recent, POST /api/portfolio with its payload — so the match
+// key, the 100/500 cap and the fill-never-rewrite verified key apply by
+// construction, and a property already in the book is answered "existed"
+// rather than duplicated. The snapshot is the row's own figure: the same
+// arithmetic the report would open with.
+function portfolioCandidates(){
+  return items.filter(function(it){return it.status==="done"&&it.recent_item_id&&Number(it.value_likely)>0;});
+}
+function addAllToPortfolio(){
+  var rows=portfolioCandidates();
+  if(!rows.length)return;
+  if(!confirm("Add "+rows.length+" valued address"+(rows.length===1?"":"es")+" to your portfolio? "+
+    "A portfolio is what you own — each one becomes a tracked property."))return;
+  var added=0,existed=0,i=0;
+  msg("Adding to your portfolio\\u2026",false);
+  function step(){
+    if(i>=rows.length){
+      msg("Added "+added+" of "+rows.length+" to your portfolio"+(existed?" \\u00b7 "+existed+" already there":"")+".",false);
+      return;
+    }
+    var it=rows[i++];
+    api("GET","/api/recents?id="+encodeURIComponent(it.recent_item_id)).then(function(rec){
+      return api("POST","/api/portfolio",{
+        payload:rec.payload,
+        snapshot:{low:it.value_low,likely:it.value_likely,high:it.value_high},
+        verifiedKey:""
+      });
+    }).then(function(d){
+      if(d&&d.existed)existed++;else added++;
+      msg("Adding to your portfolio\\u2026 "+(added+existed)+" of "+rows.length,false);
+      step();
+    }).catch(function(err){
+      msg("Stopped at "+it.address+": "+err.message+" ("+added+" added).",true);
+    });
+  }
+  step();
 }
 
 // The list a page load hands us, kept so renderJob() can re-render it: the
@@ -762,6 +808,8 @@ function init(opts){
   onList=opts.onList||null;
   onRunAgain=opts.onRunAgain||null;
   if(opts.max)MAX=opts.max;
+  var aa=$("bkAddAll");
+  if(aa)aa.addEventListener("click",function(e){e.preventDefault();addAllToPortfolio();});
   var c=$("bkCancel");
   if(c)c.addEventListener("click",function(){
     if(!job)return;
@@ -1133,8 +1181,23 @@ function start(boot){
   $("bulkFile").addEventListener("change",function(){
     var f=$("bulkFile").files&&$("bulkFile").files[0];if(!f)return;
     var fr=new FileReader();
-    fr.onload=function(){$("bulkText").value=String(fr.result||"");refreshCount();};
     fr.onerror=function(){BULKRUN.msg("That file could not be read.",true);};
+    // An Excel workbook goes to the server to be read (xlsx.js, first sheet)
+    // and comes back as CSV text into the same box, so the count, the cost
+    // line and every parse rule run exactly as they do on a paste.
+    if(/\\.xlsx$/i.test(f.name||"")){
+      fr.onload=function(){
+        BULKRUN.msg("Reading "+f.name+"\\u2026",false);
+        BULKRUN.api("POST","/api/bulk/inspect",{xlsx:String(fr.result||"")}).then(function(d){
+          $("bulkText").value=String(d.csv||"");
+          BULKRUN.msg("Read the first sheet of "+f.name+".",false);
+          refreshCount();
+        }).catch(function(e){BULKRUN.msg(e.message,true);});
+      };
+      fr.readAsDataURL(f);
+      return;
+    }
+    fr.onload=function(){$("bulkText").value=String(fr.result||"");refreshCount();};
     fr.readAsText(f);
   });
   refreshCount();

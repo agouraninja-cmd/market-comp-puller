@@ -202,11 +202,17 @@ function renderBulkPageBody(boot) {
         <h2>Bulk valuation</h2>
         <span class="sub" id="capNote"></span>
       </div>
-      <p class="lede">Paste a list of addresses — one per line — or upload a CSV with an
-        <code>address</code> column. Every address gets its own search and its own value range,
-        and each one lands on My&nbsp;Desk as a saved property.</p>
+      <!-- One address or a list, the same box (owner's call, 2026-09-04
+           evening): this page is the comp-report tool, and the single-property
+           form's Tools row is gone. A single address runs exactly as a row of
+           one and then OPENS its comp report — see singleJob in BULK_JS —
+           because a one-row table is a summary of a report nobody has read. -->
+      <p class="lede">Type one address, or paste a list — one per line — or upload a CSV with an
+        <code>address</code> column. Every address gets its own search and its own value range.
+        One address opens its full comp report when it finishes; a list lands as a portfolio,
+        each row linking to the report behind its number.</p>
 
-      <label for="bulkText">Addresses</label>
+      <label for="bulkText">Address, or a list of addresses</label>
       <textarea id="bulkText" spellcheck="false" placeholder="1201 W Idaho St, Boise, ID 83702
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
@@ -258,8 +264,15 @@ function renderBulkPageBody(boot) {
 
     <p class="foot">Every figure here is an automated estimate produced from comparable sales,
       not an appraisal, and each one carries the same caveats as the report behind it — open a
-      property on My&nbsp;Desk to see its comps and how the range was reached. Addresses with no
-      priced sale comps in the window are reported as such rather than valued at zero.</p>
+      row to see its comps and how the range was reached. Addresses with no
+      priced sale comps in the window are reported as such rather than valued at zero.
+      <!-- The one door left to the single-property form (owner's, 2026-09-04
+           evening). A bulk row has no column for an NOI, a cap rate, a
+           sales-only or leases-only focus or the per-type subject details,
+           and those inputs still live on the real #compForm at /run-report —
+           which index.html serves at that path and nothing else links. -->
+      Need an NOI, a cap rate, a sales-only or leases-only focus, or the property-detail fields?
+      <a href="/run-report">Use the single-property form</a>.</p>
   </div>
 </div>
 <script>${BULK_RUN_JS.replace(/<\/script>/gi, "<\\/script>")}
@@ -567,6 +580,12 @@ var BULKPAGE=(function(){
 var $=function(i){return document.getElementById(i);};
 var MAX=50,TYPES=[],parsedCount=0;
 var LEFT=null,DAILY=null;
+// The id of a ONE-address run started from this page load, or null. When it
+// finishes with a report, the page opens that report instead of leaving a
+// one-row table on screen (owner's, 2026-09-04: this page is the comp-report
+// tool). Scoped to runs THIS page started: an earlier single run re-opened
+// from the list below is being looked at as a row, not re-run, so it stays.
+var singleJob=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -585,7 +604,10 @@ function refreshCount(){
   var st=BULKRUN.state();
   var busy=Boolean(st.job&&st.job.status==="running");
   $("run").disabled=busy||parsedCount===0;
-  $("run").textContent=parsedCount?"Run "+parsedCount+" valuation"+(parsedCount===1?"":"s"):"Run valuations";
+  // One address is a report, not a "valuation of one": the button says what
+  // will actually happen, since a single run opens its report when it lands.
+  $("run").textContent=parsedCount===1?"Run the report"
+    :parsedCount?"Run "+parsedCount+" valuations":"Run valuations";
   // Said BEFORE the button, not after: a run is up to fifty billed searches
   // and half an hour, and the moment to know that is while deciding.
   // The daily ceiling is said BEFORE the list is too long, not only when the
@@ -599,10 +621,28 @@ function refreshCount(){
     ? (LEFT===0
         ? "You have valued "+DAILY+" addresses today — the daily limit. It resets at midnight UTC."
         : "Only "+LEFT+" left today (the daily limit is "+DAILY+"). Trim the list, or come back after midnight UTC.")
+    : parsedCount===1
+    ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
     : parsedCount
     ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
       " min. Addresses searched before are served from cache and finish instantly."
     : "";
+}
+
+// BULKRUN's onState hook: the cap copy above, plus the single-address rule.
+// A finished one-address run started here opens its report (the row's own
+// ?recent= door, user-scoped like every other read of it); a failed one
+// stays as a row with its reason, because a redirect to nothing would hide
+// the one line that says what went wrong.
+function onRunState(job,items){
+  refreshCount();
+  if(!singleJob||!job||job.id!==singleJob||job.status==="running")return;
+  singleJob=null;
+  var it=items&&items[0];
+  var id=it&&it.status==="done"&&it.recent_item_id;
+  if(!id)return;
+  BULKRUN.msg("Valued. Opening the report\\u2026",false);
+  location.href="/?recent="+encodeURIComponent(id);
 }
 
 // The per-run cap and the daily allowance in one line, because they answer
@@ -662,7 +702,11 @@ function run(){
     text:$("bulkText").value,type:$("bulkType").value,
     months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value
   }).then(function(d){
-    BULKRUN.msg("Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
+    var one=Boolean(d.job&&d.job.total===1);
+    singleJob=one?d.job.id:null;
+    BULKRUN.msg(one
+      ? "Running. The comp report opens here when it finishes; if you leave, the row below keeps its link."
+      : "Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
     BULKRUN.showNotes(d);
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){
@@ -701,7 +745,7 @@ function start(boot){
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
   $("capNote").textContent=capNoteText();
-  BULKRUN.init({max:MAX,onState:refreshCount,onList:loadList});
+  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)BULKRUN.poll(live.id);

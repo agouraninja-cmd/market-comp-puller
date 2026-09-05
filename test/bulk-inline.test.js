@@ -132,6 +132,36 @@ test("BULKRUN reads no form, so it cannot throw on the homepage", () => {
     "BULK_RUN_JS no longer reports state through the injected callback");
 });
 
+// One address is a report (owner's, 2026-09-04 evening): /bulk is the
+// comp-report tool now that the single-property form is in no nav, so a
+// one-address run started on the page opens its report instead of leaving a
+// one-row table. Scoped to runs THIS page started, guarded on a finished row
+// with a report behind it, and it never redirects a failure.
+test("a one-address run opens its report; a list, a failure, and an old run do not", () => {
+  const js = MOD.BULK_JS;
+  const runAt = js.indexOf("function run(){");
+  const run = js.slice(runAt, js.indexOf("function fillTypes", runAt));
+  assert.ok(run.includes("d.job.total===1"), "run() decides on the job's own total, not the pasted count");
+  assert.ok(run.includes("singleJob=one?d.job.id:null"), "only a one-address run is remembered");
+  const hookAt = js.indexOf("function onRunState(job,items){");
+  assert.ok(hookAt > -1, "the onState hook is gone");
+  const hook = js.slice(hookAt, js.indexOf("\n}", hookAt));
+  assert.ok(hook.includes("job.id!==singleJob"), "an earlier run re-opened from the list must not redirect");
+  assert.ok(hook.includes('job.status==="running"'), "no redirect while the job is still running");
+  assert.ok(hook.includes('it.status==="done"&&it.recent_item_id'), "a failed row stays on screen with its reason");
+  assert.ok(hook.includes('location.href="/?recent="+encodeURIComponent(id)'),
+    "the report opens through index.html's own user-scoped ?recent= door");
+  assert.ok(js.includes("BULKRUN.init({max:MAX,onState:onRunState,onList:loadList})"),
+    "the hook is what BULKRUN reports state through");
+  // The copy follows: the button and the lede say one address is a report.
+  const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
+  assert.match(page, /Type one address, or paste a list/);
+  assert.ok(js.includes('parsedCount===1?"Run the report"'), "one address is 'Run the report', not 'Run 1 valuation'");
+  // The single-property form's one remaining door, and the only /run-report
+  // link anywhere on the site.
+  assert.match(page, /<a href="\/run-report">Use the single-property form<\/a>/);
+});
+
 test("both browser modules compile, on both pages", () => {
   for (const name of ["BULK_RUN_JS", "BULK_JS"]) {
     assert.doesNotThrow(() => new vm.Script(MOD[name]), name + " does not parse");

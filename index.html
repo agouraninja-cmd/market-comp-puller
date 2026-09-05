@@ -2598,21 +2598,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
-        <!-- The comp finder's own URL (2026-09-04, owner's). This file HOLDS
-             the finder — it is the markup a few hundred lines below — so the
-             row points at a path the server maps straight back to this same
-             document (/run-report), which boots on the home stack instead of
-             the workspace. The row is what makes that reachable from inside
-             the app, where `/` is the workspace for anybody signed in.
-             BELOW Market explorer, never above: test/nav-parity.test.js
-             measures the source distance from the `navsec` label to
-             `<a href="/markets"` and a row inserted between them breaks the
-             one rule that keeps both nav authors emitting the same group.
-             Renders for every reader of this file, exactly as the 1031 row
-             below does and for the same reason: this file is one set of bytes
-             served to members and strangers alike, and the wall's signup card
-             is a better answer for a stranger than a missing link. -->
-        <a href="/run-report" class="hover:text-[#1A2433]">Run a report</a>
+        <!-- A "Run a report" row (/run-report) sat here for one day,
+             2026-09-04, and the owner took it out the same evening: Bulk
+             valuation is the comp-report tool (one address or fifty), and a
+             second row for the same act was two doors to one place. The
+             /run-report route still answers — bulk-page.js links it as the
+             full single-property form — but nothing in either nav points at
+             it. server.js's TOOL_LINKS carries the twin of this decision. -->
         <!-- A bar row for EVERY reader of this file since 2026-09-02.
              It was a bar row for a member and an Explore menu item for a
              stranger (owner's, 2026-08-30), toggled after paint. The menu half
@@ -2745,11 +2737,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                recent-searches deck came off the workspace, and Bulk valuation
                is the comp-report tool — one address or fifty, the same run.
                Until then this was a scroll-to shortcut ("Run a report ↓") to
-               the chamber at the foot of the page. Labelled by its
-               DESTINATION, never "Run a report": that phrase names /run-report
-               on every bar and in the rail (server.js's TOOL_LINKS), and one
-               label leading to two places is the drift that list exists to
-               prevent. A real link, not a button with a location.href handler,
+               the chamber at the foot of the page. It said "Bulk valuation →"
+               for the day /run-report was a Tools row, because "Run a report"
+               then named that row on every bar; that row is gone and the red
+               CTA on every server-rendered bar points at /bulk too, so the
+               phrase names one place again and this door can use it — the
+               same label as the CTA, for the same destination.
+               A real link, not a button with a location.href handler,
                so middle-click and Ctrl-click open it where the browser is
                told to. Red as of 2026-08-29, on the owner's call: it is the
                only control left on this row. Utility classes are the ones
@@ -2757,7 +2751,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                and a class that appears nowhere else in this file styles
                nothing. -->
           <a id="deskRunReport" href="/bulk"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Bulk valuation →</a>
+            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Run a report →</a>
           <!-- The photo pipeline's one entry, and all that is left of the
                profile cluster that used to sit here — circle, greeting, Add a
                photo / Remove.

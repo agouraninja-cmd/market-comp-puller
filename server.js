@@ -10840,16 +10840,17 @@ const NAV_LINKS = [
 // "Markets" in every footer. Two rows to one URL is the drift a single list
 // exists to prevent.
 //
-// "Run a report" joined it 2026-09-04 (owner's), and it is the entry that
-// changes what the other two mean: the comp finder used to live at `/` and
-// nowhere else, so "the thing this product does" had no URL of its own and
-// could only be reached by going home. It has one now (/run-report, the same
-// app forced to its home stack -- see the static handler), which is what lets
-// `/` become the workspace for a member without taking the form away from
-// anybody. It leads the list because it is the tool, and the other two are
-// the browse surfaces around it.
+// "Run a report" was in this list for one day (2026-09-04, PR #291) as
+// /run-report -- the comp finder's own URL, so `/` could become a member's
+// workspace without taking the form away from anybody. The owner took it
+// back out the same day: Bulk valuation is the comp-report tool now (one
+// address or fifty, the same run -- see bulk-page.js), so a second "run a
+// report" row was two doors to one act. The /run-report ROUTE still answers
+// (the static handler below), because bulk-page.js links it as the full
+// single-property form for the inputs a bulk row has no column for (NOI, a
+// cap rate, a sales-only or leases-only focus); it is just no longer in any
+// nav. The red CTA in marketBar points at /bulk for the same reason.
 const TOOL_LINKS = [
-  ["/run-report", "Run a report"],
   ["/markets", "Market explorer"],
   ["/1031-exchange", "1031 exchange guide"],
 ];
@@ -10973,10 +10974,10 @@ function nextMarketExample() {
 // CTA. It is a browse surface reached FROM the explorer, and it already
 // carries its own "value a property here" form lower down; the owner named
 // the explorer, not the pages under it.
-// /run-report is in the list for the plainest reason of all: it IS the
-// report form, so a button offering to take you there is a button that
-// does nothing.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building", "/run-report"]);
+// /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
+// the list for the plainest reason of all: a button offering to take you where
+// you already are is a button that does nothing.
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -11156,17 +11157,18 @@ const marketBar = (signedIn = false, current = "") =>
       // one nobody buys.
       `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk valuation</a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
-      // POINTS AT /run-report SINCE 2026-09-04, not at `/`. The old href was
-      // already the weaker half of a true statement: "/" opens the WORKSPACE
-      // for a member (2026-08-28), so the red button named after the product's
-      // one action delivered a member to a page headed Workspace and trusted
-      // the search desk at the top of it to be what they came for. Now that
-      // the form has a URL of its own the button can name its own
-      // destination, and "Run a report" means one place in this product
-      // instead of two. The reasoning it must NOT undo is the one above: this
-      // was never the way home and it is less so now, which is why Workspace
-      // stays a row on every bar that renders this.
-      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/run-report">Run a report</a>`)
+      // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
+      // valuation is the comp-report tool). It pointed at `/` until that
+      // morning — the weaker half of a true statement, since "/" opens the
+      // WORKSPACE for a member (2026-08-28) — and at /run-report for the day
+      // in between, while the finder had a URL of its own. That URL still
+      // answers but is in no nav, so "Run a report" means one place in this
+      // product: the bulk page, where one address is a report and a list is a
+      // portfolio. The reasoning it must NOT undo is the one above: this was
+      // never the way home, which is why Workspace stays a row on every bar
+      // that renders this. (/bulk is Pro-only; a free member gets its
+      // upgrade card, which is the honest answer for a paid tool.)
+      (CTA_FREE_PAGES.has(current) ? "" : `<a class="btn sm" href="/bulk">Run a report</a>`)
     : `<a href="/?auth=signin">Log in</a><a class="btn sm" href="/?auth=signup">Create account</a>`) +
   // The account circle hydrates after paint (ACCOUNT_NAV_JS) — the full menu
   // needs the member's email, which is a DB read this synchronous render must

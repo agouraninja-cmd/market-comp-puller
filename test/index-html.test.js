@@ -966,17 +966,20 @@ test("a pending landing address keeps a member on the home view, where the form 
   assert.match(block, /location\.pathname === "\/desk"\n/, "/desk itself is unconditional — asking for the desk is asking for the desk");
 });
 
-test("the workspace header's red door is a link to Bulk valuation, labelled by its destination", () => {
+test("the workspace header's red door is a link to Bulk valuation, labelled like the CTA", () => {
   const at = html.indexOf('id="deskRunReport"');
   assert.ok(at > -1, "the workspace header offers the door");
   const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
   assert.match(tag, /^<a\b/, "a real link, so middle-click and Ctrl-click work");
   assert.match(tag, /href="\/bulk"/, "it leads to Bulk valuation, the comp-report tool since 2026-09-04");
-  // "Run a report" names /run-report on every bar and in the rail
-  // (TOOL_LINKS); the same label leading somewhere else is the drift that
-  // list exists to prevent, so this door says where it goes.
+  // "Run a report" names /bulk everywhere now — the red CTA on every
+  // server-rendered bar points there and the /run-report Tools row is gone —
+  // so this door uses the same label for the same destination. One label,
+  // one place; the day it said "Bulk valuation →" was the day the phrase
+  // named a different row.
   const label = html.slice(html.indexOf(">", at) + 1, html.indexOf("</a>", at));
-  assert.equal(label.trim(), "Bulk valuation →");
+  assert.equal(label.trim(), "Run a report →");
+  assert.ok(!/<a href="\/run-report"/.test(html), "no nav row points at /run-report any more");
   assert.ok(!html.includes('deskRunReport").addEventListener'), "no click handler: the chamber it used to scroll to is off this view");
   // Red, on the owner's call (2026-08-29): it is the only control on that
   // row. The classes have to be ones the file already uses somewhere else --

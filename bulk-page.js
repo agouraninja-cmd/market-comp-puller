@@ -65,7 +65,7 @@ const BULK_RUN_CSS = `
 .bk-run .msg{font-size:13px;margin:12px 0 0;color:var(--ink,#1A2433)}
 .bk-run .msg.bad{color:var(--red-deep,#991B1B)}
 .bk-run .notes{margin:12px 0 0;padding:10px 12px;border:1px solid var(--line,#E4E2DA);border-radius:6px;
-  font-size:12.5px;color:var(--ink-mute,#68707E)}
+  font-size:12.5px;color:var(--ink,#1A2433)}
 .bk-run .notes ul{margin:6px 0 0;padding-left:18px}
 .bk-run .acts{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}
 .bk-run button.lnk,.bk-run a.lnk{background:none;border:0;padding:0;font:inherit;font-size:13px;
@@ -73,19 +73,19 @@ const BULK_RUN_CSS = `
 .bk-run .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;
   background:var(--line,#E4E2DA);border:1px solid var(--line,#E4E2DA);border-radius:6px;overflow:hidden;margin:0 0 16px}
 .bk-run .strip div{background:var(--paper,#FBFBF9);padding:10px 12px}
-.bk-run .strip .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute,#68707E)}
+.bk-run .strip .k{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433)}
 .bk-run .strip .v{font-size:17px;font-variant-numeric:tabular-nums;color:var(--ink,#1A2433)}
 .bk-run table{width:100%;border-collapse:collapse;font-size:13px;color:var(--ink,#1A2433)}
-.bk-run th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute,#68707E);
+.bk-run th{text-align:left;font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink,#1A2433);
   font-weight:500;padding:6px 8px;border-bottom:1px solid var(--ink,#1A2433)}
 .bk-run td{padding:7px 8px;border-bottom:1px solid var(--line,#E4E2DA);vertical-align:top}
 .bk-run td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .bk-run td a{color:var(--red,#B91C1C)}
 .bk-run .chip{display:inline-block;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;
-  padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink-mute,#68707E)}
+  padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
 .bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
 .bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
-.bk-run .sub{color:var(--ink-mute,#68707E);font-size:11.5px}
+.bk-run .sub{color:var(--ink,#1A2433);font-size:11.5px}
 .bk-run .runs{padding:0;margin:0}
 .bk-run .runs li{padding:9px 0;border-top:1px solid var(--line,#E4E2DA);list-style:none;
   display:flex;justify-content:space-between;gap:14px;align-items:baseline}
@@ -101,31 +101,36 @@ const BULK_RUN_CSS = `
 .bk-run input.szin:hover{border-color:var(--line,#E4E2DA)}
 .bk-run input.szin:focus{border-color:var(--red,#B91C1C);background:var(--paper,#FBFBF9);outline:none}
 .bk-run input.szin::placeholder{color:var(--red,#B91C1C);opacity:1}
-.bk-run input.szin[disabled]{color:var(--ink-mute,#68707E)}
+.bk-run input.szin[disabled]{color:var(--ink,#1A2433)}
 `;
 
 // The /bulk form's own styles — the paste box, the settings row, the gate.
 // index.html never receives these: it has its own form.
 const BULK_CSS = `
 .bulk{max-width:1100px}
-.bulk .lede{color:var(--ink-mute);font-size:13.5px;margin:0 0 18px;max-width:62ch}
+.bulk .lede{color:var(--ink);font-size:13.5px;margin:0 0 18px;max-width:62ch}
 .bulk label{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink-mute);margin:0 0 5px}
+  color:var(--ink);margin:0 0 5px}
 .bulk textarea,.bulk input[type=text],.bulk select{width:100%;padding:9px 10px;font:inherit;font-size:14px;
   color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px}
 .bulk textarea{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5}
 .bulk .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:14px 0}
 .bulk button.go{background:var(--red);color:#fff;border:0;border-radius:6px;padding:10px 18px;
   font:inherit;font-size:14px;font-weight:600;cursor:pointer}
-.bulk button.go[disabled]{opacity:.45;cursor:default}
-.bulk .cost{color:var(--ink-mute);font-size:12.5px}
+/* Never dimmed (owner's call, 2026-09-04): "no parts of the bulk valuation
+   dim". The button is solid red in every state; when it cannot run, the cost
+   line beside it says why, and an empty box answers a click with a message
+   (see run()) rather than with a control that looks switched off. The same
+   call is why every muted colour in this file is full ink. */
+.bulk button.go[disabled]{cursor:default}
+.bulk .cost{color:var(--ink);font-size:12.5px}
 .bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink-mute);font-size:12px;max-width:70ch}
+  color:var(--ink);font-size:12px;max-width:70ch}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
-  border-radius:4px;color:var(--ink-mute);text-decoration:none;vertical-align:1px}
+  border-radius:4px;color:var(--ink);text-decoration:none;vertical-align:1px}
 `;
 
 /**
@@ -202,11 +207,17 @@ function renderBulkPageBody(boot) {
         <h2>Bulk valuation</h2>
         <span class="sub" id="capNote"></span>
       </div>
-      <p class="lede">Paste a list of addresses — one per line — or upload a CSV with an
-        <code>address</code> column. Every address gets its own search and its own value range,
-        and each one lands on My&nbsp;Desk as a saved property.</p>
+      <!-- One address or a list, the same box (owner's call, 2026-09-04
+           evening): this page is the comp-report tool, and the single-property
+           form's Tools row is gone. A single address runs exactly as a row of
+           one and then OPENS its comp report — see singleJob in BULK_JS —
+           because a one-row table is a summary of a report nobody has read. -->
+      <p class="lede">Type one address, or paste a list — one per line — or upload a CSV with an
+        <code>address</code> column. Every address gets its own search and its own value range.
+        One address opens its full comp report when it finishes; a list lands as a portfolio,
+        each row linking to the report behind its number.</p>
 
-      <label for="bulkText">Addresses</label>
+      <label for="bulkText">Address, or a list of addresses</label>
       <textarea id="bulkText" spellcheck="false" placeholder="1201 W Idaho St, Boise, ID 83702
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
@@ -258,8 +269,15 @@ function renderBulkPageBody(boot) {
 
     <p class="foot">Every figure here is an automated estimate produced from comparable sales,
       not an appraisal, and each one carries the same caveats as the report behind it — open a
-      property on My&nbsp;Desk to see its comps and how the range was reached. Addresses with no
-      priced sale comps in the window are reported as such rather than valued at zero.</p>
+      row to see its comps and how the range was reached. Addresses with no
+      priced sale comps in the window are reported as such rather than valued at zero.
+      <!-- The one door left to the single-property form (owner's, 2026-09-04
+           evening). A bulk row has no column for an NOI, a cap rate, a
+           sales-only or leases-only focus or the per-type subject details,
+           and those inputs still live on the real #compForm at /run-report —
+           which index.html serves at that path and nothing else links. -->
+      Need an NOI, a cap rate, a sales-only or leases-only focus, or the property-detail fields?
+      <a href="/run-report">Use the single-property form</a>.</p>
   </div>
 </div>
 <script>${BULK_RUN_JS.replace(/<\/script>/gi, "<\\/script>")}
@@ -567,6 +585,12 @@ var BULKPAGE=(function(){
 var $=function(i){return document.getElementById(i);};
 var MAX=50,TYPES=[],parsedCount=0;
 var LEFT=null,DAILY=null;
+// The id of a ONE-address run started from this page load, or null. When it
+// finishes with a report, the page opens that report instead of leaving a
+// one-row table on screen (owner's, 2026-09-04: this page is the comp-report
+// tool). Scoped to runs THIS page started: an earlier single run re-opened
+// from the list below is being looked at as a row, not re-run, so it stays.
+var singleJob=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -584,8 +608,14 @@ function refreshCount(){
   // Buy-button rule — a control that can only fail is worse than none.
   var st=BULKRUN.state();
   var busy=Boolean(st.job&&st.job.status==="running");
-  $("run").disabled=busy||parsedCount===0;
-  $("run").textContent=parsedCount?"Run "+parsedCount+" valuation"+(parsedCount===1?"":"s"):"Run valuations";
+  // Not disabled on an empty box (owner's, 2026-09-04: nothing here is dim).
+  // run() answers an empty click with a message and the caret instead. Busy
+  // and over-cap still disable, with the cost line saying why.
+  $("run").disabled=busy;
+  // One address is a report, not a "valuation of one": the button says what
+  // will actually happen, since a single run opens its report when it lands.
+  $("run").textContent=parsedCount===1?"Run the report"
+    :parsedCount?"Run "+parsedCount+" valuations":"Run valuations";
   // Said BEFORE the button, not after: a run is up to fifty billed searches
   // and half an hour, and the moment to know that is while deciding.
   // The daily ceiling is said BEFORE the list is too long, not only when the
@@ -599,10 +629,28 @@ function refreshCount(){
     ? (LEFT===0
         ? "You have valued "+DAILY+" addresses today — the daily limit. It resets at midnight UTC."
         : "Only "+LEFT+" left today (the daily limit is "+DAILY+"). Trim the list, or come back after midnight UTC.")
+    : parsedCount===1
+    ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
     : parsedCount
     ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
       " min. Addresses searched before are served from cache and finish instantly."
     : "";
+}
+
+// BULKRUN's onState hook: the cap copy above, plus the single-address rule.
+// A finished one-address run started here opens its report (the row's own
+// ?recent= door, user-scoped like every other read of it); a failed one
+// stays as a row with its reason, because a redirect to nothing would hide
+// the one line that says what went wrong.
+function onRunState(job,items){
+  refreshCount();
+  if(!singleJob||!job||job.id!==singleJob||job.status==="running")return;
+  singleJob=null;
+  var it=items&&items[0];
+  var id=it&&it.status==="done"&&it.recent_item_id;
+  if(!id)return;
+  BULKRUN.msg("Valued. Opening the report\\u2026",false);
+  location.href="/?recent="+encodeURIComponent(id);
 }
 
 // The per-run cap and the daily allowance in one line, because they answer
@@ -656,13 +704,22 @@ function loadList(){
 }
 
 function run(){
+  if(parsedCount===0){
+    BULKRUN.msg("Type or paste at least one address first.",true);
+    $("bulkText").focus();
+    return;
+  }
   var btn=$("run");btn.disabled=true;
   BULKRUN.msg("Starting\\u2026",false);
   BULKRUN.api("POST","/api/bulk",{
     text:$("bulkText").value,type:$("bulkType").value,
     months:Number($("bulkMonths").value),note:$("bulkNote").value,label:$("bulkLabel").value
   }).then(function(d){
-    BULKRUN.msg("Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
+    var one=Boolean(d.job&&d.job.total===1);
+    singleJob=one?d.job.id:null;
+    BULKRUN.msg(one
+      ? "Running. The comp report opens here when it finishes; if you leave, the row below keeps its link."
+      : "Running. You can close this tab \\u2014 the valuations keep going and land on your workspace.",false);
     BULKRUN.showNotes(d);
     BULKRUN.showRun(d);BULKRUN.poll(d.job.id);
   }).catch(function(e){
@@ -701,7 +758,7 @@ function start(boot){
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
   $("capNote").textContent=capNoteText();
-  BULKRUN.init({max:MAX,onState:refreshCount,onList:loadList});
+  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)BULKRUN.poll(live.id);

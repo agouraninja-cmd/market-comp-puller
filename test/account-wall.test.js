@@ -172,18 +172,22 @@ test("the wall serves the landing page at the root", async (t) => {
       "/run-report is index.html at a second URL and must not be offered to a crawler");
   });
 
-  // The finder's URL is in the stranger's Tools menu on the pages that render
-  // one. index.html has no dropdown of its own, so this has to be asked of a
-  // server-rendered page rather than of the door above.
-  await t.test("a stranger finds Run a report in Tools, and only there", async () => {
+  // The finder's URL was a Tools row for one day and the owner took it out the
+  // same evening (2026-09-04): Bulk valuation is the comp-report tool, and a
+  // second "Run a report" door was two doors to one act. The route above
+  // stays (bulk-page.js links it as the full single-property form), but NO
+  // nav points at it — asked of a server-rendered page because index.html has
+  // no dropdown of its own, and of the whole nav rather than the menus alone
+  // so a row cannot come back either.
+  await t.test("Run a report is no longer a Tools entry; the door stays unadvertised", async () => {
     const html = await (await get("/markets")).text();
     const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
+    assert.ok(!/run-report/.test(nav),
+      "a /run-report link is back in the nav — Bulk valuation is the comp-report tool");
     const menus = (nav.match(/<div class="dd">[\s\S]*?<\/div>/g) || []).join("");
-    const rows = nav.replace(/<details[\s\S]*?<\/details>/g, "");
-    assert.match(menus, /<a href="\/run-report">Run a report<\/a>/,
-      "the stranger's Tools menu lost the finder");
-    assert.ok(!/run-report/.test(rows),
-      "Run a report is a menu item AND a row for a stranger -- one link, two places");
+    // [^>]* because on /markets itself the row carries class="on" aria-current.
+    assert.match(menus, /<a href="\/markets"[^>]*>Market explorer<\/a>/,
+      "the stranger's Tools menu still opens on Market explorer");
   });
 
   // This pair of assertions moved to /brokers-firms on 2026-09-02, when

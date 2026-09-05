@@ -4150,17 +4150,31 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     deck header (`#searchDeckHead`, deleted with it), and `#historyDeck`
     under that; the argument was that a member's home page must not lack an
     address field. Two things changed the answer: the finder got a URL of its
-    own the same day (`/run-report`, PR #291 — the rail's "Run a report" row
-    and the red CTA on every bar point there), and the owner wants the
+    own the same day (`/run-report`, PR #291), and the owner wants the
     workspace to be the firm's record with **Bulk valuation as the
     comp-report tool** — the workspace header's one red control,
-    `#deskRunReport`, is a plain `<a href="/bulk">` labelled "Bulk valuation
-    →" (never "Run a report", which names `/run-report` everywhere else; one
-    label to two places is the drift `TOOL_LINKS` exists to prevent). So
+    `#deskRunReport`, is a plain `<a href="/bulk">` labelled "Run a report
+    →", the same label and destination as the red CTA on every
+    server-rendered bar. **`/run-report` is in NO nav** (owner's call, the
+    same evening): it was a Tools row for one day, and a second "run a
+    report" door was two doors to one act. The route still answers, because
+    `bulk-page.js` links it once, from its foot, as the full single-property
+    form for the inputs a bulk row has no column for (NOI, cap rate, a
+    sales-only or leases-only focus, the per-type subject details) — carrying
+    those into the bulk job would need job-table columns and is not done.
+    On `/bulk`, one address is a report: the button reads "Run the report", a
+    one-address run started on the page opens `/?recent=<id>` the moment it
+    lands (`singleJob`/`onRunState` in `BULK_JS`; a failed one stays as a row
+    with its reason, and a single run re-opened from "Earlier runs" is never
+    redirected), and the market-explorer chamber that sat beside the single
+    form is deliberately not carried over — `/markets` is that page. The
+    footer's "Run a report" link still points at `/`, on purpose: the footer
+    is one set of bytes for everybody, and for a stranger `/` is the home
+    page's comp finder while `/bulk` would be a Pro gate. So
     `showDeskView()` HIDES `#searchSection` and `#historyDeck`; the history
     deck is revealed in exactly two places, `showHomeView()` and the boot
-    block's home-stack branch (so `/run-report` shows it under the finder,
-    and `/r/<id>` never does), and three seams hide it (desk,
+    block's home-stack branch (so the unadvertised `/run-report` shows it
+    under the finder, and `/r/<id>` never does), and three seams hide it (desk,
     `beginAssembly`, `renderResults`; `test/index-html.test.js` counts both
     lists). The form is not gone — it is the
     REAL `#compForm`, not a compact copy: one form, one set of ids, read by
@@ -4174,8 +4188,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     consuming it into a hidden form would lose it; the boot block only READS
     the key, the consumer below the auth bootstrap still clears it. Free
     members note: `/bulk` is Pro-only (`canBulkValue`), so for them the
-    workspace door answers with the upgrade page and `/run-report` in the
-    rail is the single-report door.
+    workspace door and the bar's CTA answer with the upgrade card; the
+    anonymous home page's comp finder and the wall's `/?auth=signup` door
+    are unchanged.
   - **A report yields the workspace** rather than rendering under it, at BOTH
     seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
     Without both, comps stream in below the firm shelf.

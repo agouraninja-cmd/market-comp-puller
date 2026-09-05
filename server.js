@@ -8888,6 +8888,38 @@ async function bulkListPayload(user, ent) {
   for (const j of await listBulkJobs(user.id)) {
     jobs.push(bulkJobRow(await reapStalledBulkJob(user.id, j)));
   }
+  // Each run's total for the Earlier-runs ledger (2026-09-04), from ONE
+  // grouped items read rather than a column on bulk_jobs: this list is read
+  // at boot and after a run finishes, never on the 4-second poll, so the
+  // "denormalize because we poll" argument 036 makes for done_count does not
+  // apply — and a stored sum would need a read-modify-write per row under
+  // BULK_CONCURRENCY plus a recompute in every later row mutation (a typed
+  // size, a retry), a drift risk forever for a query saved twice a session.
+  // The figure is BULK.summarize over the same rows the strip sums, so the
+  // ledger and the open run can never quote two totals for one job.
+  // Best-effort: a failed read leaves `summary` off and the ledger shows no
+  // figure, never a zero.
+  if (jobs.length) {
+    try {
+      const ids = jobs.map((j) => j.id);
+      const rows = await sbRequest("GET",
+        `bulk_job_items?user_id=eq.${encodeURIComponent(user.id)}` +
+        `&job_id=in.(${pgInList(ids)})&status=eq.done` +
+        `&select=job_id,status,value_low,value_likely,value_high` +
+        `&limit=${BULK_JOB_LIST_LIMIT * BULK.MAX_ADDRESSES}`);
+      const byJob = new Map();
+      for (const r of Array.isArray(rows) ? rows : []) {
+        if (!byJob.has(r.job_id)) byJob.set(r.job_id, []);
+        byJob.get(r.job_id).push(r);
+      }
+      for (const j of jobs) {
+        const s = BULK.summarize(byJob.get(j.id) || []);
+        j.summary = { valued: s.valued, low: s.low, likely: s.likely, high: s.high };
+      }
+    } catch (err) {
+      console.error("bulk list totals failed (ledger shows no figure):", err.message);
+    }
+  }
   // Best-effort: a failed count reports the full ceiling, matching the route's
   // own fail-open, so the page can never be more pessimistic than the gate.
   let leftToday = BULK_DAILY_ADDRESSES;
@@ -21027,6 +21059,33 @@ const server = http.createServer((req, res) =>
       })().catch((err) => {
         console.error("bulk export error:", err.message);
         sendJson(res, 500, { error: "Could not build that file." });
+      });
+      return;
+    }
+
+    // Rename a run (2026-09-04). The label is the member's own name for the
+    // receipt — free text, never shown publicly, 120 chars like the POST's.
+    // Empty clears it, and the page falls back to "<type> run" as it always
+    // did. User-scoped like every other write here.
+    if (req.method === "PATCH" && path === "/api/bulk") {
+      let body = "";
+      req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });
+      req.on("end", async () => {
+        try {
+          const opened = await openBulk();
+          if (!opened) return;
+          const { user } = opened;
+          const { id, label } = JSON.parse(body || "{}");
+          if (!isUuidish(String(id || ""))) return sendJson(res, 404, { error: "Not found." });
+          const job = await getBulkJob(user.id, String(id));
+          if (!job) return sendJson(res, 404, { error: "Not found." });
+          const labelOk = String(label == null ? "" : label).trim().slice(0, 120) || null;
+          await patchBulkJob(user.id, job.id, { label: labelOk });
+          return sendJson(res, 200, { job: bulkJobRow({ ...job, label: labelOk }) });
+        } catch (err) {
+          console.error("bulk PATCH error:", err.message);
+          sendJson(res, 400, { error: "Bad request." });
+        }
       });
       return;
     }

@@ -226,7 +226,7 @@ function renderBulkRunMarkup(opts) {
   <div class="deck hide" id="bkPastDeck">
     <div class="deckrule"><h2>Earlier runs</h2></div>
     <div style="overflow-x:auto"><table class="runs"><thead><tr><th>Run</th><th>Type &middot; lookback</th>
-      <th class="n">Addresses</th><th>Status</th><th class="n"></th></tr></thead>
+      <th class="n">Addresses</th><th class="n">Portfolio value</th><th>Status</th><th class="n"></th></tr></thead>
       <tbody id="bkPast"></tbody></table></div>
   </div>` : ""}`;
 }
@@ -430,7 +430,7 @@ var BULKRUN=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
 var MAX=50,job=null,items=[],timer=null,allJobs=[],summary=null;
-var onState=null,onList=null;
+var onState=null,onList=null,onRunAgain=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -624,21 +624,67 @@ function renderPast(){
   if(!rest.length){$("bkPastDeck").className="deck hide";return;}
   $("bkPastDeck").className="deck";
   // A ledger row per run: name and date, type and lookback, the address
-  // count, the status chip, and its CSV. No portfolio value here — the list
-  // read carries no totals, and a figure would mean one more query per run
-  // on every page load; clicking the run shows it in the strip above.
+  // count, the portfolio value (the list read's own BULK.summarize over the
+  // run's done rows, 2026-09-04 — the same arithmetic the strip shows, so the
+  // two cannot disagree; absent, not zero, when the read failed), the status
+  // chip, and its actions: CSV, Run again, Rename, Delete.
   $("bkPast").innerHTML=rest.map(function(j){
     var done=j.status==="done"||(j.status!=="running"&&j.done_count>=j.total&&j.total>0);
+    var s=j.summary;
+    var val=s&&s.valued>0
+      ? '<span style="font-weight:500">'+money(s.likely)+'</span><div class="sub">'+money(s.low)+" \\u2013 "+money(s.high)+
+        (s.valued<j.total?" \\u00b7 "+s.valued+" of "+j.total+" valued":"")+"</div>"
+      : '<span class="sub">\\u2014</span>';
+    var acts=[];
+    if(done||j.done_count>0)acts.push('<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>');
+    if(onRunAgain&&j.status!=="running")acts.push('<a href="#" data-again="'+esc(j.id)+'">Run again</a>');
+    acts.push('<a href="#" data-rename="'+esc(j.id)+'">Rename</a>');
+    if(j.status!=="running")acts.push('<a href="#" data-del="'+esc(j.id)+'">Delete</a>');
     return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
       '<div class="sub">'+esc(String(j.created_at||"").slice(0,10))+"</div></td>"+
       "<td>"+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months</td>"+
       '<td class="n">'+j.total+"</td>"+
+      '<td class="n">'+val+"</td>"+
       "<td>"+statusChip(j.status)+(j.status!=="running"&&j.done_count<j.total
         ?' <span class="sub">'+(j.total-j.done_count)+" not valued</span>":"")+"</td>"+
-      '<td class="n">'+(done||j.done_count>0
-        ?'<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>':"")+"</td></tr>";}).join("");
-  Array.prototype.forEach.call($("bkPast").querySelectorAll("a[data-job]"),function(a){
+      '<td class="n" style="white-space:nowrap">'+acts.join(" \\u00b7 ")+"</td></tr>";}).join("");
+  var past=$("bkPast");
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-job]"),function(a){
     a.addEventListener("click",function(e){e.preventDefault();poll(a.getAttribute("data-job"),true);});});
+  // Run again: the page's own handler (it fills the form), reached through
+  // the callback because this module knows no form exists.
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-again]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      api("GET","/api/bulk?id="+encodeURIComponent(a.getAttribute("data-again")))
+        .then(function(d){onRunAgain(d.job,d.items||[]);})
+        .catch(function(err){msg(err.message,true);});
+    });});
+  // Rename: the run's own name, never shown publicly. Empty clears it.
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-rename]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      var id=a.getAttribute("data-rename");
+      var cur=(allJobs.filter(function(j){return j.id===id;})[0]||{}).label||"";
+      var next=prompt("Name this run:",cur);
+      if(next===null)return;
+      api("PATCH","/api/bulk",{id:id,label:next}).then(function(){
+        if(job&&job.id===id){job.label=next.trim()||null;renderJob();}
+        if(onList)onList();
+      }).catch(function(err){msg(err.message,true);});
+    });});
+  // Delete: the receipt goes, the valuations stay (they are filed under
+  // recent searches, where they belong to the property, not to the run).
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-del]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      var id=a.getAttribute("data-del");
+      if(!confirm("Delete this run from the list? Its valuations stay in your recent searches."))return;
+      api("DELETE","/api/bulk?id="+encodeURIComponent(id)).then(function(){
+        if(job&&job.id===id){job=null;items=[];summary=null;renderJob();}
+        if(onList)onList();
+      }).catch(function(err){msg(err.message,true);});
+    });});
 }
 
 function api(method,url,body){
@@ -692,6 +738,7 @@ function init(opts){
   opts=opts||{};
   onState=opts.onState||null;
   onList=opts.onList||null;
+  onRunAgain=opts.onRunAgain||null;
   if(opts.max)MAX=opts.max;
   var c=$("bkCancel");
   if(c)c.addEventListener("click",function(){
@@ -980,6 +1027,32 @@ function run(){
   }).then(function(){refreshCount();});
 }
 
+// Run again (2026-09-04): refill the form from an earlier run — its
+// addresses, type, lookback, focus and market note — and scroll to it. It
+// does NOT start the run: re-running is the documented resume (finished rows
+// come from cache for free), but a run is still up to fifty billed searches
+// and the button is where that decision is made. The label is left blank so
+// the new run is not filed under the old name.
+function runAgain(j,its){
+  var text=(its||[]).slice().sort(function(a,b){return a.position-b.position;})
+    .map(function(it){return it.address;}).filter(Boolean).join("\\n");
+  var ta=$("bulkText");
+  ta.value=text;
+  var sel=$("bulkType");
+  if(j&&j.property_type&&Array.prototype.some.call(sel.options,function(o){return o.value===j.property_type;})){
+    sel.value=j.property_type;renderSubjectFields(sel.value);
+  }
+  var mo=$("bulkMonths");
+  if(j&&Array.prototype.some.call(mo.options,function(o){return o.value===String(j.months);}))mo.value=String(j.months);
+  $("bulkFocus").value=j&&j.tx_focus?j.tx_focus:"both";
+  $("bulkNote").value=(j&&j.note)||"";
+  $("bulkLabel").value="";
+  refreshCount();
+  BULKRUN.msg("Filled in from "+((j&&j.label)||"that run")+". Change anything, then run it.",false);
+  window.scrollTo({top:0,behavior:"smooth"});
+  ta.focus();
+}
+
 function fillTypes(){
   $("bulkType").innerHTML=TYPES.map(function(t){
     return '<option value="'+esc(t)+'">'+esc(t)+"</option>";}).join("");
@@ -1006,7 +1079,7 @@ function start(boot){
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
   renderCap();
-  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList});
+  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)BULKRUN.poll(live.id);

@@ -1422,13 +1422,72 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        this file already carries three scars from that. */
     .dk-addr { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 14px; color: var(--ink); }
     .dk-stmt tbody tr:not(.det):hover td { background: var(--wash); }
-    .dk-shelf-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
-    .dk-shelf-row:last-child { border-bottom: 0; }
-    .dk-shelf-meta { margin-left: auto; flex: 0 0 auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-    /* A second control on a shelf row keeps the meta's face but not its auto
-       margin — two auto margins on one row split the space and pull the
-       attribution off the right edge. */
-    .dk-shelf-meta.dk-shelf-act { margin-left: 0; }
+    /* ONE row family for every list on the workspace (2026-09-04, the owner's
+       pick from the Ledger canvas): the name on its own line, the meta UNDER
+       it in the quiet voice, actions as small words at the right. It replaced
+       two idioms — .db-row for buildings, conversations and contacts, and
+       .dk-shelf-row for the shelf — which drew the same building as a Georgia
+       address on one list and an underlined sans address on the next, and put
+       the meta 700px from the name at 10.5px. It is also the phone fix: a
+       nowrap meta beside a nowrap-ellipsis name left "4…" of an address at
+       390px, photographed on a seeded firm.
+       Rows stay FLAT — name, actions and meta are all direct children, and
+       the meta drops to its own line by flex ORDER, never a wrapper div —
+       because test/org-desk.test.js indexes a row's children by position.
+       .db-row stays for the deal board's figure rows: a column of counts keeps
+       its total inline. */
+    .dk-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--hair); }
+    .dk-row:last-child { border-bottom: 0; }
+    .dk-row-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; font-weight: 500; color: var(--ink); }
+    /* Addresses are plain ink until hovered, on every list and in the shares
+       table too: a page where every address, Remove, Discuss and Turn off
+       link is underlined reads as a list of links, not a record. */
+    a.dk-row-name, a.dk-addr { text-decoration: none; }
+    a.dk-row-name:hover, a.dk-addr:hover { text-decoration: underline; text-underline-offset: 2px; color: var(--ink); }
+    .dk-row-act { flex: 0 0 auto; font: inherit; font-size: 11.5px; color: var(--ink-3); background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; text-decoration: none; }
+    .dk-row-act:hover { color: var(--red); }
+    .dk-row-meta { flex-basis: 100%; order: 99; font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; margin-top: 2px; }
+    /* Workspace copy on tokens (they were hex utilities — the exact light
+       values of these tokens, so light mode does not move). */
+    .dk-copy { font-size: 12px; color: var(--ink-3); margin-top: 8px; }
+    .dk-empty { font-size: 13px; color: var(--ink-mute); margin-top: 8px; }
+    .dk-msg { font-size: 13px; color: var(--ink-2); margin-top: 8px; }
+    .dk-msg.bad { color: var(--red); }
+    .dk-more { display: inline-block; font-size: 12.5px; color: var(--ink); margin-top: 8px; text-decoration: none; }
+    .dk-more:hover { color: var(--red); }
+    summary.dk-more { display: list-item; cursor: pointer; }
+    /* The one control on a section rule that opens something — "+ Add by
+       address", "+ Add or import". */
+    .dk-toggle { font: inherit; font-size: 11.5px; color: var(--ink); white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; }
+    .dk-toggle:hover { color: var(--red); }
+    /* A fold under a section (the vault's dbox, drawn in this page's idiom):
+       the deal board's By market / Shared by month lists live behind one. */
+    .dk-fold { margin-top: 10px; border-top: 1px solid var(--hair); }
+    .dk-fold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 12.5px; color: var(--ink); }
+    .dk-fold > summary::-webkit-details-marker { display: none; }
+    .dk-fold > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); transform: rotate(-45deg) translateY(-1px); }
+    .dk-fold[open] > summary::before { transform: rotate(45deg) translateY(-2px); }
+    /* The firm strip (2026-09-04) — bulk-page.js's .cap, four cells wide,
+       with the vault's .strip as its other sibling: the same 10.5px label
+       over a Georgia figure. It is the workspace's opening statement, the
+       "firm-level strip" the 2026-09-01 comments left room for. Every cell
+       is a LINK to the section it counts. Critical dates go red only when
+       there is one — the one figure here somebody has to act on. */
+    .dk-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--edge); border-radius: 6px; background: var(--card); overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04); margin-top: 20px; }
+    .dk-scell { display: block; padding: 12px 16px; border-left: 1px solid var(--hair); color: var(--ink); min-width: 0; text-decoration: none; }
+    .dk-scell:first-child { border-left: 0; }
+    .dk-scell:hover { background: var(--wash); color: var(--ink); }
+    .dk-slab { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); font-weight: 600; margin-bottom: 4px; }
+    .dk-sfig { display: block; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 22px; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+    .dk-sfig small { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; letter-spacing: 0; font-weight: 400; }
+    .dk-sfig.due { color: var(--red); }
+    .dk-ssub { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 4px; line-height: 1.4; }
+    .dk-skel-strip { height: 74px; margin-top: 20px; }
+    @media (max-width: 640px) {
+      .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dk-scell:nth-child(3) { border-left: 0; }
+      .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
+    }
     .dk-person { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
     .dk-person:last-child { border-bottom: 0; }
     .dk-person .who { font-weight: 500; color: var(--ink); }
@@ -2777,15 +2836,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
       </div>
-      <!-- Says what the page actually holds. It read "Your recent searches and
-           tracked properties" from when that was the whole of it; the workspace
-           has since grown the firm shelf, the deal board, shares, the vault and
-           the report runner, so the old line described about a fifth of the
-           page it introduces. Rewritten again on 2026-09-02, once buildings,
-           conversations and contacts had joined the firm deck and the
-           portfolio had left for the Vault, and on 2026-09-04, when the
-           report runner left too — comp reports run from Bulk valuation. -->
-      <p class="text-sm text-[#5A6473] mt-3">Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from Bulk valuation.</p>
+      <!-- There is no subtitle under the header any more (2026-09-04). The
+           line here was rewritten four times as decks came and went, and by
+           the end it was a sentence about where things are NOT ("your own
+           book lives in the Vault; reports run from Bulk valuation") — the
+           navigation, restated in prose, above an empty form. The firm strip
+           inside #myDesk is the page's opening statement now, and the rail
+           says where the Vault and Bulk valuation are. -->
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -2794,12 +2851,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div id="checkoutNotice" class="hidden mt-4 rounded-lg border px-4 py-3 text-sm"></div>
 
       <!-- The desk-level reading strip and the attention line beside it went
-           with the portfolio on 2026-09-01 ("Three Spaces"). Every figure in
-           them was a portfolio figure -- combined value, the change between
-           checks, how many properties had gone a year unchecked -- and the
-           fourth cell was the watchlist's new-comp count. All of it reads on
-           /vault now, where the properties are. A firm-level strip belongs
-           here eventually; it is not this one with the labels changed. -->
+           with the portfolio on 2026-09-01 ("Three Spaces"); every figure in
+           them was a portfolio figure and all of it reads on /vault now. The
+           FIRM-level strip those comments said belonged here arrived on
+           2026-09-04 as #deskStrip, inside #myDesk below. -->
 
       <!-- Signed-out prompt for the account-backed areas -->
       <div id="deskSignIn" class="hidden mt-8 dk-card">
@@ -2833,11 +2888,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            reveal one section per fetch, ten fetches deep, which read as the
            page inserting parts. aria-hidden: it says nothing a reader needs. -->
       <div id="deskLoading" class="hidden dk-skel" aria-hidden="true">
+        <div class="skeleton dk-skel-strip"></div>
         <div class="dk-deck-h"><span class="skeleton dk-skel-lab"></span><span class="dk-deck-ln"></span></div>
         <div class="skeleton dk-skel-card"></div>
         <div class="skeleton dk-skel-card"></div>
       </div>
       <section id="myDesk" class="hidden mt-4">
+      <!-- The firm strip (2026-09-04): four figures a member glances at
+           before the decks — buildings on the board, reports on the shelf
+           this month, unread conversations, and lease dates due in the next
+           twelve months (the "needs attention" band CLAUDE.md recorded as not
+           built). Each cell is a link to the section it counts. It sits
+           OUTSIDE the decks on purpose: refreshDeckVisibility() hides a deck
+           whose sections are all hidden, and a strip inside #deckFirm would
+           hold that deck open for a member in no firm. drawFirmStrip() is its
+           one writer; it draws from the state the section renderers already
+           parsed plus one read of its own (the leases), and a figure whose
+           read failed shows a dash rather than a zero — the shelf's own rule,
+           that "we could not read it" must never look like "there is none". -->
+      <div id="deskStrip" class="hidden dk-strip" aria-label="Your firm at a glance">
+        <a class="dk-scell" href="#deskBuildings"><span class="dk-slab">Buildings</span><span id="stripBuildingsFig" class="dk-sfig"></span><span id="stripBuildingsSub" class="dk-ssub"></span></a>
+        <a class="dk-scell" href="#deskSharedWithFirm"><span class="dk-slab">Shelf</span><span id="stripShelfFig" class="dk-sfig"></span><span id="stripShelfSub" class="dk-ssub"></span></a>
+        <a class="dk-scell" href="/messages"><span class="dk-slab">Unread</span><span id="stripUnreadFig" class="dk-sfig"></span><span id="stripUnreadSub" class="dk-ssub"></span></a>
+        <a class="dk-scell" href="/buildings"><span class="dk-slab">Critical dates</span><span id="stripCriticalFig" class="dk-sfig"></span><span id="stripCriticalSub" class="dk-ssub"></span></a>
+      </div>
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
       <!-- The firm's buildings (migration 046; Three Spaces, slice 3). FIRST in
@@ -2847,13 +2921,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            row, a shelf row, or this form — never derived from an upload;
            see org-buildings.js's header and migration 046 for why that is
            the privacy wall and not a convenience. -->
+      <!-- The add form ships CLOSED behind the one control on the rule
+           (2026-09-04), and setBuildingAddOpen() is its single writer — the
+           Contacts form's rule, which this section never got: a firm opening
+           its Workspace was handed an empty address box and a second red
+           button 250px under "Run a report", above the record it came for. -->
       <div id="deskBuildings" class="hidden mt-4">
         <div class="dk-rule">
           <span class="rd-lab">Buildings</span>
-          <span id="buildingsStats" class="dk-note"></span>
+          <div class="flex items-center gap-3">
+            <span id="buildingsStats" class="dk-note"></span>
+            <button type="button" id="buildingAddToggle" aria-expanded="false" aria-controls="buildingAddForm" class="dk-toggle">+ Add by address</button>
+          </div>
         </div>
-        <p class="text-xs text-[#68707E] mt-2">The buildings your firm works on, shared with everyone in it. Add one from a property below, from the shelf, or by address.</p>
-        <form id="buildingAddForm" class="mt-3 flex flex-wrap items-end gap-2">
+        <p class="dk-copy">The buildings your firm works on, shared with everyone in it. Add one from a report on the shelf, from a property in your Vault, or by address.</p>
+        <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
             <span class="rd-lab">Address</span>
             <input id="buildingAddress" type="text" required maxlength="200" placeholder="100 Main St, Boise, ID"
@@ -2875,14 +2957,14 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </label>
           <button type="submit" class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5">Add</button>
         </form>
-        <p id="buildingMsg" class="hidden text-sm mt-2"></p>
-        <p id="buildingsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
-        <div id="buildingRows" class="mt-3"></div>
+        <p id="buildingMsg" class="hidden dk-msg"></p>
+        <p id="buildingsTruncated" class="hidden dk-copy">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
+        <div id="buildingRows" class="mt-1"></div>
         <!-- The owner's overflow rule (slice 4): past eight buildings — and
              only past eight — one control to the whole list. Under it the
              control does not render at all, the Buy-button rule. -->
-        <p id="buildingsMore" class="hidden text-sm mt-2"><a id="buildingsMoreLink" href="/buildings" class="underline hover:text-[#1A2433]"></a></p>
-        <p id="buildingsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No buildings yet. Add one from a property below, from a report on the shelf, or type an address above.</p>
+        <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
+        <p id="buildingsEmpty" class="hidden dk-empty">No buildings yet. Add one from a report on the shelf, from a property in your Vault, or with + Add by address above.</p>
       </div>
       <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
            first, from the same list /messages reads. Rendered only for a
@@ -2892,9 +2974,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Conversations</span>
           <span id="deskThreadsStats" class="dk-note"></span>
         </div>
-        <div id="deskThreadRows" class="mt-2"></div>
-        <p id="deskThreadsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
-        <p class="text-xs text-[#68707E] mt-2"><a href="/messages" class="underline">All conversations</a></p>
+        <div id="deskThreadRows" class="mt-1"></div>
+        <p id="deskThreadsEmpty" class="hidden dk-empty">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
+        <p><a href="/messages" class="dk-more">All conversations →</a></p>
       </div>
 
       <!-- Reports a colleague shared with the whole firm (migration 030).
@@ -2908,7 +2990,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span>
           <span id="firmShelfStats" class="dk-note"></span>
         </div>
-        <p id="deskSharedWithFirmEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nobody at your firm has shared a report yet. Open a report and use Share → My firm.</p>
+        <p id="deskSharedWithFirmEmpty" class="hidden dk-empty">Nobody at your firm has shared a report yet. Open a report and use Share → My firm.</p>
         <!-- The search box appears only once there is enough on the shelf to
              need one. A filter over three rows is furniture. -->
         <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
@@ -2930,9 +3012,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </select>
           <span id="firmShelfCount" class="text-xs text-[#68707E]"></span>
         </div>
-        <p id="firmShelfTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
-        <div id="sharedWithFirmRows" class="mt-2 space-y-1.5"></div>
-        <p id="firmShelfNoMatch" class="hidden text-sm text-[#5A6473] mt-2">Nothing on the shelf matches that.</p>
+        <p id="firmShelfTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports. Older ones are not in this list.</p>
+        <div id="sharedWithFirmRows" class="mt-1"></div>
+        <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
       </div>
 
       <!-- The deal board (O3): who shared what to the firm, by member, by
@@ -2949,8 +3031,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              who is closing what; this counts what people SHARE, and a reader
              who assumes otherwise would be reading a wrong number that looks
              exactly like a right one. -->
-        <p class="text-xs text-[#68707E] mt-2">Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.</p>
-        <p id="dealBoardTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
+        <p class="dk-copy" title="Counts what your firm's members shared with the firm: reports on the shelf, and comps opted in from a vault. It is not a record of closings: a member's own book and their won and lost log stay private to them.">Counts what members shared with the firm — not a record of closings.</p>
+        <p id="dealBoardTruncated" class="hidden dk-copy">Showing the most recent 1,000 reports and 1,000 comps. Older shares are not counted here.</p>
 
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
           <span class="rd-lab">Most shared</span>
@@ -2960,26 +3042,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
         </div>
         <div id="dealBoardLeaders" class="mt-1"></div>
-        <p id="dealBoardLeadersEmpty" class="hidden text-sm text-[#5A6473] mt-2">Nothing has been shared with the firm in this window yet.</p>
+        <p id="dealBoardLeadersEmpty" class="hidden dk-empty">Nothing has been shared with the firm in this window yet.</p>
 
-        <div class="mt-6 grid sm:grid-cols-2 gap-6">
-          <div>
-            <div class="dk-rule"><span class="rd-lab">By market</span></div>
-            <div id="dealBoardMarkets" class="mt-1"></div>
+        <!-- By market and by month live behind a fold (2026-09-04): they are
+             the same counts read two more ways, and open on the page they
+             made the board the one section with an interior two-column grid,
+             thin at any real firm's size. The leaderboard above stays out. -->
+        <details id="dealBoardMore" class="dk-fold">
+          <summary>By market and month</summary>
+          <div class="grid sm:grid-cols-2 gap-6">
+            <div>
+              <div class="dk-rule"><span class="rd-lab">By market</span></div>
+              <div id="dealBoardMarkets" class="mt-1"></div>
+            </div>
+            <div>
+              <!-- "Shared by month", not "By month": the only date both sources
+                   have in common is when something reached the firm, so the
+                   heading names it rather than leaving a reader to assume it
+                   means when the deal closed. -->
+              <div class="dk-rule"><span class="rd-lab">Shared by month</span></div>
+              <div id="dealBoardMonths" class="mt-1"></div>
+              <!-- Declared rather than folded in silently: a share whose date we
+                   cannot read still counts in the totals above, so the months
+                   below them would otherwise quietly sum to less. -->
+              <p id="dealBoardUndated" class="hidden dk-copy"></p>
+            </div>
           </div>
-          <div>
-            <!-- "Shared by month", not "By month": the only date both sources
-                 have in common is when something reached the firm, so the
-                 heading names it rather than leaving a reader to assume it
-                 means when the deal closed. -->
-            <div class="dk-rule"><span class="rd-lab">Shared by month</span></div>
-            <div id="dealBoardMonths" class="mt-1"></div>
-            <!-- Declared rather than folded in silently: a share whose date we
-                 cannot read still counts in the totals above, so the months
-                 below them would otherwise quietly sum to less. -->
-            <p id="dealBoardUndated" class="hidden text-xs text-[#68707E] mt-1.5"></p>
-          </div>
-        </div>
+        </details>
       </div>
 
       <!-- The firm's own contacts (039). Typed or imported, NEVER collected:
@@ -3005,10 +3094,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="flex items-center gap-3">
             <span id="contactsStats" class="dk-note"></span>
             <button type="button" id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"
-              class="text-xs text-[#68707E] hover:text-[#374253] underline decoration-[#D8D4C9] whitespace-nowrap">+ Add or import</button>
+              class="dk-toggle">+ Add or import</button>
           </div>
         </div>
-        <p class="text-xs text-[#68707E] mt-2">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
+        <p class="dk-copy">Your firm's own list, shared with everyone in it. Type them in or import a spreadsheet — nothing here is ever filled in from CompNinja enquiries.</p>
 
         <form id="contactAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
@@ -3037,11 +3126,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <input id="contactCsvFile" type="file" class="hidden"
             accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
         </form>
-        <p id="contactMsg" class="hidden text-sm mt-2"></p>
-        <p id="contactsTruncated" class="hidden text-xs text-[#68707E] mt-1.5">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
+        <p id="contactMsg" class="hidden dk-msg"></p>
+        <p id="contactsTruncated" class="hidden dk-copy">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
-        <div id="contactRows" class="mt-3"></div>
-        <p id="contactsEmpty" class="hidden text-sm text-[#5A6473] mt-2">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
+        <div id="contactRows" class="mt-1"></div>
+        <p id="contactsEmpty" class="hidden dk-empty">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
       </div><!-- /deckFirm -->
 
@@ -3079,7 +3168,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Shared reports</span>
           <span id="deskSharesStats" class="dk-note"></span>
         </div>
-        <p id="deskSharesEmpty" class="hidden text-sm text-[#5A6473] mt-2">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
+        <p id="deskSharesEmpty" class="hidden dk-empty">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
         <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
       </div>
 
@@ -13808,6 +13897,8 @@ async function renderMyDesk() {
       // and addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
+      // The strip sums the sections above; it goes with them.
+      document.getElementById("deskStrip").classList.add("hidden");
     };
     if (!currentUser) { hideAll(); return; }
     // The membership read starts NOW, beside the shares read, not after it
@@ -13851,6 +13942,9 @@ async function renderMyDesk() {
     // the shelf and the contacts wait for the buildings — and for nothing
     // else. The board reads myFirm() too, which is why it sits here and not
     // beside the shares above.
+    // The strip's own read (the leases) starts here, beside the batch, and is
+    // joined after it — the strip draws from what the batch parsed.
+    const critical = readFirmCritical();
     const buildings = renderBuildings();
     await Promise.all([
       buildings,
@@ -13858,6 +13952,7 @@ async function renderMyDesk() {
       renderDealBoard(),
       buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
     ]);
+    drawFirmStrip(await critical);
   }
 
   // ---------------------------------------------------------------------------
@@ -13976,16 +14071,17 @@ async function renderMyDesk() {
       filtering ? `${shown.length} of ${firmShelfItems.length}` : "";
 
     shown.forEach((r) => {
-      // Hairline rows (2026-08-29): the shelf is the firm's record, so it
-      // reads like the ledger tables around it — Georgia address left, quiet
-      // attribution pushed right. Addresses stay textContent: user-authored.
+      // One row family (.dk-row, 2026-09-04): the shelf is the firm's record,
+      // so its rows read like the buildings above it — Georgia address on its
+      // own line, attribution under it, Discuss at the right. Addresses stay
+      // textContent: user-authored.
       const row = document.createElement("div");
-      row.className = "dk-shelf-row";
+      row.className = "dk-row";
       const addr = document.createElement("a");
       addr.href = r.url;
       addr.target = "_blank";
       addr.rel = "noopener noreferrer";
-      addr.className = "dk-addr hover:text-[#B91C1C] underline";
+      addr.className = "dk-row-name dk-addr";
       addr.textContent = r.address;
       row.appendChild(addr);
       // Attribution is the point of a shelf: a row nobody can be asked about
@@ -13994,19 +14090,17 @@ async function renderMyDesk() {
       const bits = [r.type, r.mine ? "shared by you" : `shared by ${r.sharedBy}`];
       if (r.createdAt) bits.push(fmtShareDate(r.createdAt));
       const meta = document.createElement("span");
-      meta.className = "dk-shelf-meta";
+      meta.className = "dk-row-meta";
       meta.textContent = bits.filter(Boolean).join(" · ");
       row.appendChild(meta);
       // A shelf row names a building somebody at the firm has already valued;
       // the same door the property rows carry, so nobody retypes it.
       const door = buildingDoor({ address: r.address, propertyType: r.type });
-      // Same face as the meta, but WITHOUT its auto margin: two auto margins on
-      // one row split the space and pull the attribution off the right edge.
-      if (door) { door.className = "dk-shelf-meta dk-shelf-act underline"; row.appendChild(door); }
+      if (door) row.appendChild(door);
       // "Discuss" (slice 8): the report travels as its LINK, so report-access.js
       // stays the sole decider of who may read it. Never a copy of the payload.
       const talk = document.createElement("a");
-      talk.className = "dk-shelf-meta dk-shelf-act underline";
+      talk.className = "dk-row-act";
       talk.textContent = "Discuss";
       talk.href = "/messages?say=" + encodeURIComponent("About the " + (r.type ? r.type + " " : "") + "report on " + r.address + ": " + r.url);
       row.appendChild(talk);
@@ -14195,8 +14289,23 @@ async function renderMyDesk() {
   function buildingMsg(text, bad) {
     const el = document.getElementById("buildingMsg");
     el.textContent = text || "";
-    el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
+    el.className = "dk-msg" + (bad ? " bad" : "") + (text ? "" : " hidden");
   }
+
+  // The add form's one writer (2026-09-04) — setContactAddOpen's twin, for
+  // its reason: the form ships closed behind "+ Add by address" on the rule.
+  let buildingAddOpen = false;
+  function setBuildingAddOpen(open) {
+    buildingAddOpen = Boolean(open);
+    document.getElementById("buildingAddForm").classList.toggle("hidden", !buildingAddOpen);
+    const btn = document.getElementById("buildingAddToggle");
+    btn.setAttribute("aria-expanded", buildingAddOpen ? "true" : "false");
+    btn.textContent = buildingAddOpen ? "Close" : "+ Add by address";
+  }
+  document.getElementById("buildingAddToggle").addEventListener("click", () => {
+    setBuildingAddOpen(!buildingAddOpen);
+    if (buildingAddOpen) document.getElementById("buildingAddress").focus();
+  });
 
   // Is this address already on the board? Verified key first (one building
   // typed two ways), then the exact address. Both are read off the SERVER's
@@ -14252,18 +14361,21 @@ async function renderMyDesk() {
         `See all ${firmBuildings.length} buildings \u2192`;
     }
     firmBuildings.slice(0, COLLAPSE_AT).forEach((b) => {
+      // One row family (.dk-row): the address on its own line in Georgia, the
+      // meta under it, Remove at the right. FLAT — name, meta and the button
+      // are direct children; test/org-desk.test.js counts the buttons.
       const row = document.createElement("div");
-      row.className = "db-row";
+      row.className = "dk-row";
       // The address is the door to the building's sheet (slice 5). An <a>,
       // so a middle click and a copied link both work; textContent throughout,
       // since every address here is text a person typed.
       const name = document.createElement("a");
-      name.className = "db-name underline hover:text-[#1A2433]";
+      name.className = "dk-row-name dk-addr";
       name.href = "/building/" + encodeURIComponent(b.id);
       name.textContent = b.address;
       row.appendChild(name);
       const meta = document.createElement("span");
-      meta.className = "db-split";
+      meta.className = "dk-row-meta";
       const bits = [];
       if (b.type) bits.push(b.type);
       if (b.sizeSqft) bits.push(`${Number(b.sizeSqft).toLocaleString("en-US")} SF`);
@@ -14274,7 +14386,7 @@ async function renderMyDesk() {
       row.appendChild(meta);
       const del = document.createElement("button");
       del.type = "button";
-      del.className = "db-total text-xs underline";
+      del.className = "dk-row-act";
       del.textContent = "Remove";
       del.addEventListener("click", async () => {
         // No confirm: removing a building from the index is undone by adding
@@ -14303,16 +14415,20 @@ async function renderMyDesk() {
   // reads, takes the first five, unread first. Presentation only — the
   // unread rule lives server-side in messaging.js's unreadCount.
   const DESK_THREADS = 5;
+  // What the last read found, for the firm strip's Unread cell: null until a
+  // read lands, and null again after a failed one, so the strip shows a dash
+  // rather than a zero for a list it could not read.
+  let deskThreadsStat = null;
   async function renderDeskThreads() {
     const box = document.getElementById("deskThreads");
     const firm = currentUser ? myFirm() : null;
-    if (!firm) { box.classList.add("hidden"); return; }
+    if (!firm) { box.classList.add("hidden"); deskThreadsStat = null; return; }
     let data = null;
     try {
       const res = await bootFetch("/api/messages", { credentials: "same-origin" });
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
-    if (!data) { box.classList.add("hidden"); return; }
+    if (!data) { box.classList.add("hidden"); deskThreadsStat = null; return; }
     box.classList.remove("hidden");
     const threads = (Array.isArray(data.threads) ? data.threads : []).slice().sort((a, b) => {
       const ua = a.unread ? 1 : 0, ub = b.unread ? 1 : 0;
@@ -14320,6 +14436,7 @@ async function renderMyDesk() {
       return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
     });
     const unread = threads.filter((t) => t.unread).length;
+    deskThreadsStat = { total: threads.length, unread };
     document.getElementById("deskThreadsStats").textContent = threads.length
       ? `${threads.length} ${threads.length === 1 ? "conversation" : "conversations"}` + (unread ? ` \u00b7 ${unread} unread` : "")
       : "";
@@ -14327,21 +14444,115 @@ async function renderMyDesk() {
     const wrap = document.getElementById("deskThreadRows");
     wrap.innerHTML = "";
     threads.slice(0, DESK_THREADS).forEach((t) => {
+      // .dk-row, flat: the test reads rows[0].children[0].href.
       const row = document.createElement("div");
-      row.className = "db-row";
+      row.className = "dk-row";
       const name = document.createElement("a");
-      name.className = "db-name underline hover:text-[#1A2433]" + (t.unread ? " font-medium" : "");
+      name.className = "dk-row-name";
       name.href = "/messages?t=" + encodeURIComponent(t.id);
       // textContent throughout: labels are people's names and previews are
       // what somebody typed.
       name.textContent = (t.unread ? "\u25cf " : "") + t.label;
       row.appendChild(name);
       const meta = document.createElement("span");
-      meta.className = "db-split";
+      meta.className = "dk-row-meta";
       meta.textContent = [t.preview, t.unread ? `${t.unread} new` : ""].filter(Boolean).join(" \u00b7 ");
       row.appendChild(meta);
       wrap.appendChild(row);
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // The firm strip (2026-09-04) \u2014 four figures above the decks.
+  //
+  // It draws from state the section renderers have ALREADY parsed
+  // (firmBuildings, firmShelfItems, deskThreadsStat) and makes exactly one
+  // read of its own, the firm's leases, for the critical-dates cell. Never a
+  // second read of a route a section reads: bootFetch hands each embedded
+  // DESK_BOOT answer to its FIRST caller and deletes it, so a strip that
+  // re-fetched /api/org/buildings would cost a live round trip on every
+  // member's first paint. The leases read starts beside the firm batch in
+  // renderShares and is joined after it, so the strip lands in the same paint.
+  //
+  // A figure whose read failed is a dash, never a zero: "we could not read
+  // the leases" and "no lease is due" must not look the same (the shelf's
+  // own rule, restated for a number).
+  // ---------------------------------------------------------------------------
+  async function readFirmCritical() {
+    const firm = currentUser ? myFirm() : null;
+    if (!firm) return null;
+    try {
+      const res = await bootFetch(`/api/org/leases?id=${encodeURIComponent(firm.id)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return Array.isArray(data.critical) ? data.critical : null;
+    } catch (_) { return null; }
+  }
+
+  function drawFirmStrip(critical) {
+    const strip = document.getElementById("deskStrip");
+    const firm = currentUser ? myFirm() : null;
+    // No firm, or the firm's index could not be read: no strip. The buildings
+    // section hides on a failed read, and a strip of dashes says nothing.
+    if (!firm || document.getElementById("deskBuildings").classList.contains("hidden")) {
+      strip.classList.add("hidden");
+      return;
+    }
+    const cell = (key, fig, sub, due) => {
+      const f = document.getElementById(`strip${key}Fig`);
+      f.textContent = "";
+      if (fig && typeof fig === "object") {
+        f.appendChild(document.createTextNode(fig.n + " "));
+        const s = document.createElement("small");
+        s.textContent = fig.unit;
+        f.appendChild(s);
+      } else {
+        f.textContent = fig;
+      }
+      f.classList.toggle("due", Boolean(due));
+      document.getElementById(`strip${key}Sub`).textContent = sub;
+    };
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+    // Buildings: the count, then the server's own summary line minus the
+    // count it leads with \u2014 one source for the figure and the section head.
+    const bSum = String(document.getElementById("buildingsStats").textContent || "")
+      .replace(/^\s*[\d,]+\s+buildings?\s*(\u00b7\s*)?/, "");
+    cell("Buildings", String(firmBuildings.length), firmBuildings.length ? (bSum || "on the firm's board") : "Nothing on the board yet");
+
+    // Shelf: reports shared with the firm this calendar month, over the whole.
+    const shelfHidden = document.getElementById("deskSharedWithFirm").classList.contains("hidden");
+    if (shelfHidden) cell("Shelf", "\u2014", "Couldn't read the shelf");
+    else {
+      const now = new Date();
+      const thisMonth = firmShelfItems.filter((i) => {
+        const d = new Date(i.createdAt || "");
+        return !isNaN(d) && d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+      }).length;
+      const markets = new Set(firmShelfItems.map((i) => i.market).filter(Boolean)).size;
+      cell("Shelf", { n: String(thisMonth), unit: "this month" },
+        firmShelfItems.length
+          ? plural(firmShelfItems.length, "report", "reports") + (markets ? ` \u00b7 ${plural(markets, "market", "markets")}` : "")
+          : "Nothing shared yet");
+    }
+
+    // Unread: what renderDeskThreads found, or a dash when it found nothing.
+    if (!deskThreadsStat) cell("Unread", "\u2014", "Couldn't read conversations");
+    else cell("Unread", String(deskThreadsStat.unread),
+      deskThreadsStat.total ? `of ${plural(deskThreadsStat.total, "conversation", "conversations")}` : "No conversations yet");
+
+    // Critical dates: the next twelve months, soonest named. Red when there
+    // is one \u2014 the one figure here somebody has to act on.
+    if (!Array.isArray(critical)) cell("Critical", "\u2014", "Couldn't read leases");
+    else if (!critical.length) cell("Critical", "0", "Nothing due in the next 12 months");
+    else {
+      const c = critical[0];
+      const who = c.tenant || c.address || "A lease";
+      const what = c.kind === "notice" ? "notice" : "expiry";
+      const when = c.days === 0 ? "today" : c.days === 1 ? "tomorrow" : `in ${c.days} days`;
+      cell("Critical", String(critical.length), `${who} \u00b7 ${what} ${when}`, true);
+    }
+    strip.classList.remove("hidden");
   }
 
   async function addBuildingToFirm(input) {
@@ -14382,7 +14593,7 @@ async function renderMyDesk() {
     if (!currentUser || !address) return null;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "text-[#5A6473] hover:text-[#1A2433] underline mr-2 hidden";
+    btn.className = "dk-row-act hidden";
     btn.textContent = "Add to firm";
     btn._key = { address, verifiedKey };
     btn._done = false;
@@ -14455,7 +14666,7 @@ async function renderMyDesk() {
   function contactsMsg(text, bad) {
     const el = document.getElementById("contactMsg");
     el.textContent = text || "";
-    el.className = "text-sm mt-2 " + (bad ? "text-[#B91C1C]" : "text-[#4C5665]") + (text ? "" : " hidden");
+    el.className = "dk-msg" + (bad ? " bad" : "") + (text ? "" : " hidden");
   }
 
   // The fold's open state survives a re-render — renderHistory's rule: a
@@ -14480,16 +14691,18 @@ async function renderMyDesk() {
   });
 
   function contactRow(c, firm) {
+    // .dk-row, flat: the building door below must stay a direct child — the
+    // test filters row.children for it.
     const row = document.createElement("div");
-    row.className = "db-row";
+    row.className = "dk-row";
     const name = document.createElement("span");
-    name.className = "db-name";
+    name.className = "dk-row-name";
     // textContent throughout: every one of these is text a person typed.
     name.textContent = c.name;
     row.appendChild(name);
 
     const meta = document.createElement("span");
-    meta.className = "db-split";
+    meta.className = "dk-row-meta";
     const bits = [];
     if (c.company) bits.push(c.company);
     if (c.email) bits.push(c.email);
@@ -14505,14 +14718,14 @@ async function renderMyDesk() {
     const at = c.buildingId ? firmBuildings.find((b) => String(b.id) === String(c.buildingId)) : null;
     if (at) {
       const where = document.createElement("a");
-      where.className = "db-split underline mr-2";
+      where.className = "dk-row-act";
       where.href = "/building/" + encodeURIComponent(at.id);
       where.textContent = "at " + at.address;
       row.appendChild(where);
     }
 
     const talk = document.createElement("a");
-    talk.className = "db-total text-xs underline mr-2";
+    talk.className = "dk-row-act";
     talk.textContent = "Discuss";
     talk.title = "Start a conversation about this contact — by name, never their address";
     talk.href = contactDiscussHref(c);
@@ -14520,7 +14733,7 @@ async function renderMyDesk() {
 
     const del = document.createElement("button");
     del.type = "button";
-    del.className = "db-total text-xs underline";
+    del.className = "dk-row-act";
     del.textContent = "Remove";
     del.addEventListener("click", async () => {
       // No confirm: a contact is four fields somebody can retype, unlike a
@@ -14588,7 +14801,7 @@ async function renderMyDesk() {
     more.open = contactsExpanded;   // a re-render must not collapse it again
     more.addEventListener("toggle", () => { contactsExpanded = more.open; });
     const summary = document.createElement("summary");
-    summary.className = "py-2 text-xs font-medium text-[#5A6473] hover:text-[#1A2433]";
+    summary.className = "dk-more";
     summary.textContent = `Show ${rows.length - COLLAPSE_AT} more`;
     const rest = document.createElement("div");
     rows.slice(COLLAPSE_AT).forEach((c) => rest.appendChild(contactRow(c, firm)));
@@ -15245,7 +15458,7 @@ async function renderMyDesk() {
       addr.href = r.url;
       addr.target = "_blank";
       addr.rel = "noopener noreferrer";
-      addr.className = "dk-addr hover:text-[#B91C1C] underline";
+      addr.className = "dk-addr";
       addr.textContent = r.address;
       td.appendChild(addr);
     }
@@ -15277,7 +15490,7 @@ async function renderMyDesk() {
     open.href = r.url;
     open.target = "_blank";
     open.rel = "noopener noreferrer";
-    open.className = "text-xs text-[#5A6473] hover:text-[#1A2433] underline";
+    open.className = "dk-row-act";
     open.textContent = "Open";
     tdActs.appendChild(open);
     tr.appendChild(tdActs);
@@ -15394,7 +15607,7 @@ async function renderMyDesk() {
       if (invited) {
         const editBtn = document.createElement("button");
         editBtn.type = "button";
-        editBtn.className = "text-xs text-[#5A6473] hover:text-[#1A2433] underline";
+        editBtn.className = "dk-row-act";
         editBtn.textContent = "People";
         editBtn.addEventListener("click", () => { showDet(); editWrap.classList.toggle("hidden"); });
         actions.appendChild(editBtn);
@@ -15414,7 +15627,7 @@ async function renderMyDesk() {
       if (hubCreationAllowed()) {
         const hubBtn = document.createElement("button");
         hubBtn.type = "button";
-        hubBtn.className = "text-xs text-[#5A6473] hover:text-[#1A2433] underline";
+        hubBtn.className = "dk-row-act";
         hubBtn.textContent = "Start a hub";
         hubBtn.addEventListener("click", async () => {
           rowErr.classList.add("hidden");
@@ -15620,7 +15833,7 @@ async function renderMyDesk() {
       // rooms have listed there since #275. The token door at /hub/<id> is
       // untouched for the emailed link.
       link.href = "/messages?x=" + encodeURIComponent(h.id);
-      link.className = "font-medium text-[#1A2433] hover:text-[#B91C1C] underline";
+      link.className = "dk-row-name";
       // textContent, never innerHTML — a hub title is typed by the broker who
       // created it, so it is user-authored text like an address or an email.
       link.textContent = h.title || h.subjectAddress || "Comp hub";

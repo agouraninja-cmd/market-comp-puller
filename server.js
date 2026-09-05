@@ -9632,6 +9632,9 @@ const DESK_BOOT_URLS = [
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
   `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+  // The firm strip's critical-dates cell (2026-09-04) — the one read the
+  // workspace makes that no section below it already makes.
+  `/api/org/leases?id=${id}`,
 ];
 async function deskBootPayload(req) {
   if (!parseCookies(req)[SESSION_COOKIE]) return null;

@@ -1631,10 +1631,52 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   seams that change the view; `test/index-html.test.js` counts them. **Since
   2026-09-04 it is off the workspace altogether, with the chamber** — see the
   `GET /` bullet below: `showHomeView` is its one reveal. Contacts keeps its place — after the deal board, last in the deck since Membership & settings moved into the account menu’s Firm & branding panel on 2026-09-03 —
-  and Buildings stays first. Recorded for later, not built: a firm-level
-  "needs attention" band (lease critical dates + unread conversations —
-  `GET /api/org/leases` already returns `critical`) and a `/firm/contacts`
-  page for the fold's "See all".
+  and Buildings stays first. Recorded for later, not built: a `/firm/contacts`
+  page for the fold's "See all". (The firm-level "needs attention" band that
+  sat in this sentence shipped on 2026-09-04 as the strip below.)
+  **The Ledger pass (2026-09-04; owner's pick from a two-direction design
+  canvas, "match /bulk and /vault").** Photographed populated with a seeded
+  firm — `test/helpers/fake-supabase.js` behind a CDP capture with a
+  `cn_session` cookie, since `scripts/shot.js` cannot sign in — the page had
+  no opening statement (a subtitle about where things are NOT, then an empty
+  address form), the same building drawn as a Georgia address on the shelf
+  and an underlined sans one in Buildings, meta 700px from its name at
+  10.5px, every address and action underlined, and building rows collapsing
+  to "4…" at 390px. Five things changed, all in index.html and all
+  test-pinned (`test/org-desk.test.js`, `test/index-html.test.js`,
+  `test/desk-boot*.test.js`):
+  - **`#deskStrip`** — four Georgia figures on a bordered card (bulk-page.js's
+    `.cap` idiom) as the first child of `#myDesk`: buildings on the board,
+    shelf reports this month, unread conversations, and lease dates due in
+    the next twelve months (red only when there is one; the soonest named).
+    Each cell links to its section. `drawFirmStrip()` is its one writer and
+    draws from state the section renderers ALREADY parsed (`firmBuildings`,
+    `firmShelfItems`, `deskThreadsStat`) plus exactly one read of its own —
+    `readFirmCritical()` on `/api/org/leases`, now in `DESK_BOOT_ORG_URLS`.
+    Never a second read of a section's route: `bootFetch` hands each embedded
+    answer to its FIRST caller and deletes it, so a re-read would cost a live
+    round trip on every first paint. The read starts beside the firm batch in
+    `renderShares` and is joined AFTER the pinned `Promise.all` literal, which
+    is untouched, so the strip lands in the one paint. A figure whose read
+    failed is a dash, never a zero; no firm or a failed buildings read hides
+    the strip whole. It sits OUTSIDE the decks so `refreshDeckVisibility`
+    cannot be held open by it.
+  - **One row family, `.dk-row`** (name line, `.dk-row-meta` under it by flex
+    ORDER, `.dk-row-act` words at the right) for buildings, conversations,
+    the shelf and contacts; `.dk-shelf-row` is retired and `.db-row` stays for
+    the deal board's figure rows only. Rows are FLAT — `org-desk` indexes a
+    row's children by position — and their TEXT is byte-identical.
+  - **Addresses are plain ink until hovered** (`a.dk-addr`, `.dk-row-name`),
+    everywhere including the shares table; actions are never underlined.
+  - **The Buildings add form ships CLOSED** behind `#buildingAddToggle`,
+    `setBuildingAddOpen` its single writer — the Contacts rule, which this
+    section never got. The deal board's By market / Shared by month sit
+    under `<details id="dealBoardMore" class="dk-fold">` and its explainer is
+    one sentence with the full caveat in `title`.
+  - **The subtitle is gone**; workspace copy moved off hex utilities onto
+    `.dk-copy`/`.dk-empty`/`.dk-msg` (token colours — the hexes were those
+    tokens' exact light values, so light mode did not move).
+  The rail's 224px sidebar and the phone bar are unchanged.
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

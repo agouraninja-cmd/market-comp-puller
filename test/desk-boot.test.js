@@ -81,7 +81,7 @@ test("every URL the server embeds is one the page asks for through bootFetch, an
   // The firm-scoped six, built with the same encodeURIComponent on both sides.
   const orgList = server.match(/const DESK_BOOT_ORG_URLS = \(id\) => \[([\s\S]*?)\];/);
   assert.ok(orgList);
-  for (const seg of ["members", "buildings", "board", "shelf", "contacts"]) {
+  for (const seg of ["members", "buildings", "board", "shelf", "contacts", "leases"]) {
     assert.ok(orgList[1].includes(`/api/org/${seg}?id=\${id}`), `server embeds /api/org/${seg}`);
     assert.ok(html.includes(`bootFetch(\`/api/org/${seg}?id=\${encodeURIComponent(firm.id)}\`)`),
       `index.html reads /api/org/${seg} through bootFetch with the same key shape`);

@@ -119,6 +119,23 @@ test("the injected block is self-sufficient: its own CSS, with fallbacks", () =>
     "the inline run view does not ship hidden");
 });
 
+// "Add valued rows to portfolio" (2026-09-04) lives in the SHARED run view,
+// so both surfaces carry it and the single-source tests above stay true. It is
+// an explicit act behind a confirm, and it walks the one sanctioned door.
+test("adding valued rows to the portfolio is explicit, confirmed, and goes through /api/portfolio", () => {
+  const js = MOD.BULK_RUN_JS;
+  assert.ok(js.includes('id="bkAddAll"') || MOD.renderBulkRunMarkup({ past: true }).includes('id="bkAddAll"'));
+  assert.ok(MOD.renderBulkInlineBlock().includes('id="bkAddAll"'), "the inline block carries the same link");
+  const at = js.indexOf("function addAllToPortfolio(){");
+  assert.ok(at > -1);
+  const fn = js.slice(at, at + 1800);
+  assert.ok(fn.includes("if(!confirm("), "never without a confirm — a portfolio is what you own");
+  assert.ok(fn.includes('api("GET","/api/recents?id="'), "the stored recent is the payload");
+  assert.ok(fn.includes('api("POST","/api/portfolio",{'), "the ordinary portfolio door, so the cap and the match key apply");
+  assert.ok(fn.includes("if(d&&d.existed)existed++"), "a property already in the book is counted, not duplicated");
+  assert.ok(!/POST","\/api\/bulk/.test(fn), "no bulk route writes to the portfolio");
+});
+
 test("BULKRUN reads no form, so it cannot throw on the homepage", () => {
   // The bug this prevents: renderJob() used to call refreshCount(), which
   // dereferences $("bulkText") and $("run") unguarded. Fine on /bulk; a thrown

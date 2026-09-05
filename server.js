@@ -20820,6 +20820,41 @@ const server = http.createServer((req, res) =>
     //
     // IT UPDATES BOTH PLACES. The bulk row and the desk property disagreeing
     // about what a building is worth is worse than either being wrong alone.
+    // Read an Excel workbook into the paste box (2026-09-04). Its own route
+    // rather than an `xlsx` field on POST /api/bulk, because the form's rule
+    // is that the count and the wall clock are said BEFORE the button — and
+    // that count, the cost line and the one-address subject rule all run on
+    // #bulkText. So this hands back CSV TEXT (the vault inspect route's own
+    // pattern: xlsxGridFromBase64 → VAULT.gridToCsv) and every existing path
+    // — parseAddressList, the count, the POST — is untouched. First sheet
+    // only, 1 MB, typed so a percent-styled cap-rate cell arrives as "6.25%".
+    // Nothing is stored.
+    if (req.method === "POST" && path === "/api/bulk/inspect") {
+      let body = "";
+      let tooBig = false;
+      req.on("data", (c) => { body += c; if (body.length > 1.6e6 && !tooBig) { tooBig = true; req.destroy(); } });
+      req.on("end", async () => {
+        try {
+          if (tooBig) return;
+          const opened = await openBulk();
+          if (!opened) return;
+          if (rateLimited("bulkinspect:" + clientIp(req), 30)) {
+            return sendJson(res, 429, { error: "Too many attempts. Please wait a moment." });
+          }
+          const { xlsx } = JSON.parse(body || "{}");
+          if (typeof xlsx !== "string" || !xlsx) return sendJson(res, 400, { error: "Send the workbook as base64 in `xlsx`." });
+          const got = xlsxGridFromBase64(xlsx, MAX_CONTACTS_XLSX_BYTES, { typed: true });
+          if (!got.ok) return sendJson(res, got.status, { error: got.error });
+          const csv = VAULT.gridToCsv(got.grid);
+          return sendJson(res, 200, { csv, rows: Math.max(0, got.grid.length - 1) });
+        } catch (err) {
+          console.error("bulk inspect error:", err.message);
+          sendJson(res, 400, { error: "That spreadsheet could not be read. Saving it as CSV will work." });
+        }
+      });
+      return;
+    }
+
     if (req.method === "POST" && path === "/api/bulk/item/size") {
       let body = "";
       req.on("data", (c) => { body += c; if (body.length > 4096) req.destroy(); });

@@ -366,7 +366,8 @@ test("reading a finished run", async (t) => {
     const r = await fetch(srv.base + "/api/bulk/export.csv?id=" + JOB_ID, as(PAT));
     assert.equal(r.status, 200);
     assert.match(r.headers.get("content-type") || "", /text\/csv/);
-    assert.match(r.headers.get("content-disposition") || "", /compninja-bulk-2026-08-20\.csv/);
+    // The run's label rides the filename as a slug (2026-09-04), before the date.
+    assert.match(r.headers.get("content-disposition") || "", /compninja-bulk-q3-review-2026-08-20\.csv/);
     const csv = await r.text();
     assert.match(csv, /automated estimates, not appraisals/);
     assert.match(csv, /1 of 2 valued/);

@@ -8802,7 +8802,27 @@ function bulkItemRow(it) {
     // Kept so a run already on somebody's screen keeps its working link.
     portfolio_item_id: it.portfolio_item_id || null,
     finished_at: it.finished_at || null,
+    // The row's own inputs (051), for the CSV. Allowlisted field by field —
+    // never the raw jsonb — so a key the parser was never taught cannot reach
+    // a file through storage.
+    subject: bulkSubjectRow(it.subject),
   };
+}
+
+function bulkSubjectRow(s) {
+  if (!s || typeof s !== "object") return null;
+  const out = {};
+  if (Number(s.asking) > 0) out.asking = Number(s.asking);
+  if (Number(s.noi) > 0) out.noi = Number(s.noi);
+  if (Number(s.capRate) > 0) out.capRate = Number(s.capRate);
+  if (s.details && typeof s.details === "object" && !Array.isArray(s.details)) {
+    const d = {};
+    for (const [k, v] of Object.entries(s.details)) {
+      if (/^[a-z_]{1,40}$/.test(k) && v != null && String(v).trim()) d[k] = String(v).slice(0, 40);
+    }
+    if (Object.keys(d).length) out.details = d;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function listBulkJobs(userId) {
@@ -21022,13 +21042,20 @@ const server = http.createServer((req, res) =>
         if (!job) return sendJson(res, 404, { error: "Not found." });
         const items = await listBulkItems(user.id, id);
         const stamp = String(job.created_at || "").slice(0, 10);
+        // The run's name in the filename, so a folder of downloads is not
+        // twelve files called compninja-bulk-2026-09-04.csv. Slugged to
+        // [a-z0-9-], 40 chars, because it is going inside a quoted header.
+        const slug = String(job.label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
         res.writeHead(200, {
           "content-type": "text/csv; charset=utf-8",
-          "content-disposition": `attachment; filename="compninja-bulk-${stamp}.csv"`,
+          "content-disposition": `attachment; filename="compninja-bulk-${slug ? slug + "-" : ""}${stamp}.csv"`,
           "cache-control": "no-store",
           "x-robots-tag": "noindex, nofollow",
         });
-        res.end(BULK.exportCsv(job, items.map(bulkItemRow)));
+        // The type's detail keys become columns after the classic sixteen
+        // (bulk.js's EXPORT_SUBJECT_COLUMNS note); the file says its focus too.
+        const spec = TYPE_COMP_FIELDS[job.property_type];
+        res.end(BULK.exportCsv(job, items.map(bulkItemRow), { detailKeys: spec ? spec.fields : [] }));
       })().catch((err) => {
         console.error("bulk export error:", err.message);
         sendJson(res, 500, { error: "Could not build that file." });

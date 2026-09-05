@@ -3202,6 +3202,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   run), **Rename** (`PATCH /api/bulk {id, label}` — 120 chars, empty clears,
   user-scoped, in the ladder test) and **Delete** (the existing route, with a
   confirm that says the valuations stay).
+  **The CSV carries those inputs too** (same evening): `exportCsv(job, items,
+  { detailKeys })` APPENDS `asking_price`, `noi`, `cap_rate`, the type's detail
+  keys and `tx_focus` after the classic sixteen columns, which stay
+  byte-identical along with the totals row's positions (both pinned in
+  `test/bulk.test.js`) — a header-keyed reader sees new columns, a positional
+  one sees nothing move. `bulkItemRow` surfaces `subject` field by field
+  (`bulkSubjectRow`), never the raw jsonb, and the export route passes the
+  type's `TYPE_COMP_FIELDS` keys. The filename carries the run's label as a
+  slug (`compninja-bulk-q3-review-2026-09-04.csv`).
   Routes: `GET|PATCH|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`

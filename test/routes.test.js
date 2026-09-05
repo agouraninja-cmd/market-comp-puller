@@ -1560,6 +1560,7 @@ test("bare environment", async (t) => {
       ["GET",    "/api/bulk/export.csv?id=00000000-0000-0000-0000-000000000000"],
       ["DELETE", "/api/bulk?id=00000000-0000-0000-0000-000000000000"],
       ["POST",   "/api/bulk/item/retry"],
+      ["PATCH",  "/api/bulk"],
     ];
     for (const [method, p] of routes) {
       const r = await fetch(srv.base + p, {

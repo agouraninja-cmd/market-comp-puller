@@ -1,6 +1,18 @@
 [
   {
     "date": "2026-09-04",
+    "type": "improvement",
+    "title": "Earlier runs shows each run's portfolio value, and a run can be renamed, deleted or run again",
+    "details": "Second of the four bulk follow-ons the owner picked. The Earlier-runs ledger now carries each run's portfolio value and range from ONE grouped items read in the list payload (BULK.summarize over the run's done rows — the same arithmetic the open run's strip uses, so the two cannot disagree; absent, never zero, when the read fails), rather than a denormalized column that would need a read-modify-write per row and a recompute on every later row mutation. Each row gains Run again (refills the form from the run's addresses, type, lookback, focus and note — it does not start the run; the button is where fifty billed searches are decided), Rename (PATCH /api/bulk, 120 chars, empty clears, user-scoped) and Delete (the existing DELETE, now wired from the page, with a confirm saying the valuations stay in recent searches). PATCH joined the 401→403→503 ladder test."
+  },
+  {
+    "date": "2026-09-04",
+    "type": "improvement",
+    "title": "The bulk CSV carries every input a row ran with, and is named after the run",
+    "details": "First of the four bulk follow-ons the owner picked. The downloaded CSV now appends, after the classic sixteen columns (which stay byte-identical, as does the totals row), asking_price, noi, cap_rate, the type's own detail keys (clear_height, units, …) and tx_focus on every row — the inputs migration 051 added the same day, which the file had not caught up with. bulkItemRow surfaces the row's subject field by field (never the raw jsonb). The filename carries the run's name: compninja-bulk-q3-portfolio-review-2026-09-04.csv."
+  },
+  {
+    "date": "2026-09-04",
     "type": "feature",
     "title": "A failed bulk row can be retried alone",
     "details": "Third of the four bulk follow-ons the owner picked. POST /api/bulk/item/retry re-runs ONE failed address into the same row of the same job — never a one-row job, which would leave the old row failed forever and list two runs for one list. Guards run before anything is written, in order: only a row whose search FAILED (a done-but-unvalued row would come back from cache; its fix is a longer lookback, a new run), one live job per member, the daily allowance must leave one, the provider key must be present. Then the row goes back to queued with its created_at bumped to now — which is what makes the retry count as today's attempted address with no schema change — the job goes back to running with done_count minus one, and runBulkJob works the single item with a doneBefore baseline so the job's counters come out whole. Ordinary cache, not fresh: a failed row wrote no cache entry, and cache makes an accidental double retry free. A Retry link appears on failed rows once the run has stopped, with a confirm that says it is one new search. Proved end to end against the fail-once stub: one more search, the row valued and filed, done_count back to total, no duplicate recent."

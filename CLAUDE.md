@@ -3188,7 +3188,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   still starts before 051 has run, while a run that uses them 400s at
   PostgREST into "Could not start that run" — migrate first. Not done: a
   per-address property type (one type per job, as 036 argues).
-  Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
+  **The Earlier-runs ledger carries each run's value (same evening)** from
+  ONE grouped `bulk_job_items` read in `bulkListPayload` (`job_id=in.(…)`,
+  `status=eq.done`, `BULK.summarize` per job → `summary`), deliberately NOT a
+  denormalized column on `bulk_jobs`: the list is read at boot and after a
+  run, never on the 4-second poll, so 036's "denormalize because we poll"
+  argument for `done_count` does not apply, and a stored sum would need a
+  read-modify-write per row under `BULK_CONCURRENCY` plus a recompute on every
+  later row mutation (a typed size, a retry). A failed read leaves `summary`
+  off and the ledger shows a dash, never a zero. Each ledger row has **Run
+  again** (`onRunAgain`, injected into `BULKRUN.init` because the shared run
+  view must not know a form exists; it REFILLS the form and does not start the
+  run), **Rename** (`PATCH /api/bulk {id, label}` — 120 chars, empty clears,
+  user-scoped, in the ladder test) and **Delete** (the existing route, with a
+  confirm that says the valuations stay).
+  Routes: `GET|PATCH|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
   catches the three drifting). Every finished row is also upserted into

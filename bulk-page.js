@@ -85,11 +85,15 @@ const BULK_RUN_CSS = `
   padding:1px 7px;border:1px solid var(--line,#E4E2DA);border-radius:99px;color:var(--ink,#1A2433)}
 .bk-run .chip.run{border-color:var(--red,#B91C1C);color:var(--red,#B91C1C)}
 .bk-run .chip.bad{border-color:var(--red-deep,#991B1B);color:var(--red-deep,#991B1B)}
+/* A finished row earns the site's green (the ok-* tokens, theme.js), so a
+   table of done rows reads as done at a glance rather than as a column of
+   identical grey pills. */
+.bk-run .chip.ok{border-color:var(--ok-rule,#BFE5D2);background:var(--ok-bg,#E7F5EE);color:var(--ok-text,#06603A)}
+.bk-run .strip .v{font-family:Georgia,'Times New Roman',serif;font-weight:500;letter-spacing:-.02em;font-size:22px}
 .bk-run .sub{color:var(--ink,#1A2433);font-size:11.5px}
-.bk-run .runs{padding:0;margin:0}
-.bk-run .runs li{padding:9px 0;border-top:1px solid var(--line,#E4E2DA);list-style:none;
-  display:flex;justify-content:space-between;gap:14px;align-items:baseline}
-.bk-run .runs li:first-child{border-top:0}
+/* Earlier runs is a ledger (2026-09-04 evening): a table with the same
+   headers as the rows table above it, not a list of links. */
+.bk-run .runs td a{font-weight:500}
 .bk-run .hide{display:none}
 /* The size cell is an input rather than a button-then-field, because a bulk
    run's usual gap IS the size and one click should not stand between a member
@@ -106,31 +110,74 @@ const BULK_RUN_CSS = `
 
 // The /bulk form's own styles — the paste box, the settings row, the gate.
 // index.html never receives these: it has its own form.
+// The desk (owner's pick, 2026-09-04 evening, from the "ready to run" board of
+// the design canvas): the report form's own chamber anatomy, restated here in
+// plain CSS because this page never gets index.html's rd-* rules. One bordered
+// card — a head row, the address box as the largest text on the form, four
+// settings on one hairline row, and an actions footer on the wash with the
+// cost said beside the button. Above it, a two-cell reading strip (the vault's
+// .strip idiom) says the allowance as figures rather than a footnote.
 const BULK_CSS = `
 .bulk{max-width:1100px}
-.bulk .lede{color:var(--ink);font-size:13.5px;margin:0 0 18px;max-width:62ch}
-.bulk label{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
-  color:var(--ink);margin:0 0 5px}
-.bulk textarea,.bulk input[type=text],.bulk select{width:100%;padding:9px 10px;font:inherit;font-size:14px;
-  color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px}
-.bulk textarea{min-height:150px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.5}
-.bulk .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:14px 0}
-.bulk button.go{background:var(--red);color:#fff;border:0;border-radius:6px;padding:10px 18px;
-  font:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.bulk .lede{color:var(--ink);font-size:14px;line-height:1.55;margin:6px 0 0;max-width:62ch}
+.bulk .top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.bulk .top h1{margin:0}
+/* The two-cell strip. Serif figures, like every headline number on the site. */
+.bulk .cap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border:1px solid var(--edge);
+  border-radius:6px;background:var(--card);overflow:hidden;width:300px;flex:0 0 300px;
+  box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.bulk .cap div{padding:12px 16px}
+.bulk .cap div+div{border-left:1px solid var(--hair)}
+.bulk .cap .k{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink);font-weight:600;margin-bottom:4px}
+.bulk .cap .v{display:block;font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:22px;
+  line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ink)}
+/* The chamber. */
+.bulk .desk{margin-top:28px;border:1px solid var(--edge);border-radius:6px;background:var(--card);
+  box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px -18px rgba(15,23,42,.25);display:flex;flex-direction:column}
+.bulk .dhead{padding:11px 16px;border-bottom:1px solid var(--hair);display:flex;align-items:center;
+  justify-content:space-between;gap:16px}
+.bulk .dlab{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink);font-weight:600;line-height:1.5}
+.bulk .count{font-size:12.5px;color:var(--ink)}
+.bulk .addr{padding:14px 16px 12px;display:flex;flex-direction:column;gap:6px}
+.bulk label{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink);font-weight:600;margin:0 0 2px}
+.bulk label .opt{font-weight:400;letter-spacing:0;text-transform:none}
+/* Borderless fields: the card's hairlines draw the cells, so a box inside a
+   box would be two borders for one input. */
+.bulk textarea,.bulk input[type=text],.bulk select{width:100%;box-sizing:border-box;padding:2px 0;
+  font:inherit;font-size:14px;color:var(--ink);background:transparent;border:0;outline:0}
+.bulk textarea{min-height:132px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:14px;line-height:1.7;padding:0}
+.bulk .links{display:flex;align-items:center;gap:18px;font-size:13px;flex-wrap:wrap}
+.bulk .row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-top:1px solid var(--hair)}
+.bulk .cell{padding:11px 16px;border-right:1px solid var(--hair)}
+.bulk .cell:last-child{border-right:0}
+.bulk .cell:focus-within{box-shadow:inset 0 0 0 2px var(--red)}
+.bulk .go-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;
+  border-top:1px solid var(--hair);background:var(--wash);border-radius:0 0 6px 6px}
+.bulk button.go{flex:0 0 auto;background:var(--red);color:#fff;border:0;border-radius:6px;padding:12px 22px;
+  font:inherit;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 12px -6px rgba(185,28,28,.55)}
 /* Never dimmed (owner's call, 2026-09-04): "no parts of the bulk valuation
    dim". The button is solid red in every state; when it cannot run, the cost
    line beside it says why, and an empty box answers a click with a message
    (see run()) rather than with a control that looks switched off. The same
    call is why every muted colour in this file is full ink. */
 .bulk button.go[disabled]{cursor:default}
-.bulk .cost{color:var(--ink);font-size:12.5px}
-.bulk .foot{margin-top:22px;padding-top:12px;border-top:1px solid var(--line);
-  color:var(--ink);font-size:12px;max-width:70ch}
+.bulk .cost{color:var(--ink);font-size:13px;line-height:1.5;margin:0}
+.bulk .foot{margin-top:28px;padding-top:12px;border-top:1px solid var(--line);
+  color:var(--ink);font-size:12.5px;line-height:1.6;max-width:72ch}
 /* The Tab hint's key cap. Inline in the button so the shortcut is named where
    the action is, rather than in a legend somebody has to go and find. */
 .bulk .kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:10.5px;line-height:1.5;padding:0 5px;margin-left:4px;border:1px solid var(--line);
   border-radius:4px;color:var(--ink);text-decoration:none;vertical-align:1px}
+@media (max-width:760px){
+  .bulk .row{grid-template-columns:1fr}
+  .bulk .cell{border-right:0;border-bottom:1px solid var(--hair)}
+  .bulk .cell:last-child{border-bottom:0}
+  .bulk .cap{width:100%;flex-basis:100%}
+}
 `;
 
 /**
@@ -163,7 +210,9 @@ function renderBulkRunMarkup(opts) {
 
   <div class="deck hide" id="bkPastDeck">
     <div class="deckrule"><h2>Earlier runs</h2></div>
-    <ul class="runs" id="bkPast"></ul>
+    <div style="overflow-x:auto"><table class="runs"><thead><tr><th>Run</th><th>Type &middot; lookback</th>
+      <th class="n">Addresses</th><th>Status</th><th class="n"></th></tr></thead>
+      <tbody id="bkPast"></tbody></table></div>
   </div>` : ""}`;
 }
 
@@ -202,44 +251,57 @@ function renderBulkPageBody(boot) {
   </div>
 
   <div id="app" hidden>
-    <div class="deck">
-      <div class="deckrule">
-        <h2>Bulk valuation</h2>
-        <span class="sub" id="capNote"></span>
+    <!-- The desk (owner's pick from the design canvas, 2026-09-04 evening).
+         Headed "Run a report" because that is the door every bar and the
+         workspace header call this page by; the rail row keeps "Bulk
+         valuation", the tool's name. One address or a list, the same box:
+         this page is the comp-report tool, and the single-property form's
+         Tools row is gone. A single address runs exactly as a row of one and
+         then OPENS its comp report — see singleJob in BULK_JS — because a
+         one-row table is a summary of a report nobody has read. -->
+    <div class="top">
+      <div>
+        <h1>Run a report</h1>
+        <p class="lede">One address opens its comp report. A list becomes a portfolio, every row
+          linking to the report behind its number.</p>
       </div>
-      <!-- One address or a list, the same box (owner's call, 2026-09-04
-           evening): this page is the comp-report tool, and the single-property
-           form's Tools row is gone. A single address runs exactly as a row of
-           one and then OPENS its comp report — see singleJob in BULK_JS —
-           because a one-row table is a summary of a report nobody has read. -->
-      <p class="lede">Type one address, or paste a list — one per line — or upload a CSV with an
-        <code>address</code> column. Every address gets its own search and its own value range.
-        One address opens its full comp report when it finishes; a list lands as a portfolio,
-        each row linking to the report behind its number.</p>
+      <!-- Two cells, not three (owner's call): "runs on file" was a weak number
+           to give that much weight. Both figures are written by renderCap(). -->
+      <div class="cap" aria-label="Your allowance">
+        <div><span class="k">Left today</span><span class="v" id="capLeft">&mdash;</span></div>
+        <div><span class="k">Per run</span><span class="v" id="capPer">&mdash;</span></div>
+      </div>
+    </div>
 
-      <label for="bulkText">Address, or a list of addresses</label>
-      <textarea id="bulkText" spellcheck="false" placeholder="1201 W Idaho St, Boise, ID 83702
+    <div class="desk">
+      <div class="dhead">
+        <span class="dlab">Value one property, or a list</span>
+        <span class="count" id="count"></span>
+      </div>
+      <div class="addr">
+        <label for="bulkText">Address, or one per line</label>
+        <textarea id="bulkText" spellcheck="false" placeholder="1201 W Idaho St, Boise, ID 83702
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
-      <p class="acts" style="margin-top:10px">
-        <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
-        <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
-        <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
-             for somebody whose hands are already in the box; this is how it is
-             DISCOVERED, and how anyone who cannot or would rather not press
-             Tab reaches the same thing. Hidden the moment the box has content
-             (refreshCount owns that), because the offer only applies to an
-             empty one. -->
-        <button type="button" class="lnk" id="useExample">Try it with example addresses <span class="kbd">Tab</span></button>
-        <span class="cost" id="count"></span>
-      </p>
+        <p class="links" style="margin:0">
+          <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
+          <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
+          <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
+               for somebody whose hands are already in the box; this is how it is
+               DISCOVERED, and how anyone who cannot or would rather not press
+               Tab reaches the same thing. Hidden the moment the box has content
+               (refreshCount owns that), because the offer only applies to an
+               empty one. -->
+          <button type="button" class="lnk" id="useExample">Try it with example addresses <span class="kbd">Tab</span></button>
+        </p>
+      </div>
 
       <div class="row">
-        <div>
+        <div class="cell">
           <label for="bulkType">Property type</label>
           <select id="bulkType"></select>
         </div>
-        <div>
+        <div class="cell">
           <label for="bulkMonths">Lookback</label>
           <select id="bulkMonths">
             <option value="12">12 months</option>
@@ -249,20 +311,21 @@ function renderBulkPageBody(boot) {
             <option value="120">120 months</option>
           </select>
         </div>
-        <div>
-          <label for="bulkNote">Focus (optional)</label>
+        <div class="cell">
+          <label for="bulkNote">Focus <span class="opt">(optional)</span></label>
           <input type="text" id="bulkNote" maxlength="200" placeholder="e.g. within 2.5 miles"/>
         </div>
-        <div>
-          <label for="bulkLabel">Name this run (optional)</label>
+        <div class="cell">
+          <label for="bulkLabel">Name this run <span class="opt">(optional)</span></label>
           <input type="text" id="bulkLabel" maxlength="120" placeholder="e.g. Q3 portfolio review"/>
         </div>
       </div>
 
-      <p class="acts">
-        <button type="button" class="go" id="run" disabled>Run valuations</button>
-        <span class="cost" id="cost"></span>
-      </p>
+      <!-- The cost said beside the button, BEFORE the click. -->
+      <div class="go-row">
+        <p class="cost" id="cost">Each address is its own billed search; nothing runs until you press the button.</p>
+        <button type="button" class="go" id="run">Run valuations</button>
+      </div>
     </div>
 
     ${renderBulkRunMarkup({ past: true })}
@@ -363,7 +426,7 @@ function firstAddress(text){
 }
 
 function statusChip(s){
-  var cls=s==="running"?"chip run":(s==="failed"||s==="interrupted"||s==="cancelled")?"chip bad":"chip";
+  var cls=s==="running"?"chip run":(s==="failed"||s==="interrupted"||s==="cancelled")?"chip bad":s==="done"?"chip ok":"chip";
   return '<span class="'+cls+'">'+esc(s)+"</span>";
 }
 
@@ -501,10 +564,20 @@ function renderPast(){
   var rest=allJobs.filter(function(j){return !job||j.id!==job.id;});
   if(!rest.length){$("bkPastDeck").className="deck hide";return;}
   $("bkPastDeck").className="deck";
+  // A ledger row per run: name and date, type and lookback, the address
+  // count, the status chip, and its CSV. No portfolio value here — the list
+  // read carries no totals, and a figure would mean one more query per run
+  // on every page load; clicking the run shows it in the strip above.
   $("bkPast").innerHTML=rest.map(function(j){
-    return "<li><span>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
-      ' <span class="sub">'+esc(String(j.created_at||"").slice(0,10))+" \\u00b7 "+j.total+" addresses</span></span>"+
-      "<span>"+statusChip(j.status)+"</span></li>";}).join("");
+    var done=j.status==="done"||(j.status!=="running"&&j.done_count>=j.total&&j.total>0);
+    return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
+      '<div class="sub">'+esc(String(j.created_at||"").slice(0,10))+"</div></td>"+
+      "<td>"+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months</td>"+
+      '<td class="n">'+j.total+"</td>"+
+      "<td>"+statusChip(j.status)+(j.status!=="running"&&j.done_count<j.total
+        ?' <span class="sub">'+(j.total-j.done_count)+" not valued</span>":"")+"</td>"+
+      '<td class="n">'+(done||j.done_count>0
+        ?'<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>':"")+"</td></tr>";}).join("");
   Array.prototype.forEach.call($("bkPast").querySelectorAll("a[data-job]"),function(a){
     a.addEventListener("click",function(e){e.preventDefault();poll(a.getAttribute("data-job"),true);});});
 }
@@ -633,8 +706,8 @@ function refreshCount(){
     ? "About a minute; the comp report opens when it finishes. An address searched before is served from cache and opens at once."
     : parsedCount
     ? "Roughly "+Math.max(1,Math.round(parsedCount*0.9))+"\\u2013"+Math.ceil(parsedCount*1.1)+
-      " min. Addresses searched before are served from cache and finish instantly."
-    : "";
+      " min. Addresses searched before come from cache and finish at once. Each address is its own billed search."
+    : "Each address is its own billed search; nothing runs until you press the button.";
 }
 
 // BULKRUN's onState hook: the cap copy above, plus the single-address rule.
@@ -653,11 +726,12 @@ function onRunState(job,items){
   location.href="/?recent="+encodeURIComponent(id);
 }
 
-// The per-run cap and the daily allowance in one line, because they answer
-// the same question ("how much can I do") and two chips would compete.
-function capNoteText(){
-  var base="Up to "+MAX+" addresses per run";
-  return LEFT===null?base:base+" · "+LEFT+" left today";
+// The two-cell strip: the daily allowance and the per-run cap, as figures.
+// A dash until the numbers are known rather than a zero that reads as "none
+// left" — the boot payload carries them, so the dash is rarely seen.
+function renderCap(){
+  $("capLeft").textContent=LEFT===null?"\\u2014":String(LEFT);
+  $("capPer").textContent=String(MAX);
 }
 
 // Fill the box with the example addresses.
@@ -688,7 +762,7 @@ function loadList(){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
     if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
-    $("capNote").textContent=capNoteText();
+    renderCap();
     BULKRUN.setJobs(d.jobs||[]);
     refreshCount();
     // Resume whatever is going: a member who closed the tab mid-run and came
@@ -727,7 +801,7 @@ function run(){
     // A refusal carries the fresh number, so the hint above corrects itself
     // rather than going on claiming an allowance the server just denied.
     if(e.data&&typeof e.data.left_today==="number"){
-      LEFT=e.data.left_today;DAILY=e.data.daily_limit;$("capNote").textContent=capNoteText();}
+      LEFT=e.data.left_today;DAILY=e.data.daily_limit;renderCap();}
     if(e.data)BULKRUN.showNotes(e.data);
     if(e.data&&e.data.job)BULKRUN.poll(e.data.job.id);
   }).then(function(){refreshCount();});
@@ -757,7 +831,7 @@ function start(boot){
   if(d.maxAddresses)MAX=d.maxAddresses;
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
-  $("capNote").textContent=capNoteText();
+  renderCap();
   BULKRUN.init({max:MAX,onState:onRunState,onList:loadList});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];

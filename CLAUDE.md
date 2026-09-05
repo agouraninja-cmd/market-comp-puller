@@ -3144,6 +3144,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   portfolio, at **`/bulk`**. Rules live in the pure, tested **`bulk.js`**; the
   page is **`bulk-page.js`** (a marketShell BODY, the /brokers-firms pattern, so it
   carries no chrome of its own); server.js owns the job tables and the worker.
+  **The page is a desk since 2026-09-04** (owner's pick from a design canvas):
+  headed "Run a report" — the door every bar and the workspace header call it
+  by, while the rail row keeps "Bulk valuation" — with a two-cell strip
+  (LEFT TODAY / PER RUN, `renderCap`) top right, the form as ONE bordered
+  chamber in the report form's own anatomy (`BULK_CSS`: head row with the
+  ready count, borderless address box, four settings on a hairline row, cost
+  beside the solid red button on a wash footer), and Earlier runs as a ledger
+  table in the shared run view (`renderPast` writes `<tr>`s into `#bkPast`,
+  which is a `<tbody>` now). Nothing on it is dim (owner's call, same day):
+  no `--ink-mute`, no faded disabled button — an empty box answers a click
+  with a message. One address makes the button read "Run the report" and a
+  one-address run started on the page opens its report when it lands
+  (`singleJob` / `onRunState`). Every field id and handler survived the
+  redesign, and `test/bulk-inline.test.js` pins the single-source rule for
+  the run view, so the workspace's inline run inherits the ledger chips.
   Routes: `GET|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`

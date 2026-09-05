@@ -155,7 +155,7 @@ test("a one-address run opens its report; a list, a failure, and an old run do n
     "the hook is what BULKRUN reports state through");
   // The copy follows: the button and the lede say one address is a report.
   const page = MOD.renderBulkPageBody({ s: 200, j: { types: [], jobs: [] } });
-  assert.match(page, /Type one address, or paste a list/);
+  assert.match(page, /One address opens its comp report\. A list becomes a portfolio/);
   assert.ok(js.includes('parsedCount===1?"Run the report"'), "one address is 'Run the report', not 'Run 1 valuation'");
   // The single-property form's one remaining door, and the only /run-report
   // link anywhere on the site.

@@ -3188,6 +3188,22 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   still starts before 051 has run, while a run that uses them 400s at
   PostgREST into "Could not start that run" — migrate first. Not done: a
   per-address property type (one type per job, as 036 argues).
+  **A failed row can be retried alone** (`POST /api/bulk/item/retry {id}`,
+  2026-09-04): it mutates the EXISTING row and job, never a one-row job (which
+  would leave the old row failed forever and list two runs for one list).
+  Four guards run before anything is written — `status === "failed"` only (a
+  done-but-unvalued row would come back from cache; its fix is a longer
+  lookback), one live job per member, the daily allowance must leave one, the
+  provider key must exist — and `test/bulk-routes.test.js` asserts a refusal
+  leaves the table untouched. Then the row goes back to `queued` with its
+  `created_at` bumped to now (what makes the retry count as today's attempted
+  address, since `bulkAddressesUsedToday` windows on `created_at`, with no
+  schema change), the job back to `running` with `done_count - 1`, and
+  `runBulkJob(job, [item], user, ent, { doneBefore })` works the one item
+  with its counter starting where the job stood — the ONE worker change, and
+  the bookkeeping `test/bulk-run.test.js` pins (done_count back to total, one
+  more search, no duplicate recent). Ordinary cache, not `fresh`: a failed
+  row wrote no cache entry.
   **The Earlier-runs ledger carries each run's value (same evening)** from
   ONE grouped `bulk_job_items` read in `bulkListPayload` (`job_id=in.(…)`,
   `status=eq.done`, `BULK.summarize` per job → `summary`), deliberately NOT a
@@ -3212,6 +3228,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   type's `TYPE_COMP_FIELDS` keys. The filename carries the run's label as a
   slug (`compninja-bulk-q3-review-2026-09-04.csv`).
   Routes: `GET|PATCH|POST|DELETE /api/bulk`, `POST /api/bulk/cancel`,
+  `POST /api/bulk/item/retry`,
   `GET /api/bulk/export.csv?id=`, all through **`openBulk`** — a deliberate
   THIRD copy of the vault's 401 → 403 → 503 ladder (`test/routes.test.js`
   catches the three drifting). Every finished row is also upserted into

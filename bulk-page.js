@@ -506,6 +506,12 @@ function rowHtml(it,i){
     ? money(it.value_likely)+'<div class="sub">'+money(it.value_low)+" \\u2013 "+money(it.value_high)+"</div>"
     : '<span class="sub">\\u2014</span>';
   var note=it.error?'<div class="sub">'+esc(it.error)+"</div>":"";
+  // A FAILED row can be retried alone (2026-09-04): one new search for that
+  // address, into the same row, once the run has stopped. Not offered on a
+  // done-but-unvalued row — that answer came from the same search parameters
+  // and would come back from cache; its fix is a longer lookback, a new run.
+  var retry=(it.status==="failed"&&job&&job.status!=="running")
+    ? ' <a href="#" class="lnk" data-retry="'+esc(it.id)+'">Retry</a>':"";
   // The address opens the stored report when there is one: the row is a
   // summary, and the evidence for it — the comps, the weighting, the trust
   // line — lives in the report itself. ?recent= and ?property= are both
@@ -546,7 +552,22 @@ function rowHtml(it,i){
     "<td class=\\"n\\">"+psf(it.psf_mid)+"</td>"+
     "<td class=\\"n\\">"+sz+"</td>"+
     "<td class=\\"n\\">"+comps+"</td>"+
-    "<td>"+statusChip(it.status)+(it.cached?' <span class="sub">cached</span>':"")+"</td></tr>";
+    "<td>"+statusChip(it.status)+(it.cached?' <span class="sub">cached</span>':"")+retry+"</td></tr>";
+}
+
+// Retry: one billed search, said before the click. The row goes back to the
+// queue server-side and the job to running, so the ordinary poll draws it.
+function bindRetryLinks(){
+  Array.prototype.forEach.call(document.querySelectorAll("#bkRows a[data-retry]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      if(!confirm("Run this address again? It is one new search."))return;
+      msg("Retrying\\u2026",false);
+      api("POST","/api/bulk/item/retry",{id:a.getAttribute("data-retry")})
+        .then(function(){if(job)poll(job.id,true);})
+        .catch(function(err){msg(err.message,true);if(err.data&&err.data.job)poll(err.data.job.id,true);});
+    });
+  });
 }
 
 function renderJob(){
@@ -562,6 +583,7 @@ function renderJob(){
     items.map(rowHtml).join("")+"</tbody>";
   $("bkCancel").className=job.status==="running"?"lnk":"lnk hide";
   bindSizeInputs();
+  bindRetryLinks();
   renderPast();
   // The page's own copy — /bulk's button and cap line, or the homepage's.
   // Guarded rather than called directly: this module must not know that a

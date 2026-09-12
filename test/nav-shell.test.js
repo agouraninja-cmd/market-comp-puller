@@ -39,7 +39,7 @@ const htmlTag = (doc) => (doc.match(/<html[^>]*>/) || [""])[0];
 const hasRail = (doc) => /\bnav-rail\b/.test(htmlTag(doc));
 
 // Every page that renders through marketShell and should wear the shell.
-const SHELL_PAGES = ["/markets", "/brokers-firms", "/pricing", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", "/brokers-firms", "/pricing", "/terms", "/privacy"];
 
 test("a signed-in visitor gets the rail; an anonymous one never does", async (t) => {
   const srv = await boot({ NAV_SHELL: "rail" });

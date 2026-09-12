@@ -397,7 +397,7 @@ test("every in-scope server page can set the theme before first paint", () => {
   // deferred paints the light theme first and flashes white on a dark page.
   assert.ok(SERVER_JS.includes("const THEME_BOOT ="), "THEME_BOOT not declared");
   // marketShell covers /markets, /market/<slug>, /brokers, /broker/<slug>,
-  // /1031-exchange, /terms, /privacy.
+  // /terms, /privacy.
   const shell = SERVER_JS.slice(SERVER_JS.indexOf("function marketShell("));
   assert.ok(shell.slice(0, 2000).includes("THEME_BOOT"), "marketShell lacks the boot script");
   // renderHowItWorksHTML was the SECOND shell and was checked separately here

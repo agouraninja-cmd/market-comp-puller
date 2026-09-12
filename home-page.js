@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // The home page — what an anonymous visitor gets at `/` under ACCOUNT_WALL.
 //
-// Pure, like brokers-firms-page.js, faq-page.js and guide-1031.js: it takes its inputs
+// Pure, like brokers-firms-page.js and faq-page.js: it takes its inputs
 // and returns a string. No I/O, no requires, no clock reads. server.js owns
 // the route, the SEO metadata and the shell.
 //
@@ -40,7 +40,7 @@
 //      GUEST_SEARCH_LIMIT to 0, so an anonymous POST to /api/comps is refused
 //      by design. The address and the type are stashed in sessionStorage
 //      (pendingLandingAddress.v1 / pendingLandingType.v1) and index.html picks
-//      them up — the same handoff /1031-exchange and the market pages use. The
+//      them up — the same handoff the market pages use. The
 //      input carries NO name attribute on purpose: a named field would put a
 //      street address on GET /?auth=signup.
 //   4. THE SAMPLE REPORT IS ILLUSTRATIVE AND ITS ARITHMETIC HOLDS. The median
@@ -457,8 +457,7 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
 // The form's handoff. Not a search: the wall forces GUEST_SEARCH_LIMIT to 0,
 // so an anonymous POST to /api/comps is refused by design (rule 3). The typed
 // address and the chosen type are stashed and index.html picks them up on the
-// other side, which is the same route /1031-exchange and the market pages
-// take. Both keys are test-pinned against index.html's reads, because a
+// other side, which is the same route the market pages take. Both keys are test-pinned against index.html's reads, because a
 // rename on one side alone just quietly stops carrying the visitor's typing.
 //
 // The type is written ONLY when one was chosen. The placeholder option has an

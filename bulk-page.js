@@ -2,7 +2,7 @@
 // The bulk valuation workspace — the whole /bulk screen, AND the run view that
 // index.html shows inline when somebody pastes a list into the main search.
 //
-// Pure, like vault-page.js and guide-1031.js: it takes a boot payload and
+// Pure, like vault-page.js: it takes a boot payload and
 // returns a string. No I/O, no requires, no clock reads. server.js owns the
 // entitlement gate, the job tables and the worker; this file only decides how
 // a run is drawn. Keep it that way — a read that happened here would be a read
@@ -38,7 +38,7 @@
 //
 // It renders a BODY, not a document: server.js dresses it in marketShell(), so
 // the header, footer, theme boot and account chrome are the site's shared ones
-// rather than a second copy. That is the /brokers and /1031-exchange pattern.
+// rather than a second copy. That is the /brokers-firms pattern.
 //
 // esc() is duplicated from server.js rather than imported, matching the copies
 // in vault-page.js and hub-page.js. It is three lines and pure; a require would

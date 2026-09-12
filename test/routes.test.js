@@ -114,32 +114,6 @@ test("bare environment", async (t) => {
     }
   });
 
-  // The 1031 guide — a public education page. Path-only matching is the
-  // regression this file pins for every route; the sitemap line is what
-  // makes the page findable at all.
-  await t.test("/1031-exchange serves the guide, query strings included", async () => {
-    for (const p of ["/1031-exchange", "/1031-exchange?utm_source=x"]) {
-      const r = await fetch(srv.base + p);
-      assert.equal(r.status, 200, p + " should serve the guide");
-      assert.match(r.headers.get("content-type") || "", /text\/html/, p);
-    }
-    const html = await (await fetch(srv.base + "/1031-exchange")).text();
-    assert.ok(html.includes("1031"), "the page should be about 1031 exchanges");
-    assert.ok(html.toLowerCase().includes("not tax, legal, or investment advice"),
-      "the not-advice box must ship on the live page");
-    assert.ok(html.includes(".steps1031"),
-      "GUIDE_CSS must ship on the served page (proves the route's head: line survived)");
-    assert.ok(html.includes("id=\"worksheet\""),
-      "the identification worksheet is the page now; the explainer sits below it");
-    assert.ok(html.toLowerCase().includes("not a written identification"),
-      "the page must not read as the list delivered to a QI");
-  });
-
-  await t.test("sitemap.xml lists the 1031 guide", async () => {
-    const xml = await (await fetch(srv.base + "/sitemap.xml")).text();
-    assert.ok(xml.includes("/1031-exchange"), "sitemap must list /1031-exchange");
-  });
-
   // Market pages carry the Address Explorer deep link. The auth=signup form is
   // the one door ACCOUNT_WALL never 302s, so the same static href serves every
   // visitor: anonymous gets the signup modal with the explorer parked behind
@@ -456,7 +430,7 @@ test("bare environment", async (t) => {
   // forgetting it is the easy mistake, not getting it subtly wrong.
   await t.test("every server-rendered page carries the signed-in header chrome", async () => {
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
-      "/1031-exchange", "/how-it-works", "/faq", "/terms", "/privacy", "/vault", "/leadership"];
+      "/how-it-works", "/faq", "/terms", "/privacy", "/vault", "/leadership"];
     for (const p of pages) {
       const html = await (await fetch(srv.base + p)).text();
       assert.match(html, /id="navAcct"/, p + " is missing the account circle");
@@ -523,7 +497,7 @@ test("bare environment", async (t) => {
     // which makes it a page of its own rather than the render `/` is serving.
     // Its walled behavior — no self-link — is pinned in account-wall.test.js.
     const pages = ["/markets", "/market/industrial-ontario-ca", "/brokers-firms",
-      "/1031-exchange", "/download", "/terms", "/privacy", "/leadership",
+      "/download", "/terms", "/privacy", "/leadership",
       // /how-it-works joined this list unconditionally on 2026-09-01. It was
       // already here because THIS file boots with the wall off; it now also
       // has Home when the wall is UP, because `/` stopped being this render.
@@ -568,14 +542,14 @@ test("bare environment", async (t) => {
   });
 
   // The CTA comes off the four pages a member is WORKING IN (owner's call,
-  // 2026-08-30): the vault, the market explorer, the 1031 guide and bulk
-  // valuation. A broker mid-task is not deciding whether to run a report, and
+  // 2026-08-30): the vault, the market explorer, the 1031 guide (page
+  // removed 2026-09-12) and bulk valuation. A broker mid-task is not deciding whether to run a report, and
   // on those four the red button is a nag for a different task.
   await t.test("the Run a report CTA is dropped on the four working pages", async () => {
     const member = { cookie: "cn_session=irrelevant-presence-only" };
     // /buildings joined the list in Three Spaces slice 4: the firm's whole
     // building list is a page a member is working IN, like the vault.
-    for (const p of ["/vault", "/markets", "/1031-exchange", "/bulk", "/buildings"]) {
+    for (const p of ["/vault", "/markets", "/bulk", "/buildings"]) {
       const html = await (await fetch(srv.base + p, { headers: member })).text();
       const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
       assert.ok(!/class="btn sm" href="\/bulk">Run a report/.test(nav),
@@ -623,8 +597,8 @@ test("bare environment", async (t) => {
     // The list itself, not a superset: /how-it-works left the menu
     // 2026-08-25 and still appears in every footer, so a check for its mere
     // presence in the HTML would pass either way and pin nothing.
-    // /1031-exchange left it 2026-08-29 and is pinned by the test below
-    // instead, as a top-level row rather than a menu item.
+    // /1031-exchange left it 2026-08-29 for a top-level row, and the page
+    // itself was removed 2026-09-12.
     for (const href of ["/download"]) {
       assert.ok(app.includes(`<a href="${href}"`), `the app menu lost its ${href} link`);
       assert.ok(markets.includes(`<a href="${href}"`), `the server-rendered header lost its ${href} link`);
@@ -658,7 +632,6 @@ test("bare environment", async (t) => {
       ["Workspace", />Workspace</],
       ["the vault", /<a [^>]*href="\/vault"/],
       ["Market explorer", /<a [^>]*href="\/markets"/],
-      ["the 1031 guide", /<a [^>]*href="\/1031-exchange"/],
       ["Bulk valuation", /<a [^>]*href="\/bulk"/],
     ];
     for (const page of ["/", "/markets", "/vault"]) {
@@ -687,47 +660,30 @@ test("bare environment", async (t) => {
     }
   });
 
-  // The 1031 guide swaps places with the audience (owner's, 2026-08-30).
+  // Market explorer swaps places with the audience (owner's, 2026-08-30).
   //
   // The test above pins it as a top-level ROW, because the rail hides the
   // Explore dropdown and a member reading in the rail could not reach it
   // otherwise. That argument is about the rail, and the rail is a signed-in
   // shell -- an anonymous visitor never gets one, so their dropdown still
-  // opens and the guide goes back into it, freeing a slot in the one header
+  // opens and the link goes back into it, freeing a slot in the one header
   // that has to sell to a stranger.
   //
   // Both halves are asserted together and in both directions, because the
   // failure is not "it is missing" but "it is in both places at once", which
-  // reads as a duplicated link rather than as a bug.
-  await t.test("a stranger finds the 1031 guide in Tools; a member finds it as a row", async () => {
+  // reads as a duplicated link rather than as a bug. (The 1031 guide made the
+  // same move on the same day and was pinned here until its page was removed
+  // on 2026-09-12.)
+  await t.test("a stranger finds Market explorer in Tools; a member finds it as a row", async () => {
     const SESSION = { cookie: "cn_session=not-a-real-token" };
-    const GUIDE = /<a [^>]*href="\/1031-exchange"/;
     // TWO menus since 2026-09-02, so this collects EVERY dropdown rather than
-    // the first one. The guide moved out of Explore into the new Tools menu;
-    // what the assertion is actually about is unchanged and is the reason it
-    // is written in both directions — the failure worth catching is not "the
-    // link is missing" but "it is in a menu AND a row at once", which reads as
-    // a duplicated link rather than as a bug.
+    // the first one.
     const split = (html) => {
       const nav = (html.match(/<nav[\s\S]*?<\/nav>/) || [""])[0];
       const menus = (nav.match(/<div class="dd">[\s\S]*?<\/div>/g) || []).join("");
       return { menu: menus, rows: nav.replace(/<details[\s\S]*?<\/details>/g, "") };
     };
 
-    for (const page of ["/markets", "/brokers-firms", "/1031-exchange"]) {
-      const anon = split(await (await fetch(srv.base + page)).text());
-      assert.match(anon.menu, GUIDE, page + ": a stranger's Tools menu lost the guide");
-      assert.doesNotMatch(anon.rows, GUIDE,
-        page + ": the guide is a row AND a menu item for a stranger -- one link, two places");
-
-      const member = split(await (await fetch(srv.base + page, { headers: SESSION })).text());
-      assert.match(member.rows, GUIDE, page + ": a member lost the top-level row the rail needs");
-      assert.doesNotMatch(member.menu, GUIDE,
-        page + ": the guide is back in a menu the rail hides, as well as in the bar");
-    }
-
-    // The same one-link-two-places rule now applies to Market explorer, which
-    // made the same move on the same day and for the same reason.
     const EXPLORER = /<a [^>]*href="\/markets"/;
     const anonBf = split(await (await fetch(srv.base + "/brokers-firms")).text());
     assert.match(anonBf.menu, EXPLORER, "a stranger's Tools menu lost Market explorer");
@@ -750,20 +706,12 @@ test("bare environment", async (t) => {
   });
 
   // The app cannot make that choice at serve time.
-  await t.test("the app renders the guide as one row for every reader", async () => {
+  await t.test("the app keeps the nav-anon sweep, and the removed 1031 page out", async () => {
     const app = await (await fetch(srv.base + "/")).text();
-    // The app used to ship BOTH halves and swap them after paint, because this
-    // file is one set of bytes served to everybody. It has one half now: the
-    // menu entry left NAV_LINKS for the Tools dropdown on 2026-09-02, and this
-    // file has no dropdown to receive it, so the bar row simply always renders
-    // rather than leaving an anonymous reader (a shared report, a signup in
-    // progress) with the guide in neither place.
-    assert.match(app, /id="nav1031Link" href="\/1031-exchange" class="hover:/,
-      "the app's 1031 row must render unconditionally now");
-    assert.ok(!/id="nav1031Link"[^>]*class="hidden/.test(app),
-      "it must not still ship hidden -- nothing reveals it any more");
-    assert.ok(!/getElementById\("nav1031Link"\)\.classList\.toggle/.test(app),
-      "the toggle is gone; a toggle with no second state is a hidden link");
+    // The 1031 guide's row (and its footer link) left with the page on
+    // 2026-09-12. A link to a page that 404s is worse than no link.
+    assert.ok(!app.includes("/1031-exchange"),
+      "the app still links /1031-exchange, which no longer exists");
     // The .nav-anon mechanism is deliberately KEPT even with no entry using
     // it, so a future anonymous-only link has somewhere to go. Pinned so it
     // is not tidied away as dead code.
@@ -957,7 +905,6 @@ test("bare environment", async (t) => {
       ["/market/industrial-ontario-ca", /Industrial Comps in Ontario/],
       ["/how-it-works", /<title>/],
       ["/brokers-firms", /For Commercial Real Estate Brokers and Firms/],
-      ["/1031-exchange", /1031/],
       ["/download", /<title>/],
       ["/leadership", /<title>/],
       ["/terms", /<title>/],
@@ -1071,7 +1018,7 @@ test("bare environment", async (t) => {
       const i = html.indexOf('aria-label="Company"');
       return i < 0 ? "" : html.slice(i, html.indexOf("</ul>", i));
     };
-    for (const p of ["/", "/brokers-firms", "/markets", "/1031-exchange", "/leadership"]) {
+    for (const p of ["/", "/brokers-firms", "/markets", "/leadership"]) {
       const html = await (await fetch(srv.base + p)).text();
       const col = companyList(html);
       assert.ok(col, p + " has no Company column in its footer at all");
@@ -1786,39 +1733,6 @@ test("admin gating", async (t) => {
     const body = await r.json();
     assert.deepEqual(body.introRequests, { db: false, count: 0, recent: [] });
     assert.equal(body.totals.leadIntros, 0, "aggregateStats counts lead_intro events");
-    // The 1031 guide funnel block must be present even at zero — /admin
-    // treats a missing key as a stale pre-feature response and hides the
-    // card, so a dropped key here silently blinds the funnel.
-    for (const k of ["views", "views30d", "members", "leads", "leads30d"]) {
-      assert.equal(typeof body.guide1031[k], "number", `guide1031.${k}`);
-    }
-  });
-
-  // The guide-read event is the 1031 funnel's denominator, and the page is
-  // public + sitemapped, so the count is only meaningful if crawlers stay
-  // out of it. One browser read must count exactly once; Googlebot and the
-  // suite's own bare fetch (no browser UA) must count zero. Events are
-  // fire-and-forget file appends, hence the short poll.
-  await t.test("a guide read is counted once, and crawlers are not", async () => {
-    const views = async () => (await (await fetch(srv.base + "/api/stats",
-      { headers: { "x-admin-key": ADMIN } })).json()).guide1031.views;
-    const before = await views();
-    const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-    for (const ua of [browserUA, "Googlebot/2.1 (+http://www.google.com/bot.html)", null]) {
-      const r = await fetch(srv.base + "/1031-exchange",
-        ua ? { headers: { "user-agent": ua } } : undefined);
-      assert.equal(r.status, 200);
-    }
-    let after = before;
-    for (let i = 0; i < 40 && after < before + 1; i++) {
-      await new Promise((res) => setTimeout(res, 50));
-      after = await views();
-    }
-    assert.equal(after, before + 1, "one browser read = one view");
-    // Settle, then re-read: a late-landing bot event would pass the check
-    // above and only show here.
-    await new Promise((res) => setTimeout(res, 150));
-    assert.equal(await views(), before + 1, "bot reads must not land late");
   });
 
   await t.test("market-hero review is gated like the other admin APIs", async () => {

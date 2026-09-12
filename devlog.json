@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-12",
+    "type": "improvement",
+    "title": "The 1031 exchange guide is gone",
+    "details": "Owner's call: /1031-exchange — the identification worksheet over the education page, live since 2026-08-08 — is removed. That takes the route and guide-1031.js, the 1031 row in every signed-in header and the app's nav, the Tools menu entry (Market explorer stands alone there now), both footers' links, the sitemap line, the contextual \"buying in a 1031 exchange?\" line on every market page, the guide_1031 analytics event and the \"1031 guide funnel\" card on /admin, and the cnRef1031.v1 marker the BOV lead form read. The URL 404s like any unknown path; no redirect, since nothing else answers that question. Leads already tagged source \"1031\" still read as BOV requests in the inbox and the owner email — the tag was attribution, never a separate funnel — but nothing writes it any more."
+  },
+  {
     "date": "2026-09-04",
     "type": "improvement",
     "title": "Earlier runs shows each run's portfolio value, and a run can be renamed, deleted or run again",

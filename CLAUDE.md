@@ -968,7 +968,8 @@ dependency. `.env` is git-ignored — never commit it.
   **The red "Run a report" CTA is dropped on the four pages a member is
   WORKING IN** (owner's call, 2026-08-30; `CTA_FREE_PAGES` above `marketBar`,
   pinned from both sides in `test/routes.test.js`): `/vault`, `/markets`,
-  `/1031-exchange`, `/bulk`. A broker mid-task is not deciding whether to run
+  `/bulk` (and `/1031-exchange` until that page was removed on 2026-09-12).
+  A broker mid-task is not deciding whether to run
   a report, so there the button is a nag for a different task; every other
   server-rendered page keeps it, because those are where somebody is still
   deciding. Two things it is NOT. It is not a way home — that argument
@@ -1340,14 +1341,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
 - `POST /api/login` — validates a password so the UI can confirm before searching.
 - `POST /api/lead` — stores a lead-capture submission (name/email/phone/company
   + the searched address/type + `source`: `"export"` for export unlocks,
-  `"bov"` for Broker Opinion of Value requests, `"1031"` for a BOV request
-  from a browser that recently read `/1031-exchange` (the guide's widget
-  stamps localStorage `cnRef1031.v1`, index.html reads it at submit, 7-day
-  TTL); the Supabase `leads` table has a matching `source` column. `"1031"`
-  is bov-CLASS everywhere behavior branches (`bovClass` in the handler, and
-  the inbox/intro queries use `source=in.(bov,1031)`) — the tag is
-  attribution and urgency, never a separate funnel, and it surfaces as an
-  anonymized `is_1031` boolean in the broker inbox (never the raw tag).
+  `"bov"` for Broker Opinion of Value requests, and — on rows written
+  before 2026-09-12 — `"1031"` for a BOV request from a browser that had
+  recently read the since-removed `/1031-exchange` guide (it stamped
+  localStorage `cnRef1031.v1`; index.html no longer reads it, so nothing
+  writes the tag any more); the Supabase `leads` table has a matching
+  `source` column. `"1031"` stays bov-CLASS everywhere behavior branches
+  (`bovClass` in the handler, and the inbox/intro queries use
+  `source=in.(bov,1031)`) so the existing rows keep reading as the BOV
+  requests they are — the tag was attribution and urgency, never a separate
+  funnel, and it still surfaces as an anonymized `is_1031` boolean in the
+  broker inbox (never the raw tag).
   Also takes an optional `size_sqft`, cleaned by
   `LEADSVC.cleanSizeSqft` and written only when present (a conditional spread,
   so a lead with no size never touches the column — protects the file
@@ -2095,7 +2099,7 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   complaint above, generalized: `MARKET_BAR` carried three links and nothing
   else, so leaving the home page dropped Pricing, My Desk and the account
   circle in one go — reading as a mid-browse logout on `/markets`, all
-  `/market/<slug>` pages, `/brokers-firms`, `/1031-exchange`, `/terms`, `/privacy`.
+  `/market/<slug>` pages, `/brokers-firms`, `/terms`, `/privacy`.
   Fixed the OPPOSITE way from /how-it-works, on purpose: the markup is
   byte-identical for every visitor (hidden slots) and a client script asks
   `/api/config` + `/api/account/me` (both `no-store`) after paint, then
@@ -2312,36 +2316,21 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   a cached page cannot make. The Firm tile's CTA is "how a firm works" for the
   same reason: a firm subscription is bought by an owner for a firm that
   already exists.
-- `GET /1031-exchange` — public **1031 identification worksheet** (education
-  page underneath; v4 slice 3 as amended 2026-08-14). Spec
-  `docs/superpowers/specs/2026-08-14-1031-identification-worksheet-design.md`
-  (amends `2026-08-08-1031-guide-design.md`). All content lives in the pure
-  **`guide-1031.js`** — worksheet on top (relinquished property, closing date
-  → 45/180 calendar dates, three replacement slots, each with a Value handoff
-  through `pendingLandingAddress.v1`), then the explainer, FAQ array feeding
-  both the accordions and the FAQPage JSON-LD, a **Choosing a qualified
-  intermediary** vetting card, and the education-not-advice box. The date
-  widget computes calendar dates only, never taxes or dollars, and hands both
-  deadlines over as an `.ics` file built as a `data:` URI in the browser —
-  deterministic for a given closing date, because its DTSTAMP derives from
-  the closing rather than the clock. Sharing rides the URL fragment (`#p=`),
-  so a street address never lands in a server log; reading stays free and
-  unauthenticated. `renderGuide1031Body(signedIn)` picks the Value door (`/`
-  vs `/?auth=signup`). The script also stamps localStorage `cnRef1031.v1`
-  (guarded — no storage, no marker), which is how a later BOV request gets
-  tagged `source: "1031"` — see `POST /api/lead`; the key is test-pinned
-  because index.html reads the identical string. The route logs a PII-free
-  `guide_1031` event per read (`source`: member/visitor on cookie presence;
-  crawler UAs skipped via `isCrawlerUA`), feeding the "1031 guide funnel"
-  card on `/admin`. server.js only dresses it in `marketShell` and spreads
-  the module's JSON-LD nodes into the shared `brandGraph()` `@graph`.
-  Education, never advice — the compliance strings are test-pinned in both
-  directions (must-appear and must-never-appear), including that this is not
-  a written identification and not an exchange CompNinja created, and that
-  CompNinja is not a QI and holds no funds. Listed in `sitemap.xml`; linked
-  from `MARKET_FOOTER`, `/how-it-works`'s footer, `/brokers-firms`, and a
-  contextual one-liner after the CTA on every `/market/<slug>` page
-  (`guide1031` in `renderMarketPageHTML`).
+- **`/1031-exchange` is GONE (owner's call, 2026-09-12).** From 2026-08-08
+  it was a public 1031 identification worksheet over an education page
+  (`guide-1031.js`; specs `2026-08-08-1031-guide-design.md` and
+  `2026-08-14-1031-identification-worksheet-design.md` in
+  `docs/superpowers/specs/`, kept as history). The removal took the route,
+  the module and its test, the `TOOL_LINKS` entry (the Tools menu now holds
+  Market explorer alone), the member bar row and the app's `#nav1031Link`,
+  both footers' links, the sitemap line, the contextual one-liner on every
+  `/market/<slug>` page, the `guide_1031` event and the "1031 guide funnel"
+  card on `/admin`, and index.html's `cnRef1031.v1` read. The URL now 404s
+  like any unknown path — deliberately no redirect, because no page answers
+  the question it answered. What STAYS is the data layer: `POST /api/lead`
+  still accepts and classifies the `"1031"` source so rows written while the
+  page existed keep reading as BOV requests (see that route's bullet). Old
+  `guide_1031` rows in `analytics_events` are simply uncounted.
 - **Brand entity** (not a route — `brandGraph()` in server.js). CompNinja is
   online-only, so it is **not eligible for a Google Business Profile** (Google
   requires face-to-face customer contact and video-verifies it against a real

@@ -48,7 +48,7 @@ test("/vault is rendered by marketShell, header and footer included", async (t) 
   // it renders that the copy never did.
   assert.match(html, /<div class="hleft">/, "not marketBar's header");
   const nav = html.slice(html.indexOf("<nav>"), html.indexOf("</nav>"));
-  for (const href of ["/desk", "/vault", "/markets", "/1031-exchange", "/bulk"]) {
+  for (const href of ["/desk", "/vault", "/markets", "/bulk"]) {
     assert.ok(nav.includes('href="' + href + '"'), "the vault's nav lost " + href);
   }
   // Where the reader is, from marketShell's `current` rather than a literal.

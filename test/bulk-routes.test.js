@@ -24,6 +24,7 @@ const fake = require("./helpers/fake-supabase");
 
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
+const { xlsxFromRows } = require("./helpers/make-xlsx.js");
 
 // UUID-shaped throughout, because several routes guard an id with isUuidish()
 // before it reaches a Postgres uuid cast — a `job-1` would be 404'd by the
@@ -292,6 +293,53 @@ test("the per-member daily ceiling", async (t) => {
   });
 });
 
+// An Excel workbook is read into the paste box as CSV text (2026-09-04), so
+// every rule the form applies to a paste applies to it unchanged.
+test("an Excel list is read into the box as CSV", async (t) => {
+  const ctx = await bootWithDb(seedTables({ bulk_jobs: [], bulk_job_items: [] }));
+  t.after(() => ctx.stop());
+  const { srv } = ctx;
+
+  await t.test("a real .xlsx comes back as CSV text, header and addresses intact", async () => {
+    const xlsx = xlsxFromRows([
+      ["Address", "Size SqFt", "Asking Price"],
+      ["1201 W Idaho St, Boise, ID 83702", 20000, 3125000],
+      ["900 N Cole Rd, Boise, ID", null, null],
+    ]);
+    const r = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: xlsx.toString("base64") }),
+    }));
+    assert.equal(r.status, 200, await r.clone().text());
+    const body = await r.json();
+    assert.equal(body.rows, 2);
+    const lines = body.csv.trim().split("\n");
+    assert.match(lines[0], /^Address,Size SqFt,Asking Price/);
+    assert.match(lines[1], /"1201 W Idaho St, Boise, ID 83702",20000,3125000/);
+    // And the text it hands back is exactly what POST /api/bulk would parse:
+    // an address with commas is one address, and the size column is read.
+    const BULK = require("../bulk.js");
+    const parsed = BULK.parseAddressList(body.csv, { detailKeys: [] });
+    assert.equal(parsed.rows.length, 2);
+    assert.equal(parsed.rows[0].address, "1201 W Idaho St, Boise, ID 83702");
+    assert.equal(parsed.rows[0].size_sqft, 20000);
+    assert.equal(parsed.rows[0].subject.asking, 3125000);
+  });
+
+  await t.test("garbage is refused by name, and an oversize file says to save as CSV", async () => {
+    const bad = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: Buffer.from("not a workbook").toString("base64") }),
+    }));
+    assert.equal(bad.status, 400);
+    const big = await fetch(srv.base + "/api/bulk/inspect", as(PAT, {
+      method: "POST", body: JSON.stringify({ xlsx: Buffer.alloc(1024 * 1024 + 10, 65).toString("base64") }),
+    }));
+    assert.equal(big.status, 413);
+    assert.match((await big.json()).error, /CSV/);
+    const none = await fetch(srv.base + "/api/bulk/inspect", as(PAT, { method: "POST", body: "{}" }));
+    assert.equal(none.status, 400);
+  });
+});
+
 test("reading a finished run", async (t) => {
   const seeded = seedJob();
   const ctx = await bootWithDb(seedTables(seeded));
@@ -340,6 +388,29 @@ test("reading a finished run", async (t) => {
     assert.equal(row.portfolio_item_id, PF_1, "so the row can link to its own report");
   });
 
+  await t.test("a retry is refused before it touches the row: not-failed, no key, and not yours", async () => {
+    // The guards run BEFORE the row is put back in the queue, so a refusal
+    // leaves the job exactly as it was — asserted on the table, not the
+    // status code alone.
+    const body = await (await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(PAT))).json();
+    const doneRow = body.items.find((it) => it.status === "done");
+    const failedRow = body.items.find((it) => it.status === "failed");
+    const r1 = await fetch(srv.base + "/api/bulk/item/retry", as(PAT, { method: "POST", body: JSON.stringify({ id: doneRow.id }) }));
+    assert.equal(r1.status, 409);
+    assert.equal((await r1.json()).code, "not_failed");
+    // This harness has no provider key, so the failed row is refused at the
+    // key guard (503) — after the status and one-live-job checks, before the
+    // queue write. The row must still read failed and the job done.
+    const r2 = await fetch(srv.base + "/api/bulk/item/retry", as(PAT, { method: "POST", body: JSON.stringify({ id: failedRow.id }) }));
+    assert.equal(r2.status, 503, await r2.text());
+    assert.equal(ctx.tables.bulk_job_items.find((it) => it.id === failedRow.id).status, "failed");
+    assert.equal(ctx.tables.bulk_jobs.find((j) => j.id === JOB_ID).status, "done");
+    // Another member is refused at the gate (SAM is free) and touches nothing.
+    const r3 = await fetch(srv.base + "/api/bulk/item/retry", as(SAM, { method: "POST", body: JSON.stringify({ id: failedRow.id }) }));
+    assert.ok(r3.status === 403 || r3.status === 404, String(r3.status));
+    assert.equal(ctx.tables.bulk_job_items.find((it) => it.id === failedRow.id).status, "failed");
+  });
+
   await t.test("another member cannot read, export or delete it", async () => {
     // Scoped by user_id, like every other read in this app. Without it,
     // knowing a job id would be enough.
@@ -366,12 +437,54 @@ test("reading a finished run", async (t) => {
     const r = await fetch(srv.base + "/api/bulk/export.csv?id=" + JOB_ID, as(PAT));
     assert.equal(r.status, 200);
     assert.match(r.headers.get("content-type") || "", /text\/csv/);
-    assert.match(r.headers.get("content-disposition") || "", /compninja-bulk-2026-08-20\.csv/);
+    // The run's label rides the filename as a slug (2026-09-04), before the date.
+    assert.match(r.headers.get("content-disposition") || "", /compninja-bulk-q3-review-2026-08-20\.csv/);
     const csv = await r.text();
     assert.match(csv, /automated estimates, not appraisals/);
     assert.match(csv, /1 of 2 valued/);
     assert.match(csv, /"1201 W Idaho St, Boise, ID"/, "commas survive the round trip");
     assert.match(csv, /No priced sale comps/, "a failure travels with its reason");
+  });
+
+  await t.test("the list carries each run's total from one grouped read, and it matches the run's own", async () => {
+    // The Earlier-runs ledger's figure (2026-09-04). One items read for the
+    // whole list, grouped by job, summed by BULK.summarize — the same
+    // arithmetic the open run's strip uses, so the two cannot disagree.
+    const before = ctx.db.requests.length;
+    const body = await (await fetch(srv.base + "/api/bulk", as(PAT))).json();
+    const j = body.jobs.find((x) => x.id === JOB_ID);
+    assert.ok(j.summary, "a listed run carries its summary");
+    assert.equal(j.summary.valued, 1);
+    assert.equal(j.summary.likely, 1200000);
+    assert.equal(j.summary.low, 1000000);
+    assert.equal(j.summary.high, 1400000);
+    const own = await (await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(PAT))).json();
+    assert.equal(j.summary.likely, own.summary.likely, "the ledger and the open run quote one total");
+    const itemReads = ctx.db.requests.slice(before).filter((r) => r.table === "bulk_job_items" && r.method === "GET");
+    assert.equal(itemReads.filter((r) => r.query.includes("job_id=in.(")).length, 1,
+      "the list read groups every job's rows into ONE query, never one per job");
+  });
+
+  await t.test("a run can be renamed, and only by its owner", async () => {
+    const r = await fetch(srv.base + "/api/bulk", as(PAT, {
+      method: "PATCH", body: JSON.stringify({ id: JOB_ID, label: "  Q3 review — final  " }),
+    }));
+    assert.equal(r.status, 200);
+    const { job } = await r.json();
+    assert.equal(job.label, "Q3 review — final");
+    assert.equal(ctx.tables.bulk_jobs.find((j) => j.id === JOB_ID).label, "Q3 review — final");
+    // Over-long is cut, never refused; empty clears back to the type's default.
+    const long = "x".repeat(200);
+    const r2 = await fetch(srv.base + "/api/bulk", as(PAT, { method: "PATCH", body: JSON.stringify({ id: JOB_ID, label: long }) }));
+    assert.equal((await r2.json()).job.label.length, 120);
+    const r3 = await fetch(srv.base + "/api/bulk", as(PAT, { method: "PATCH", body: JSON.stringify({ id: JOB_ID, label: "" }) }));
+    assert.equal((await r3.json()).job.label, null);
+    // Another member's rename never lands (SAM is refused at the gate as a
+    // free account; a Pro stranger would be scoped out as a 404), and the row
+    // is untouched either way.
+    const rs = await fetch(srv.base + "/api/bulk", as(SAM, { method: "PATCH", body: JSON.stringify({ id: JOB_ID, label: "mine now" }) }));
+    assert.ok(rs.status === 403 || rs.status === 404, String(rs.status));
+    assert.equal(ctx.tables.bulk_jobs.find((j) => j.id === JOB_ID).label, null);
   });
 
   await t.test("deleting the run leaves the valuations on the desk", async () => {

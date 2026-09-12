@@ -444,10 +444,28 @@ const EXPORT_COLUMNS = [
   "size_sqft", "size_source", "sale_comps", "comp_count",
   "market", "note",
 ];
+// The row's own inputs (051), APPENDED after the classic columns so a
+// header-keyed consumer sees new columns and a positional one sees nothing
+// move: the first sixteen columns and the totals row's positions are pinned by
+// test/bulk.test.js and must stay byte-identical. The type's detail keys come
+// in as `opts.detailKeys` (TYPE_COMP_FIELDS is server.js's), then the job's
+// focus last — one column, every row the same value, because a CSV read
+// without its title row still has to say whether it was a sales-only search.
+const EXPORT_SUBJECT_COLUMNS = ["asking_price", "noi", "cap_rate"];
 
-function exportCsv(job, items) {
+function exportCsv(job, items, opts) {
   const j = job || {};
   const list = Array.isArray(items) ? items : [];
+  const detailKeys = (opts && Array.isArray(opts.detailKeys)) ? opts.detailKeys.map(String) : [];
+  const columns = [...EXPORT_COLUMNS, ...EXPORT_SUBJECT_COLUMNS, ...detailKeys, "tx_focus"];
+  const subjectCell = (it, c) => {
+    const s = (it && it.subject) || {};
+    if (c === "asking_price") return s.asking;
+    if (c === "noi") return s.noi;
+    if (c === "cap_rate") return s.capRate;
+    if (c === "tx_focus") return j.tx_focus || "both";
+    return s.details ? s.details[c] : "";
+  };
   const sum = summarize(list);
   const lines = [];
   // A title row before the header, the same disclosure pattern the report's
@@ -459,12 +477,13 @@ function exportCsv(job, items) {
     `${sum.valued} of ${sum.total} valued · ` +
     `${j.property_type || ""} · ${j.months || ""}-month lookback · ` +
     `automated estimates, not appraisals`));
-  lines.push(EXPORT_COLUMNS.map(VAULT.csvCell).join(","));
+  lines.push(columns.map(VAULT.csvCell).join(","));
   for (const it of list) {
-    lines.push(EXPORT_COLUMNS.map((c) => VAULT.csvCell(
+    lines.push(columns.map((c) => VAULT.csvCell(
       c === "property_type" ? (it && it.property_type) || j.property_type || ""
         : c === "note" ? (it && it.error) || ""
-        : it ? it[c] : "")).join(","));
+        : EXPORT_COLUMNS.includes(c) ? (it ? it[c] : "")
+        : subjectCell(it, c))).join(","));
   }
   // The totals ride in the file, not just on the page, for the same reason
   // the title does — and they are labelled with the count they cover so a
@@ -491,4 +510,5 @@ module.exports = {
   summarize,
   exportCsv,
   EXPORT_COLUMNS,
+  EXPORT_SUBJECT_COLUMNS,
 };

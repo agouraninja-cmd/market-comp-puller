@@ -217,6 +217,7 @@ function renderBulkRunMarkup(opts) {
     <p class="acts">
       <button type="button" class="lnk hide" id="bkCancel">Cancel the rest</button>
       <a class="lnk" id="bkDl" href="#" style="display:none">Download CSV</a>
+      <a class="lnk hide" id="bkAddAll" href="#">Add valued rows to portfolio</a>
       <a class="lnk" href="/desk">Open your workspace</a>${past ? "" : `
       <a class="lnk" href="/bulk">Earlier runs &rarr;</a>`}
     </p>
@@ -226,7 +227,7 @@ function renderBulkRunMarkup(opts) {
   <div class="deck hide" id="bkPastDeck">
     <div class="deckrule"><h2>Earlier runs</h2></div>
     <div style="overflow-x:auto"><table class="runs"><thead><tr><th>Run</th><th>Type &middot; lookback</th>
-      <th class="n">Addresses</th><th>Status</th><th class="n"></th></tr></thead>
+      <th class="n">Addresses</th><th class="n">Portfolio value</th><th>Status</th><th class="n"></th></tr></thead>
       <tbody id="bkPast"></tbody></table></div>
   </div>` : ""}`;
 }
@@ -299,8 +300,8 @@ function renderBulkPageBody(boot) {
 4610 E Fairview Ave, Meridian, ID 83642
 900 N Cole Rd, Boise, ID"></textarea>
         <p class="links" style="margin:0">
-          <input type="file" id="bulkFile" accept=".csv,.txt,text/csv,text/plain" class="hide"/>
-          <button type="button" class="lnk" id="pickFile">Upload a CSV or text file</button>
+          <input type="file" id="bulkFile" accept=".csv,.txt,.xlsx,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hide"/>
+          <button type="button" class="lnk" id="pickFile">Upload a CSV, text or Excel file</button>
           <!-- A real button, not only a keyboard shortcut. Tab is the shortcut
                for somebody whose hands are already in the box; this is how it is
                DISCOVERED, and how anyone who cannot or would rather not press
@@ -430,7 +431,7 @@ var BULKRUN=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
 var MAX=50,job=null,items=[],timer=null,allJobs=[],summary=null;
-var onState=null,onList=null;
+var onState=null,onList=null,onRunAgain=null;
 
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
@@ -506,6 +507,12 @@ function rowHtml(it,i){
     ? money(it.value_likely)+'<div class="sub">'+money(it.value_low)+" \\u2013 "+money(it.value_high)+"</div>"
     : '<span class="sub">\\u2014</span>';
   var note=it.error?'<div class="sub">'+esc(it.error)+"</div>":"";
+  // A FAILED row can be retried alone (2026-09-04): one new search for that
+  // address, into the same row, once the run has stopped. Not offered on a
+  // done-but-unvalued row — that answer came from the same search parameters
+  // and would come back from cache; its fix is a longer lookback, a new run.
+  var retry=(it.status==="failed"&&job&&job.status!=="running")
+    ? ' <a href="#" class="lnk" data-retry="'+esc(it.id)+'">Retry</a>':"";
   // The address opens the stored report when there is one: the row is a
   // summary, and the evidence for it — the comps, the weighting, the trust
   // line — lives in the report itself. ?recent= and ?property= are both
@@ -546,7 +553,22 @@ function rowHtml(it,i){
     "<td class=\\"n\\">"+psf(it.psf_mid)+"</td>"+
     "<td class=\\"n\\">"+sz+"</td>"+
     "<td class=\\"n\\">"+comps+"</td>"+
-    "<td>"+statusChip(it.status)+(it.cached?' <span class="sub">cached</span>':"")+"</td></tr>";
+    "<td>"+statusChip(it.status)+(it.cached?' <span class="sub">cached</span>':"")+retry+"</td></tr>";
+}
+
+// Retry: one billed search, said before the click. The row goes back to the
+// queue server-side and the job to running, so the ordinary poll draws it.
+function bindRetryLinks(){
+  Array.prototype.forEach.call(document.querySelectorAll("#bkRows a[data-retry]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      if(!confirm("Run this address again? It is one new search."))return;
+      msg("Retrying\\u2026",false);
+      api("POST","/api/bulk/item/retry",{id:a.getAttribute("data-retry")})
+        .then(function(){if(job)poll(job.id,true);})
+        .catch(function(err){msg(err.message,true);if(err.data&&err.data.job)poll(err.data.job.id,true);});
+    });
+  });
 }
 
 function renderJob(){
@@ -562,6 +584,7 @@ function renderJob(){
     items.map(rowHtml).join("")+"</tbody>";
   $("bkCancel").className=job.status==="running"?"lnk":"lnk hide";
   bindSizeInputs();
+  bindRetryLinks();
   renderPast();
   // The page's own copy — /bulk's button and cap line, or the homepage's.
   // Guarded rather than called directly: this module must not know that a
@@ -570,6 +593,51 @@ function renderJob(){
   var dl=$("bkDl");
   dl.href="/api/bulk/export.csv?id="+encodeURIComponent(job.id);
   dl.style.display=job.done_count>0?"":"none";
+  // Offered only once the run has stopped and something was valued: an
+  // affordance over nothing is a control that does nothing.
+  var aa=$("bkAddAll");
+  if(aa)aa.className=(job.status!=="running"&&portfolioCandidates().length)?"lnk":"lnk hide";
+}
+
+// "Add valued rows to portfolio" (owner's call, 2026-09-04). A portfolio is
+// what you OWN, so this is an explicit act with a confirm naming the count,
+// never something a run does on its own. It walks the one sanctioned door —
+// GET the stored recent, POST /api/portfolio with its payload — so the match
+// key, the 100/500 cap and the fill-never-rewrite verified key apply by
+// construction, and a property already in the book is answered "existed"
+// rather than duplicated. The snapshot is the row's own figure: the same
+// arithmetic the report would open with.
+function portfolioCandidates(){
+  return items.filter(function(it){return it.status==="done"&&it.recent_item_id&&Number(it.value_likely)>0;});
+}
+function addAllToPortfolio(){
+  var rows=portfolioCandidates();
+  if(!rows.length)return;
+  if(!confirm("Add "+rows.length+" valued address"+(rows.length===1?"":"es")+" to your portfolio? "+
+    "A portfolio is what you own — each one becomes a tracked property."))return;
+  var added=0,existed=0,i=0;
+  msg("Adding to your portfolio\\u2026",false);
+  function step(){
+    if(i>=rows.length){
+      msg("Added "+added+" of "+rows.length+" to your portfolio"+(existed?" \\u00b7 "+existed+" already there":"")+".",false);
+      return;
+    }
+    var it=rows[i++];
+    api("GET","/api/recents?id="+encodeURIComponent(it.recent_item_id)).then(function(rec){
+      return api("POST","/api/portfolio",{
+        payload:rec.payload,
+        snapshot:{low:it.value_low,likely:it.value_likely,high:it.value_high},
+        verifiedKey:""
+      });
+    }).then(function(d){
+      if(d&&d.existed)existed++;else added++;
+      msg("Adding to your portfolio\\u2026 "+(added+existed)+" of "+rows.length,false);
+      step();
+    }).catch(function(err){
+      msg("Stopped at "+it.address+": "+err.message+" ("+added+" added).",true);
+    });
+  }
+  step();
 }
 
 // The list a page load hands us, kept so renderJob() can re-render it: the
@@ -624,21 +692,67 @@ function renderPast(){
   if(!rest.length){$("bkPastDeck").className="deck hide";return;}
   $("bkPastDeck").className="deck";
   // A ledger row per run: name and date, type and lookback, the address
-  // count, the status chip, and its CSV. No portfolio value here — the list
-  // read carries no totals, and a figure would mean one more query per run
-  // on every page load; clicking the run shows it in the strip above.
+  // count, the portfolio value (the list read's own BULK.summarize over the
+  // run's done rows, 2026-09-04 — the same arithmetic the strip shows, so the
+  // two cannot disagree; absent, not zero, when the read failed), the status
+  // chip, and its actions: CSV, Run again, Rename, Delete.
   $("bkPast").innerHTML=rest.map(function(j){
     var done=j.status==="done"||(j.status!=="running"&&j.done_count>=j.total&&j.total>0);
+    var s=j.summary;
+    var val=s&&s.valued>0
+      ? '<span style="font-weight:500">'+money(s.likely)+'</span><div class="sub">'+money(s.low)+" \\u2013 "+money(s.high)+
+        (s.valued<j.total?" \\u00b7 "+s.valued+" of "+j.total+" valued":"")+"</div>"
+      : '<span class="sub">\\u2014</span>';
+    var acts=[];
+    if(done||j.done_count>0)acts.push('<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>');
+    if(onRunAgain&&j.status!=="running")acts.push('<a href="#" data-again="'+esc(j.id)+'">Run again</a>');
+    acts.push('<a href="#" data-rename="'+esc(j.id)+'">Rename</a>');
+    if(j.status!=="running")acts.push('<a href="#" data-del="'+esc(j.id)+'">Delete</a>');
     return "<tr><td>"+'<a href="#" data-job="'+esc(j.id)+'">'+esc(j.label||j.property_type+" run")+"</a>"+
       '<div class="sub">'+esc(String(j.created_at||"").slice(0,10))+"</div></td>"+
       "<td>"+esc(j.property_type)+" \\u00b7 "+esc(String(j.months))+" months</td>"+
       '<td class="n">'+j.total+"</td>"+
+      '<td class="n">'+val+"</td>"+
       "<td>"+statusChip(j.status)+(j.status!=="running"&&j.done_count<j.total
         ?' <span class="sub">'+(j.total-j.done_count)+" not valued</span>":"")+"</td>"+
-      '<td class="n">'+(done||j.done_count>0
-        ?'<a href="/api/bulk/export.csv?id='+encodeURIComponent(j.id)+'">CSV</a>':"")+"</td></tr>";}).join("");
-  Array.prototype.forEach.call($("bkPast").querySelectorAll("a[data-job]"),function(a){
+      '<td class="n" style="white-space:nowrap">'+acts.join(" \\u00b7 ")+"</td></tr>";}).join("");
+  var past=$("bkPast");
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-job]"),function(a){
     a.addEventListener("click",function(e){e.preventDefault();poll(a.getAttribute("data-job"),true);});});
+  // Run again: the page's own handler (it fills the form), reached through
+  // the callback because this module knows no form exists.
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-again]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      api("GET","/api/bulk?id="+encodeURIComponent(a.getAttribute("data-again")))
+        .then(function(d){onRunAgain(d.job,d.items||[]);})
+        .catch(function(err){msg(err.message,true);});
+    });});
+  // Rename: the run's own name, never shown publicly. Empty clears it.
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-rename]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      var id=a.getAttribute("data-rename");
+      var cur=(allJobs.filter(function(j){return j.id===id;})[0]||{}).label||"";
+      var next=prompt("Name this run:",cur);
+      if(next===null)return;
+      api("PATCH","/api/bulk",{id:id,label:next}).then(function(){
+        if(job&&job.id===id){job.label=next.trim()||null;renderJob();}
+        if(onList)onList();
+      }).catch(function(err){msg(err.message,true);});
+    });});
+  // Delete: the receipt goes, the valuations stay (they are filed under
+  // recent searches, where they belong to the property, not to the run).
+  Array.prototype.forEach.call(past.querySelectorAll("a[data-del]"),function(a){
+    a.addEventListener("click",function(e){
+      e.preventDefault();
+      var id=a.getAttribute("data-del");
+      if(!confirm("Delete this run from the list? Its valuations stay in your recent searches."))return;
+      api("DELETE","/api/bulk?id="+encodeURIComponent(id)).then(function(){
+        if(job&&job.id===id){job=null;items=[];summary=null;renderJob();}
+        if(onList)onList();
+      }).catch(function(err){msg(err.message,true);});
+    });});
 }
 
 function api(method,url,body){
@@ -692,7 +806,10 @@ function init(opts){
   opts=opts||{};
   onState=opts.onState||null;
   onList=opts.onList||null;
+  onRunAgain=opts.onRunAgain||null;
   if(opts.max)MAX=opts.max;
+  var aa=$("bkAddAll");
+  if(aa)aa.addEventListener("click",function(e){e.preventDefault();addAllToPortfolio();});
   var c=$("bkCancel");
   if(c)c.addEventListener("click",function(){
     if(!job)return;
@@ -980,6 +1097,32 @@ function run(){
   }).then(function(){refreshCount();});
 }
 
+// Run again (2026-09-04): refill the form from an earlier run — its
+// addresses, type, lookback, focus and market note — and scroll to it. It
+// does NOT start the run: re-running is the documented resume (finished rows
+// come from cache for free), but a run is still up to fifty billed searches
+// and the button is where that decision is made. The label is left blank so
+// the new run is not filed under the old name.
+function runAgain(j,its){
+  var text=(its||[]).slice().sort(function(a,b){return a.position-b.position;})
+    .map(function(it){return it.address;}).filter(Boolean).join("\\n");
+  var ta=$("bulkText");
+  ta.value=text;
+  var sel=$("bulkType");
+  if(j&&j.property_type&&Array.prototype.some.call(sel.options,function(o){return o.value===j.property_type;})){
+    sel.value=j.property_type;renderSubjectFields(sel.value);
+  }
+  var mo=$("bulkMonths");
+  if(j&&Array.prototype.some.call(mo.options,function(o){return o.value===String(j.months);}))mo.value=String(j.months);
+  $("bulkFocus").value=j&&j.tx_focus?j.tx_focus:"both";
+  $("bulkNote").value=(j&&j.note)||"";
+  $("bulkLabel").value="";
+  refreshCount();
+  BULKRUN.msg("Filled in from "+((j&&j.label)||"that run")+". Change anything, then run it.",false);
+  window.scrollTo({top:0,behavior:"smooth"});
+  ta.focus();
+}
+
 function fillTypes(){
   $("bulkType").innerHTML=TYPES.map(function(t){
     return '<option value="'+esc(t)+'">'+esc(t)+"</option>";}).join("");
@@ -1006,7 +1149,7 @@ function start(boot){
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
   renderCap();
-  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList});
+  BULKRUN.init({max:MAX,onState:onRunState,onList:loadList,onRunAgain:runAgain});
   BULKRUN.setJobs(d.jobs||[]);
   var live=(d.jobs||[]).filter(function(j){return j.status==="running";})[0];
   if(live)BULKRUN.poll(live.id);
@@ -1038,8 +1181,23 @@ function start(boot){
   $("bulkFile").addEventListener("change",function(){
     var f=$("bulkFile").files&&$("bulkFile").files[0];if(!f)return;
     var fr=new FileReader();
-    fr.onload=function(){$("bulkText").value=String(fr.result||"");refreshCount();};
     fr.onerror=function(){BULKRUN.msg("That file could not be read.",true);};
+    // An Excel workbook goes to the server to be read (xlsx.js, first sheet)
+    // and comes back as CSV text into the same box, so the count, the cost
+    // line and every parse rule run exactly as they do on a paste.
+    if(/\\.xlsx$/i.test(f.name||"")){
+      fr.onload=function(){
+        BULKRUN.msg("Reading "+f.name+"\\u2026",false);
+        BULKRUN.api("POST","/api/bulk/inspect",{xlsx:String(fr.result||"")}).then(function(d){
+          $("bulkText").value=String(d.csv||"");
+          BULKRUN.msg("Read the first sheet of "+f.name+".",false);
+          refreshCount();
+        }).catch(function(e){BULKRUN.msg(e.message,true);});
+      };
+      fr.readAsDataURL(f);
+      return;
+    }
+    fr.onload=function(){$("bulkText").value=String(fr.result||"");refreshCount();};
     fr.readAsText(f);
   });
   refreshCount();

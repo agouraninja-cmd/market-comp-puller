@@ -243,6 +243,36 @@ test("the CSV discloses what it is and what it covers", () => {
   assert.match(csv, /Total \(1 valued\)/, "the totals name the count they cover");
 });
 
+// The row's own inputs (051) ride the file too (2026-09-04 evening), APPENDED
+// after the classic sixteen so nothing a positional reader knows has moved.
+test("the CSV carries each row's asking price, NOI, cap rate, the type's details and the focus, after the classic columns", () => {
+  const csv = BULK.exportCsv(
+    { label: "Q3 review", property_type: "Industrial", months: 24, tx_focus: "sales" },
+    // Comma-free addresses so a plain split reads the columns positionally.
+    [{ address: "1 A St", status: "done", value_low: 100, value_likely: 120, value_high: 140,
+       subject: { asking: 3125000, noi: 210000, capRate: 6.25, details: { clear_height: "32" } } },
+     { address: "2 B St", status: "failed", error: "No priced sale comps in this window" }],
+    { detailKeys: ["clear_height", "dock_doors"] });
+  const lines = csv.trim().split("\n");
+  // The classic prefix is byte-identical: the first sixteen columns have not moved.
+  assert.equal(lines[1], BULK.EXPORT_COLUMNS.join(",") + ",asking_price,noi,cap_rate,clear_height,dock_doors,tx_focus");
+  const row1 = lines[2].split(",");
+  assert.equal(row1.length, BULK.EXPORT_COLUMNS.length + 6);
+  assert.deepEqual(row1.slice(BULK.EXPORT_COLUMNS.length), ["3125000", "210000", "6.25", "32", "", "sales"]);
+  // A row with no subject exports blanks, never "undefined", and the focus is
+  // the JOB's on every row (a file read without its title row still says so).
+  const row2 = lines[3].split(",");
+  assert.deepEqual(row2.slice(BULK.EXPORT_COLUMNS.length), ["", "", "", "", "", "sales"]);
+  assert.equal(csv.includes("undefined"), false);
+  // The totals row still lands on the classic value columns (positions 4-6).
+  const totals = lines[lines.length - 1].split(",");
+  assert.match(totals[0], /Total \(1 valued\)/);
+  assert.deepEqual(totals.slice(4, 7), ["100", "120", "140"]);
+  // No focus set reads as "both", the default every pre-051 job ran with.
+  const plain = BULK.exportCsv({ property_type: "Land" }, [{ address: "1 A St", status: "done" }]);
+  assert.match(plain.trim().split("\n")[2], /,both$/);
+});
+
 test("a formula-shaped address arrives as text", () => {
   // Every CSV this product emits is opened in a spreadsheet by design.
   const csv = BULK.exportCsv({}, [{ address: "=1+1 Main St", status: "done" }]);

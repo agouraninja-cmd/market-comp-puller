@@ -477,6 +477,32 @@ test("a search that fails costs the row, not the run", async (t) => {
   assert.equal(failed[0].value_likely, null, "a failure is not a zero");
   assert.equal(done.summary.valued, 1, "and the total covers one address, and says so");
   assert.equal(done.summary.failed, 1);
+
+  // Retry (2026-09-04): the failed row is re-run ALONE, into the same row of
+  // the same job, and the job's bookkeeping comes out whole — done_count back
+  // to total, the row valued and filed, one more billed search and no more.
+  const callsBefore = n;
+  const notFailed = await fetch(srv.base + "/api/bulk/item/retry", as({
+    method: "POST", body: JSON.stringify({ id: ok[0].id }),
+  }));
+  assert.equal(notFailed.status, 409, "a done row cannot be retried — its fix is a new run with a longer lookback");
+  const retried = await fetch(srv.base + "/api/bulk/item/retry", as({
+    method: "POST", body: JSON.stringify({ id: failed[0].id }),
+  }));
+  assert.equal(retried.status, 200, JSON.stringify(await retried.clone().json()));
+  const again = await waitForJob(srv.base, done.job.id);
+  assert.equal(again.job.status, "done");
+  assert.equal(again.job.done_count, 2, "done_count is the whole job's, not the retry's own tally");
+  assert.equal(again.items.length, 2, "the retry mutates the row; it does not add one");
+  const fixed = again.items.find((it) => it.id === failed[0].id);
+  assert.equal(fixed.status, "done", fixed.error || "");
+  assert.ok(fixed.value_likely > 0, "the retried address is valued");
+  assert.ok(fixed.recent_item_id, "and filed under recent searches like any valued row");
+  assert.equal(fixed.error, null);
+  assert.equal(again.summary.valued, 2);
+  assert.equal(again.summary.failed, 0);
+  assert.equal(n, callsBefore + 1, "a retry is exactly one new search");
+  assert.equal(ctx.tables.recent_searches.length, 2, "the failed row had filed nothing, so the retry files one and duplicates none");
 });
 
 

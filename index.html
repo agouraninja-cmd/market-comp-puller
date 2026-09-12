@@ -2685,7 +2685,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              they move together today (both read `pro`) but they are separate
              answers and a shared flag here would be a second copy of a rule
              entitlements.js owns. Ships hidden, like the vault link. -->
-        <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Bulk valuation</a>
+        <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Comp report</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -2839,10 +2839,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <!-- There is no subtitle under the header any more (2026-09-04). The
            line here was rewritten four times as decks came and went, and by
            the end it was a sentence about where things are NOT ("your own
-           book lives in the Vault; reports run from Bulk valuation") — the
-           navigation, restated in prose, above an empty form. The firm strip
-           inside #myDesk is the page's opening statement now, and the rail
-           says where the Vault and Bulk valuation are. -->
+           book lives in the Vault; comp reports run from the Comp report
+           tool") — the navigation, restated in prose, above an empty form.
+           The firm strip inside #myDesk is the page's opening statement now,
+           and the rail says where the Vault and the Comp report tool are. -->
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -17594,7 +17594,7 @@ async function renderMyDesk() {
     if (p.tester) {
       return {
         title: "Pro — comped (beta tester)",
-        detail: "Full Pro access as a beta tester — vault, firms and bulk valuation included. Nothing is billed, and there's no subscription behind it.",
+        detail: "Full Pro access as a beta tester — vault, firms and comp reports included. Nothing is billed, and there's no subscription behind it.",
       };
     }
     // Before the Stripe states, like the two comped branches above it and for

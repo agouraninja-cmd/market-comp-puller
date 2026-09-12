@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-12",
+    "type": "improvement",
+    "title": "Bulk valuation is now called Comp report",
+    "details": "Owner's call. Every place a person read \"Bulk valuation\" now reads \"Comp report\": the nav row on the rail and in the app's Explore menu, the /bulk page title and its sign-in / Pro / unavailable gate cards, the route's 403 and 503 copy, the workspace's pointer line, the tester plan card, the /pricing Pro summary, and the CSV title row. The URL stays /bulk and no id, route, entitlement or test hook was renamed — this is the name on screen, not the code's noun."
+  },
+  {
     "date": "2026-09-04",
     "type": "improvement",
     "title": "The Workspace opens on a firm strip and reads as one record: one row family, quieter links, the Buildings form closed",

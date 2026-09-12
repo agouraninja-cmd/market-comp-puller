@@ -81,7 +81,8 @@ test("a member's page carries every workspace read, each equal to the route's ow
   const id = encodeURIComponent(ORG_ID);
   for (const url of ["/api/config", "/api/account/me", "/api/portfolio", "/api/shares", "/api/org", "/api/branding",
     "/api/recents", "/api/messages/unread", `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`,
-    "/api/messages", `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`]) {
+    "/api/messages", `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+    `/api/org/leases?id=${id}`]) {
     assert.ok(keys.includes(url), `payload must carry ${url}; has ${keys.join(", ")}`);
   }
   // The claim: nothing here is a second copy of any read. Every entry is

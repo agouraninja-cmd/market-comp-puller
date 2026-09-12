@@ -231,7 +231,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     fig: `$${money(monthly)}`,
     per: "per month &middot; cancel any time",
     mid: true,
-    sum: "Everything free, plus the ten-year window, unlimited exports, the private comp vault, bulk valuation, the Address Explorer, and your own branding on every report.",
+    sum: "Everything free, plus the ten-year window, unlimited exports, the private comp vault, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report.",
     cta: billingLive
       ? `<p style="margin:0"><a class="btn sm" href="${buyHref}">${buyLabel} &rarr;</a></p>`
       : "",

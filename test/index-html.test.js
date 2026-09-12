@@ -1294,7 +1294,7 @@ test("Escape closes the Firm & branding panel and never falls through it", () =>
 });
 
 test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from Bulk valuation."),
+  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from the Comp report tool."),
     "the subtitle names what the workspace actually holds, and where the report runner went (2026-09-04)");
   assert.ok(!html.includes("Your firm's shelf, and everything you have shared."),
     "the 2026-08-29 line named two of the eight sections and must not come back");

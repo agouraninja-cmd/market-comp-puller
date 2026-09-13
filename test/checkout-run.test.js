@@ -41,6 +41,10 @@ const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 864e5).toISOString();
 
 const OWNER = { id: "11111111-1111-4111-8111-111111111111", email: "owner@firm.test", name: "Ivy Owner" };
+// Holds an ACTIVE personal subscription from boot, because findSubscription
+// caches its answer (null included) for 60s — a row inserted mid-test after
+// OWNER's earlier purchases would be invisible behind OWNER's cached null.
+const SUBSCRIBED = { id: "44444444-4444-4444-8444-444444444444", email: "already@paying.test", name: "Sam Paid" };
 
 const as = (user, init = {}) => ({
   ...init,
@@ -85,9 +89,19 @@ async function startStubStripe() {
 async function bootAll() {
   const org = { id: "22222222-2222-4222-8222-222222222222", name: "Ivy & Co", kind: "broker", seats: 200, created_by: OWNER.id };
   const tables = {
-    users: [{ ...OWNER, pro_tester: false, vault_beta: false }],
-    sessions: [{ token_hash: sha256("tok-" + OWNER.id), user_id: OWNER.id, expires_at: YEAR_OUT }],
-    subscriptions: [],
+    users: [
+      { ...OWNER, pro_tester: false, vault_beta: false },
+      { ...SUBSCRIBED, pro_tester: false, vault_beta: false },
+    ],
+    sessions: [
+      { token_hash: sha256("tok-" + OWNER.id), user_id: OWNER.id, expires_at: YEAR_OUT },
+      { token_hash: sha256("tok-" + SUBSCRIBED.id), user_id: SUBSCRIBED.id, expires_at: YEAR_OUT },
+    ],
+    subscriptions: [{
+      user_id: SUBSCRIBED.id, stripe_subscription_id: "sub_existing", stripe_customer_id: "cus_existing",
+      plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT,
+      cancel_at_period_end: false, grace_until: null,
+    }],
     orgs: [org],
     org_members: [{ id: "33333333-3333-4333-8333-333333333333", org_id: org.id, email: OWNER.email, user_id: OWNER.id, role: "owner", joined_at: new Date().toISOString(), removed_at: null }],
     org_subscriptions: [],
@@ -231,6 +245,78 @@ test("a checkout that succeeds reaches Stripe and returns its URL", async (t) =>
     const raw = crypto.createHash("sha256").update(call.rawBody).digest("hex");
     assert.equal(call.idempotencyKey, raw);
     assert.equal(typeof STRIPE.idempotencyKeyFor({ a: 1 }), "string");
+  });
+
+  // --- already_subscribed ----------------------------------------------------
+  //
+  // The rows these subscriptions live in are keyed on WHO owns them —
+  // subscriptions on user_id, org_subscriptions on org_id — so a second
+  // purchase does not sit beside the first, it OVERWRITES it, while Stripe
+  // keeps billing both. The idempotency key above stops the accidental twin
+  // (a double-click); this refusal stops the deliberate one, and points at
+  // the billing portal, whose change-quantity setting is on.
+  // ---------------------------------------------------------------------------
+  await t.test("a firm with a live plan is sent to the portal, not to checkout", async () => {
+    ctx.tables.org_subscriptions.push({
+      org_id: org.id, stripe_subscription_id: "sub_firm_live", stripe_customer_id: "cus_firm_live",
+      plan: "firm_monthly", status: "active", current_period_end: YEAR_OUT,
+      cancel_at_period_end: false, grace_until: null,
+    });
+    const before = stub.calls.length;
+    const res = await buy({ plan: "firm_monthly", orgId: org.id, seats: 4 });
+    assert.equal(res.status, 409);
+    const body = await res.json();
+    assert.equal(body.code, "already_subscribed");
+    assert.match(body.error, /billing portal/, "the refusal must name the door that works");
+    assert.equal(stub.calls.length, before, "and Stripe must never see the request");
+  });
+
+  await t.test("a firm in payment grace is still a subscribed firm", async () => {
+    // Grace means a failed card, not a lapsed relationship — a second
+    // subscription on top of a struggling one is the worst possible answer.
+    ctx.tables.org_subscriptions[0].status = "grace";
+    const res = await buy({ plan: "firm_monthly", orgId: org.id, seats: 4 });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, "already_subscribed");
+  });
+
+  await t.test("a firm whose plan fully ended can buy afresh", async () => {
+    // "cancelled" is terminal — Stripe's deletion event landed. This is the
+    // lapsed firm coming back, and it must not be locked out by its own
+    // history. The old customer id is reused, which is Stripe's preference.
+    ctx.tables.org_subscriptions[0].status = "cancelled";
+    const before = stub.calls.length;
+    const res = await buy({ plan: "firm_monthly", orgId: org.id, seats: 4 });
+    assert.equal(res.status, 200);
+    assert.equal(stub.calls.length, before + 1);
+    assert.match(stub.calls[stub.calls.length - 1].body, /customer=cus_firm_live/,
+      "a returning firm keeps its Stripe customer record");
+    ctx.tables.org_subscriptions.length = 0;
+  });
+
+  await t.test("a person with an active plan cannot start a second one", async () => {
+    const before = stub.calls.length;
+    const res = await fetch(srv.base + "/api/checkout",
+      as(SUBSCRIBED, { method: "POST", body: JSON.stringify({ plan: "pro_monthly" }) }));
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).code, "already_subscribed");
+    assert.equal(stub.calls.length, before, "Stripe must never see it");
+  });
+
+  await t.test("their personal plan does not block them buying FIRM seats", async () => {
+    // The two subscriptions live in different tables and bill different
+    // customers; a firm owner's own Pro has nothing to do with the firm
+    // buying seats. Blocking this would make the seat plan unbuyable by
+    // exactly the people entitled to buy it — canUseOrg requires Pro.
+    ctx.tables.org_members.push({
+      id: "55555555-5555-4555-8555-555555555555", org_id: org.id, email: SUBSCRIBED.email,
+      user_id: SUBSCRIBED.id, role: "owner", joined_at: new Date().toISOString(), removed_at: null,
+    });
+    const before = stub.calls.length;
+    const res = await fetch(srv.base + "/api/checkout",
+      as(SUBSCRIBED, { method: "POST", body: JSON.stringify({ plan: "firm_monthly", orgId: org.id, seats: 3 }) }));
+    assert.equal(res.status, 200, "a Pro member's firm purchase must go through");
+    assert.equal(stub.calls.length, before + 1);
   });
 
   await t.test("the fake never had to guess at a query it did not understand", () => {

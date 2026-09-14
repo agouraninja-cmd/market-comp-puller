@@ -2540,7 +2540,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </a>
       <nav class="flex items-center gap-4 sm:gap-6 text-[13.5px] text-[#5A6473]">
         <!-- The browse links live behind one dropdown; the product surfaces
-             (Market explorer, the 1031 guide, Workspace, the vault and bulk)
+             (Market explorer, Workspace, the vault and bulk)
              sit in the bar itself, because the rail hides this dropdown and a
              destination a member visits weekly is not a browse link. What is
              left in here is what a STRANGER browses, which is also who still
@@ -2585,7 +2585,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              #pricing deep links still open the modal here. -->
 
         <!-- THE ORDER, owner's (2026-08-29): Workspace, Vault, Market
-             explorer, 1031 guide, Bulk valuation. Identical here, in
+             explorer, Bulk valuation (the 1031 guide sat between the last
+             two until its page was removed 2026-09-12). Identical here, in
              marketBar and in vault-page.js's hand-written header, so the
              sidebar does not reshuffle itself when a member navigates
              between them; test/routes.test.js asserts the sequence on all
@@ -2664,18 +2665,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              /run-report route still answers but is linked from nowhere (the
              bulk page took every input the form had that evening, migration
              051). server.js's TOOL_LINKS carries the twin of this decision. -->
-        <!-- A bar row for EVERY reader of this file since 2026-09-02.
-             It was a bar row for a member and an Explore menu item for a
-             stranger (owner's, 2026-08-30), toggled after paint. The menu half
-             is gone: the guide moved out of NAV_LINKS into server.js's new
-             Tools dropdown, which marketBar renders for a signed-out visitor
-             and this file has no equivalent of.
-             So rather than leave an anonymous reader of THIS file — someone on
-             a shared report, or mid-signup — with the guide in neither place,
-             the row simply always renders. That deletes a toggle instead of
-             adding one, and it is the same rule the move was made under: a
-             link belongs where its reader can reach it. -->
-        <a id="nav1031Link" href="/1031-exchange" class="hover:text-[#1A2433]">1031 guide</a>
         <!-- Bulk valuation, the second Pro tool, on the same 2026-08-29 report.
              /bulk had no link on this page at all -- not in the menu, not in
              the footer -- so from inside the app the only way in was typing
@@ -4664,7 +4653,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                    reader needs. -->
               <li><a href="/pricing" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Pricing</a></li>
               <li><a href="/faq" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">FAQ</a></li>
-              <li><a href="/1031-exchange" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">1031 exchange guide</a></li>
               <li><button type="button" id="footerSubmitComp" class="hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#B8C0CC]">Submit a comp (brokers)</button></li>
               <!-- Hidden until the browser fires beforeinstallprompt: an
                    install button that could only fail (already installed,
@@ -12654,12 +12642,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     // forbids outright. Toggled rather than added so both directions hold.
     if (navRailMode) document.documentElement.classList.toggle("nav-rail", on);
     document.getElementById("signInLink").classList.toggle("hidden", on);
-    // The 1031 guide no longer swaps places (2026-09-02). It was a bar row for
-    // a member and an Explore menu item for a stranger, toggled here so the
-    // two never showed at once; the menu half left NAV_LINKS for server.js's
-    // Tools dropdown, which this file has no equivalent of, so the row simply
-    // always renders and there is nothing to toggle. See its markup above.
-    //
     // The .nav-anon sweep STAYS. Nothing in NAV_LINKS carries that flag today,
     // so it is a no-op — kept deliberately, because the flag is the mechanism
     // for any future anonymous-only entry in a file served as one set of bytes
@@ -20314,19 +20296,6 @@ async function renderMyDesk() {
     catch (_) { return true; }      // storage unavailable — don't dead-end exports
   }
 
-  // The /1031-exchange guide stamps this marker on every read (its widget
-  // script owns the key — keep the two strings identical). A BOV request from
-  // a browser that read the guide recently is tagged source "1031" instead of
-  // "bov", which is the only attribution the funnel has: the guide, the
-  // account wall, and the report live on separate pages, so a URL param
-  // cannot survive the journey. 7 days, then it is just a lead again.
-  function ref1031Active() {
-    try {
-      const t = Number(localStorage.getItem("cnRef1031.v1"));
-      return Number.isFinite(t) && t > 0 && Date.now() - t < 7 * 24 * 3600 * 1000;
-    } catch (_) { return false; }
-  }
-
   // One CTA, two audiences. Same lead funnel (source: "bov"), same "we
   // connect you with a licensed local broker, we are not one" rule. A house
   // buyer bouncing off "Broker Opinion of Value" is why Residential gets
@@ -20548,10 +20517,10 @@ async function renderMyDesk() {
       company: document.getElementById("leadCompany").value.trim(),
       address: (currentMeta && currentMeta.address) || "",
       type: (currentMeta && currentMeta.type) || "",
-      // "1031" is a bov-class source: same funnel, same broker alert — the
-      // tag tells the owner and the broker inbox this seller is on the
-      // 45/180-day clock. Export unlocks are never tagged.
-      source: leadContext === "bov" && ref1031Active() ? "1031" : leadContext,
+      // "export" or "bov". (A third value, "1031", was stamped here for a
+      // browser that had read the 1031 guide; that page was removed
+      // 2026-09-12 and the server keeps reading the old rows.)
+      source: leadContext,
       size_sqft: leadContext === "bov" && currentMeta && currentMeta.subject && currentMeta.subject.sizeMin
         ? (currentMeta.subject.sizeMax ? (currentMeta.subject.sizeMin + currentMeta.subject.sizeMax) / 2 : currentMeta.subject.sizeMin)
         : undefined,

@@ -243,6 +243,12 @@ brand is CompNinja, never Adler. The owner is not a licensed broker:
 
 ## Shipped log (roadmap-level items only)
 
+- **2026-09-12: /1031-exchange removed** (owner's call). The v4 slice 3
+  guide and its 2026-08-14 worksheet are gone: route, module, nav rows,
+  footer links, sitemap line, market-page one-liner and the /admin funnel
+  card. Leads already tagged `source: "1031"` still read as BOV requests;
+  nothing writes the tag any more.
+
 - **2026-09-02: four import doors polished for the September goal** (the
   owner's "make it easier to upload data" theme; plan in
   `~/.claude/plans/`, spec-less by choice because every slice reshapes a

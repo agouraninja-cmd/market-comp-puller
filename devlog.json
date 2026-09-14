@@ -2,6 +2,12 @@
   {
     "date": "2026-09-12",
     "type": "improvement",
+    "title": "The 1031 exchange guide is gone",
+    "details": "Owner's call: /1031-exchange — the identification worksheet over the education page, live since 2026-08-08 — is removed. That takes the route and guide-1031.js, the 1031 row in every signed-in header and the app's nav, the Tools menu entry (Market explorer stands alone there now), both footers' links, the sitemap line, the contextual \"buying in a 1031 exchange?\" line on every market page, the guide_1031 analytics event and the \"1031 guide funnel\" card on /admin, and the cnRef1031.v1 marker the BOV lead form read. The URL 404s like any unknown path; no redirect, since nothing else answers that question. Leads already tagged source \"1031\" still read as BOV requests in the inbox and the owner email — the tag was attribution, never a separate funnel — but nothing writes it any more."
+  },
+  {
+    "date": "2026-09-12",
+    "type": "improvement",
     "title": "Bulk valuation is now called Comp report",
     "details": "Owner's call. Every place a person read \"Bulk valuation\" now reads \"Comp report\": the nav row on the rail and in the app's Explore menu, the /bulk page title and its sign-in / Pro / unavailable gate cards, the route's 403 and 503 copy, the workspace's pointer line, the tester plan card, the /pricing Pro summary, and the CSV title row. The URL stays /bulk and no id, route, entitlement or test hook was renamed — this is the name on screen, not the code's noun."
   },

@@ -218,7 +218,7 @@ test("/brokers-firms is reachable from the footer of every public page", async (
 
   // A page nothing links to is a page nobody reads. The footer is the one
   // surface every public page shares.
-  for (const p of ["/", "/markets", "/pricing", "/1031-exchange"]) {
+  for (const p of ["/", "/markets", "/pricing"]) {
     const html = await (await fetch(srv.base + p)).text();
     assert.ok(html.includes('href="/brokers-firms"'), `${p} links to /brokers-firms`);
   }

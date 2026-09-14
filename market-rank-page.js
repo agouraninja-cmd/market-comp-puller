@@ -3,7 +3,7 @@
 //
 // Spec: docs/superpowers/specs/2026-09-01-market-ranking-design.md
 //
-// PURE, like guide-1031.js and valuation.js: no requires, no I/O, no clock. The
+// PURE, like valuation.js: no requires, no I/O, no clock. The
 // caller hands in scored rows and this returns a string. That is what lets the
 // whole page be tested without a server, and it is why the scoring lives in
 // market-score.js rather than here — this file decides what a number LOOKS

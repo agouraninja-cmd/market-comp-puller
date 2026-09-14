@@ -35,7 +35,7 @@ const MARKET = require("../market-seed.json")[MARKET_SLUG];
 
 // Every page that renders through marketShell(). /broker/<slug> is omitted: it
 // needs a database to resolve a profile and 404s without one.
-const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/1031-exchange", "/terms", "/privacy"];
+const SHELL_PAGES = ["/markets", MARKET_PAGE, "/brokers-firms", "/terms", "/privacy"];
 
 test("the public pages let a visitor sign in", async (t) => {
   const srv = await boot({ ACCOUNT_WALL: "on" });

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // /faq — the questions a stranger asks before they sign up.
 //
-// Pure, like brokers-firms-page.js, bulk-page.js and guide-1031.js: it takes its
+// Pure, like brokers-firms-page.js and bulk-page.js: it takes its
 // inputs and returns a string. No I/O, no requires, no clock reads. server.js
 // owns the route, the SEO metadata and the shell; this file decides what is
 // asked and how it is drawn.

@@ -100,12 +100,9 @@ const { renderHubHTML } = require("./hub-page");
 const MSG = require("./messaging");
 // The /messages screen. A marketShell BODY, the bulk-page.js pattern.
 const { renderMessagesBody } = require("./messages-page");
-// The 1031 identification worksheet. A web page, so it is not server code —
-// the vault-page.js precedent; server.js only dresses it in marketShell.
-const G1031 = require("./guide-1031");
 // The market ranking. RANKPAGE renders, MARKETSCORE does the arithmetic — the
-// same split guide-1031.js and valuation.js keep, and the reason the whole
-// ranking can be tested with no server and no database.
+// same split valuation.js keeps, and the reason the whole ranking can be
+// tested with no server and no database.
 const RANKPAGE = require("./market-rank-page.js");
 const MARKETSCORE = require("./market-score.js");
 // The vault API's comp shape — the seam between how comps are STORED and how
@@ -10940,9 +10937,11 @@ const NAV_LINKS = [
 // it for a few hours as the form with the inputs a bulk row lacked, and the
 // same evening the bulk page took every one of those inputs (migration 051),
 // so the link went with its reason. The red CTA in marketBar points at /bulk.
+// The 1031 exchange guide was the second entry here until 2026-09-12, when
+// the page was removed (owner's call). Everything above about the guide is
+// history of why this menu has the shape it has.
 const TOOL_LINKS = [
   ["/markets", "Market explorer"],
-  ["/1031-exchange", "1031 exchange guide"],
 ];
 const toolLinksHtml = (current = "") =>
   TOOL_LINKS.map(([href, label]) => {
@@ -11067,7 +11066,7 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/1031-exchange", "/bulk", "/buildings", "/building"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -11224,19 +11223,6 @@ const marketBar = (signedIn = false, current = "") =>
   `<span class="navsec">Tools</span>` +
   (signedIn
     ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
-    : "") +
-  // The 1031 guide, a bar row for a MEMBER only (2026-08-29, narrowed
-  // 2026-08-30). See NAV_LINKS for why: the rail hides the Explore dropdown,
-  // so for a signed-in member this was the only link in it they actually
-  // wanted and the only one they could not reach. A signed-out visitor never
-  // gets the rail, so their dropdown still opens and the guide goes back into
-  // it -- this bar is the one that has to sell to a stranger, and Brokers,
-  // For firms and the download earn its slots first.
-  //
-  // Rendered here rather than by navLinksHtml because a row and a menu item
-  // are different things; the list decides membership, this decides shape.
-  (signedIn
-    ? `<a href="/1031-exchange"${current === "/1031-exchange" ? ' aria-current="page"' : ""}>1031 guide</a>`
     : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
@@ -11637,7 +11623,6 @@ const FOOTER_LINK_COLS =
   // 2026-09-01. The old href still resolved but landed a reader who
   // asked a question at the top of a page whose FAQ had moved.
   `<li><a href="/faq">FAQ</a></li>` +
-  `<li><a href="/1031-exchange">1031 exchange guide</a></li>` +
   `<li><a href="/">Run a report</a></li></ul></div>` +
   `<div><div class="ch">Company</div>` +
   `<ul aria-label="Company"><li><a href="/leadership">Leadership</a></li><li><a href="/terms">Terms</a></li>` +
@@ -13349,14 +13334,6 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
       exploreLink + `</div>`;
 
   const cityHero = marketHeroBanner(p, title);
-  // Contextual door into the 1031 guide: someone reading a replacement
-  // market's numbers mid-exchange is exactly who that page serves, and the
-  // footer link alone is invisible at the moment it matters. One line, after
-  // the CTA so it never competes with the conversion ask above it.
-  const guide1031 =
-    `<p class="disc" style="margin:18px 0 0"><a href="/1031-exchange">Buying ` +
-    `${escHtml(p.city)} ${escHtml(p.type.toLowerCase())} in a 1031 exchange? ` +
-    `The 45/180-day rules, in plain English &rarr;</a></p>`;
   const body =
     cityHero.intro +
     bovLead +
@@ -13372,7 +13349,6 @@ function renderMarketPageHTML(slug, p, opts = {}, signedIn = false) {
     brokersCard +
     cta +
     `<script>${MARKET_VALUE_FORM_JS}</script>` +
-    guide1031 +
     related +
     `<p class="disc">Figures are automated estimates derived from public listings, records, and brokerage announcements for ${escHtml(p.city)}, ${escHtml(p.state)}, not an appraisal or a broker opinion of value. Verify independently before relying on them. CompNinja connects owners with licensed local brokers; it is not a brokerage.</p>`;
 
@@ -14589,27 +14565,6 @@ function aggregateStats(rows) {
         imported: src(/^ok:/), rejected: src(/^rejected:/), storeFailed: src(/^store_failed$/),
       };
     })(),
-    // 1031 guide funnel (2026-08-20). Reads of /1031-exchange (crawler UAs
-    // skipped at the route, so this is roughly people) against the BOV leads
-    // the guide produced (source "1031" — the localStorage marker the
-    // widget stamps). The split by `source` says which audience is reading:
-    // "visitor" is the SEO traffic the page exists for, "member" is people
-    // already here. Conversion is left for the card to phrase, because the
-    // two counts age out of the 10k-row window at different rates and a
-    // hard percentage would look more solid than it is.
-    guide1031: (() => {
-      const views = rows.filter((r) => r.kind === "guide_1031");
-      const day30 = Date.now() - 30 * 86400000;
-      const in30 = (list) => list.filter((r) => Date.parse(r.ts) >= day30).length;
-      const leads1031 = leads.filter((r) => (r.source || "") === "1031");
-      return {
-        views: views.length,
-        views30d: in30(views),
-        members: views.filter((r) => (r.source || "") === "member").length,
-        leads: leads1031.length,
-        leads30d: in30(leads1031),
-      };
-    })(),
     // Watchlist digest runs (2026-08-13). The digest is deliberately driven
     // from outside this process, which buys a schedule somebody chose and
     // costs the thing every external scheduler eventually does: it stops, and
@@ -15047,22 +15002,6 @@ function render(d){
         (vf.imports?": "+vf.imported+" imported, "+vf.rejected+" rejected whole"+
           (vf.storeFailed?", <b>"+vf.storeFailed+" storage failure(s)</b>":""):"")+"</p>")+
     "</div>";
-  // 1031 guide funnel (2026-08-20). undefined = a stale /api/stats from
-  // before this shipped. No computed conversion percentage on purpose: the
-  // counts are small and age out of the event window at different rates, so
-  // the honest read is both numbers side by side.
-  var g31=d.guide1031;
-  var guideCard=(g31===undefined)?"":
-    "<div class=card><h2>1031 guide funnel</h2>"+
-    (!g31.views&&!g31.leads
-      ? "<p class=muted>No guide reads yet &mdash; events land from the 2026-08-20 deploy onward. "+
-        "When this stays zero, nobody is finding /1031-exchange at all.</p>"
-      : "<p><b>"+g31.views+"</b> read(s) of /1031-exchange ("+g31.views30d+" in the last 30 days) &mdash; "+
-        (g31.views-g31.members)+" visitor(s) &middot; "+g31.members+" signed-in</p>"+
-        "<p><b>"+g31.leads+"</b> BOV request(s) tagged 1031 ("+g31.leads30d+" in the last 30 days)</p>"+
-        "<p class=muted>Reads exclude obvious crawler UAs, so this is roughly people. A lead is tagged when "+
-        "its browser read the guide within 7 days of asking, so the two counts do not pair one-to-one.</p>")+
-    "</div>";
   // Visitor funnel (2026-08-13). undefined = a stale /api/stats from before
   // migration 026. The card is one line per stage plus its own denominator,
   // because the honest reading of a tiny sample is the sample size: two
@@ -15153,7 +15092,6 @@ function render(d){
     "<div class=card><h2>Leads by source</h2><table>"+rows(d.leadsBySource)+"</table>"+
     "<div class=muted style='margin-top:10px'>bov = Broker Opinion of Value request · export = export unlock. "+t.comps+" broker comp submission(s). "+d.eventCount+" events logged"+(d.capped?" (capped at 10k)":"")+".</div></div>"+
     funnelCard+
-    guideCard+
     introCard+
     vaultCard+
     (!sp ? "" :
@@ -27696,41 +27634,6 @@ const server = http.createServer((req, res) =>
     });
   }
 
-  // --- 1031 identification worksheet. Content lives in guide-1031.js (a
-  // web page, so it is not server code — the vault-page.js precedent);
-  // this route only dresses it in the shared shell. Worksheet on top,
-  // explainer below; education, never advice. signedIn chooses the Value
-  // handoff (`/` vs `/?auth=signup`) so a member is not sent through the
-  // signup door. Compliance strings are pinned by test/guide-1031.test.js. ---
-  if (req.method === "GET" && pagePath === "/1031-exchange") {
-    // Guide funnel numerator (2026-08-20): the 1031-tagged BOV lead is the
-    // funnel's exit, and until this event nothing counted anyone ENTERING —
-    // "does the guide produce leads" had a numerator with no denominator.
-    // PII-free like every event. Crawler UAs are skipped because this page
-    // is public and sitemapped, so bots would otherwise be most of the
-    // count (vault_visit never needed this — that page is auth-shaped).
-    // `source` = which audience is reading, on cookie PRESENCE (the wall's
-    // cheap rule; getSessionUser is a DB read and this renders per request).
-    if (!isCrawlerUA(req.headers["user-agent"])) {
-      logEvent("guide_1031", {
-        source: parseCookies(req)[SESSION_COOKIE] ? "member" : "visitor",
-      });
-    }
-    return sendShellPage(req, res, (signedIn) => marketShell({
-      title: G1031.TITLE,
-      description: G1031.DESCRIPTION,
-      canonical: `${SITE_URL}/1031-exchange`,
-      body: G1031.renderGuide1031Body(signedIn),
-      head: `<style>${G1031.GUIDE_CSS}</style>`,
-      jsonLd: JSON.stringify({
-        "@context": "https://schema.org",
-        "@graph": [...brandGraph(), G1031.webPageNode(SITE_URL), G1031.faqPageNode(SITE_URL)],
-      }),
-      signedIn,
-      current: "/1031-exchange",
-    }));
-  }
-
   // --- Download the desktop app. Path-only match like the pages below, so a
   // campaign link's query string can't 404 it. ---
   if (req.method === "GET" && pagePath === "/download") {
@@ -28635,7 +28538,6 @@ const server = http.createServer((req, res) =>
       // 301, and a sitemap must never list a URL that redirects.
       `  <url><loc>${SITE_URL}/brokers-firms</loc></url>\n` +
       `  <url><loc>${SITE_URL}/pricing</loc></url>\n` +
-      `  <url><loc>${SITE_URL}/1031-exchange</loc></url>\n` +
       `  <url><loc>${SITE_URL}/download</loc></url>\n` +
       `  <url><loc>${SITE_URL}/leadership</loc></url>\n` +
       `  <url><loc>${SITE_URL}/terms</loc></url>\n` +

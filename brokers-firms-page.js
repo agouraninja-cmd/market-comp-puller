@@ -7,7 +7,7 @@
 // a broker deciding whether to bring their office. They shared an audience, a
 // price answer and a privacy argument, and split the Explore menu in two.
 //
-// Pure, like firms-page.js before it, bulk-page.js and guide-1031.js: it takes
+// Pure, like firms-page.js before it and bulk-page.js: it takes
 // its inputs and returns a string. No I/O, no requires, no clock reads.
 // server.js owns the route, the SEO metadata and the shell; this file decides
 // only how the pitch is drawn.

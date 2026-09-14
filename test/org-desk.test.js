@@ -555,7 +555,8 @@ function loadBuildings(opts) {
   const fetch = makeFetch(routes);
   const ctx = load(BUILDINGS_RE,
     "this.render = renderBuildings; this.door = buildingDoor; this.onBoard = buildingOnBoard;" +
-    " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };",
+    " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };" +
+    " this.setOpen = setBuildingAddOpen;",
     // myFirm() answers null until renderFirm has resolved the membership on a
     // real page; __firmKnown lets a test model that cold-load beat.
     // COLLAPSE_AT is the desk's own threshold (index.html:~11860), stubbed
@@ -611,6 +612,48 @@ test("at eight or fewer the link does not render at all", async () => {
   await ctx.render();
   assert.equal(buttons(ctx.dom.el("buildingRows")).length, 8);
   assert.equal(ctx.dom.hidden("buildingsMore"), true, "a control that can only be a no-op never renders");
+});
+
+// The Ledger redesign (2026-09-04): the add form ships closed behind one
+// control, the Contacts rule applied to the section that never got it.
+test("the buildings add form ships closed behind one control, with one writer", () => {
+  assert.match(html, /id="buildingAddForm" class="hidden /, "the form ships hidden — the vault's #addSec rule");
+  assert.match(html, /id="buildingAddToggle" aria-expanded="false" aria-controls="buildingAddForm"/);
+  assert.equal((html.match(/getElementById\("buildingAddForm"\)\.classList/g) || []).length, 1,
+    "setBuildingAddOpen is the single writer of the form's visibility");
+  const ctx = loadBuildings({ body: { summary: "", truncated: false, buildings: [] } });
+  ctx.setOpen(true);
+  assert.equal(ctx.dom.hidden("buildingAddForm"), false);
+  assert.equal(ctx.dom.el("buildingAddToggle").getAttribute("aria-expanded"), "true");
+  assert.match(ctx.dom.text("buildingAddToggle"), /Close/);
+  ctx.setOpen(false);
+  assert.equal(ctx.dom.hidden("buildingAddForm"), true);
+  assert.equal(ctx.dom.el("buildingAddToggle").getAttribute("aria-expanded"), "false");
+  assert.match(ctx.dom.text("buildingAddToggle"), /Add by address/);
+});
+
+// One row family (2026-09-04). The rows are FLAT — the tests above index a
+// row's children by position — and their text is unchanged; only the
+// classes moved. This pins the family so a renderer cannot drift back to
+// its own idiom, which is how the same building came to be a Georgia
+// address on the shelf and an underlined sans one in Buildings.
+test("buildings, conversations, the shelf and contacts draw one row family", async () => {
+  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
+  await ctx.render();
+  const row = ctx.dom.el("buildingRows").children[0];
+  assert.equal(row.className, "dk-row");
+  assert.equal(row.children[0].className, "dk-row-name dk-addr", "the address is the name line, in Georgia");
+  assert.equal(row.children[1].className, "dk-row-meta", "the meta drops under the name by flex order");
+  assert.equal(row.children[2].className, "dk-row-act", "Remove is a quiet word, not an underlined link");
+  // The shelf and the contacts, by source: same three classes.
+  for (const fn of ["applyFirmShelfFilter", "contactRow"]) {
+    const at = html.indexOf(`function ${fn}(`);
+    const src = html.slice(at, html.indexOf("\n  }\n", at));
+    assert.ok(src.includes('className = "dk-row"'), `${fn} builds .dk-row`);
+    assert.ok(src.includes('"dk-row-meta"'), `${fn} puts the meta on .dk-row-meta`);
+    assert.ok(!src.includes("dk-shelf-") && !src.includes("db-row"), `${fn} left its old idiom`);
+  }
+  assert.ok(!/\.dk-shelf-row\s*\{/.test(html), "the shelf's own row rule is retired");
 });
 
 test("the desk's threshold and the module's OVERFLOW_AT are one number", () => {
@@ -844,6 +887,91 @@ test("the add/import form ships closed behind one control, with one writer", () 
   assert.equal(ctx.dom.hidden("contactAddForm"), true);
   assert.equal(ctx.dom.el("contactAddToggle").getAttribute("aria-expanded"), "false");
   assert.match(ctx.dom.text("contactAddToggle"), /Add or import/);
+});
+
+// ---------------------------------------------------------------------------
+// The firm strip (2026-09-04) — four figures above the decks, drawn from the
+// state the section renderers parsed plus one read of its own (the leases).
+// ---------------------------------------------------------------------------
+const STRIP_RE = /  async function readFirmCritical\(\) \{[\s\S]*?\n  function drawFirmStrip\(critical\) \{[\s\S]*?\n  \}\n/;
+function loadStrip(opts) {
+  const o = opts || {};
+  const fetch = makeFetch([["/api/org/leases", o.leases || { status: 200, body: { critical: o.critical || [] } }]]);
+  const ctx = load(STRIP_RE,
+    "this.read = readFirmCritical; this.draw = drawFirmStrip;",
+    "let currentUser = __user; function myFirm() { return __firm; }\n" +
+    "let firmBuildings = __buildings; let firmShelfItems = __shelf; let deskThreadsStat = __threads;",
+    { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm,
+      __buildings: o.buildings || [], __shelf: o.shelf || [], __threads: o.threads === undefined ? null : o.threads });
+  ctx.fetchLog = fetch.log;
+  // The sections the strip reads ship hidden in the markup; a populated desk
+  // has shown them.
+  if (!o.buildingsHidden) ctx.dom.el("deskBuildings").classList.remove("hidden");
+  if (!o.shelfHidden) ctx.dom.el("deskSharedWithFirm").classList.remove("hidden");
+  ctx.dom.el("buildingsStats").textContent = o.stats === undefined ? "2 buildings · 2 Industrial" : o.stats;
+  return ctx;
+}
+const NOW_ISO = new Date().toISOString();
+
+test("the strip draws its four figures from the sections' state and the leases read", async () => {
+  const ctx = loadStrip({
+    buildings: [BLDG({}), BLDG({ id: "b2" })],
+    shelf: [{ market: "Boise, ID", createdAt: NOW_ISO }, { market: "Boise, ID", createdAt: "2026-01-02T00:00:00Z" }, { market: "Meridian, ID", createdAt: "2026-02-02T00:00:00Z" }],
+    threads: { total: 5, unread: 2 },
+    critical: [{ tenant: "Acme Logistics", kind: "notice", days: 41 }, { tenant: "Zed", kind: "expiry", days: 200 }],
+  });
+  ctx.draw(await ctx.read());
+  assert.equal(ctx.dom.hidden("deskStrip"), false);
+  assert.equal(ctx.dom.text("stripBuildingsFig"), "2");
+  assert.equal(ctx.dom.text("stripBuildingsSub"), "2 Industrial", "the server's summary line, minus the count the figure already shows");
+  assert.equal(ctx.dom.text("stripShelfFig"), "1 this month");
+  assert.equal(ctx.dom.text("stripShelfSub"), "3 reports · 2 markets");
+  assert.equal(ctx.dom.text("stripUnreadFig"), "2");
+  assert.equal(ctx.dom.text("stripUnreadSub"), "of 5 conversations");
+  assert.equal(ctx.dom.text("stripCriticalFig"), "2", "every date in the window counts");
+  assert.equal(ctx.dom.text("stripCriticalSub"), "Acme Logistics · notice in 41 days", "the soonest is named");
+  assert.ok(ctx.dom.el("stripCriticalFig").classList.contains("due"), "a due date is the one red figure");
+  assert.equal(ctx.fetchLog.length, 1, "one read of its own, and no re-read of a section's route");
+  assert.equal(ctx.fetchLog[0].url, "/api/org/leases?id=o1");
+});
+
+test("a figure whose read failed is a dash, never a zero", async () => {
+  const ctx = loadStrip({ buildings: [BLDG({})], leases: { status: 503, body: {} }, threads: null, shelfHidden: true });
+  ctx.draw(await ctx.read());
+  assert.equal(ctx.dom.hidden("deskStrip"), false, "the other cells still draw");
+  assert.equal(ctx.dom.text("stripCriticalFig"), "—");
+  assert.match(ctx.dom.text("stripCriticalSub"), /Couldn't read leases/);
+  assert.ok(!ctx.dom.el("stripCriticalFig").classList.contains("due"));
+  assert.equal(ctx.dom.text("stripUnreadFig"), "—");
+  assert.equal(ctx.dom.text("stripShelfFig"), "—");
+});
+
+test("no firm, or a buildings read that failed, means no strip", async () => {
+  const none = loadStrip({ firm: null });
+  none.draw(await none.read());
+  assert.equal(none.dom.hidden("deskStrip"), true);
+  assert.equal(none.fetchLog.length, 0, "no firm, no read");
+  const failed = loadStrip({ buildingsHidden: true });
+  failed.draw(await failed.read());
+  assert.equal(failed.dom.hidden("deskStrip"), true, "a strip of dashes says nothing");
+});
+
+test("the strip lands in the same paint as the batch, and hides with the firm sections", () => {
+  const at = html.indexOf("async function renderShares()");
+  const fn = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(fn.indexOf("const critical = readFirmCritical();") < fn.indexOf("const buildings = renderBuildings();"),
+    "the leases read starts beside the batch, not after it");
+  assert.ok(fn.indexOf("drawFirmStrip(await critical)") > fn.indexOf("await Promise.all(["),
+    "the strip is drawn after the batch has parsed the state it reads");
+  assert.ok(fn.includes('getElementById("deskStrip").classList.add("hidden")'), "hideAll hides the strip");
+  assert.ok(!html.includes("bootFetch(`/api/org/leases?id=${encodeURIComponent(firm.id)}`)") ||
+    (html.match(/bootFetch\(`\/api\/org\/leases\?id=\$\{encodeURIComponent\(firm\.id\)\}`\)/g) || []).length === 1,
+    "exactly one reader of the leases route on the desk");
+  // Every id the strip reaches for exists in the markup.
+  const ctx = loadStrip({ buildings: [BLDG({})], threads: { total: 1, unread: 0 } });
+  ctx.draw([]);
+  for (const id of ctx.dom.asked) assert.ok(html.includes(`id="${id}"`), `the strip reads #${id}, which is not in index.html's markup`);
 });
 
 test("the section is labelled Contacts — the tenant-rep shop it was named for was withdrawn", () => {

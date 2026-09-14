@@ -9687,6 +9687,9 @@ const DESK_BOOT_URLS = [
 const DESK_BOOT_ORG_URLS = (id) => [
   `/api/org/members?id=${id}`, `/api/org/buildings?id=${id}`, "/api/messages",
   `/api/org/board?id=${id}`, `/api/org/shelf?id=${id}`, `/api/org/contacts?id=${id}`,
+  // The firm strip's critical-dates cell (2026-09-04) — the one read the
+  // workspace makes that no section below it already makes.
+  `/api/org/leases?id=${id}`,
 ];
 async function deskBootPayload(req) {
   if (!parseCookies(req)[SESSION_COOKIE]) return null;
@@ -11228,7 +11231,7 @@ const marketBar = (signedIn = false, current = "") =>
       // URL or by pasting a multi-line list into the main search and
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
-      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Bulk valuation</a>` +
+      `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Comp report</a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
       // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
       // valuation is the comp-report tool). It pointed at `/` until that
@@ -20609,12 +20612,12 @@ const server = http.createServer((req, res) =>
       const ent = await entitlementsFor(req);
       if (!ent.canBulkValue) {
         // Reaches the screen verbatim.
-        sendJson(res, 403, { error: "Bulk valuation is part of Pro.", code: "pro_required" });
+        sendJson(res, 403, { error: "The Comp report tool is part of Pro.", code: "pro_required" });
         return null;
       }
       if (!DB_CONFIGURED) {
         sendJson(res, 503, {
-          error: "Bulk valuation is unavailable right now — nothing was started. Please try again in a minute.",
+          error: "The Comp report tool is unavailable right now — nothing was started. Please try again in a minute.",
         });
         return null;
       }
@@ -28148,14 +28151,14 @@ const server = http.createServer((req, res) =>
       // Resolved HERE, through the same gate the routes use, so the page can
       // never paint a working paste box at somebody it would then refuse.
       // vault-page.js's boot pattern, for its reason.
-      let boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+      let boot = { s: 503, j: { error: "The Comp report tool is unavailable right now." } };
       try {
         const user = await getSessionUser(req);
         if (!user) boot = { s: 401, j: { error: "Not signed in." } };
         else {
           const ent = await entitlementsFor(req);
-          if (!ent.canBulkValue) boot = { s: 403, j: { error: "Bulk valuation is part of Pro.", code: "pro_required" } };
-          else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "Bulk valuation is unavailable right now." } };
+          if (!ent.canBulkValue) boot = { s: 403, j: { error: "The Comp report tool is part of Pro.", code: "pro_required" } };
+          else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "The Comp report tool is unavailable right now." } };
           else boot = { s: 200, j: await bulkListPayload(user, ent) };
         }
       } catch (err) {
@@ -28180,7 +28183,7 @@ const server = http.createServer((req, res) =>
         "x-robots-tag": "noindex, nofollow",
       });
       res.end(marketShell({
-        title: "Bulk valuation \u00b7 CompNinja",
+        title: "Comp report \u00b7 CompNinja",
         description: "Value a whole list of addresses at once.",
         canonical: `${SITE_URL}/bulk`,
         noindex: true,

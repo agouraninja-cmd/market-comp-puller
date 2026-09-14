@@ -261,7 +261,7 @@ function renderBulkPageBody(boot) {
   return `<style>${BULK_RUN_CSS}${BULK_CSS}</style>
 <div class="bulk bk-run">
   <div class="deck" id="gate" hidden>
-    <div class="deckrule"><h2>Bulk valuation</h2></div>
+    <div class="deckrule"><h2>Comp report</h2></div>
     <p class="lede" id="gateMsg"></p>
     <p id="gateAct"></p>
   </div>
@@ -1137,12 +1137,12 @@ function gate(msg,actionHtml){
 
 function start(boot){
   if(!boot||boot.s===401)
-    return gate("Sign in to run a bulk valuation.",'<a class="lnk" href="/?auth=signin">Sign in</a>');
+    return gate("Sign in to run a comp report.",'<a class="lnk" href="/?auth=signin">Sign in</a>');
   if(boot.s===403)
-    return gate((boot.j&&boot.j.error)||"Bulk valuation is part of Pro.",
+    return gate((boot.j&&boot.j.error)||"The Comp report tool is part of Pro.",
       '<a class="lnk" href="/?pricing=1">See Pro</a>');
   if(boot.s!==200)
-    return gate((boot.j&&boot.j.error)||"Bulk valuation is unavailable right now.","");
+    return gate((boot.j&&boot.j.error)||"The Comp report tool is unavailable right now.","");
   $("gate").hidden=true;$("app").hidden=false;
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;

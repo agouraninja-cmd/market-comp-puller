@@ -6,6 +6,24 @@
     "details": "Owner's call: /1031-exchange — the identification worksheet over the education page, live since 2026-08-08 — is removed. That takes the route and guide-1031.js, the 1031 row in every signed-in header and the app's nav, the Tools menu entry (Market explorer stands alone there now), both footers' links, the sitemap line, the contextual \"buying in a 1031 exchange?\" line on every market page, the guide_1031 analytics event and the \"1031 guide funnel\" card on /admin, and the cnRef1031.v1 marker the BOV lead form read. The URL 404s like any unknown path; no redirect, since nothing else answers that question. Leads already tagged source \"1031\" still read as BOV requests in the inbox and the owner email — the tag was attribution, never a separate funnel — but nothing writes it any more."
   },
   {
+    "date": "2026-09-12",
+    "type": "improvement",
+    "title": "Bulk valuation is now called Comp report",
+    "details": "Owner's call. Every place a person read \"Bulk valuation\" now reads \"Comp report\": the nav row on the rail and in the app's Explore menu, the /bulk page title and its sign-in / Pro / unavailable gate cards, the route's 403 and 503 copy, the workspace's pointer line, the tester plan card, the /pricing Pro summary, and the CSV title row. The URL stays /bulk and no id, route, entitlement or test hook was renamed — this is the name on screen, not the code's noun."
+  },
+  {
+    "date": "2026-09-04",
+    "type": "improvement",
+    "title": "The Workspace opens on a firm strip and reads as one record: one row family, quieter links, the Buildings form closed",
+    "details": "The owner asked whether the Workspace could use design changes; photographed populated with a seeded firm, it opened on a subtitle about where things are NOT and an empty address form, drew the same building as a Georgia address on the shelf and an underlined sans one in Buildings, put every row's meta 700px from its name at 10.5px, underlined every address and action, and at 390px collapsed building rows to “4…”. Two directions were drawn on a design canvas beside the page as it rendered; the owner picked A · Ledger (the Vault's ruled-paper idiom with Bulk's strip on top). Now: a four-cell strip — buildings on the board, shelf reports this month, unread conversations, lease dates due in the next twelve months (red when there is one, the soonest named), each cell a link to its section, drawn from the state the sections already parsed plus one read of the firm's leases that rides the desk boot payload; one .dk-row family (name line, meta under it, quiet actions) across buildings, conversations, the shelf and contacts, which is also what fixes the phone; addresses plain ink until hovered, everywhere; the Buildings add form closed behind “+ Add by address” with one writer, the Contacts rule; the deal board's By market / Shared by month under a fold with a one-sentence explainer; the subtitle gone and the deck's copy on theme tokens. A figure whose read failed is a dash, never a zero. Before/after captured at 1280, 390 and in dark mode."
+  },
+  {
+    "date": "2026-09-12",
+    "type": "improvement",
+    "title": "Bulk valuation is now called Comp report",
+    "details": "Owner's call. Every place a person read \"Bulk valuation\" now reads \"Comp report\": the nav row on the rail and in the app's Explore menu, the /bulk page title and its sign-in / Pro / unavailable gate cards, the route's 403 and 503 copy, the workspace's pointer line, the tester plan card, the /pricing Pro summary, and the CSV title row. The URL stays /bulk and no id, route, entitlement or test hook was renamed — this is the name on screen, not the code's noun."
+  },
+  {
     "date": "2026-09-04",
     "type": "improvement",
     "title": "Earlier runs shows each run's portfolio value, and a run can be renamed, deleted or run again",

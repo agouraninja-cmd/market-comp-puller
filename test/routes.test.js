@@ -632,7 +632,7 @@ test("bare environment", async (t) => {
       ["Workspace", />Workspace</],
       ["the vault", /<a [^>]*href="\/vault"/],
       ["Market explorer", /<a [^>]*href="\/markets"/],
-      ["Bulk valuation", /<a [^>]*href="\/bulk"/],
+      ["Comp report", /<a [^>]*href="\/bulk"/],
     ];
     for (const page of ["/", "/markets", "/vault"]) {
       const html = await (await fetch(srv.base + page, { headers: SESSION })).text();

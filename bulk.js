@@ -473,7 +473,7 @@ function exportCsv(job, items, opts) {
   // column of dollar figures with no provenance line is the kind of thing
   // that ends up in a client email as if it were an appraisal.
   lines.push(VAULT.csvCell(
-    `CompNinja bulk valuation${j.label ? " — " + j.label : ""} · ` +
+    `CompNinja comp report${j.label ? " — " + j.label : ""} · ` +
     `${sum.valued} of ${sum.total} valued · ` +
     `${j.property_type || ""} · ${j.months || ""}-month lookback · ` +
     `automated estimates, not appraisals`));

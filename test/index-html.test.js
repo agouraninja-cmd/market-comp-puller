@@ -1293,16 +1293,22 @@ test("Escape closes the Firm & branding panel and never falls through it", () =>
   for (const g of guards) assert.ok(g.includes('"firmModal"'), "an Escape guard does not name the panel: " + g);
 });
 
-test("the workspace subtitle describes the page it introduces", () => {
-  assert.ok(html.includes("Your firm's buildings, conversations and shelf, and everything you have shared. Your own book of properties lives in the Vault; comp reports run from Bulk valuation."),
-    "the subtitle names what the workspace actually holds, and where the report runner went (2026-09-04)");
-  assert.ok(!html.includes("Your firm's shelf, and everything you have shared."),
-    "the 2026-08-29 line named two of the eight sections and must not come back");
-  assert.ok(!html.includes("Your recent searches and tracked properties."),
-    "the old line described about a fifth of the page and must not come back");
-  // "Your properties" left the line on 2026-09-01 with the deck it named.
-  // A subtitle promising a portfolio on a page that no longer holds one is
-  // the same failure as the old line, one deck later.
+test("the workspace opens on the firm strip, not a subtitle", () => {
+  // The subtitle went on 2026-09-04 with the Ledger redesign: after four
+  // rewrites it was a sentence about where things are NOT, above an empty
+  // form. The strip is the opening statement now — the first thing inside
+  // #myDesk, ahead of the firm deck, and outside every deck so that
+  // refreshDeckVisibility cannot be held open by it.
+  const desk = html.indexOf('<section id="myDesk"');
+  const strip = html.indexOf('id="deskStrip"');
+  const firm = html.indexOf('id="deckFirm"');
+  assert.ok(desk > 0 && strip > desk && strip < firm, "the strip is the first thing in #myDesk, before the firm deck");
+  assert.ok(!/data-deck[^>]*>[\s\S]{0,400}id="deskStrip"/.test(html), "the strip is not inside a deck");
+  for (const gone of [
+    "Your firm's buildings, conversations and shelf, and everything you have shared.",
+    "Your firm's shelf, and everything you have shared.",
+    "Your recent searches and tracked properties.",
+  ]) assert.ok(!html.includes(gone), `a workspace subtitle must not come back: "${gone}"`);
   assert.ok(!/mt-3">Your properties,/.test(html),
     "the subtitle must not promise a portfolio this page no longer draws");
 });

@@ -2978,3 +2978,58 @@ test("the public-profile switch has one home, the Vault, and the thank-you point
   const before = html.slice(at - 400, at);
   assert.match(before, /compTipIn"\)\.classList\.toggle\("hidden", !currentUser\)/, "the success handler does not pick the tip by sign-in state");
 });
+
+test("no inline class that sets display can outrank Tailwind's .hidden on an element that toggles it", () => {
+  // The whole class of bug: tailwind.css's `.hidden { display: none }` is
+  // (0,1,0) and loads BEFORE the inline <style>, so any single-class rule in
+  // that block which sets a display of its own — `.dk-strip { display: grid }`,
+  // `.pr-cell { display: flex }` — wins on source order, and `classList.add
+  // ("hidden")` on that element does nothing. Found 2026-09-16 in the desktop
+  // app: a member in no firm got the workspace strip as four empty cells over
+  // an empty page, because drawFirmStrip() hid it and the CSS overruled the
+  // hide. A firm member never saw it — theirs was filled. The founding tile on
+  // the pricing modal had the same fault. Same trap as .deck.hide in
+  // vault-page.js and `.ap-stmt tbody.hidden` above, now caught generically:
+  // every such class on an element that carries `hidden` in the markup needs
+  // a `.cls.hidden { display: none }` companion.
+  // @media print blocks are dropped first: .print-only is display:none on
+  // screen and block only on paper, a cascade no screen ever sees.
+  const stripPrintMedia = (css) => {
+    let out = "", i = 0;
+    for (;;) {
+      const at = css.indexOf("@media print", i);
+      if (at === -1) return out + css.slice(i);
+      out += css.slice(i, at);
+      let j = css.indexOf("{", at), depth = 0;
+      for (; j < css.length; j++) {
+        if (css[j] === "{") depth++;
+        else if (css[j] === "}" && --depth === 0) break;
+      }
+      i = j + 1;
+    }
+  };
+  const style = stripPrintMedia(html.slice(html.indexOf("<style>"), html.indexOf("</style>")));
+  const setsDisplay = {};
+  const ruleRe = /(^|[\s,}])\.([a-zA-Z][\w-]*)\s*\{([^}]*)\}/g;
+  let m;
+  while ((m = ruleRe.exec(style))) {
+    const d = m[3].match(/(?:^|;)\s*display\s*:\s*([^;!]+)/);
+    if (d && d[1].trim() !== "none") setsDisplay[m[2]] = d[1].trim();
+  }
+  const tagRe = /<\w+[^>]*\bclass="([^"]*)"[^>]*>/g;
+  const offenders = new Set();
+  while ((m = tagRe.exec(html))) {
+    const cls = m[1].split(/\s+/);
+    if (!cls.includes("hidden")) continue;
+    for (const c of cls) {
+      if (!setsDisplay[c]) continue;
+      const companion = new RegExp("\\." + c + "\\.hidden\\s*\\{[^}]*display\\s*:\\s*none");
+      if (!companion.test(style)) offenders.add(`.${c} (display: ${setsDisplay[c]})`);
+    }
+  }
+  assert.deepStrictEqual([...offenders], [],
+    "each of these outranks .hidden on an element that toggles it; add `.<class>.hidden { display: none; }` beside the rule");
+  // And the two that were found this way stay pinned by name.
+  assert.match(style, /\.dk-strip\.hidden \{ display: none; \}/);
+  assert.match(style, /\.pr-cell\.hidden \{ display: none; \}/);
+});

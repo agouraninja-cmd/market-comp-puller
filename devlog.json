@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-16",
+    "type": "fix",
+    "title": "The workspace no longer shows an empty strip to a member in no firm",
+    "details": "Seen in the desktop app: a signed-in member who belongs to no firm got the workspace's four-cell strip (Buildings · Shelf · Unread · Critical dates) with nothing in any cell, above an otherwise empty page. drawFirmStrip() was hiding it correctly; the strip's own `.dk-strip { display: grid }` rule sits in index.html's inline stylesheet, which loads after tailwind.css, so at equal specificity it overruled Tailwind's `.hidden` and the hide never took. A firm member never saw it because theirs was filled. The founding-seats tile on the pricing modal had the same fault (`.pr-cell { display: flex }`), so renderFoundingTile()'s hide was inert too. Both get a `.class.hidden { display: none }` companion, and test/index-html.test.js now scans the inline stylesheet for any class that sets a display of its own on an element that toggles `hidden`, so the next one fails the build instead of shipping."
+  },
+  {
     "date": "2026-09-12",
     "type": "improvement",
     "title": "The 1031 exchange guide is gone",

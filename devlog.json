@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-16",
+    "type": "improvement",
+    "title": "The workspace tells a member in no firm what a firm is and where to start one",
+    "details": "Every section of the workspace's firm deck renders only for a member of a firm, and creating one moved into the account menu's Firm & branding panel on 2026-09-03 — so a member in no firm (the owner's desktop-app account) opened the workspace to the Sharing deck alone over an empty page, with nothing on it naming a firm at all. The firm deck now has a body for that member: one line on what a firm gives an office (one board of buildings, a shelf of shared reports, a contact list and conversations — each of you keeps your own reports and vault) and one door, which opens the Firm & branding panel. Three states, each with the true next step: a pending invitation is named and pointed at; an account that can create a firm gets Create a firm; one that cannot is told to ask a colleague for an invitation, and that starting one is part of Pro. renderFirmEmpty() is the single writer, reads the membership renderFirm() already loaded, fetches nothing, and lands in the workspace's one paint; hidden the moment a firm exists and by hideAll() with the rest of the firm surfaces. test/org-desk.test.js covers the three states, the three hidden cases and the wiring."
+  },
+  {
+    "date": "2026-09-16",
     "type": "fix",
     "title": "The desktop app no longer goes blank after a navigation or a resize on Windows",
     "details": "On the owner's machine the installed CompNinja app showed the bare paper background — no rail, no text — after opening the Vault, and stayed blank on the workspace through a full relaunch and through --disable-gpu, while a DevTools screenshot of the same window showed the finished page. That is Chromium's native window occlusion tracker on Windows deciding an uncovered window is covered and stopping its paints (a known Electron-on-Windows failure). desktop-app/main.js now appends --disable-features=CalculateNativeWinOcclusion before the app is ready; the same build painted every page, and survived a maximize, once launched with it. Shell version 1.0.2 — it reaches installed copies only with a new desktop-v1.0.2 release, which is the owner's call (installers are unsigned). test/inapp-nav.test.js pins the switch and its position."

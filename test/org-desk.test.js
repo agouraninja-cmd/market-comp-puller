@@ -1565,3 +1565,75 @@ test("the firm section lives in the panel, not on the workspace", () => {
   assert.ok(html.includes('document.getElementById("deskFirm").classList.add("hidden");'),
     "a stale roster survives a sign-out");
 });
+
+// ---------------------------------------------------------------------------
+// The firm deck's body for a member in no firm (2026-09-16). Until this
+// existed every section of the deck rendered only for a member of a firm, so
+// a member in none opened the workspace to the Sharing deck alone — with
+// nothing saying what a firm is or where to start one (seen in the desktop
+// app on an account with no firm). renderFirmEmpty() reads the membership
+// renderFirm() already loaded and fetches nothing.
+// ---------------------------------------------------------------------------
+const FIRM_EMPTY_RE = /  function renderFirmEmpty\(\) \{[\s\S]*?\n  \}\n/;
+function loadFirmEmpty(o) {
+  return load(FIRM_EMPTY_RE, "this.draw = renderFirmEmpty;",
+    "let currentUser = __user; let firmState = __state; function myFirm() { return __firm; }",
+    { __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
+      __state: o.state === undefined ? { orgs: [], invites: [], canCreate: true } : o.state,
+      __firm: o.firm === undefined ? null : o.firm });
+}
+
+test("a member who can create a firm is told what one gives and offered the door", () => {
+  const ctx = loadFirmEmpty({});
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false);
+  assert.equal(ctx.dom.text("deskFirmEmptyLab"), "Not in a firm yet");
+  assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /board of buildings, a shelf of shared reports, a contact list and conversations/);
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /keeps your own reports and vault/, "the privacy half of the promise travels with it");
+});
+
+test("a pending invitation names the firm and points at it instead of at creating one", () => {
+  const ctx = loadFirmEmpty({ state: { orgs: [], invites: [{ orgId: "o1", name: "Colliers Boise" }], canCreate: true } });
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false);
+  assert.equal(ctx.dom.text("deskFirmEmptyLab"), "You've been invited");
+  assert.equal(ctx.dom.text("deskFirmEmptyBtn"), "See the invitation");
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /^Colliers Boise invited you\./);
+});
+
+test("an account that cannot create a firm is not offered a Create button", () => {
+  const ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false } });
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskFirmEmpty"), false, "the explanation still shows — the deck must not be empty for a free member either");
+  assert.notEqual(ctx.dom.text("deskFirmEmptyBtn"), "Create a firm");
+  assert.match(ctx.dom.text("deskFirmEmptyCopy"), /Ask a colleague to invite you/);
+});
+
+test("a member of a firm, a failed read and a signed-out desk all show nothing", () => {
+  for (const o of [
+    { firm: { id: "o1", name: "Colliers Boise" }, state: { orgs: [{ id: "o1" }], invites: [], canCreate: true } },
+    { state: null },
+    { user: null },
+  ]) {
+    const ctx = loadFirmEmpty(o);
+    ctx.dom.el("deskFirmEmpty").classList.remove("hidden"); // a stale reveal from the previous identity
+    ctx.draw();
+    assert.equal(ctx.dom.hidden("deskFirmEmpty"), true, JSON.stringify(o));
+  }
+});
+
+test("the empty state is wired: first in the deck, drawn after the firm read, hidden by hideAll, and its button opens the panel", () => {
+  const deck = html.indexOf('id="deckFirm"');
+  const empty = html.indexOf('id="deskFirmEmpty"');
+  const buildings = html.indexOf('id="deskBuildings"');
+  assert.ok(deck > 0 && empty > deck && empty < buildings, "the no-firm body sits at the top of the firm deck, ahead of Buildings");
+  const at = html.indexOf("async function renderShares()");
+  const fn = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(fn.indexOf("await firmReady;\n    // The no-firm body") > 0 && fn.indexOf("renderFirmEmpty();") > fn.indexOf("await firmReady;"),
+    "renderShares draws it once the membership is known");
+  assert.ok(fn.indexOf("renderFirmEmpty();") < fn.indexOf("await Promise.all(["), "and before the firm batch, so it lands in the one paint");
+  assert.ok(fn.includes('getElementById("deskFirmEmpty").classList.add("hidden")'), "hideAll hides it with the rest of the firm surfaces");
+  assert.ok(html.includes('document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {\n    if (typeof openFirmModal === "function") openFirmModal();'),
+    "the one door is the Firm & branding panel, which already knows which state it is showing");
+});

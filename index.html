@@ -2914,6 +2914,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       </div>
       <div class="dk-deck" data-deck id="deckFirm">
         <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
+      <!-- The no-firm state (2026-09-16). Every section in this deck renders
+           only for a member of a firm, and creating one lives in the account
+           menu's Firm & branding panel (2026-09-03) — so a member in no firm
+           opened the workspace to the Sharing deck alone over an empty page,
+           with nothing on it saying what a firm is or where to start one
+           (seen in the desktop app). This is the deck's body for that
+           member: one line on what a firm gives an office, and the one door.
+           renderFirmEmpty() is its single writer; it reads the membership
+           renderFirm() already loaded and never fetches. Hidden the moment a
+           firm exists, and hidden with the rest of the deck by hideAll(). -->
+      <div id="deskFirmEmpty" class="hidden mt-4">
+        <div class="dk-rule">
+          <span id="deskFirmEmptyLab" class="rd-lab">Not in a firm yet</span>
+          <button type="button" id="deskFirmEmptyBtn" class="dk-toggle">Create a firm</button>
+        </div>
+        <p id="deskFirmEmptyCopy" class="dk-copy"></p>
+      </div>
       <!-- The firm's buildings (migration 046; Three Spaces, slice 3). FIRST in
            the deck on purpose: buildings are the firm's index and the shelf
            below is its output. Rendered only for a member of a firm, the
@@ -13890,6 +13907,7 @@ async function renderMyDesk() {
       // and addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
+      document.getElementById("deskFirmEmpty").classList.add("hidden");
       // The strip sums the sections above; it goes with them.
       document.getElementById("deskStrip").classList.add("hidden");
     };
@@ -13928,6 +13946,9 @@ async function renderMyDesk() {
     // together showed the shelf for whatever firm was in memory from the last
     // render — which on a sign-out-then-sign-in is somebody else's.
     await firmReady;
+    // The no-firm body of the firm deck: decided off the membership just
+    // loaded, fetching nothing, so it lands in the same paint as the rest.
+    renderFirmEmpty();
     // The firm-scoped reads run TOGETHER (2026-09-03); each needs only the
     // membership just loaded. Two exceptions, and only these two: the shelf's
     // rows offer "Add to firm" only for addresses not already listed, and the
@@ -14995,6 +15016,39 @@ async function renderMyDesk() {
     }
     box.classList.add("hidden");
   }
+
+  // The firm deck's body for a member in no firm (2026-09-16). Three states,
+  // each with the one true next step, and every one of them opens the Firm &
+  // branding panel — the panel already knows which of the three it is
+  // showing (invitations, the create box, or the paywall), so this never
+  // repeats that decision. A read that failed (firmState null) shows
+  // nothing: "we could not ask" is not "you have no firm", the org-desk rule.
+  function renderFirmEmpty() {
+    const box = document.getElementById("deskFirmEmpty");
+    if (!currentUser || !firmState || myFirm()) { box.classList.add("hidden"); return; }
+    const lab = document.getElementById("deskFirmEmptyLab");
+    const btn = document.getElementById("deskFirmEmptyBtn");
+    const copy = document.getElementById("deskFirmEmptyCopy");
+    const gives = "A firm gives your office one board of buildings, a shelf of shared reports, a contact list and conversations \u2014 each of you keeps your own reports and vault.";
+    if (firmState.invites.length) {
+      const inv = firmState.invites[0];
+      lab.textContent = "You've been invited";
+      btn.textContent = "See the invitation";
+      copy.textContent = (inv.name || "A firm") + " invited you. Accept and their buildings, shelf, contacts and conversations appear here. " + gives;
+    } else if (firmState.canCreate) {
+      lab.textContent = "Not in a firm yet";
+      btn.textContent = "Create a firm";
+      copy.textContent = gives + " Start one and invite your colleagues by email, or ask a colleague to invite you.";
+    } else {
+      lab.textContent = "Not in a firm yet";
+      btn.textContent = "How a firm works";
+      copy.textContent = gives + " Ask a colleague to invite you; starting one is part of Pro.";
+    }
+    box.classList.remove("hidden");
+  }
+  document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {
+    if (typeof openFirmModal === "function") openFirmModal();
+  });
 
   // The create-a-firm box is offered the firm name the branding card holds,
   // else the one it was suggested (2026-09-02, "one profile") — into an

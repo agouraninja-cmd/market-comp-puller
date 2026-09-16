@@ -119,3 +119,21 @@ test("the Google button is hidden in the Electron shell only, never in a PWA", (
   assert.ok(boot.includes('[data-inapp-shell="1"] #acctGoogleRow{display:none!important}'),
     "the Google row rule is gone or no longer !important");
 });
+
+test("the desktop shell switches off Chromium's Windows occlusion tracker before the app is ready", () => {
+  // On the owner's Windows machine (2026-09-16) every page in the installed
+  // app went blank after a navigation or a resize — the bare paper
+  // background, no rail, no text — and stayed blank through a full relaunch
+  // and through --disable-gpu, while a DevTools screenshot of the same window
+  // showed the finished page. That is Chromium's native window occlusion
+  // tracker calling an uncovered window covered and stopping its paints; the
+  // same build painted every page once launched with this switch. It must be
+  // appended before app.whenReady(), so it is pinned at module top level,
+  // above createWindow, rather than trusted to survive a tidy-up.
+  const at = mainSrc.indexOf('app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion")');
+  assert.ok(at !== -1, "desktop-app/main.js no longer disables CalculateNativeWinOcclusion");
+  const ready = mainSrc.indexOf("app.whenReady(");
+  assert.ok(ready === -1 || at < ready, "the switch must be appended before app.whenReady()");
+  const create = mainSrc.indexOf("function createWindow()");
+  assert.ok(create !== -1 && at < create, "the switch belongs above createWindow, at module top level");
+});

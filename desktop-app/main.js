@@ -23,6 +23,16 @@ const { app, BrowserWindow, shell } = require("electron");
 
 const APP_URL = process.env.COMPNINJA_URL || "https://compninja.co/";
 
+// Windows only in practice, harmless elsewhere: Chromium's native window
+// occlusion tracker on Windows can decide this window is covered when it is
+// not, and a window it calls occluded stops painting -- the DOM is complete,
+// DevTools can screenshot it, and the user sees the bare paper background.
+// Seen on the owner's machine on 2026-09-16: every page blank after a
+// navigation or a resize, surviving a full relaunch and --disable-gpu; the
+// same build painted every page once launched with this switch. Must be set
+// before the app is ready.
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+
 // How the site knows a page is being viewed from inside this app. Electron
 // reports `display-mode: browser` (measured, Electron 43), so the media query
 // an installed PWA answers to does NOT fire here and the user agent is the

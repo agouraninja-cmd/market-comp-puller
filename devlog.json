@@ -2,6 +2,12 @@
   {
     "date": "2026-09-16",
     "type": "fix",
+    "title": "The desktop app no longer goes blank after a navigation or a resize on Windows",
+    "details": "On the owner's machine the installed CompNinja app showed the bare paper background — no rail, no text — after opening the Vault, and stayed blank on the workspace through a full relaunch and through --disable-gpu, while a DevTools screenshot of the same window showed the finished page. That is Chromium's native window occlusion tracker on Windows deciding an uncovered window is covered and stopping its paints (a known Electron-on-Windows failure). desktop-app/main.js now appends --disable-features=CalculateNativeWinOcclusion before the app is ready; the same build painted every page, and survived a maximize, once launched with it. Shell version 1.0.2 — it reaches installed copies only with a new desktop-v1.0.2 release, which is the owner's call (installers are unsigned). test/inapp-nav.test.js pins the switch and its position."
+  },
+  {
+    "date": "2026-09-16",
+    "type": "fix",
     "title": "The workspace no longer shows an empty strip to a member in no firm",
     "details": "Seen in the desktop app: a signed-in member who belongs to no firm got the workspace's four-cell strip (Buildings · Shelf · Unread · Critical dates) with nothing in any cell, above an otherwise empty page. drawFirmStrip() was hiding it correctly; the strip's own `.dk-strip { display: grid }` rule sits in index.html's inline stylesheet, which loads after tailwind.css, so at equal specificity it overruled Tailwind's `.hidden` and the hide never took. A firm member never saw it because theirs was filled. The founding-seats tile on the pricing modal had the same fault (`.pr-cell { display: flex }`), so renderFoundingTile()'s hide was inert too. Both get a `.class.hidden { display: none }` companion, and test/index-html.test.js now scans the inline stylesheet for any class that sets a display of its own on an element that toggles `hidden`, so the next one fails the build instead of shipping."
   },

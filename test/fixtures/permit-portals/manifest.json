@@ -1,0 +1,140 @@
+{
+  "capturedAt": "2026-09-17T00:12:48.690Z",
+  "window": {
+    "from": "2026-09-09",
+    "to": "2026-09-16",
+    "days": 7
+  },
+  "cities": {
+    "boise": {
+      "platform": "accela",
+      "requests": 10,
+      "rows": 16,
+      "truncated": false,
+      "enriched": {
+        "applicant_company": "Micron Technology Inc",
+        "parcel_number": "S1607212409"
+      },
+      "errors": [],
+      "sample": [
+        {
+          "permit_number": "BLD26-02789",
+          "status": "Applicant Upload",
+          "description": "Elevated walk way from Southwest Garage to Building 36 on the Micron Campus,.",
+          "project_name": "MICRON C1987310 SWG Bridge to B36",
+          "address": "8000 S FEDERAL WAY, Boise ID 83716",
+          "applied_date": "2026-09-16",
+          "permit_type": "New/Added Commercial"
+        },
+        {
+          "permit_number": "BLD26-02771",
+          "status": "Prescreen",
+          "description": "Scope of work is meant to capture the B201 CUB Foundations & Below Slab Utilities",
+          "project_name": "ID2 - ID2-JAC-CB-01 B201 CUB Foundations & Below Slab Utilities",
+          "address": "8000 S FEDERAL WAY, ID 0",
+          "applied_date": "2026-09-15",
+          "permit_type": "New/Added Commercial"
+        },
+        {
+          "permit_number": "BLD26-02720",
+          "status": "In Review",
+          "description": "Scope of work is meant to capture construction of the B110B NPR Pumphouse located in the West Yard of the B110 Wastewater Treatment Building.",
+          "project_name": "Micron ID1 - B110B NPR Pumphouse",
+          "address": "8000 S FEDERAL WAY, Boise ID 83716",
+          "applied_date": "2026-09-10",
+          "permit_type": "New/Added Commercial"
+        }
+      ],
+      "results": {
+        "new-added-commercial": {
+          "finalUrl": "https://permits.cityofboise.org/CitizenAccess/Cap/CapHome.aspx?module=Building&TabName=Building",
+          "status": 200
+        },
+        "commercial-modular": {
+          "finalUrl": "https://permits.cityofboise.org/CitizenAccess/Cap/CapDetail.aspx?Module=Building&TabName=Building&capID1=26CAP&capID2=00000&capID3=00RWR&agencyCode=BOISE&IsToShowInspection=",
+          "status": 200
+        },
+        "rack-shelving": {
+          "finalUrl": "https://permits.cityofboise.org/CitizenAccess/Cap/CapHome.aspx?module=Building&TabName=Building",
+          "status": 200
+        },
+        "tenant-improvement": {
+          "finalUrl": "https://permits.cityofboise.org/CitizenAccess/Cap/CapHome.aspx?module=Building&TabName=Building",
+          "status": 200
+        }
+      },
+      "zoning": {
+        "zoning": "I-3",
+        "zoning_acres": 43.16
+      }
+    },
+    "meridian": {
+      "platform": "accela",
+      "requests": 9,
+      "rows": 13,
+      "truncated": true,
+      "enriched": {
+        "applicant_company": "Brandon Byington",
+        "parcel_number": "S0436449775"
+      },
+      "errors": [],
+      "sample": [
+        {
+          "permit_number": "C-NEW-2026-0052",
+          "status": "In Progress",
+          "description": "",
+          "project_name": "BRANDON BYINGTON",
+          "address": "3458 N VENABLE AVE, MERIDIAN ID 83646",
+          "applied_date": "2026-09-16",
+          "permit_type": "New Commercial"
+        },
+        {
+          "permit_number": "C-NEW-2026-0051",
+          "status": "In Progress",
+          "description": "",
+          "project_name": "7Brew Coffee",
+          "address": "3570 E FAIRVIEW AVE, MERIDIAN ID 83642",
+          "applied_date": "2026-09-09",
+          "permit_type": "New Commercial"
+        },
+        {
+          "permit_number": "C-SHELL-2026-0029",
+          "status": "In Progress",
+          "description": "WESTERN FOOTHILLS NEW OFFICE BUILDING CONSISTING OF TWO TENANT SPACES. ONE SPACE TO BE FULLY BUILT OUT AS SOON AS CORE AND SHELL IS COMPLETE (SEPERATE TI PERMIT WILL BE APPLIED FOR).",
+          "project_name": "",
+          "address": "3468 CENTREPOINT *",
+          "applied_date": "",
+          "permit_type": "Commercial Shell Only"
+        }
+      ],
+      "results": {
+        "new-commercial": {
+          "finalUrl": "https://aca-prod.accela.com/MERIDIAN/Cap/CapHome.aspx?module=Dev-Services&TabName=Home",
+          "status": 200
+        },
+        "commercial-shell-only": {
+          "finalUrl": "https://aca-prod.accela.com/MERIDIAN/Cap/CapDetail.aspx?Module=Dev-Services&TabName=Dev-Services&capID1=26CAP&capID2=00000&capID3=00BJB&agencyCode=MERIDIAN&IsToShowInspection=",
+          "status": 200
+        },
+        "tenant-improvement": {
+          "finalUrl": "https://aca-prod.accela.com/MERIDIAN/Cap/CapHome.aspx?module=Dev-Services&TabName=Home",
+          "status": 200
+        },
+        "commercial-addition": {
+          "finalUrl": "https://aca-prod.accela.com/MERIDIAN/Cap/CapHome.aspx?module=Dev-Services&TabName=Home",
+          "status": 200
+        }
+      }
+    },
+    "nampa": {
+      "platform": "energov",
+      "requests": 1,
+      "rows": 0,
+      "truncated": false,
+      "enriched": null,
+      "errors": [
+        "portal-error: energov search returned 403"
+      ]
+    }
+  }
+}

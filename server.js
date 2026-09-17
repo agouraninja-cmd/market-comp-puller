@@ -45,6 +45,14 @@ const BLEND = require("./blend-comps");
 // corpus read and the Census geocode. Spec:
 // docs/superpowers/specs/2026-08-14-radius-corpus-blend-design.md
 const RADIUSBLEND = require("./blend-corpus");
+// Permit signals (2026-09-16): the city permit portals, the parcel-zoning
+// rule and the filing rules — pure, fetch injected, replayed against live
+// captures in npm test. server.js owns the real fetch, the politeness pause,
+// the sweep loop and every write. Spec:
+// docs/superpowers/specs/2026-09-16-permit-signals-design.md
+const PERMITS = require("./permit-portals");
+const PERMIT_ZONING = require("./permit-zoning");
+const PERMIT_FILINGS = require("./permit-filings");
 // Who may read a shared report. Pure and tested for the same reason as the
 // modules above it: this gate protects a broker's private comps, not a comp
 // count, so it has to be provable rather than reviewed.
@@ -6264,6 +6272,194 @@ async function geocodeCensus(address) {
     GEO_MEM.set(key, ll);
   }
   return ll;
+}
+
+// ---------------------------------------------------------------------------
+// Permit sweep (2026-09-16) — the city permit portals read into
+// permit_filings. Spec: docs/superpowers/specs/2026-09-16-permit-signals-design.md
+//
+// The tracker this was ported from ran its scan on an hourly cron inside its
+// own process. Here it is a ROUTE (POST /api/permits/sweep, below) that
+// something outside drives — the watchlist digest's rule: a setInterval in
+// this process fires at an hour nobody chose, again after every deploy, and
+// twice on two instances. The sweep is idempotent (permit_filings is unique
+// on jurisdiction + permit number, inserted with ignore-duplicates), so a
+// double fire costs portal requests and nothing else.
+//
+// Nothing here writes to the firm's board table, and nothing may: a filing is
+// public record and the MATCH to a firm's board is a read (permit-filings.js's
+// matchFilingsToBuildings), which is slice 3's.
+//
+// PERMIT_PORTAL_ORIGIN is TEST-ONLY (RESEND_API_URL's precedent): it re-points
+// every portal AND the Ada County parcel layer at one origin, paths preserved,
+// so test/permit-sweep-run.test.js can stand the captured pages up on a stub
+// and run the whole sweep. Not a secret and authorizes nothing, but it
+// decides where a request is posted, so treat it as trusted config; unset in
+// production. PERMIT_SWEEP_PAUSE_MS is the politeness pause between requests
+// to one portal (the tracker's two seconds); tests set it to 0.
+const PERMIT_PORTAL_ORIGIN = (process.env.PERMIT_PORTAL_ORIGIN || "").trim().replace(/\/+$/, "");
+const PERMIT_SWEEP_PAUSE_MS = (() => {
+  const n = Number(process.env.PERMIT_SWEEP_PAUSE_MS);
+  return Number.isFinite(n) && n >= 0 ? n : 2000;
+})();
+const PERMIT_FETCH_TIMEOUT_MS = 20000;
+// In-memory: "is one running" (a second concurrent sweep would hammer the
+// same portals for the same rows) and the last summary for /admin. Reset on
+// restart — the durable "when did this last run" is max(last_seen_at) on the
+// table, which readPermitStats reads.
+const PERMIT_SWEEP = { running: false, lastSummary: null };
+
+function permitJurisdiction(key) {
+  const j = PERMITS.getJurisdiction(key);
+  return PERMIT_PORTAL_ORIGIN ? PERMITS.withOrigin(j, PERMIT_PORTAL_ORIGIN) : j;
+}
+function permitParcelsUrl() {
+  if (!PERMIT_PORTAL_ORIGIN) return undefined;
+  return PERMIT_PORTAL_ORIGIN + new URL(PERMIT_ZONING.ADA_PARCELS_URL).pathname;
+}
+function permitDeps() {
+  return {
+    fetch: (url, init) => fetch(url, { ...(init || {}), signal: AbortSignal.timeout(PERMIT_FETCH_TIMEOUT_MS) }),
+    sleep: () => new Promise((r) => setTimeout(r, PERMIT_SWEEP_PAUSE_MS)),
+    parcelsUrl: permitParcelsUrl(),
+  };
+}
+
+// One sweep over every swept city: discover the window, split what the table
+// already holds from what is new, enrich and zone the new rows one at a time
+// (each is a detail-page request, paused), insert them, and record a status
+// change on any row the listing re-showed with a different status. A dry run
+// does everything but write. One city's failure is one city's error line;
+// the others still run.
+async function sweepPermitFilings({ days, dryRun = false } = {}) {
+  const now = Date.now();
+  const window = PERMIT_FILINGS.sweepWindow(now, days);
+  const deps = permitDeps();
+  const keyDeps = {
+    addressKey: VAULT.addressKey, marketOf,
+    flagIndustrial: PERMITS.flagIndustrial, industrialFor: PERMIT_ZONING.industrialFor,
+  };
+  const summary = {
+    startedAt: new Date(now).toISOString(), dryRun, window,
+    cities: {}, discovered: 0, added: 0, seen: 0, statusChanges: 0, industrial: 0,
+    truncated: [], errors: [],
+    skipped: PERMITS.JURISDICTION_KEYS.filter((k) => !PERMITS.SWEEP_KEYS.includes(k))
+      .map((k) => ({ city: k, reason: PERMITS.JURISDICTIONS[k].blocked || "switched off" })),
+  };
+  for (const key of PERMITS.SWEEP_KEYS) {
+    const j = permitJurisdiction(key);
+    const city = { rows: 0, fresh: 0, seen: 0, statusChanges: 0, enriched: 0, truncated: false };
+    summary.cities[key] = city;
+    try {
+      const { rows, truncated } = await PERMITS.discoverFilings(j, window, deps);
+      city.rows = rows.length;
+      city.truncated = truncated;
+      if (truncated) summary.truncated.push(key);
+      summary.discovered += rows.length;
+      const tagged = rows.map((r) => ({ ...r, jurisdiction: key }));
+      const numbers = [...new Set(tagged.map((r) => String(r.permit_number || "").toUpperCase()).filter(Boolean))];
+      const stored = (DB_CONFIGURED && numbers.length)
+        ? (await sbRequest("GET",
+            `permit_filings?jurisdiction=eq.${encodeURIComponent(key)}&permit_number=in.(${pgInList(numbers)})` +
+            `&select=id,jurisdiction,permit_number,status`)) || []
+        : [];
+      const { fresh, seen } = PERMIT_FILINGS.splitKnown(tagged, stored);
+      city.fresh = fresh.length;
+      city.seen = seen.length;
+      summary.seen += seen.length;
+
+      const toInsert = [];
+      for (let i = 0; i < fresh.length; i++) {
+        const r = fresh[i];
+        if (i > 0) await deps.sleep();
+        const extra = await PERMITS.enrichFiling(j, r.ref, deps);
+        if (extra.applicant_company || extra.contractor_company || extra.parcel_number) city.enriched += 1;
+        // Zoning is the real "is this industrial land" signal; the keyword
+        // flag stands only where the parcel layer cannot answer.
+        if (j.county === "ada" && extra.parcel_number) {
+          const z = await PERMIT_ZONING.fetchZoningByParcel(extra.parcel_number, deps);
+          if (z.zoning) extra.zoning = z.zoning;
+        }
+        const row = PERMIT_FILINGS.normalizeFiling(r, j, extra, keyDeps);
+        if (row) toInsert.push(row);
+      }
+      summary.industrial += toInsert.filter((r) => r.is_industrial).length;
+
+      const changes = [];
+      const unchanged = [];
+      for (const { row, stored: s } of seen) {
+        const ch = PERMIT_FILINGS.statusChange(s.status, row.status, now);
+        if (ch) changes.push({ id: s.id, ...ch });
+        else unchanged.push(s.id);
+      }
+      city.statusChanges = changes.length;
+      summary.statusChanges += changes.length;
+
+      if (dryRun) {
+        summary.added += toInsert.length;
+        city.sample = toInsert.slice(0, 5);
+        continue;
+      }
+      const stamp = new Date().toISOString();
+      if (toInsert.length) {
+        const inserted = await sbRequest("POST", "permit_filings?on_conflict=jurisdiction,permit_number",
+          toInsert.map((r) => ({ ...r, first_seen_at: stamp, last_seen_at: stamp })),
+          { prefer: "resolution=ignore-duplicates,return=representation" });
+        summary.added += Array.isArray(inserted) ? inserted.length : 0;
+      }
+      for (const c of changes) {
+        await sbRequest("PATCH", `permit_filings?id=eq.${encodeURIComponent(c.id)}`,
+          { status: c.new_status, status_changed_at: c.detected_at, last_seen_at: stamp },
+          { prefer: "return=minimal" });
+        await sbRequest("POST", "permit_filing_events",
+          { filing_id: c.id, old_status: c.old_status, new_status: c.new_status, detected_at: c.detected_at },
+          { prefer: "return=minimal" });
+      }
+      if (unchanged.length) {
+        await sbRequest("PATCH", `permit_filings?id=in.(${pgInList(unchanged)})`,
+          { last_seen_at: stamp }, { prefer: "return=minimal" });
+      }
+    } catch (err) {
+      console.error(`[permit sweep] ${key}: ${err.message}`);
+      summary.errors.push(`${key}: ${err.message}`);
+    }
+  }
+  summary.finishedAt = new Date().toISOString();
+  return summary;
+}
+
+// The /admin card's read: how many filings the table holds, per city, when a
+// sweep last touched it, and which cities are switched off and why. Never
+// throws (null = unreadable, the intro-requests card's convention).
+async function readPermitStats() {
+  const base = {
+    db: DB_CONFIGURED,
+    cities: PERMITS.JURISDICTION_KEYS.map((k) => ({
+      key: k, label: PERMITS.JURISDICTIONS[k].label,
+      swept: PERMITS.SWEEP_KEYS.includes(k), blocked: PERMITS.JURISDICTIONS[k].blocked || "",
+    })),
+    lastRun: PERMIT_SWEEP.lastSummary ? {
+      at: PERMIT_SWEEP.lastSummary.finishedAt, dryRun: PERMIT_SWEEP.lastSummary.dryRun,
+      added: PERMIT_SWEEP.lastSummary.added, statusChanges: PERMIT_SWEEP.lastSummary.statusChanges,
+      errors: PERMIT_SWEEP.lastSummary.errors,
+    } : null,
+  };
+  if (!DB_CONFIGURED) return { ...base, filings: 0, industrial: 0, byCity: {}, lastSeenAt: null };
+  try {
+    const rows = (await sbRequest("GET",
+      "permit_filings?select=jurisdiction,is_industrial,last_seen_at&order=last_seen_at.desc&limit=5000")) || [];
+    const byCity = {};
+    let industrial = 0;
+    for (const r of rows) {
+      byCity[r.jurisdiction] = (byCity[r.jurisdiction] || 0) + 1;
+      if (r.is_industrial) industrial += 1;
+    }
+    return { ...base, filings: rows.length, capped: rows.length >= 5000, industrial, byCity,
+      lastSeenAt: rows[0] ? rows[0].last_seen_at : null };
+  } catch (err) {
+    console.warn("Permit stats read failed:", err && err.message);
+    return null;
+  }
 }
 
 async function locateCorpusRows(rows) {
@@ -14887,6 +15083,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
 <div id="auditPanel"></div>
 <div id="accuracy"></div>
 <div id="digest" style="display:none"></div>
+<div id="permits" style="display:none"></div>
 <div id="subs" style="display:none"></div>
 </div>
 </main>
@@ -15316,6 +15513,67 @@ function renderDigestCard(state){
   document.getElementById("dgPrev").addEventListener("click",function(){run(true);});
   document.getElementById("dgSend").addEventListener("click",function(){run(false);});
 }
+// Permit filings (2026-09-16). The digest card's shape and the digest card's
+// rule: this takes no arguments and FETCHES NOTHING on load — the only call
+// to /api/permits/sweep lives inside the click handlers, so opening /admin
+// never reads a city portal. PERMIT_STATS comes off /api/stats; undefined
+// means a stale /api/stats from before the card existed (no card).
+var PERMIT_STATS;
+function renderPermitCard(state){
+  var el=document.getElementById("permits");
+  if(PERMIT_STATS===undefined){el.style.display="none";return;}
+  var p=PERMIT_STATS;
+  var body;
+  if(state&&state.error){
+    body="<p class=muted>"+esc(state.error)+"</p>";
+  }else if(state&&state.summary){
+    var s=state.summary;
+    body="<p><b>"+esc(s.discovered)+"</b> filing(s) on the portals for "+esc(s.window.from)+" to "+esc(s.window.to)+
+      " &middot; <b>"+esc(s.added)+"</b> "+(state.dry?"would be new":"new")+
+      " &middot; "+esc(s.statusChanges)+" status change(s)"+
+      ((s.truncated||[]).length?" &middot; <b>truncated: "+esc(s.truncated.join(", "))+"</b>":"")+
+      ((s.errors||[]).length?" &middot; <b>"+esc(s.errors.length)+" error(s)</b> &mdash; "+esc(s.errors.join("; ")):"")+"</p>"+
+      (state.dry?Object.keys(s.cities||{}).map(function(k){
+        return (s.cities[k].sample||[]).map(function(r){
+          return "<div class=muted>"+esc(k)+" &middot; "+esc(r.permit_number)+" &middot; "+esc(r.permit_type||"")+
+            " &middot; "+esc(r.address||"")+(r.applicant_company?" &middot; "+esc(r.applicant_company):"")+
+            (r.zoning?" &middot; "+esc(r.zoning):"")+(r.is_industrial?" &middot; <b>industrial</b>":"")+"</div>";
+        }).join("");
+      }).join(""):"");
+  }else{
+    body=!p
+      ? "<p class=muted>Unavailable right now &mdash; the filings table could not be read. Nothing else on this page is affected.</p>"
+      : !p.db
+      ? "<p class=muted>Requires Supabase &mdash; filings are stored only there (no file fallback).</p>"
+      : "<p><b>"+esc(p.filings)+(p.capped?"+":"")+"</b> filing(s) stored"+
+        (p.industrial?" &middot; "+esc(p.industrial)+" on industrial land":"")+
+        (p.lastSeenAt?" &middot; last swept "+esc(new Date(p.lastSeenAt).toLocaleString()):" &middot; <b>never swept</b>")+"</p>"+
+        "<div class=muted>"+(p.cities||[]).map(function(c){
+          return esc(c.label)+": "+(c.swept?esc((p.byCity||{})[c.key]||0):"off &mdash; "+esc(c.blocked));
+        }).join(" &middot; ")+"</div>";
+  }
+  el.innerHTML="<div class=card><h2>Permit filings</h2>"+body+
+    "<p style='margin-top:12px'>"+digestBtn("pmPrev","Preview (stores nothing)")+
+    digestBtn("pmRun","Sweep now","mute")+"</p>"+
+    "<div class=muted>The Boise and Meridian building portals, read only when this is run; the schedule lives outside this process. Nothing is emailed.</div></div>";
+  el.style.display="block";
+  var run=function(dry){
+    var key=sessionStorage.getItem(KEYK);
+    document.getElementById("pmPrev").disabled=true;
+    document.getElementById("pmRun").disabled=true;
+    fetch("/api/permits/sweep",{method:"POST",
+      headers:{"content-type":"application/json","x-admin-key":key||""},
+      body:JSON.stringify({dryRun:dry})})
+    .then(function(r){return r.json().then(function(j){
+      if(!r.ok)throw new Error(j.error||("Error "+r.status));
+      return j;
+    });})
+    .then(function(j){renderPermitCard({summary:j,dry:dry});})
+    .catch(function(e){renderPermitCard({error:e.message});});
+  };
+  document.getElementById("pmPrev").addEventListener("click",function(){run(true);});
+  document.getElementById("pmRun").addEventListener("click",function(){run(false);});
+}
 function loadSubs(key){
   fetch("/api/admin/submissions",{headers:{"x-admin-key":key}})
     .then(function(r){if(!r.ok){throw new Error("subs "+r.status);}return r.json();})
@@ -15330,7 +15588,7 @@ function load(key){
     if(r.status===404){throw new Error("Analytics is disabled — set ADMIN_KEY on the server.");}
     if(!r.ok){throw new Error("Error "+r.status);}
     return r.json();
-  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard();})
+  }).then(function(d){if(key){try{sessionStorage.setItem(KEYK,key);}catch(e){} grantAdminAccess(key);} render(d); loadSubs(key); loadAudit(key); loadAccuracy(key); DIGEST_RUNS=d.digestRuns||null; renderDigestCard(); PERMIT_STATS=d.permits; renderPermitCard();})
   .catch(function(e){document.getElementById("err").textContent=e.message;
     document.getElementById("gate").style.display="block";document.getElementById("dash").style.display="none";});
 }
@@ -19711,6 +19969,45 @@ const server = http.createServer((req, res) =>
       console.error("hub unsubscribe error:", err);
       res.writeHead(500, { "content-type": "text/plain" });
       res.end("Could not update that setting. Please reply to any CompNinja email and we will do it for you.");
+    });
+    return;
+  }
+
+  // --- Permit sweep (2026-09-16). ADMIN_KEY-gated and manually triggered,
+  // never a timer — the digest's rule, see sweepPermitFilings. Refusals:
+  //   404  no ADMIN_KEY on this deployment (the route does not exist)
+  //   401  not an admin
+  //   503  no database and not a dry run — filings have no file fallback,
+  //        and a sweep that discovered rows it could not keep would look
+  //        exactly like one that worked
+  //   409  a sweep is already running
+  // { dryRun: true } discovers, enriches and reports, and writes nothing —
+  // the "Preview" button on /admin. { days } widens the window (1..60).
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/permits/sweep") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        const opts = JSON.parse(body || "{}");
+        const dryRun = opts.dryRun === true;
+        if (!DB_CONFIGURED && !dryRun) {
+          return sendJson(res, 503, { error: "The permit sweep needs a database: filings have no file fallback. Use { dryRun: true } to see what a sweep would find." });
+        }
+        if (PERMIT_SWEEP.running) return sendJson(res, 409, { error: "A permit sweep is already running." });
+        PERMIT_SWEEP.running = true;
+        let summary;
+        try { summary = await sweepPermitFilings({ days: opts.days, dryRun }); }
+        finally { PERMIT_SWEEP.running = false; }
+        PERMIT_SWEEP.lastSummary = summary;
+        console.log(`🏗  Permit sweep${dryRun ? " (dry run)" : ""}: ${summary.discovered} discovered, ` +
+          `${summary.added} new, ${summary.statusChanges} status change(s), ${summary.errors.length} error(s)`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        console.error("permit sweep error:", err);
+        return sendJson(res, 500, { error: "The permit sweep failed." });
+      }
     });
     return;
   }
@@ -28051,8 +28348,10 @@ const server = http.createServer((req, res) =>
       // Never rejects: readIntroRequests catches its own errors and returns
       // null, so an intro-table outage can't take the whole dashboard down.
       readIntroRequests(),
+      // Same contract (2026-09-16): the permit filings count for its card.
+      readPermitStats(),
     ])
-      .then(([rows, introRequests]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests }))
+      .then(([rows, introRequests, permits]) => sendJson(res, 200, { ...aggregateStats(rows), introRequests, permits }))
       .catch((err) => { console.error("Stats read failed:", err); return sendJson(res, 500, { error: "Could not load stats." }); });
     return;
   }

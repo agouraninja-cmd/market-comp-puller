@@ -85,6 +85,8 @@ const TABLES = [
   ["org_leases",          "048-org-leases.sql"],
   ["msg_comp_saves",      "044-firm-messaging.sql"],
   ["macro_readings",      "045-macro-readings.sql"],
+  ["permit_filings",      "052-permit-filings.sql"],
+  ["permit_filing_events", "052-permit-filings.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a
@@ -264,6 +266,9 @@ const COLUMNS = [
   // failure most likely to make somebody switch the feature off for good.
   ["hub_notify",        ["seen_at", "notified_at"],             "040-hub-note-emails.sql"],
   ["hub_email_prefs",   ["notify"],                             "040-hub-note-emails.sql"],
+  // The sweep's dedupe read and the building-sheet join both name these; a
+  // partially applied 052 would 400 every sweep into an error line.
+  ["permit_filings",    ["street_key", "market", "status", "last_seen_at"], "052-permit-filings.sql"],
 ];
 
 // What this tool deliberately CANNOT see: 037-org-shop-kind-tenant-rep.sql

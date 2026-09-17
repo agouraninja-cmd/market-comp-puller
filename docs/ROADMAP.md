@@ -139,6 +139,27 @@ intent, the devlog states history.
   the deals already in being worth more. About a day; the spec's §9 names
   the two owner calls it defers (stating a fact on the building directly,
   and whether the firm copy carries the inherited size).
+- **Permit signals from the permit tracker** (spec
+  `docs/superpowers/specs/2026-09-16-permit-signals-design.md`; approved
+  2026-09-16, **slices 1 and 2 BUILT the same day** on `feat/permit-signals`
+  — the port with live captures, migration 052 and `POST /api/permits/sweep`;
+  slices 3 and 4, the building sheet and the development shop's feed, not
+  started. Found on the way: Nampa's portal now 403s non-browser agents and
+  ships switched off, an owner call). The owner's separate `adler-permit-tracker`
+  repo scrapes the Boise, Meridian and Nampa permit portals hourly and
+  resolves Ada County zoning per parcel, at zero cost per check. The
+  decision: bring the DATA in through two existing doors — a Permits
+  section on the firm's building sheet joining the Critical dates strip,
+  then a New-filings feed for development shops — and leave the tracker
+  running for Adler as it is. Port only the two portal clients, the zoning
+  module and the jurisdictions registry, as pure modules with captured
+  fixtures; store filings in one public-record table matched to
+  `org_buildings` by the vault's address key at read time (miss rather than
+  guess, nothing writes to the board); sweep from an `ADMIN_KEY` route an
+  external cron drives, the digest's rule. Boise metro only and labeled as
+  such wherever it renders; no alert email in the first slice. Slices 1 and
+  2 (port + sweep) are worth doing alone: a month of stored filings is the
+  evidence for whether the sheet section earns its place.
 - **Corpus browse page** (the deferred half of friend-feedback #9). Gated
   on the density milestone: 10+ market/type buckets holding 8+
   provenance-good comps from organic traffic; the `corpus_offer` events on

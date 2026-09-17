@@ -1,8 +1,12 @@
 # Permit signals: what the permit tracker gives CompNinja, and what it does not
 
 **Date:** 2026-09-16
-**Status:** PROPOSED. Not built, no migration file. Written so the owner can
-say yes or no to the shape before anyone spends a day on it.
+**Status:** APPROVED 2026-09-16. Slices 1 and 2 (§8) BUILT the same day on
+`feat/permit-signals`: `permit-portals.js`, `permit-zoning.js`,
+`permit-filings.js`, migration `052-permit-filings.sql`, `POST
+/api/permits/sweep` and the /admin card. Slices 3 and 4 not started. Three
+amendments from the build are marked **[built]** below: the match key is
+the street line (§4), the stored shape (§5), and Nampa is switched off (§3).
 **Owner:** unassigned
 **Source project:** the private GitHub repo `agouraninja-cmd/adler-permit-tracker`
 (created 2026-07-17, last pushed 2026-08-10). It is not checked out on any
@@ -140,6 +144,19 @@ fetch injected):
 - The `competitor_permits` table and `data.json`. CompNinja gets its own
   table (§5), scoped the way every firm table is.
 
+**[built] What the live capture taught the port** (2026-09-16,
+`scripts/capture-permit-fixtures.js` against the real portals): Meridian
+pages its result grid at ten rows and a 7-day tenant-improvement search
+overflowed it, so the client follows the pager's Next postback up to five
+pages rather than reading page one; a single exact hit's detail page prints
+the address with a footnote asterisk and no comma before the city, both now
+normalized so the detail path keys like the grid path; and **Nampa's Tyler
+host answers 403 to any non-browser user agent** (an AWS load balancer in
+front of it; the tracker's own agent string is refused too). It ships
+`sweep: false` in the registry with the reason recorded. Disguising the
+sweep as a browser to pass a filter the operator chose is not a call the
+code makes; it is the owner's, and it is added to §9.
+
 **Runs nowhere in CompNinja's process on a timer.** The tracker piggybacks
 discovery on an hourly cron hitting its own `/api/run-check`. This repo's
 rule for the only other self-initiated job, the watchlist digest, is the one
@@ -156,8 +173,14 @@ This is the part with a real rule in it, and it is the vault's rule.
 
 A filing arrives with a portal address string. A building on a firm's board
 has the vault's `addressKey` (the same key `org_buildings` is unique on, per
-`org-buildings.js`). The match is **`addressKey(filing.address) ===
-org_buildings.address_key`, within the same market**, and nothing looser:
+`org-buildings.js`). **[built] The key is the STREET LINE, not the whole
+address**: a portal prints "8000 S FEDERAL WAY" (or "8000 S FEDERAL WAY,
+Boise ID 83716") and a board row carries "8000 S Federal Way, Boise, ID
+83716", so the two whole-address keys never agree. `permit-filings.js`'s
+`streetKey` is `addressKey` over everything before the first comma, stored
+on the filing as `street_key` and computed on the building side by the SAME
+function at read time. The match is **`streetKey(filing) ===
+streetKey(building)`, within the same market**, and nothing looser:
 
 - **Miss rather than guess** (portfolio-match.js's argument). A missed
   permit costs a firm one row they can find on the portal themselves; a
@@ -185,14 +208,17 @@ Nampa trade as one market; reuse it, do not widen it.
 One additive migration, next free number.
 
 ```
-permit_filings
+permit_filings                       -- [built] as migration 052
   id, jurisdiction, permit_number   -- unique together (the tracker's dedupe)
   permit_type, description, project_name
-  address, address_key, market      -- address_key via the vault's addressKey, market via marketOf
+  address, street_key, market       -- street_key via streetKey (§4), market = the JURISDICTION's "City, ST" via marketOf
   parcel_number, zoning, is_industrial
   applicant_company, contractor_company
   applied_date, status, status_changed_at, source_url
   first_seen_at, last_seen_at
+
+permit_filing_events                 -- one row per status move (the tracker's permit_events)
+  id, filing_id, old_status, new_status, detected_at
 ```
 
 Filings are **public record and not scoped to a firm** — every firm covering
@@ -246,9 +272,15 @@ absence of a section reads as a bug.
 1. **Port and test** the four modules (§3) with captured fixtures. No routes,
    no table, no UI. Half a day, and it is the half that proves the scrapers
    still work against the live portals a month after their last commit.
+   **[built 2026-09-16]** — and it did prove exactly that: two of three
+   portals answered, the third had grown a bot wall, and the two that
+   answered had two parsing gaps the tracker never saw (§3).
 2. **Sweep and store**: migration, `POST /api/permits/sweep` behind
    `ADMIN_KEY` with Preview, the `permit_filings` table, an external cron.
    Verified by `/admin` showing a row count rising, the corpus-health lesson.
+   **[built 2026-09-16]**, minus the cron, which is a Render or Actions
+   setting the owner adds once migration 052 has run; until then the
+   /admin card's "Sweep now" is the trigger.
 3. **The building sheet**: the Permits section and the Critical dates join,
    Boise metro only, labeled. Run test in the building-sheet suite against
    the fake PostgREST, including the two-firm isolation case (both firms see
@@ -273,6 +305,11 @@ sweep costs nothing to run.
 - **The parcel number as a second match key** (§4), once the miss rate of the
   address key is measured rather than guessed.
 - **Any alert email** (§6).
+- **Whether to read Nampa's portal as a browser.** Its load balancer refuses
+  a named agent and serves a browser one (§3). Passing that filter is a
+  choice about someone else's terms, so the city stays off until the owner
+  makes it — or until the portal answers a named agent again, which the
+  capture script will show on its next run.
 
 ---
 

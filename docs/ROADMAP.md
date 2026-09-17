@@ -140,8 +140,12 @@ intent, the devlog states history.
   the two owner calls it defers (stating a fact on the building directly,
   and whether the firm copy carries the inherited size).
 - **Permit signals from the permit tracker** (spec
-  `docs/superpowers/specs/2026-09-16-permit-signals-design.md`, PROPOSED
-  2026-09-16, nothing built). The owner's separate `adler-permit-tracker`
+  `docs/superpowers/specs/2026-09-16-permit-signals-design.md`; approved
+  2026-09-16, **slices 1 and 2 BUILT the same day** on `feat/permit-signals`
+  — the port with live captures, migration 052 and `POST /api/permits/sweep`;
+  slices 3 and 4, the building sheet and the development shop's feed, not
+  started. Found on the way: Nampa's portal now 403s non-browser agents and
+  ships switched off, an owner call). The owner's separate `adler-permit-tracker`
   repo scrapes the Boise, Meridian and Nampa permit portals hourly and
   resolves Ada County zoning per parcel, at zero cost per check. The
   decision: bring the DATA in through two existing doors — a Permits

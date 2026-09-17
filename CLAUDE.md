@@ -2792,6 +2792,68 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     use of that key), so the link authenticates itself for somebody who is not
     signed in, months later, on a phone. `&on=1` is the same link in reverse —
     a one-way off switch with no way back is a support ticket.
+- **The permit sweep** (2026-09-16; migration `052-permit-filings.sql`;
+  spec `docs/superpowers/specs/2026-09-16-permit-signals-design.md`, slices
+  1 and 2 of four). `POST /api/permits/sweep` reads the Boise and Meridian
+  building-permit portals and stores every newly filed commercial permit in
+  `permit_filings`, one row per (jurisdiction, permit number), enriched off
+  the record's own detail page (applicant, contractor, parcel number) and
+  zoned through the Ada County parcel layer; a re-seen filing whose status
+  moved gets a `permit_filing_events` row. Ported from the owner's separate
+  `adler-permit-tracker` repo, which keeps running for Adler unchanged. The
+  rules live in three pure modules with the fetch INJECTED —
+  **`permit-portals.js`** (the Accela and EnerGov clients and the city
+  registry), **`permit-zoning.js`** (Ada County zoning, `I-1`/`M-2`/`BP` are
+  industrial, a GIS outage answers `{}`) and **`permit-filings.js`** (what is
+  stored, the dedupe key, the match rule) — and `npm test` replays them
+  against pages captured from the LIVE portals on 2026-09-16
+  (`scripts/capture-permit-fixtures.js`, gzipped under
+  `test/fixtures/permit-portals/`; re-run it to diagnose a redesign, since a
+  test that fails on a fresh capture names the selector that moved).
+  `test/permit-sweep-run.test.js` runs the whole route against a stub portal
+  through **`PERMIT_PORTAL_ORIGIN`** (test-only, `RESEND_API_URL`'s
+  precedent — it re-points every portal AND the parcel layer at one origin;
+  unset in production) with `PERMIT_SWEEP_PAUSE_MS=0` (the politeness pause,
+  two seconds live). Six rules:
+  - **A route, never a timer** — the watchlist digest's argument, verbatim:
+    a `setInterval` fires at an hour nobody chose, again after every deploy,
+    and twice on two instances. The schedule lives outside the process (a
+    Render cron, an Action, the /admin card's buttons). Idempotent by the
+    unique key and `ignore-duplicates`, so a double fire is portal requests
+    and nothing else. `{ dryRun: true }` is the Preview: it discovers,
+    enriches and reports and writes nothing; opening `/admin` never calls the
+    route (pinned, the digest card's rule).
+  - **Filings are public record, not vault-class.** No `user_id`, no
+    `org_id`, no privacy wall. What is per-firm is the MATCH to a board,
+    which is a read (`matchFilingsToBuildings`) and slice 3's; nothing here
+    names the firm's board table and nothing may.
+  - **The match key is the STREET LINE.** A portal prints "8000 S FEDERAL
+    WAY" and a board row carries "8000 S Federal Way, Boise, ID 83716", so
+    `street_key` is broker-vault.js's `addressKey` over everything before the
+    first comma, and `market` is the JURISDICTION's "City, ST" through
+    `marketOf`, never parsed from the portal string. Miss rather than guess:
+    no abbreviation expansion, no proximity.
+  - **Nampa ships switched off** (`sweep: false` in the registry, with the
+    reason). Its Tyler host now sits behind an AWS load balancer that
+    answers 403 to any user agent naming a bot and serves a browser string;
+    disguising the sweep as a browser to pass a filter the operator chose is
+    an owner's call, not this code's. The client and its tests stay. The
+    tracker Adler still runs is presumably blind to Nampa for the same
+    reason.
+  - **The capture found what the port could not.** Meridian pages its grid
+    at ten rows (a 7-day tenant-improvement search overflowed it), so the
+    sweep follows the pager's Next postback up to `MAX_PAGES` and only the
+    cap counts as `truncated`; a single-hit detail page prints the address
+    with a blue footnote asterisk and no comma before the city, both fixed
+    so the detail path keys like the grid path; and the result page writes
+    `value` before `selected` on its dropdowns, which an order-bound option
+    match read as the first option — the pager postback then asked for the
+    wrong type.
+  - **Migration 052 before deploy, mildly.** Nothing on a hot path reads
+    the table; deploy-first costs the /admin card ("unavailable") and turns
+    every sweep into a named error line until it is run.
+  Not built: matching to buildings, the building sheet's Permits section,
+  the development shop's feed, any email.
 - **Search demand on the desk** (2026-08-25). Each watched market on My Desk
   carries a line saying how many people searched it lately: "9 people ran 14
   searches here in the last 30 days, 6 of them Industrial." It reads

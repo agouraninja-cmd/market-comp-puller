@@ -752,12 +752,15 @@ test("bare environment", async (t) => {
       "throws and takes the whole script with it: " + missing.join(", "));
   });
 
-  await t.test("the app reveals bulk valuation from canBulkValue, not from the vault's flag", async () => {
+  await t.test("the app reveals the Comp report tool from canRunReport, not from the vault's flag", async () => {
     const app = await (await fetch(srv.base + "/")).text();
     assert.match(app, /id="menuBulkLink"[^>]*class="hidden/,
-      "the bulk link must ship hidden — it is a Pro tool, and the render cannot know");
-    assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canBulkValue/,
-      "the bulk link is not toggled from canBulkValue");
+      "the bulk link must ship hidden — it needs a session, and the render cannot know");
+    // canRunReport since 2026-09-20: the row is the door to a report, which
+    // every member has; the LIST (canBulkValue) is what stays Pro and is read
+    // by the paste listener, not by this toggle.
+    assert.match(app, /getElementById\("menuBulkLink"\)[\s\S]{0,160}canRunReport/,
+      "the bulk link is not toggled from canRunReport");
     // canUseVault still gates something in this file -- creating a hub
     // (canCreateHub) -- so the two flags are provably separate answers rather
     // than one shared one. (Until 2026-09-04 the workspace's vault card was

@@ -934,34 +934,51 @@ test("a single-report purchase does not buy a firm", () => {
 // The capability that fans one click out into fifty billed searches, so every
 // branch here is a spend decision before it is a product one.
 
-test("bulk valuation is Pro, and nothing below it", () => {
+test("a LIST is Pro; ONE address is any signed-in member; a stranger gets neither", () => {
+  // 2026-09-20 (owner's call). The Comp report tool is the only door to a
+  // report since 2026-09-04, so a free member must be able to open it and
+  // run one address — the search /api/comps always ran for them. The list is
+  // what stays Pro, and the split is two flags on purpose: canRunReport
+  // opens the tool, canBulkValue widens the job.
   const now = Date.now();
   const paid = {
     plan: "pro_monthly", status: "active",
     current_period_end: new Date(now + 30 * 24 * 3600e3).toISOString(),
   };
   const pro = computeEntitlements({ user: { id: "u" }, subscription: paid, now, enabled: true });
+  assert.equal(pro.canRunReport, true);
   assert.equal(pro.canBulkValue, true);
   assert.equal(pro.bulkMaxAddresses, 50);
 
-  for (const [label, ent] of [
-    ["anonymous", computeEntitlements({ now, enabled: true })],
-    ["free", computeEntitlements({ user: { id: "u" }, now, enabled: true })],
-  ]) {
-    assert.equal(ent.canBulkValue, false, label);
-    assert.equal(ent.bulkMaxAddresses, 0, label);
-  }
+  const free = computeEntitlements({ user: { id: "u" }, now, enabled: true });
+  assert.equal(free.canRunReport, true, "a free member opens the tool");
+  assert.equal(free.canBulkValue, false, "but may not run a list");
+  assert.equal(free.bulkMaxAddresses, require("../entitlements").FREE_BULK_MAX_ADDRESSES);
+  assert.equal(free.bulkMaxAddresses, 1, "one address per run — a job of one has no fan-out");
+
+  const anon = computeEntitlements({ now, enabled: true });
+  assert.equal(anon.canRunReport, false, "no session, no tool (the routes 401 first)");
+  assert.equal(anon.canBulkValue, false);
+  assert.equal(anon.bulkMaxAddresses, 0, "the 'can never widen a job' rule stays literally true for a stranger");
 });
 
-test("a dark deployment grants no bulk valuation, unlike every other capability", () => {
+test("a dark deployment grants no LIST, unlike every other capability — but a member still gets one address", () => {
   // The vault's asymmetry, for a sharper reason. "Pre-Pro behavior" restores
   // what visitors USED TO HAVE free; bulk valuation did not exist. And unlike
   // the vault it is not merely an access surface — it is a spend surface, so
   // granting it on a deployment that has simply not switched Pro on yet (the
   // default) hands out an unmetered invoice.
+  //
+  // One address is the exception (2026-09-20): it IS what the pre-Pro app
+  // gave a signed-in member, carries no fan-out, and is charged to
+  // DAILY_SEARCH_CAP like any free search. A stranger still gets nothing.
   const ent = computeEntitlements({ user: { id: "u" }, now: Date.now(), enabled: false });
+  assert.equal(ent.canRunReport, true);
   assert.equal(ent.canBulkValue, false);
-  assert.equal(ent.bulkMaxAddresses, 0);
+  assert.equal(ent.bulkMaxAddresses, 1);
+  const anon = computeEntitlements({ now: Date.now(), enabled: false });
+  assert.equal(anon.canRunReport, false);
+  assert.equal(anon.bulkMaxAddresses, 0);
   assert.equal(ent.canExploreAddresses, true, "the contrast: the Explorer WAS free before the tier");
 });
 

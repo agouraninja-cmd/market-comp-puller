@@ -2964,8 +2964,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   those numbers: Free My Desk is an address list (cap 100), Pro is the book
   of values (cap 500), and the pricing compare table's Portfolio row restates
   it.
-  **Bulk valuation** is Pro-only as well (`canBulkValue` / `bulkMaxAddresses`)
-  — see its own section below.
+  **A LIST in the Comp report tool** is Pro-only as well (`canBulkValue` /
+  `bulkMaxAddresses`); **one address per run is any signed-in member's**
+  (`canRunReport`, 2026-09-20) — see its own section below.
   The **Address Explorer** is Pro-only too (`canExploreAddresses`) — see the
   amendment in its spec for why that gate needs a browser half AND a server
   half, and for the `proConfig` temporal-dead-zone trap that shapes the
@@ -3378,6 +3379,32 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     member.) The retired $20 unlock does not
     reach it either (the Address Explorer's argument: a tool for running fifty
     OTHER addresses cannot be scoped to one address+type).
+  - **ONE address is every member's, and the entitlement is TWO flags**
+    (2026-09-20, owner's call). `canRunReport` opens the tool, reveals the
+    Tools row (`#navBulk` / `#menuBulkLink`) and is `Boolean(user)` on every
+    branch, dark deployment included; `canBulkValue` is the LIST and stays
+    Pro; `bulkMaxAddresses` is `FREE_BULK_MAX_ADDRESSES` (1) for a free
+    member. It exists because the Comp report tool became the only door to
+    a report on 2026-09-04 and was gated on Pro, so a free member could not
+    run a report at all — which contradicts the free tier's own design (every
+    comp itemized, the full value range). Four rules, all run against a real
+    server: **a list on a free account is refused by name** (`pro_required`,
+    inside `POST /api/bulk` once the parse says `truncated > 0`) BEFORE the
+    job exists and before anything is billed — never quietly running the
+    first address of a list somebody meant to value whole; **a free member's
+    one-address run is charged to `DAILY_SEARCH_CAP`** (the worker passes
+    `countsDailyCap: !ent.pro`, `/api/comps`' own rule), so moving the free
+    report onto this worker widened no allowance; **`openBulk`'s 403 stays
+    in the ladder** even though `canRunReport` cannot be false for a member —
+    the 401 → 403 → 503 order is the contract `test/routes.test.js` pins;
+    and **the page words itself off `listAllowed`** in the boot payload
+    (`applyListAllowed` in bulk-page.js: lede, deck label, address label,
+    placeholder cut to its first example line, and the cost line with the
+    Pro door when a list is pasted), never off `maxAddresses === 1`. The
+    paste listener in index.html still reads `canBulkValue`, because that
+    door is a list. `test/bulk-run.test.js` runs a free member's one address
+    end to end (valued, filed under THEIR recents) and proves the list never
+    reaches the worker.
   - **The worker outlives the request, so it holds no `req`/`res`.** That is
     why `vaultCompsForReport` takes a `user` (2026-08-21) and
     `orgCompsForReport` dropped the `req` it never read. The per-market vault
@@ -4380,10 +4407,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     "value a property here" form) keeps the member on the HOME view, because
     consuming it into a hidden form would lose it; the boot block only READS
     the key, the consumer below the auth bootstrap still clears it. Free
-    members note: `/bulk` is Pro-only (`canBulkValue`), so for them the
-    workspace door and the bar's CTA answer with the upgrade card; the
-    anonymous home page's comp finder and the wall's `/?auth=signup` door
-    are unchanged.
+    members note: since 2026-09-20 `/bulk` opens for them too, one address
+    per run (`canRunReport`); only the LIST is Pro (`canBulkValue`). From
+    2026-09-04 to then the page was Pro-only, which left a free member with
+    no door to a report at all — the bug this fixed. The anonymous home
+    page's comp finder and the wall's `/?auth=signup` door are unchanged.
   - **A report yields the workspace** rather than rendering under it, at BOTH
     seams: `renderResults` and, up to a minute earlier, `beginAssembly`.
     Without both, comps stream in below the firm shelf.

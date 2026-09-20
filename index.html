@@ -1825,7 +1825,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Free</span>
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
-          <p class="pr-sum">Every comparable itemized, the same value range Pro sees, a 3-year window.</p>
+          <p class="pr-sum">Every comparable itemized, the same value range Pro sees, a 3-year window, one report at a time.</p>
           <p class="text-xs text-[#68707E] mt-3">Your current plan</p>
         </div>
         <!-- Pro monthly -->
@@ -1899,6 +1899,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <span>10-year lookback</span>
         <span>Unlimited exports</span>
         <span>Private comp vault</span>
+        <span>Lists of up to 50 addresses</span>
         <span>Address Explorer</span>
         <span>Report branding</span>
         <span>Portfolio with estimated values</span>
@@ -1925,6 +1926,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  reports (owner feedback 2026-08-10). Saying the unlimited thing
                  out loud costs one row and removes the guess. -->
             <tr><td>Reports you can run</td><td class="c">Unlimited</td><td class="c">Unlimited</td></tr>
+            <!-- entitlements.js's FREE_BULK_MAX_ADDRESSES / PRO_BULK_MAX_ADDRESSES,
+                 restated in prose (2026-09-20); test/pricing-page.test.js
+                 holds the two figures to the module. -->
+            <tr><td>Addresses per run</td><td class="c">1</td><td class="c">50, valued as one portfolio</td></tr>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
@@ -17805,13 +17810,16 @@ async function renderMyDesk() {
     // the same answer as nothing waiting. Never awaited: the rest of this
     // function must not wait on a count.
     refreshMessagesDot();
-    // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
-    // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
-    // so unhiding this by hand reveals a link and a 403 behind it -- and
-    // likewise not gated on `live`, so a comped admin on a deployment with no
-    // Stripe keys gets both tools rather than one.
+    // The Comp report tool, off its OWN entitlement. Same shape and same
+    // reasons as the vault link above it -- /api/bulk re-checks it
+    // server-side, so unhiding this by hand reveals a link and a 403 behind
+    // it -- and likewise not gated on `live`, so a comped admin on a
+    // deployment with no Stripe keys gets both tools rather than one.
+    // canRunReport, not canBulkValue (2026-09-20): the row is the door to a
+    // report, which every member has; the LIST is what stays Pro, and the
+    // paste listener below still reads canBulkValue for exactly that.
     document.getElementById("menuBulkLink")
-      .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
+      .classList.toggle("hidden", !(proConfig && proConfig.canRunReport));
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.
     if (proConfig && proConfig.exportsRemaining !== undefined) {

@@ -108,13 +108,45 @@ test("bulk, end to end", async (t) => {
   t.after(() => ctx.stop());
   const { srv, tables } = ctx;
 
-  await t.test("a free account is refused with 403 and told it is Pro", async () => {
+  await t.test("a free account opens the tool, capped at one address, and is told a list is Pro", async () => {
+    // 2026-09-20 (owner's call): the Comp report tool is the only door to a
+    // report, so a free member gets the form. The cap is the entitlement's
+    // (one) and listAllowed is what the page words its furniture off.
     const r = await fetch(srv.base + "/api/bulk", as(SAM));
+    assert.equal(r.status, 200);
+    const body = await r.json();
+    assert.equal(body.maxAddresses, 1);
+    assert.equal(body.listAllowed, false);
+    assert.ok(body.types.includes("Industrial"), "the same payload a Pro member gets, minus the width");
+  });
+
+  await t.test("a free account pasting a LIST is refused by name, before any job exists", async () => {
+    const r = await fetch(srv.base + "/api/bulk", as(SAM, {
+      method: "POST",
+      body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID\n4610 E Fairview Ave, Meridian, ID", type: "Industrial", months: 24 }),
+    }));
     assert.equal(r.status, 403);
     const body = await r.json();
     assert.equal(body.code, "pro_required");
     assert.match(body.error, /Pro/, "this string reaches the screen verbatim");
+    assert.match(body.error, /one address/i, "and it says what WILL work");
+    assert.equal(tables.bulk_jobs.length, 0, "refused before the job, so nothing was billed or written");
+    assert.equal(tables.bulk_job_items.length, 0);
   });
+
+  await t.test("a free account's ONE address gets past the gate", async () => {
+    // Proven by reaching the NEXT refusal: this server has no provider key,
+    // so the run stops at the 503 every member hits — which is only reachable
+    // once the entitlement, the parse and the list rule have all let it by.
+    const r = await fetch(srv.base + "/api/bulk", as(SAM, {
+      method: "POST",
+      body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID", type: "Industrial", months: 24 }),
+    }));
+    assert.equal(r.status, 503, "past the gate; stopped only by the missing key");
+    const body = await r.json();
+    assert.notEqual(body.code, "pro_required");
+  });
+
 
   await t.test("a Pro member gets the cap and the type list, not a bare list", async () => {
     // The page needs both before it can render a form, and neither may be a
@@ -414,8 +446,11 @@ test("reading a finished run", async (t) => {
   await t.test("another member cannot read, export or delete it", async () => {
     // Scoped by user_id, like every other read in this app. Without it,
     // knowing a job id would be enough.
-    assert.equal((await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(SAM))).status, 403,
-      "Sam is not Pro, so the ladder stops him first");
+    // 404, not 403, since 2026-09-20: a free member is through the gate (one
+    // address per run is theirs), so the user_id scope is the only thing
+    // between Sam and Pat's job — which is exactly what this proves.
+    assert.equal((await fetch(srv.base + "/api/bulk?id=" + JOB_ID, as(SAM))).status, 404,
+      "Sam is past the gate now; the scope itself must refuse him");
 
     // And with a second Pro member, the scoping itself is what refuses.
     const ctx2 = await bootWithDb(seedTables({
@@ -622,8 +657,14 @@ test("the workspace page", async (t) => {
     assert.match(html, /id="useExample"/);
   });
 
-  await t.test("a non-Pro member sees the Pro door, never the paste box", async () => {
+  await t.test("a non-Pro member sees the form, capped at one address, told a list is Pro", async () => {
+    // Until 2026-09-20 this asserted the 403 door. The Comp report tool is
+    // the only door to a report, so the free member gets the paste box —
+    // and the boot payload says the LIST is not theirs, which is what the
+    // page words its lede, label and cost line off.
     const html = await (await fetch(ctx.srv.base + "/bulk", as(SAM))).text();
-    assert.match(html, /BULKPAGE\.start\(\{"s":403/);
+    assert.match(html, /BULKPAGE\.start\(\{"s":200/);
+    assert.match(html, /"maxAddresses":1[,}]/);
+    assert.match(html, /"listAllowed":false/);
   });
 });

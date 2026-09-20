@@ -97,6 +97,20 @@ const PRO_PORTFOLIO_MAX_ITEMS = 500;
 // the two must move together (bulk.js clamps to its own MAX_ADDRESSES, so a
 // larger number here can never widen a job).
 const PRO_BULK_MAX_ADDRESSES = 50;
+// ONE for a signed-in free member (2026-09-20, owner's call). The Comp report
+// tool became the only door to a report on 2026-09-04 — the single form left
+// the workspace and every "Run a report" control points at /bulk — so a free
+// member with no bulk entitlement had no way to run a report at all, which
+// contradicts the free tier's own design (every comp itemized, the full
+// value range: "a crippled free report is not a demo of the paid one").
+// The split is now: `canRunReport` (open the tool, one address per run) is
+// any signed-in member; `canBulkValue` (a LIST) stays Pro. A job of one is
+// exactly the search /api/comps always ran for a free account, and it is
+// metered the same way — the worker charges DAILY_SEARCH_CAP for a non-Pro
+// member, as /api/comps does. Anonymous stays at zero: the routes 401 first,
+// and this is what keeps the "can never widen a job" rule above literally
+// true for a caller with no session.
+const FREE_BULK_MAX_ADDRESSES = 1;
 
 // A failed payment keeps Pro alive for 7 days before the downgrade, so a
 // dead card on a Friday does not strip a broker's branding mid-pitch.
@@ -281,6 +295,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       // i.e. locked — which would leave the team staring at the paywall the
       // branch above exists to lift.
       canExploreAddresses: true,
+      canRunReport: true,
       canBulkValue: true,
       bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       // Search demand rides with it: the team has to be able to see the number
@@ -318,15 +333,23 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       exportsRemaining: "unlimited",
       reportUnlocked: false,
       canExploreAddresses: true,
-      // FALSE on this branch, for the vault's reason stated below and one of
-      // its own. Bulk valuation did not exist before the tier either, so
-      // "pre-Pro behavior" does not include it — and unlike the vault it is
-      // not merely an access surface, it is a SPEND surface: one POST fans
-      // out into fifty billed searches. Granting that on any deployment that
-      // simply has not switched Pro on yet — the default state — would hand
-      // an unmetered invoice to whoever finds the endpoint.
+      // A LIST is FALSE on this branch, for the vault's reason stated below
+      // and one of its own. Bulk valuation did not exist before the tier
+      // either, so "pre-Pro behavior" does not include it — and unlike the
+      // vault it is not merely an access surface, it is a SPEND surface: one
+      // POST fans out into fifty billed searches. Granting that on any
+      // deployment that simply has not switched Pro on yet — the default
+      // state — would hand an unmetered invoice to whoever finds the endpoint.
+      //
+      // ONE address is a different thing (2026-09-20): it is the search the
+      // pre-Pro app ran for every signed-in member, and the Comp report tool
+      // is now the only door to it. A job of one carries no fan-out, is
+      // charged to DAILY_SEARCH_CAP like any free search, and still needs a
+      // session — so a member on a dark deployment gets it and a stranger
+      // does not.
+      canRunReport: Boolean(user),
       canBulkValue: false,
-      bulkMaxAddresses: 0,
+      bulkMaxAddresses: user ? FREE_BULK_MAX_ADDRESSES : 0,
       // FALSE, for the vault's reason rather than the Explorer's: "pre-Pro
       // behavior" means giving back what a visitor USED TO HAVE, and search
       // demand was never free because it did not exist. It also reports this
@@ -425,6 +448,7 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       //   - VAULT_PASSKEY / users.vault_beta keep their meaning: they are the
       //     door for handing a broker the vault WITHOUT comping Pro, and that
       //     direction is unchanged and still tested.
+      canRunReport: true,
       canBulkValue: true,
       bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
       canSeeSearchDemand: true,
@@ -508,14 +532,18 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // that is not scoped to a report and cannot be sold per-report without
     // simply being Pro at a one-off price.
     canExploreAddresses: pro,
-    // Bulk valuation is Pro-only and, unlike almost everything else a
-    // purchase now grants, is NOT reachable through the single-report unlock.
-    // Same argument the Address Explorer's line above makes and then some: a
+    // The Comp report tool opens for any signed-in member (2026-09-20): one
+    // address per run is the free tier's own report, and since 2026-09-04
+    // this tool is the only door to it. See FREE_BULK_MAX_ADDRESSES.
+    canRunReport: Boolean(user),
+    // A LIST is Pro-only and, unlike almost everything else a purchase now
+    // grants, is NOT reachable through the single-report unlock. Same
+    // argument the Address Explorer's line above makes and then some: a
     // one-off unlock is scoped to one address+type, and a tool whose whole
     // purpose is running fifty OTHER addresses cannot be scoped to one of
     // them. Selling it per-report would just be selling Pro once.
     canBulkValue: pro,
-    bulkMaxAddresses: pro ? PRO_BULK_MAX_ADDRESSES : 0,
+    bulkMaxAddresses: pro ? PRO_BULK_MAX_ADDRESSES : user ? FREE_BULK_MAX_ADDRESSES : 0,
     // Pro, and deliberately NOT `reportUnlocked`. The same rule that keeps the
     // Address Explorer out of a single-report purchase decides this: a $39
     // unlock buys one property's history, and a market's search demand is not
@@ -611,4 +639,5 @@ module.exports = {
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
   PRO_BULK_MAX_ADDRESSES,
+  FREE_BULK_MAX_ADDRESSES,
 };

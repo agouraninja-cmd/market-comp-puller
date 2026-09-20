@@ -31,6 +31,7 @@ const BULK = require("../bulk.js");
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 const YEAR_OUT = new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString();
 const PAT = { id: "11111111-1111-4111-8111-111111111111", email: "pat@brokerage.com", name: "Pat" };
+const SAM = { id: "22222222-2222-4222-8222-222222222222", email: "sam@nowhere.com", name: "Sam" };
 // Flipped by the re-value suite to reproduce the first real production run,
 // where two addresses in three came back with comps and no building size.
 let SIZELESS = false;
@@ -105,8 +106,11 @@ async function startStubProvider() {
 
 async function bootAll() {
   const tables = {
-    users: [{ ...PAT, pro_tester: false, vault_beta: false }],
-    sessions: [{ token_hash: sha256("tok-" + PAT.id), user_id: PAT.id, expires_at: YEAR_OUT }],
+    // SAM is a FREE member (no subscription row): the 2026-09-20 rule that a
+    // one-address run is free is proven against the worker below, not only
+    // against the entitlement table.
+    users: [PAT, SAM].map((u) => ({ ...u, pro_tester: false, vault_beta: false })),
+    sessions: [PAT, SAM].map((u) => ({ token_hash: sha256("tok-" + u.id), user_id: u.id, expires_at: YEAR_OUT })),
     subscriptions: [{
       user_id: PAT.id, plan: "pro_monthly", status: "active",
       current_period_end: YEAR_OUT, cancel_at_period_end: false,
@@ -135,11 +139,11 @@ async function bootAll() {
   };
 }
 
-const as = (init = {}) => ({
+const as = (init = {}, who = PAT) => ({
   ...init,
   headers: {
     "content-type": "application/json",
-    cookie: `cn_session=tok-${PAT.id}`,
+    cookie: `cn_session=tok-${who.id}`,
     ...(init.headers || {}),
   },
 });
@@ -159,10 +163,10 @@ async function until(cond, message, { timeoutMs = 15000 } = {}) {
 
 // The worker runs after the POST answers, so every assertion waits on the job
 // rather than on a timer.
-async function waitForJob(base, id, { timeoutMs = 30000 } = {}) {
+async function waitForJob(base, id, { timeoutMs = 30000, who = PAT } = {}) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const r = await fetch(`${base}/api/bulk?id=${encodeURIComponent(id)}`, as());
+    const r = await fetch(`${base}/api/bulk?id=${encodeURIComponent(id)}`, as({}, who));
     const body = await r.json();
     if (body.job && body.job.status !== "running") return body;
     if (Date.now() > deadline) {
@@ -316,6 +320,60 @@ test("a bulk job runs end to end and lands on the desk", async (t) => {
     }
     // Upserted, not duplicated: the same two properties, re-valued.
     assert.equal(tables.recent_searches.length, 2);
+  });
+});
+
+test("a FREE member runs one address end to end, and a list is refused before it costs anything", async (t) => {
+  // 2026-09-20 (owner's call). The Comp report tool is the only door to a
+  // report since 2026-09-04, so a free member must be able to walk through it
+  // with one address. This is the proof that the worker — not just the
+  // entitlement table — serves them: the search runs, the row is valued, it
+  // is filed under their recents, and the LIST case never reaches the worker.
+  const ctx = await bootAll();
+  t.after(() => ctx.stop());
+  const { srv, tables, stub } = ctx;
+
+  await t.test("a list is refused by name, and no job or search exists afterward", async () => {
+    const r = await fetch(srv.base + "/api/bulk", as({
+      method: "POST",
+      body: JSON.stringify({
+        text: "1201 W Idaho St, Boise, ID 83702\n900 N Cole Rd, Boise, ID 83704",
+        type: "Industrial", months: 24,
+      }),
+    }, SAM));
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).code, "pro_required");
+    assert.equal(tables.bulk_jobs.length, 0);
+    assert.equal(stub.calls.length, 0, "refused before anything was billed");
+  });
+
+  const started = await fetch(srv.base + "/api/bulk", as({
+    method: "POST",
+    body: JSON.stringify({ text: "1201 W Idaho St, Boise, ID 83702", type: "Industrial", months: 24 }),
+  }, SAM));
+  const startedBody = await started.json();
+  assert.equal(started.status, 200, JSON.stringify(startedBody));
+  assert.equal(startedBody.job.total, 1);
+  // Polled AS SAM: the read is user-scoped, so PAT's cookie would see a 404
+  // forever (which is the last subtest's point).
+  const finished = await waitForJob(srv.base, startedBody.job.id, { who: SAM });
+
+  await t.test("the one row is valued and filed under the FREE member's own recents", () => {
+    assert.equal(finished.job.status, "done");
+    assert.equal(finished.items.length, 1);
+    const it = finished.items[0];
+    assert.equal(it.status, "done", it.error || "");
+    assert.ok(it.value_likely > 0, "a free member's row carries a figure like anybody's");
+    assert.ok(it.recent_item_id, "and links to its report");
+    const recent = tables.recent_searches.find((r) => r.id === it.recent_item_id);
+    assert.ok(recent, "the report is filed");
+    assert.equal(recent.user_id, SAM.id, "under the member who ran it, never the Pro fixture");
+    assert.equal(stub.calls.length, 1, "one address, one billed search");
+  });
+
+  await t.test("the free member's job is their own: the Pro member cannot read it", async () => {
+    const r = await fetch(`${srv.base}/api/bulk?id=${encodeURIComponent(startedBody.job.id)}`, as());
+    assert.notEqual(r.status, 200, "user-scoped like every other bulk read");
   });
 });
 

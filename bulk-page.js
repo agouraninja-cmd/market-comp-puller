@@ -278,7 +278,11 @@ function renderBulkPageBody(boot) {
     <div class="top">
       <div>
         <h1>Run a report</h1>
-        <p class="lede">One address opens its comp report. A list becomes a portfolio, every row
+        <!-- id'd so start() can reword both for a free member (2026-09-20:
+             one address per run is free, a list is Pro). The default text
+             stays in the MARKUP so a page whose script failed still makes a
+             true statement for the audience the tool was built for. -->
+        <p class="lede" id="lede">One address opens its comp report. A list becomes a portfolio, every row
           linking to the report behind its number.</p>
       </div>
       <!-- Two cells, not three (owner's call): "runs on file" was a weak number
@@ -291,7 +295,7 @@ function renderBulkPageBody(boot) {
 
     <div class="desk">
       <div class="dhead">
-        <span class="dlab">Value one property, or a list</span>
+        <span class="dlab" id="dlab">Value one property, or a list</span>
         <span class="count" id="count"></span>
       </div>
       <div class="addr">
@@ -832,7 +836,12 @@ const BULK_JS = `
 var BULKPAGE=(function(){
 "use strict";
 var $=function(i){return document.getElementById(i);};
-var MAX=50,TYPES=[],parsedCount=0;
+// LIST_OK is the boot payload's listAllowed (2026-09-20): false for a free
+// member, whose cap is one address. It words the lede, the deck label, the
+// placeholder and the cost line; the server refuses a longer paste with
+// pro_required whether or not this page said so first. (No backticks in
+// this block: it is inside a template literal, and one would end it.)
+var MAX=50,TYPES=[],parsedCount=0,rawCount=0,LIST_OK=true;
 var LEFT=null,DAILY=null;
 // The id of a ONE-address run started from this page load, or null. When it
 // finishes with a report, the page opens that report instead of leaving a
@@ -952,8 +961,15 @@ function refreshPerAddress(){
 }
 
 function refreshCount(){
-  parsedCount=Math.min(BULKRUN.countLines($("bulkText").value),MAX);
-  $("count").textContent=parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
+  rawCount=BULKRUN.countLines($("bulkText").value);
+  parsedCount=Math.min(rawCount,MAX);
+  // A free member who pasted a list is told the list's own length, not
+  // "1 address ready" — the server will refuse it, and the cost line below
+  // says why. Naming the count they pasted is what makes that read as the
+  // rule rather than as the box having lost their addresses.
+  var listLocked=!LIST_OK&&rawCount>1;
+  $("count").textContent=listLocked?rawCount+" addresses":
+    parsedCount?parsedCount+" address"+(parsedCount===1?"":"es")+" ready":"";
   // The offer applies to an empty box only, so it leaves once there is
   // anything to lose — a control that would overwrite nothing is noise, and
   // one that WOULD overwrite something should not be a stray keystroke.
@@ -980,6 +996,15 @@ function refreshCount(){
   // not after deciding which forty addresses mattered.
   var overCap=LEFT!==null&&parsedCount>LEFT;
   if(overCap)$("run").disabled=true;
+  // A list on a free account is refused by the server (pro_required); saying
+  // so here, with the door, is the over-cap rule applied to the other cap.
+  // innerHTML for the link — the copy is static, nothing typed reaches it.
+  if(listLocked){
+    $("run").disabled=true;
+    $("cost").innerHTML="Valuing a list of addresses is part of Pro. Paste one address to run its report, or "+
+      '<a class="lnk" href="/?pricing=1">see Pro</a>.';
+    return;
+  }
   $("cost").textContent=busy
     ? "A run is going below. Wait for it to finish, or cancel it first."
     : overCap
@@ -1044,6 +1069,7 @@ function fillExamples(){
 function loadList(){
   return BULKRUN.api("GET","/api/bulk").then(function(d){
     if(d.maxAddresses){MAX=d.maxAddresses;BULKRUN.setMax(MAX);}
+    if(typeof d.listAllowed==="boolean")applyListAllowed(d.listAllowed);
     if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
     if(d.types&&d.types.length&&!TYPES.length){TYPES=d.types;fillTypes();}
     renderCap();
@@ -1135,17 +1161,34 @@ function gate(msg,actionHtml){
   $("gateAct").innerHTML=actionHtml||"";
 }
 
+// The free member's shape of the page (2026-09-20). One writer for every
+// piece of furniture that changes: the lede, the deck label, the address
+// label and the placeholder — whose example list is what Tab/"use the
+// example" pastes, so on a one-address account it is cut to its first line
+// rather than filling the box with a list the button would then refuse.
+function applyListAllowed(ok){
+  LIST_OK=ok;
+  var lede=$("lede"),dlab=$("dlab"),ta=$("bulkText");
+  var lab=document.querySelector('label[for="bulkText"]');
+  if(ok)return;
+  if(lede)lede.textContent="One address opens its comp report. Valuing a whole list at once, as one portfolio, is part of Pro.";
+  if(dlab)dlab.textContent="Value one property";
+  if(lab)lab.textContent="Address";
+  if(ta&&ta.placeholder)ta.placeholder=ta.placeholder.split("\\n")[0];
+}
+
 function start(boot){
   if(!boot||boot.s===401)
     return gate("Sign in to run a comp report.",'<a class="lnk" href="/?auth=signin">Sign in</a>');
   if(boot.s===403)
-    return gate((boot.j&&boot.j.error)||"The Comp report tool is part of Pro.",
+    return gate((boot.j&&boot.j.error)||"The Comp report tool needs an account.",
       '<a class="lnk" href="/?pricing=1">See Pro</a>');
   if(boot.s!==200)
     return gate((boot.j&&boot.j.error)||"The Comp report tool is unavailable right now.","");
   $("gate").hidden=true;$("app").hidden=false;
   var d=boot.j||{};
   if(d.maxAddresses)MAX=d.maxAddresses;
+  if(typeof d.listAllowed==="boolean")applyListAllowed(d.listAllowed);
   if(typeof d.leftToday==="number"){LEFT=d.leftToday;DAILY=d.dailyLimit;}
   TYPES=d.types||[];fillTypes();
   renderCap();

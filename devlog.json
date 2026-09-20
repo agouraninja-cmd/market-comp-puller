@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-20",
+    "type": "improvement",
+    "title": "A single-address comp report is free again; a list stays Pro",
+    "details": "Since 2026-09-04 the Comp report tool (/bulk) has been the only door to a report — the single form left the workspace and every “Run a report” control points there — but the tool was gated on Pro, so a free member could not run a report at all: the Tools row was hidden and the page answered with the Pro card. That contradicted the free tier’s own design (every comp itemized, the full value range). The entitlement is now two flags: canRunReport (any signed-in member; one address per run, FREE_BULK_MAX_ADDRESSES = 1) opens the tool and the nav row, and canBulkValue (Pro) is the list. A free member pasting a list is refused by name with pro_required before a job exists and before anything is billed; the page says the same thing under the button, with the Pro door. A free member’s one-address run is charged to DAILY_SEARCH_CAP exactly as /api/comps always charged their searches (the worker passes countsDailyCap: !ent.pro), so no allowance widened. The /bulk boot payload carries listAllowed, which words the lede, the deck label, the address label, the placeholder and the cost line for a one-address account. Pricing copy gained an “Addresses per run” row (1 / 50) and the Pro strip a “Lists of up to 50 addresses” item. Proven end to end in test/bulk-run.test.js: a free member’s one address runs, is valued and filed under their own recents; their list never reaches the worker."
+  },
+  {
     "date": "2026-09-16",
     "type": "feature",
     "title": "Permit signals, slices 1 and 2: the permit tracker's portal clients ported, and a sweep that stores Boise and Meridian filings",

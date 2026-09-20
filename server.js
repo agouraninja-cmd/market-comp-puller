@@ -9125,6 +9125,11 @@ async function bulkListPayload(user, ent) {
   return {
     jobs,
     maxAddresses: Math.min(BULK.MAX_ADDRESSES, Number(ent.bulkMaxAddresses) || 0),
+    // Whether a LIST may run (2026-09-20). A free member opens this page for
+    // one address at a time, and the page words its strip, its lede and its
+    // cost line off this rather than inferring it from maxAddresses === 1 —
+    // a number that could one day mean something else.
+    listAllowed: ent.canBulkValue === true,
     leftToday,
     dailyLimit: BULK_DAILY_ADDRESSES,
     types: VAULT.PROPERTY_TYPES,
@@ -9203,10 +9208,14 @@ async function runBulkItem(item, ctx) {
       // searches cost or find.
       vaultRows: priv.vault,
       plan: ent.plan,
-      // Pro, so the daily cap does not apply — it is a scraper backstop, and
-      // /api/bulk has its own, tighter ceilings (one job at a time, capped
-      // addresses) which is what actually bounds the spend here.
-      countsDailyCap: false,
+      // /api/comps' own rule, restated: Pro is exempt from the daily cap (a
+      // scraper backstop; /api/bulk has its own, tighter ceilings — one job at
+      // a time, capped addresses, BULK_DAILY_ADDRESSES — which is what bounds
+      // a list's spend). A FREE member's one-address run (2026-09-20) is the
+      // search /api/comps always ran for them and is charged the same way, so
+      // moving the free report onto this worker widened no allowance. A
+      // capped row fails with the cap's own message, like any other failure.
+      countsDailyCap: !ent.pro,
     });
 
     // The same serialization funnel /api/comps uses, fed the same private
@@ -10288,7 +10297,10 @@ const ACCOUNT_NAV_JS =
   // already carries. Both links ship hidden and appear together once the
   // account resolves, which is why the rail is a fixed width — an item
   // arriving after paint must not reflow the page around it.
-  `show($("navBulk"),Boolean(pro.canBulkValue));` +
+  // canRunReport, not canBulkValue (2026-09-20): the row is the door to a
+  // report, which every member has; the LIST is what stays Pro, and the page
+  // itself says so. Still an entitlement read — a stranger has neither.
+  `show($("navBulk"),Boolean(pro.canRunReport));` +
   `show($("navUpgrade"),live&&!isPro);` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this
@@ -20907,9 +20919,16 @@ const server = http.createServer((req, res) =>
       const user = await requireUser(req, res);
       if (!user) return null;
       const ent = await entitlementsFor(req);
-      if (!ent.canBulkValue) {
+      // canRunReport, not canBulkValue (2026-09-20): every signed-in member
+      // may open the tool and run ONE address; a LIST is refused inside POST
+      // /api/bulk with `pro_required` once the parse says how long it is.
+      // In practice this 403 cannot fire for a member (canRunReport is
+      // `Boolean(user)` on every branch), but the ladder is 401 → 403 → 503
+      // by contract and the check stays so a future entitlement that
+      // withholds it is refused here and not somewhere deeper.
+      if (!ent.canRunReport) {
         // Reaches the screen verbatim.
-        sendJson(res, 403, { error: "The Comp report tool is part of Pro.", code: "pro_required" });
+        sendJson(res, 403, { error: "The Comp report tool needs an account.", code: "pro_required" });
         return null;
       }
       if (!DB_CONFIGURED) {
@@ -20958,6 +20977,20 @@ const server = http.createServer((req, res) =>
           const detailKeys = TYPE_COMP_FIELDS[typeOk].fields;
 
           const parsed = BULK.parseAddressList(text, { max: ent.bulkMaxAddresses, detailKeys });
+          // A LIST is Pro (2026-09-20). A free member's cap is one, so a
+          // longer paste parses to one row plus `truncated` — and rather than
+          // quietly running the first address of a list somebody meant to
+          // value whole, it is refused by name, BEFORE the job exists and
+          // before anything is billed. Duplicates of one address still run
+          // (they collapse to one row), and refused lines (places, not
+          // addresses) never counted. The page says the same thing before the
+          // button; this is the check that holds when it does not.
+          if (!ent.canBulkValue && parsed.truncated > 0) {
+            return sendJson(res, 403, {
+              error: "Valuing a list of addresses is part of Pro. Paste one address to run its report.",
+              code: "pro_required",
+            });
+          }
           if (!parsed.rows.length) {
             return sendJson(res, 400, {
               error: "No usable addresses in that list.",
@@ -23852,9 +23885,12 @@ const server = http.createServer((req, res) =>
           // so editing this response reveals a nav link and nothing behind it.
           broker: ent.broker === true,
           canUseVault: ent.canUseVault === true,
-          // Bulk valuation. Presentation only, like everything else in this
-          // block: /api/bulk re-resolves entitlements, so editing this
+          // The Comp report tool. Presentation only, like everything else in
+          // this block: /api/bulk re-resolves entitlements, so editing this
           // response reveals a nav link and a paste box that answers 403.
+          // canRunReport opens the tool (any member, one address per run);
+          // canBulkValue is the LIST, and the paste listener reads that one.
+          canRunReport: ent.canRunReport === true,
           canBulkValue: ent.canBulkValue === true,
           bulkMaxAddresses: ent.bulkMaxAddresses,
           // Presentation only, like canUseVault: the POST /api/portfolio
@@ -28456,7 +28492,10 @@ const server = http.createServer((req, res) =>
         if (!user) boot = { s: 401, j: { error: "Not signed in." } };
         else {
           const ent = await entitlementsFor(req);
-          if (!ent.canBulkValue) boot = { s: 403, j: { error: "The Comp report tool is part of Pro.", code: "pro_required" } };
+          // canRunReport, openBulk's own rule (2026-09-20): a free member
+          // gets the form, capped at one address, and listAllowed:false in
+          // the payload is what tells the page to say lists are Pro.
+          if (!ent.canRunReport) boot = { s: 403, j: { error: "The Comp report tool needs an account.", code: "pro_required" } };
           else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "The Comp report tool is unavailable right now." } };
           else boot = { s: 200, j: await bulkListPayload(user, ent) };
         }

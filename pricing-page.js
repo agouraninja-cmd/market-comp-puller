@@ -222,7 +222,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     lab: "Free",
     fig: "$0",
     per: "forever",
-    sum: "Every comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
+    sum: "Every comparable itemized, the same value range Pro sees, a three-year window, five exports a month, one comp report at a time.",
     cta: `<p style="font-size:13px;margin:0">No card. ${signedIn ? "Your account starts here." : `<a href="/?auth=signup">Create an account &rarr;</a>`}</p>`,
   });
 

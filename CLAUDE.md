@@ -2891,6 +2891,17 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the external driver the route was built for. It fails loudly without
     the secret and on any per-city error line, because a scheduled job that
     passes while doing nothing is a tracker that silently stopped.
+  **The Permit tracker page, `GET /permits`** (2026-09-24, owner's "it
+  should be under tools"): a Tools row directly after Market explorer on
+  BOTH nav authors (marketBar and index.html, pinned in
+  `test/permits-page.test.js`), for any signed-in account — public record,
+  not a plan feature. Body in **`permits-page.js`** (a marketShell body,
+  style in the body, one read in the boot, filtered in the browser);
+  `permitTrackerPayload` reads the last 30 days of every swept city through
+  `PERMIT_FILINGS.trackerFeed`, NOT only industrial (the page carries that
+  as a switch), and marks each filing sitting on the reader's firm board
+  with a link to its sheet. The board is read through `orgBuildingRows`,
+  fail-open. In `CTA_FREE_PAGES`, since it is a working page.
   `test/permit-sheet-run.test.js` runs all of it against the stand-in,
   including the spec's two-firm case (both firms see the filing on their own
   copy of the building; neither can open the other's). Still not built: any

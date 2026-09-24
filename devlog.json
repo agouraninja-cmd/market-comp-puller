@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-24",
+    "type": "improvement",
+    "title": "Permit tracker rows stay two lines of description",
+    "details": "Boise writes whole paragraphs into a permit description, so on the first live list each row became a wall of text. The description now sits on its own line, cut at two lines, with the full text on hover."
+  },
+  {
+    "date": "2026-09-24",
     "type": "feature",
     "title": "Permit tracker, under Tools",
     "details": "The permit sweep's data has its own page at /permits, reached from a new Permit tracker row under Tools beside Market explorer. It lists every commercial building permit filed in Boise and Meridian in the last thirty days, newest first — address, type, status, zoning, applicant and contractor, and a link to the city's record — with a search box, city and permit-type filters, and an Industrial only switch. A permit at one of your firm's buildings is marked and links to that building's sheet. It says which cities it reads and when the sweep last ran, and warns when that run is more than a business day old. Open to any signed-in account."

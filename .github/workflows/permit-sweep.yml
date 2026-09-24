@@ -1,0 +1,72 @@
+# The permit sweep's schedule (permit signals, spec §3 and §8 slice 2).
+#
+# The sweep is a ROUTE, never a timer inside server.js — the watchlist
+# digest's rule: a setInterval fires at an hour nobody chose, again after
+# every deploy, and twice on two instances. So the schedule lives here, and
+# all this does is ask the live site to run one sweep. The route is
+# idempotent (unique on jurisdiction + permit number, ignore-duplicates), so
+# a double fire or a manual "Run workflow" beside the cron costs portal
+# requests and nothing else.
+#
+# Weekdays at 13:00 UTC (7am in Boise), because the city portals only move
+# on working days and the building sheet calls a sweep "stale" once it is a
+# business day old. The default window is four days, so Monday's run covers
+# the weekend and a missed day heals itself.
+#
+# NEEDS ONE REPOSITORY SECRET, ADMIN_KEY — the same key /admin takes. It fails
+# loudly without it rather than skipping quietly: a scheduled workflow that
+# passes while doing nothing is a tracker that silently stopped tracking,
+# which is exactly what the building sheet's "last checked" line would then
+# have to confess to a customer.
+#
+# The job also fails when the sweep answers with a city error (a portal
+# redesign, the Nampa-style bot wall reaching another city), because a failed
+# scheduled run is what actually reaches somebody. The capture script
+# (scripts/capture-permit-fixtures.js) is how that is diagnosed.
+name: Permit sweep
+
+on:
+  schedule:
+    - cron: "0 13 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "How many days back to read (1-60)"
+        required: false
+        default: "4"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Run one sweep against the live site
+        env:
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          SITE: https://compninja.co
+          DAYS: ${{ github.event.inputs.days || '4' }}
+        run: |
+          if [ -z "$ADMIN_KEY" ]; then
+            echo "::error::The ADMIN_KEY repository secret is not set, so the permit sweep cannot run. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          status=$(curl -sS -o sweep.json -w '%{http_code}' --max-time 1080 \
+            -X POST "$SITE/api/permits/sweep" \
+            -H "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' \
+            -d "{\"days\": $DAYS}")
+          echo "HTTP $status"
+          cat sweep.json; echo
+          if [ "$status" = "409" ]; then
+            echo "::notice::A sweep was already running; this one stood down."
+            exit 0
+          fi
+          if [ "$status" != "200" ]; then
+            echo "::error::The sweep answered HTTP $status."
+            exit 1
+          fi
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("sweep.json", "utf8"));
+            console.log(`discovered ${s.discovered} · added ${s.added} · status changes ${s.statusChanges} · industrial ${s.industrial}`);
+            if (s.truncated && s.truncated.length) console.log(`::warning::Truncated at the page cap: ${s.truncated.join(", ")}`);
+            if (s.errors && s.errors.length) { console.log(`::error::${s.errors.join(" | ")}`); process.exit(1); }
+          '

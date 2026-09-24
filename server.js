@@ -4985,7 +4985,7 @@ async function buildingNotes(orgId, buildingId) {
 async function buildingSheetPayload(user, orgId, buildingId) {
   const building = await findOrgBuilding(orgId, buildingId);
   if (!building) return null;
-  const [firmComps, mineComps, shelf, portfolio, sharedIds, contacts, notes, org] = await Promise.all([
+  const [firmComps, mineComps, shelf, portfolio, sharedIds, contacts, notes, org, permits] = await Promise.all([
     orgCompRowsForSheet(orgId),
     myCompsForBuilding(user.id, building.address_key),
     orgShelfMetaRows(orgId),
@@ -4994,6 +4994,9 @@ async function buildingSheetPayload(user, orgId, buildingId) {
     buildingContacts(orgId, buildingId),
     buildingNotes(orgId, buildingId),
     orgsByIds([orgId]).then((m) => m.get(String(orgId)) || null),
+    // Permit signals slice 3: null for a building outside the swept cities
+    // (the section does not render), never throws.
+    buildingPermitsFor(building),
   ]);
   const leases = (await orgLeaseRows(orgId, buildingId)).map((l) => ORGLEASES.toLease(l, user.id));
   const matching = shelf.filter((r) => r.meta && VAULT.addressKey(String(r.meta.address || "")) === building.address_key);
@@ -5011,7 +5014,7 @@ async function buildingSheetPayload(user, orgId, buildingId) {
     portfolio: (portfolio || []).map((r) => ({ ...r, user_id: user.id })),
     reportValues, sharedIds, contacts, notes, leases,
   });
-  return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet };
+  return { org: { id: orgId, name: (org && org.name) || "Your firm" }, ...sheet, permits };
 }
 
 async function orgCompRowsForBoard(orgId) {
@@ -6460,6 +6463,119 @@ async function readPermitStats() {
     console.warn("Permit stats read failed:", err && err.message);
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Permit signals, slices 3 and 4 — the READS. The sweep above writes; these
+// show. The rules live in permit-filings.js; this owns only the queries.
+//
+// "Supported" means SWEPT, not "in the registry": Nampa has an entry and a
+// client and is switched off (§3), so a Nampa building gets no Permits
+// section rather than one that claims we looked and found nothing (§7).
+// Markets come from the jurisdiction through marketOf — the sweep's own
+// derivation — so this list and the stored `market` column cannot disagree.
+//
+// Filings are public record (§5): no read here is scoped by user or firm,
+// and none may name the firm's board table. The board rows arrive from the
+// caller, already read through the buildings gate.
+// ---------------------------------------------------------------------------
+const PERMIT_SWEPT = PERMITS.SWEEP_KEYS.map((k) => {
+  const j = PERMITS.JURISDICTIONS[k];
+  return { key: k, label: j.label, market: marketOf(`${j.label}, ${j.state}`) };
+});
+const PERMIT_SWEPT_MARKETS = PERMIT_SWEPT.map((c) => c.market);
+const permitCityOf = (key) => {
+  const j = PERMITS.JURISDICTIONS[key];
+  return j ? j.label : "";
+};
+
+// When a sweep last touched the table. The durable answer (the in-memory
+// summary dies with the process); null when nothing has ever been swept.
+async function permitLastSweptAt() {
+  if (!DB_CONFIGURED) return null;
+  const rows = await sbRequest("GET", "permit_filings?select=last_seen_at&order=last_seen_at.desc&limit=1");
+  return (rows && rows[0] && rows[0].last_seen_at) || null;
+}
+
+// The building sheet's Permits section, or null where the section does not
+// render. An enrichment, like the sheet's other reads: a failed permit read
+// answers { unavailable: true } — the page says it could not read them,
+// never "no permits" — and never costs the rest of the sheet.
+async function buildingPermitsFor(building) {
+  if (!building || !PERMIT_SWEPT_MARKETS.includes(String(building.market || ""))) return null;
+  if (!DB_CONFIGURED) return { unavailable: true };
+  try {
+    const key = PERMIT_FILINGS.streetKey(building.address, VAULT.addressKey);
+    if (!key) return PERMIT_FILINGS.sheetPermits({ building, supportedMarkets: PERMIT_SWEPT_MARKETS,
+      addressKey: VAULT.addressKey, filings: [], lastSweptAt: await permitLastSweptAt(), now: Date.now() });
+    const [filings, lastSweptAt] = await Promise.all([
+      sbRequest("GET",
+        `permit_filings?market=eq.${encodeURIComponent(building.market)}&street_key=eq.${encodeURIComponent(key)}` +
+        `&order=applied_date.desc&limit=100`),
+      permitLastSweptAt(),
+    ]);
+    const ids = (filings || []).map((f) => f.id).filter(Boolean);
+    const events = ids.length
+      ? (await sbRequest("GET",
+          `permit_filing_events?filing_id=in.(${pgInList(ids)})&order=detected_at.desc&limit=500`)) || []
+      : [];
+    return PERMIT_FILINGS.sheetPermits({
+      building, supportedMarkets: PERMIT_SWEPT_MARKETS, addressKey: VAULT.addressKey, cityOf: permitCityOf,
+      filings: filings || [], events, lastSweptAt, now: Date.now(),
+    });
+  } catch (err) {
+    console.error("Building permits read failed:", err.message);
+    return { unavailable: true };
+  }
+}
+
+// The /buildings strip's permit rows for a firm's board. Two windowed reads
+// (applied inside the window; status moved inside it) rather than the whole
+// table, because the table only grows. Never throws: [] on any failure, the
+// lease half of the strip's rule.
+async function boardPermitActivityFor(boardRows) {
+  const board = (boardRows || []).filter((b) => PERMIT_SWEPT_MARKETS.includes(String(b.market || "")));
+  if (!DB_CONFIGURED || !board.length) return [];
+  try {
+    const now = Date.now();
+    const since = new Date(now - PERMIT_FILINGS.ACTIVITY_WINDOW_DAYS * 86400000);
+    // By jurisdiction key, not market: a market name carries a comma ("Boise, ID"),
+    // and a key never does. Same set — the market is derived from the key.
+    const markets = `jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})`;
+    const [filed, moved] = await Promise.all([
+      sbRequest("GET", `permit_filings?${markets}&applied_date=gte.${since.toISOString().slice(0, 10)}&limit=2000`),
+      sbRequest("GET", `permit_filings?${markets}&status_changed_at=gte.${encodeURIComponent(since.toISOString())}&limit=2000`),
+    ]);
+    const byId = new Map();
+    for (const f of [...(filed || []), ...(moved || [])]) if (f && f.id != null) byId.set(String(f.id), f);
+    return PERMIT_FILINGS.boardPermitActivity({ filings: [...byId.values()], buildings: board, addressKey: VAULT.addressKey, now });
+  } catch (err) {
+    console.error("Board permit activity read failed:", err.message);
+    return [];
+  }
+}
+
+// The development shop's New filings (§2b), and the shape every firm gets
+// back from GET /api/org/permits. `feed` is null — the section does not
+// render — for any shop that is not a development shop (§9 leaves the broker
+// shop an owner call). The city line always travels, so the page can say
+// where the feature is lit whatever the feed holds.
+async function newFilingsFor(org) {
+  const kind = ORG.kindOf(org);
+  const base = { kind, cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
+    windowDays: PERMIT_FILINGS.FEED_WINDOW_DAYS, feed: null };
+  if (kind !== "development") return base;
+  const now = Date.now();
+  const since = new Date(now - PERMIT_FILINGS.FEED_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+  const [rows, lastSweptAt] = await Promise.all([
+    sbRequest("GET",
+      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&is_industrial=is.true` +
+      `&applied_date=gte.${since}&order=applied_date.desc&limit=500`),
+    permitLastSweptAt(),
+  ]);
+  return { ...base,
+    feed: PERMIT_FILINGS.newFilingsFeed({ filings: rows || [], now, cityOf: permitCityOf }),
+    ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now) };
 }
 
 async function locateCorpusRows(rows) {
@@ -9886,6 +10002,9 @@ const DESK_BOOT_ORG_URLS = (id) => [
   // The firm strip's critical-dates cell (2026-09-04) — the one read the
   // workspace makes that no section below it already makes.
   `/api/org/leases?id=${id}`,
+  // The development shop's New filings (permit signals slice 4). A broker
+  // shop's answer is `feed: null` with no database read behind it.
+  `/api/org/permits?id=${id}`,
 ];
 async function deskBootPayload(req) {
   if (!parseCookies(req)[SESSION_COOKIE]) return null;
@@ -24876,6 +24995,30 @@ const server = http.createServer((req, res) =>
     // member's own book and their won/lost record are private to the USER, not
     // to the firm, and the leaderboard's honest limit follows from that rather
     // than from a query nobody has written yet. See deal-board.js's header.
+    // --- GET /api/org/permits — the development shop's New filings -------
+    //
+    // Permit signals slice 4 (spec §2b). The firm gate like every /api/org
+    // read, though what it returns is public record: the gate decides WHICH
+    // firm's kind is asked about, and a non-member learns nothing about it.
+    // A broker shop gets `feed: null` and the section does not render (§9 —
+    // whether it should is the owner's call). The workspace asks on every
+    // load, so a broker shop's answer costs no database read at all.
+    if (req.method === "GET" && orgPath === "/api/org/permits") {
+      (async () => {
+        const user = await openOrg();
+        if (!user) return;
+        const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
+        const membership = await memberOf(user, orgId);
+        if (!membership) return;
+        const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
+        return sendJson(res, 200, await newFilingsFor(org));
+      })().catch((err) => {
+        console.error("New filings read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't read new permit filings just now." });
+      });
+      return;
+    }
+
     if (req.method === "GET" && orgPath === "/api/org/board") {
       (async () => {
         const user = await openOrg();
@@ -28646,12 +28789,16 @@ const server = http.createServer((req, res) =>
               critical = ORGLEASES.criticalDates(await orgLeaseRows(firm.orgId, null), Date.now(),
                 RENEWAL.deadlineOf, RENEWAL.daysUntil, rows);
             } catch (err) { console.error("critical dates read failed:", err.message); }
+            // Permit signals slice 3: filings and status moves on the board's
+            // own buildings in the last thirty days. Same enrichment rule.
+            const permits = await boardPermitActivityFor(rows);
             boot = { s: 200, j: {
               firm: { id: firm.orgId, name: (org && org.name) || "Your firm" },
               truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
               summary: BUILDINGS.summarize(rows).line,
               buildings: rows.map((r) => BUILDINGS.toBuilding(r, user.id)),
               critical,
+              permits,
             } };
           }
         }

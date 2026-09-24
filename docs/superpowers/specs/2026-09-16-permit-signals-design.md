@@ -4,7 +4,8 @@
 **Status:** APPROVED 2026-09-16. Slices 1 and 2 (§8) BUILT the same day on
 `feat/permit-signals`: `permit-portals.js`, `permit-zoning.js`,
 `permit-filings.js`, migration `052-permit-filings.sql`, `POST
-/api/permits/sweep` and the /admin card. Slices 3 and 4 not started. Three
+/api/permits/sweep` and the /admin card. Slices 3 and 4 BUILT 2026-09-23 on
+`feat/permit-sheet` (§8), with the weekday schedule as a GitHub Action. Three
 amendments from the build are marked **[built]** below: the match key is
 the street line (§4), the stored shape (§5), and Nampa is switched off (§3).
 **Owner:** unassigned
@@ -285,7 +286,13 @@ absence of a section reads as a bug.
    Boise metro only, labeled. Run test in the building-sheet suite against
    the fake PostgREST, including the two-firm isolation case (both firms see
    the filing; neither sees the other's board).
+   **[built 2026-09-23]** — plus a Permit activity strip on /buildings (the
+   last 30 days' filings and status moves on the board), kept apart from the
+   forward-looking Critical dates because these already happened.
 4. **The development shop's New filings**, once slice 3 has a user.
+   **[built 2026-09-23, on the owner's "ship the tracker"]** — industrial
+   filings in the last 14 days on the Workspace of a development shop;
+   `GET /api/org/permits` answers `feed: null` for a broker shop (§9).
 
 Slices 1 and 2 are worth doing on their own even if 3 waits: a month of
 stored filings is the evidence for whether 3 is worth building, and the

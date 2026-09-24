@@ -238,6 +238,7 @@ const PFDELTA = require("./portfolio-delta");
 const BULK = require("./bulk");
 const { renderBulkPageBody, renderBulkInlineBlock } = require("./bulk-page");
 const { renderBuildingsBody, renderBuildingSheetBody } = require("./buildings-page");
+const { renderPermitsBody } = require("./permits-page");
 // /brokers-firms — the one public pitch to the professional audience, which
 // replaced /brokers and /firms on 2026-09-01 (design 4a). A marketShell BODY,
 // like bulk-page.js. The shop-kind sentences and the prices are PASSED IN
@@ -6578,6 +6579,43 @@ async function newFilingsFor(org) {
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now) };
 }
 
+// The Permit tracker page's read (/permits, 2026-09-24). Public record, so
+// the filings themselves are not scoped to anybody; the one per-reader fact
+// is which of them sit on the reader's firm board, and that board is read
+// through orgBuildingRows — the buildings gate's own read — and is
+// fail-open: a failed board read costs the "on your board" marks, never the
+// list.
+async function permitTrackerPayload(user) {
+  const now = Date.now();
+  const since = new Date(now - PERMIT_FILINGS.TRACKER_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
+  const [rows, lastSweptAt, board] = await Promise.all([
+    sbRequest("GET",
+      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&applied_date=gte.${since}` +
+      `&order=applied_date.desc&limit=${PERMIT_FILINGS.TRACKER_MAX + 1}`),
+    permitLastSweptAt(),
+    (async () => {
+      try {
+        const firm = await messagingFirmOf(user);
+        return firm ? { rows: await orgBuildingRows(firm.orgId) } : null;
+      } catch (err) {
+        console.error("Permit tracker board read failed:", err.message);
+        return null;
+      }
+    })(),
+  ]);
+  const filings = PERMIT_FILINGS.trackerFeed({
+    filings: rows || [], now, cityOf: permitCityOf, board: board ? board.rows : [], addressKey: VAULT.addressKey,
+  });
+  return {
+    cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
+    windowDays: PERMIT_FILINGS.TRACKER_WINDOW_DAYS,
+    truncated: (rows || []).length > PERMIT_FILINGS.TRACKER_MAX,
+    inFirm: Boolean(board),
+    filings,
+    ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now),
+  };
+}
+
 async function locateCorpusRows(rows) {
   await Promise.all((Array.isArray(rows) ? rows : []).map(async (row) => {
     if (!row || RADIUSBLEND.parseCoords(row)) return;
@@ -11381,7 +11419,7 @@ function nextMarketExample() {
 // /bulk is where the CTA POINTS (since the evening of 2026-09-04), so it is in
 // the list for the plainest reason of all: a button offering to take you where
 // you already are is a button that does nothing.
-const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building"]);
+const CTA_FREE_PAGES = new Set(["/vault", "/messages", "/markets", "/bulk", "/buildings", "/building", "/permits"]);
 
 const marketBar = (signedIn = false, current = "") =>
   `<header class="hdr"><div class="wrap">` +
@@ -11537,7 +11575,10 @@ const marketBar = (signedIn = false, current = "") =>
   // measures the SOURCE distance from the label to `<a href="/markets"`.
   `<span class="navsec">Tools</span>` +
   (signedIn
-    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
+    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
+      // The Permit tracker (2026-09-24, owner's: "it should be under tools").
+      // Every member; index.html carries the twin row.
+      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>`
     : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
@@ -28762,6 +28803,45 @@ const server = http.createServer((req, res) =>
         head: INTER_FONT_HEAD,
         testerBadge: true,
         body: renderBuildingSheetBody(boot),
+      }));
+    })();
+    return;
+  }
+
+  // --- GET /permits — the Permit tracker (under Tools, 2026-09-24) --------
+  //
+  // Any signed-in account: the filings are public record, and the owner put
+  // the page under Tools beside Market explorer rather than behind a plan.
+  // Server-rendered with its data in the boot, filtered in the browser.
+  if (req.method === "GET" && pagePath === "/permits") {
+    (async () => {
+      let boot = null;
+      try {
+        const user = await getSessionUser(req);
+        if (!user) boot = { s: 401, j: { error: "Please sign in." } };
+        else if (!DB_CONFIGURED) boot = { s: 503, j: { error: "The permit tracker is unavailable right now." } };
+        else boot = { s: 200, j: await permitTrackerPayload(user) };
+      } catch (err) {
+        console.error("permit tracker boot failed:", err.message);
+      }
+      logEvent("permits_visit", { source:
+        !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : "nodb" });
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        vary: "cookie",
+        "x-robots-tag": "noindex, nofollow",
+      });
+      res.end(marketShell({
+        title: "Permit tracker \u00b7 CompNinja",
+        description: "Commercial building permits filed in the cities CompNinja reads.",
+        canonical: `${SITE_URL}/permits`,
+        noindex: true,
+        signedIn: Boolean(parseCookies(req)[SESSION_COOKIE]),
+        current: "/permits",
+        head: INTER_FONT_HEAD,
+        testerBadge: true,
+        body: renderPermitsBody(boot),
       }));
     })();
     return;

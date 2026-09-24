@@ -14535,7 +14535,11 @@ async function renderMyDesk() {
       const name = document.createElement(p.sourceUrl ? "a" : "span");
       name.className = "dk-row-name";
       if (p.sourceUrl) { name.href = p.sourceUrl; name.target = "_blank"; name.rel = "noopener noreferrer"; }
-      name.textContent = [p.address, p.city].filter(Boolean).join(", ") || p.permitNumber;
+      // The city only when the portal left it off: Boise prints
+      // "8000 S FEDERAL WAY, Boise ID 83716", and appending it again read
+      // "…83716, Boise" on the first live sweep.
+      const hasCity = p.city && String(p.address || "").toLowerCase().includes(String(p.city).toLowerCase());
+      name.textContent = [p.address, hasCity ? "" : p.city].filter(Boolean).join(", ") || p.permitNumber;
       row.appendChild(name);
       const meta = document.createElement("span");
       meta.className = "dk-row-meta";

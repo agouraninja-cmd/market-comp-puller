@@ -4237,5 +4237,11 @@
     "type": "improvement",
     "title": "Home page: a cleaner, calmer version of the same page",
     "details": "The owner picked Draft 1 from a Claude Design canvas: same sections, same order, same words, with the polish changed. The intro now has its own Create a free account button (the first sign-up door used to be a whole band further down), the two product columns sit under ink rules, the red eyebrows went from 18px to a quieter 15px, the address field, type and button became one search bar, the source legend gained its fifth label (News), and the sample report shows its working beside the median (x 21,600 SF, approximately $4,730,000). The em dashes in the page copy were rewritten as colons and commas; the promise about what leaves the vault keeps its exact wording."
+  },
+  {
+    "date": "2026-09-24",
+    "type": "improvement",
+    "title": "Home page: plain wording instead of \"comp book\" talk",
+    "details": "The owner found the book language on the home page quirky. The Data storage column, the For firms heading and paragraph, and the first two steps now say what the vault does in plain words: keep your firm’s closed deals in one private vault, import the comps you already have, stored in a private vault, and your firm’s closed deals included in every report. The \"not eleven spreadsheets\" line and \"214 deals are in\" went with it."
   }
 ]

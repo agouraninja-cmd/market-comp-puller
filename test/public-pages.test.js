@@ -221,7 +221,7 @@ test("the cost answer matches what the product actually sells", async (t) => {
   // on /brokers-firms and in the home page's own tile.
   await t.test("a professional arriving at the home page has a path, not just a dropdown", async () => {
     const html = await (await fetch(srv.base + "/")).text();
-    assert.match(html, /For firms — Pro version/, "the home page should address a firm directly");
+    assert.match(html, /For firms &middot; Pro version/, "the home page should address a firm directly");
     assert.match(html, /href="\/brokers-firms"/, "and link to the page that sells to one");
     assert.match(html, /class="hmvault"/, "showing the vault it is selling, not only naming it");
   });
@@ -495,7 +495,7 @@ test("the home page follows the owner's band order", async (t) => {
     const finder = at("Market comp finder");
     const addr = at('id="homeAddress"');
     const report = at('class="hmcard"');
-    const firms = at("For firms — Pro version");
+    const firms = at("For firms &middot; Pro version");
     const closing = at('class="hmclose"');
     assert.ok(intro < finder, "the intro band opens the page");
     assert.ok(finder < report, "the comp finder comes before the sample it produces");

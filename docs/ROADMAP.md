@@ -143,8 +143,10 @@ intent, the devlog states history.
   `docs/superpowers/specs/2026-09-16-permit-signals-design.md`; approved
   2026-09-16, **slices 1 and 2 BUILT the same day** on `feat/permit-signals`
   — the port with live captures, migration 052 and `POST /api/permits/sweep`;
-  slices 3 and 4, the building sheet and the development shop's feed, not
-  started. Found on the way: Nampa's portal now 403s non-browser agents and
+  **slices 3 and 4 BUILT 2026-09-23** on `feat/permit-sheet` — the building
+  sheet's Permits section, a Permit activity strip on /buildings, the
+  development shop's New filings, and a weekday GitHub Action driving the
+  sweep (needs the `ADMIN_KEY` repository secret). Found on the way: Nampa's portal now 403s non-browser agents and
   ships switched off, an owner call). The owner's separate `adler-permit-tracker`
   repo scrapes the Boise, Meridian and Nampa permit portals hourly and
   resolves Ada County zoning per parcel, at zero cost per check. The

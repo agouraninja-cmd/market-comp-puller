@@ -141,3 +141,88 @@ test("filingKey is case-insensitive on the number and separates jurisdictions", 
   assert.equal(F.filingKey({ jurisdiction: "boise", permit_number: "bld26-1" }), F.filingKey({ jurisdiction: "boise", permit_number: "BLD26-1" }));
   assert.notEqual(F.filingKey({ jurisdiction: "boise", permit_number: "A" }), F.filingKey({ jurisdiction: "meridian", permit_number: "A" }));
 });
+
+// ---------------------------------------------------------------------------
+// Slices 3 and 4: the read shapes (spec §2, §7).
+// ---------------------------------------------------------------------------
+const NOW = Date.parse("2026-09-23T15:00:00Z"); // a Wednesday
+const row = (over) => ({
+  id: "f1", jurisdiction: "boise", permit_number: "BLD26-1", permit_type: "Tenant Improvement",
+  address: "8000 S FEDERAL WAY", street_key: F.streetKey("8000 S FEDERAL WAY", addressKey), market: "Boise, ID",
+  is_industrial: true, zoning: "I-1", applicant_company: "Acme", applied_date: "2026-09-20", status: "In Review",
+  status_changed_at: null, source_url: "https://aca-prod.accela.com/BOISE/x", ...over,
+});
+const bldg = { id: "b1", address: "8000 S Federal Way, Boise, ID 83716", market: "Boise, ID" };
+const swept = ["Boise, ID", "Meridian, ID"];
+
+test("businessDayBefore skips the weekend, and freshness says so", () => {
+  assert.equal(F.businessDayBefore(Date.parse("2026-09-21T15:00:00Z")), Date.parse("2026-09-18T15:00:00Z"), "Monday -> Friday");
+  assert.equal(F.businessDayBefore(NOW), Date.parse("2026-09-22T15:00:00Z"));
+  assert.equal(F.sweepFreshness("2026-09-23T06:00:00Z", NOW).stale, false);
+  assert.equal(F.sweepFreshness("2026-09-21T06:00:00Z", NOW).stale, true);
+  // Monday morning after a Friday-afternoon sweep is NOT stale.
+  assert.equal(F.sweepFreshness("2026-09-18T20:00:00Z", Date.parse("2026-09-21T15:00:00Z")).stale, false);
+  assert.deepEqual(F.sweepFreshness(null, NOW), { lastSweptAt: null, never: true, stale: true });
+});
+
+test("citiesLine joins the way a sentence does", () => {
+  assert.equal(F.citiesLine([]), "");
+  assert.equal(F.citiesLine(["Boise"]), "Boise");
+  assert.equal(F.citiesLine(["Boise", "Meridian"]), "Boise and Meridian");
+  assert.equal(F.citiesLine(["Boise", "Meridian", "Nampa"]), "Boise, Meridian and Nampa");
+});
+
+test("toFilingView drops a non-http source url rather than render it as a link", () => {
+  assert.equal(F.toFilingView(row({ source_url: "javascript:alert(1)" })).sourceUrl, "");
+  assert.equal(F.toFilingView(row()).sourceUrl, "https://aca-prod.accela.com/BOISE/x");
+  assert.equal(F.toFilingView(row(), (k) => (k === "boise" ? "Boise" : "")).city, "Boise");
+  assert.equal("street_key" in F.toFilingView(row()), false, "plumbing stays server-side");
+});
+
+test("sheetPermits: null outside the swept cities, never an empty section", () => {
+  const dallas = { id: "b2", address: "100 Main St, Dallas, TX", market: "Dallas, TX" };
+  assert.equal(F.sheetPermits({ building: dallas, supportedMarkets: swept, addressKey, filings: [row()], now: NOW }), null);
+  // Nampa has a registry entry but is not swept, so it is not supported here.
+  const nampa = { id: "b3", address: "1 Main St, Nampa, ID", market: "Nampa, ID" };
+  assert.equal(F.sheetPermits({ building: nampa, supportedMarkets: swept, addressKey, filings: [], now: NOW }), null);
+});
+
+test("sheetPermits re-matches, so a filing fetched too wide cannot land on this sheet", () => {
+  const other = row({ id: "f2", permit_number: "BLD-NEXT-DOOR", address: "8002 S FEDERAL WAY",
+    street_key: F.streetKey("8002 S FEDERAL WAY", addressKey) });
+  const meridianTwin = row({ id: "f3", permit_number: "MER-1", market: "Meridian, ID", jurisdiction: "meridian" });
+  const out = F.sheetPermits({ building: bldg, supportedMarkets: swept, addressKey, now: NOW,
+    lastSweptAt: "2026-09-23T06:00:00Z", filings: [row(), other, meridianTwin],
+    events: [{ filing_id: "f1", old_status: "In Review", new_status: "Issued", detected_at: "2026-09-22T00:00:00Z" },
+             { filing_id: "f2", old_status: "x", new_status: "y", detected_at: "2026-09-22T00:00:00Z" }] });
+  assert.deepEqual(out.filings.map((f) => f.permitNumber), ["BLD26-1"]);
+  assert.deepEqual(out.filings[0].history, [{ from: "In Review", to: "Issued", at: "2026-09-22T00:00:00Z" }]);
+  assert.equal(out.stale, false);
+});
+
+test("boardPermitActivity: filed or moved inside the window, most recent first, one row per filing", () => {
+  const b2 = { id: "b2", address: "450 W Main St, Boise, ID", market: "Boise, ID" };
+  const filings = [
+    row({ id: "a", permit_number: "FILED-3D", applied_date: "2026-09-20" }),
+    row({ id: "b", permit_number: "MOVED-1D", address: "450 W MAIN ST", street_key: F.streetKey("450 W MAIN ST", addressKey),
+      applied_date: "2026-06-01", status: "Issued", status_changed_at: "2026-09-22T10:00:00Z" }),
+    row({ id: "c", permit_number: "OLD", applied_date: "2026-06-01" }),
+  ];
+  const out = F.boardPermitActivity({ filings, buildings: [bldg, b2], addressKey, now: NOW });
+  assert.deepEqual(out.map((a) => [a.permitNumber, a.kind, a.daysAgo, a.buildingId]),
+    [["MOVED-1D", "status", 1, "b2"], ["FILED-3D", "filed", 3, "b1"]]);
+  assert.deepEqual(F.boardPermitActivity({ filings, buildings: [], addressKey, now: NOW }), [], "no board, no rows");
+});
+
+test("newFilingsFeed: industrial only, inside the window, newest first, capped", () => {
+  const out = F.newFilingsFeed({ now: NOW, filings: [
+    row({ id: "1", permit_number: "A", applied_date: "2026-09-18" }),
+    row({ id: "2", permit_number: "B", applied_date: "2026-09-22" }),
+    row({ id: "3", permit_number: "OFFICE", applied_date: "2026-09-22", is_industrial: false }),
+    row({ id: "4", permit_number: "OLD", applied_date: "2026-08-01" }),
+    row({ id: "5", permit_number: "UNDATED", applied_date: null }),
+  ] });
+  assert.deepEqual(out.map((f) => f.permitNumber), ["B", "A"]);
+  const many = Array.from({ length: 60 }, (_, i) => row({ id: "m" + i, permit_number: "M" + i }));
+  assert.equal(F.newFilingsFeed({ now: NOW, filings: many }).length, F.FEED_MAX);
+});

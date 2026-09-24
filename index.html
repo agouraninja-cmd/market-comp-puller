@@ -2983,6 +2983,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
         <p id="buildingsEmpty" class="hidden dk-empty">No buildings yet. Add one from a report on the shelf, from a property in your Vault, or with + Add by address above.</p>
       </div>
+      <!-- New filings (permit signals slice 4, spec §2b): commercial permits
+           filed on industrial land in the swept cities, newest first, the
+           applicant named where the portal gave one. A DEVELOPMENT shop's
+           section only — /api/org/permits answers feed: null for any other
+           shop, and then nothing renders. The header names the cities, so a
+           shop covering somewhere else reads where this is lit rather than
+           an empty feed (§7). Public record; nothing here mails. -->
+      <div id="deskNewFilings" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">New filings</span>
+          <span id="deskNewFilingsStats" class="dk-note"></span>
+        </div>
+        <p id="deskNewFilingsCopy" class="dk-copy"></p>
+        <div id="deskNewFilingRows" class="mt-1"></div>
+        <p id="deskNewFilingsEmpty" class="hidden dk-empty"></p>
+      </div>
       <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
            first, from the same list /messages reads. Rendered only for a
            member of a firm, the shelf's rule; a failed read hides it. -->
@@ -13906,6 +13922,7 @@ async function renderMyDesk() {
       // The contact list is the most personal thing on this deck — real names
       // and addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
+      document.getElementById("deskNewFilings").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
       document.getElementById("deskFirmEmpty").classList.add("hidden");
       // The strip sums the sections above; it goes with them.
@@ -13963,6 +13980,7 @@ async function renderMyDesk() {
     await Promise.all([
       buildings,
       renderDeskThreads(),
+      renderNewFilings(),
       renderDealBoard(),
       buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
     ]);
@@ -14471,6 +14489,60 @@ async function renderMyDesk() {
       const meta = document.createElement("span");
       meta.className = "dk-row-meta";
       meta.textContent = [t.preview, t.unread ? `${t.unread} new` : ""].filter(Boolean).join(" \u00b7 ");
+      row.appendChild(meta);
+      wrap.appendChild(row);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // New filings (permit signals slice 4). The server decides whether this
+  // firm gets a feed at all (a development shop does, spec §2b) and which
+  // rows are in it (industrial land, the last two weeks); this only draws
+  // it. A failed read hides the section — a feed that could not be read must
+  // not look like a quiet fortnight.
+  // ---------------------------------------------------------------------------
+  const NEW_FILINGS_SHOWN = 8;
+  async function renderNewFilings() {
+    const box = document.getElementById("deskNewFilings");
+    const firm = currentUser ? myFirm() : null;
+    if (!firm) { box.classList.add("hidden"); return; }
+    let data = null;
+    try {
+      const res = await bootFetch(`/api/org/permits?id=${encodeURIComponent(firm.id)}`);
+      if (res.ok) data = await res.json();
+    } catch (_) { /* handled below */ }
+    if (!data || !Array.isArray(data.feed)) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const feed = data.feed;
+    const days = data.windowDays || 14;
+    let checked = "";
+    if (data.never) checked = "Not checked yet.";
+    else if (data.stale) checked = "Last checked more than a business day ago \u2014 newer filings may be missing.";
+    document.getElementById("deskNewFilingsCopy").textContent =
+      `Commercial permits filed on industrial land, from each city\u2019s own portal. Read in ${data.cities || "no city"} today, nowhere else yet. ${checked}`.trim();
+    document.getElementById("deskNewFilingsStats").textContent = feed.length
+      ? `${feed.length} in the last ${days} days` : "";
+    const empty = document.getElementById("deskNewFilingsEmpty");
+    empty.textContent = `No industrial filing in ${data.cities || "these cities"} in the last ${days} days.`;
+    empty.classList.toggle("hidden", feed.length > 0);
+    const wrap = document.getElementById("deskNewFilingRows");
+    wrap.innerHTML = "";
+    feed.slice(0, NEW_FILINGS_SHOWN).forEach((p) => {
+      // .dk-row, flat, textContent throughout: every string here is what a
+      // city portal printed, and a portal is not a trusted author.
+      const row = document.createElement("div");
+      row.className = "dk-row";
+      const name = document.createElement(p.sourceUrl ? "a" : "span");
+      name.className = "dk-row-name";
+      if (p.sourceUrl) { name.href = p.sourceUrl; name.target = "_blank"; name.rel = "noopener noreferrer"; }
+      name.textContent = [p.address, p.city].filter(Boolean).join(", ") || p.permitNumber;
+      row.appendChild(name);
+      const meta = document.createElement("span");
+      meta.className = "dk-row-meta";
+      meta.textContent = [
+        p.type, p.applicant ? `applicant ${p.applicant}` : "", p.zoning ? `zoned ${p.zoning}` : "",
+        p.appliedDate ? `filed ${p.appliedDate}` : "", p.permitNumber,
+      ].filter(Boolean).join(" \u00b7 ");
       row.appendChild(meta);
       wrap.appendChild(row);
     });

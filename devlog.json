@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-23",
+    "type": "feature",
+    "title": "Permit signals, slices 3 and 4: permits on the building sheet, a permit strip on /buildings, and New filings for development shops",
+    "details": "The permit tracker's filings now reach members. A building on a firm's board in Boise or Meridian gets a Permits section on its sheet: every filing at that street address — type, status and its history, applicant and contractor, zoning, and a link to the city's record — with the source and the last sweep named, and a plain warning when that sweep is more than a business day old. A building anywhere else gets no section at all rather than an empty one that would claim we looked. /buildings gains a Permit activity strip for the last thirty days on the firm's own buildings, and a development shop's Workspace gains New filings: industrial permits filed in the last two weeks, newest first, with the applicant named, under a header that says which cities it covers. Filings stay public record — both firms with the same building see the same permit, and neither sees the other's board. A weekday GitHub Action now runs the sweep against the live site (it needs the ADMIN_KEY repository secret) and fails loudly on a missing key or a city error, so the tracker cannot stop quietly."
+  },
+  {
     "date": "2026-09-16",
     "type": "feature",
     "title": "Permit signals, slices 1 and 2: the permit tracker's portal clients ported, and a sweep that stores Boise and Meridian filings",

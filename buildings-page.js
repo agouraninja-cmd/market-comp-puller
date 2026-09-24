@@ -93,6 +93,14 @@ function renderBuildingsBody(boot) {
     <div class="kicker">Critical dates \u00b7 next 12 months</div>
     <div id="blCritRows"></div>
   </div>
+  <!-- Permit activity (permit signals slice 3): a filing applied for, or a
+       status that moved, on one of the board's own buildings in the last
+       thirty days. Past events, so a strip of its own rather than rows in
+       the forward-looking Critical dates. Rendered only when there is one. -->
+  <div class="bl-crit hide" id="blPermits">
+    <div class="kicker">Permit activity \u00b7 last 30 days</div>
+    <div id="blPermitRows"></div>
+  </div>
   <div class="bl-tools hide" id="blTools">
     <input type="search" id="blSearch" placeholder="Search by address, market or type" aria-label="Search your firm's buildings" autocomplete="off"/>
     <select id="blType" aria-label="Filter by property type"><option value="">All types</option></select>
@@ -129,7 +137,10 @@ function renderBuildingsBody(boot) {
     firm=o.j.firm||null; items=Array.isArray(o.j.buildings)?o.j.buildings:[];
     truncated=Boolean(o.j.truncated); summary=o.j.summary||"";
     $("blTitle").textContent=firm&&firm.name?firm.name+"\\u2019s buildings":"Buildings";
-    renderCritical(Array.isArray(o.j.critical)?o.j.critical:[]);
+    // Only the boot carries these two; a reload after a remove answers from
+    // /api/org/buildings, which does not, and must not blank either strip.
+    if(Array.isArray(o.j.critical))renderCritical(o.j.critical);
+    if(Array.isArray(o.j.permits))renderPermits(o.j.permits);
     fillTypes();
     render();
   }
@@ -143,6 +154,20 @@ function renderBuildingsBody(boot) {
         '<span class="k">'+(c.kind==="notice"?"notice":"expiry")+'</span>'+
         '<span class="t">'+esc(c.tenant)+(c.suite?" \u00b7 "+esc(c.suite):"")+' \u00b7 <a href="/building/'+esc(encodeURIComponent(c.buildingId))+'">'+esc(c.address||"building")+'</a></span>'+
         '<span class="m">'+esc(c.date)+"</span></div>";
+    }).join("");
+  }
+  function renderPermits(list){
+    var box=$("blPermits");
+    if(!list.length){ box.className="bl-crit hide"; $("blPermitRows").innerHTML=""; return; }
+    box.className="bl-crit";
+    $("blPermitRows").innerHTML=list.map(function(p){
+      var when=p.daysAgo===0?"today":p.daysAgo===1?"yesterday":p.daysAgo+" days ago";
+      var what=p.kind==="filed"?"filed":"moved";
+      var num=p.sourceUrl?'<a href="'+esc(p.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(p.permitNumber)+"</a>":esc(p.permitNumber);
+      return '<div class="bl-crit-row"><span class="d">'+esc(when)+'</span>'+
+        '<span class="k">'+esc(what)+'</span>'+
+        '<span class="t">'+esc(p.type||"Permit")+(p.kind==="status"&&p.status?" \u00b7 now "+esc(p.status):"")+" \u00b7 "+'<a href="/building/'+esc(encodeURIComponent(p.buildingId))+'">'+esc(p.address||"building")+"</a></span>"+
+        '<span class="m">'+num+"</span></div>";
     }).join("");
   }
   function fillTypes(){
@@ -340,6 +365,19 @@ function renderBuildingSheetBody(boot) {
       <p class="bs-lease-act"><button type="button" class="bs-lnk" id="bsLeaseAdd">Add a lease</button></p>
     </section>
 
+    <!-- Permits (permit signals slice 3). Rendered ONLY for a building in a
+         city the sweep reads (spec \u00a77): an empty "Permits" on a Dallas
+         building would claim we looked. It names its source and its last
+         sweep, and says so when that sweep is more than a business day old.
+         Public record, matched on the street line and market; nothing here
+         is written by the sheet and nothing mails. -->
+    <section class="bs-sec hide" id="bsPermits">
+      <div class="bs-rule"><span class="lab">Permits</span><span class="n" id="bsPermitsN"></span></div>
+      <p class="bs-note" id="bsPermitsSrc"></p>
+      <div id="bsPermitsRows"></div>
+      <p class="bs-note hide" id="bsPermitsNone">No permit filed at this address since the sweep began reading the city\u2019s portal.</p>
+    </section>
+
     <section class="bs-sec" id="bsContacts">
       <div class="bs-rule"><span class="lab">Contacts</span><span class="n" id="bsContactsN"></span></div>
       <div id="bsContactsRows"></div>
@@ -452,6 +490,8 @@ function renderBuildingSheetBody(boot) {
         (v.ts?" \u00b7 "+esc(when(v.ts)):"")+"</span></div>";
     }).join("");
 
+    renderPermits(sheet.permits);
+
     var leases=sheet.leases||[];
     count("bsLeasesN",leases.length,"lease"); none("bsLeasesNone",!leases.length);
     $("bsLeasesRows").innerHTML=leases.map(function(l){
@@ -490,6 +530,43 @@ function renderBuildingSheetBody(boot) {
     }).join("");
   }
 
+  function ago(ts){
+    var t=Date.parse(ts); if(isNaN(t))return "";
+    var m=Math.max(0,Math.round((Date.now()-t)/60000));
+    if(m<60)return m<=1?"just now":m+" minutes ago";
+    var h=Math.round(m/60); if(h<48)return h+(h===1?" hour ago":" hours ago");
+    return Math.round(h/24)+" days ago";
+  }
+  function renderPermits(p){
+    var sec=$("bsPermits");
+    if(!p){ sec.className="bs-sec hide"; return; }
+    sec.className="bs-sec";
+    if(p.unavailable){
+      $("bsPermitsN").textContent=""; $("bsPermitsRows").innerHTML=""; none("bsPermitsNone",false);
+      $("bsPermitsSrc").textContent="Couldn\u2019t read this building\u2019s permit filings just now. Refresh in a moment.";
+      return;
+    }
+    var list=p.filings||[];
+    count("bsPermitsN",list.length,"filing");
+    var src="From the city\u2019s building-permit portal";
+    if(p.never)src+=" \u00b7 not checked yet";
+    else if(p.stale)src+=" \u00b7 last checked "+when(p.lastSweptAt)+", more than a business day ago \u2014 newer filings may be missing";
+    else src+=" \u00b7 checked "+ago(p.lastSweptAt);
+    $("bsPermitsSrc").textContent=src+".";
+    none("bsPermitsNone",!list.length);
+    $("bsPermitsRows").innerHTML=list.map(function(f){
+      var who=[f.applicant?"applicant "+f.applicant:"",f.contractor&&f.contractor!==f.applicant?"contractor "+f.contractor:""].filter(Boolean);
+      var bits=[f.status||"",f.appliedDate?"applied "+when(f.appliedDate):"",f.zoning?"zoned "+f.zoning+(f.isIndustrial?" (industrial)":""):""].filter(Boolean);
+      var hist=(f.history||[]).slice(0,3).map(function(h){return (h.from||"\u2014")+" \u2192 "+(h.to||"\u2014")+(h.at?" "+when(h.at):"")});
+      var num=f.sourceUrl?'<a href="'+esc(f.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(f.permitNumber)+"</a>":esc(f.permitNumber);
+      return '<div class="bs-row"><span class="a"><span class="fig">'+esc(f.type||"Permit")+"</span>"+
+        (f.description?" \u00b7 "+esc(f.description):"")+
+        (bits.length?" \u00b7 "+esc(bits.join(" \u00b7 ")):"")+
+        (who.length?"<br>"+esc(who.join(" \u00b7 ")):"")+
+        (hist.length?'<br><span class="m">'+esc(hist.join(" \u00b7 "))+"</span>":"")+
+        '</span><span class="m">'+num+"</span></div>";
+    }).join("");
+  }
   function reload(){
     if(!org||!building)return Promise.resolve();
     return fetch("/api/org/buildings/sheet?id="+encodeURIComponent(org.id)+"&building="+encodeURIComponent(building.id),{credentials:"same-origin"})

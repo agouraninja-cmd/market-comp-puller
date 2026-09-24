@@ -2852,8 +2852,49 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   - **Migration 052 before deploy, mildly.** Nothing on a hot path reads
     the table; deploy-first costs the /admin card ("unavailable") and turns
     every sweep into a named error line until it is run.
-  Not built: matching to buildings, the building sheet's Permits section,
-  the development shop's feed, any email.
+  **Slices 3 and 4 shipped 2026-09-23** — the reads, which never write:
+  - **The building sheet's Permits section** (`buildingPermitsFor` →
+    `PERMIT_FILINGS.sheetPermits`): the filings whose `street_key` and
+    `market` equal the building's, each with its status history from
+    `permit_filing_events`, the applicant and contractor, zoning, and a link
+    to the portal record. **`permits: null` — the section does not render —
+    for a building outside the SWEPT cities** (`PERMIT_SWEPT_MARKETS`, from
+    `SWEEP_KEYS`, so Nampa is out while it is switched off): an empty
+    "Permits" on a Dallas building would claim we looked. It names its
+    source and its last sweep, and says when that sweep is more than a
+    business day old (`sweepFreshness` / `businessDayBefore`); a table
+    never swept reads "not checked yet". A failed read is
+    `{ unavailable: true }`, said as such, never "no permits".
+    `sheetPermits` re-matches what the query returned, so a caller that
+    fetched too wide cannot put a neighbour's permit on the sheet.
+  - **/buildings' Permit activity strip** (`boardPermitActivityFor`, on the
+    page's boot only): a filing applied for or a status that moved in the
+    last 30 days on the board's own buildings. Past events, so its own strip
+    rather than rows in the forward-looking Critical dates. The board rows
+    come from the buildings read already made; nothing here names the
+    board's table.
+  - **The development shop's New filings** (`GET /api/org/permits?id=`,
+    `newFilingsFor` → `newFilingsFeed`, `#deskNewFilings` on the
+    Workspace): industrial filings in the last 14 days, newest first,
+    applicant named. The firm gate like every /api/org read. **A broker
+    shop gets `feed: null`** and nothing renders — whether it should have
+    one is §9's owner call — and that answer costs no database read, which
+    matters because the route is in `DESK_BOOT_ORG_URLS`. The header names
+    the swept cities (`citiesLine`), so a shop elsewhere reads where the
+    feature is lit rather than an empty feed.
+  - **Filter permit_filings by `jurisdiction`, never `market=in.(…)`.** A
+    market name carries a comma ("Boise, ID") and the stand-in PostgREST
+    splits `in.()` on commas; the jurisdiction key is the same set with no
+    comma in it.
+  - **The schedule is `.github/workflows/permit-sweep.yml`**, weekdays
+    13:00 UTC, POSTing the route with the `ADMIN_KEY` repository secret —
+    the external driver the route was built for. It fails loudly without
+    the secret and on any per-city error line, because a scheduled job that
+    passes while doing nothing is a tracker that silently stopped.
+  `test/permit-sheet-run.test.js` runs all of it against the stand-in,
+  including the spec's two-firm case (both firms see the filing on their own
+  copy of the building; neither can open the other's). Still not built: any
+  email, the parcel number as a second match key, a broker shop's feed.
 - **Search demand on the desk** (2026-08-25). Each watched market on My Desk
   carries a line saying how many people searched it lately: "9 people ran 14
   searches here in the last 30 days, 6 of them Industrial." It reads

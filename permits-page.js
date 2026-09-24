@@ -55,6 +55,7 @@ function renderPermitsBody(boot) {
 .pt-addr{color:var(--ink);font-family:Georgia,"Times New Roman",serif;font-size:14px}
 .pt-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
 .pt-meta .ind{color:var(--ink-2);font-weight:600}
+.pt-desc{font-size:11.5px;color:var(--ink-3);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .pt-board{display:inline-block;margin-left:8px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;
   color:var(--ok-text);text-decoration:none;font-family:inherit}
 .pt-board:hover{text-decoration:underline}
@@ -168,7 +169,10 @@ function renderPermitsBody(boot) {
       return '<div class="pt-row"><span class="pt-date">'+esc(day(f.appliedDate))+"</span>"+
         '<div class="pt-main"><span class="pt-addr">'+esc(addr)+"</span>"+
         (f.onBoard?'<a class="pt-board" href="/building/'+esc(encodeURIComponent(f.onBoard.id))+'">on your board \\u2192</a>':"")+
-        '<div class="pt-meta">'+bits.join(" \\u00b7 ")+(f.description?" \\u00b7 "+esc(f.description):"")+"</div>"+
+        '<div class="pt-meta">'+bits.join(" \\u00b7 ")+"</div>"+
+        // Boise's descriptions run to whole paragraphs (seen on the first
+        // live sweep): two lines here, the full text on hover.
+        (f.description?'<div class="pt-desc" title="'+esc(f.description)+'">'+esc(f.description)+"</div>":"")+
         (who.length?'<div class="pt-meta">'+esc(who.join(" \\u00b7 "))+"</div>":"")+
         '</div><span class="pt-num">'+num+"</span></div>";
     }).join("");

@@ -4321,5 +4321,11 @@
     "type": "fix",
     "title": "The vault shows a book of more than 200 comps whole",
     "details": "A broker whose vault held more than 200 comps opened /vault and saw only the 200 most recent. The Comps and Published counts, the market rollup, the medians and the table were all worked out from those 200, and the “showing the most recent 1,000” note never appeared. The page now loads up to 1,000 comps when it opens, the same number it already asked for on every reload after a filter or an import."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The Workspace skyline: towers stand on the horizon, and they are glass",
+    "details": "The banner drew the towers’ ground a few pixels below the sky’s horizon whenever the banner was taller than its minimum, so two lines sat on top of each other. A white line also ran from beside a lone tower to the banner’s edge. The towers now stand exactly on the horizon at any height, including on a phone. The ground line now runs only under the towers and fades out at both ends. The towers are see-through. The tower the callout describes, which is every firm’s only building when it has one, is no longer drawn in its hover style all the time. Hover or keyboard focus still lights a tower up."
   }
 ]

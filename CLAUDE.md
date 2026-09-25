@@ -1981,8 +1981,20 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     gradient stops as `stop-color` classes), and a test fails any hex or
     rgba in the drawing code. The page stylesheet takes no custom
     properties of its own (`theme.test.js`), so the horizon's gradient stop
-    is a fixed 79%: the ground is 62px above the bottom of a banner at least
-    292px tall.
+    is a fixed 79%, and the towers stand at that SAME share of the banner's
+    height (`DESK_SKY_HORIZON`), never a fixed distance from the bottom. It
+    shipped as "62px above the bottom", which is right only at the 292px
+    floor. A longer status line or a phone makes the banner taller, and the
+    ground then drew a few pixels under the horizon as a second line
+    (2026-09-25, from the owner's screenshot). The ground stroke spans only
+    the towers, with faded ends (a `userSpaceOnUse` gradient, since a flat
+    line has no bounding-box height). A test holds the three gradient stops
+    and the constant together.
+  - **Towers are glass, and `.on` is not hover.** `.on` marks the tower the
+    callout describes, and a lone building is ALWAYS that tower. So `.on`
+    only brightens the outline, and the lit-up fill belongs to a real
+    `:hover`/`:focus-visible`. Sharing one rule made a new firm's only
+    building sit in its hover state all day, as a solid block.
   - **The sky turns with the greeting**: `drawDeskClock`'s timer (noon, five,
     midnight) calls `paintDeskSky`, guarded with `typeof`.
   - **`test/helpers/boot.js` points `CENSUS_API_URL` at a closed local port by

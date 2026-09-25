@@ -2,6 +2,12 @@
   {
     "date": "2026-09-24",
     "type": "improvement",
+    "title": "The Workspace's New filings is now Your permits",
+    "details": "The Workspace section that listed every industrial permit filed in Boise and Meridian — and only for a development shop — now shows what was filed, or whose status moved, at your firm's own buildings in the last 30 days, for every kind of firm. Each row names the building (opening its sheet, where the permit's whole history is), the permit type and status, who applied, and when, with a link to the city's record. It appears only when one of your buildings is in a city we read, and says when the last sweep is more than a business day old. The market-wide list is one click away on the Permit tracker."
+  },
+  {
+    "date": "2026-09-24",
+    "type": "improvement",
     "title": "Permit tracker rows stay two lines of description",
     "details": "Boise writes whole paragraphs into a permit description, so on the first live list each row became a wall of text. The description now sits on its own line, cut at two lines, with the full text on hover."
   },

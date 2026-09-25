@@ -214,15 +214,44 @@ test("boardPermitActivity: filed or moved inside the window, most recent first, 
   assert.deepEqual(F.boardPermitActivity({ filings, buildings: [], addressKey, now: NOW }), [], "no board, no rows");
 });
 
-test("newFilingsFeed: industrial only, inside the window, newest first, capped", () => {
-  const out = F.newFilingsFeed({ now: NOW, filings: [
-    row({ id: "1", permit_number: "A", applied_date: "2026-09-18" }),
-    row({ id: "2", permit_number: "B", applied_date: "2026-09-22" }),
-    row({ id: "3", permit_number: "OFFICE", applied_date: "2026-09-22", is_industrial: false }),
-    row({ id: "4", permit_number: "OLD", applied_date: "2026-08-01" }),
-    row({ id: "5", permit_number: "UNDATED", applied_date: null }),
-  ] });
-  assert.deepEqual(out.map((f) => f.permitNumber), ["B", "A"]);
-  const many = Array.from({ length: 60 }, (_, i) => row({ id: "m" + i, permit_number: "M" + i }));
-  assert.equal(F.newFilingsFeed({ now: NOW, filings: many }).length, F.FEED_MAX);
+test("boardPermitActivity names the applicant, so Your permits can say who filed", () => {
+  const out = F.boardPermitActivity({ filings: [row()], buildings: [bldg], addressKey, now: NOW });
+  assert.equal(out[0].applicant, "Acme");
+  assert.equal(F.boardPermitActivity({ filings: [row({ applicant_company: null })], buildings: [bldg], addressKey, now: NOW })[0]
+    .applicant, "", "a blank, never the string 'null'");
+});
+
+test("sweptBuildings keeps only the board in a city the sweep reads", () => {
+  const dallas = { id: "b2", address: "100 Main St, Dallas, TX", market: "Dallas, TX" };
+  const nampa = { id: "b3", address: "1 Main St, Nampa, ID", market: "Nampa, ID" };
+  const blank = { id: "b4", address: "", market: "Boise, ID" };
+  assert.deepEqual(F.sweptBuildings([bldg, dallas, nampa, blank, null], swept).map((b) => b.id), ["b1"]);
+  assert.deepEqual(F.sweptBuildings([bldg], undefined), [], "no supported list, no buildings");
+});
+
+test("yourPermits: null (no section) when no building is in a swept city; the board's own rows otherwise", () => {
+  const dallas = { id: "b2", address: "100 Main St, Dallas, TX", market: "Dallas, TX" };
+  assert.deepEqual(F.yourPermits({ buildings: [dallas], supportedMarkets: swept, filings: [row()], addressKey, now: NOW }),
+    { buildings: 0, permits: null }, "a Dallas board must not read 'nothing filed at your buildings'");
+  assert.deepEqual(F.yourPermits({ buildings: [] }), { buildings: 0, permits: null });
+
+  const meridianTwin = row({ id: "f3", permit_number: "MER-1", market: "Meridian, ID", jurisdiction: "meridian" });
+  const neighbour = row({ id: "f2", permit_number: "BLD-NEXT-DOOR", address: "8002 S FEDERAL WAY",
+    street_key: F.streetKey("8002 S FEDERAL WAY", addressKey) });
+  const input = { buildings: [bldg, dallas], supportedMarkets: swept, addressKey, now: NOW,
+    filings: [row(), meridianTwin, neighbour, row({ id: "old", permit_number: "OLD", applied_date: "2026-06-01" })] };
+  const out = F.yourPermits(input);
+  assert.equal(out.buildings, 1, "the count is the board we looked at, not the whole board");
+  assert.deepEqual(out.permits.map((p) => [p.permitNumber, p.buildingId, p.kind]), [["BLD26-1", "b1", "filed"]],
+    "the building's own filing — not the Meridian twin, not next door, not outside the window");
+  // One rule with the /buildings strip: the same rows, byte for byte.
+  assert.deepEqual(out.permits, F.boardPermitActivity({ ...input, buildings: [bldg] }));
+
+  assert.deepEqual(F.yourPermits({ ...input, filings: [] }), { buildings: 1, permits: [] },
+    "a swept board with nothing new is an empty list — we looked");
+});
+
+test("the development shop's market-wide feed is gone from the module (it lives on /permits now)", () => {
+  assert.equal("newFilingsFeed" in F, false);
+  assert.equal("FEED_MAX" in F, false);
 });

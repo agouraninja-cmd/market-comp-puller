@@ -293,6 +293,11 @@ absence of a section reads as a bug.
    **[built 2026-09-23, on the owner's "ship the tracker"]** — industrial
    filings in the last 14 days on the Workspace of a development shop;
    `GET /api/org/permits` answers `feed: null` for a broker shop (§9).
+   **[replaced 2026-09-24 by Your permits]** — the Workspace section now
+   shows what was filed, or moved, at the firm's OWN buildings in the last
+   30 days (the /buildings strip's rows), for every shop kind; the
+   market-wide list lives on the Permit tracker page (`/permits`) for every
+   account, and the section links there.
 
 Slices 1 and 2 are worth doing on their own even if 3 waits: a month of
 stored filings is the evidence for whether 3 is worth building, and the
@@ -305,7 +310,10 @@ sweep costs nothing to run.
 - **Whether a broker shop gets New filings too.** A leasing broker wants to
   know about a new shell in their submarket as much as a developer does. The
   spec starts with the development shop because it has nothing else, not
-  because the broker shop should not have it.
+  because the broker shop should not have it. **[Settled 2026-09-24]**: the
+  market-wide list went to `/permits` for every signed-in account, and the
+  Workspace section became Your permits — the firm's own buildings, for
+  every shop kind.
 - **A fourth city.** Adding one is a registry entry plus, for a new platform,
   a new scraper client. Which city is a question about where the next paying
   firm is, not an engineering one.

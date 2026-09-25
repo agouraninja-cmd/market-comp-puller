@@ -120,6 +120,32 @@ test("our two Pro prices map to our two plans", () => {
   assert.equal(planForPrice("price_founding", PRICES), "pro_annual_founding");
 });
 
+test("the standing yearly plan maps to its own name", () => {
+  assert.equal(planForPrice("price_annual", { ...PRICES, annual: "price_annual" }), "pro_annual");
+});
+
+// --- a price CHANGE (2026-09-25, $100 -> $49) ------------------------------
+//
+// Stripe leaves an existing subscriber on the price they bought, so their
+// renewals keep carrying the OLD id. server.js therefore hands the webhook
+// every id a plan has been sold at, newest first. If the old id stopped
+// resolving, no row would be written and every existing subscriber would
+// lapse at the end of their paid period while Stripe went on charging them.
+test("a price change keeps the old id recognised", () => {
+  const LISTS = { monthly: ["price_49", "price_100"], annual: ["price_490"], annualFounding: ["price_840"], firmMonthly: ["price_39", "price_79"] };
+  assert.equal(planForPrice("price_49", LISTS), "pro_monthly", "the new monthly price");
+  assert.equal(planForPrice("price_100", LISTS), "pro_monthly", "an existing $100 subscriber's renewal");
+  assert.equal(planForPrice("price_490", LISTS), "pro_annual");
+  assert.equal(planForPrice("price_840", LISTS), "pro_annual_founding", "founding is not sold but still honoured");
+  assert.equal(planForPrice("price_79", LISTS), "firm_monthly", "an existing firm's renewal at the old seat price");
+});
+
+test("a blank entry in a price list never matches", () => {
+  // An env var like "price_49," splits into a blank; "" must never match.
+  const LISTS = { monthly: ["price_49", ""] };
+  for (const p of ["", null, undefined]) assert.equal(planForPrice(p, LISTS), null);
+});
+
 test("a price we do not sell maps to nothing", () => {
   for (const p of ["price_single", "price_someone_elses", "", null, undefined]) {
     assert.equal(planForPrice(p, PRICES), null, `${p} must not become a plan`);

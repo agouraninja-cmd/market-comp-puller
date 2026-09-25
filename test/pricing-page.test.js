@@ -26,6 +26,14 @@ const SESSION = { cookie: "cn_session=not-a-real-token" };
 const INDEX_HTML = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 const SERVER_JS = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
 
+// The figures, read out of PRICING in server.js. Never typed into a test.
+function pricingFigures() {
+  const block = SERVER_JS.match(/const PRICING = \{[\s\S]*?\};/);
+  assert.ok(block, "server.js declares a single PRICING constant");
+  const n = (k) => { const m = block[0].match(new RegExp(k + ":\\s*(\\d+)")); return m ? Number(m[1]) : 0; };
+  return { monthly: n("monthly"), annual: n("annual"), seat: n("firmSeat") };
+}
+
 test("/pricing is reachable and indexable", async (t) => {
   const srv = await boot({});
   t.after(() => srv.stop());
@@ -66,23 +74,22 @@ test("the price a visitor reads is the one the FAQ has been quoting", async (t) 
 
   // Every surface reads the same constant. Before /pricing existed the FAQ was
   // the only public statement of the seat price; two prose copies of a number
-  // is how a site ends up quoting two prices for one plan.
-  // $840 left this loop on 2026-09-02. The founding rate is no longer an
-  // unconditional footnote: it is a BAND, and the band is not rendered at all
-  // unless Stripe is configured, because a "Claim a seat" button on a
-  // deployment whose checkout 503s is an offer that cannot be taken. The
-  // standing prices are still unconditional and still checked here; the
-  // founding figure is checked in the founding-band test below, which boots a
-  // server that can actually sell it.
-  for (const figure of ["$100", "$79"]) {
+  // is how a site ends up quoting two prices for one plan. The figures are
+  // READ from PRICING rather than typed here (2026-09-25): this test used to
+  // spell "$100" and "$79", so the price change had to edit the test that
+  // exists to catch price drift, which is backwards.
+  const { monthly, seat } = pricingFigures();
+  for (const figure of [`$${monthly}`, `$${seat}`]) {
     assert.ok(pricing.includes(figure), `/pricing states ${figure}`);
+    assert.ok(faq.includes(figure), `the FAQ states ${figure}`);
+    assert.ok(home.includes(figure), `the home page states ${figure}`);
   }
-  assert.ok(!pricing.includes("$840"),
-    "with no Stripe configured the founding band must not be advertised");
-  assert.ok(faq.includes("$100"), "the FAQ still states the monthly price");
-  assert.ok(faq.includes("$79"), "the FAQ still states the seat price");
-  assert.ok(home.includes("$100"), "the home page states the monthly price");
-  assert.ok(home.includes("$79"), "the home page states the seat price");
+  // The founding offer stopped being sold on 2026-09-25. No page may still
+  // advertise it: checkout answers that plan with a 400.
+  for (const [name, html] of [["/pricing", pricing], ["/faq", faq], ["/", home]]) {
+    assert.ok(!/founding/i.test(html), `${name} must not advertise the retired founding offer`);
+    assert.ok(!html.includes("$840"), `${name} must not quote the old founding price`);
+  }
 });
 
 test("the seat minimum on the page is the one checkout actually enforces", async (t) => {
@@ -103,15 +110,18 @@ test("the modal and the page cannot quote different prices", () => {
   // comment conceding that nothing catches a drift. This is that catch: the
   // figures the page renders come from PRICING in server.js, and the modal has
   // to agree with them.
-  const priceBlock = SERVER_JS.match(/const PRICING = \{[\s\S]*?\};/);
-  assert.ok(priceBlock, "server.js declares a single PRICING constant");
-  const monthly = priceBlock[0].match(/monthly:\s*(\d+)/);
-  const founding = priceBlock[0].match(/foundingAnnual:\s*(\d+)/);
-  const seat = priceBlock[0].match(/firmSeat:\s*(\d+)/);
-  assert.ok(monthly && founding && seat, "PRICING names all three figures");
+  const { monthly, annual, seat } = pricingFigures();
+  assert.ok(monthly && annual && seat, "PRICING names all three figures");
 
-  assert.ok(INDEX_HTML.includes(`$${monthly[1]}`), "the modal quotes the same monthly price");
-  assert.ok(INDEX_HTML.includes(`$${founding[1]}`), "the modal quotes the same founding price");
+  assert.ok(INDEX_HTML.includes(`<div class="pr-fig">$${monthly}</div>`), "the modal quotes the same monthly price");
+  assert.ok(INDEX_HTML.includes(`<div class="pr-fig">$${annual}</div>`), "the modal quotes the same yearly price");
+  // The saving is typed in the modal (it is static HTML), so it is the figure
+  // most likely to be left behind when either price moves. Computed here.
+  assert.ok(INDEX_HTML.includes(`saves $${monthly * 12 - annual}`),
+    `the modal's yearly saving must be $${monthly * 12 - annual}`);
+  // And the retired offer is gone from the modal, button and all.
+  assert.ok(!INDEX_HTML.includes('data-plan="pro_annual_founding"'), "the modal must not sell founding");
+  assert.ok(INDEX_HTML.includes('data-plan="pro_annual"'), "the modal sells the yearly plan");
 });
 
 test("what the Free tile promises is what entitlements.js grants", async (t) => {
@@ -177,67 +187,84 @@ test("/pricing is reachable from the footer of every public page", async (t) => 
   }
 });
 
-// --- The founding band ------------------------------------------------------
+// --- The yearly band -------------------------------------------------------
 //
-// It replaced the `.disc` footnote on 2026-09-02. The footnote was rendered
-// whenever `foundingAnnual` was set and said nothing about whether a seat
-// could actually be bought; the band is louder — a dark panel with a live
-// counter and its own button — so the bar for showing it went up with it.
-test("the founding band is only shown where a seat can actually be bought", async (t) => {
+// It carried the founding offer until 2026-09-25, when the standing yearly
+// plan replaced it. The bar for showing it is unchanged: drawn only where the
+// plan can actually be bought, and never a second way to buy anything.
+test("the yearly band is only shown where the plan can actually be bought", async (t) => {
   await t.test("no Stripe, no band", async (tt) => {
     const srv = await boot({});
     tt.after(() => srv.stop());
     const html = await (await fetch(srv.base + "/pricing")).text();
     assert.ok(!/id="prcFm"/.test(html), "the band must not render without billing");
-    assert.ok(!/Claim a seat/.test(html), "nor its button");
   });
 
-  await t.test("with Stripe, the band renders and quotes PRICING's own figure", async (tt) => {
+  await t.test("Stripe but no yearly price, no band", async (tt) => {
+    // The deploy between setting the monthly price and the yearly one: a
+    // "Choose yearly" button there would send somebody to a 503.
     const srv = await boot({
       STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
       STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
     });
     tt.after(() => srv.stop());
     const html = await (await fetch(srv.base + "/pricing")).text();
-    assert.match(html, /id="prcFm"/, "the band renders once billing is configured");
+    assert.ok(!/id="prcFm"/.test(html), "no yearly price id, no yearly band");
+  });
 
-    const priceBlock = SERVER_JS.match(/const PRICING = \{[\s\S]*?\};/)[0];
-    const monthly = Number(priceBlock.match(/monthly:\s*(\d+)/)[1]);
-    const founding = Number(priceBlock.match(/foundingAnnual:\s*(\d+)/)[1]);
-    assert.ok(html.includes(`$${founding}`), "the band quotes PRICING.foundingAnnual");
+  await t.test("with a yearly price, the band renders and quotes PRICING's own figure", async (tt) => {
+    const srv = await boot({
+      STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+      STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+      STRIPE_PRICE_PRO_ANNUAL: "price_annual_not_real",
+    });
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.match(html, /id="prcFm"/, "the band renders once the yearly plan is sellable");
 
-    // The saving is COMPUTED, never typed. The design file wrote "$360 per
-    // year", which is correct at $100/mo against $840/yr and silently wrong
-    // the moment either figure moves — so this asserts the arithmetic rather
-    // than the numeral, and moving either price keeps it true.
-    const saving = monthly * 12 - founding;
+    const { monthly, annual } = pricingFigures();
+    assert.ok(html.includes(`$${annual}`), "the band quotes PRICING.annual");
+    // COMPUTED, never typed: "$360 per year" was right at $100/mo against the
+    // old $840 and silently wrong the moment either moved.
+    const saving = monthly * 12 - annual;
     assert.ok(html.includes(`Saves you $${saving}`),
       `the band must compute the saving; expected $${saving}`);
+    // Facts fixed at deploy time only, so no script; and never a second way
+    // to buy anything (rule 2 of the page).
+    assert.doesNotMatch(html, /fetch\("\/api\/pricing"/, "the band states nothing that needs fetching");
+    assert.doesNotMatch(html, /\/api\/checkout/, "the band must not buy anything");
   });
 });
 
-test("the founding counter is never server-rendered", async (t) => {
-  const srv = await boot({
-    STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
-    STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+// --- The trial on the rate card -------------------------------------------
+test("the trial is offered on the page exactly when it exists", async (t) => {
+  await t.test("trial on: the Pro tile says so", async (tt) => {
+    const srv = await boot({ PRO_TRIAL_DAYS: "14" });
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.match(html, /14-day free trial/);
   });
-  t.after(() => srv.stop());
-  const html = await (await fetch(srv.base + "/pricing")).text();
-
-  // THE RULE THIS FILE EXISTS FOR, second edition. `foundingLeft` is a
-  // database read memoized 60s, and this page is served from an hour-long
-  // public cache to anonymous visitors — so a number baked into these bytes
-  // would still be claiming "12 seats left" long after the last one sold.
-  // The count block therefore ships EMPTY and hidden, and a tiny client fetch
-  // to /api/pricing fills it in after paint (or takes the whole band down).
-  const countBlock = html.match(/<div class="prc-fm-count"[^>]*>[\s\S]*?<\/div>/);
-  assert.ok(countBlock, "the counter block must exist");
-  assert.match(countBlock[0], /hidden/, "it must ship hidden");
-  assert.ok(!/\d/.test(countBlock[0].replace(/prc-fm-[a-z]+|id="[^"]*"/g, "")),
-    "no seat count may be server-rendered: " + countBlock[0]);
-  assert.match(html, /fetch\("\/api\/pricing"/, "the counter is filled in after paint");
-  // And still no second checkout, which is rule 2 of the page.
-  assert.doesNotMatch(html, /\/api\/checkout/, "the band must not buy anything");
+  await t.test("trial on with billing: a stranger's button offers the trial", async (tt) => {
+    const srv = await boot({
+      PRO_TRIAL_DAYS: "14",
+      STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+      STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+    });
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.match(html, /Try Pro free for 14 days/);
+  });
+  await t.test("trial off: no promise of one anywhere", async (tt) => {
+    const srv = await boot({
+      PRO_TRIAL_DAYS: "0",
+      STRIPE_SECRET_KEY: "sk_test_not_a_real_key",
+      STRIPE_PRICE_PRO_MONTHLY: "price_not_real",
+    });
+    tt.after(() => srv.stop());
+    const html = await (await fetch(srv.base + "/pricing")).text();
+    assert.doesNotMatch(html, /free trial|days free/, "PRO_TRIAL_DAYS=0 must take the promise down with the trial");
+    assert.doesNotMatch(html, /Try Pro free/);
+  });
 });
 
 test("the redundant top kicker is gone", async (t) => {

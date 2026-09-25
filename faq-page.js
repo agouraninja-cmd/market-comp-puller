@@ -168,7 +168,7 @@ function faqEntries(pricing = {}) {
     // design offered branded exports to everybody once already.
     ["What does it cost, and what’s free?",
      "A free account runs a full report on any commercial address, three years back, with no card. " +
-     `Individual Pro is $${monthly} a month and adds the vault, Address Explorer, a ten-year ` +
+     `Individual Pro is $${monthly} a month${pricing.annual ? ` (or $${pricing.annual} a year)` : ""} and adds the vault, Address Explorer, a ten-year ` +
      `lookback, unlimited exports and your branding. Firms are $${seat} a seat with a ${minSeats}-seat ` +
      "minimum, and every seat is a Pro seat."],
   ];

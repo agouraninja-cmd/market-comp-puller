@@ -13,8 +13,9 @@ in Render with the price archived in Stripe, and the free tier itemizes
 every comp (`FREE_MAX_COMPS: "all"`, same date). Purchases already made
 are honored forever — the webhook, `report_purchases`,
 `/api/report-access` and the per-property entitlement all remain. The
-current sellable plans are `pro_monthly`, `pro_annual_founding` and
-`firm_monthly`. See CLAUDE.md's "single-report unlock — RETIRED" section.
+current sellable plans are `pro_monthly` ($49), `pro_annual` ($490/yr) and
+`firm_monthly` ($39/seat) since 2026-09-25; `pro_annual_founding` is no longer sold
+but still honoured. See "The 2026-09-25 repricing and the 14-day trial" below. See CLAUDE.md's "single-report unlock — RETIRED" section.
 
 **⚠ Stripe is in LIVE mode as of 2026-08-03.** Earlier revisions of this file
 said "test mode"; that is no longer true and the difference is real money. See
@@ -638,6 +639,79 @@ subscriptions stay valid in Stripe and resume when it returns.
   card show counts only; Stripe's checkout page is the price surface. Unlike
   `$129`/`$990` (hard-coded in the pricing modal), the firm price can change
   in the dashboard without a repo edit.
+
+### The 2026-09-25 repricing and the 14-day trial — the runbook
+
+The owner's call, from the billing & retention plan:
+
+| | Was | Now |
+|---|---|---|
+| Pro monthly | $100/mo | **$49/mo** |
+| Pro yearly | $840/yr founding, 50 seats | **$490/yr, standing** (`pro_annual`) |
+| Firm seats | $79/seat/mo | **$39/seat/mo, minimum 2** |
+| New accounts | Free | **14 days of full Pro, no card** |
+
+The founding offer is **no longer sold** (at $49/mo it had become the worse
+deal: $840 is $70 a month). Founding members keep their subscriptions and
+their label. The 2-seat minimum still closes the hole described below: two
+seats bill $78 against $49, because $39 is above half of $49.
+
+**The trial needs nothing from Stripe.** It is on by default at 14 days the
+moment the code deploys (`PRO_TRIAL_DAYS`), for accounts made in the last 14
+days and every new one. To give EXISTING free accounts their 14 days, set
+`PRO_TRIAL_START` to the launch date (`YYYY-MM-DD`). `PRO_TRIAL_DAYS=0` turns
+it off with no deploy.
+
+**The order matters for the prices**, because the old code and the new code
+read the price variables differently. The new code accepts a comma-separated
+list per variable (first id sold, every id recognised); the old code reads the
+whole variable as ONE id. So:
+
+1. **Create the three prices in Stripe (live mode).** Pro monthly $49/mo on
+   the existing Pro product (`prod_UzJpxsAE3jlkFD`); Pro yearly $490/yr (on the
+   annual product `prod_UzJqRs6PpYfqAI`, or a new product named without the
+   word "founding"); Firm $39/seat/mo on `prod_V90WpmtIrSm0Yg`. Record the ids
+   below. Do not archive any old price.
+2. **Merge and deploy this code with the env UNCHANGED.** The new code reads
+   today's single ids happily, so nothing breaks: checkout still sells the $100
+   price. For those few minutes the site SAYS $49 while Stripe's checkout page
+   shows $100 — Stripe's page shows the real amount before anyone pays, so
+   nobody is charged a surprise, but keep the gap short.
+3. **Immediately set the new env in Render** (this restarts on the new code):
+
+   ```
+   STRIPE_PRICE_PRO_MONTHLY   = <new $49 id>,price_1U8iOORztxjkvpo5m6v1nAK0
+   STRIPE_PRICE_PRO_ANNUAL    = <new $490 id>
+   STRIPE_PRICE_FIRM_MONTHLY  = <new $39 id>,price_1U8iViRztxjkvpo5mrjCONar
+   STRIPE_PRICE_PRO_ANNUAL_FOUNDING   (leave as it is: still recognised, no longer sold)
+   PRO_TRIAL_START            = <launch date, e.g. 2026-10-01>   (optional: existing accounts' trial)
+   ```
+
+   The OLD ids stay in the lists. Stripe keeps every existing subscriber on
+   the price they bought, so their renewals keep carrying the old id; drop it
+   from the list and those renewals write no row, and each subscriber lapses at
+   the end of the period they paid for. **Never put a comma list in Render
+   while the old code is running** — it would send "id,id" to Stripe as one
+   price and break checkout and renewals together.
+4. **Move existing subscribers down** (an owner decision, but the plan
+   recommends it — nobody should pay more than a new customer): in the Stripe
+   dashboard, switch each $100 monthly subscription to the $49 price with no
+   proration, and schedule each founding member onto the $490 yearly price at
+   their next renewal. A moved founding member's label becomes "Pro: yearly".
+   Remove an old id from its env list only when no subscription uses it.
+5. **Verify on production:** `/healthz` shows the new commit; the startup log
+   says `🎁 Pro trial ON`; a fresh account's `/api/config` has
+   `"trial": true` and a `trialEndsAt` 14 days out; `/pricing` shows $49, $39
+   and the $490 "Pay yearly" band; a checkout opened from the modal shows
+   $49.00 on Stripe's page.
+
+New live price ids — **record them here as they are created**:
+
+```
+STRIPE_PRICE_PRO_MONTHLY   = price_...   # $49.00/mo   (was price_1U8iOORztxjkvpo5m6v1nAK0, $100)
+STRIPE_PRICE_PRO_ANNUAL    = price_...   # $490.00/yr  (new plan: pro_annual)
+STRIPE_PRICE_FIRM_MONTHLY  = price_...   # $39.00/seat/mo (was price_1U8iViRztxjkvpo5mrjCONar, $79)
+```
 
 ### The 2026-08-25 repricing — what was decided and why
 

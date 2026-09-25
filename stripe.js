@@ -158,8 +158,18 @@ function planForPrice(priceId, priceMap) {
   // ""-matches-"" unreachable; the Boolean() here keeps that true if the guard
   // above is ever relaxed, since the cost of getting it wrong is granting a
   // plan nobody paid for.
-  const is = (candidate) => Boolean(candidate) && priceId === candidate;
+  //
+  // A candidate may also be a LIST of ids (2026-09-25): server.js keeps every
+  // price a plan has ever been sold at, because Stripe leaves an existing
+  // subscriber on the price they bought and their renewals keep carrying it.
+  // Blank entries are dropped for the same ""-must-never-match reason.
+  const is = (candidate) => (Array.isArray(candidate)
+    ? candidate.some((c) => Boolean(c) && priceId === c)
+    : Boolean(candidate) && priceId === candidate);
   if (is(map.monthly)) return "pro_monthly";
+  // The standing annual plan (2026-09-25), which replaced founding for new
+  // buyers. Founding stays below it: no longer sold, still honoured.
+  if (is(map.annual)) return "pro_annual";
   if (is(map.annualFounding)) return "pro_annual_founding";
   // The firm plan (2026-08-16). A SEPARATE price rather than the monthly one
   // bought N times: it is billed per seat with a quantity, and sharing a price

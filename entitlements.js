@@ -110,7 +110,24 @@ const GRACE_DAYS = 7;
 // cheaper error.
 const RENEWAL_SLACK_MS = 24 * 60 * 60 * 1000;
 
-const PRO_PLANS = ["pro_monthly", "pro_annual_founding"];
+// The new-account Pro trial (2026-09-25, owner's call). Every account gets
+// full Pro for this many days, counted from the LATER of its own created_at
+// and the trial's launch date — so an account made after launch gets 14 days
+// from signup, and an account that already existed gets 14 days from launch
+// day instead of none. server.js supplies both (PRO_TRIAL_DAYS and
+// PRO_TRIAL_START); trialEndsAt() below does the arithmetic.
+//
+// Deliberately a dated grant here and NOT a Stripe trial. Stripe marks a
+// trialling subscription `trialing`, which subscriptionState() does not
+// recognise and therefore reads as expired — a Stripe trial would have locked
+// every trial user out. It also needs no card and no migration: created_at is
+// on every users row already.
+const TRIAL_DAYS = 14;
+
+// Every plan we sell or have sold. `pro_annual` is the standing annual plan
+// (2026-09-25); `pro_annual_founding` is no longer SOLD, but its subscribers
+// keep it, so it stays here for the label.
+const PRO_PLANS = ["pro_monthly", "pro_annual", "pro_annual_founding"];
 
 // ---------------------------------------------------------------------------
 // ONE SUBSCRIPTION (owner's decision, 2026-08-05). There is no separate broker
@@ -188,6 +205,32 @@ function msOf(value) {
   return Number.isFinite(t) ? t : NaN;
 }
 
+/**
+ * When does this account's Pro trial end? Epoch ms, or null for no trial.
+ *
+ * The trial runs `days` from the later of the account's creation and the
+ * launch date (`startsAt`), which is what gives accounts that predate the
+ * trial their days from launch rather than nothing. No launch date means
+ * creation alone decides.
+ *
+ * A launch date still in the future (`now` before `startsAt`) is no trial
+ * YET, rather than a trial that starts early: setting PRO_TRIAL_START to next
+ * Monday and deploying today must not hand everyone Pro from today.
+ *
+ * Fails CLOSED like everything here: a missing or unparseable created_at is
+ * no trial, and so is a length of 0 (PRO_TRIAL_DAYS=0 is the off switch).
+ */
+function trialEndsAt(createdAt, { days = TRIAL_DAYS, startsAt = null, now = null } = {}) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return null;
+  const created = msOf(createdAt);
+  if (!Number.isFinite(created)) return null;
+  const start = msOf(startsAt);
+  if (Number.isFinite(start) && Number.isFinite(now) && now < start) return null;
+  const from = Number.isFinite(start) ? Math.max(created, start) : created;
+  return from + d * 24 * 60 * 60 * 1000;
+}
+
 // Reduce a stored subscription row to one of five states. Anything we do not
 // recognize lands on "expired" — an unknown Stripe status must never grant
 // access we did not intend.
@@ -242,8 +285,12 @@ function subscriptionState(sub, now) {
  *                                 independent of billing, so a beta broker's
  *                                 book stays reachable with no subscription to
  *                                 lapse.
+ * @param {number|string?} o.trialUntil  when this account's Pro trial ends
+ *                                 (trialEndsAt() below) — full Pro before
+ *                                 then, but only alongside `enabled`, a
+ *                                 signed-in user, and NO live paid subscription
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta, trialUntil } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
 
   // --- Comped Pro for the internal team -------------------------------------
@@ -298,6 +345,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: true,
       tester: false,
+      trial: false,
+      trialEndsAt: null,
       portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
       portfolioValues: true,
       reason: "Pro is comped for the CompNinja team.",
@@ -358,6 +407,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: false,
+      trial: false,
+      trialEndsAt: null,
       // Same pattern as canExploreAddresses: today's desk already showed likely
       // value to everyone before Pro, so dark restores that — unlike the vault.
       portfolioMaxItems: FREE_PORTFOLIO_MAX_ITEMS,
@@ -434,9 +485,57 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: true,
+      trial: false,
+      trialEndsAt: null,
       portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
       portfolioValues: true,
       reason: "Pro is comped for a beta tester.",
+    };
+  }
+
+  // --- The new-account Pro trial ---------------------------------------------
+  //
+  // Full Pro until trialUntil, then the ordinary free tier. Placed like the
+  // tester branch and for the tester branch's reason: it yields to a live paid
+  // subscription (the `!pro` guard), so somebody who subscribes mid-trial
+  // reads as the paying customer they are, with their real status and their
+  // billing portal. The tester flag is checked first because it does not end.
+  //
+  // Everything Pro, bulk valuation and firms included (owner's call). What
+  // bounds a throwaway account is the same as for everyone: BULK_DAILY_ADDRESSES
+  // per member per day, and — unlike a subscriber — the site-wide
+  // DAILY_SEARCH_CAP, because server.js exempts a trial from nothing that a
+  // paying customer is exempted from (see countsDailyCap there).
+  //
+  // Its status is "trial", never "active": nothing here came from Stripe, so
+  // the UI must not offer a billing portal, and it must keep offering the
+  // upgrade that a Pro member is otherwise never shown.
+  const trialEnd = msOf(trialUntil);
+  if (!pro && user && Number.isFinite(trialEnd) && trialEnd > at) {
+    return {
+      plan: "trial",
+      pro: true,
+      status: "trial",
+      maxComps: "all",
+      canBrand: true,
+      maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
+      exportsRemaining: "unlimited",
+      reportUnlocked: false,
+      canExploreAddresses: true,
+      canBulkValue: true,
+      bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
+      canSeeSearchDemand: true,
+      broker: true,
+      canUseVault: true,
+      canUseOrg: true,
+      graceUntil: null,
+      admin: false,
+      tester: false,
+      trial: true,
+      trialEndsAt: new Date(trialEnd).toISOString(),
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
+      reason: "Pro trial.",
     };
   }
 
@@ -551,6 +650,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,
     tester: false,
+    trial: false,
+    trialEndsAt: null,
     portfolioMaxItems: pro ? PRO_PORTFOLIO_MAX_ITEMS : FREE_PORTFOLIO_MAX_ITEMS,
     portfolioValues: pro,
     reason: reasonFor({ state, pro, broker, reportUnlocked, user }),
@@ -593,6 +694,7 @@ function usagePeriod(now) {
 module.exports = {
   computeEntitlements,
   subscriptionState,
+  trialEndsAt,
   parseAudience,
   inAudience,
   compLimit,
@@ -611,4 +713,5 @@ module.exports = {
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
   PRO_BULK_MAX_ADDRESSES,
+  TRIAL_DAYS,
 };

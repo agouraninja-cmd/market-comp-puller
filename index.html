@@ -1323,8 +1323,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        this site puts a figure that is final. */
     .pr-cell { display: flex; flex-direction: column; }
     /* .pr-cell beat Tailwind's .hidden the same way .dk-strip does (see the
-       note beside .dk-strip.hidden): renderFoundingTile() toggles hidden on
-       #foundingTile, and the toggle did nothing. */
+       note beside .dk-strip.hidden): renderAnnualTile() toggles hidden on
+       #annualTile (the founding tile, until 2026-09-25), and without this
+       rule the toggle does nothing. */
     .pr-cell.hidden { display: none; }
     .pr-fig { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; letter-spacing: -0.005em; color: var(--ink); font-size: 23px; margin-top: 3px; }
     .rd-lcell.mid .pr-fig { font-size: 28px; }
@@ -2110,12 +2111,16 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
           <p class="pr-sum">Every comparable itemized, the same value range Pro sees, a 3-year window.</p>
-          <p class="text-xs text-[#68707E] mt-3">Your current plan</p>
+          <!-- Written by refreshBillingUI: on a Pro trial this is where the
+               account lands when the trial ends, not its plan today. -->
+          <p id="freeTileNote" class="text-xs text-[#68707E] mt-3">Your current plan</p>
         </div>
         <!-- Pro monthly -->
         <div class="rd-lcell mid pr-cell">
           <span class="rd-lab">Pro</span>
-          <div class="pr-fig">$100</div>
+          <!-- $100 until 2026-09-25 (owner's call, the billing plan). Pinned to
+               PRICING.monthly by test/pricing-page.test.js. -->
+          <div class="pr-fig">$49</div>
           <div class="pr-per">per month &middot; cancel any time</div>
           <!-- Sell only what ships. Report branding was held off this list
                while it was a real entitlement in entitlements.js with no UI
@@ -2149,25 +2154,22 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </button>
         </div>
 
-        <!-- Founding annual. Hidden unless seats remain. -->
-        <div id="foundingTile" class="hidden rd-lcell pr-cell">
-          <span class="rd-lab">Founding</span>
-          <div class="pr-fig">$840</div>
-          <!-- $100 x 12 = $1,200 against $840. Recompute this figure if EITHER
-               price changes — both are hard-coded here while the actual charge
-               comes from the Stripe price IDs, so nothing catches a drift.
-               (Was $990 against $129/mo, "saves $558", until 2026-08-25: the
-               monthly price came down to $100 and $990 would have left the
-               founding tile saving only $210, i.e. a worse deal wearing the
-               same word.) The monthly figure above is pinned to the /how-it-
-               works FAQ answer by test/public-pages.test.js; this one is not
-               pinned to anything, so check the arithmetic by hand. -->
-          <div class="pr-per">per year &middot; saves $360</div>
-          <p class="pr-sum">Everything in Pro, locked at this rate for as long as you stay subscribed.</p>
-          <span id="foundingLeft" class="text-[11px] font-semibold text-[#B91C1C] uppercase tracking-wide"></span>
-          <button type="button" data-plan="pro_annual_founding"
-            class="pricing-buy btn-live mt-2 w-full bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
-            Claim a seat
+        <!-- Pro, paid yearly (2026-09-25). It replaced the founding tile when the
+             monthly price fell to $49: at $49 a month the founding rate ($840 a
+             year) had become the WORSE deal, so it could not stay on sale.
+             Hidden unless /api/config says an annual price is configured —
+             renderAnnualTile() — because a Buy button that can only 503 is
+             worse than no button. $49 x 12 = $588 against $490; recompute the
+             saving if EITHER figure moves. Both are pinned to PRICING by
+             test/pricing-page.test.js, the saving included. -->
+        <div id="annualTile" class="hidden rd-lcell pr-cell">
+          <span class="rd-lab">Pro yearly</span>
+          <div class="pr-fig">$490</div>
+          <div class="pr-per">per year &middot; saves $98</div>
+          <p class="pr-sum">Everything in Pro, paid once a year.</p>
+          <button type="button" data-plan="pro_annual"
+            class="pricing-buy btn-live mt-3 w-full bg-[#1A2433] text-white font-semibold text-sm px-4 py-2.5 rounded-lg disabled:opacity-60">
+            Choose yearly
           </button>
         </div>
       </div>
@@ -2219,7 +2221,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <tr><td>Portfolio</td><td class="c">Saved reports, address list</td><td class="c">Saved reports, with estimated values</td></tr>
           </tbody>
           <tfoot>
-            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$100</span></td></tr>
+            <tr><td>Per month, cancel any time</td><td class="c"><span class="fig">$0</span></td><td class="c"><span class="fig">$49</span></td></tr>
           </tfoot>
         </table>
       </div>
@@ -18761,8 +18763,6 @@ async function renderMyDesk() {
   // hosted pages rather than Elements.
   // ----------------------------------------------------------------------------
 
-  // /api/pricing, fetched lazily on first open (it costs a DB read).
-  let pricingInfo = null;
   // A plan chosen while signed out, resumed after the account modal closes —
   // same shape as pendingPortfolioSave, and cleared by the same cancel path.
   let pendingCheckoutPlan = null;
@@ -18775,6 +18775,17 @@ async function renderMyDesk() {
   function isAdminPro() { return Boolean(proConfig && proConfig.admin); }
   // Comped beta-tester access. Also Pro with nothing behind it at Stripe.
   function isTesterPro() { return Boolean(proConfig && proConfig.tester); }
+  // The new-account Pro trial (2026-09-25). Pro in every capability, but
+  // nothing at Stripe — and, unlike admin and tester, somebody we still want
+  // to sell to, so it is kept away from the portal AND kept on the upgrade.
+  function isTrialPro() { return Boolean(proConfig && proConfig.trial); }
+  // "Oct 9" — the day the trial ends, in the reader's own calendar.
+  function trialEndLabel() {
+    const t = proConfig && Date.parse(proConfig.trialEndsAt);
+    return Number.isFinite(t)
+      ? new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+      : "";
+  }
   // "none" means no Stripe customer has ever existed for this user, so the
   // portal would 400. Any other state means there is something to manage —
   // except "admin"/"tester", which are comped and likewise have no customer
@@ -18793,7 +18804,7 @@ async function renderMyDesk() {
     // they have no customer of their own — 400. The firm's OWNER manages that
     // plan from the firm section on the desk, where the seat count is.
     return Boolean(currentUser) && proConfig && proConfig.status
-      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro() && !isFirmPro();
+      && proConfig.status !== "none" && !isAdminPro() && !isTesterPro() && !isTrialPro() && !isFirmPro();
   }
 
   function showPricingError(msg) {
@@ -18805,25 +18816,13 @@ async function renderMyDesk() {
     el.classList.remove("hidden");
   }
 
-  // Founding seats. `null` is genuinely unknown (DB down or unconfigured) and
-  // checkout treats unknown as closed, so the tile stays hidden — better than
-  // a button that 409s.
-  function renderFoundingTile() {
-    const tile = document.getElementById("foundingTile");
-    const left = pricingInfo && pricingInfo.foundingLeft;
-    const open = Number.isFinite(left) && left > 0;
-    tile.classList.toggle("hidden", !open);
-    if (!open) return;
-    const limit = (pricingInfo && pricingInfo.foundingLimit) || 50;
-    document.getElementById("foundingLeft").textContent = `${left} of ${limit} left`;
-  }
-
-  async function loadPricing() {
-    try {
-      const r = await fetch("/api/pricing", { cache: "no-store" });
-      pricingInfo = r.ok ? await r.json() : null;
-    } catch (_) { pricingInfo = null; }
-    renderFoundingTile();
+  // The yearly tile, shown only where an annual price is configured — the
+  // Buy-button rule. It replaced the founding tile (2026-09-25), whose seat
+  // counter needed a fetch of /api/pricing on every open; this one is a fact
+  // /api/config already carries, so there is nothing to fetch.
+  function renderAnnualTile() {
+    const open = billingLive() && Boolean(proConfig && proConfig.annual);
+    document.getElementById("annualTile").classList.toggle("hidden", !open);
   }
 
   // Where the report being bought is parked across the Stripe redirect. The
@@ -18836,9 +18835,7 @@ async function renderMyDesk() {
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
-    // Re-read the counter on every open: a seat may have gone since last time,
-    // and the server memoizes for 60s so this is cheap.
-    loadPricing();
+    renderAnnualTile();
   }
   function closePricingModal() {
     pendingCheckoutPlan = null;
@@ -18848,11 +18845,9 @@ async function renderMyDesk() {
   /**
    * Start Stripe Checkout for one plan.
    *
-   * Three failures worth handling by name, because each has a next step:
+   * Two failures worth handling by name, because each has a next step:
    *   401 — not signed in. A subscription must attach to a user, so we nudge
    *         to sign up and resume the same plan afterwards.
-   *   409 founding_closed — the last seat went between page load and click.
-   *         Offer the monthly fallback the server names rather than dead-end.
    *   503 — billing isn't switched on for this deployment.
    */
   async function startCheckout(plan, btn) {
@@ -18874,12 +18869,6 @@ async function renderMyDesk() {
         body: JSON.stringify({ plan }),
       });
       const data = await r.json().catch(() => ({}));
-      if (r.status === 409 && data.code === "founding_closed") {
-        pricingInfo = Object.assign({}, pricingInfo, { foundingLeft: 0 });
-        renderFoundingTile();
-        showPricingError("The founding-member offer just closed: the last seat went. Pro monthly is still available above.");
-        return;
-      }
       if (!r.ok || !data.url) {
         showPricingError(data.error || "Could not start checkout. Please try again.");
         return;
@@ -18946,6 +18935,19 @@ async function renderMyDesk() {
           : "Your firm's plan covers your seat. Its owner manages the plan and the seats.",
       };
     }
+    // The new-account trial (2026-09-25). Before the Stripe states for the
+    // comped branches' reason — there is no subscription behind it — and it
+    // names the end date, because the one thing a trial must never do is end
+    // as a surprise. What happens at the end is said too: the account and
+    // everything in it stay, only the Pro tools lock.
+    if (p.trial) {
+      const ends = trialEndLabel();
+      return {
+        title: ends ? `Pro trial — ends ${ends}` : "Pro trial",
+        detail: "Every Pro tool is yours during the trial, with nothing billed. After it ends you're on the free plan, " +
+          "and anything you saved or uploaded stays in your account.",
+      };
+    }
     if (p.isPro && p.status === "grace") {
       const until = p.graceUntil ? new Date(p.graceUntil) : null;
       return {
@@ -18960,7 +18962,8 @@ async function renderMyDesk() {
     }
     if (p.isPro) {
       return {
-        title: p.plan === "pro_annual_founding" ? "Pro: founding member" : "Pro",
+        title: p.plan === "pro_annual_founding" ? "Pro: founding member"
+          : p.plan === "pro_annual" ? "Pro: yearly" : "Pro",
         // Same rule as the pricing tile: name only what ships. Report branding
         // was withheld here while it was granted by entitlements.js with no
         // UI to draw it; it is named to a paying member now that it renders
@@ -18990,6 +18993,11 @@ async function renderMyDesk() {
   function refreshBillingUI() {
     const live = billingLive();
     const pro = Boolean(proConfig && proConfig.isPro);
+    // Whether to offer the upgrade. A Pro TRIAL is Pro in every capability and
+    // still somebody to sell to (2026-09-25), so `!pro` alone would hide the
+    // one button a trial exists to lead to. Every upgrade control below reads
+    // this, never `pro` directly.
+    const offerUpgrade = live && (!pro || isTrialPro());
 
     // All three callers of this function are points where entitlements have
     // just changed (config load, post-checkout refresh, sign-in/out), which
@@ -19023,7 +19031,9 @@ async function renderMyDesk() {
     // whose only remaining use is a tester code nobody gave them — hence the
     // per-door test rather than the old `pro` alone. Both codes go to the
     // same input; the server decides which grant a code opens.
-    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && !pro;
+    // A trial is not the tester grant: someone handed a tester code mid-trial
+    // must still be able to redeem it, or their Pro ends with the trial.
+    const canRedeemTester = Boolean(proConfig && proConfig.testerPasskey) && (!pro || isTrialPro());
     const canRedeemVault = Boolean(proConfig && proConfig.vaultPasskey)
       && !Boolean(proConfig && proConfig.canUseVault);
     document.getElementById("passkeyRow")
@@ -19062,7 +19072,7 @@ async function renderMyDesk() {
     // call, the one with a real answer, still finds it.
     if (pendingPricingHash && proConfigResolved) {
       pendingPricingHash = false;
-      if (live && !pro) openPricingModal();
+      if (offerUpgrade) openPricingModal();
       // Clear BOTH forms of the door so a refresh doesn't reopen a modal the
       // visitor already closed. Other params (utm_*) survive.
       const qs = new URLSearchParams(location.search);
@@ -19073,7 +19083,7 @@ async function renderMyDesk() {
 
     const menuUpgrade = document.getElementById("menuUpgradeBtn");
     const menuBilling = document.getElementById("menuBillingBtn");
-    menuUpgrade.classList.toggle("hidden", !live || pro);
+    menuUpgrade.classList.toggle("hidden", !offerUpgrade);
     menuBilling.classList.toggle("hidden", !live || !hasBillingHistory());
 
     // canUseVault still decides what the vault SHOWS, and /api/vault re-checks
@@ -19125,16 +19135,25 @@ async function renderMyDesk() {
     // too, so the way back out of it has to as well. Any future comped path
     // needs the same OR here, or its plan copy is unreachable on a
     // Stripe-less deployment.
-    const showPlanRow = live || isAdminPro() || isTesterPro();
+    const showPlanRow = live || isAdminPro() || isTesterPro() || isTrialPro();
     document.getElementById("settingsPlanRow").classList.toggle("hidden", !showPlanRow);
     if (showPlanRow) {
       const planCopy = billingStatusCopy();
       document.getElementById("settingsPlanTitle").textContent = planCopy.title;
       document.getElementById("settingsPlanDetail").textContent = planCopy.detail;
-      document.getElementById("settingsUpgradeBtn").classList.toggle("hidden", !live || pro);
+      document.getElementById("settingsUpgradeBtn").classList.toggle("hidden", !offerUpgrade);
       document.getElementById("settingsBillingBtn").classList.toggle("hidden", !live || !hasBillingHistory());
       // Admin-only: it clears the cn_admin cookie, which a tester never has.
       document.getElementById("billingAdminOffBtn").classList.toggle("hidden", !isAdminPro());
+    }
+    // The Free tile's footnote in the pricing modal. On a trial, Free is not
+    // this account's plan today; it is where the account lands when the trial
+    // ends, and saying "Your current plan" over it would be untrue.
+    const freeNote = document.getElementById("freeTileNote");
+    if (freeNote) {
+      freeNote.textContent = isTrialPro()
+        ? `Where you land when your trial ends${trialEndLabel() ? " (" + trialEndLabel() + ")" : ""}`
+        : "Your current plan";
     }
   }
 
@@ -19239,7 +19258,11 @@ async function renderMyDesk() {
     // ~10s of patience, then tell the truth rather than spin forever.
     for (let i = 0; i < 6; i++) {
       await refreshProConfig();
-      if (proConfig && proConfig.isPro) {
+      // `isPro` alone is not the webhook landing: an account on its Pro
+      // trial (2026-09-25) is already isPro, so it would announce the
+      // subscription before the subscription exists. The trial flag clears
+      // the moment a real subscription does.
+      if (proConfig && proConfig.isPro && !proConfig.trial) {
         showCheckoutNotice("ok", "You're on Pro.",
           "Unlimited comps, a lookback of up to 10 years, and unlimited exports. Re-run a report to see the full list.");
         return;

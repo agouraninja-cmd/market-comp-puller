@@ -210,6 +210,120 @@ test("non-testers carry tester:false, so the UI can read one field", () => {
   assert.equal(computeEntitlements({ user: USER, now: NOW, enabled: false }).tester, false);
 });
 
+// --- the new-account Pro trial (2026-09-25) --------------------------------
+//
+// A dated grant: full Pro until trialUntil, then the free tier. It is NOT a
+// Stripe trial (Stripe's `trialing` status would read as expired here), it
+// needs no card, and it yields to anything real.
+
+const { trialEndsAt, TRIAL_DAYS } = require("../entitlements");
+
+test("trialEndsAt: 14 days from signup when there is no launch date", () => {
+  const created = iso(NOW - 3 * DAY);
+  assert.equal(TRIAL_DAYS, 14);
+  assert.equal(trialEndsAt(created), NOW - 3 * DAY + 14 * DAY);
+  assert.equal(trialEndsAt(created, { days: 7 }), NOW - 3 * DAY + 7 * DAY);
+});
+
+test("trialEndsAt: an account older than the launch gets its days from launch day", () => {
+  // The existing-accounts half of the owner's call: an account made months
+  // ago gets 14 days from launch, not none.
+  const launch = iso(NOW - 2 * DAY);
+  assert.equal(trialEndsAt(iso(NOW - 300 * DAY), { startsAt: launch, now: NOW }), NOW - 2 * DAY + 14 * DAY);
+  // ...and one made after launch still counts from its own signup.
+  assert.equal(trialEndsAt(iso(NOW - DAY), { startsAt: launch, now: NOW }), NOW - DAY + 14 * DAY);
+});
+
+test("trialEndsAt: a launch date still in the future is no trial yet", () => {
+  // Setting PRO_TRIAL_START to next week and deploying today must not hand
+  // every account Pro from today.
+  assert.equal(trialEndsAt(iso(NOW - 300 * DAY), { startsAt: iso(NOW + 5 * DAY), now: NOW }), null);
+});
+
+test("trialEndsAt fails closed: no created_at, or a length of zero, is no trial", () => {
+  assert.equal(trialEndsAt(undefined), null);
+  assert.equal(trialEndsAt("not a date"), null);
+  assert.equal(trialEndsAt(iso(NOW), { days: 0 }), null, "PRO_TRIAL_DAYS=0 is the off switch");
+  assert.equal(trialEndsAt(iso(NOW), { days: -3 }), null);
+});
+
+test("trial: full Pro before it ends", () => {
+  const e = ent({ user: USER, trialUntil: NOW + 5 * DAY });
+  assert.equal(e.pro, true);
+  assert.equal(e.plan, "trial");
+  assert.equal(e.trial, true);
+  assert.equal(e.trialEndsAt, iso(NOW + 5 * DAY));
+  // Everything Pro (owner's call): the vault, bulk and firms included.
+  for (const key of ["canUseVault", "canBulkValue", "canUseOrg", "canBrand", "canExploreAddresses", "canSeeSearchDemand", "portfolioValues"]) {
+    assert.equal(e[key], true, `a trial grants ${key}`);
+  }
+  assert.equal(e.maxLookbackMonths, PRO_MAX_LOOKBACK_MONTHS);
+  assert.equal(e.exportsRemaining, "unlimited");
+});
+
+test("trial: every key a paying subscriber gets, and the same answers", () => {
+  // The admin branch's trap again: the trial is an early return, so a Pro
+  // field added to the main branch later would be ABSENT here and read as
+  // locked for exactly the people the trial exists to impress.
+  const pro = ent({ user: USER, subscription: activeSub() });
+  const trial = ent({ user: USER, trialUntil: NOW + DAY });
+  for (const key of Object.keys(pro)) assert.ok(key in trial, `trial entitlements are missing "${key}"`);
+  for (const key of ["pro", "maxComps", "canBrand", "maxLookbackMonths", "exportsRemaining", "canExploreAddresses",
+    "canSeeSearchDemand", "canBulkValue", "bulkMaxAddresses", "canUseVault", "canUseOrg", "portfolioMaxItems", "portfolioValues"]) {
+    assert.deepEqual(trial[key], pro[key], `trial should match Pro on "${key}"`);
+  }
+});
+
+test("trial status is never a Stripe status — there is no customer to manage", () => {
+  // The UI offers the billing portal off `status !== "none"`; "active" here
+  // would send a trial account to a portal that 400s.
+  assert.equal(ent({ user: USER, trialUntil: NOW + DAY }).status, "trial");
+});
+
+test("trial: the free tier the moment it ends", () => {
+  const e = ent({ user: USER, trialUntil: NOW - 1 });
+  assert.equal(e.pro, false);
+  assert.equal(e.plan, "free");
+  assert.equal(e.trial, false);
+  assert.equal(e.canUseVault, false, "the vault closes with the trial, like any lapse");
+});
+
+test("a real subscription always wins over the trial", () => {
+  // Somebody who subscribes mid-trial is a paying customer: real status, real
+  // plan name, billing portal — never "trial".
+  const e = ent({ user: USER, trialUntil: NOW + 5 * DAY, subscription: activeSub() });
+  assert.equal(e.plan, "pro_monthly");
+  assert.equal(e.status, "active");
+  assert.equal(e.trial, false);
+});
+
+test("the tester flag outranks the trial — it does not end", () => {
+  const e = ent({ user: USER, tester: true, trialUntil: NOW + 5 * DAY });
+  assert.equal(e.plan, "tester");
+  assert.equal(e.trial, false);
+});
+
+test("a trial needs an account and a live tier", () => {
+  assert.equal(ent({ user: null, trialUntil: NOW + DAY }).pro, false, "no account, no trial");
+  const dark = computeEntitlements({ user: USER, trialUntil: NOW + DAY, now: NOW, enabled: false });
+  assert.equal(dark.status, "disabled", "PRO_ENABLED off must still mean the pre-Pro app");
+  assert.equal(dark.canUseVault, false);
+});
+
+test("non-trial branches carry trial:false, so the UI can read one field", () => {
+  assert.equal(ent({ user: USER }).trial, false);
+  assert.equal(ent({ user: USER, subscription: activeSub() }).trial, false);
+  assert.equal(ent({ user: USER, admin: true }).trial, false);
+  assert.equal(ent({ user: USER, tester: true }).trial, false);
+  assert.equal(computeEntitlements({ user: USER, now: NOW, enabled: false }).trial, false);
+});
+
+test("the standing yearly plan is a Pro plan and reports its own name", () => {
+  const e = ent({ user: USER, subscription: activeSub({ plan: "pro_annual" }) });
+  assert.equal(e.pro, true);
+  assert.equal(e.plan, "pro_annual");
+});
+
 // --- anonymous and free ----------------------------------------------------
 
 test("anonymous visitor: FREE_MAX_COMPS comps, 12 months, one export", () => {

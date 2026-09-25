@@ -11575,10 +11575,7 @@ const marketBar = (signedIn = false, current = "") =>
   // measures the SOURCE distance from the label to `<a href="/markets"`.
   `<span class="navsec">Tools</span>` +
   (signedIn
-    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
-      // The Permit tracker (2026-09-24, owner's: "it should be under tools").
-      // Every member; index.html carries the twin row.
-      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>`
+    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
     : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
@@ -11588,6 +11585,10 @@ const marketBar = (signedIn = false, current = "") =>
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
       `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Comp report</a>` +
+      // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
+      // the THIRD Tools row, after Comp report (owner's order, same day).
+      // Every member; index.html carries the twin row in the same place.
+      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
       // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
       // valuation is the comp-report tool). It pointed at `/` until that

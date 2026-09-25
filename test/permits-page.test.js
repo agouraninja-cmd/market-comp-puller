@@ -6,8 +6,8 @@
 // stand-in PostgREST: a signed-out reader gets the sign-in wall and no
 // filings; a member gets the window, newest first, with the filing at their
 // firm's building marked; an old filing and an unswept city stay out. And
-// the nav: "Permit tracker" is a Tools row on BOTH nav authors, directly
-// after Market explorer.
+// the nav: "Permit tracker" is the third Tools row on BOTH nav authors,
+// after Market explorer and Comp report.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -43,11 +43,16 @@ test("the page's script compiles, and the literal interpolates the boot alone", 
     "the boot escapes < so a portal string cannot close the script");
 });
 
-test("Permit tracker is a Tools row on both nav authors, right after Market explorer", () => {
-  for (const [name, src] of [["server.js", SERVER_JS], ["index.html", INDEX_HTML]]) {
-    const me = src.indexOf('<a href="/markets"', src.indexOf('class="navsec">Tools<'));
-    const pt = src.indexOf('<a href="/permits"', me);
-    assert.ok(me > -1 && pt > me && pt - me < 400, `${name}: /permits follows Market explorer`);
+test("Tools reads Market explorer, Comp report, Permit tracker on both nav authors", () => {
+  // The owner's order (2026-09-24): the permit tracker is the THIRD row.
+  for (const [name, src, bulk] of [["server.js", SERVER_JS, '<a id="navBulk" href="/bulk"'],
+    ["index.html", INDEX_HTML, '<a id="menuBulkLink" href="/bulk"']]) {
+    const label = src.indexOf('class="navsec">Tools<');
+    const me = src.indexOf('<a href="/markets"', label);
+    const cr = src.indexOf(bulk, label);
+    const pt = src.indexOf('<a href="/permits"', label);
+    assert.ok(label > -1 && me > label && cr > me && pt > cr, `${name}: Market explorer, then Comp report, then Permit tracker`);
+    assert.ok(pt - cr < 600, `${name}: Permit tracker sits right after Comp report`);
   }
   assert.ok(/CTA_FREE_PAGES = new Set\([^)]*"\/permits"/.test(SERVER_JS), "a working page drops the red CTA");
 });

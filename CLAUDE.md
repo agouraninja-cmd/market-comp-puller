@@ -2873,15 +2873,30 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     rather than rows in the forward-looking Critical dates. The board rows
     come from the buildings read already made; nothing here names the
     board's table.
-  - **The development shop's New filings** (`GET /api/org/permits?id=`,
-    `newFilingsFor` → `newFilingsFeed`, `#deskNewFilings` on the
-    Workspace): industrial filings in the last 14 days, newest first,
-    applicant named. The firm gate like every /api/org read. **A broker
-    shop gets `feed: null`** and nothing renders — whether it should have
-    one is §9's owner call — and that answer costs no database read, which
-    matters because the route is in `DESK_BOOT_ORG_URLS`. The header names
-    the swept cities (`citiesLine`), so a shop elsewhere reads where the
-    feature is lit rather than an empty feed.
+  - **The Workspace's Your permits** (2026-09-24, owner's call; `GET
+    /api/org/permits?id=`, `yourPermitsFor` → `PERMIT_FILINGS.yourPermits`,
+    `#deskPermits`). It REPLACED the development shop's New filings — every
+    industrial filing in the swept cities for the last 14 days, shown only
+    to a development shop — which pointed the Workspace at the market rather
+    than at the firm's own record; that market-wide list lives on `/permits`
+    for every account, and the section links there ("Every filing in Boise
+    and Meridian →"). Four rules. **It is the /buildings strip's rows**:
+    `yourPermits` hands its board to `boardPermitActivity`, and
+    `sweptBuildings` is the one filter both use, so the Workspace and
+    /buildings cannot tell one firm two stories (a unit test deep-equals the
+    two). **Every shop kind gets it** — the filings are about the firm's own
+    buildings, so §9's "does a broker shop get the market feed?" does not
+    arise, and there is no `kind` in the answer any more. **`permits: null`,
+    and no section, when no board building is in a swept city** (§7's
+    Dallas rule, for a whole board), and then no filing is read at all —
+    the route is in `DESK_BOOT_ORG_URLS`, so a firm outside Boise pays one
+    board read per workspace load and nothing more. **Unlike the strip it
+    THROWS** (`recentPermitFilings` is the shared read; `boardPermitActivityFor`
+    wraps it fail-open, the route 503s): the Workspace hides a section it
+    could not read, because "nothing filed at your buildings" must never be
+    what an outage looks like. Each row's address opens the building's
+    sheet, where the whole status history is; past eight, the rest are on
+    /buildings.
   - **Filter permit_filings by `jurisdiction`, never `market=in.(…)`.** A
     market name carries a comma ("Boise, ID") and the stand-in PostgREST
     splits `in.()` on commas; the jurisdiction key is the same set with no
@@ -2904,8 +2919,10 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   fail-open. In `CTA_FREE_PAGES`, since it is a working page.
   `test/permit-sheet-run.test.js` runs all of it against the stand-in,
   including the spec's two-firm case (both firms see the filing on their own
-  copy of the building; neither can open the other's). Still not built: any
-  email, the parcel number as a second match key, a broker shop's feed.
+  copy of the building; neither can open the other's), and Your permits for
+  a broker shop, a development shop and a board wholly outside the swept
+  cities. Still not built: any email, the parcel number as a second match
+  key.
 - **Search demand on the desk** (2026-08-25). Each watched market on My Desk
   carries a line saying how many people searched it lately: "9 people ran 14
   searches here in the last 30 days, 6 of them Industrial." It reads

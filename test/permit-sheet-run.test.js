@@ -6,8 +6,10 @@
 // are public record, §5); neither can open the other's building, and the
 // /buildings strip of one never names the other's board. Then the honesty
 // rules — a building outside the swept cities gets NO Permits section, not
-// an empty one — and slice 4's feed: a development shop gets its industrial
-// filings, a broker shop gets `feed: null`, and an outsider gets nothing.
+// an empty one — and the Workspace's Your permits (2026-09-24, which replaced
+// slice 4's development-shop feed): every firm, whatever its kind, gets the
+// filings at its OWN buildings and nobody else's; a firm with no building in
+// a swept city gets `permits: null`; and an outsider gets nothing.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -26,12 +28,15 @@ const dayAgo = (n) => daysAgo(n).slice(0, 10);
 const BRAD = { id: "u-brad", email: "brad@colliers.com", name: "Brad" };
 const DANA = { id: "u-dana", email: "dana@buildco.com", name: "Dana" };
 const OUT = { id: "u-out", email: "out@nowhere.com", name: "Out" };
+const CARL = { id: "u-carl", email: "carl@texasfirm.com", name: "Carl" };
 const BROKER_ORG = "7a1e9a1e-0000-4000-8000-000000000001";
 const DEV_ORG = "7a1e9a1e-0000-4000-8000-000000000002";
+const DALLAS_ORG = "7a1e9a1e-0000-4000-8000-000000000003";
 const ADDRESS = "8000 S Federal Way, Boise, ID 83716";
 const B_BROKER = "7a1e9a1e-0000-4000-8000-0000000000b1";
 const B_DEV = "7a1e9a1e-0000-4000-8000-0000000000b2";
 const B_DALLAS = "7a1e9a1e-0000-4000-8000-0000000000b3";
+const B_TEXAS = "7a1e9a1e-0000-4000-8000-0000000000b4";
 const F_HIT = "7a1e9a1e-0000-4000-8000-0000000000f1";
 
 const member = (u, org) => ({ id: crypto.randomUUID(), org_id: org, email: u.email, user_id: u.id, role: "owner",
@@ -51,16 +56,19 @@ const filing = (over) => ({
 
 function tables() {
   return {
-    users: [BRAD, DANA, OUT].map((u) => ({ ...u, pro_tester: false, vault_beta: true })),
-    sessions: [BRAD, DANA, OUT].map((u) => ({ token_hash: sha256("tok-" + u.id), user_id: u.id, expires_at: YEAR_OUT })),
-    subscriptions: [BRAD, DANA].map((u) => ({ user_id: u.id, plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT, cancel_at_period_end: false })),
+    users: [BRAD, DANA, OUT, CARL].map((u) => ({ ...u, pro_tester: false, vault_beta: true })),
+    sessions: [BRAD, DANA, OUT, CARL].map((u) => ({ token_hash: sha256("tok-" + u.id), user_id: u.id, expires_at: YEAR_OUT })),
+    subscriptions: [BRAD, DANA, CARL].map((u) => ({ user_id: u.id, plan: "pro_monthly", status: "active", current_period_end: YEAR_OUT, cancel_at_period_end: false })),
     orgs: [{ id: BROKER_ORG, name: "Colliers Boise", share_default: "none", seats: 5, kind: "broker" },
-           { id: DEV_ORG, name: "BuildCo", share_default: "none", seats: 5, kind: "development" }],
-    org_members: [member(BRAD, BROKER_ORG), member(DANA, DEV_ORG)],
+           { id: DEV_ORG, name: "BuildCo", share_default: "none", seats: 5, kind: "development" },
+           { id: DALLAS_ORG, name: "Texas Only", share_default: "none", seats: 5, kind: "broker" }],
+    org_members: [member(BRAD, BROKER_ORG), member(DANA, DEV_ORG), member(CARL, DALLAS_ORG)],
     org_buildings: [
       building(B_BROKER, BROKER_ORG, ADDRESS, "Boise, ID", BRAD),
       building(B_DALLAS, BROKER_ORG, "100 Main St, Dallas, TX 75201", "Dallas, TX", BRAD),
       building(B_DEV, DEV_ORG, "8000 S. Federal Way, Boise, ID", "Boise, ID", DANA),
+      // A firm whose whole board is outside the swept cities.
+      building(B_TEXAS, DALLAS_ORG, "200 Elm St, Dallas, TX 75201", "Dallas, TX", CARL),
     ],
     permit_filings: [
       // On the Federal Way building: the portal prints the bare street line.
@@ -90,7 +98,7 @@ async function getJson(url, user) {
   return { status: r.status, text, j };
 }
 
-test("permit signals on the building sheet, the buildings strip and the development shop's feed", async (t) => {
+test("permit signals on the building sheet, the buildings strip and the Workspace's Your permits", async (t) => {
   const db = await fake.start({ tables: tables() });
   const srv = await shared.boot({ ACCOUNT_WALL: "off", PRO_ENABLED: "on", SUPABASE_URL: db.url, SUPABASE_SERVICE_KEY: "service-key" });
   t.after(async () => { srv.stop(); await db.stop(); });
@@ -135,25 +143,39 @@ test("permit signals on the building sheet, the buildings strip and the developm
     assert.ok(html.includes('id="blPermits"'), "the strip is on the page");
   });
 
-  await t.test("a development shop gets its industrial filings; nothing older, nothing unzoned-for-industry", async () => {
-    const r = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, DANA);
-    assert.equal(r.status, 200, r.text);
-    assert.equal(r.j.kind, "development");
-    assert.equal(r.j.cities, "Boise and Meridian", "Nampa is switched off, so it is not named as lit");
-    assert.deepEqual(r.j.feed.map((f) => f.permitNumber), ["MER-SAME-STREET", "BLD26-01234"], "newest first");
-    assert.equal(r.text.includes("Too Old Co"), false);
-    assert.equal(r.text.includes("Office Only Inc"), false);
-    assert.equal(r.j.stale, false);
+  await t.test("Your permits: every firm, whatever its kind, gets the filings at its OWN buildings", async () => {
+    for (const [user, org, b, other] of [[BRAD, BROKER_ORG, B_BROKER, B_DEV], [DANA, DEV_ORG, B_DEV, B_BROKER]]) {
+      const r = await getJson(`${srv.base}/api/org/permits?id=${org}`, user);
+      assert.equal(r.status, 200, r.text);
+      assert.equal(r.j.cities, "Boise and Meridian", "Nampa is switched off, so it is not named as lit");
+      assert.equal(r.j.windowDays, PF.ACTIVITY_WINDOW_DAYS);
+      assert.equal(r.j.buildings, 1, "the board in a swept city — Brad's Dallas building is not counted as looked at");
+      assert.deepEqual(r.j.permits.map((p) => [p.permitNumber, p.buildingId, p.kind, p.status]),
+        [["BLD26-01234", b, "status", "Prep for Issuance"]],
+        "the Federal Way filing on this firm's copy of the building, as its status move two days ago");
+      assert.equal(r.j.permits[0].applicant, "Federal Way Partners");
+      assert.equal(r.j.stale, false);
+      // Not the Meridian filing on the same street line, not a filing at an
+      // address nobody's board holds, and not the other firm's building.
+      for (const absent of ["MER-SAME-STREET", "Meridian Twin LLC", "BLD-OFFICE", "Office Only Inc", "Too Old Co", other]) {
+        assert.equal(r.text.includes(absent), false, `${absent} must not appear`);
+      }
+      assert.equal("feed" in r.j, false, "the market-wide feed is gone from this route");
+    }
   });
 
-  await t.test("a broker shop gets feed: null, and an outsider gets nothing", async () => {
-    const r = await getJson(`${srv.base}/api/org/permits?id=${BROKER_ORG}`, BRAD);
+  await t.test("a board with no building in a swept city gets permits: null, and an outsider gets nothing", async () => {
+    const r = await getJson(`${srv.base}/api/org/permits?id=${DALLAS_ORG}`, CARL);
     assert.equal(r.status, 200, r.text);
-    assert.equal(r.j.feed, null);
-    assert.equal(r.j.kind, "broker");
+    assert.equal(r.j.permits, null, "no section — an empty one would claim we looked");
+    assert.equal(r.j.buildings, 0);
+    assert.equal(r.j.cities, "Boise and Meridian");
     const out = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, OUT);
     assert.ok(out.status === 403 || out.status === 404, `an outsider is refused (${out.status})`);
     assert.equal(out.text.includes("BLD26-01234"), false);
+    const cross = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, BRAD);
+    assert.ok(cross.status === 403 || cross.status === 404, `another firm's member is refused (${cross.status})`);
+    assert.equal(cross.text.includes(B_DEV), false);
   });
 });
 
@@ -170,6 +192,7 @@ test("an unswept table reads as 'not checked yet', never as a quiet fortnight", 
   assert.equal(r.j.permits.never, true);
   assert.equal(r.j.permits.stale, true);
   const f = await getJson(`${srv.base}/api/org/permits?id=${DEV_ORG}`, DANA);
+  assert.equal(f.status, 200, f.text);
   assert.equal(f.j.never, true);
-  assert.deepEqual(f.j.feed, []);
+  assert.deepEqual(f.j.permits, [], "a swept board with nothing in the table is an empty list, said with 'not checked yet'");
 });

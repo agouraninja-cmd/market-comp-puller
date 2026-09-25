@@ -2971,21 +2971,27 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
         <p id="buildingsEmpty" class="hidden dk-empty">No buildings yet. Add one from a report on the shelf, from a property in your Vault, or with + Add by address above.</p>
       </div>
-      <!-- New filings (permit signals slice 4, spec §2b): commercial permits
-           filed on industrial land in the swept cities, newest first, the
-           applicant named where the portal gave one. A DEVELOPMENT shop's
-           section only — /api/org/permits answers feed: null for any other
-           shop, and then nothing renders. The header names the cities, so a
-           shop covering somewhere else reads where this is lit rather than
-           an empty feed (§7). Public record; nothing here mails. -->
-      <div id="deskNewFilings" class="hidden mt-8">
+      <!-- Your permits (2026-09-24; it replaced the development shop's New
+           filings, whose market-wide list now lives on /permits for every
+           account). Permits filed, or whose status moved, at the firm's OWN
+           buildings in the last thirty days — the /buildings strip's rows,
+           for any shop kind, each address the door to its building's sheet.
+           /api/org/permits answers permits: null when no building on the
+           board sits in a swept city, and then nothing renders: an empty
+           "Your permits" on a Dallas board would claim we looked (§7).
+           Public record; nothing here mails. -->
+      <div id="deskPermits" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">New filings</span>
-          <span id="deskNewFilingsStats" class="dk-note"></span>
+          <span class="rd-lab">Your permits</span>
+          <span id="deskPermitsStats" class="dk-note"></span>
         </div>
-        <p id="deskNewFilingsCopy" class="dk-copy"></p>
-        <div id="deskNewFilingRows" class="mt-1"></div>
-        <p id="deskNewFilingsEmpty" class="hidden dk-empty"></p>
+        <p id="deskPermitsCopy" class="dk-copy"></p>
+        <div id="deskPermitRows" class="mt-1"></div>
+        <p id="deskPermitsEmpty" class="hidden dk-empty"></p>
+        <!-- `hidden` on the <p>, never on the link: .dk-more sets display
+             later in the cascade and would win (the buildingsMore shape). -->
+        <p id="deskPermitsOverflow" class="hidden"><a id="deskPermitsOverflowLink" href="/buildings" class="dk-more"></a></p>
+        <p><a id="deskPermitsTracker" href="/permits" class="dk-more">Every filing in the city →</a></p>
       </div>
       <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
            first, from the same list /messages reads. Rendered only for a
@@ -13908,7 +13914,8 @@ async function renderMyDesk() {
       // The contact list is the most personal thing on this deck — real names
       // and addresses a customer typed — so it hides on the same signal.
       document.getElementById("deskContacts").classList.add("hidden");
-      document.getElementById("deskNewFilings").classList.add("hidden");
+      // Your permits names the firm's buildings, so it hides on the same signal.
+      document.getElementById("deskPermits").classList.add("hidden");
       document.getElementById("deskFirm").classList.add("hidden");
       document.getElementById("deskFirmEmpty").classList.add("hidden");
       // The strip sums the sections above; it goes with them.
@@ -13966,7 +13973,7 @@ async function renderMyDesk() {
     await Promise.all([
       buildings,
       renderDeskThreads(),
-      renderNewFilings(),
+      renderYourPermits(),
       renderDealBoard(),
       buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
     ]);
@@ -14481,15 +14488,19 @@ async function renderMyDesk() {
   }
 
   // ---------------------------------------------------------------------------
-  // New filings (permit signals slice 4). The server decides whether this
-  // firm gets a feed at all (a development shop does, spec §2b) and which
-  // rows are in it (industrial land, the last two weeks); this only draws
-  // it. A failed read hides the section — a feed that could not be read must
-  // not look like a quiet fortnight.
+  // Your permits (2026-09-24; it replaced the development shop's New
+  // filings). Permits filed, or whose status moved, at the firm's OWN
+  // buildings in the last thirty days. The server decides everything — which
+  // of the board sits in a swept city, and which filings match a building
+  // (the building sheet's street-line + market rule); this only draws it.
+  // `permits: null` means no building on the board is in a city the sweep
+  // reads, and then the section does not render. A failed read hides it too:
+  // "nothing happened at your buildings" must never be what an outage looks
+  // like.
   // ---------------------------------------------------------------------------
-  const NEW_FILINGS_SHOWN = 8;
-  async function renderNewFilings() {
-    const box = document.getElementById("deskNewFilings");
+  const YOUR_PERMITS_SHOWN = 8;
+  async function renderYourPermits() {
+    const box = document.getElementById("deskPermits");
     const firm = currentUser ? myFirm() : null;
     if (!firm) { box.classList.add("hidden"); return; }
     let data = null;
@@ -14497,43 +14508,62 @@ async function renderMyDesk() {
       const res = await bootFetch(`/api/org/permits?id=${encodeURIComponent(firm.id)}`);
       if (res.ok) data = await res.json();
     } catch (_) { /* handled below */ }
-    if (!data || !Array.isArray(data.feed)) { box.classList.add("hidden"); return; }
+    if (!data || !Array.isArray(data.permits)) { box.classList.add("hidden"); return; }
     box.classList.remove("hidden");
-    const feed = data.feed;
-    const days = data.windowDays || 14;
+    const list = data.permits;
+    const days = data.windowDays || 30;
+    const cities = data.cities || "the cities we read";
+    const n = Number(data.buildings) || 0;
     let checked = "";
     if (data.never) checked = "Not checked yet.";
     else if (data.stale) checked = "Last checked more than a business day ago \u2014 newer filings may be missing.";
-    document.getElementById("deskNewFilingsCopy").textContent =
-      `Commercial permits filed on industrial land, from each city\u2019s own portal. Read in ${data.cities || "no city"} today, nowhere else yet. ${checked}`.trim();
-    document.getElementById("deskNewFilingsStats").textContent = feed.length
-      ? `${feed.length} in the last ${days} days` : "";
-    const empty = document.getElementById("deskNewFilingsEmpty");
-    empty.textContent = `No industrial filing in ${data.cities || "these cities"} in the last ${days} days.`;
-    empty.classList.toggle("hidden", feed.length > 0);
-    const wrap = document.getElementById("deskNewFilingRows");
+    document.getElementById("deskPermitsCopy").textContent =
+      `From the permit portals in ${cities}, which cover ${n} of your firm\u2019s buildings. Filed or updated in the last ${days} days; older permits are on each building\u2019s sheet. ${checked}`.trim();
+    document.getElementById("deskPermitsStats").textContent = list.length
+      ? `${list.length} in the last ${days} days` : "";
+    const empty = document.getElementById("deskPermitsEmpty");
+    empty.textContent = `Nothing filed or updated at your buildings in the last ${days} days.`;
+    empty.classList.toggle("hidden", list.length > 0);
+    // Past eight, the rest are on /buildings' Permit activity strip — the
+    // same rows, so "see all" is a count that page will agree with.
+    document.getElementById("deskPermitsOverflow").classList.toggle("hidden", list.length <= YOUR_PERMITS_SHOWN);
+    document.getElementById("deskPermitsOverflowLink").textContent = `See all ${list.length} on Buildings \u2192`;
+    // The market-wide list the development shop used to read here.
+    document.getElementById("deskPermitsTracker").textContent = `Every filing in ${cities} \u2192`;
+    const wrap = document.getElementById("deskPermitRows");
     wrap.innerHTML = "";
-    feed.slice(0, NEW_FILINGS_SHOWN).forEach((p) => {
-      // .dk-row, flat, textContent throughout: every string here is what a
-      // city portal printed, and a portal is not a trusted author.
+    list.slice(0, YOUR_PERMITS_SHOWN).forEach((p) => {
+      // .dk-row, flat, textContent throughout: the address is one a person
+      // typed, and every other string is what a city portal printed.
       const row = document.createElement("div");
       row.className = "dk-row";
-      const name = document.createElement(p.sourceUrl ? "a" : "span");
-      name.className = "dk-row-name";
-      if (p.sourceUrl) { name.href = p.sourceUrl; name.target = "_blank"; name.rel = "noopener noreferrer"; }
-      // The city only when the portal left it off: Boise prints
-      // "8000 S FEDERAL WAY, Boise ID 83716", and appending it again read
-      // "…83716, Boise" on the first live sweep.
-      const hasCity = p.city && String(p.address || "").toLowerCase().includes(String(p.city).toLowerCase());
-      name.textContent = [p.address, hasCity ? "" : p.city].filter(Boolean).join(", ") || p.permitNumber;
+      // The building's address is the door to its sheet, where the permit's
+      // whole status history is — the Buildings section's own door.
+      const name = document.createElement("a");
+      name.className = "dk-row-name dk-addr";
+      name.href = "/building/" + encodeURIComponent(p.buildingId);
+      name.textContent = p.address || p.permitNumber;
       row.appendChild(name);
+      const when = p.daysAgo === 0 ? "today" : p.daysAgo === 1 ? "yesterday" : `${p.daysAgo} days ago`;
       const meta = document.createElement("span");
       meta.className = "dk-row-meta";
       meta.textContent = [
-        p.type, p.applicant ? `applicant ${p.applicant}` : "", p.zoning ? `zoned ${p.zoning}` : "",
-        p.appliedDate ? `filed ${p.appliedDate}` : "", p.permitNumber,
+        p.type || "Permit",
+        p.kind === "status" ? (p.status ? `now ${p.status}` : "status changed") : p.status,
+        p.applicant ? `applicant ${p.applicant}` : "",
+        `${p.kind === "status" ? "updated" : "filed"} ${when}`,
+        p.permitNumber,
       ].filter(Boolean).join(" \u00b7 ");
       row.appendChild(meta);
+      if (p.sourceUrl) {
+        const open = document.createElement("a");
+        open.className = "dk-row-act";
+        open.href = p.sourceUrl;
+        open.target = "_blank";
+        open.rel = "noopener noreferrer";
+        open.textContent = "View permit";
+        row.appendChild(open);
+      }
       wrap.appendChild(row);
     });
   }

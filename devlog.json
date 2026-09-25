@@ -4261,5 +4261,11 @@
     "type": "improvement",
     "title": "The Workspace is two columns, and opens on what needs you",
     "details": "The owner's pick (Draft 1) from the workspace redesign canvas. The Workspace was one 3,300-pixel column where every section had the same weight. It now opens with a Needs you card — lease notices and expiries in the next 90 days and unread conversations, each with its next step (Open lease, Reply) — beside the four-figure strip, then two columns: the firm's record on the left (Buildings, the firm shelf, your shared reports) and what moves day to day on the right as cards (Conversations, a new Critical dates card, the deal board, your permits, contacts). Buildings is a table with Type, Size, Built, Shelf (how many shelf reports name the building) and Next date columns, and Remove moved behind each row's ⋯ menu instead of being the row's only visible action. The header names your firm and shop and has one search box that finds buildings, shelf reports and contacts from what the page already loaded. Below 1180px the columns stack; on a phone each building row reads as its address over one line of figures. The page is about 29% shorter on a seeded firm."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The Workspace opens on a picture of your firm's city",
+    "details": "The owner's pick (Draft C) from three redesign drafts, because the Workspace read as bland and worst when empty. It now opens on a banner: your firm's home city's photograph when it has one (the same licensed, credited photos the market pages use) and a drawn contour map when it does not, with a greeting by first name, one line on what needs you, and the markets on your board. The four figures sit as cards on the banner's edge, with icons, and zeros fade back. Empty sections show a faint preview of the rows they will hold with the one next step on top, property types are coloured tags, and a member in no firm gets three start cards. Same sections and links; dark mode and phone included."
   }
 ]

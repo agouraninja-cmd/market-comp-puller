@@ -1686,14 +1686,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   columns; every section kept its id and its own writer. Test-pinned in
   `test/org-desk.test.js`'s last block:
   - **The top row** is `#deskAgenda` ("Needs you": lease dates inside
-    `AGENDA_DAYS` = 90, then unread conversations, each with one next step)
-    beside `#deskStrip`, reflowed 2×2. `drawDeskDates(critical)` runs after
+    `AGENDA_DAYS` = 90, then unread conversations, each with one next step),
+    full width under the figure cards since Draft C (below). `drawDeskDates(critical)` runs after
     `drawFirmStrip` with the SAME leases answer and draws the agenda, the
     new `#deskCritical` side card and the buildings' Next-date column — four
     readings of one read, and no route of their own (bootFetch hands each
-    embedded answer to its first caller). The agenda hides with the strip,
-    and says "Nothing needs you" ONLY when both the leases and the threads
-    read came back; a failed read is named in `#deskAgendaNote` instead.
+    embedded answer to its first caller). The agenda hides with the strip.
+    "Nothing needs you" is said ONLY when both the leases and the threads
+    read came back — on the banner since Draft C, with the card hidden; a
+    failed read keeps the card up and names the read in `#deskAgendaNote`.
     `.dk-top` is not a deck and must never carry `data-deck`.
   - **Two columns, each a `[data-deck]`**: `.dk-main` holds `#deckFirm`
     (no-firm body, Buildings, the shelf) and `#deckSharing`; `#deckSide`
@@ -1715,6 +1716,74 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     eight shown), `firmShelfItems` and `firmContacts` in the browser, terms
     ANDed. It asks the server nothing. Everything new hides in
     `renderShares`' `hideAll`.
+  **Draft C: your city, pictured (2026-09-25; the owner's pick from three
+  drafts — the comparison page and the prototypes are in
+  `docs/designs/2026-09-25-workspace-drafts/`).** The Workspace read as
+  bland, and worst when empty: a heading, grey sentences, zeros. Same
+  sections, same ids, same writers; what changed is the look, and eight
+  rules hold it up (`test/org-desk.test.js`'s last block,
+  `test/org-buildings.test.js`, `test/org-buildings-run.test.js`):
+  - **The banner (`#deskHero`, class `dk-hero`) opens on the firm's home
+    city.** `GET /api/org/buildings` carries `home: { market, photo }`:
+    `market` is `BUILDINGS.homeMarket(rows)` (the market most of the board
+    is in; a tie goes to whichever reached the count first in the server's
+    order) over the WHOLE set, and `photo` is `firmHomeFor` in server.js
+    asking `MARKETHERO.heroFor` — the market pages' own decision, quality
+    grade and credit. **Photographs only**: heroFor's satellite fallback is
+    a market page's answer to "where is this", and Nampa (which has
+    coordinates and no photograph) is the test that the banner refuses it.
+    No photo means the drawn contour map (a CSS data URI on `.dk-hero-bg`),
+    never another city's skyline. It fails to "no photo", never to a 503.
+  - **`drawDeskHome(home)` takes only our own `/market-heroes/` files**,
+    drops a srcset naming anything else, links the credit only to
+    commons.wikimedia.org, and draws the credit ON the picture, as the market
+    pages do. `null` (no firm, a failed buildings read, a sign-out) takes it
+    down. The photo rides the buildings answer — no read of its own.
+  - **The banner sits on --slab, dark in both themes, so its text is literal
+    white** (FOOTER_DARK_CSS's reason). The picture is clipped in its own
+    layer (`.dk-hero-bg`), not by the banner, because the find box's results
+    drop out of it; and the banner has NO z-index, so the figure cards
+    (z 2) rest on its edge while the find results (z 40) still open over
+    them.
+  - **The greeting is a first name, on the browser's clock**
+    (`deskGreetingFor`, called by `drawDeskHead`): "Good morning, Brad", or
+    just "Good morning" when the account has no name — never a guess from
+    the email — and "Workspace" to nobody. The account circle stays in the
+    rail (the 2026-08-29 decision the header test still pins). The day sits
+    in the kicker beside the firm line. `resetDeskHero()` — called by
+    `hideAll` — puts the greeting, the status line and the picture back, so
+    no name or city outlives a session.
+  - **`#deskHeroSub` has one writer, `drawAgenda`**, because it is the one
+    place that knows whether its reads came back: the counts when something
+    is due; "Nothing needs you right now." when both reads came back empty
+    (and the agenda card hides — a box whose only sentence is "nothing" was
+    the bland page); "{Firm} is ready. Put your first building on the board
+    to begin." on an empty board; no line at all when a read failed (the
+    card stays up and names it); "Pick a place to start below." for a
+    member in no firm. It is status, not the subtitle removed on 2026-09-04.
+  - **The figure cards are `#deskStrip`, moved, not a new component**: first
+    in `#myDesk`, outside every deck, a negative top margin resting them on
+    the banner (reset when `#checkoutNotice` shows, so they never ride over
+    it). Same ids, same one writer; `drawFirmStrip` also marks a literal zero
+    `.zero` (it steps back to --ink-4) and never a dash, which is a failed
+    read and keeps its ink.
+  - **Empty sections are `.dk-ghost` previews**: faint rows drawn with
+    gradients (no text anywhere in them — a preview must never read as
+    data; `aria-hidden`) under one card with the next step. The ids are the
+    old empty paragraphs' ids and every renderer still only toggles
+    `hidden`. `.dk-ghost`, `.dk-start` and `.dk-hero-where` set `display`, so
+    each has its own `.hidden` rule (the `.dk-strip` trap). In a side card
+    the preview is dropped and the card lies flat.
+  - **A member in no firm gets three start cards (`#deskFirmEmpty`, class
+    `dk-start`)**: Explore a market (the /markets thumbnails, decorative
+    there and here); a second card `renderFirmEmpty` picks by
+    `firmState.canCreate` — the Comp report tool for Pro, the Permit tracker
+    otherwise, so the card never opens onto a Pro gate; and the firm door
+    it has always been, label, copy and button keeping their ids and words.
+  Colour comes only from existing status/badge tokens (`.dk-tone-*`: the
+  strip's icons, the side cards' head icons, the previews and the
+  buildings' type tags, `TYPE_TONES`), so dark mode needed nothing of its
+  own. No new Tailwind utility — everything is in the style block.
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

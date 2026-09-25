@@ -13193,6 +13193,37 @@ function cachedHeroInspect() {
   return HERO_INSPECT_MEM;
 }
 
+// The Workspace banner's picture (Draft C, 2026-09-25): the firm's home
+// market (org-buildings.js's homeMarket) and, when that city has one, the
+// photograph its market page opens on — the same heroFor decision, the same
+// quality grade, the same credit. Three rules:
+//   - PHOTOGRAPHS ONLY. heroFor's satellite fallback is right for a market
+//     page, which must show where the market is; a banner behind somebody's
+//     name does not need an aerial tile, and the desk draws its own contour
+//     banner instead.
+//   - Never another city's picture (market-hero.js's rule): no photo for the
+//     home market means no photo, not the nearest one.
+//   - Fails to "no photo", never to an error: a banner is decoration, and
+//     the buildings read it rides on must not 503 because of it.
+function firmHomeFor(rows) {
+  const market = BUILDINGS.homeMarket(rows);
+  let photo = null;
+  const comma = market.lastIndexOf(",");
+  if (comma > 0) {
+    try {
+      const skipFiles = HEROQUALITY.skipFilesFromRows(cachedHeroInspect().rows);
+      const h = MARKETHERO.heroFor(market.slice(0, comma).trim(), market.slice(comma + 1).trim(), { skipFiles });
+      if (h && h.kind === "photo") {
+        photo = { src: h.src, srcset: h.srcset, credit: h.credit, license: h.license, commonsUrl: h.commonsUrl };
+      }
+    } catch (err) {
+      console.error("Workspace banner photo failed:", err && err.message);
+      photo = null;
+    }
+  }
+  return { market, photo };
+}
+
 // The CSS class for each momentum word, shared by every server-rendered
 // surface that colours one: the market page's badge and the directory cards'
 // word. freshDirection is the whitelist feeding it — one of these three keys
@@ -25368,6 +25399,11 @@ const server = http.createServer((req, res) =>
             // The whole set's line, computed once here so the desk and (slice
             // 4) the subpage cannot disagree about the count.
             summary: BUILDINGS.summarize(rows).line,
+            // The Workspace's banner (Draft C, 2026-09-25): the firm's home
+            // market and, when that city has a photograph, the same file its
+            // market page opens on. Computed over the WHOLE set, like the
+            // summary, so a truncated list cannot move the picture.
+            home: firmHomeFor(rows),
             buildings: wire(rows, ctx),
           });
         })().catch((err) => {

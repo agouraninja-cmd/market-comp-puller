@@ -272,3 +272,16 @@ test("a note is typed text, capped, and never empty", () => {
   assert.equal(B.validateNote("x".repeat(B.MAX_NOTE)).errors.length, 0);
   assert.match(B.validateNote("x".repeat(B.MAX_NOTE + 1)).errors[0], /up to 2000/);
 });
+
+test("homeMarket is the market most of the board is in, stable on a tie, empty for an empty board (Draft C)", () => {
+  assert.equal(B.homeMarket([]), "");
+  assert.equal(B.homeMarket(null), "");
+  assert.equal(B.homeMarket([{ market: "" }, { market: null }, {}]), "", "a row with no market votes for nothing");
+  assert.equal(B.homeMarket([{ market: "Meridian, ID" }, { market: "Boise, ID" }, { market: "Boise, ID" }]), "Boise, ID");
+  // A tie goes to whichever reached the top count first in the order given
+  // (the server's: most recent activity first), so one list has one answer.
+  assert.equal(B.homeMarket([{ market: "Boise, ID" }, { market: "Nampa, ID" }]), "Boise, ID");
+  assert.equal(B.homeMarket([{ market: "Nampa, ID" }, { market: "Boise, ID" }, { market: "Boise, ID" }, { market: "Nampa, ID" }]), "Boise, ID");
+  // Storage rows and wire buildings both carry `market`.
+  assert.equal(B.homeMarket([{ market: " Boise, ID " }]), "Boise, ID", "trimmed, like every other string here");
+});

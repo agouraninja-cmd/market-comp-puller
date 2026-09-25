@@ -1109,7 +1109,10 @@ test("the vault is a nav item, not a row inside the account menu", () => {
 // fourth cell a line above, a pending firm invitation is already the first
 // deck a line below, and lease expiries never reach this surface at all.
 // ----------------------------------------------------------------------------
-test("the workspace header does not say who you are at all", () => {
+test("the workspace header carries no second account circle or photo cluster", () => {
+  // (Renamed 2026-09-25. Draft C's banner greets the member by first name —
+  // the owner's pick — which is a different thing from the circle and the
+  // "Signed in as" line below: the rail still holds the one account circle.)
   // The row carried the circle, "Signed in as {name}" and "Add a photo",
   // beside a nav that already shows the same photo and account menu. It came
   // down in two passes on 2026-08-29. The first took the greeting and the

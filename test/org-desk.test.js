@@ -1033,7 +1033,9 @@ test("the strip lands in the same paint as the batch, and hides with the firm se
 });
 
 test("the section is labelled Contacts — the tenant-rep shop it was named for was withdrawn", () => {
-  assert.match(html, /<span class="rd-lab">Contacts<\/span>/);
+  // The label may carry Draft C's head icon ahead of the word; the word is
+  // what this test is about.
+  assert.match(html, /<span class="rd-lab">(?:<span class="dk-hico[^"]*">[\s\S]*?<\/svg><\/span>)?Contacts<\/span>/);
   assert.doesNotMatch(html, /rd-lab">Tenant contacts</, "a broker shop or a development shop keeps a contact list too");
 });
 
@@ -1710,12 +1712,14 @@ function loadDates(o) {
     "this.draw = drawDeskDates; this.head = drawDeskHead; this.closed = () => __closed;",
     "let currentUser = __user; function myFirm() { return __firm; }\n" +
     "let deskCritical = null; let deskThreadsStat = __threads; const DESK_DUE_DAYS = 90; let __closed = 0;\n" +
+    "let firmBuildings = __buildings;\n" +
     "function decorateBuildingRows() {} function closeDeskFind() { __closed++; }\n" +
     "function shopCopy(kind) { return kind === 'development' ? { label: 'Development shop' } : { label: 'Broker shop' }; }\n" +
     html.match(DATE_HELPERS_RE)[0],
     { fetch, __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
       __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial", kind: "broker" } : opts.firm,
-      __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads });
+      __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads,
+      __buildings: opts.buildings || [{ id: "b3", address: "3100 S Federal Way, Boise, ID" }] });
   ctx.fetchLog = fetch.log;
   // The strip is what the agenda follows; a populated desk has shown it.
   if (!opts.stripHidden) ctx.dom.el("deskStrip").classList.remove("hidden");
@@ -1737,24 +1741,37 @@ test("Needs you lists the lease dates inside ninety days, then the unread conver
   assert.match(rows[1].textContent, /2 new.*Mike Tran.*Rent roll is in/);
   assert.equal(rows[1].children[2].href, "/messages?t=t9");
   assert.equal(ctx.dom.text("deskAgendaStats"), "2 items");
-  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true);
   assert.equal(ctx.dom.hidden("deskAgendaNote"), true);
+  // Draft C: the banner's one line counts what the card lists.
+  assert.equal(ctx.dom.text("deskHeroSub"), "1 date in the next 90 days and 1 unread conversation.");
+  assert.equal(ctx.dom.hidden("deskHeroSub"), false);
   assert.equal(ctx.fetchLog.length, 0, "no read of its own");
 });
 
 test("Needs you says 'nothing' only when both of its reads came back", () => {
+  // Draft C (2026-09-25): "nothing" is said on the banner, and the card
+  // whose only sentence it would be steps aside. A failed read keeps the
+  // card up to name the read, and the banner then says nothing at all.
   let ctx = loadDates({});
   ctx.draw([]);
-  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), false, "both read, nothing due, nothing unread: say so");
-  assert.match(ctx.dom.text("deskAgendaEmpty"), /^Nothing needs you right now/);
+  assert.equal(ctx.dom.text("deskHeroSub"), "Nothing needs you right now.", "both read, nothing due, nothing unread: say so");
+  assert.equal(ctx.dom.hidden("deskHeroSub"), false);
+  assert.equal(ctx.dom.hidden("deskAgenda"), true, "a card that could only say 'nothing' is not drawn");
   ctx = loadDates({});
   ctx.draw(null);
-  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true, "a failed leases read must not read as 'nothing is due'");
+  assert.equal(ctx.dom.hidden("deskHeroSub"), true, "a failed leases read must not read as 'nothing is due'");
+  assert.equal(ctx.dom.hidden("deskAgenda"), false, "the card stays up to say which read failed");
   assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read lease dates/);
   ctx = loadDates({ threads: null });
   ctx.draw([]);
-  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true);
+  assert.equal(ctx.dom.hidden("deskHeroSub"), true);
+  assert.equal(ctx.dom.hidden("deskAgenda"), false);
   assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read conversations/);
+  // An empty board has nothing to be due yet: the line says where to start
+  // instead of reassuring anybody about a firm with no record in it.
+  ctx = loadDates({ buildings: [] });
+  ctx.draw([]);
+  assert.equal(ctx.dom.text("deskHeroSub"), "Foothill Commercial is ready. Put your first building on the board to begin.");
 });
 
 test("Needs you follows the strip: no firm, a signed-out page or a hidden strip means no agenda", () => {
@@ -1870,7 +1887,205 @@ test("the workspace is two columns of decks, and the top row is not a deck", () 
   }
   assert.match(html, /<div class="dk-col dk-side dk-deck" data-deck id="deckSide">/,
     "the side column is itself a deck, so it hides when every card in it is hidden");
-  const top = html.slice(html.indexOf('<div class="dk-top">'), html.indexOf('id="deskStrip"'));
-  assert.ok(!top.includes("data-deck"), "the top row must never hold a deck open");
-  assert.ok(html.indexOf('id="deskAgenda"') < html.indexOf('id="deskStrip"'), "Needs you reads first");
+  const top = html.slice(html.indexOf('<div class="dk-top">'), html.indexOf('<div class="dk-cols">'));
+  assert.ok(top.includes('id="deskAgenda"'), "the top row holds Needs you");
+  assert.ok(!/<[a-z][^>]*\sdata-deck[\s>]/.test(top), "the top row must never hold a deck open");
+  // Draft C: the figure cards rest on the banner's edge, so they come first
+  // in #myDesk and Needs you follows them, full width.
+  assert.ok(html.indexOf('id="deskStrip"') < html.indexOf('<div class="dk-top">'), "the figure cards read first, on the banner's edge");
+});
+
+// ---------------------------------------------------------------------------
+// Draft C (2026-09-25, the owner's pick): the banner over the Workspace —
+// the home city's photograph or a drawn contour map, the greeting, one line
+// of status — the figure cards on its edge, the empty sections drawn as a
+// faint preview with one next step, type tags, and three start cards for a
+// member in no firm.
+// ---------------------------------------------------------------------------
+const HOME_RE = /  function drawDeskHome\(home\) \{[\s\S]*?\n  \}\n/;
+function loadHome(buildings) {
+  return load(HOME_RE, "this.draw = drawDeskHome;", "let firmBuildings = __b;", { __b: buildings || [] });
+}
+const BOISE_PHOTO = {
+  src: "/market-heroes/boise-id.jpg",
+  srcset: "/market-heroes/boise-id-1920.jpg 1920w, /market-heroes/boise-id.jpg 3840w",
+  credit: "Patrick R.", license: "CC BY-SA 3.0",
+  commonsUrl: "https://commons.wikimedia.org/wiki/File:Front_St._Downtown_Boise.jpg",
+};
+
+test("the banner shows the home city's photograph, credited on the picture, with the board's markets", () => {
+  const ctx = loadHome([{ market: "Meridian, ID" }, { market: "Boise, ID" }, { market: "Boise, ID" }, { market: "Nampa, ID" }]);
+  ctx.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
+  assert.equal(ctx.dom.hidden("deskHeroImg"), false);
+  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("src"), "/market-heroes/boise-id.jpg");
+  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("srcset"), BOISE_PHOTO.srcset);
+  assert.ok(ctx.dom.el("deskHero").classList.contains("has-photo"), "the scrim that keeps white text readable on a photo");
+  assert.equal(ctx.dom.hidden("deskHeroCredit"), false, "a photograph is never shown without its credit");
+  assert.equal(ctx.dom.text("deskHeroCredit"), "Photo: Patrick R. · CC BY-SA 3.0");
+  const link = ctx.dom.el("deskHeroCredit").children[0];
+  assert.equal(link.tagName, "A");
+  assert.equal(link.href, BOISE_PHOTO.commonsUrl);
+  assert.equal(link.rel, "noopener noreferrer");
+  assert.equal(ctx.dom.text("deskHeroWhere"), "Boise, ID · Meridian, ID · Nampa, ID", "the home market leads, the photo is of it");
+  assert.equal(ctx.dom.hidden("deskHeroWhereWrap"), false);
+});
+
+test("the banner shows only our own /market-heroes/ files, and a null home takes the picture down", () => {
+  for (const src of ["https://evil.example/x.jpg", "//evil.example/market-heroes/x.jpg", "javascript:alert(1)", "", 42]) {
+    const ctx = loadHome([{ market: "Boise, ID" }]);
+    ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { src }) });
+    assert.equal(ctx.dom.hidden("deskHeroImg"), true, String(src));
+    assert.equal(ctx.dom.hidden("deskHeroCredit"), true, "no picture, no credit");
+    assert.ok(!ctx.dom.el("deskHero").classList.contains("has-photo"));
+  }
+  // A srcset naming anything else is dropped whole; the checked src stands.
+  let ctx = loadHome([{ market: "Boise, ID" }]);
+  ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { srcset: "/market-heroes/a.jpg 1920w, https://evil.example/b.jpg 3840w" }) });
+  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("srcset"), null);
+  assert.equal(ctx.dom.hidden("deskHeroImg"), false);
+  // A credit link goes only to Commons.
+  ctx = loadHome([{ market: "Boise, ID" }]);
+  ctx.draw({ market: "Boise, ID", photo: Object.assign({}, BOISE_PHOTO, { commonsUrl: "https://evil.example/" }) });
+  assert.equal(ctx.dom.el("deskHeroCredit").children[0].tagName, "SPAN", "an unexpected credit URL is text, never a link");
+  // A sign-out, a failed read or no firm: the drawn banner, nothing named.
+  ctx = loadHome([{ market: "Boise, ID" }]);
+  ctx.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
+  ctx.draw(null);
+  assert.equal(ctx.dom.hidden("deskHeroImg"), true);
+  assert.equal(ctx.dom.hidden("deskHeroCredit"), true);
+  assert.equal(ctx.dom.hidden("deskHeroWhereWrap"), true, "no city left on a banner whose firm is gone");
+});
+
+test("renderBuildings draws the banner from the buildings read it already made", async () => {
+  const ctx = loadBuildings({ body: { buildings: [BLDG({})], summary: "1 building · 1 Industrial", home: { market: "Boise, ID", photo: BOISE_PHOTO } } });
+  await ctx.render();
+  assert.equal(ctx.fetchLog.length, 1, "the photo rides the buildings answer, not a read of its own");
+  assert.equal(ctx.dom.el("deskHeroImg").getAttribute("src"), BOISE_PHOTO.src);
+  const failed = loadBuildings({ status: 503, body: {} });
+  failed.dom.el("deskHeroImg").classList.remove("hidden"); // a stale picture
+  await failed.render();
+  assert.equal(failed.dom.hidden("deskHeroImg"), true, "a failed read takes the picture down with the list");
+});
+
+test("a building's type is a tinted tag with the same word", async () => {
+  const ctx = loadBuildings({ body: { buildings: [BLDG({}), BLDG({ id: "b2", type: "Office" }), BLDG({ id: "b3", type: "" })], summary: "" } });
+  await ctx.render();
+  const rows = ctx.dom.el("buildingRows").children;
+  const typeCell = (row) => row.children.find((c) => String(c.className).includes("dk-bc-type"));
+  assert.equal(typeCell(rows[0]).textContent, "Industrial", "the cell's text is unchanged, so the narrow reflow reads the same");
+  assert.equal(typeCell(rows[0]).children[0].className, "dk-pill dk-tone-est");
+  assert.equal(typeCell(rows[1]).children[0].className, "dk-pill dk-tone-bv");
+  assert.equal(typeCell(rows[2]).textContent, "—", "no type, no tag");
+  assert.ok(typeCell(rows[2]).className.includes("empty"));
+});
+
+test("the empty board's own button opens the add form and never closes it", async () => {
+  const ctx = loadBuildings({ body: { buildings: [], summary: "" } });
+  await ctx.render();
+  assert.equal(ctx.dom.hidden("buildingsEmpty"), false);
+  await ctx.dom.el("buildingsEmptyAdd").fire("click");
+  assert.equal(ctx.dom.hidden("buildingAddForm"), false);
+  await ctx.dom.el("buildingsEmptyAdd").fire("click");
+  assert.equal(ctx.dom.hidden("buildingAddForm"), false, "a second click must not close what the first opened");
+});
+
+function loadGreeting(user) {
+  return load(DATES_RE, "this.greet = deskGreetingFor; this.head = drawDeskHead;",
+    "let currentUser = __user; function myFirm() { return null; }\n" +
+    "let deskCritical = null; let deskThreadsStat = null; const DESK_DUE_DAYS = 90; let firmBuildings = [];\n" +
+    "function decorateBuildingRows() {} function closeDeskFind() {}\n" +
+    "function shopCopy() { return { label: 'Broker shop' }; }\n" + html.match(DATE_HELPERS_RE)[0],
+    { fetch: makeFetch([]), __user: user });
+}
+
+test("the banner greets a member by first name, on this browser's clock, and says Workspace to nobody", () => {
+  const ctx = loadGreeting({ email: "brad@colliers.com", name: "Brad Keller" });
+  const at = (h) => new Date(2026, 8, 25, h, 5);
+  assert.equal(ctx.greet(at(8), { name: "Brad Keller" }), "Good morning, Brad");
+  assert.equal(ctx.greet(at(13), { name: "Brad Keller" }), "Good afternoon, Brad");
+  assert.equal(ctx.greet(at(19), { name: "  Brad  " }), "Good evening, Brad");
+  assert.equal(ctx.greet(at(8), { email: "sam@summitcre.com" }), "Good morning", "no name, no guess at one from the email");
+  assert.equal(ctx.greet(at(8), { name: "X".repeat(90) }).length, "Good morning, ".length + 40, "a long name is cut, not wrapped over the banner");
+  ctx.head();
+  assert.match(ctx.dom.text("deskGreeting"), /^Good (morning|afternoon|evening), Brad$/);
+  assert.match(ctx.dom.text("deskToday"), /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), [A-Z][a-z]+ \d{1,2}$/);
+  const out = loadGreeting(null);
+  out.head();
+  assert.equal(out.dom.text("deskGreeting"), "Workspace");
+});
+
+test("a sign-out puts the banner back: no name, no status line, no city", () => {
+  const at = html.indexOf("async function renderShares()");
+  const fn = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(fn.includes("resetDeskHero();"), "hideAll resets the banner with the rest of the firm surfaces");
+  const reset = html.slice(html.indexOf("  function resetDeskHero() {"), html.indexOf("\n  }\n", html.indexOf("  function resetDeskHero() {")));
+  assert.ok(reset.includes('getElementById("deskGreeting").textContent = "Workspace"'));
+  assert.ok(reset.includes('heroSub("")'));
+  assert.ok(reset.includes("drawDeskHome(null)"));
+});
+
+test("a zero on the figure cards steps back, and a dash (a read that failed) does not", async () => {
+  const ctx = loadStrip({ buildings: [], shelf: [], threads: { total: 0, unread: 0 }, critical: [], stats: "" });
+  ctx.draw(await ctx.read());
+  for (const id of ["stripBuildingsFig", "stripShelfFig", "stripUnreadFig", "stripCriticalFig"]) {
+    assert.ok(ctx.dom.el(id).classList.contains("zero"), id + " is a zero and should step back");
+  }
+  const failed = loadStrip({ buildings: [BLDG({})], leases: { status: 503, body: {} }, threads: null, shelfHidden: true });
+  failed.draw(await failed.read());
+  assert.ok(!failed.dom.el("stripCriticalFig").classList.contains("zero"), "'could not read' keeps its ink");
+  assert.ok(!failed.dom.el("stripBuildingsFig").classList.contains("zero"), "1 building is not a zero");
+});
+
+test("the empty sections are previews with one next step, and the preview holds no text that could read as data", () => {
+  for (const id of ["buildingsEmpty", "deskSharedWithFirmEmpty", "deskSharesEmpty", "deskThreadsEmpty", "deskCriticalEmpty", "contactsEmpty"]) {
+    const at = html.indexOf(`id="${id}"`);
+    assert.ok(at > 0, id);
+    const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
+    assert.match(tag, /class="hidden dk-ghost"/, `${id} ships hidden and is a preview`);
+    const cta = html.indexOf('class="dk-ghost-cta"', at);
+    const rows = html.slice(html.indexOf(">", at) + 1, html.lastIndexOf("<", cta));
+    assert.match(rows, /class="dk-ghost-rows" aria-hidden="true"/, `${id}'s preview is hidden from a screen reader`);
+    assert.equal(rows.replace(/<[^>]*>/g, "").trim(), "", `${id}'s preview rows must carry no text`);
+  }
+  // .dk-ghost sets display, so it needs its own hidden rule (the .dk-strip trap).
+  assert.ok(html.includes(".dk-ghost.hidden { display: none; }"));
+  assert.ok(html.includes(".dk-start.hidden { display: none; }"));
+  assert.ok(html.includes(".dk-hero-where.hidden { display: none; }"));
+});
+
+test("a member in no firm gets three start cards, the second chosen by plan so it never opens onto a Pro gate", () => {
+  let ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true } });
+  ctx.draw();
+  assert.equal(ctx.dom.el("deskStart2").href, "/bulk");
+  assert.equal(ctx.dom.text("deskStart2T"), "Run a comp report");
+  assert.equal(ctx.dom.hidden("deskStart2IcoReport"), false);
+  assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), true);
+  ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false } });
+  ctx.draw();
+  assert.equal(ctx.dom.el("deskStart2").href, "/permits", "a free member is sent where a free member can go");
+  assert.equal(ctx.dom.text("deskStart2T"), "Watch new permits");
+  assert.equal(ctx.dom.hidden("deskStart2IcoReport"), true);
+  assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), false);
+  // The city pictures on the first card are real, committed files.
+  const box = html.slice(html.indexOf('id="deskFirmEmpty"'), html.indexOf('id="deskStart2"'));
+  const pics = [...box.matchAll(/src="\/market-heroes\/([a-z0-9-]+\.jpg)"/g)].map((m) => m[1]);
+  assert.equal(pics.length, 3);
+  for (const f of pics) assert.ok(fs.existsSync(path.join(__dirname, "..", "market-heroes", f)), f + " must exist");
+});
+
+test("the banner, the start cards and the previews reach only ids that exist", async () => {
+  const asked = new Set();
+  const home = loadHome([{ market: "Boise, ID" }]);
+  home.draw({ market: "Boise, ID", photo: BOISE_PHOTO });
+  home.dom.asked.forEach((id) => asked.add(id));
+  const greet = loadGreeting({ name: "Brad" });
+  greet.head();
+  greet.dom.asked.forEach((id) => asked.add(id));
+  const empty = loadFirmEmpty({});
+  empty.draw();
+  empty.dom.asked.forEach((id) => asked.add(id));
+  const dates = loadDates({});
+  dates.draw([]);
+  dates.dom.asked.forEach((id) => asked.add(id));
+  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the desk reads #${id}, which is not in index.html's markup`);
 });

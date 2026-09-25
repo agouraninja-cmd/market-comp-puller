@@ -1,11 +1,11 @@
 ---
-description: Cursor-only workflow for this shared CompNinja checkout. Product knowledge lives in CLAUDE.md.
+description: Cursor-only workflow for this shared CompNinja checkout. Product knowledge lives in CLAUDE.md and the .claude/rules/ files it indexes.
 alwaysApply: true
 ---
 
 # Cursor workflow
 
-Product memory is `CLAUDE.md`. Do not copy it into rules or `AGENTS.md`.
+Product memory is `CLAUDE.md` plus the per-feature files it indexes under `.claude/rules/`. Cursor does not load those automatically: open the one for the area you are touching (the table in CLAUDE.md's "Where everything else lives"). Do not copy any of it into Cursor rules or `AGENTS.md`.
 
 - This checkout is shared. Owen pushes to `origin/main`. `git fetch origin` before starting feature work.
 - Never `git add -A` or `git add .`. Stage explicit paths only. `.env` and `ledger/*.csv` are secrets.

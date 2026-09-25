@@ -197,7 +197,7 @@ cheap:
 
 | File | What it is |
 |---|---|
-| `CLAUDE.md` | The project bible. Claude Code loads it automatically and it explains every non-obvious flow. Skim it once yourself. |
+| `CLAUDE.md` | The project bible. Claude Code loads it automatically; the detail for each feature lives in `.claude/rules/`, which Claude Code loads when it opens that feature's files. Skim CLAUDE.md once yourself. |
 | `server.js` | The entire backend. If you edit it, stop the server (Ctrl+C) and `npm start` again or your change does nothing. |
 | `index.html` | The entire front end. Edits show up with just a browser refresh; no restart needed. |
 | `entitlements.js` | The paid tier's decision rules. If you touch it, run `npm test`. |

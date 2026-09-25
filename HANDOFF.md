@@ -13,7 +13,7 @@ are maintained.
 | You want | Read |
 |---|---|
 | To get a local copy running for the first time | [ONBOARDING.md](ONBOARDING.md) |
-| How anything in the product works, and why | [CLAUDE.md](CLAUDE.md) — the project bible, and authoritative |
+| How anything in the product works, and why | [CLAUDE.md](CLAUDE.md) — the project bible, and authoritative — plus the per-feature files it indexes under `.claude/rules/` |
 | What shipped, and when | `devlog.json`, rendered at `/dev` on the site |
 | What is planned or pending a decision | `docs/ROADMAP.md` |
 | Billing and Stripe setup | [PRO-BILLING-SETUP.md](PRO-BILLING-SETUP.md) |

@@ -6530,52 +6530,58 @@ async function buildingPermitsFor(building) {
   }
 }
 
-// The /buildings strip's permit rows for a firm's board. Two windowed reads
-// (applied inside the window; status moved inside it) rather than the whole
-// table, because the table only grows. Never throws: [] on any failure, the
-// lease half of the strip's rule.
+// The filings a board's activity can come from: two windowed reads (applied
+// inside the window; status moved inside it) rather than the whole table,
+// because the table only grows. THROWS — each caller decides what a failed
+// read costs it.
+async function recentPermitFilings(now) {
+  const since = new Date(now - PERMIT_FILINGS.ACTIVITY_WINDOW_DAYS * 86400000);
+  // By jurisdiction key, not market: a market name carries a comma ("Boise, ID"),
+  // and a key never does. Same set — the market is derived from the key.
+  const markets = `jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})`;
+  const [filed, moved] = await Promise.all([
+    sbRequest("GET", `permit_filings?${markets}&applied_date=gte.${since.toISOString().slice(0, 10)}&limit=2000`),
+    sbRequest("GET", `permit_filings?${markets}&status_changed_at=gte.${encodeURIComponent(since.toISOString())}&limit=2000`),
+  ]);
+  const byId = new Map();
+  for (const f of [...(filed || []), ...(moved || [])]) if (f && f.id != null) byId.set(String(f.id), f);
+  return [...byId.values()];
+}
+
+// The /buildings strip's permit rows for a firm's board. Never throws: [] on
+// any failure, the lease half of the strip's rule.
 async function boardPermitActivityFor(boardRows) {
-  const board = (boardRows || []).filter((b) => PERMIT_SWEPT_MARKETS.includes(String(b.market || "")));
+  const board = PERMIT_FILINGS.sweptBuildings(boardRows, PERMIT_SWEPT_MARKETS);
   if (!DB_CONFIGURED || !board.length) return [];
   try {
     const now = Date.now();
-    const since = new Date(now - PERMIT_FILINGS.ACTIVITY_WINDOW_DAYS * 86400000);
-    // By jurisdiction key, not market: a market name carries a comma ("Boise, ID"),
-    // and a key never does. Same set — the market is derived from the key.
-    const markets = `jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})`;
-    const [filed, moved] = await Promise.all([
-      sbRequest("GET", `permit_filings?${markets}&applied_date=gte.${since.toISOString().slice(0, 10)}&limit=2000`),
-      sbRequest("GET", `permit_filings?${markets}&status_changed_at=gte.${encodeURIComponent(since.toISOString())}&limit=2000`),
-    ]);
-    const byId = new Map();
-    for (const f of [...(filed || []), ...(moved || [])]) if (f && f.id != null) byId.set(String(f.id), f);
-    return PERMIT_FILINGS.boardPermitActivity({ filings: [...byId.values()], buildings: board, addressKey: VAULT.addressKey, now });
+    return PERMIT_FILINGS.boardPermitActivity({
+      filings: await recentPermitFilings(now), buildings: board, addressKey: VAULT.addressKey, now });
   } catch (err) {
     console.error("Board permit activity read failed:", err.message);
     return [];
   }
 }
 
-// The development shop's New filings (§2b), and the shape every firm gets
-// back from GET /api/org/permits. `feed` is null — the section does not
-// render — for any shop that is not a development shop (§9 leaves the broker
-// shop an owner call). The city line always travels, so the page can say
-// where the feature is lit whatever the feed holds.
-async function newFilingsFor(org) {
-  const kind = ORG.kindOf(org);
-  const base = { kind, cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
-    windowDays: PERMIT_FILINGS.FEED_WINDOW_DAYS, feed: null };
-  if (kind !== "development") return base;
+// The Workspace's Your permits (2026-09-24, replacing the development shop's
+// New filings): what was filed, or whose status moved, at the firm's OWN
+// buildings in the last thirty days — the /buildings strip's rows, for every
+// shop kind. `permits` is null — the section does not render — when no board
+// building sits in a swept city, and then no filing is read at all. The city
+// line always travels, so the page can say where the feature is lit.
+// Unlike the strip this THROWS: the Workspace hides a section it could not
+// read, and "nothing happened at your buildings" must never be what a failed
+// read looks like.
+async function yourPermitsFor(orgId) {
   const now = Date.now();
-  const since = new Date(now - PERMIT_FILINGS.FEED_WINDOW_DAYS * 86400000).toISOString().slice(0, 10);
-  const [rows, lastSweptAt] = await Promise.all([
-    sbRequest("GET",
-      `permit_filings?jurisdiction=in.(${pgInList(PERMITS.SWEEP_KEYS)})&is_industrial=is.true` +
-      `&applied_date=gte.${since}&order=applied_date.desc&limit=500`),
-    permitLastSweptAt(),
-  ]);
+  const base = { cities: PERMIT_FILINGS.citiesLine(PERMIT_SWEPT.map((c) => c.label)),
+    windowDays: PERMIT_FILINGS.ACTIVITY_WINDOW_DAYS };
+  const board = PERMIT_FILINGS.sweptBuildings(await orgBuildingRows(orgId), PERMIT_SWEPT_MARKETS);
+  if (!board.length) return { ...base, ...PERMIT_FILINGS.yourPermits({ buildings: [] }) };
+  const [filings, lastSweptAt] = await Promise.all([recentPermitFilings(now), permitLastSweptAt()]);
   return { ...base,
-    feed: PERMIT_FILINGS.newFilingsFeed({ filings: rows || [], now, cityOf: permitCityOf }),
+    ...PERMIT_FILINGS.yourPermits({ buildings: board, supportedMarkets: PERMIT_SWEPT_MARKETS,
+      filings, addressKey: VAULT.addressKey, now }),
     ...PERMIT_FILINGS.sweepFreshness(lastSweptAt, now) };
 }
 
@@ -10040,8 +10046,9 @@ const DESK_BOOT_ORG_URLS = (id) => [
   // The firm strip's critical-dates cell (2026-09-04) — the one read the
   // workspace makes that no section below it already makes.
   `/api/org/leases?id=${id}`,
-  // The development shop's New filings (permit signals slice 4). A broker
-  // shop's answer is `feed: null` with no database read behind it.
+  // Your permits (2026-09-24): filings at the firm's own buildings. A firm
+  // with no building in a swept city answers `permits: null` off the board
+  // read alone.
   `/api/org/permits?id=${id}`,
 ];
 async function deskBootPayload(req) {
@@ -11575,10 +11582,7 @@ const marketBar = (signedIn = false, current = "") =>
   // measures the SOURCE distance from the label to `<a href="/markets"`.
   `<span class="navsec">Tools</span>` +
   (signedIn
-    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>` +
-      // The Permit tracker (2026-09-24, owner's: "it should be under tools").
-      // Every member; index.html carries the twin row.
-      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>`
+    ? `<a href="/markets"${current === "/markets" ? ' aria-current="page"' : ""}>Market explorer</a>`
     : "") +
   (signedIn
     ? // /bulk had NO link anywhere on the site before 2026-08-29: not in a
@@ -11588,6 +11592,10 @@ const marketBar = (signedIn = false, current = "") =>
       // discovering the mode by accident. A billed feature nobody can find is
       // one nobody buys.
       `<a id="navBulk" href="/bulk"${current === "/bulk" ? ' aria-current="page"' : ""} hidden>Comp report</a>` +
+      // The Permit tracker (2026-09-24, owner's: "it should be under tools"),
+      // the THIRD Tools row, after Comp report (owner's order, same day).
+      // Every member; index.html carries the twin row in the same place.
+      `<a href="/permits"${current === "/permits" ? ' aria-current="page"' : ""}>Permit tracker</a>` +
       // Dropped on the four working pages — see CTA_FREE_PAGES above.
       // POINTS AT /bulk since the evening of 2026-09-04 (owner's: Bulk
       // valuation is the comp-report tool). It pointed at `/` until that
@@ -25036,14 +25044,15 @@ const server = http.createServer((req, res) =>
     // member's own book and their won/lost record are private to the USER, not
     // to the firm, and the leaderboard's honest limit follows from that rather
     // than from a query nobody has written yet. See deal-board.js's header.
-    // --- GET /api/org/permits — the development shop's New filings -------
+    // --- GET /api/org/permits — the Workspace's Your permits ------------
     //
-    // Permit signals slice 4 (spec §2b). The firm gate like every /api/org
-    // read, though what it returns is public record: the gate decides WHICH
-    // firm's kind is asked about, and a non-member learns nothing about it.
-    // A broker shop gets `feed: null` and the section does not render (§9 —
-    // whether it should is the owner's call). The workspace asks on every
-    // load, so a broker shop's answer costs no database read at all.
+    // Permits filed, or whose status moved, at the firm's OWN buildings
+    // (2026-09-24; until then this answered the development shop's
+    // market-wide New filings, which moved to /permits). The firm gate like
+    // every /api/org read: the filings are public record, but WHICH of them
+    // sit on this firm's board is the firm's, and a non-member learns nothing
+    // about it. Every shop kind gets it. A firm with no building in a swept
+    // city gets `permits: null` for the cost of the board read alone.
     if (req.method === "GET" && orgPath === "/api/org/permits") {
       (async () => {
         const user = await openOrg();
@@ -25051,11 +25060,10 @@ const server = http.createServer((req, res) =>
         const orgId = (new URL(req.url, "http://localhost").searchParams.get("id") || "").trim();
         const membership = await memberOf(user, orgId);
         if (!membership) return;
-        const org = (await orgsByIds([orgId])).get(String(orgId)) || null;
-        return sendJson(res, 200, await newFilingsFor(org));
+        return sendJson(res, 200, await yourPermitsFor(orgId));
       })().catch((err) => {
-        console.error("New filings read failed:", err.message);
-        return sendJson(res, 503, { error: "Couldn't read new permit filings just now." });
+        console.error("Your permits read failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't read your permits just now." });
       });
       return;
     }

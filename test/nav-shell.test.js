@@ -227,10 +227,10 @@ test("home is the workspace for a member, and the search desk comes with it", ()
   // on the workspace, and this test held the two facts together. The owner
   // then took the chamber and the recent-searches deck OFF the workspace
   // (Bulk valuation is the comp-report tool), so the desk now HIDES the form
-  // and the header's #deskRunReport leads to /bulk instead — asserted in
-  // test/index-html.test.js. What survives here: the boot rule, and that the
-  // desk view makes a decision about the form rather than leaving whatever
-  // the previous view left showing.
+  // and the rail's Comp report row is the way to a report (the header's
+  // #deskRunReport door came off on 2026-09-24). What survives here: the
+  // boot rule, and that the desk view makes a decision about the form rather
+  // than leaving whatever the previous view left showing.
   assert.match(
     html,
     /location\.pathname === "\/" && looksSignedIn\(\)/,

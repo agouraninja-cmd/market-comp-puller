@@ -2892,8 +2892,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the secret and on any per-city error line, because a scheduled job that
     passes while doing nothing is a tracker that silently stopped.
   **The Permit tracker page, `GET /permits`** (2026-09-24, owner's "it
-  should be under tools"): a Tools row directly after Market explorer on
-  BOTH nav authors (marketBar and index.html, pinned in
+  should be under tools"): the THIRD Tools row — Market explorer, Comp
+  report, Permit tracker, the owner's order — on BOTH nav authors (marketBar and index.html, pinned in
   `test/permits-page.test.js`), for any signed-in account — public record,
   not a plan feature. Body in **`permits-page.js`** (a marketShell body,
   style in the body, one read in the boot, filtered in the browser);

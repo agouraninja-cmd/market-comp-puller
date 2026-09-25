@@ -2669,9 +2669,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              server.js's marketBar and RAIL_CSS for the twin. -->
         <span class="navsec">Tools</span>
         <a href="/markets" class="hover:text-[#1A2433]">Market explorer</a>
-        <!-- The Permit tracker (2026-09-24): Tools' second row, beside Market
-             explorer. marketBar carries the twin. -->
-        <a href="/permits" class="hover:text-[#1A2433]">Permit tracker</a>
         <!-- A "Run a report" row (/run-report) sat here for one day,
              2026-09-04, and the owner took it out the same evening: Bulk
              valuation is the comp-report tool (one address or fifty), and a
@@ -2689,6 +2686,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              answers and a shared flag here would be a second copy of a rule
              entitlements.js owns. Ships hidden, like the vault link. -->
         <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Comp report</a>
+        <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
+             report (owner's order). marketBar carries the twin. -->
+        <a href="/permits" class="hover:text-[#1A2433]">Permit tracker</a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"

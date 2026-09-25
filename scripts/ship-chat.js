@@ -1,7 +1,7 @@
 // The nightly "who shipped what" post to the team's Google Chat space.
 //
 //   node scripts/ship-chat.js build --out DIR [--day YYYY-MM-DD]
-//   node scripts/ship-chat.js post  --out DIR [--image-url URL] [--dry-run]
+//   node scripts/ship-chat.js post  --out DIR [--image-url URL] [--intro] [--dry-run]
 //
 // `build` reads the PRs merged to main, counts them per person, draws the card
 // as a PNG with a Chrome the machine already has, and writes DIR/model.json +
@@ -50,9 +50,24 @@ const PEOPLE = [
 ];
 
 // The chart covers fixed 14-day periods and starts over when one ends. The
-// anchor is a Monday, so it resets every other Monday.
+// first period began the day the first post covered (the owner's call), so
+// it resets every other Thursday: Oct 8, Oct 22, and on.
 const PERIOD_DAYS = 14;
-const PERIOD_ANCHOR = "2026-09-14";
+const PERIOD_ANCHOR = "2026-09-24";
+
+// Every post goes into ONE thread of the CompNinja space, the "Developer
+// thread", rather than a new thread a night. Chat keys a webhook's threads by
+// this string: the first post with it starts the thread and every later one
+// replies into it (REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD). Changing it starts a
+// new thread, and so does replacing the webhook, since keys belong to it.
+const THREAD_KEY = "developer-thread";
+
+// What opens that thread, posted once (`post --intro`) so the thread reads as
+// the place development talk goes and not as one night's card.
+const THREAD_INTRO =
+  "*Developer thread*\n" +
+  "Where talk about CompNinja development goes. The nightly shipped card posts here at midnight, Boise time: " +
+  "who merged how many commits that day, over a chart that starts over every two weeks. Reply here to talk about any of it.";
 
 // GitHub cron runs in UTC and Boise moves an hour twice a year, so the
 // workflow fires at BOTH candidate hours and each fire posts only in the
@@ -242,9 +257,12 @@ function chartSvg(model) {
   const todayIdx = model.period.index - 1;
   const parts = [];
 
-  // Tonight's column, behind everything.
+  // Tonight's column, behind everything, and kept inside the plot so on the
+  // first and last day of a period it does not run under the axis numbers.
   const colW = plotW / (n - 1);
-  parts.push(`<rect x="${(x(todayIdx) - colW / 2).toFixed(1)}" y="${top - 6}" width="${colW.toFixed(1)}" height="${plotH + 12}" fill="#F5F4EF"/>`);
+  const bandL = Math.max(left, x(todayIdx) - colW / 2);
+  const bandR = Math.min(left + plotW, x(todayIdx) + colW / 2);
+  parts.push(`<rect x="${bandL.toFixed(1)}" y="${top - 6}" width="${(bandR - bandL).toFixed(1)}" height="${plotH + 12}" fill="#F5F4EF"/>`);
 
   // Recessive grid: a baseline and two lines, labelled at the left.
   for (const v of [0, max / 2, max]) {
@@ -472,9 +490,24 @@ function screenshot(htmlPath, pngPath) {
   if (!fs.existsSync(pngPath)) throw new Error("Chrome ran but wrote no screenshot.");
 }
 
+// The webhook URL with the thread parameters added beside its key and token.
+// Parsed rather than string-joined, because the URL already has a query string
+// and a second `?` would be read as part of the token.
+function threadedUrl(webhook, threadKey = THREAD_KEY) {
+  let url;
+  try {
+    url = new URL(webhook);
+  } catch {
+    throw new Error("GOOGLE_CHAT_WEBHOOK_URL is not a URL."); // never echo it
+  }
+  url.searchParams.set("threadKey", threadKey);
+  url.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
+  return url.toString();
+}
+
 async function postToChat(payload, webhook = process.env.GOOGLE_CHAT_WEBHOOK_URL) {
   if (!webhook) throw new Error("GOOGLE_CHAT_WEBHOOK_URL is not set.");
-  const res = await fetch(webhook, {
+  const res = await fetch(threadedUrl(webhook), {
     method: "POST",
     headers: { "content-type": "application/json; charset=UTF-8" },
     body: JSON.stringify(payload),
@@ -522,22 +555,30 @@ async function main(argv) {
   if (cmd === "post") {
     const model = JSON.parse(fs.readFileSync(path.join(out, "model.json"), "utf8"));
     const payload = chatPayload(model, argOf(args, "--image-url"));
+    const intro = args.includes("--intro");
     if (args.includes("--dry-run")) {
+      if (intro) console.log(JSON.stringify({ text: THREAD_INTRO }, null, 2));
       console.log(JSON.stringify(payload, null, 2));
       return;
     }
+    if (intro) {
+      await postToChat({ text: THREAD_INTRO });
+      console.log("Opened the Developer thread.");
+      // Chat allows one webhook message per second per space.
+      await new Promise((r) => setTimeout(r, 1500));
+    }
     await postToChat(payload);
-    console.log(`Posted ${model.day} to Google Chat.`);
+    console.log(`Posted ${model.day} to the Developer thread.`);
     return;
   }
-  throw new Error("Usage: node scripts/ship-chat.js build|post --out DIR [--day YYYY-MM-DD] [--image-url URL] [--dry-run]");
+  throw new Error("Usage: node scripts/ship-chat.js build|post --out DIR [--day YYYY-MM-DD] [--image-url URL] [--intro] [--dry-run]");
 }
 
 module.exports = {
-  PEOPLE, PERIOD_DAYS, PERIOD_ANCHOR, SCHEDULE_OFFSETS,
+  PEOPLE, PERIOD_DAYS, PERIOD_ANCHOR, SCHEDULE_OFFSETS, THREAD_KEY, THREAD_INTRO,
   boiseDate, boiseOffsetMinutes, targetDay, shouldPost, addDays, periodFor, isDay,
   longDay, shortDay, boiseMidnightUtc, workCommits, tally, buildModel, niceMax, dodge,
-  renderCardHtml, summaryLine, prSearchUrl, chatPayload, postToChat,
+  renderCardHtml, summaryLine, prSearchUrl, chatPayload, threadedUrl, postToChat,
 };
 
 if (require.main === module) {

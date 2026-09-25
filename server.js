@@ -17724,11 +17724,16 @@ async function attachCitedCounts(rows) {
   }
 }
 
+// The most comps one vault read returns. /vault's first paint asks for exactly
+// this (its boot below, and load() in vault-page.js as ?limit=1000), and the
+// page's #trunc line says so out loud once a book reaches it.
+const VAULT_READ_MAX = 1000;
+
 async function vaultReadPayload(req, params) {
   const user = await getSessionUser(req);
   if (!user) return { status: 401, body: { error: "Not signed in." } };
   const q = params || new URLSearchParams();
-  const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), 1000);
+  const limit = Math.min(Math.max(parseInt(q.get("limit"), 10) || 200, 1), VAULT_READ_MAX);
   const offset = Math.max(parseInt(q.get("offset"), 10) || 0, 0);
   const market = (q.get("market") || "").trim().slice(0, 80);
   const type = (q.get("type") || "").trim().slice(0, 40);
@@ -29428,7 +29433,17 @@ const server = http.createServer((req, res) =>
     (async () => {
       let boot = null;
       try {
-        const p = await vaultReadPayload(req, null);
+        // The whole book, up to the read's own cap -- never the 200-row
+        // default GET /api/vault keeps for a caller that names no limit. The
+        // page draws its trust line, rollup, medians and Published count from
+        // whatever this returns, and only fetches again on a filter or an
+        // import, so a boot that asked for 200 showed a 290-comp broker a
+        // 200-comp vault with every figure on it computed from that slice
+        // (and #trunc, which fires at 1,000, said nothing). load() in
+        // vault-page.js has asked for the maximum since the page first
+        // fetched; this is the same question asked server-side.
+        const p = await vaultReadPayload(req,
+          new URLSearchParams({ limit: String(VAULT_READ_MAX) }));
         boot = { s: p.status, j: p.body };
       } catch (err) {
         console.error("vault boot failed:", err.message);

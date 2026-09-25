@@ -4315,5 +4315,11 @@
     "type": "feature",
     "title": "Free is 3 reports a month; trial accounts get a start and an ending email",
     "details": "Free accounts now run 3 reports a month. Re-running a report already counted that month is free, and the form says how many are left before the first one. When the allowance runs out, the pricing window opens and says why, before anything is searched. Accounts on a trial get two emails: one saying they have Pro until a date, and one 3 days before it ends. Each is sent at most once, from a daily scheduled job, and never to paying accounts or to anyone who turned emails off. At startup the server also asks Stripe what each price charges, and pauses checkout for a plan whose Stripe price differs from the one shown on the site."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "fix",
+    "title": "The vault shows a book of more than 200 comps whole",
+    "details": "A broker whose vault held more than 200 comps opened /vault and saw only the 200 most recent. The Comps and Published counts, the market rollup, the medians and the table were all worked out from those 200, and the “showing the most recent 1,000” note never appeared. The page now loads up to 1,000 comps when it opens, the same number it already asked for on every reload after a filter or an import."
   }
 ]

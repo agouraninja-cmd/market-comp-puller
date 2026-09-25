@@ -1634,13 +1634,14 @@ test("the firm section lives in the panel, not on the workspace", () => {
 // app on an account with no firm). renderFirmEmpty() reads the membership
 // renderFirm() already loaded and fetches nothing.
 // ---------------------------------------------------------------------------
-const FIRM_EMPTY_RE = /  function renderFirmEmpty\(\) \{[\s\S]*?\n  \}\n/;
+const FIRM_EMPTY_RE = /  function renderFirmEmpty\(\) \{[\s\S]*?\n  \}\n[\s\S]*?\n  function syncStartCards\(\) \{[\s\S]*?\n  \}\n/;
 function loadFirmEmpty(o) {
   return load(FIRM_EMPTY_RE, "this.draw = renderFirmEmpty;",
-    "let currentUser = __user; let firmState = __state; function myFirm() { return __firm; }",
+    "let currentUser = __user; let firmState = __state; function myFirm() { return __firm; } let proConfig = __pro;",
     { __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
       __state: o.state === undefined ? { orgs: [], invites: [], canCreate: true } : o.state,
-      __firm: o.firm === undefined ? null : o.firm });
+      __firm: o.firm === undefined ? null : o.firm,
+      __pro: o.pro === undefined ? { enabled: false } : o.pro });
 }
 
 test("a member who can create a firm is told what one gives and offered the door", () => {
@@ -2054,15 +2055,30 @@ test("the empty sections are previews with one next step, and the preview holds 
 });
 
 test("a member in no firm gets three start cards, the second chosen by plan so it never opens onto a Pro gate", () => {
-  let ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true } });
+  let ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true }, pro: { enabled: true, canBulkValue: true } });
   ctx.draw();
   assert.equal(ctx.dom.el("deskStart2").href, "/bulk");
   assert.equal(ctx.dom.text("deskStart2T"), "Run a comp report");
   assert.equal(ctx.dom.hidden("deskStart2IcoReport"), false);
   assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), true);
-  ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false } });
+  ctx = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: false }, pro: { enabled: true, canBulkValue: false } });
   ctx.draw();
   assert.equal(ctx.dom.el("deskStart2").href, "/permits", "a free member is sent where a free member can go");
+  // A vault-only beta grant can create a firm (canUseOrg) and still has no
+  // Comp report tool (canBulkValue is Pro alone): the card follows the tool,
+  // not the firm flag (Cursor Bugbot on PR #320).
+  const beta = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true }, pro: { enabled: true, canBulkValue: false } });
+  beta.draw();
+  assert.equal(beta.dom.el("deskStart2").href, "/permits");
+  assert.equal(beta.dom.text("deskFirmEmptyBtn"), "Create a firm", "the firm card still offers what canCreate allows");
+  // Before /api/config answers, the default config has no canBulkValue: the
+  // safe card, never the gated one.
+  const early = loadFirmEmpty({ state: { orgs: [], invites: [], canCreate: true } });
+  early.draw();
+  assert.equal(early.dom.el("deskStart2").href, "/permits");
+  // And the card follows the config when it lands, beside the rail's row.
+  const at = html.indexOf('document.getElementById("menuBulkLink")\n      .classList.toggle(');
+  assert.ok(at > 0 && html.slice(at, at + 400).includes("syncStartCards();"), "refreshBillingUI re-decides the card with the rail row");
   assert.equal(ctx.dom.text("deskStart2T"), "Watch new permits");
   assert.equal(ctx.dom.hidden("deskStart2IcoReport"), true);
   assert.equal(ctx.dom.hidden("deskStart2IcoPermit"), false);

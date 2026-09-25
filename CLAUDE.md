@@ -1776,10 +1776,15 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     the preview is dropped and the card lies flat.
   - **A member in no firm gets three start cards (`#deskFirmEmpty`, class
     `dk-start`)**: Explore a market (the /markets thumbnails, decorative
-    there and here); a second card `renderFirmEmpty` picks by
-    `firmState.canCreate` — the Comp report tool for Pro, the Permit tracker
-    otherwise, so the card never opens onto a Pro gate; and the firm door
-    it has always been, label, copy and button keeping their ids and words.
+    there and here); a second card `syncStartCards` picks by
+    `proConfig.canBulkValue` — the Comp report tool when this member has it,
+    the Permit tracker otherwise, so the card never opens onto a Pro gate.
+    **Not `firmState.canCreate`**: that is canUseOrg, which a vault-only beta
+    grant carries without the Comp report tool (Cursor Bugbot, PR #320). It
+    is called from renderFirmEmpty AND from refreshBillingUI beside the
+    rail's Comp report row, because /api/config can answer after the desk
+    drew. The third card is the firm door it has always been, label, copy
+    and button keeping their ids and words.
   Colour comes only from existing status/badge tokens (`.dk-tone-*`: the
   strip's icons, the side cards' head icons, the previews and the
   buildings' type tags, `TYPE_TONES`), so dark mode needed nothing of its

@@ -16027,20 +16027,31 @@ async function renderMyDesk() {
       btn.textContent = "How a firm works";
       copy.textContent = gives + " Ask a colleague to invite you; starting one is part of Pro.";
     }
-    // The second start card, by plan (Draft C). canCreate is canUseOrg, which
-    // tracks Pro — the same answer that decides whether this member can use
-    // the Comp report tool at all, so the card never opens onto a Pro gate.
-    const pro = Boolean(firmState.canCreate);
-    document.getElementById("deskStart2").href = pro ? "/bulk" : "/permits";
-    document.getElementById("deskStart2T").textContent = pro ? "Run a comp report" : "Watch new permits";
-    document.getElementById("deskStart2X").textContent = pro
+    syncStartCards();
+    box.classList.remove("hidden");
+  }
+
+  // The second start card (Draft C), decided on canBulkValue — the one
+  // answer /api/bulk re-checks and the rail's Comp report row already reads
+  // — so the card never opens onto the Pro gate. NOT firmState.canCreate:
+  // that is canUseOrg, which a vault-only beta grant also carries without
+  // the Comp report tool. Two callers: renderFirmEmpty, and refreshBillingUI
+  // beside the rail row, because /api/config can answer after the desk has
+  // drawn and the card must follow it rather than the default config.
+  // proConfig is read inside try: it is declared far below this function,
+  // and a call before that line runs must fall back, not throw.
+  function syncStartCards() {
+    let canBulk = false;
+    try { canBulk = Boolean(proConfig && proConfig.canBulkValue); } catch (_) { canBulk = false; }
+    document.getElementById("deskStart2").href = canBulk ? "/bulk" : "/permits";
+    document.getElementById("deskStart2T").textContent = canBulk ? "Run a comp report" : "Watch new permits";
+    document.getElementById("deskStart2X").textContent = canBulk
       ? "One address or fifty, about a minute each."
       : "New commercial building permits, as the cities post them.";
-    document.getElementById("deskStart2Go").textContent = pro ? "Open Comp report →" : "Open Permit tracker →";
-    document.getElementById("deskStart2Art").className = "dk-sc-art " + (pro ? "dk-tone-ok" : "dk-tone-est");
-    document.getElementById("deskStart2IcoReport").classList.toggle("hidden", !pro);
-    document.getElementById("deskStart2IcoPermit").classList.toggle("hidden", pro);
-    box.classList.remove("hidden");
+    document.getElementById("deskStart2Go").textContent = canBulk ? "Open Comp report →" : "Open Permit tracker →";
+    document.getElementById("deskStart2Art").className = "dk-sc-art " + (canBulk ? "dk-tone-ok" : "dk-tone-est");
+    document.getElementById("deskStart2IcoReport").classList.toggle("hidden", !canBulk);
+    document.getElementById("deskStart2IcoPermit").classList.toggle("hidden", canBulk);
   }
   document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {
     if (typeof openFirmModal === "function") openFirmModal();
@@ -18808,6 +18819,9 @@ async function renderMyDesk() {
     // Stripe keys gets both tools rather than one.
     document.getElementById("menuBulkLink")
       .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
+    // The no-firm start card that points at the same tool follows the same
+    // answer (Draft C) — see syncStartCards.
+    syncStartCards();
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.
     if (proConfig && proConfig.exportsRemaining !== undefined) {

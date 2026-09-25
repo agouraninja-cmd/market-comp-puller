@@ -102,10 +102,11 @@ still parses and re-run the check above (zero found) before committing.
 
 ### 4. Docs vs. reality
 
-Spot-check the claims in `CLAUDE.md` most likely to drift, since they're
-the ones that already have:
-- The test-suite paragraph: does the module list and count match
-  `test/*.js`?
+Spot-check the claims in `CLAUDE.md` and `.claude/rules/*.md` most likely
+to drift, since they're the ones that already have:
+- CLAUDE.md's "Where everything else lives" table: does every file it names
+  exist in `.claude/rules/`, and does each file's `paths:` list still match
+  real files (a renamed module silently stops loading its rules)?
 - Any "NOT yet built" / "still unbuilt" claim: does the feature exist now?
 - The tailwind-regen description: does it match what
   `.claude/hooks/regen-tailwind.js` actually does?

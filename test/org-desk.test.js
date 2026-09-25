@@ -2160,3 +2160,193 @@ test("the banner, the start cards and the previews reach only ids that exist", a
   dates.dom.asked.forEach((id) => asked.add(id));
   for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the desk reads #${id}, which is not in index.html's markup`);
 });
+
+// ---------------------------------------------------------------------------
+// "A building a day" (2026-09-25, Draft C of the banner drafts — the owner's
+// pick). The banner shows one of the firm's own buildings from above, with
+// the reason it was picked. The RULE is building-day.js's and is tested in
+// test/building-day.test.js; these run the page's half — what it draws, and
+// the pin's proof rule — against the real module.
+// ---------------------------------------------------------------------------
+const DAY_RE = /  let deskDay = null;[\s\S]*?\n  window\.addEventListener\("resize"[\s\S]*?\n  \}\);/;
+const PROOF_RE = /  function houseNumberOf\(address\) \{[\s\S]*?\n  function unitDesignatorOf\(address\) \{[\s\S]*?\n  \}/;
+const FOOTPRINT_RE = /  function footprintSqft\(geometry, lat0, lng0\) \{[\s\S]*?\n  \}/;
+const DAY_NOW = Date.now();
+const daysAgoIso = (n) => new Date(DAY_NOW - n * 86400000).toISOString();
+const DAYB = (o) => Object.assign({ id: "b1", address: "3275 S Federal Way, Boise, ID", lat: 43.572128, lng: -116.190925,
+  createdAt: daysAgoIso(60), addedBy: "Brad Ellis", mine: false, market: "Boise, ID", type: "Industrial" }, o);
+// A square outline, centred on (lat, lng).
+const SQUARE = (lat, lng, half) => {
+  const h = half || 0.00022, w = h / Math.cos(lat * Math.PI / 180);
+  return [[lat - h, lng - w], [lat - h, lng + w], [lat + h, lng + w], [lat + h, lng - w]].map(([a, b]) => ({ lat: a, lon: b }));
+};
+function loadDay(o) {
+  const store = o.store || {};
+  const overpass = [];
+  const ctx = load(DAY_RE,
+    "this.draw = drawDeskDay; this.show = showDeskDay; this.clear = clearDeskDay; this.state = () => deskDay;",
+    html.match(PROOF_RE)[0] + "\n" + html.match(FOOTPRINT_RE)[0] + "\n" +
+    "let currentUser = __user; function myFirm() { return __firm; }\n" +
+    "let firmBuildings = __b; let deskCritical = __crit; let firmShelfItems = __shelf;\n" +
+    "async function overpassQuery(body) { __overpass.push(body); return __answer; }",
+    { __user: o.user === undefined ? { email: "brad@foothillcre.com" } : o.user,
+      __firm: o.firm === undefined ? { id: "o1", name: "Foothill Commercial" } : o.firm,
+      __b: o.buildings || [], __crit: o.critical || null, __shelf: o.shelf || [],
+      __overpass: overpass, __answer: o.answer === undefined ? { elements: [] } : o.answer,
+      BUILDINGDAY: o.noModule ? undefined : require("../building-day.js"),
+      window: { innerWidth: o.width || 1440, devicePixelRatio: 1, addEventListener() {} },
+      localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } } });
+  if (o.stripHidden) ctx.dom.el("deskStrip").classList.add("hidden");
+  else ctx.dom.el("deskStrip").classList.remove("hidden");
+  ctx.overpass = overpass;
+  ctx.store = store;
+  return ctx;
+}
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+test("the banner shows the building with the nearest date, from above, with the reason on it", () => {
+  const ctx = loadDay({
+    buildings: [DAYB({ id: "far", address: "120 N Milwaukee St, Boise, ID", lat: 43.605718, lng: -116.281339 }), DAYB({})],
+    critical: [{ buildingId: "b1", kind: "notice", tenant: "Acme Logistics", days: 41 }],
+  });
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskDay"), false);
+  assert.ok(ctx.dom.el("deskHero").classList.contains("has-day"));
+  assert.equal(ctx.dom.text("deskDayKick"), "Today's building");
+  assert.equal(ctx.dom.text("deskDayName"), "3275 S Federal Way", "the street line, not the whole address");
+  assert.equal(ctx.dom.el("deskDayName").getAttribute("href"), "/building/b1");
+  assert.equal(ctx.dom.el("deskDayOpen").getAttribute("href"), "/building/b1", "the card opens the building's sheet");
+  assert.equal(ctx.dom.text("deskDayWhy"), "The option notice for Acme Logistics is due ");
+  assert.equal(ctx.dom.text("deskDayLead"), "in 41 days.");
+  assert.equal(ctx.dom.text("deskDayCount"), "1 of 2");
+  assert.equal(ctx.dom.hidden("deskDayPager"), false);
+  assert.equal(ctx.dom.hidden("deskHeroAerial"), false);
+  assert.match(ctx.dom.el("deskHeroAerial").getAttribute("src"), /^https:\/\/services\.arcgisonline\.com\/ArcGIS\/rest\/services\/World_Imagery\/MapServer\/export\?/);
+  assert.equal(ctx.dom.hidden("deskDayCredit"), false, "an aerial is never shown without its credit");
+  assert.equal(ctx.dom.hidden("deskHeroPin"), true, "no pin until an outline proves the roof");
+});
+
+test("the pin goes only on a roof the map proves is that address, and the largest proving outline wins", async () => {
+  const b = DAYB({});
+  const answer = { elements: [
+    // Bigger, close, and not this address: a neighbour's warehouse.
+    { tags: { building: "warehouse", "addr:housenumber": "3301", "addr:street": "South Federal Way" }, geometry: SQUARE(43.5722, -116.1909, 0.0006) },
+    // This address, mapped in two parts: the main mass and a canopy.
+    { tags: { building: "industrial", "addr:housenumber": "3275", "addr:street": "South Federal Way" }, geometry: SQUARE(43.57205, -116.19095, 0.0003) },
+    { tags: { building: "roof", "addr:housenumber": "3275", "addr:street": "South Federal Way" }, geometry: SQUARE(43.5724, -116.1912, 0.00005) },
+    // The right number on another street.
+    { tags: { building: "yes", "addr:housenumber": "3275", "addr:street": "West Victory Road" }, geometry: SQUARE(43.5721, -116.1908, 0.0004) },
+  ] };
+  const ctx = loadDay({ buildings: [b], answer });
+  ctx.draw();
+  await settle(); await settle();
+  assert.equal(ctx.overpass.length, 1, "one outline query for the building on screen");
+  assert.equal(ctx.dom.hidden("deskHeroPin"), false, "a proven roof gets the pin");
+  const q = new URLSearchParams(ctx.dom.el("deskHeroAerial").getAttribute("src").split("?")[1]);
+  const [xmin, , xmax] = q.get("bbox").split(",").map(Number);
+  const R = 6378137, rad = Math.PI / 180;
+  const want = R * -116.19095 * rad;
+  assert.ok(Math.abs((want - xmin) / (xmax - xmin) - 0.56) < 0.01, "re-framed on the main mass, not the looked-up point");
+  const cached = JSON.parse(ctx.store["roofCache.v1"]);
+  assert.equal(Object.keys(cached).length, 1, "remembered, so tomorrow asks nobody");
+  const again = loadDay({ buildings: [b], answer, store: ctx.store });
+  again.draw();
+  await settle();
+  assert.equal(again.overpass.length, 0, "a remembered roof is not asked for again");
+  assert.equal(again.dom.hidden("deskHeroPin"), false);
+});
+
+test("no proof is no pin; an outline service outage is not remembered as a miss", async () => {
+  const miss = loadDay({ buildings: [DAYB({})], answer: { elements: [
+    { tags: { building: "yes" }, geometry: SQUARE(43.5721, -116.1909) },
+  ] } });
+  miss.draw();
+  await settle(); await settle();
+  assert.equal(miss.dom.hidden("deskHeroPin"), true);
+  assert.equal(miss.dom.hidden("deskHeroAerial"), false, "the picture still shows, framed on the looked-up point");
+  assert.equal(Object.values(JSON.parse(miss.store["roofCache.v1"]))[0], null, "a real miss is remembered");
+  const down = loadDay({ buildings: [DAYB({})], answer: null });
+  down.draw();
+  await settle(); await settle();
+  assert.equal(down.dom.hidden("deskHeroPin"), true);
+  assert.equal(down.store["roofCache.v1"], undefined, "an outage is not a miss: the next paint asks again");
+  const unit = loadDay({ buildings: [DAYB({ address: "3275 S Federal Way Suite 200, Boise, ID" })] });
+  unit.draw();
+  await settle();
+  assert.equal(unit.overpass.length, 0, "an address naming one unit proves no single roof, so nothing is asked");
+  assert.equal(unit.dom.hidden("deskHeroPin"), true);
+});
+
+test("the arrows flip through the rest of the board, each with its own reason, and wrap", () => {
+  const ctx = loadDay({ buildings: [
+    DAYB({}),
+    DAYB({ id: "b2", address: "450 W Main St, Boise, ID", lat: 43.61386, lng: -116.199328, createdAt: daysAgoIso(3), addedBy: "Mike Tran" }),
+    DAYB({ id: "b3", address: "9 Nowhere St, Boise, ID", lat: null, lng: null }),
+  ], critical: [{ buildingId: "b1", kind: "expiry", tenant: "Acme Logistics", days: 12 }] });
+  ctx.draw();
+  assert.equal(ctx.dom.text("deskDayCount"), "1 of 2", "a building with no location is not in the running order");
+  ctx.show(ctx.state().at + 1);
+  assert.equal(ctx.dom.text("deskDayKick"), "On your board", "only the morning's pick is called today's building");
+  assert.equal(ctx.dom.text("deskDayName"), "450 W Main St");
+  assert.match(ctx.dom.text("deskDayWhy"), /^New on the board, added by Mike Tran on /);
+  assert.equal(ctx.dom.text("deskDayLead"), "");
+  ctx.show(ctx.state().at + 1);
+  assert.equal(ctx.dom.text("deskDayName"), "3275 S Federal Way", "past the last it wraps to the first");
+  ctx.show(ctx.state().at - 1);
+  assert.equal(ctx.dom.text("deskDayCount"), "2 of 2");
+  const one = loadDay({ buildings: [DAYB({})] });
+  one.draw();
+  assert.equal(one.dom.hidden("deskDayPager"), true, "one building has nothing to flip to");
+});
+
+test("an empty board is told what will appear; nothing located, a failed read, or no rule shows nothing new", () => {
+  const empty = loadDay({ buildings: [] });
+  empty.draw();
+  assert.equal(empty.dom.hidden("deskDayEmpty"), false);
+  assert.equal(empty.dom.hidden("deskDay"), true);
+  assert.ok(!empty.dom.el("deskHero").classList.contains("has-day"));
+  const cases = [
+    ["nothing located yet: the city photograph stays", { buildings: [DAYB({ lat: null, lng: null })] }],
+    ["the board could not be read", { buildings: [DAYB({})], stripHidden: true }],
+    ["/building-day.js did not load", { buildings: [DAYB({})], noModule: true }],
+    ["not in a firm", { buildings: [DAYB({})], firm: null }],
+    ["signed out", { buildings: [DAYB({})], user: null }],
+  ];
+  for (const [why, o] of cases) {
+    const ctx = loadDay(o);
+    ctx.dom.el("deskHero").classList.add("has-day"); // a stale aerial from before
+    ctx.dom.el("deskDay").classList.remove("hidden");
+    ctx.draw();
+    assert.equal(ctx.dom.hidden("deskDay"), true, why);
+    assert.equal(ctx.dom.hidden("deskHeroAerial"), true, why);
+    assert.equal(ctx.dom.hidden("deskDayEmpty"), true, why);
+    assert.ok(!ctx.dom.el("deskHero").classList.contains("has-day"), why + ": the city photograph shows again");
+  }
+});
+
+test("the building of the day is drawn last from what the desk read, and goes with the rest of the banner", () => {
+  const at = html.indexOf("async function renderShares()");
+  const fn = html.slice(at, html.indexOf("\n  }\n", at));
+  assert.ok(fn.indexOf("drawDeskDay();") > fn.indexOf("drawDeskDates(await critical);"),
+    "after the lease dates, the shelf and the buildings have all been parsed");
+  const r0 = html.indexOf("  function resetDeskHero() {");
+  const reset = html.slice(r0, html.indexOf("\n  }\n", r0));
+  assert.ok(reset.includes("clearDeskDay();"), "a sign-out takes the aerial and its card down with the name");
+  const block = html.match(DAY_RE)[0];
+  assert.doesNotMatch(block, /bootFetch\(|fetch\(`?\/api/, "it has no read of its own");
+  assert.doesNotMatch(block, /innerHTML/, "tenants, names and addresses are written with textContent");
+  const ctx = loadDay({ buildings: [DAYB({})], critical: [{ buildingId: "b1", kind: "notice", tenant: "A", days: 3 }] });
+  ctx.draw();
+  const empty = loadDay({ buildings: [] });
+  empty.draw();
+  const asked = new Set([...ctx.dom.asked, ...empty.dom.asked]);
+  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the banner reads #${id}, which is not in index.html's markup`);
+});
+
+test("the browser can actually reach BUILDINGDAY", () => {
+  assert.match(html, /<script src="\/building-day\.js"><\/script>/);
+  const serverSrc = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+  assert.match(serverSrc,
+    /"\/building-day\.js": \{ file: "building-day\.js", type: "text\/javascript; charset=utf-8", maxAge: 0 \}/);
+  assert.ok(!/const \{[^}]*\} = BUILDINGDAY/.test(html), "guarded with typeof, never destructured: a missing file must not take the page down");
+});

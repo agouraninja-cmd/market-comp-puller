@@ -408,6 +408,77 @@ function composeSheet(parts) {
   return { building: toBuilding(building, viewerId), firmComps: firm, mineComps: own, reports, valuations, contacts, notes, leases };
 }
 
+// ---------------------------------------------------------------------------
+// Locating a building (2026-09-25, for the Workspace banner's "a building a
+// day"). The banner can only picture a building that has coordinates, and a
+// building typed into the add form arrives with none. server.js looks one up
+// with our own Census call — the Vault's import-time geocoder, never a third
+// party — and these two rules decide which rows to ask about and whether the
+// answer is really the building that was typed.
+// ---------------------------------------------------------------------------
+
+// Rows with no location that name a street number, in the order given (the
+// read is newest-first, so the building somebody just added is asked about
+// first), at most `cap`. A row with ONE coordinate is left alone: that is a
+// half-written row, not an unlocated one, and a lookup must never overwrite
+// the half a person supplied.
+function buildingsNeedingGeocode(rows, cap) {
+  const n = Number.isFinite(Number(cap)) ? Math.max(0, Math.floor(Number(cap))) : 0;
+  const out = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (out.length >= n) break;
+    if (!r || !r.id) continue;
+    if (r.lat != null || r.lng != null) continue;
+    if (!/^\s*\d/.test(str(r.address))) continue;
+    out.push(r);
+  }
+  return out;
+}
+
+const DIRECTIONS = {
+  n: "n", s: "s", e: "e", w: "w", ne: "ne", nw: "nw", se: "se", sw: "sw",
+  north: "n", south: "s", east: "e", west: "w",
+  northeast: "ne", northwest: "nw", southeast: "se", southwest: "sw",
+};
+const SUFFIXES = {
+  st: "st", street: "st", rd: "rd", road: "rd", ave: "ave", av: "ave", avenue: "ave",
+  blvd: "blvd", boulevard: "blvd", dr: "dr", drive: "dr", ln: "ln", lane: "ln", way: "way",
+  ct: "ct", court: "ct", pl: "pl", place: "pl", pkwy: "pkwy", parkway: "pkwy",
+  hwy: "hwy", highway: "hwy", cir: "cir", circle: "cir", ter: "ter", terrace: "ter",
+  trl: "trl", trail: "trl", loop: "loop", pike: "pike", plz: "plz", plaza: "plz", sq: "sq", square: "sq",
+};
+
+// "560 S Eagle Rd, Meridian, ID" -> { number: "560", dirs: ["s"], name: "eagle", suffix: "rd" }
+function streetParts(address) {
+  const line = str(address).split(",")[0].toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const toks = line ? line.split(" ") : [];
+  const num = /^\d+[a-z]?$/.test(toks[0] || "") ? toks.shift().replace(/[a-z]$/, "") : "";
+  const dirs = [];
+  if (toks.length > 1 && DIRECTIONS[toks[0]]) dirs.push(DIRECTIONS[toks.shift()]);
+  if (toks.length > 1 && DIRECTIONS[toks[toks.length - 1]]) dirs.push(DIRECTIONS[toks.pop()]);
+  const suffix = toks.length > 1 && SUFFIXES[toks[toks.length - 1]] ? SUFFIXES[toks.pop()] : "";
+  return { number: num, dirs, name: toks.join(" "), suffix };
+}
+
+// Whether a Census answer is the building that was typed. Found on the first
+// test board: "560 S Eagle Rd, Meridian" came back as "560 N EAGLE RD" — the
+// other side of town — and "16100 N Franklin Blvd, Nampa" as "16100 FRANKLIN
+// RD". A location on the wrong street puts somebody else's roof on the
+// banner under this firm's name, so the rule misses rather than guesses:
+//   - the house number and the street name must be the same;
+//   - a direction or a street type may be MISSING on one side (Census drops
+//     "W" from "450 W Main St" and is right to), but never DIFFERENT;
+//   - no matched address at all is a miss, since nothing can be checked.
+function censusMatchAgrees(typed, matched) {
+  const a = streetParts(typed);
+  const b = streetParts(matched);
+  if (!a.number || !b.number || a.number !== b.number) return false;
+  if (!a.name || a.name !== b.name) return false;
+  if (a.suffix && b.suffix && a.suffix !== b.suffix) return false;
+  if (a.dirs.length && b.dirs.length && a.dirs.join(" ") !== b.dirs.join(" ")) return false;
+  return true;
+}
+
 module.exports = {
   normalizeBuilding,
   summarize,
@@ -417,6 +488,8 @@ module.exports = {
   validateBuildingEdit,
   validateNote,
   composeSheet,
+  buildingsNeedingGeocode,
+  censusMatchAgrees,
   EDITABLE_FIELDS,
   MAX_NOTE,
   OVERFLOW_AT,

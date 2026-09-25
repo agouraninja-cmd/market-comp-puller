@@ -4860,6 +4860,45 @@ async function orgBuildingRows(orgId) {
     `&order=updated_at.desc&limit=${BUILDINGS.MAX_BUILDINGS}`)) || [];
 }
 
+// Locating the firm's buildings (2026-09-25). The Workspace banner shows one
+// of the firm's buildings from above each morning (building-day.js), which
+// needs coordinates, and a building typed into the add form arrives with
+// none. So a building with no location is looked up with OUR OWN Census call
+// (geocodeCensus, the Vault's import-time geocoder — never Nominatim, never a
+// third party) and kept only when the answer is the street that was typed
+// (org-buildings.js's censusMatchAgrees: "560 S Eagle Rd" once came back as
+// "560 N EAGLE RD", the other side of town).
+//
+// Fire-and-forget, scheduleVaultGeocode's contract: never awaited, never able
+// to fail the read or the add that triggered it, and a miss or an outage is a
+// skip, never a guess. The PATCH is scoped by org_id AND guarded on both
+// coordinates being null, so a location a member's own door supplied (a
+// report's subject point) is never rewritten, and a building on another
+// firm's board cannot be reached by its id. It fills lat/lng only and leaves
+// updated_at alone: being located is not activity on the board.
+//
+// It lives HERE, beside orgBuildingRows, because test/org-routes.test.js
+// allows the table to be named only in this read block and the route block.
+const ORG_GEOCODE_BACKFILL_CAP = 8; // per read, the Vault backfill's number
+
+function scheduleOrgBuildingGeocode(orgId, rows, cap) {
+  if (!DB_CONFIGURED || !orgId) return;
+  const todo = BUILDINGS.buildingsNeedingGeocode(rows, cap);
+  if (!todo.length) return;
+  Promise.resolve().then(async () => {
+    for (const row of todo) {
+      const ll = await geocodeCensus(row.address);
+      if (!ll || !BUILDINGS.censusMatchAgrees(row.address, ll.matchedAddress)) continue;
+      try {
+        await sbRequest("PATCH",
+          `org_buildings?id=eq.${encodeURIComponent(row.id)}&org_id=eq.${encodeURIComponent(orgId)}` +
+          `&lat=is.null&lng=is.null`,
+          { lat: ll.lat, lng: ll.lng }, { prefer: "return=minimal" });
+      } catch (_) { /* best-effort: the next read tries again */ }
+    }
+  }).catch(() => {});
+}
+
 // The sheet's reads (Three Spaces, slice 5). Each is its own scoped query
 // and composeSheet in org-buildings.js is handed them as separate arrays —
 // never merged here, never widened. The viewer's own vault comps come from
@@ -25393,6 +25432,9 @@ const server = http.createServer((req, res) =>
           const ctx = await buildingsFor();
           if (!ctx) return;
           const rows = await orgBuildingRows(ctx.orgId);
+          // A few unlocated buildings are looked up in the background, so a
+          // board that predates the banner fills in over its next few reads.
+          scheduleOrgBuildingGeocode(ctx.orgId, rows, ORG_GEOCODE_BACKFILL_CAP);
           return sendJson(res, 200, {
             id: ctx.orgId,
             truncated: rows.length >= BUILDINGS.MAX_BUILDINGS,
@@ -25467,6 +25509,8 @@ const server = http.createServer((req, res) =>
             building = ((await sbRequest("GET", `${scope}&limit=1`)) || [])[0] || null;
             if (!building) return sendJson(res, 503, { error: "Couldn't save that building. Please try again in a minute." });
           }
+          // Located now, in the background, so tomorrow's banner can show it.
+          scheduleOrgBuildingGeocode(ctx.orgId, [building], 1);
           logEvent("org_buildings", { source: existed ? "again" : "add", prop_type: row.property_type || "" });
           return sendJson(res, 200, { ok: true, existed, building: BUILDINGS.toBuilding(building, ctx.user.id) });
         })().catch((err) => {
@@ -27949,6 +27993,11 @@ const server = http.createServer((req, res) =>
     // same function the market pages read, so the browser copy must never be
     // stale relative to the page that calls it.
     "/market-snapshot.js": { file: "market-snapshot.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
+    // And again: the Workspace banner asks the global BUILDINGDAY which of the
+    // firm's buildings opens the morning, so the browser copy must never be
+    // stale relative to the page that calls it (the page degrades to the city
+    // photograph without it, but a STALE copy would draw yesterday's rule).
+    "/building-day.js": { file: "building-day.js", type: "text/javascript; charset=utf-8", maxAge: 0 },
     // The desktop/mobile install identity (PWA). Users "download" the app
     // from the site itself — Chrome/Edge offer Install once this manifest is
     // reachable — so there is no installer to host or code-sign anywhere.

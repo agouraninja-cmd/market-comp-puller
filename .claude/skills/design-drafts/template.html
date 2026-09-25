@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Two to four words: "CompNinja <Surface> Drafts". -->
+<title>CompNinja [Surface] Drafts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<!--
+  The CompNinja design-drafts page. See SKILL.md beside this file.
+  Everything between [square brackets] is a placeholder. The styles and the
+  viewer script are the format; do not redesign them per draft.
+  Pictures are published beside the page as img/<draft>-<situation>-<screen>.png
+  with draft in today,a,b,c and screen in desk,dark,phone.
+-->
+<style>
+  /* The site's own tokens (theme.js), so the page reads like CompNinja. */
+  :root {
+    --paper: #FBFBF9; --card: #ffffff; --wash: #F5F4EF; --edge: #D8D4C9; --line: #E4E2DA; --hair: #F0EFE9;
+    --ink: #1A2433; --ink-body: #374253; --ink-2: #4C5665; --ink-3: #68707E; --ink-4: #C7CBD2;
+    --red: #B91C1C; --red-fill: #B91C1C; --slab: #1A2433;
+    --shadow: 0 1px 2px rgba(15,23,42,.05), 0 12px 30px -18px rgba(15,23,42,.25);
+    --serif: Georgia, 'Times New Roman', serif;
+    --sans: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #121826; --card: #1A2433; --wash: #243044; --edge: #333E4F; --line: #2A3648; --hair: #222F40;
+      --ink: #E4E9F0; --ink-body: #B6C1CF; --ink-2: #A8B6C6; --ink-3: #8B98A8; --ink-4: #475569;
+      --red: #F87171; --red-fill: #DC2626; --slab: #243044;
+      --shadow: 0 10px 28px -12px rgba(0,0,0,.55);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #121826; --card: #1A2433; --wash: #243044; --edge: #333E4F; --line: #2A3648; --hair: #222F40;
+    --ink: #E4E9F0; --ink-body: #B6C1CF; --ink-2: #A8B6C6; --ink-3: #8B98A8; --ink-4: #475569;
+    --red: #F87171; --red-fill: #DC2626; --slab: #243044;
+    --shadow: 0 10px 28px -12px rgba(0,0,0,.55);
+    color-scheme: dark;
+  }
+  body { margin: 0; background: var(--paper); color: var(--ink-body); font: 15px/1.55 var(--sans); }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 40px 24px 72px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 500; color: var(--ink); text-wrap: balance; letter-spacing: -.015em; margin: 0; }
+  .kick { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+  .kick b { color: var(--red); font-weight: 600; }
+  header h1 { font-size: clamp(30px, 4.4vw, 44px); line-height: 1.08; margin-top: 10px; }
+  .lede { max-width: 68ch; margin: 14px 0 0; font-size: 16px; color: var(--ink-2); }
+  .lede b { color: var(--ink); font-weight: 600; }
+
+  /* the drafts */
+  .drafts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 34px; }
+  .draft { display: flex; flex-direction: column; gap: 10px; padding: 20px 20px 18px; background: var(--card); border: 1px solid var(--edge); border-radius: 12px; }
+  .draft.on { border-color: var(--ink); box-shadow: var(--shadow); }
+  .d-top { display: flex; align-items: center; gap: 11px; }
+  .d-letter { flex: 0 0 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-family: var(--serif); font-size: 18px; color: #fff; background: var(--slab); }
+  .draft.on .d-letter { background: var(--red-fill); }
+  .d-name { font-size: 20px; }
+  .d-pitch { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .draft ul { margin: 2px 0 0; padding: 0 0 0 18px; font-size: 13.5px; color: var(--ink-body); }
+  .draft li { margin: 5px 0; }
+  .d-trade { margin: auto 0 0; padding-top: 10px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--ink-3); }
+  .d-trade b { color: var(--ink-2); font-weight: 600; }
+  .d-show { align-self: flex-start; margin-top: 4px; font: inherit; font-size: 13px; font-weight: 600; color: var(--red); background: none; border: 0; padding: 0; cursor: pointer; }
+  .d-show:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .d-show:focus-visible, .seg button:focus-visible, .tab:focus-visible, .chk input:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+  /* viewer */
+  .viewer { margin-top: 44px; }
+  .v-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px; padding-bottom: 14px; border-bottom: 1.5px solid var(--ink); }
+  .v-head h2 { font-size: 26px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; background: var(--card); }
+  .seg button { font: inherit; font-size: 13px; color: var(--ink-2); background: none; border: 0; border-left: 1px solid var(--edge); padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  .seg button:first-child { border-left: 0; }
+  .seg button[aria-pressed="true"] { background: var(--slab); color: #fff; }
+  .chk { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+  .chk input { accent-color: #B91C1C; width: 15px; height: 15px; margin: 0; }
+  .sit-note { margin: 14px 0 0; font-size: 13.5px; color: var(--ink-3); }
+  .sit-note b { color: var(--ink); font-weight: 600; }
+
+  .tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+  .tab { display: flex; flex-direction: column; gap: 0; padding: 0; background: var(--card); border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; cursor: pointer; font: inherit; text-align: left; color: inherit; }
+  .tab .thumb { display: block; height: 92px; background: var(--wash) no-repeat center top / cover; border-bottom: 1px solid var(--hair); }
+  .tab .t-lab { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px 12px 9px; font-size: 13px; font-weight: 600; color: var(--ink); }
+  .tab .t-lab small { font-weight: 400; color: var(--ink-3); font-size: 12px; }
+  .tab[aria-selected="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+  .tab[aria-selected="true"] .t-lab { color: var(--red); }
+
+  .stage { margin-top: 18px; }
+  .pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .pair.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shot { margin: 0; }
+  .shot figcaption { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .shot figcaption b { color: var(--ink); font-weight: 600; }
+  .frame { border: 1px solid var(--edge); border-radius: 10px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+  .frame img { display: block; width: 100%; height: auto; }
+  .phones { display: flex; gap: 18px; overflow-x: auto; padding: 2px 2px 12px; }
+  .phones .shot { flex: 0 0 300px; }
+  .phones .frame { border-radius: 22px; border-width: 6px; border-color: var(--slab); }
+  .phones .shot.sel figcaption b { color: var(--red); }
+  .hint { margin: 10px 0 0; font-size: 12.5px; color: var(--ink-3); }
+
+  /* notes */
+  .notes { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 36px; margin-top: 54px; }
+  .notes h2 { font-size: 22px; padding-bottom: 10px; border-bottom: 1.5px solid var(--ink); }
+  .notes ol, .notes ul { margin: 14px 0 0; padding-left: 20px; font-size: 14px; }
+  .notes li { margin: 9px 0; max-width: 64ch; }
+  .notes li b { color: var(--ink); font-weight: 600; }
+  .pick { padding: 18px 20px; margin-top: 14px; background: var(--card); border: 1px solid var(--edge); border-radius: 12px; font-size: 14px; }
+  .pick p { margin: 0 0 8px; }
+  .pick code { font: 600 13px var(--sans); color: var(--red); }
+  .foot { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+
+  @media (max-width: 960px) {
+    .drafts { grid-template-columns: minmax(0, 1fr); }
+    .notes { grid-template-columns: minmax(0, 1fr); }
+    .pair.two { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 640px) {
+    .wrap { padding: 28px 16px 56px; }
+    .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tab .thumb { height: 70px; }
+    .seg button { padding: 7px 9px; font-size: 12.5px; }
+    .phones .shot { flex-basis: 250px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .frame img { transition: opacity .15s ease; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kick">CompNinja · <b>[Surface] redesign</b> · [Month Day]</div>
+    <h1>Three drafts for the [Surface]</h1>
+    <p class="lede">[The problem in one or two plain sentences.] Each draft below fixes that a different way. <b>These are pictures of the real [Surface] page</b>, running on a test database with a made-up firm, with each draft layered on top. Nothing here touches a real account.</p>
+  </header>
+
+  <!-- Smallest change first, biggest last. Three is the default; two or four is fine. -->
+  <section class="drafts" aria-label="The drafts">
+    <article class="draft" data-d="a">
+      <div class="d-top"><span class="d-letter">A</span><h2 class="d-name">[Short name]</h2></div>
+      <p class="d-pitch">[One sentence: what this draft is.]</p>
+      <ul>
+        <li>[What changes, in plain words.]</li>
+        <li>[What an empty or first-run page gets.]</li>
+        <li>[Another concrete change.]</li>
+      </ul>
+      <p class="d-trade"><b>Trade-off:</b> [the honest cost of this draft.]</p>
+      <button type="button" class="d-show" data-d="a">Show Draft A →</button>
+    </article>
+    <article class="draft" data-d="b">
+      <div class="d-top"><span class="d-letter">B</span><h2 class="d-name">[Short name]</h2></div>
+      <p class="d-pitch">[One sentence.]</p>
+      <ul>
+        <li>[Change.]</li>
+        <li>[Change.]</li>
+        <li>[Change.]</li>
+      </ul>
+      <p class="d-trade"><b>Trade-off:</b> [cost.]</p>
+      <button type="button" class="d-show" data-d="b">Show Draft B →</button>
+    </article>
+    <article class="draft" data-d="c">
+      <div class="d-top"><span class="d-letter">C</span><h2 class="d-name">[Short name]</h2></div>
+      <p class="d-pitch">[One sentence.]</p>
+      <ul>
+        <li>[Change.]</li>
+        <li>[Change.]</li>
+        <li>[Change.]</li>
+      </ul>
+      <p class="d-trade"><b>Trade-off:</b> [cost.]</p>
+      <button type="button" class="d-show" data-d="c">Show Draft C →</button>
+    </article>
+  </section>
+
+  <section class="viewer" id="viewer" aria-label="Compare the drafts">
+    <div class="v-head">
+      <h2>See them on screen</h2>
+      <div class="controls">
+        <!-- One button per SIT key in the script below. -->
+        <div class="seg" role="group" aria-label="Situation" id="segSit">
+          <button type="button" data-v="new">[New account]</button>
+          <button type="button" data-v="empty">[Empty]</button>
+          <button type="button" data-v="busy">[Busy]</button>
+        </div>
+        <div class="seg" role="group" aria-label="Screen" id="segMode">
+          <button type="button" data-v="desk">Desktop</button>
+          <button type="button" data-v="dark">Dark</button>
+          <button type="button" data-v="phone">Phone</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="sideBySide"> Next to today</label>
+      </div>
+    </div>
+    <p class="sit-note" id="sitNote"></p>
+
+    <div class="tabs" role="tablist" aria-label="Draft" id="tabs"></div>
+    <div class="stage" id="stage" aria-live="polite"></div>
+    <p class="hint" id="hint">Use the ← → keys to flip between today and the drafts.</p>
+  </section>
+
+  <section class="notes">
+    <div>
+      <h2>Found while making these</h2>
+      <ol>
+        <li><b>[Something worth deciding on its own.]</b> [Why, in plain words.]</li>
+        <li><b>Dark mode works in all three.</b> They use only the site's existing colour names. Check the Dark view above.</li>
+        <li><b>They work on a phone.</b> Every draft stacks to one column. See the Phone view.</li>
+        <li><b>These are prototypes.</b> Each draft is a layer on top of the real page, made to take these pictures. Once you pick one, it gets built into the page properly, with tests and before-and-after pictures.</li>
+      </ol>
+    </div>
+    <div>
+      <h2>How to pick</h2>
+      <div class="pick">
+        <p>Reply with a letter, like <code>Draft B</code>.</p>
+        <p>Mixing is fine too, for example <code>[B's X with A's Y]</code> or <code>[C, but without Z]</code>.</p>
+        <p style="margin:0">[What stays the same in every draft.]</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">Pictures taken at 1440px and 390px wide. The test firm's names, buildings and leases are made up. [Any capture caveat.]</p>
+</div>
+
+<script>
+(function () {
+  // Keep "today" first: it is the baseline every draft is compared with.
+  var DRAFTS = [
+    { id: "today", label: "Today", sub: "live now" },
+    { id: "a", label: "Draft A", sub: "[short name]" },
+    { id: "b", label: "Draft B", sub: "[short name]" },
+    { id: "c", label: "Draft C", sub: "[short name]" },
+  ];
+  // One entry per situation button; the key is the middle of each picture's name.
+  var SIT = {
+    "new": "<b>[New account]:</b> [who this is and what they have].",
+    "empty": "<b>[Empty]:</b> [who this is]. [Say which situation today's page handles worst.]",
+    "busy": "<b>[Busy]:</b> [what the test data holds].",
+  };
+  var STORE_KEY = "[surface]Drafts"; // one per drafts page, so pages don't share state
+  var state = { sit: "empty", mode: "desk", draft: "a", side: false };
+  try {
+    var saved = JSON.parse(localStorage.getItem(STORE_KEY) || "null");
+    if (saved && typeof saved === "object") Object.assign(state, saved);
+  } catch (e) {}
+  if (!SIT[state.sit]) state.sit = Object.keys(SIT)[0];
+  var hash = (location.hash || "").replace("#", "");
+  if (/^draft-[a-z]$/.test(hash)) state.draft = hash.slice(6);
+
+  function src(d, sit, mode) { return "img/" + d + "-" + sit + "-" + mode + ".png"; }
+  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} }
+  function nameOf(id) { for (var i = 0; i < DRAFTS.length; i++) if (DRAFTS[i].id === id) return DRAFTS[i]; return DRAFTS[0]; }
+
+  function figure(id, sel) {
+    var d = nameOf(id);
+    return '<figure class="shot' + (sel ? " sel" : "") + '"><figcaption><b>' + d.label + "</b><span>" + d.sub + '</span></figcaption><div class="frame"><img src="' + src(id, state.sit, state.mode) + '" alt="' + d.label + " (" + d.sub + "), " + state.sit + ' view" loading="lazy"></div></figure>';
+  }
+
+  function render() {
+    document.querySelectorAll("#segSit button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.v === state.sit); });
+    document.querySelectorAll("#segMode button").forEach(function (b) { b.setAttribute("aria-pressed", b.dataset.v === state.mode); });
+    document.querySelectorAll(".draft").forEach(function (c) { c.classList.toggle("on", c.dataset.d === state.draft); });
+    document.getElementById("sideBySide").checked = state.side;
+    document.getElementById("sideBySide").parentNode.hidden = state.mode === "phone";
+    document.getElementById("sitNote").innerHTML = SIT[state.sit];
+
+    var tabs = document.getElementById("tabs");
+    tabs.innerHTML = DRAFTS.map(function (d) {
+      return '<button type="button" role="tab" class="tab" data-d="' + d.id + '" aria-selected="' + (d.id === state.draft) + '"><span class="thumb" style="background-image:url(\'' + src(d.id, state.sit, state.mode) + '\')"></span><span class="t-lab">' + d.label + "<small>" + d.sub + "</small></span></button>";
+    }).join("");
+    tabs.hidden = state.mode === "phone";
+
+    var stage = document.getElementById("stage");
+    if (state.mode === "phone") {
+      stage.innerHTML = '<div class="phones">' + DRAFTS.map(function (d) { return figure(d.id, d.id === state.draft); }).join("") + "</div>";
+      document.getElementById("hint").textContent = "All of them side by side at phone width. Scroll sideways if they do not fit.";
+    } else {
+      var ids = state.side && state.draft !== "today" ? ["today", state.draft] : [state.draft];
+      stage.innerHTML = '<div class="pair' + (ids.length === 2 ? " two" : "") + '">' + ids.map(function (id) { return figure(id, id === state.draft); }).join("") + "</div>";
+      document.getElementById("hint").textContent = "Use the ← → keys, or the tabs above, to flip between today and the drafts.";
+    }
+    save();
+  }
+
+  document.getElementById("segSit").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state.sit = b.dataset.v; render(); } });
+  document.getElementById("segMode").addEventListener("click", function (e) { var b = e.target.closest("button"); if (b) { state.mode = b.dataset.v; render(); } });
+  document.getElementById("sideBySide").addEventListener("change", function (e) { state.side = e.target.checked; render(); });
+  document.getElementById("tabs").addEventListener("click", function (e) { var b = e.target.closest(".tab"); if (b) { state.draft = b.dataset.d; render(); } });
+  document.querySelectorAll(".d-show").forEach(function (b) {
+    b.addEventListener("click", function () {
+      state.draft = b.dataset.d;
+      if (state.mode === "phone") state.mode = "desk";
+      render();
+      document.getElementById("viewer").scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.target.closest && e.target.closest("input, textarea, select")) return;
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    var i = DRAFTS.findIndex(function (d) { return d.id === state.draft; });
+    i = (i + (e.key === "ArrowRight" ? 1 : DRAFTS.length - 1)) % DRAFTS.length;
+    state.draft = DRAFTS[i].id;
+    render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>

@@ -423,3 +423,28 @@ test("a firm subscription row carries no user_id", () => {
   assert.equal(row.status, "active");
   assert.equal("user_id" in row, false);
 });
+
+// --- does Stripe charge what the site says? (2026-09-25) -------------------
+
+const { priceMatches } = require("../stripe");
+
+const price = (over) => ({ object: "price", unit_amount: 4900, currency: "usd", recurring: { interval: "month", interval_count: 1 }, ...over });
+
+test("a price that agrees with the page is ok", () => {
+  assert.equal(priceMatches(price(), { cents: 4900, interval: "month" }), "ok");
+  assert.equal(priceMatches(price({ unit_amount: 49000, recurring: { interval: "year" } }), { cents: 49000, interval: "year" }), "ok");
+});
+
+test("a different amount or interval is a mismatch — the one answer that pauses checkout", () => {
+  assert.equal(priceMatches(price({ unit_amount: 10000 }), { cents: 4900, interval: "month" }), "mismatch",
+    "the $100 price left in the env after the page says $49");
+  assert.equal(priceMatches(price({ recurring: { interval: "year" } }), { cents: 4900, interval: "month" }), "mismatch");
+  assert.equal(priceMatches(price({ recurring: { interval: "month", interval_count: 3 } }), { cents: 4900, interval: "month" }), "mismatch");
+});
+
+test("what cannot be read fails OPEN", () => {
+  // A shape we cannot read is not evidence of a wrong charge.
+  for (const p of [null, {}, { object: "checkout.session" }, price({ unit_amount: null }), price({ currency: "eur" })]) {
+    assert.equal(priceMatches(p, { cents: 4900, interval: "month" }), "unknown");
+  }
+});

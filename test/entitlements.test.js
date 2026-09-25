@@ -1108,3 +1108,50 @@ test("a single-report unlock does not reach bulk valuation", () => {
   assert.equal(ent.reportUnlocked, true);
   assert.equal(ent.canBulkValue, false);
 });
+
+// --- the free report allowance (2026-09-25) --------------------------------
+
+const { canRunReport, reportUsagePeriod, FREE_REPORTS_PER_MONTH } = require("../entitlements");
+
+test("free: three reports a month, counted per report", () => {
+  assert.equal(FREE_REPORTS_PER_MONTH, 3);
+  assert.equal(ent({ user: USER }).reportsRemaining, 3);
+  assert.equal(ent({ user: USER, reportUsage: { count: 2, keys: ["a", "b"] } }).reportsRemaining, 1);
+  const spent = ent({ user: USER, reportUsage: { count: 3, keys: ["a", "b", "c"] }, reportId: "d" });
+  assert.equal(spent.reportsRemaining, 0);
+  assert.equal(canRunReport(spent), false, "a fourth distinct report is refused");
+});
+
+test("free: a re-run of a report already counted this month is free", () => {
+  const e = ent({ user: USER, reportUsage: { count: 3, keys: ["a", "b", "c"] }, reportId: "b" });
+  assert.equal(e.reportCounted, true);
+  assert.equal(canRunReport(e), true);
+});
+
+test("the allowance applies to the free plan only", () => {
+  const usage = { count: 9, keys: [] };
+  assert.equal(ent({ user: USER, subscription: activeSub(), reportUsage: usage }).reportsRemaining, "unlimited");
+  assert.equal(ent({ user: USER, trialUntil: NOW + DAY, reportUsage: usage }).reportsRemaining, "unlimited");
+  assert.equal(ent({ user: USER, tester: true, reportUsage: usage }).reportsRemaining, "unlimited");
+  assert.equal(ent({ user: USER, admin: true, reportUsage: usage }).reportsRemaining, "unlimited");
+  assert.equal(computeEntitlements({ user: USER, now: NOW, enabled: false, reportUsage: usage }).reportsRemaining,
+    "unlimited", "a dark deployment is the pre-Pro app, which never capped reports");
+  assert.equal(ent({ user: null, reportUsage: usage }).reportsRemaining, "unlimited",
+    "an anonymous visitor is the guest gate's business, not this allowance's");
+});
+
+test("the cap is configurable, and null lifts it", () => {
+  assert.equal(ent({ user: USER, freeReportsPerMonth: 10, reportUsage: { count: 4, keys: [] } }).reportsRemaining, 6);
+  assert.equal(ent({ user: USER, freeReportsPerMonth: null, reportUsage: { count: 40, keys: [] } }).reportsRemaining, "unlimited");
+});
+
+test("a failed usage read allows the report, like the download tally", () => {
+  // server.js hands in null when the read fails: wrongly allowing a report
+  // costs a cent, wrongly refusing one costs a person the answer.
+  assert.equal(canRunReport(ent({ user: USER, reportUsage: null, reportId: "x" })), true);
+});
+
+test("the report tally never shares the download period", () => {
+  assert.equal(reportUsagePeriod(NOW), "reports-" + usagePeriod(NOW));
+  assert.notEqual(reportUsagePeriod(NOW), usagePeriod(NOW));
+});

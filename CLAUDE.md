@@ -1135,6 +1135,47 @@ dependency. `.env` is git-ignored — never commit it.
   yearly tile and band. The deploy ORDER for a price change is in
   PRO-BILLING-SETUP.md: the old code reads each variable as one id, so a list
   set before the new code is live breaks checkout and renewals.
+- `STRIPE_PRICE_CHECK` — optional; `off` skips it. **At boot the server asks
+  Stripe what each SOLD price charges** (`verifyStripePrices` in server.js,
+  the pure comparison `priceMatches` in stripe.js) and compares it with
+  `PRICING`. A confirmed mismatch (a readable amount or interval that does not
+  agree) **pauses that plan's checkout** with a 503 `price_mismatch` and a ⛔
+  boot line; anything unreadable (a tiered price, a failed read, a stub) is
+  `unknown` and leaves checkout OPEN, because it is not evidence of a wrong
+  charge. It exists because nothing tied the figure a visitor reads to the
+  price id that bills them: deploy a price change before updating the env and
+  the site says $49 while Stripe charges $100. With the check, that gap pauses
+  instead of mischarging, in either deploy order. A failed read retries three
+  times at growing intervals; a readable price never needs to, since Stripe
+  prices are immutable. `test/price-check-run.test.js` runs it against a stub
+  Stripe, and `test/checkout-run.test.js` waits for the check's reads before
+  counting calls (they otherwise race the count under full-suite load).
+- `FREE_REPORTS_PER_MONTH` — the **free report allowance** (2026-09-25),
+  default **3**; `off` lifts it (the rollback lever); an unreadable value
+  exits at boot. A signed-in FREE account runs that many distinct reports a
+  month; Pro, a trial, admin, tester and a purchased report are unlimited, and
+  an anonymous visitor stays the guest gate's business. Rules in
+  `entitlements.js` (`reportsRemaining`, `reportCounted`, `canRunReport`).
+  Counted PER REPORT PER MONTH exactly like downloads, in the SAME table
+  (`export_usage`) under its own period key `reports-YYYY-MM`
+  (`ENT.reportUsagePeriod`) — so no migration, and the export tally, which
+  reads `period = YYYY-MM` exactly, can never count a report. One read serves
+  both tallies (`getUsage`, an `in.` on the two periods). Four rules, all run
+  in `test/report-limit-run.test.js`: the fourth distinct report is refused in
+  `/api/comps` **before anything is searched** (403 `code: report_limit`,
+  beside the guest gate); a **re-run of a report already counted this month is
+  free**; a report is **spent only once it is served** (recorded after
+  `gate()`, the guest gate's serialize-first rule); and a failed usage read
+  **allows** the report (a cent lost beats a person refused). The count rides
+  home on each served report as `reports_remaining`/`reports_cap` (read then
+  deleted by index.html, the `exports_remaining` rule) and on `/api/config`,
+  and the form states it BEFORE the first report (`#reportAllowanceHint`), so
+  the refusal is never a surprise; the refusal opens the pricing window with
+  the server's sentence (`openPricingFor`) rather than a red error card. The
+  figure is stated on /pricing and /faq from `PRICING.freeReports` (the same
+  setting), and typed into the pricing window's Free tile and compare row with
+  a test pinning it to `ENT.FREE_REPORTS_PER_MONTH` — an override of the env
+  leaves that static modal stating the default, which is the known cost.
 - `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
   vendor runs the comp search. An unrecognized value **exits at boot** rather
   than silently falling back, the same no-fallthrough rule `/api/checkout`'s
@@ -2989,6 +3030,28 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   knows to fetch `GET /api/account/avatar`. File fallback stores both on
   the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
   empty body is how Remove works. Not Pro-gated.
+- **The trial emails** (2026-09-25; migration `053-trial-notices.sql`; rules
+  in the pure, tested **`trial-notices.js`**). `POST /api/trial/notices` mails
+  each account on a Pro trial the one email it is due: "You have CompNinja Pro
+  until <date>" once, and "Your CompNinja Pro trial ends on <date>" once, three
+  days out (`ENDING_WINDOW_DAYS`). **The watchlist digest's design rule for
+  rule**, because it is the same kind of mail: ADMIN_KEY-gated and driven from
+  OUTSIDE by `.github/workflows/trial-notices.yml` (daily 16:00 UTC, needs the
+  `ADMIN_KEY` repository secret the permit sweep already uses); refuses
+  without a database and without outbound mail (`sendOutboundEmail` no-ops
+  silently, and marking the ledger over a send that never happened would lose
+  the email for good); `{ dryRun: true }` builds and sends nothing; marks the
+  ledger AFTER the send; one bad account never stops the run; and an account
+  with `digest_optout` gets none. Who is on a trial is `getEntitlements`'s
+  answer, never a date guess here, so a subscriber or a firm seat is never
+  mailed about a trial. When both are due at once, only the ENDING email goes.
+  Every figure (price, free allowance, end date) is passed in from `PRICING`
+  and the trial settings, never typed. `trial_notices` keys on
+  `(user_id, kind)` and ONLY this route names it, so 053 can run after the
+  deploy: until it does, the route 500s naming the table and the workflow goes
+  red. `test/trial-notices.test.js` and `test/trial-notices-run.test.js`
+  (who is mailed, once, the dry run, the refusals, a launch date reaching old
+  accounts).
 - **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
   **run before deploying**). `POST /api/watchlist/digest` mails each watcher
   the markets of theirs that have new comps. It is **the only thing this
@@ -3272,7 +3335,8 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   account starts on a 14-day Pro trial — see `PRO_TRIAL_DAYS` and
   `STRIPE_PRICE_*` under Configuration, and PRO-BILLING-SETUP.md for the
   runbook. Paid plan
-  holding free reports to a **36-month** lookback ceiling and
+  holding free reports to a **36-month** lookback ceiling, **3 reports a month**
+  (since 2026-09-25, `FREE_REPORTS_PER_MONTH`) and
   **5 exports/month** (0 for anonymous visitors — exporting requires an
   account), against Pro's unlimited everything plus report branding.
   **The comp-list gate is GONE as of 2026-08-21**: `FREE_MAX_COMPS` is

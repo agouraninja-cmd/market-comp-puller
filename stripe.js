@@ -311,8 +311,39 @@ function refundOf(charge) {
   return { paymentIntentId, full };
 }
 
+// Does a Stripe price object charge what the site SAYS it charges?
+// (2026-09-25.) The figures on every page come from PRICING in server.js and
+// the charge comes from the price id in the environment, and nothing tied the
+// two together: set the env a few minutes after a price change deploys, and
+// for those minutes the site shows $49 while Stripe charges $100. server.js
+// asks Stripe about each sold price at boot and pauses checkout for a plan
+// whose price is a confirmed MISMATCH.
+//
+// Three answers, and only one of them refuses anything:
+//   "ok"       — the amount and the billing interval both agree.
+//   "mismatch" — Stripe answered with a readable amount or interval that does
+//                not match. The only answer that pauses a checkout.
+//   "unknown"  — anything that could not be read (no price object, a tiered
+//                price with no unit_amount, a non-USD price). Fails OPEN: a
+//                shape we cannot read is not evidence of a wrong charge, and
+//                refusing on it would stop a real sale.
+function priceMatches(price, { cents, interval } = {}) {
+  if (!price || typeof price !== "object" || price.object !== "price") return "unknown";
+  // null is a tiered or custom-amount price, and Number(null) is 0: without
+  // this check it read as a $0 charge and paused a checkout it cannot judge.
+  if (price.unit_amount === null || price.unit_amount === undefined) return "unknown";
+  const amount = Number(price.unit_amount);
+  if (!Number.isFinite(amount) || String(price.currency || "").toLowerCase() !== "usd") return "unknown";
+  const every = price.recurring && price.recurring.interval;
+  const count = Number((price.recurring && price.recurring.interval_count) || 1);
+  if (amount !== Number(cents)) return "mismatch";
+  if (interval && (every !== interval || count !== 1)) return "mismatch";
+  return "ok";
+}
+
 module.exports = {
   STRIPE_API,
+  priceMatches,
   formEncode,
   idempotencyKeyFor,
   stripeRequest,

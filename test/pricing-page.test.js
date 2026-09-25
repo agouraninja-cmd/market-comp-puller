@@ -280,3 +280,16 @@ test("the redundant top kicker is gone", async (t) => {
   assert.ok(!/class="kicker"/.test(beforeH1.slice(-400)),
     "the kicker was dropped and must not come back above the H1");
 });
+
+// --- the free report allowance (2026-09-25) --------------------------------
+test("the pricing window states the free report allowance entitlements.js enforces", () => {
+  // The window is static HTML, so its "3 reports a month" is typed. Pinned to
+  // the constant so the two cannot drift; a deployment overriding
+  // FREE_REPORTS_PER_MONTH sees the default here, which is the known cost.
+  const ENT = require("../entitlements");
+  const n = ENT.FREE_REPORTS_PER_MONTH;
+  assert.ok(INDEX_HTML.includes(`<p class="pr-sum">${n} reports a month, every comparable itemized`),
+    "the Free tile states the monthly report allowance");
+  assert.ok(INDEX_HTML.includes(`<td>Reports you can run</td><td class="c">${n} a month</td><td class="c">Unlimited</td>`),
+    "the compare table's first row states it too");
+});

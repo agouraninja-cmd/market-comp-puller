@@ -662,6 +662,23 @@ days and every new one. To give EXISTING free accounts their 14 days, set
 `PRO_TRIAL_START` to the launch date (`YYYY-MM-DD`). `PRO_TRIAL_DAYS=0` turns
 it off with no deploy.
 
+**Since the price check shipped (same day) a wrong order can no longer
+mischarge anybody.** At boot the server asks Stripe what each sold price
+charges and pauses checkout for any plan whose price disagrees with the page
+(`STRIPE_PRICE_CHECK`, CLAUDE.md). So if the code deploys first, the $100
+price still in the env pauses monthly checkout ("paused for a few minutes
+while its price is updated") until step 3 lands, instead of taking $100 from
+somebody who read $49. The order below is still the fastest path.
+
+**The report limit and the trial emails** ship in the same release:
+- Free accounts get **3 reports a month** from the deploy onward
+  (`FREE_REPORTS_PER_MONTH`; `off` lifts it). No setup.
+- The trial emails need **migration 053** run (`migrations/053-trial-notices.sql`,
+  additive, only the notices route reads it), **`EMAIL_FROM` + `RESEND_API_KEY`**
+  set on Render, and the **`ADMIN_KEY` repository secret** (already there for
+  the permit sweep). Try it first with the workflow's "Run workflow" button and
+  `dry_run: true`, which builds every email and sends none.
+
 **The order matters for the prices**, because the old code and the new code
 read the price variables differently. The new code accepts a comma-separated
 list per variable (first id sold, every id recognised); the old code reads the
@@ -703,7 +720,9 @@ whole variable as ONE id. So:
    says `🎁 Pro trial ON`; a fresh account's `/api/config` has
    `"trial": true` and a `trialEndsAt` 14 days out; `/pricing` shows $49, $39
    and the $490 "Pay yearly" band; a checkout opened from the modal shows
-   $49.00 on Stripe's page.
+   $49.00 on Stripe's page. The boot log names each price as `💳 ... matches
+   the site`; a `⛔ ... PAUSED` line means a price id still points at the old
+   amount.
 
 New live price ids — **record them here as they are created**:
 

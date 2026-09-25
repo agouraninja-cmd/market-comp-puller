@@ -141,7 +141,13 @@ const PRICING_CSS = `
  * @returns {string} HTML for marketShell's <main class="wrap">.
  */
 function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = true, annualLive = false, trialDays = 0 } = {}) {
-  const { monthly = 0, annual = 0, firmSeat = 0, minSeats = 2 } = pricing;
+  const { monthly = 0, annual = 0, firmSeat = 0, minSeats = 2, freeReports = null } = pricing;
+  // The free report allowance (2026-09-25), in words like the tile's other
+  // figures. null means the deployment runs no cap (FREE_REPORTS_PER_MONTH=off),
+  // and then the page says nothing about one rather than invent a number.
+  const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  const reportsWord = Number.isInteger(freeReports) && freeReports > 0
+    ? (WORDS[freeReports] || String(freeReports)) : "";
 
   // One door, chosen once. A member already has an account, so sending them to
   // a signup is the bug public-pages.test.js exists to catch; they go to the
@@ -188,7 +194,8 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     lab: "Free",
     fig: "$0",
     per: "forever",
-    sum: "Every comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
+    sum: (reportsWord ? `${reportsWord[0].toUpperCase()}${reportsWord.slice(1)} reports a month, every` : "Every") +
+      " comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
     cta: `<p style="font-size:13px;margin:0">No card. ${signedIn ? "Your account starts here." : `<a href="/?auth=signup">Create an account &rarr;</a>`}</p>`,
   });
 
@@ -255,7 +262,9 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     `<div class="prc-wc prc-wc-pro">` +
     `<h2>Upgrade to Pro if</h2>` +
     `<ul class="prc-wl">` +
-    worthRow("01", "You price more than one building a month.") +
+    worthRow("01", reportsWord
+      ? `You price more than ${reportsWord} building${freeReports === 1 ? "" : "s"} a month.`
+      : "You price more than one building a month.") +
     worthRow("02", "You keep a comp book. The vault puts it in every report.") +
     worthRow("03", "You send work out under your own branding.") +
     `</ul></div>` +

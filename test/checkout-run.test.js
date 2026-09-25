@@ -106,6 +106,13 @@ async function bootAll() {
     STRIPE_PRICE_FIRM_MONTHLY: "price_firm_monthly",
     STRIPE_API_URL: stub.base,
   });
+  // The boot-time price check (2026-09-25) reads each configured price from
+  // Stripe just after the port binds — two GETs here, one per price id. Wait
+  // for them before any test counts calls, or under full-suite load they land
+  // between a test's "before" and "after" and it counts a check as a checkout.
+  for (let i = 0; i < 100 && stub.calls.filter((c) => /\/prices\//.test(c.path)).length < 2; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
   return { db, srv, stub, tables, org, stop: async () => { srv.stop(); await stub.stop(); await db.stop(); } };
 }
 

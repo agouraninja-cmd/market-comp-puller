@@ -2098,6 +2098,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         Pro widens the search to ten years — the change that actually surfaces more
         transactions — and itemizes every one it finds, with the sources.
       </p>
+      <!-- Why the window opened, when a refusal opened it (the free report
+           allowance, 2026-09-25). Written by openPricingFor(); every plain
+           open clears it, so it never outlives the moment it explains. -->
+      <p id="pricingReason" class="hidden text-sm font-semibold text-[#1A2433] mt-3"></p>
 
       <!-- Rate-card ledger (Direction I, owner-approved 2026-08-09): the
            plans as one ruled line in the hero's .rd-ledger geometry, with a
@@ -2110,7 +2114,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Free</span>
           <div class="pr-fig">$0</div>
           <div class="pr-per">forever</div>
-          <p class="pr-sum">Every comparable itemized, the same value range Pro sees, a 3-year window.</p>
+          <!-- "3 reports a month" is ENT.FREE_REPORTS_PER_MONTH, typed here
+               because this is static HTML; test/pricing-page.test.js pins it
+               to the constant. A deployment overriding FREE_REPORTS_PER_MONTH
+               will find this tile stating the default. -->
+          <p class="pr-sum">3 reports a month, every comparable itemized, the same value range Pro sees, a 3-year window.</p>
           <!-- Written by refreshBillingUI: on a Pro trial this is where the
                account lands when the trial ends, not its plan today. -->
           <p id="freeTileNote" class="text-xs text-[#68707E] mt-3">Your current plan</p>
@@ -2210,7 +2218,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                  counter in the report toolbar got read as a cap on running
                  reports (owner feedback 2026-08-10). Saying the unlimited thing
                  out loud costs one row and removes the guess. -->
-            <tr><td>Reports you can run</td><td class="c">Unlimited</td><td class="c">Unlimited</td></tr>
+            <tr><td>Reports you can run</td><td class="c">3 a month</td><td class="c">Unlimited</td></tr>
             <tr><td>Value range from the full comp set</td><td class="c">&#10003;</td><td class="c">&#10003;</td></tr>
             <tr><td>Comps itemized, with sources</td><td class="c">All found</td><td class="c">All found</td></tr>
             <tr><td>Sales history window</td><td class="c">3 yrs</td><td class="c">10 yrs</td></tr>
@@ -4017,6 +4025,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="text-[12.5px] text-[#8A8577] mt-3">
         <div>Cited comps · about a minute · every source disclosed</div>
         <div>An automated estimate, not an appraisal.</div>
+        <!-- The free report allowance (2026-09-25), for a free account only.
+             Written by updateReportAllowanceHint from /api/config and from each
+             served report's reports_remaining; hidden for everyone else. -->
+        <div id="reportAllowanceHint" class="hidden"></div>
       </div>
       <!-- Shown only once /api/config says this signed-out visitor is out of
            free searches; sign-in/refreshProConfig hides it again. The lead-in
@@ -18834,8 +18846,20 @@ async function renderMyDesk() {
 
   function openPricingModal() {
     document.getElementById("pricingError").classList.add("hidden");
+    document.getElementById("pricingReason").classList.add("hidden");
     document.getElementById("pricingModal").classList.remove("hidden");
     renderAnnualTile();
+  }
+  // The pricing window, opened BY something — the free report allowance
+  // running out (2026-09-25). The server's own sentence says why, above the
+  // plans, rather than as a red error: running out is a limit reached, not a
+  // failure. Where nothing is on sale it falls back to the status line.
+  function openPricingFor(reason) {
+    if (!billingLive()) { showStatus(reason, "error"); return; }
+    openPricingModal();
+    const el = document.getElementById("pricingReason");
+    el.textContent = reason || "";
+    el.classList.toggle("hidden", !reason);
   }
   function closePricingModal() {
     pendingCheckoutPlan = null;
@@ -19119,6 +19143,11 @@ async function renderMyDesk() {
     if (proConfig && proConfig.exportsRemaining !== undefined) {
       exportsLeft = proConfig.exportsRemaining;
     }
+    if (proConfig && proConfig.reportsRemaining !== undefined) {
+      reportsLeft = proConfig.reportsRemaining;
+      reportsCap = proConfig.freeReportsPerMonth;
+    }
+    updateReportAllowanceHint();
     updateExportAllowance();
 
     // The settings panel's plan row — the ONLY plan surface since 2026-09-03,
@@ -21800,6 +21829,25 @@ async function renderMyDesk() {
   }
 
   let exportsLeft = null;   // last figure from /api/export; null = unknown
+  // The free report allowance (2026-09-25): a number for a free account,
+  // "unlimited" for everyone else, null until /api/config answers.
+  let reportsLeft = null;
+  let reportsCap = null;
+
+  // "2 of 3 free reports left this month" under the search form, for a free
+  // account only. It exists so the limit is never a surprise: the fourth
+  // report is refused BEFORE it runs, and the only fair way to do that is to
+  // have said so on the form beforehand.
+  function updateReportAllowanceHint() {
+    const el = document.getElementById("reportAllowanceHint");
+    if (!el) return;
+    const show = Boolean(currentUser) && typeof reportsLeft === "number" && Number(reportsCap) > 0;
+    el.classList.toggle("hidden", !show);
+    if (!show) return;
+    el.textContent = reportsLeft > 0
+      ? `${reportsLeft} of ${reportsCap} free report${reportsCap === 1 ? "" : "s"} left this month. Pro is unlimited.`
+      : `You've used this month's ${reportsCap} free reports. Pro is unlimited, and yours start again next month.`;
+  }
 
   function updateExportAllowance() {
     const el = document.getElementById("exportAllowance");
@@ -21825,7 +21873,12 @@ async function renderMyDesk() {
     // drop the second sentence: it is the whole reason the first is not
     // misread. The verbs also used to drift ("stay" at zero, "are" otherwise)
     // for no reason; one sentence now serves both branches.
-    const free = "Running reports is always free.";
+    // Since 2026-09-25 reports are metered too on the free plan, so the second
+    // sentence states that count instead of promising "always free" — which
+    // would now be untrue. Two sentences still, for the reason above.
+    const free = typeof reportsLeft === "number" && Number(reportsCap) > 0
+      ? `${reportsLeft} of ${reportsCap} free reports left.`
+      : "Running reports is always free.";
     el.textContent = n === 0
       ? `No downloads left this month. ${free}`
       : `${n} download${n === 1 ? "" : "s"} left this month. ${free}`;
@@ -22849,6 +22902,16 @@ async function renderMyDesk() {
             || "Create a free account to keep searching. It's free, no card needed.");
           return;
         }
+        // The free report allowance (2026-09-25) is an ask too, not an error:
+        // the plans that remove it, with the server's sentence saying why.
+        if (payload && payload.code === "report_limit") {
+          hideLoadingCard();
+          pendingPortfolioRefresh = null;
+          reportsLeft = 0;
+          updateReportAllowanceHint();
+          openPricingFor(payload.error);
+          return;
+        }
         throw new Error((payload && payload.error) || `Request failed (${res.status}).`);
       }
 
@@ -22881,6 +22944,16 @@ async function renderMyDesk() {
       if (parsed && parsed.exports_remaining !== undefined) {
         exportsLeft = parsed.exports_remaining;
         delete parsed.exports_remaining;
+        updateExportAllowance();
+      }
+      // The free report allowance, after THIS report — same read-then-delete
+      // rule, for the same reason.
+      if (parsed && parsed.reports_remaining !== undefined) {
+        reportsLeft = parsed.reports_remaining;
+        if (parsed.reports_cap !== undefined) reportsCap = parsed.reports_cap;
+        delete parsed.reports_remaining;
+        delete parsed.reports_cap;
+        updateReportAllowanceHint();
         updateExportAllowance();
       }
       renderResults(parsed, {

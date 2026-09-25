@@ -69,6 +69,23 @@ const FREE_MAX_LOOKBACK_MONTHS = 36;
 // reads as a bug rather than a limit. server.js keys the tally on a report id
 // and inserts ignore-duplicates, so a re-export is free and idempotent.
 const FREE_EXPORTS_PER_MONTH = 5;
+// Free reports a month (2026-09-25, owner's call from the billing plan).
+//
+// Until then a free account ran unlimited reports, which left Pro selling only
+// workflow — and an owner valuing one building never needed it, while a broker
+// running dozens a month had no reason to pay either. A small monthly number
+// separates the two audiences better than anything else: an owner values one
+// or two buildings, a broker values many. Three keeps the free tier doing the
+// jobs it exists for (owners requesting valuations, every report feeding the
+// comp database) while making Pro the plan for working brokers.
+//
+// Counted PER REPORT PER MONTH, exactly like downloads: re-running the same
+// address and type in the same month costs nothing, and a report reopened from
+// history or the portfolio never reaches the search at all. server.js keeps
+// the tally in export_usage under its own period key (reportUsagePeriod), and
+// FREE_REPORTS_PER_MONTH in the environment overrides this default ("off"
+// lifts the cap entirely, the instant rollback lever).
+const FREE_REPORTS_PER_MONTH = 3;
 // Zero, deliberately: exporting requires an account.
 //
 // The alternative — counting anonymous exports — cannot work here. Exports are
@@ -285,12 +302,15 @@ function subscriptionState(sub, now) {
  *                                 independent of billing, so a beta broker's
  *                                 book stays reachable with no subscription to
  *                                 lapse.
+ * @param {object?} o.reportUsage  { count, keys } — reports run this month
+ * @param {number?} o.freeReportsPerMonth  the free cap (null = no cap;
+ *                                 undefined = FREE_REPORTS_PER_MONTH)
  * @param {number|string?} o.trialUntil  when this account's Pro trial ends
  *                                 (trialEndsAt() below) — full Pro before
  *                                 then, but only alongside `enabled`, a
  *                                 signed-in user, and NO live paid subscription
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta, trialUntil } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta, trialUntil, reportUsage, freeReportsPerMonth } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
 
   // --- Comped Pro for the internal team -------------------------------------
@@ -323,6 +343,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: true,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       // Comped Pro means the WHOLE Pro app. Omitting this reads as `undefined`,
       // i.e. locked — which would leave the team staring at the paywall the
@@ -365,6 +387,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: false,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       canExploreAddresses: true,
       // FALSE on this branch, for the vault's reason stated below and one of
@@ -452,6 +476,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: true,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       canExploreAddresses: true,
       // A tester is Pro, full stop (owner's call, 2026-09-01). Until then this
@@ -520,6 +546,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: true,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       canExploreAddresses: true,
       canBulkValue: true,
@@ -576,6 +604,22 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   const exportCap = user ? FREE_EXPORTS_PER_MONTH : ANON_EXPORTS_PER_MONTH;
   const used = usage && Number.isFinite(Number(usage.count)) ? Math.max(0, Number(usage.count)) : 0;
 
+  // The free report allowance. Only a signed-in account on the free plan has
+  // one: Pro, a trial, and a purchased report are unlimited, and an anonymous
+  // visitor is governed by the guest gate in server.js instead (one free
+  // report, then sign in). `reportCounted` is true when THIS report is already
+  // in the month's tally, which is what lets a re-run go through at zero.
+  const reportCap = freeReportsPerMonth === undefined ? FREE_REPORTS_PER_MONTH : freeReportsPerMonth;
+  const reportKeys = reportUsage && Array.isArray(reportUsage.keys) ? reportUsage.keys.map(String) : [];
+  const reportCounted = Boolean(reportId && reportKeys.includes(String(reportId)));
+  let reportsRemaining;
+  if (pro || reportUnlocked || !user || !(Number.isFinite(reportCap) && reportCap >= 0)) {
+    reportsRemaining = "unlimited";
+  } else {
+    const ran = reportUsage && Number.isFinite(Number(reportUsage.count)) ? Math.max(0, Number(reportUsage.count)) : 0;
+    reportsRemaining = Math.max(0, reportCap - ran);
+  }
+
   let exportsRemaining;
   if (pro) exportsRemaining = "unlimited";
   // A paid report you cannot export would be a paid screenshot. The unlock
@@ -600,6 +644,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // property's history.
     maxLookbackMonths: pro || reportUnlocked ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
     exportsRemaining,
+    reportsRemaining,
+    reportCounted,
     reportUnlocked,
     // The Address Explorer stays Pro-only, deliberately, even though everything
     // else a purchase grants now matches Pro. It is a DISCOVERY tool — its job
@@ -682,6 +728,18 @@ function clampLookback(months, ent) {
   if (!Number.isFinite(n)) return Math.min(24, ent ? ent.maxLookbackMonths : 24);
   return Math.min(Math.max(1, n), ent ? ent.maxLookbackMonths : PRO_MAX_LOOKBACK_MONTHS);
 }
+// May this visitor run this report? True when reports are unlimited, when
+// this report already counts this month (a re-run is free), or when the
+// allowance has room. Absent entitlements mean "allowed", matching canExport.
+function canRunReport(ent) {
+  return !ent || ent.reportsRemaining === undefined || ent.reportsRemaining === "unlimited"
+    || ent.reportCounted === true || Number(ent.reportsRemaining) > 0;
+}
+// The tally's period key. A separate key space inside export_usage, so the
+// two counts can never mix: the export tally reads period = "YYYY-MM" exactly.
+function reportUsagePeriod(now) {
+  return "reports-" + usagePeriod(now);
+}
 function canExport(ent) {
   return !ent || ent.exportsRemaining === "unlimited" || Number(ent.exportsRemaining) > 0;
 }
@@ -700,10 +758,13 @@ module.exports = {
   compLimit,
   clampLookback,
   canExport,
+  canRunReport,
   usagePeriod,
+  reportUsagePeriod,
   FREE_MAX_COMPS,
   FREE_MAX_LOOKBACK_MONTHS,
   FREE_EXPORTS_PER_MONTH,
+  FREE_REPORTS_PER_MONTH,
   ANON_EXPORTS_PER_MONTH,
   PRO_MAX_LOOKBACK_MONTHS,
   GRACE_DAYS,

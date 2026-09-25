@@ -1,0 +1,59 @@
+# The Pro trial's emails (2026-09-25): "you have Pro until <date>" once, and
+# "your trial ends on <date>" once, three days out.
+#
+# A ROUTE, never a timer inside server.js — the watchlist digest's and the
+# permit sweep's rule: a setInterval fires at an hour nobody chose, again
+# after every deploy, and twice on two instances. So the schedule lives here,
+# and all this does is ask the live site to run once. The route is idempotent
+# (trial_notices keys on account + kind), so a double fire or a manual "Run
+# workflow" beside the cron sends nothing twice.
+#
+# Daily at 16:00 UTC (10am in Boise), so the email lands in a working morning.
+#
+# NEEDS ONE REPOSITORY SECRET, ADMIN_KEY — the same key /admin takes. It fails
+# loudly without it, and loudly when the route refuses (no outbound mail
+# configured, migration 053 not yet run): a scheduled job that passes while
+# sending nothing is how a trial ends without the warning it promised.
+name: Trial emails
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the emails and send none (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  notices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Run the trial emails against the live site
+        env:
+          ADMIN_KEY: ${{ secrets.ADMIN_KEY }}
+          SITE: https://compninja.co
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ -z "$ADMIN_KEY" ]; then
+            echo "::error::The ADMIN_KEY repository secret is not set, so the trial emails cannot run. Add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          status=$(curl -sS -o notices.json -w '%{http_code}' --max-time 540 \
+            -X POST "$SITE/api/trial/notices" \
+            -H "x-admin-key: $ADMIN_KEY" -H 'content-type: application/json' \
+            -d "{\"dryRun\": $DRY_RUN}")
+          echo "HTTP $status"
+          if [ "$status" != "200" ]; then
+            cat notices.json; echo
+            echo "::error::The trial emails answered HTTP $status."
+            exit 1
+          fi
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("notices.json", "utf8"));
+            console.log(`checked ${s.candidates} · on a trial ${s.onTrial} · sent ${s.sent.start} start, ${s.sent.ending} ending · opted out ${s.optedOut}`);
+            if (s.previews && s.previews.length) console.log(`dry run: ${s.previews.length} email(s) built, none sent`);
+            if (s.failed) { console.log(`::error::${s.failed} account(s) failed; see the Render log.`); process.exit(1); }
+          '

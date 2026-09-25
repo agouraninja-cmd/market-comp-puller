@@ -2,6 +2,12 @@
   {
     "date": "2026-09-25",
     "type": "feature",
+    "title": "Workspace banner: your firm’s skyline",
+    "details": "The banner behind “Good morning” now draws the firm itself: every building on the board is a tower. Height is its size, lit windows are recent work (a report on the shelf, the building added, or a lease date due, in the last 30 days), a red light is a lease date inside 90 days, and a crane marks a building added this month. New buildings rise on the right, so the skyline grows with the firm, and the sky follows the time of day. Hover a tower for what is due and a link to its building sheet. Replaces the aerial-photo banner shipped an hour earlier (Draft C); the owner meant Draft B."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
     "title": "Workspace banner: one of your own buildings, from above, each morning",
     "details": "The banner behind “Good morning” now shows an aerial photo of one of the firm’s own buildings, picked for a reason and saying so on the picture: the nearest lease date inside 90 days, else the newest building, else the one with the most recent reports, else the next in line. The card opens the building sheet and arrows flip through the rest of the board. Works in every city (Nampa gets a real picture where it had the drawn map). A pin appears only on a roof the map proves is that address. Buildings added by address are now located in the background with our own Census lookup, which refuses an answer on a different street. Owner’s pick: Draft C of the banner drafts."
   },

@@ -93,10 +93,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
   <script src="/dev-returns.js"></script>
   <script src="/explore-query.js"></script>
   <script src="/market-snapshot.js"></script>
-  <!-- The Workspace banner's "a building a day" rule (BUILDINGDAY). maxAge 0
-       like the three above; the banner falls back to the city photograph
-       when this is missing, so it is guarded with typeof, never destructured. -->
-  <script src="/building-day.js"></script>
+  <!-- The Workspace banner's skyline rules (SKYLINE). maxAge 0 like the
+       three above; the banner falls back to the city photograph when this is
+       missing, so it is guarded with typeof, never destructured. -->
+  <script src="/firm-skyline.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <!-- Leaflet — renders the comp map (OpenStreetMap tiles, no API key needed) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -1454,51 +1454,83 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-hero .dk-find input::placeholder { color: rgba(255,255,255,.75); }
     .dk-hero .dk-find input:focus { border-color: rgba(255,255,255,.55); box-shadow: 0 0 0 3px rgba(255,255,255,.12); }
     .dk-hero .dk-find-ico { color: rgba(255,255,255,.85); z-index: 1; }
-    /* "A building a day" (2026-09-25, Draft C of the banner drafts — the
-       owner's pick). One of the firm's own buildings, from above, over the
-       city photograph (which stays underneath, so taking the aerial down
-       needs no redraw of it), with the reason it was picked on a card. The
-       pin shows only on a roof the map PROVES is that address; otherwise the
-       picture is framed on the looked-up point with no mark on it, since a
-       looked-up point sits on the street, not the roof. Literal white on the
-       picture, like the rest of the banner (it is dark in both themes). */
-    .dk-hero.has-day { min-height: 262px; }
-    .dk-hero-bg .dk-hero-aerial { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    .dk-hero.has-day .dk-hero-bg::after { background: linear-gradient(90deg, rgba(15,23,42,.88) 0%, rgba(15,23,42,.66) 38%, rgba(15,23,42,.18) 72%, rgba(15,23,42,.05) 100%); }
-    .dk-hero.has-day #deskHeroCredit { display: none; }
-    .dk-hero-pin { position: absolute; z-index: 1; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--red-fill); border: 2.5px solid rgba(255,255,255,.95); box-shadow: 0 0 0 6px rgba(220,38,38,.28), 0 2px 8px rgba(0,0,0,.5); }
-    .dk-hero-pin.hidden { display: none; }
-    .dk-day { position: absolute; right: 18px; top: 74px; z-index: 3; width: 300px; box-sizing: border-box; padding: 10px 13px 9px; border-radius: 11px; background: rgba(15,23,42,.74); border: 1px solid rgba(255,255,255,.2); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: #fff; box-shadow: 0 10px 26px -12px rgba(0,0,0,.6); }
-    .dk-day.hidden { display: none; }
-    .dk-day-kick { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.7); }
-    .dk-day-name { display: block; margin-top: 4px; font-family: Georgia, 'Times New Roman', serif; font-size: 17px; line-height: 1.2; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
-    .dk-day-name:hover { text-decoration: underline; text-underline-offset: 3px; }
-    .dk-day-why { margin: 3px 0 0; font-size: 12.5px; line-height: 1.4; color: rgba(255,255,255,.88); }
-    .dk-day-why b { color: rgba(252,165,165,1); font-weight: 600; }
-    .dk-day-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.14); font-size: 12px; }
-    .dk-day-open { color: #fff; font-weight: 600; text-decoration: none; white-space: nowrap; }
-    .dk-day-open:hover { text-decoration: underline; text-underline-offset: 2px; }
-    .dk-day-pager { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: rgba(255,255,255,.78); font-variant-numeric: tabular-nums; }
-    .dk-day-pager.hidden { display: none; }
-    .dk-day-arr { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 6px; border: 1px solid rgba(255,255,255,.28); background: transparent; color: #fff; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
-    .dk-day-arr:hover { background: rgba(255,255,255,.12); }
-    .dk-day-arr:focus-visible, .dk-day-open:focus-visible, .dk-day-name:focus-visible { outline: 2px solid rgba(255,255,255,.95); outline-offset: 2px; }
-    .dk-day-credit { position: absolute; right: 332px; bottom: 50px; margin: 0; font-size: 10.5px; color: rgba(255,255,255,.86); text-shadow: 0 1px 3px rgba(0,0,0,.85); }
-    .dk-day-credit.hidden { display: none; }
-    .dk-day-empty { position: absolute; right: 18px; bottom: 72px; z-index: 3; display: flex; gap: 8px; align-items: flex-start; max-width: 440px; margin: 0; padding: 9px 12px; border-radius: 10px; background: rgba(15,23,42,.55); border: 1px solid rgba(255,255,255,.18); font-size: 12.5px; line-height: 1.45; color: rgba(255,255,255,.9); }
-    .dk-day-empty.hidden { display: none; }
-    .dk-day-empty b { color: #fff; font-weight: 600; }
-    .dk-day-empty svg { flex: 0 0 14px; margin-top: 2px; }
+    /* The firm's skyline (2026-09-25, Draft B of the banner drafts — the
+       owner's pick). Every building on the board is a tower; the sky behind
+       them follows the time of day. Drawn OVER the city photograph (has-sky
+       hides it and its credit), so taking the skyline down restores the old
+       banner with nothing to redraw. The banner is dark in both themes, so
+       these colours are literal rgba like the rest of it (FOOTER_DARK_CSS's
+       reason) — and they live HERE, as classes, rather than in the SVG the
+       script builds, so no colour ever rides in generated markup.
+       The horizon sits at 79% of the banner's height, where the towers
+       stand: layoutDeskSky puts the ground 62px above the bottom edge, and
+       the banner is at least 292px tall (the page's stylesheet takes no
+       variables of its own, so the stop is a fixed share, not computed). */
+    .dk-hero.has-sky { min-height: 292px; }
+    .dk-hero.has-sky #deskHeroImg, .dk-hero.has-sky #deskHeroCredit { display: none; }
+    .dk-hero.has-sky .dk-hero-bg::after { background: linear-gradient(90deg, rgba(10,17,30,.82) 0%, rgba(10,17,30,.5) 36%, rgba(10,17,30,0) 62%); }
+    .dk-hero.has-sky.sky-dawn .dk-hero-bg { background:
+      radial-gradient(40% 55% at 84% 79%, rgba(251,191,36,.30) 0%, rgba(251,191,36,0) 70%),
+      linear-gradient(180deg, rgba(14,26,46,1) 0%, rgba(27,44,71,1) 42%, rgba(58,72,100,1) 65%, rgba(142,102,86,1) 78.5%, rgba(26,33,48,1) 79%, rgba(18,25,37,1) 100%); }
+    .dk-hero.has-sky.sky-day .dk-hero-bg { background:
+      radial-gradient(45% 60% at 72% 51%, rgba(255,255,255,.14) 0%, rgba(255,255,255,0) 70%),
+      linear-gradient(180deg, rgba(24,52,86,1) 0%, rgba(40,78,116,1) 45%, rgba(78,116,150,1) 65%, rgba(150,176,196,1) 78.5%, rgba(26,36,51,1) 79%, rgba(18,25,37,1) 100%); }
+    .dk-hero.has-sky.sky-dusk .dk-hero-bg { background:
+      radial-gradient(40% 55% at 88% 79%, rgba(248,113,113,.30) 0%, rgba(248,113,113,0) 70%),
+      linear-gradient(180deg, rgba(9,13,28,1) 0%, rgba(24,22,52,1) 45%, rgba(58,42,78,1) 65%, rgba(150,74,74,1) 78.5%, rgba(21,25,38,1) 79%, rgba(15,19,30,1) 100%); }
+    .dk-sky { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; pointer-events: none; }
+    .dk-sky.hidden { display: none; }
+    .dk-sky a { pointer-events: auto; cursor: pointer; outline: none; }
+    .dk-sky .sky-g0 { stop-color: rgba(226,232,240,.30); }
+    .dk-sky .sky-g1 { stop-color: rgba(148,163,184,.14); }
+    .dk-sky .sky-g-on0 { stop-color: rgba(248,250,252,.50); }
+    .dk-sky .sky-g-on1 { stop-color: rgba(203,213,225,.26); }
+    .dk-sky .sky-body { fill: url(#deskSkyBody); stroke: rgba(255,255,255,.22); stroke-width: .8; }
+    .dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body, .dk-sky a.on .sky-body { fill: url(#deskSkyBodyOn); stroke: rgba(255,255,255,.85); stroke-width: 1.4; }
+    .dk-sky .sky-roof { stroke: rgba(255,255,255,.55); stroke-width: 1; }
+    .dk-sky .sky-win { fill: rgba(255,255,255,.07); }
+    .dk-sky .sky-win.lit { fill: rgba(252,214,138,.92); }
+    .dk-sky .sky-mast, .dk-sky .sky-crane { stroke: rgba(255,255,255,.62); stroke-width: 1.1; fill: none; }
+    .dk-sky .sky-glow { fill: rgba(239,68,68,.32); }
+    .dk-sky .sky-red { fill: rgba(248,113,113,1); }
+    .dk-sky .sky-ground { stroke: rgba(255,255,255,.28); stroke-width: 1; }
+    .dk-sky .sky-leader { stroke: rgba(255,255,255,.55); stroke-width: 1; stroke-dasharray: 3 3; }
+    .dk-sky .sky-ghost { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.4); stroke-width: 1; stroke-dasharray: 4 3; }
+    .dk-sky-cap { margin-top: 14px; width: fit-content; max-width: 100%; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.8); }
+    .dk-sky-cap.hidden, .dk-sky-key.hidden { display: none; }
+    .dk-sky-key { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; width: fit-content; max-width: 100%; font-size: 11.5px; color: rgba(255,255,255,.74); }
+    .dk-sky-key > span { display: inline-flex; align-items: center; gap: 5px; }
+    .dk-sky-k-win { display: inline-block; width: 6px; height: 8px; border-radius: 1px; background: rgba(252,214,138,.92); }
+    .dk-sky-k-red { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: rgba(248,113,113,1); box-shadow: 0 0 6px 2px rgba(239,68,68,.55); }
+    .dk-sky-call { position: absolute; z-index: 3; top: 72px; width: 304px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(15,23,42,.84); border: 1px solid rgba(255,255,255,.26); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); }
+    .dk-sky-call.hidden { display: none; }
+    .dk-sky-call-name { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 15px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
+    .dk-sky-call-due, .dk-sky-call-fresh { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; }
+    .dk-sky-call-due { color: rgba(252,165,165,1); }
+    .dk-sky-call-fresh { color: rgba(253,230,138,1); }
+    .dk-sky-call-due:empty, .dk-sky-call-fresh:empty { display: none; }
+    .dk-sky-call-meta { display: block; margin-top: 2px; font-size: 11.5px; color: rgba(255,255,255,.78); }
+    .dk-sky-call-meta a { color: #fff; font-weight: 600; text-decoration: none; }
+    .dk-sky-call a:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .dk-sky-call a:focus-visible { outline: 2px solid rgba(255,255,255,.95); outline-offset: 2px; }
+    .dk-sky-empty { position: absolute; z-index: 3; max-width: 240px; margin: 0; text-align: right; font-size: 12.5px; line-height: 1.45; color: rgba(255,255,255,.86); }
+    .dk-sky-empty.hidden { display: none; }
+    .dk-sky-empty b { display: block; color: #fff; font-size: 13.5px; font-weight: 600; }
+    .dk-sky-add { margin-top: 7px; padding: 5px 11px; border: 0; border-radius: 99px; background: var(--red-fill); color: #fff; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .dk-sky-add:focus-visible { outline: 2px solid rgba(255,255,255,.95); outline-offset: 2px; }
     @media (max-width: 760px) {
       .dk-hero { padding: 22px 18px 62px; }
       .dk-hero .dk-title { font-size: 30px; }
       .dk-hero-credit { right: 12px; }
-      /* On a phone the words cover the picture, so the card joins the flow
-         under them and the pin goes (drawDeskDay frames the roof further
-         right instead). */
-      .dk-hero.has-day { min-height: 0; }
-      .dk-day, .dk-day-empty { position: relative; right: auto; top: auto; bottom: auto; width: auto; max-width: none; margin-top: 14px; }
-      .dk-day-credit { right: 12px; }
+      /* On a phone the words fill the banner, so the skyline drops behind
+         them, dims and takes no pointer (the buildings list is right below);
+         the key and the callout go, and the empty-board note joins the flow. */
+      .dk-hero.has-sky { min-height: 0; }
+      .dk-sky { z-index: 0; }
+      .dk-sky a { pointer-events: none; }
+      .dk-sky .sky-towers { opacity: .62; }
+      .dk-sky-key, .dk-sky-call { display: none; }
+      .dk-sky-empty { position: relative; text-align: left; max-width: none; margin-top: 12px; }
     }
     .dk-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
     .dk-title { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 28px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); }
@@ -3100,7 +3132,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            shelf, the contact list — in the browser, the shelf's own rule;
            it never asks the server anything (renderDeskFind). -->
       <div id="deskHero" class="dk-hero">
-        <div class="dk-hero-bg" aria-hidden="true"><img id="deskHeroImg" class="hidden" alt="" decoding="async" /><img id="deskHeroAerial" class="hidden dk-hero-aerial" alt="" decoding="async" /><span id="deskHeroPin" class="hidden dk-hero-pin"></span></div>
+        <div class="dk-hero-bg" aria-hidden="true"><img id="deskHeroImg" class="hidden" alt="" decoding="async" /></div>
+        <!-- The firm's skyline (2026-09-25, Draft B): one tower per building
+             on the board, drawn by drawDeskSky from what the desk already
+             read. Above the words, pointer events on the towers only. -->
+        <svg id="deskSky" class="hidden dk-sky" role="group" aria-label="Your firm's skyline" xmlns="http://www.w3.org/2000/svg"></svg>
         <div class="dk-hero-in">
         <div class="dk-hero-top">
           <div class="dk-hero-kick"><span id="deskToday"></span><span id="deskFirmLine" class="hidden"></span></div>
@@ -3145,27 +3181,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <h2 id="deskGreeting" class="dk-title">Workspace</h2>
         <p id="deskHeroSub" class="hidden dk-hero-sub"></p>
         <span id="deskHeroWhereWrap" class="hidden dk-hero-where"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.2s-5-4.6-5-8.7a5 5 0 0 1 10 0c0 4.1-5 8.7-5 8.7z"/><circle cx="10" cy="8.5" r="1.8"/></svg><span id="deskHeroWhere"></span></span>
+        <div id="deskSkyCap" class="hidden dk-sky-cap"></div>
+        <div id="deskSkyKey" class="hidden dk-sky-key"><span title="Lit windows: a report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>lit = recent work</span><span title="A red light: an option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>date due in 90 days</span><span title="A crane: a building added to the board this month"><svg viewBox="0 0 16 12" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><path d="M12 12V1M15 2H1M12 0L2 2.4M3 2v4"/></svg>new this month</span></div>
         </div>
-        <!-- "A building a day" (2026-09-25): one of the firm's own buildings
-             from above, and why it was picked this morning. drawDeskDay is
-             the one writer; resetDeskHero takes it down with the rest of the
-             banner. Names, tenants and addresses are text a person typed, so
-             every field is written with textContent. -->
-        <div id="deskDay" class="hidden dk-day">
-          <div id="deskDayKick" class="dk-day-kick">Today's building</div>
-          <a id="deskDayName" class="dk-day-name" href="/buildings"></a>
-          <p class="dk-day-why"><span id="deskDayWhy"></span><b id="deskDayLead"></b></p>
-          <div class="dk-day-row">
-            <a id="deskDayOpen" class="dk-day-open" href="/buildings">Open the building sheet →</a>
-            <span id="deskDayPager" class="dk-day-pager">
-              <button id="deskDayPrev" type="button" class="dk-day-arr" aria-label="Previous building">‹</button>
-              <span id="deskDayCount"></span>
-              <button id="deskDayNext" type="button" class="dk-day-arr" aria-label="Next building">›</button>
-            </span>
-          </div>
+        <!-- The skyline's callout: one tower's name, what is due, whether it
+             is new, and its shelf. drawDeskSky / showDeskSkyCall are the one
+             writer; resetDeskHero takes it down with the rest of the banner. -->
+        <div id="deskSkyCall" class="hidden dk-sky-call">
+          <a id="deskSkyCallName" class="dk-sky-call-name" href="/buildings"></a>
+          <span id="deskSkyCallDue" class="dk-sky-call-due"></span>
+          <span id="deskSkyCallFresh" class="dk-sky-call-fresh"></span>
+          <span class="dk-sky-call-meta"><span id="deskSkyCallMeta"></span> · <a id="deskSkyCallOpen" href="/buildings">Open the sheet →</a></span>
         </div>
-        <p id="deskDayEmpty" class="hidden dk-day-empty"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 13l4-4 3 3 2-2 5 5"/></svg><span><b>Your buildings, from above.</b> Add one and each morning this banner shows a photo of the building that needs you most.</span></p>
-        <p id="deskDayCredit" class="hidden dk-day-credit">Imagery: Esri, Maxar</p>
+        <div id="deskSkyEmpty" class="hidden dk-sky-empty"><b>Your skyline starts here.</b>Each building you put on the board rises as a tower, and it lights up when your firm works on it.<br><button id="deskSkyAdd" type="button" class="dk-sky-add">+ Add a building</button></div>
         <p id="deskHeroCredit" class="hidden dk-hero-credit"></p>
       </div>
       <!-- There is no subtitle under the header any more (2026-09-04). The
@@ -14437,9 +14465,9 @@ async function renderMyDesk() {
     // same leases answer the strip just drew, after it (the agenda hides with
     // the strip, so it needs the strip's verdict first).
     drawDeskDates(await critical);
-    // The banner's building of the day reads the buildings, the shelf and
-    // the dates the three lines above just parsed, so it goes last.
-    drawDeskDay();
+    // The banner's skyline reads the buildings, the shelf and the dates the
+    // three lines above just parsed, so it goes last.
+    drawDeskSky();
   }
 
   // ---------------------------------------------------------------------------
@@ -15506,6 +15534,8 @@ async function renderMyDesk() {
     document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Workspace";
     clearTimeout(deskClockTimer);
     deskClockTimer = currentUser ? setTimeout(drawDeskClock, msToNextDeskBoundary(now)) : null;
+    // The skyline's sky turns with the greeting (noon, five, midnight).
+    if (typeof paintDeskSky === "function") paintDeskSky();
   }
 
   // The head's day, greeting, firm line and whether the find box shows —
@@ -15529,7 +15559,7 @@ async function renderMyDesk() {
     document.getElementById("deskGreeting").textContent = "Workspace";
     heroSub("");
     drawDeskHome(null);
-    clearDeskDay();
+    clearDeskSky();
   }
 
   async function addBuildingToFirm(input) {
@@ -15612,181 +15642,247 @@ async function renderMyDesk() {
   });
 
   // ---------------------------------------------------------------------------
-  // "A building a day" (2026-09-25 — Draft C of the banner drafts, the
-  // owner's pick). Each morning the banner shows one of the firm's own
-  // buildings from above: the one with the nearest lease date inside 90
-  // days, else the newest on the board, else the one with the most recent
-  // reports, else the next in line (building-day.js is the rule, and it is
-  // tested there). A card says why and opens the building's sheet; arrows
-  // flip through the rest of the board.
+  // The firm's skyline (2026-09-25 — Draft B of the banner drafts, the
+  // owner's pick). Every building on the firm's board is a tower on the
+  // banner: its height is the building's size, its lit windows are recent
+  // work on it, a red light is a lease date inside 90 days, a crane is a
+  // building added this month, and the newest rise on the right, so the
+  // skyline grows as the firm does. The sky follows the time of day on the
+  // greeting's own boundaries. Hovering (or focusing) a tower names it, says
+  // what is due and opens its sheet; at rest the banner speaks about the
+  // tower that needs the firm most (firm-skyline.js's focusOf).
   //
-  // It reads ONLY what the desk already parsed — firmBuildings, deskCritical
-  // and firmShelfItems — so it has no route of its own (bootFetch's rule),
-  // and renderShares calls it once, after the lease dates have drawn. The
-  // aerial sits OVER the city photograph rather than replacing it, so taking
-  // it down (a sign-out, a board with no located building, BUILDINGDAY
-  // failing to load) leaves exactly the banner there was before.
+  // firm-skyline.js is the rule, and it is tested there. This half only
+  // draws. It reads ONLY what the desk already parsed — firmBuildings,
+  // deskCritical and firmShelfItems — so it has no route of its own
+  // (bootFetch's rule), and renderShares calls it once, after the lease dates
+  // have drawn. It sits OVER the city photograph (`has-sky` hides it), so
+  // every way it can be absent — no firm, a board that could not be read,
+  // /firm-skyline.js failing to load, a sign-out — leaves exactly the banner
+  // there was before.
   //
-  // The pin is a claim that THIS roof is the building, so it follows the map
-  // photos' rule: an OSM outline must prove the address (house number and
-  // street, estimateSizeFromFootprint's filter), and the largest proving
-  // outline is the main mass. With no proof the picture is framed on the
-  // looked-up point and carries no mark — that point sits on the street in
-  // front of the building, which is why a pin there would be wrong.
+  // The towers sit in their own layer ABOVE the words (z 1), with pointer
+  // events off except on the towers themselves, so the greeting and the find
+  // box stay clickable and a tower stays hoverable. That is why the skyline
+  // starts to the right of the widest line of text rather than at a fixed
+  // share of the width: above the words, a tower would cover them. On a
+  // phone the words fill the banner, so the layer drops behind them, dims,
+  // and takes no pointer at all — the buildings list is right below it.
   // ---------------------------------------------------------------------------
-  let deskDay = null;                      // { order, at } while an aerial is up
-  const DESK_ROOF_KEY = "roofCache.v1";    // address|point -> {lat,lng} or null
-  const DESK_ROOF_MAX = 200;
-  const deskRoofMem = new Map();
+  let deskSky = null; // { towers, focus, pos, links, ... } while the skyline is up
+  const DESK_SKY_NS = "http://www.w3.org/2000/svg";
+  const DESK_SKY_CALL_W = 304;
 
-  function clearDeskDay() {
-    deskDay = null;
-    document.getElementById("deskHero").classList.remove("has-day");
-    document.getElementById("deskHeroAerial").classList.add("hidden");
-    document.getElementById("deskHeroPin").classList.add("hidden");
-    document.getElementById("deskDay").classList.add("hidden");
-    document.getElementById("deskDayCredit").classList.add("hidden");
-    document.getElementById("deskDayEmpty").classList.add("hidden");
+  function deskSkyNode(tag, attrs) {
+    const n = document.createElementNS(DESK_SKY_NS, tag);
+    for (const k in attrs || {}) n.setAttribute(k, String(attrs[k]));
+    return n;
   }
 
-  function drawDeskDay() {
-    clearDeskDay();
+  function clearDeskSky() {
+    deskSky = null;
+    const hero = document.getElementById("deskHero");
+    ["has-sky", "sky-dawn", "sky-day", "sky-dusk"].forEach((c) => hero.classList.remove(c));
+    const sky = document.getElementById("deskSky");
+    sky.textContent = "";
+    sky.classList.add("hidden");
+    ["deskSkyCap", "deskSkyKey", "deskSkyCall", "deskSkyEmpty"].forEach((id) =>
+      document.getElementById(id).classList.add("hidden"));
+  }
+
+  // The sky's part of the day. drawDeskClock calls this at the greeting's
+  // own boundaries (noon, five, midnight), so the sky and "Good morning"
+  // change together.
+  function paintDeskSky() {
+    if (!deskSky || typeof SKYLINE === "undefined") return;
+    const part = SKYLINE.skyFor(new Date());
+    const hero = document.getElementById("deskHero");
+    ["dawn", "day", "dusk"].forEach((p) => hero.classList.toggle("sky-" + p, p === part));
+  }
+
+  function drawDeskSky() {
+    clearDeskSky();
     const firm = currentUser ? myFirm() : null;
-    if (!firm || typeof BUILDINGDAY === "undefined") return;
-    // A board that could not be read shows nothing new: the strip is hidden
+    if (!firm || typeof SKYLINE === "undefined") return;
+    // A board that could not be read draws nothing new: the strip is hidden
     // then, and the page already says which read failed.
     if (document.getElementById("deskStrip").classList.contains("hidden")) return;
-    if (!firmBuildings.length) {
-      document.getElementById("deskDayEmpty").classList.remove("hidden");
-      return;
-    }
-    const order = BUILDINGDAY.orderForDay({
+    const towers = SKYLINE.towersFor({
       buildings: firmBuildings, critical: deskCritical, shelf: firmShelfItems, now: new Date(),
     });
-    // Nothing located yet (the server looks new buildings up in the
-    // background): the city's photograph stays.
-    if (!order.length) return;
-    deskDay = { order, at: 0 };
-    showDeskDay(0);
-  }
-
-  function showDeskDay(i) {
-    if (!deskDay || !deskDay.order.length) return;
-    const n = deskDay.order.length;
-    deskDay.at = ((i % n) + n) % n;
-    const { building: b, reason, picked } = deskDay.order[deskDay.at];
-    document.getElementById("deskHero").classList.add("has-day");
-    document.getElementById("deskDayKick").textContent = picked ? "Today's building" : "On your board";
-    const href = "/building/" + encodeURIComponent(b.id);
-    const name = document.getElementById("deskDayName");
-    name.textContent = String(b.address || "").split(",")[0];
-    name.setAttribute("href", href);
-    document.getElementById("deskDayOpen").setAttribute("href", href);
-    const words = BUILDINGDAY.reasonText(reason);
-    document.getElementById("deskDayWhy").textContent = words.rest;
-    document.getElementById("deskDayLead").textContent = words.lead;
-    document.getElementById("deskDayCount").textContent = `${deskDay.at + 1} of ${n}`;
-    document.getElementById("deskDayPager").classList.toggle("hidden", n < 2);
-    document.getElementById("deskDay").classList.remove("hidden");
-    document.getElementById("deskDayCredit").classList.remove("hidden");
-    const known = deskRoofCached(b);
-    frameDeskDay(b, known || null);
-    if (known !== undefined) return;
-    deskRoofFor(b).then((roof) => {
-      if (roof && deskDay && deskDay.order[deskDay.at].building === b) frameDeskDay(b, roof);
-    }).catch(() => {});
-  }
-
-  // The picture itself: framed on the proven roof (with the pin) or on the
-  // looked-up point (without one), sized to the banner as it is now.
-  function frameDeskDay(b, roof) {
-    const hero = document.getElementById("deskHero");
-    const box = typeof hero.getBoundingClientRect === "function" ? hero.getBoundingClientRect() : null;
-    const phone = typeof window !== "undefined" && window.innerWidth < 760;
-    const dpr = Math.min(2, (typeof window !== "undefined" && window.devicePixelRatio) || 1);
-    const w = Math.round(((box && box.width) || 1000) * dpr);
-    const h = Math.round(((box && box.height) || 262) * dpr);
-    const fx = phone ? 0.8 : 0.56, fy = phone ? 0.3 : 0.42;
-    const at = roof || { lat: Number(b.lat), lng: Number(b.lng) };
-    const url = BUILDINGDAY.aerialUrl({ lat: at.lat, lng: at.lng, width: w, height: h,
-      groundMeters: phone ? 260 : 460, fx, fy });
-    const img = document.getElementById("deskHeroAerial");
-    const pin = document.getElementById("deskHeroPin");
-    if (!url) { img.classList.add("hidden"); pin.classList.add("hidden"); return; }
-    img.setAttribute("src", url);
-    img.classList.remove("hidden");
-    pin.setAttribute("style", `left:${fx * 100}%;top:${fy * 100}%`);
-    pin.classList.toggle("hidden", !roof || phone);
-  }
-
-  function deskRoofKey(b) {
-    return String(b.address || "").trim().toLowerCase() + "|" + Number(b.lat).toFixed(5) + "," + Number(b.lng).toFixed(5);
-  }
-  // undefined = never asked; null = asked, and no outline proves the address.
-  function deskRoofCached(b) {
-    const k = deskRoofKey(b);
-    if (deskRoofMem.has(k)) return deskRoofMem.get(k);
-    try {
-      const all = JSON.parse(localStorage.getItem(DESK_ROOF_KEY) || "{}");
-      if (all && Object.prototype.hasOwnProperty.call(all, k)) { deskRoofMem.set(k, all[k]); return all[k]; }
-    } catch (_) { /* storage blocked: ask the map */ }
-    return undefined;
-  }
-  function deskRoofRemember(b, roof) {
-    const k = deskRoofKey(b);
-    deskRoofMem.set(k, roof);
-    try {
-      const all = JSON.parse(localStorage.getItem(DESK_ROOF_KEY) || "{}") || {};
-      all[k] = roof;
-      const keys = Object.keys(all);
-      if (keys.length > DESK_ROOF_MAX) keys.slice(0, keys.length - DESK_ROOF_MAX).forEach((x) => { delete all[x]; });
-      localStorage.setItem(DESK_ROOF_KEY, JSON.stringify(all));
-    } catch (_) { /* a full or blocked store costs a repeat query, nothing more */ }
-  }
-  async function deskRoofFor(b) {
-    const lat = Number(b.lat), lng = Number(b.lng);
-    const want = houseNumberOf(b.address);
-    // An address naming one unit of a site proves no single roof.
-    if (!want || unitDesignatorOf(b.address)) { deskRoofRemember(b, null); return null; }
-    const j = await overpassQuery(`[out:json][timeout:15];way(around:180,${lat.toFixed(6)},${lng.toFixed(6)})["building"];out tags geom;`);
-    // An outage is not a miss: nothing is remembered, the next paint asks again.
-    if (!j) return undefined;
-    let best = null;
-    for (const w of j.elements || []) {
-      if (!Array.isArray(w.geometry) || w.geometry.length < 3) continue;
-      const tags = w.tags || {};
-      if (!osmNumberMatches(tags["addr:housenumber"], want)) continue;
-      if (!streetLooksSame(tags["addr:street"], b.address)) continue;
-      const cLat = w.geometry.reduce((s, p) => s + p.lat, 0) / w.geometry.length;
-      const cLng = w.geometry.reduce((s, p) => s + p.lon, 0) / w.geometry.length;
-      if (Math.hypot((cLat - lat) * 111320, (cLng - lng) * 111320 * Math.cos(lat * Math.PI / 180)) > 180) continue;
-      const area = footprintSqft(w.geometry, lat, lng);
-      if (!best || area > best.area) best = { area, lat: cLat, lng: cLng };
+    deskSky = { towers, focus: SKYLINE.focusOf(towers) };
+    document.getElementById("deskHero").classList.add("has-sky");
+    paintDeskSky();
+    if (towers.length) {
+      const c = SKYLINE.captionFor(towers);
+      const cap = document.getElementById("deskSkyCap");
+      cap.textContent = `Your firm's skyline · ${c.count} ${c.count === 1 ? "building" : "buildings"}` +
+        (c.addedThisMonth ? ` · +${c.addedThisMonth} this month` : "");
+      cap.classList.remove("hidden");
+      document.getElementById("deskSkyKey").classList.remove("hidden");
     }
-    const roof = best ? { lat: best.lat, lng: best.lng } : null;
-    deskRoofRemember(b, roof);
-    return roof;
+    layoutDeskSky();
   }
 
-  document.getElementById("deskDayPrev").addEventListener("click", () => { if (deskDay) showDeskDay(deskDay.at - 1); });
-  document.getElementById("deskDayNext").addEventListener("click", () => { if (deskDay) showDeskDay(deskDay.at + 1); });
-  // A picture Esri cannot serve comes down, and the city photograph under it
-  // shows again; the card stays, because what it says is still true.
-  document.getElementById("deskHeroAerial").addEventListener("error", () => {
-    document.getElementById("deskHeroAerial").classList.add("hidden");
-    document.getElementById("deskHeroPin").classList.add("hidden");
+  // How far right the words reach at tower height, so no tower is drawn
+  // over them. Measured on the text itself (a Range), because the heading
+  // and the status line are block boxes as wide as the banner.
+  function deskSkyTextRight(heroBox) {
+    if (!heroBox || typeof document.createRange !== "function") return 0;
+    let right = 0;
+    for (const id of ["deskGreeting", "deskHeroSub", "deskHeroWhereWrap", "deskSkyCap", "deskSkyKey"]) {
+      const el = document.getElementById(id);
+      if (!el || el.classList.contains("hidden")) continue;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const r = range.getBoundingClientRect();
+      if (r && r.width) right = Math.max(right, r.right - heroBox.left);
+    }
+    return right;
+  }
+
+  function layoutDeskSky() {
+    if (!deskSky) return;
+    const hero = document.getElementById("deskHero");
+    const sky = document.getElementById("deskSky");
+    sky.textContent = "";
+    const box = typeof hero.getBoundingClientRect === "function" ? hero.getBoundingClientRect() : null;
+    const W = Math.round((box && box.width) || 1000);
+    const H = Math.round((box && box.height) || 292);
+    const phone = typeof window !== "undefined" && window.innerWidth < 760;
+    const ground = H - 62;
+    sky.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    const x1 = W - (phone ? 12 : 28);
+    let x0 = phone ? W * 0.34 : Math.max(W * 0.44, deskSkyTextRight(box) + 24);
+    x0 = Math.min(x0, x1 - 150);
+    Object.assign(deskSky, { W, H, x0, ground, phone, pos: new Map(), links: new Map(), leader: null });
+
+    const defs = deskSkyNode("defs");
+    for (const [id, cls] of [["deskSkyBody", "sky-g"], ["deskSkyBodyOn", "sky-g-on"]]) {
+      const g = deskSkyNode("linearGradient", { id, x1: 0, y1: 0, x2: 0, y2: 1 });
+      g.appendChild(deskSkyNode("stop", { offset: 0, class: cls + "0" }));
+      g.appendChild(deskSkyNode("stop", { offset: 1, class: cls + "1" }));
+      defs.appendChild(g);
+    }
+    sky.appendChild(defs);
+
+    const empty = document.getElementById("deskSkyEmpty");
+    if (!deskSky.towers.length) {
+      // Three dashed outlines where the skyline will stand.
+      const widths = [30, 38, 26], heights = [58, 86, 40];
+      let x = x1 - (widths.reduce((s, w) => s + w, 0) + 18);
+      const gx = x;
+      sky.appendChild(deskSkyNode("line", { class: "sky-ground", x1: x - 24, y1: ground, x2: W, y2: ground }));
+      widths.forEach((w, i) => {
+        sky.appendChild(deskSkyNode("rect", { class: "sky-ghost", x, y: ground - heights[i], width: w, height: heights[i] }));
+        x += w + 9;
+      });
+      empty.setAttribute("style", phone ? "" : `right:${Math.round(W - gx + 22)}px;bottom:${Math.round(H - ground + 4)}px`);
+      empty.classList.remove("hidden");
+      sky.classList.remove("hidden");
+      return;
+    }
+
+    const layout = SKYLINE.layout(deskSky.towers, {
+      x0, x1, ground, gap: phone ? 6 : 9,
+      maxHeight: phone ? 96 : Math.max(40, ground - 146),
+    });
+    sky.appendChild(deskSkyNode("line", { class: "sky-ground", x1: layout[0].x - 24, y1: ground, x2: W, y2: ground }));
+    const row = deskSkyNode("g", { class: "sky-towers" });
+    deskSky.towers.forEach((tw, i) => {
+      const p = layout[i];
+      const b = tw.building;
+      deskSky.pos.set(b.id, p);
+      const a = deskSkyNode("a", { class: "sky-t", href: "/building/" + encodeURIComponent(b.id),
+        "aria-label": SKYLINE.labelFor(tw) });
+      a.setAttribute("tabindex", phone ? "-1" : "0");
+      a.appendChild(deskSkyNode("rect", { class: "sky-body", x: p.x, y: p.top, width: p.width, height: p.height }));
+      a.appendChild(deskSkyNode("line", { class: "sky-roof", x1: p.x, y1: p.top, x2: p.x + p.width, y2: p.top }));
+      const cols = Math.max(1, Math.floor((p.width - 6) / 6));
+      const rows = Math.max(1, Math.floor((p.height - 12) / 9));
+      const lit = SKYLINE.windowPattern(b.id, tw.lit, cols * rows);
+      const ox = p.x + (p.width - (cols * 6 - 3)) / 2;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        a.appendChild(deskSkyNode("rect", { class: lit[r * cols + c] ? "sky-win lit" : "sky-win",
+          x: (ox + c * 6).toFixed(1), y: (p.top + 7 + r * 9).toFixed(1), width: 3, height: 4, rx: 0.5 }));
+      }
+      const cx = p.x + p.width / 2;
+      if (tw.due) {
+        a.appendChild(deskSkyNode("line", { class: "sky-mast", x1: cx, y1: p.top, x2: cx, y2: p.top - 9 }));
+        a.appendChild(deskSkyNode("circle", { class: "sky-glow", cx, cy: p.top - 11, r: 9 }));
+        a.appendChild(deskSkyNode("circle", { class: "sky-red", cx, cy: p.top - 11, r: 3.6 }));
+      }
+      if (tw.isNew) {
+        const mx = p.x + p.width - 5;
+        a.appendChild(deskSkyNode("path", { class: "sky-crane",
+          d: `M${mx} ${p.top}V${p.top - 20}M${mx + 5} ${p.top - 18}H${mx - 22}M${mx} ${p.top - 24}L${mx - 18} ${p.top - 18.5}M${mx - 16} ${p.top - 18}V${p.top - 10}` }));
+      }
+      const show = () => showDeskSkyCall(tw);
+      const back = () => showDeskSkyCall(deskSky && deskSky.focus);
+      a.addEventListener("mouseenter", show);
+      a.addEventListener("focus", show);
+      a.addEventListener("mouseleave", back);
+      a.addEventListener("blur", back);
+      deskSky.links.set(b.id, a);
+      row.appendChild(a);
+    });
+    sky.appendChild(row);
+    deskSky.leader = deskSkyNode("line", { class: "sky-leader hidden", x1: 0, y1: 0, x2: 0, y2: 0 });
+    sky.appendChild(deskSky.leader);
+    sky.classList.remove("hidden");
+    showDeskSkyCall(deskSky.focus);
+  }
+
+  // The callout above the skyline: one tower's name, what is due, whether it
+  // is new, and its shelf, with a dashed line down to its roof. textContent
+  // throughout — tenants, names and addresses are text a person typed.
+  function showDeskSkyCall(tower) {
+    const call = document.getElementById("deskSkyCall");
+    if (!deskSky) { call.classList.add("hidden"); return; }
+    deskSky.links.forEach((a, id) => a.classList.toggle("on", Boolean(tower) && id === tower.building.id));
+    const p = tower ? deskSky.pos.get(tower.building.id) : null;
+    if (!tower || !p || deskSky.phone) {
+      call.classList.add("hidden");
+      if (deskSky.leader) deskSky.leader.classList.add("hidden");
+      return;
+    }
+    const words = SKYLINE.calloutFor(tower);
+    const href = "/building/" + encodeURIComponent(tower.building.id);
+    const name = document.getElementById("deskSkyCallName");
+    name.textContent = words.name;
+    name.setAttribute("href", href);
+    document.getElementById("deskSkyCallOpen").setAttribute("href", href);
+    document.getElementById("deskSkyCallDue").textContent = words.due;
+    document.getElementById("deskSkyCallFresh").textContent = words.fresh;
+    document.getElementById("deskSkyCallMeta").textContent = words.meta;
+    const cx = p.x + p.width / 2;
+    const left = Math.max(deskSky.x0 - 60, Math.min(cx - DESK_SKY_CALL_W / 2, deskSky.W - 22 - DESK_SKY_CALL_W));
+    call.setAttribute("style", `left:${Math.round(left)}px`);
+    call.classList.remove("hidden");
+    if (deskSky.leader) {
+      const lx = Math.max(left + 14, Math.min(cx, left + DESK_SKY_CALL_W - 14));
+      deskSky.leader.setAttribute("x1", lx.toFixed(1));
+      deskSky.leader.setAttribute("y1", String(72 + (call.offsetHeight || 64)));
+      deskSky.leader.setAttribute("x2", cx.toFixed(1));
+      deskSky.leader.setAttribute("y2", (p.top - (tower.due ? 22 : tower.isNew ? 26 : 4)).toFixed(1));
+      deskSky.leader.classList.remove("hidden");
+    }
+  }
+
+  // The empty board's one next step: the buildings section's own add form,
+  // opened the way its own empty-state button opens it.
+  document.getElementById("deskSkyAdd").addEventListener("click", () => {
+    const open = document.getElementById("buildingsEmptyAdd");
+    if (open && typeof open.click === "function") open.click();
+    const section = document.getElementById("deskBuildings");
+    if (section && typeof section.scrollIntoView === "function") section.scrollIntoView({ behavior: "smooth", block: "start" });
   });
-  // The picture is requested at the banner's own size, so a window that
-  // changes shape asks again rather than stretching it (the pin is placed in
-  // percent and would drift off the roof).
-  let deskDayResize = null;
+  // The skyline is laid out at the banner's own width, so a window that
+  // changes shape lays it out again rather than stretching it.
+  let deskSkyResize = null;
   window.addEventListener("resize", () => {
-    clearTimeout(deskDayResize);
-    deskDayResize = setTimeout(() => {
-      if (!deskDay) return;
-      const b = deskDay.order[deskDay.at].building;
-      frameDeskDay(b, deskRoofCached(b) || null);
-    }, 300);
+    clearTimeout(deskSkyResize);
+    deskSkyResize = setTimeout(() => { if (deskSky) layoutDeskSky(); }, 200);
   });
 
   // The unread dot's one writer (slice 8). Removed, never added, without a

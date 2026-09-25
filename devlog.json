@@ -4297,5 +4297,17 @@
     "type": "improvement",
     "title": "The shipped card is a page now: compninja.co/dev/shipped",
     "details": "The nightly post in the Developer thread carried the card as a picture, and Chat shrank it until it was unreadable. The post is now plain Chat text — each person's commits and PRs for the day — with an \"Open the board\" button to one team-only page that updates every night: the day's numbers, the 14-day chart at full size, and every PR merged that day. Behind the same key as /admin and /dev, sharp on a phone, and linked from the Dev hub."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
+    "title": "Every new account gets 14 days of Pro; Pro drops to $49 a month",
+    "details": "New accounts get full Pro for 14 days with no card, counted from signup. Setting PRO_TRIAL_START gives accounts that already exist their 14 days from that date. After the trial an account is on the free plan and keeps everything it saved. Pro is now $49 a month or $490 a year, and firm seats are $39. The founding offer is no longer sold, and founding members keep their plan. The Stripe price settings now accept the old price id next to the new one, so existing subscribers keep renewing after the change. PRO_TRIAL_DAYS=0 turns the trial off."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
+    "title": "Free is 3 reports a month; trial accounts get a start and an ending email",
+    "details": "Free accounts now run 3 reports a month. Re-running a report already counted that month is free, and the form says how many are left before the first one. When the allowance runs out, the pricing window opens and says why, before anything is searched. Accounts on a trial get two emails: one saying they have Pro until a date, and one 3 days before it ends. Each is sent at most once, from a daily scheduled job, and never to paying accounts or to anyone who turned emails off. At startup the server also asks Stripe what each price charges, and pauses checkout for a plan whose Stripe price differs from the one shown on the site."
   }
 ]

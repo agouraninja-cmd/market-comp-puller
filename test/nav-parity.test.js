@@ -228,8 +228,15 @@ test("pricing is one control in the app, in the settings panel", () => {
   // to somebody who already pays, or on a deployment with nothing for sale.
   assert.match(INDEX_HTML, /id="settingsUpgradeBtn"[^>]*>See pricing</,
     "the settings panel lost its pricing button");
+  // The rule is `live && (!pro || trial)` since 2026-09-25: a Pro TRIAL is Pro
+  // in every capability and still somebody to sell to, so plain `!pro` would
+  // hide the one button a trial exists to lead to. One named rule, read by
+  // every upgrade control, rather than the expression repeated.
   assert.match(INDEX_HTML,
-    /getElementById\("settingsUpgradeBtn"\)\.classList\.toggle\("hidden", !live \|\| pro\)/,
+    /const offerUpgrade = live && \(!pro \|\| isTrialPro\(\)\);/,
+    "the upgrade rule changed shape; every upgrade control reads offerUpgrade");
+  assert.match(INDEX_HTML,
+    /getElementById\("settingsUpgradeBtn"\)\.classList\.toggle\("hidden", !offerUpgrade\)/,
     "the settings pricing button no longer follows the billing rule the nav row followed");
 
   // The SITE keeps selling. marketBar renders its own row for every visitor on
@@ -243,7 +250,7 @@ test("pricing is one control in the app, in the settings panel", () => {
   for (const door of ['get("pricing") === "1"', 'location.hash === "#pricing"']) {
     assert.ok(INDEX_HTML.includes(door), "the app stopped honouring " + door);
   }
-  assert.match(INDEX_HTML, /if \(live && !pro\) openPricingModal\(\)/,
+  assert.match(INDEX_HTML, /if \(offerUpgrade\) openPricingModal\(\)/,
     "the ?pricing=1 door no longer opens the modal");
 });
 

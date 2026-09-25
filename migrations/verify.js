@@ -87,6 +87,7 @@ const TABLES = [
   ["macro_readings",      "045-macro-readings.sql"],
   ["permit_filings",      "052-permit-filings.sql"],
   ["permit_filing_events", "052-permit-filings.sql"],
+  ["trial_notices",       "053-trial-notices.sql"],
 ];
 
 // Migrations that ALTER an existing table are the dangerous ones, and a

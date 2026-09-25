@@ -165,8 +165,15 @@ test("the cost answer matches what the product actually sells", async (t) => {
       // it: the page must say what the free tier ACTUALLY is rather than going
       // vague, and it must name the free window, because both are what stop
       // this answer drifting back into a promise the code does not keep.
-      assert.ok(/runs a full report on any commercial address/i.test(html),
-        p + " should state the real free tier, not go vague about it");
+      // Since 2026-09-25 the free tier is a number of reports a month, and the
+      // answer must state THAT number — the one entitlements.js enforces —
+      // rather than the "runs a full report" it said while reports were
+      // unlimited, which would now read as a promise of more than it gives.
+      const ENT = require("../entitlements");
+      const m = html.match(/runs (\d+) full reports? a month on any commercial address/i);
+      assert.ok(m, p + " should state the real free tier, reports a month included");
+      assert.equal(Number(m[1]), ENT.FREE_REPORTS_PER_MONTH,
+        p + " must state the free report allowance entitlements.js enforces");
       assert.ok(/three[- ]year lookback|three years back/i.test(html),
         p + " should name the free lookback; FREE_MAX_LOOKBACK_MONTHS is 36");
     }

@@ -158,8 +158,18 @@ function planForPrice(priceId, priceMap) {
   // ""-matches-"" unreachable; the Boolean() here keeps that true if the guard
   // above is ever relaxed, since the cost of getting it wrong is granting a
   // plan nobody paid for.
-  const is = (candidate) => Boolean(candidate) && priceId === candidate;
+  //
+  // A candidate may also be a LIST of ids (2026-09-25): server.js keeps every
+  // price a plan has ever been sold at, because Stripe leaves an existing
+  // subscriber on the price they bought and their renewals keep carrying it.
+  // Blank entries are dropped for the same ""-must-never-match reason.
+  const is = (candidate) => (Array.isArray(candidate)
+    ? candidate.some((c) => Boolean(c) && priceId === c)
+    : Boolean(candidate) && priceId === candidate);
   if (is(map.monthly)) return "pro_monthly";
+  // The standing annual plan (2026-09-25), which replaced founding for new
+  // buyers. Founding stays below it: no longer sold, still honoured.
+  if (is(map.annual)) return "pro_annual";
   if (is(map.annualFounding)) return "pro_annual_founding";
   // The firm plan (2026-08-16). A SEPARATE price rather than the monthly one
   // bought N times: it is billed per seat with a quantity, and sharing a price
@@ -301,8 +311,39 @@ function refundOf(charge) {
   return { paymentIntentId, full };
 }
 
+// Does a Stripe price object charge what the site SAYS it charges?
+// (2026-09-25.) The figures on every page come from PRICING in server.js and
+// the charge comes from the price id in the environment, and nothing tied the
+// two together: set the env a few minutes after a price change deploys, and
+// for those minutes the site shows $49 while Stripe charges $100. server.js
+// asks Stripe about each sold price at boot and pauses checkout for a plan
+// whose price is a confirmed MISMATCH.
+//
+// Three answers, and only one of them refuses anything:
+//   "ok"       — the amount and the billing interval both agree.
+//   "mismatch" — Stripe answered with a readable amount or interval that does
+//                not match. The only answer that pauses a checkout.
+//   "unknown"  — anything that could not be read (no price object, a tiered
+//                price with no unit_amount, a non-USD price). Fails OPEN: a
+//                shape we cannot read is not evidence of a wrong charge, and
+//                refusing on it would stop a real sale.
+function priceMatches(price, { cents, interval } = {}) {
+  if (!price || typeof price !== "object" || price.object !== "price") return "unknown";
+  // null is a tiered or custom-amount price, and Number(null) is 0: without
+  // this check it read as a $0 charge and paused a checkout it cannot judge.
+  if (price.unit_amount === null || price.unit_amount === undefined) return "unknown";
+  const amount = Number(price.unit_amount);
+  if (!Number.isFinite(amount) || String(price.currency || "").toLowerCase() !== "usd") return "unknown";
+  const every = price.recurring && price.recurring.interval;
+  const count = Number((price.recurring && price.recurring.interval_count) || 1);
+  if (amount !== Number(cents)) return "mismatch";
+  if (interval && (every !== interval || count !== 1)) return "mismatch";
+  return "ok";
+}
+
 module.exports = {
   STRIPE_API,
+  priceMatches,
   formEncode,
   idempotencyKeyFor,
   stripeRequest,

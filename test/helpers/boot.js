@@ -170,6 +170,14 @@ async function bootOnce(env) {
       // an outage to both callers, so they skip and nothing else changes; a
       // suite that means to assert on a lookup passes its own stub.
       CENSUS_API_URL: "http://127.0.0.1:9/census-unset",
+      // The new-account Pro trial, OFF by default here (2026-09-25). In
+      // production it is on for 14 days, which means every account a suite
+      // creates would be Pro for the whole test — and dozens of suites sign up
+      // an account precisely to prove what the FREE tier may and may not do.
+      // Off here keeps those suites saying what they say; the trial's own
+      // suite (test/pro-trial-run.test.js) turns it on explicitly.
+      PRO_TRIAL_DAYS: "0",
+      PRO_TRIAL_START: "",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

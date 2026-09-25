@@ -69,6 +69,23 @@ const FREE_MAX_LOOKBACK_MONTHS = 36;
 // reads as a bug rather than a limit. server.js keys the tally on a report id
 // and inserts ignore-duplicates, so a re-export is free and idempotent.
 const FREE_EXPORTS_PER_MONTH = 5;
+// Free reports a month (2026-09-25, owner's call from the billing plan).
+//
+// Until then a free account ran unlimited reports, which left Pro selling only
+// workflow — and an owner valuing one building never needed it, while a broker
+// running dozens a month had no reason to pay either. A small monthly number
+// separates the two audiences better than anything else: an owner values one
+// or two buildings, a broker values many. Three keeps the free tier doing the
+// jobs it exists for (owners requesting valuations, every report feeding the
+// comp database) while making Pro the plan for working brokers.
+//
+// Counted PER REPORT PER MONTH, exactly like downloads: re-running the same
+// address and type in the same month costs nothing, and a report reopened from
+// history or the portfolio never reaches the search at all. server.js keeps
+// the tally in export_usage under its own period key (reportUsagePeriod), and
+// FREE_REPORTS_PER_MONTH in the environment overrides this default ("off"
+// lifts the cap entirely, the instant rollback lever).
+const FREE_REPORTS_PER_MONTH = 3;
 // Zero, deliberately: exporting requires an account.
 //
 // The alternative — counting anonymous exports — cannot work here. Exports are
@@ -110,7 +127,24 @@ const GRACE_DAYS = 7;
 // cheaper error.
 const RENEWAL_SLACK_MS = 24 * 60 * 60 * 1000;
 
-const PRO_PLANS = ["pro_monthly", "pro_annual_founding"];
+// The new-account Pro trial (2026-09-25, owner's call). Every account gets
+// full Pro for this many days, counted from the LATER of its own created_at
+// and the trial's launch date — so an account made after launch gets 14 days
+// from signup, and an account that already existed gets 14 days from launch
+// day instead of none. server.js supplies both (PRO_TRIAL_DAYS and
+// PRO_TRIAL_START); trialEndsAt() below does the arithmetic.
+//
+// Deliberately a dated grant here and NOT a Stripe trial. Stripe marks a
+// trialling subscription `trialing`, which subscriptionState() does not
+// recognise and therefore reads as expired — a Stripe trial would have locked
+// every trial user out. It also needs no card and no migration: created_at is
+// on every users row already.
+const TRIAL_DAYS = 14;
+
+// Every plan we sell or have sold. `pro_annual` is the standing annual plan
+// (2026-09-25); `pro_annual_founding` is no longer SOLD, but its subscribers
+// keep it, so it stays here for the label.
+const PRO_PLANS = ["pro_monthly", "pro_annual", "pro_annual_founding"];
 
 // ---------------------------------------------------------------------------
 // ONE SUBSCRIPTION (owner's decision, 2026-08-05). There is no separate broker
@@ -188,6 +222,32 @@ function msOf(value) {
   return Number.isFinite(t) ? t : NaN;
 }
 
+/**
+ * When does this account's Pro trial end? Epoch ms, or null for no trial.
+ *
+ * The trial runs `days` from the later of the account's creation and the
+ * launch date (`startsAt`), which is what gives accounts that predate the
+ * trial their days from launch rather than nothing. No launch date means
+ * creation alone decides.
+ *
+ * A launch date still in the future (`now` before `startsAt`) is no trial
+ * YET, rather than a trial that starts early: setting PRO_TRIAL_START to next
+ * Monday and deploying today must not hand everyone Pro from today.
+ *
+ * Fails CLOSED like everything here: a missing or unparseable created_at is
+ * no trial, and so is a length of 0 (PRO_TRIAL_DAYS=0 is the off switch).
+ */
+function trialEndsAt(createdAt, { days = TRIAL_DAYS, startsAt = null, now = null } = {}) {
+  const d = Number(days);
+  if (!Number.isFinite(d) || d <= 0) return null;
+  const created = msOf(createdAt);
+  if (!Number.isFinite(created)) return null;
+  const start = msOf(startsAt);
+  if (Number.isFinite(start) && Number.isFinite(now) && now < start) return null;
+  const from = Number.isFinite(start) ? Math.max(created, start) : created;
+  return from + d * 24 * 60 * 60 * 1000;
+}
+
 // Reduce a stored subscription row to one of five states. Anything we do not
 // recognize lands on "expired" — an unknown Stripe status must never grant
 // access we did not intend.
@@ -242,8 +302,15 @@ function subscriptionState(sub, now) {
  *                                 independent of billing, so a beta broker's
  *                                 book stays reachable with no subscription to
  *                                 lapse.
+ * @param {object?} o.reportUsage  { count, keys } — reports run this month
+ * @param {number?} o.freeReportsPerMonth  the free cap (null = no cap;
+ *                                 undefined = FREE_REPORTS_PER_MONTH)
+ * @param {number|string?} o.trialUntil  when this account's Pro trial ends
+ *                                 (trialEndsAt() below) — full Pro before
+ *                                 then, but only alongside `enabled`, a
+ *                                 signed-in user, and NO live paid subscription
  */
-function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta } = {}) {
+function computeEntitlements({ user, subscription, purchase, usage, reportId, now, enabled, admin, tester, vaultBeta, trialUntil, reportUsage, freeReportsPerMonth } = {}) {
   const at = Number.isFinite(now) ? now : Date.now();
 
   // --- Comped Pro for the internal team -------------------------------------
@@ -276,6 +343,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: true,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       // Comped Pro means the WHOLE Pro app. Omitting this reads as `undefined`,
       // i.e. locked — which would leave the team staring at the paywall the
@@ -298,6 +367,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: true,
       tester: false,
+      trial: false,
+      trialEndsAt: null,
       portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
       portfolioValues: true,
       reason: "Pro is comped for the CompNinja team.",
@@ -316,6 +387,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: false,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       canExploreAddresses: true,
       // FALSE on this branch, for the vault's reason stated below and one of
@@ -358,6 +431,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: false,
+      trial: false,
+      trialEndsAt: null,
       // Same pattern as canExploreAddresses: today's desk already showed likely
       // value to everyone before Pro, so dark restores that — unlike the vault.
       portfolioMaxItems: FREE_PORTFOLIO_MAX_ITEMS,
@@ -401,6 +476,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       canBrand: true,
       maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
       exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
       reportUnlocked: false,
       canExploreAddresses: true,
       // A tester is Pro, full stop (owner's call, 2026-09-01). Until then this
@@ -434,9 +511,59 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
       graceUntil: null,
       admin: false,
       tester: true,
+      trial: false,
+      trialEndsAt: null,
       portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
       portfolioValues: true,
       reason: "Pro is comped for a beta tester.",
+    };
+  }
+
+  // --- The new-account Pro trial ---------------------------------------------
+  //
+  // Full Pro until trialUntil, then the ordinary free tier. Placed like the
+  // tester branch and for the tester branch's reason: it yields to a live paid
+  // subscription (the `!pro` guard), so somebody who subscribes mid-trial
+  // reads as the paying customer they are, with their real status and their
+  // billing portal. The tester flag is checked first because it does not end.
+  //
+  // Everything Pro, bulk valuation and firms included (owner's call). What
+  // bounds a throwaway account is the same as for everyone: BULK_DAILY_ADDRESSES
+  // per member per day, and — unlike a subscriber — the site-wide
+  // DAILY_SEARCH_CAP, because server.js exempts a trial from nothing that a
+  // paying customer is exempted from (see countsDailyCap there).
+  //
+  // Its status is "trial", never "active": nothing here came from Stripe, so
+  // the UI must not offer a billing portal, and it must keep offering the
+  // upgrade that a Pro member is otherwise never shown.
+  const trialEnd = msOf(trialUntil);
+  if (!pro && user && Number.isFinite(trialEnd) && trialEnd > at) {
+    return {
+      plan: "trial",
+      pro: true,
+      status: "trial",
+      maxComps: "all",
+      canBrand: true,
+      maxLookbackMonths: PRO_MAX_LOOKBACK_MONTHS,
+      exportsRemaining: "unlimited",
+      reportsRemaining: "unlimited",
+      reportCounted: false,
+      reportUnlocked: false,
+      canExploreAddresses: true,
+      canBulkValue: true,
+      bulkMaxAddresses: PRO_BULK_MAX_ADDRESSES,
+      canSeeSearchDemand: true,
+      broker: true,
+      canUseVault: true,
+      canUseOrg: true,
+      graceUntil: null,
+      admin: false,
+      tester: false,
+      trial: true,
+      trialEndsAt: new Date(trialEnd).toISOString(),
+      portfolioMaxItems: PRO_PORTFOLIO_MAX_ITEMS,
+      portfolioValues: true,
+      reason: "Pro trial.",
     };
   }
 
@@ -477,6 +604,22 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
   const exportCap = user ? FREE_EXPORTS_PER_MONTH : ANON_EXPORTS_PER_MONTH;
   const used = usage && Number.isFinite(Number(usage.count)) ? Math.max(0, Number(usage.count)) : 0;
 
+  // The free report allowance. Only a signed-in account on the free plan has
+  // one: Pro, a trial, and a purchased report are unlimited, and an anonymous
+  // visitor is governed by the guest gate in server.js instead (one free
+  // report, then sign in). `reportCounted` is true when THIS report is already
+  // in the month's tally, which is what lets a re-run go through at zero.
+  const reportCap = freeReportsPerMonth === undefined ? FREE_REPORTS_PER_MONTH : freeReportsPerMonth;
+  const reportKeys = reportUsage && Array.isArray(reportUsage.keys) ? reportUsage.keys.map(String) : [];
+  const reportCounted = Boolean(reportId && reportKeys.includes(String(reportId)));
+  let reportsRemaining;
+  if (pro || reportUnlocked || !user || !(Number.isFinite(reportCap) && reportCap >= 0)) {
+    reportsRemaining = "unlimited";
+  } else {
+    const ran = reportUsage && Number.isFinite(Number(reportUsage.count)) ? Math.max(0, Number(reportUsage.count)) : 0;
+    reportsRemaining = Math.max(0, reportCap - ran);
+  }
+
   let exportsRemaining;
   if (pro) exportsRemaining = "unlimited";
   // A paid report you cannot export would be a paid screenshot. The unlock
@@ -501,6 +644,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     // property's history.
     maxLookbackMonths: pro || reportUnlocked ? PRO_MAX_LOOKBACK_MONTHS : FREE_MAX_LOOKBACK_MONTHS,
     exportsRemaining,
+    reportsRemaining,
+    reportCounted,
     reportUnlocked,
     // The Address Explorer stays Pro-only, deliberately, even though everything
     // else a purchase grants now matches Pro. It is a DISCOVERY tool — its job
@@ -551,6 +696,8 @@ function computeEntitlements({ user, subscription, purchase, usage, reportId, no
     graceUntil: state === "grace" && subscription ? (subscription.grace_until || null) : null,
     admin: false,
     tester: false,
+    trial: false,
+    trialEndsAt: null,
     portfolioMaxItems: pro ? PRO_PORTFOLIO_MAX_ITEMS : FREE_PORTFOLIO_MAX_ITEMS,
     portfolioValues: pro,
     reason: reasonFor({ state, pro, broker, reportUnlocked, user }),
@@ -581,6 +728,18 @@ function clampLookback(months, ent) {
   if (!Number.isFinite(n)) return Math.min(24, ent ? ent.maxLookbackMonths : 24);
   return Math.min(Math.max(1, n), ent ? ent.maxLookbackMonths : PRO_MAX_LOOKBACK_MONTHS);
 }
+// May this visitor run this report? True when reports are unlimited, when
+// this report already counts this month (a re-run is free), or when the
+// allowance has room. Absent entitlements mean "allowed", matching canExport.
+function canRunReport(ent) {
+  return !ent || ent.reportsRemaining === undefined || ent.reportsRemaining === "unlimited"
+    || ent.reportCounted === true || Number(ent.reportsRemaining) > 0;
+}
+// The tally's period key. A separate key space inside export_usage, so the
+// two counts can never mix: the export tally reads period = "YYYY-MM" exactly.
+function reportUsagePeriod(now) {
+  return "reports-" + usagePeriod(now);
+}
 function canExport(ent) {
   return !ent || ent.exportsRemaining === "unlimited" || Number(ent.exportsRemaining) > 0;
 }
@@ -593,15 +752,19 @@ function usagePeriod(now) {
 module.exports = {
   computeEntitlements,
   subscriptionState,
+  trialEndsAt,
   parseAudience,
   inAudience,
   compLimit,
   clampLookback,
   canExport,
+  canRunReport,
   usagePeriod,
+  reportUsagePeriod,
   FREE_MAX_COMPS,
   FREE_MAX_LOOKBACK_MONTHS,
   FREE_EXPORTS_PER_MONTH,
+  FREE_REPORTS_PER_MONTH,
   ANON_EXPORTS_PER_MONTH,
   PRO_MAX_LOOKBACK_MONTHS,
   GRACE_DAYS,
@@ -611,4 +774,5 @@ module.exports = {
   FREE_PORTFOLIO_MAX_ITEMS,
   PRO_PORTFOLIO_MAX_ITEMS,
   PRO_BULK_MAX_ADDRESSES,
+  TRIAL_DAYS,
 };

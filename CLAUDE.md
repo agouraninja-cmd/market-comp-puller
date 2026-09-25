@@ -1082,6 +1082,100 @@ dependency. `.env` is git-ignored — never commit it.
   product is live but unbuyable and the deployment looks perfectly healthy,
   which is why startup logs it loudly. Rules live in `entitlements.js`
   (`parseAudience` / `inAudience`), so `npm test` covers them.
+- `PRO_TRIAL_DAYS` / `PRO_TRIAL_START` — the **new-account Pro trial**
+  (2026-09-25, owner's call; billing plan in the "CompNinja Billing &
+  Retention Plan" doc). Every account gets full Pro — vault, bulk valuation and
+  firms included — for `PRO_TRIAL_DAYS` (default **14**; `0` or `off` is the
+  instant rollback lever), counted from the LATER of its own `created_at` and
+  `PRO_TRIAL_START` (a `YYYY-MM-DD` launch date; unset = signup alone decides).
+  That second setting is how accounts that predate the trial get their 14 days
+  from launch day rather than none; a launch date still in the FUTURE is no
+  trial yet, so setting it ahead of a deploy starts nothing early. Either value
+  unreadable **exits at boot** (the `SEARCH_PROVIDER` rule). Rules in
+  `entitlements.js` (`trialEndsAt` + the trial branch), tested in
+  `test/entitlements.test.js` and wired end to end in
+  `test/pro-trial-run.test.js`. Five rules:
+  - **A dated grant, never a Stripe trial.** Stripe marks a trialling
+    subscription `trialing`, which `subscriptionState()` reads as expired, so
+    a Stripe trial would have locked every trial user out. It needs no card
+    and **no migration**: `created_at` is on every users row, and
+    `getSessionUser()` now carries it (the narrowing warning there applies —
+    drop the field and every account silently reads as off-trial).
+  - **It yields to anything real.** A live subscription wins (the `!pro`
+    guard), the tester flag outranks it (it does not end), and
+    `getEntitlements` still looks for a **firm seat** when the only grant is a
+    trial (`if (own.pro && !own.trial) return own`), because a colleague whose
+    firm pays must not be told to upgrade.
+  - **Status `"trial"`, never `"active"`**, and `/api/config` carries `trial`
+    + `trialEndsAt`. The UI reads them to keep the billing portal AWAY (no
+    Stripe customer) and the upgrade ON: every upgrade control reads
+    `offerUpgrade = live && (!pro || isTrialPro())` in index.html, restated in
+    `ACCOUNT_NAV_JS`. The checkout-return poll waits for `isPro && !trial`, or
+    a trial user would be told "You're on Pro" before the webhook landed.
+  - **Not exempt from `DAILY_SEARCH_CAP`.** Accounts cost nothing to make, so
+    `countsDailyCap` is `(!ent.pro || ent.trial === true) && !internal` — a
+    scraper cannot sign up for a trial per burst and walk past the backstop.
+    Bulk stays bounded by `BULK_DAILY_ADDRESSES` per member, as for everyone.
+  - **Off in the test servers** (`test/helpers/boot.js` sets
+    `PRO_TRIAL_DAYS=0`): dozens of suites sign up an account to prove what the
+    FREE tier does, and a default-on trial would make them all Pro. A suite
+    about the trial turns it on explicitly.
+- `STRIPE_PRICE_*` — the price ids, and since 2026-09-25 **each may hold a
+  comma-separated LIST**: the FIRST id is the one checkout sells, every id is
+  still recognised by the webhook (`STRIPE_PRICE_IDS` vs `STRIPE_PRICES` in
+  server.js, arrays accepted by `stripe.js`'s `planForPrice`). Stripe keeps an
+  existing subscriber on the price they bought, so their renewals carry the OLD
+  id; with one id per variable, pointing it at a new price made every renewal
+  resolve to no plan, write no row, and lapse a paying subscriber at the end of
+  their period. **A price change is `new_id,old_id`, never a swap**, and an old
+  id leaves the list only when no subscription uses it. `STRIPE_PRICE_PRO_ANNUAL`
+  is the standing yearly plan (`pro_annual`); `STRIPE_PRICE_PRO_ANNUAL_FOUNDING`
+  is no longer SOLD (absent from `/api/checkout`'s `PLANS`) but stays set so
+  founding members keep renewing. Unset `STRIPE_PRICE_PRO_ANNUAL` hides the
+  yearly tile and band. The deploy ORDER for a price change is in
+  PRO-BILLING-SETUP.md: the old code reads each variable as one id, so a list
+  set before the new code is live breaks checkout and renewals.
+- `STRIPE_PRICE_CHECK` — optional; `off` skips it. **At boot the server asks
+  Stripe what each SOLD price charges** (`verifyStripePrices` in server.js,
+  the pure comparison `priceMatches` in stripe.js) and compares it with
+  `PRICING`. A confirmed mismatch (a readable amount or interval that does not
+  agree) **pauses that plan's checkout** with a 503 `price_mismatch` and a ⛔
+  boot line; anything unreadable (a tiered price, a failed read, a stub) is
+  `unknown` and leaves checkout OPEN, because it is not evidence of a wrong
+  charge. It exists because nothing tied the figure a visitor reads to the
+  price id that bills them: deploy a price change before updating the env and
+  the site says $49 while Stripe charges $100. With the check, that gap pauses
+  instead of mischarging, in either deploy order. A failed read retries three
+  times at growing intervals; a readable price never needs to, since Stripe
+  prices are immutable. `test/price-check-run.test.js` runs it against a stub
+  Stripe, and `test/checkout-run.test.js` waits for the check's reads before
+  counting calls (they otherwise race the count under full-suite load).
+- `FREE_REPORTS_PER_MONTH` — the **free report allowance** (2026-09-25),
+  default **3**; `off` lifts it (the rollback lever); an unreadable value
+  exits at boot. A signed-in FREE account runs that many distinct reports a
+  month; Pro, a trial, admin, tester and a purchased report are unlimited, and
+  an anonymous visitor stays the guest gate's business. Rules in
+  `entitlements.js` (`reportsRemaining`, `reportCounted`, `canRunReport`).
+  Counted PER REPORT PER MONTH exactly like downloads, in the SAME table
+  (`export_usage`) under its own period key `reports-YYYY-MM`
+  (`ENT.reportUsagePeriod`) — so no migration, and the export tally, which
+  reads `period = YYYY-MM` exactly, can never count a report. One read serves
+  both tallies (`getUsage`, an `in.` on the two periods). Four rules, all run
+  in `test/report-limit-run.test.js`: the fourth distinct report is refused in
+  `/api/comps` **before anything is searched** (403 `code: report_limit`,
+  beside the guest gate); a **re-run of a report already counted this month is
+  free**; a report is **spent only once it is served** (recorded after
+  `gate()`, the guest gate's serialize-first rule); and a failed usage read
+  **allows** the report (a cent lost beats a person refused). The count rides
+  home on each served report as `reports_remaining`/`reports_cap` (read then
+  deleted by index.html, the `exports_remaining` rule) and on `/api/config`,
+  and the form states it BEFORE the first report (`#reportAllowanceHint`), so
+  the refusal is never a surprise; the refusal opens the pricing window with
+  the server's sentence (`openPricingFor`) rather than a red error card. The
+  figure is stated on /pricing and /faq from `PRICING.freeReports` (the same
+  setting), and typed into the pricing window's Free tile and compare row with
+  a test pinning it to `ENT.FREE_REPORTS_PER_MONTH` — an override of the env
+  leaves that static modal stating the default, which is the known cost.
 - `SEARCH_PROVIDER` — optional `gemini` (**default since 2026-08-10**) or `anthropic`. Picks which
   vendor runs the comp search. An unrecognized value **exits at boot** rather
   than silently falling back, the same no-fallthrough rule `/api/checkout`'s
@@ -1375,13 +1469,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   visitor's own greyed-out controls. `billing` is `PRO_ENABLED &&
   STRIPE_CONFIGURED`: the UI needs both, since checkout 503s without Stripe
   keys and a Buy button that can only fail is worse than no button.
-- `GET /api/pricing` — the founding-member counter for the pricing modal
-  (`{ billing, foundingLeft, foundingLimit }`), deliberately kept OUT of
-  `/api/config` because it costs a DB read and `/api/config` runs on every page
-  load. Memoized 60s, and refreshed by the webhook when a founding seat sells.
-  `foundingLeft: null` means unknown (DB down or unconfigured); checkout treats
-  unknown as closed, so the UI hides the founding tile rather than advertise an
-  offer that would 409.
+- `GET /api/pricing` — what is on sale to this caller: `{ billing, annual }`.
+  It carried the founding-member counter (a DB read, which is why it lived
+  apart from `/api/config`) until 2026-09-25, when the founding offer stopped
+  being SOLD and the standing yearly plan (`pro_annual`, $490) replaced it.
+  Nothing here reads the database now; the pricing modal takes the same
+  `annual` fact from `/api/config`. Founding members keep their plan and its
+  label, and `/api/stats` still counts them.
 - `POST /api/report-access` — "do I own this report yet?", answering
   `{ unlocked, pro }` for the `{ address, type, months }` in the body. Exists
   for the return from a $39 checkout: Stripe redirects the instant the card
@@ -2558,8 +2652,9 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   which cannot be linked, indexed or emailed — and that modal carried Free /
   Pro / Founding and **no firm tier**, while the /how-it-works FAQ had been
   quoting the seat price in prose for weeks. The figures come from one
-  **`PRICING`** constant in server.js (`monthly`, `foundingAnnual`, `firmSeat`,
-  `minSeats` = `ORG.MIN_SEATS`) which the FAQ answer also reads, and
+  **`PRICING`** constant in server.js (`monthly`, `annual`, `firmSeat`,
+  `minSeats` = `ORG.MIN_SEATS`; $49 / $490 / $39 since 2026-09-25, $100 /
+  $840 founding / $79 before) which the FAQ answer also reads, and
   `test/pricing-page.test.js` pins index.html's modal to the same numbers —
   that modal's own comment conceded "nothing catches a drift", which was true
   of a figure typed into three files. **The page never buys anything**: every
@@ -2935,6 +3030,28 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   knows to fetch `GET /api/account/avatar`. File fallback stores both on
   the user object in `account-store.json`. PUT/DELETE `/api/account/avatar`;
   empty body is how Remove works. Not Pro-gated.
+- **The trial emails** (2026-09-25; migration `053-trial-notices.sql`; rules
+  in the pure, tested **`trial-notices.js`**). `POST /api/trial/notices` mails
+  each account on a Pro trial the one email it is due: "You have CompNinja Pro
+  until <date>" once, and "Your CompNinja Pro trial ends on <date>" once, three
+  days out (`ENDING_WINDOW_DAYS`). **The watchlist digest's design rule for
+  rule**, because it is the same kind of mail: ADMIN_KEY-gated and driven from
+  OUTSIDE by `.github/workflows/trial-notices.yml` (daily 16:00 UTC, needs the
+  `ADMIN_KEY` repository secret the permit sweep already uses); refuses
+  without a database and without outbound mail (`sendOutboundEmail` no-ops
+  silently, and marking the ledger over a send that never happened would lose
+  the email for good); `{ dryRun: true }` builds and sends nothing; marks the
+  ledger AFTER the send; one bad account never stops the run; and an account
+  with `digest_optout` gets none. Who is on a trial is `getEntitlements`'s
+  answer, never a date guess here, so a subscriber or a firm seat is never
+  mailed about a trial. When both are due at once, only the ENDING email goes.
+  Every figure (price, free allowance, end date) is passed in from `PRICING`
+  and the trial settings, never typed. `trial_notices` keys on
+  `(user_id, kind)` and ONLY this route names it, so 053 can run after the
+  deploy: until it does, the route 500s naming the table and the workflow goes
+  red. `test/trial-notices.test.js` and `test/trial-notices-run.test.js`
+  (who is mailed, once, the dry run, the refusals, a launch date reaching old
+  accounts).
 - **The watchlist digest** (2026-08-13; migration `025-watchlist-digest.sql`,
   **run before deploying**). `POST /api/watchlist/digest` mails each watcher
   the markets of theirs that have new comps. It is **the only thing this
@@ -3213,8 +3330,13 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   `migrations/005-dev-ideas.sql` — **run it before deploying**),
   git-ignored `dev-ideas.json` fallback otherwise. When an idea ships, mark
   it done on `/dev` and add the devlog entry.
-- **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). Paid plan
-  holding free reports to a **36-month** lookback ceiling and
+- **Pro tier** (added 2026-07-31; launched to the public 2026-08-03). **Priced
+  $49 a month, $490 a year, $39 a firm seat since 2026-09-25**, and every
+  account starts on a 14-day Pro trial — see `PRO_TRIAL_DAYS` and
+  `STRIPE_PRICE_*` under Configuration, and PRO-BILLING-SETUP.md for the
+  runbook. Paid plan
+  holding free reports to a **36-month** lookback ceiling, **3 reports a month**
+  (since 2026-09-25, `FREE_REPORTS_PER_MONTH`) and
   **5 exports/month** (0 for anonymous visitors — exporting requires an
   account), against Pro's unlimited everything plus report branding.
   **The comp-list gate is GONE as of 2026-08-21**: `FREE_MAX_COMPS` is

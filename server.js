@@ -132,6 +132,8 @@ const EMAILSHELL = require("./email-shell");
 // tested, because every judgment in it is about what a person is worth
 // interrupting for — see its header.
 const DIGEST = require("./watchlist-digest");
+// The Pro trial's two emails (2026-09-25): which one is due, and what it says.
+const TRIALMAIL = require("./trial-notices");
 // The renewal watch's copy and its send/skip rule (038). The SECOND thing this
 // product sends on its own initiative, and it inherits the digest's bar rather
 // than forking it — same purity, same "when in doubt send nothing", same run.
@@ -492,9 +494,34 @@ const VAULT_PASSKEY = (process.env.VAULT_PASSKEY || "").trim();
 // than hard-coded so test mode and live mode are one env change apart.
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || "").trim();
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+// Each price variable may hold SEVERAL comma-separated ids, and the order is the
+// rule: the FIRST is the one we sell, every one of them is still RECOGNISED.
+// That is what makes a price change safe (2026-09-25, $100 -> $49). Stripe
+// keeps an existing subscriber on the price they bought, so their renewal
+// webhooks go on carrying the OLD id; with one id per variable, pointing it at
+// the new price made planForPrice() answer null for every renewal, no row was
+// written, and each existing subscriber would have lapsed at the end of their
+// paid period while Stripe went on charging them. So a price change is
+// "new_id,old_id", never a swap. Checkout reads STRIPE_PRICES (the first id);
+// the webhook reads STRIPE_PRICE_IDS (all of them).
+function priceIdList(envValue) {
+  return String(envValue || "").split(",").map((s) => s.trim()).filter(Boolean);
+}
+const STRIPE_PRICE_IDS = {
+  monthly: priceIdList(process.env.STRIPE_PRICE_PRO_MONTHLY),
+  // The standing annual plan (2026-09-25), which replaced the founding offer
+  // for new buyers once the monthly price fell to $49: at that price the
+  // founding rate ($840 a year, $70 a month) had become the worse deal.
+  annual: priceIdList(process.env.STRIPE_PRICE_PRO_ANNUAL),
+  // No longer SOLD — it is absent from /api/checkout's PLANS — but founding
+  // members keep their subscriptions, so their renewals must still resolve.
+  annualFounding: priceIdList(process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING),
+  firmMonthly: priceIdList(process.env.STRIPE_PRICE_FIRM_MONTHLY),
+};
 const STRIPE_PRICES = {
-  monthly: (process.env.STRIPE_PRICE_PRO_MONTHLY || "").trim(),
-  annualFounding: (process.env.STRIPE_PRICE_PRO_ANNUAL_FOUNDING || "").trim(),
+  monthly: STRIPE_PRICE_IDS.monthly[0] || "",
+  annual: STRIPE_PRICE_IDS.annual[0] || "",
+  annualFounding: STRIPE_PRICE_IDS.annualFounding[0] || "",
   // No singleReport price: the $20 single-report unlock RETIRED on 2026-08-21
   // (owner's call, after FREE_MAX_COMPS went to "all" and left the tile with
   // almost nothing to trigger on). STRIPE_PRICE_SINGLE_REPORT can be unset and
@@ -505,7 +532,7 @@ const STRIPE_PRICES = {
   // the buy control never renders — the same "a button that can only fail is
   // worse than no button" rule the individual plans follow, and it is how
   // seats stay hand-granted until somebody actually asks to pay.
-  firmMonthly: (process.env.STRIPE_PRICE_FIRM_MONTHLY || "").trim(),
+  firmMonthly: STRIPE_PRICE_IDS.firmMonthly[0] || "",
   // No broker price. One subscription (2026-08-05): the vault is a Pro
   // capability, so STRIPE_PRICE_BROKER_MONTHLY is gone rather than unset. If a
   // second tier is ever revived it needs a deliberate decision, not a dormant
@@ -530,12 +557,128 @@ const STRIPE_CONFIGURED = Boolean(STRIPE_SECRET_KEY && STRIPE_PRICES.monthly);
 // `firmSeat` is per seat per month and `minSeats` MUST equal ORG.MIN_SEATS —
 // /api/checkout refuses a firm plan below that by name and number, so a page
 // advertising a smaller minimum would be sending somebody to a refusal.
+//
+// 2026-09-25 (owner's call): $100 -> $49 a month, a standing $490 annual plan
+// in place of the $840 founding offer, and $79 -> $39 a seat. The seat must
+// stay BELOW individual Pro: any Pro member can already start a firm, so a
+// dearer seat would only ever buy a single invoice. See the billing plan.
+// The free report allowance (2026-09-25). entitlements.js holds the default
+// (FREE_REPORTS_PER_MONTH = 3) and the rule; this is the override. "off" lifts
+// the cap entirely — the instant rollback lever — and an unreadable value
+// exits at boot (the SEARCH_PROVIDER rule), because a typo here either walls
+// off the free tier or silently removes the limit.
+const FREE_REPORTS_CAP = (() => {
+  const raw = String(process.env.FREE_REPORTS_PER_MONTH == null ? "" : process.env.FREE_REPORTS_PER_MONTH).trim().toLowerCase();
+  if (raw === "") return ENT.FREE_REPORTS_PER_MONTH;
+  if (raw === "off") return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 1000) {
+    console.error(`⛔ FREE_REPORTS_PER_MONTH must be a whole number from 1 to 1000, or "off" (got "${process.env.FREE_REPORTS_PER_MONTH}").`);
+    process.exit(1);
+  }
+  return n;
+})();
+
 const PRICING = {
-  monthly: 100,
-  foundingAnnual: 840,
-  firmSeat: 79,
+  monthly: 49,
+  annual: 490,
+  firmSeat: 39,
   minSeats: ORG.MIN_SEATS,
+  // Not a price, but the rate card's other figure: how many reports a free
+  // account runs a month (null = no cap). /pricing and the FAQ state it.
+  freeReports: FREE_REPORTS_CAP,
 };
+
+// --- The new-account Pro trial (2026-09-25) --------------------------------
+//
+// Every account gets full Pro for PRO_TRIAL_DAYS, counted from the later of
+// its signup and PRO_TRIAL_START. The rule lives in entitlements.js
+// (trialEndsAt + the trial branch); these are its two inputs.
+//
+//   PRO_TRIAL_DAYS  — default 14. `0` or `off` is the instant rollback lever:
+//                     no account is on a trial, nothing else changes.
+//   PRO_TRIAL_START — optional launch date (YYYY-MM-DD). Accounts created
+//                     before it get their days from it rather than from
+//                     signup, which is how existing free accounts get a trial.
+//                     Unset = signup alone decides, so an account older than
+//                     the trial length gets none.
+//
+// Both refuse to boot on a value they cannot read, the SEARCH_PROVIDER rule: a
+// typo in either would otherwise silently hand out, or silently withhold,
+// Pro.
+const PRO_TRIAL_DAYS = (() => {
+  const raw = String(process.env.PRO_TRIAL_DAYS == null ? "" : process.env.PRO_TRIAL_DAYS).trim().toLowerCase();
+  if (raw === "") return ENT.TRIAL_DAYS;
+  if (raw === "off") return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0 || n > 90) {
+    console.error(`⛔ PRO_TRIAL_DAYS must be a whole number of days from 0 to 90, or "off" (got "${process.env.PRO_TRIAL_DAYS}").`);
+    process.exit(1);
+  }
+  return n;
+})();
+const PRO_TRIAL_START = (() => {
+  const raw = String(process.env.PRO_TRIAL_START || "").trim();
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !Number.isFinite(Date.parse(raw + "T00:00:00Z"))) {
+    console.error(`⛔ PRO_TRIAL_START must be a date like 2026-10-01 (got "${raw}").`);
+    process.exit(1);
+  }
+  return raw + "T00:00:00Z";
+})();
+// --- Does Stripe charge what the site says? (2026-09-25) --------------------
+//
+// Filled at boot by verifyStripePrices() (see STRIPE.priceMatches for the three
+// answers). A plan whose sold price is a confirmed "mismatch" has its checkout
+// paused (503, code price_mismatch) until the environment points at a price
+// that agrees — which is what makes the deploy order of a price change safe
+// in BOTH directions: deploy first and the old price pauses; set the env
+// first and the old code keeps selling the old figures it also shows.
+// STRIPE_PRICE_CHECK=off skips the check (a price shape it cannot read is
+// already "unknown", so this is for an emergency, not for tiered prices).
+const PRICE_CHECK = { monthly: "unchecked", annual: "unchecked", firmMonthly: "unchecked" };
+const PRICE_CHECK_ON = String(process.env.STRIPE_PRICE_CHECK || "").trim().toLowerCase() !== "off";
+function expectedPrice(key) {
+  if (key === "monthly") return { cents: PRICING.monthly * 100, interval: "month" };
+  if (key === "annual") return { cents: PRICING.annual * 100, interval: "year" };
+  if (key === "firmMonthly") return { cents: PRICING.firmSeat * 100, interval: "month" };
+  return null;
+}
+async function verifyStripePrices(attempt = 1) {
+  if (!STRIPE_CONFIGURED || !PRICE_CHECK_ON) return;
+  let retry = false;
+  for (const key of Object.keys(PRICE_CHECK)) {
+    const id = STRIPE_PRICES[key];
+    if (!id) { PRICE_CHECK[key] = "unset"; continue; }
+    const want = expectedPrice(key);
+    try {
+      const price = await STRIPE.stripeRequest(STRIPE_SECRET_KEY, "GET", `prices/${encodeURIComponent(id)}`);
+      PRICE_CHECK[key] = STRIPE.priceMatches(price, want);
+      if (PRICE_CHECK[key] === "mismatch") {
+        const got = Number(price.unit_amount) / 100;
+        const every = price.recurring && price.recurring.interval;
+        console.error(`⛔ Stripe price ${id} charges $${got.toFixed(2)}${every ? "/" + every : ""} but the site shows ` +
+          `$${want.cents / 100}/${want.interval}. Checkout for this plan is PAUSED until they agree ` +
+          `(point STRIPE_PRICE_* at the right price; see PRO-BILLING-SETUP.md).`);
+      } else if (PRICE_CHECK[key] === "ok") {
+        console.log(`💳 Stripe price ${id} matches the site: $${want.cents / 100}/${want.interval}.`);
+      } else {
+        console.log(`💳 Stripe price ${id}: could not read an amount to compare; checkout stays open.`);
+      }
+    } catch (e) {
+      PRICE_CHECK[key] = "unknown";
+      retry = true;
+      console.error(`Stripe price check for ${id} failed (checkout stays open):`, e.message);
+    }
+  }
+  // A failed read is retried a few times: Stripe being briefly unreachable at
+  // boot must not leave a real mismatch undetected until the next deploy.
+  if (retry && attempt < 4) setTimeout(() => verifyStripePrices(attempt + 1), 60 * 1000 * attempt).unref();
+}
+
+function trialUntilFor(user) {
+  return user ? ENT.trialEndsAt(user.created_at, { days: PRO_TRIAL_DAYS, startsAt: PRO_TRIAL_START, now: Date.now() }) : null;
+}
 // The founding-member offer closes at 50. See foundingSlotsLeft() for why the
 // count is of subscriptions ever created rather than currently active.
 const FOUNDING_MEMBER_LIMIT = Number(process.env.FOUNDING_MEMBER_LIMIT || 50);
@@ -1901,6 +2044,11 @@ async function getSessionUser(req) {
       // no photo. The bytes themselves live in user_avatars so this lookup
       // never pulls them; presence here is what paints the account circle.
       avatarRev: String(user.avatar_rev || ""),
+      // When the account was made — the Pro trial's clock (2026-09-25). The
+      // warning at the top of this object applies in full: without this line
+      // trialEndsAt() sees no created_at, fails closed, and every account
+      // reads as off-trial with nothing anywhere failing.
+      created_at: user.created_at || null,
     } : null;
   } catch (e) { console.error("User lookup failed:", e.message); return null; }
 }
@@ -2601,6 +2749,55 @@ async function setDigestOptout(userId, optout) {
 // way the digest would mail only the watchers that came back while
 // summary.watchers counted the ones that should have — two numbers disagreeing
 // with nothing on screen to say so.
+// --- The trial emails' reads (2026-09-25) --------------------------------------
+//
+// Accounts that could be on a trial right now: made within the trial length,
+// or — while a launch date's window is open — every account, because
+// PRO_TRIAL_START gives accounts that predate it their days from launch.
+// Paged, oldest first. Whether each one really IS on a trial is decided by
+// getEntitlements, never here: a subscriber or a firm seat must not be mailed
+// about a trial they are not on.
+async function trialNoticeCandidates(now) {
+  if (!DB_CONFIGURED || !(PRO_TRIAL_DAYS > 0)) return [];
+  const windowMs = PRO_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+  const launch = PRO_TRIAL_START ? Date.parse(PRO_TRIAL_START) : NaN;
+  const everyone = Number.isFinite(launch) && now < launch + windowMs;
+  const since = new Date(now - windowMs).toISOString();
+  const out = [];
+  for (let offset = 0; offset < 50000; offset += 500) {
+    const rows = await sbRequest("GET",
+      "users?select=id,email,name,created_at,digest_optout,pro_tester,vault_beta" +
+      (everyone ? "" : `&created_at=gte.${encodeURIComponent(since)}`) +
+      `&order=created_at.asc&limit=500&offset=${offset}`) || [];
+    out.push(...rows);
+    if (rows.length < 500) break;
+  }
+  return out;
+}
+
+// Which trial emails each account has already been sent. THROWS on a failed
+// read, unlike most reads here: sending on a guess at this ledger is exactly
+// how somebody gets the same email twice.
+async function trialNoticesSentFor(userIds) {
+  const sent = new Map();
+  const list = [...new Set((userIds || []).filter(Boolean).map(String))];
+  for (let i = 0; i < list.length; i += 200) {
+    const slice = list.slice(i, i + 200);
+    const rows = await sbRequest("GET",
+      `trial_notices?user_id=in.(${pgInList(slice)})&select=user_id,kind`) || [];
+    for (const r of rows) {
+      if (!sent.has(r.user_id)) sent.set(r.user_id, []);
+      sent.get(r.user_id).push(r.kind);
+    }
+  }
+  return sent;
+}
+
+async function markTrialNoticeSent(userId, kind) {
+  await sbRequest("POST", "trial_notices", [{ user_id: userId, kind }],
+    { prefer: "resolution=ignore-duplicates,return=minimal" });
+}
+
 async function findUsersByIds(ids) {
   const list = [...new Set((ids || []).map((v) => (v == null ? "" : String(v))).filter(Boolean))];
   if (!DB_CONFIGURED || !list.length) return [];
@@ -2609,7 +2806,7 @@ async function findUsersByIds(ids) {
     const slice = list.slice(i, i + 200);
     const rows = await sbRequest("GET",
       `users?id=in.(${pgInList(slice)})` +
-      `&select=id,email,digest_optout,pro_tester,vault_beta&limit=${slice.length}`);
+      `&select=id,email,digest_optout,pro_tester,vault_beta,created_at&limit=${slice.length}`);
     for (const r of rows || []) out.push(r);
   }
   return out;
@@ -2733,6 +2930,51 @@ async function getExportUsage(userId, period) {
     // costs nothing; wrongly blocking one costs a customer their report.
     console.error("Export usage lookup failed (allowing the export):", e.message);
     return null;
+  }
+}
+
+// Both monthly tallies in ONE read, because it sits in getEntitlements and so
+// in front of every page that asks what a visitor may do. Downloads live under
+// period "YYYY-MM"; reports (2026-09-25) under "reports-YYYY-MM"
+// (ENT.reportUsagePeriod) in the same table — same shape, one row per report
+// per month, idempotent by primary key — so no migration was needed and the
+// two can never be counted together. Fails OPEN like getExportUsage, for its
+// reason: wrongly allowing a report costs a cent, wrongly refusing one costs a
+// person the answer they came for.
+async function getUsage(userId, now) {
+  if (!userId || !DB_CONFIGURED) return null;
+  const exportsPeriod = ENT.usagePeriod(now);
+  const reportsPeriod = ENT.reportUsagePeriod(now);
+  try {
+    const rows = await sbRequest("GET",
+      `export_usage?user_id=eq.${encodeURIComponent(userId)}` +
+      `&period=in.(${exportsPeriod},${reportsPeriod})&select=period,report_key`);
+    const keysFor = (p) => (rows || []).filter((r) => r.period === p).map((r) => r.report_key);
+    const exp = keysFor(exportsPeriod), rep = keysFor(reportsPeriod);
+    return {
+      exports: { period: exportsPeriod, count: exp.length, keys: exp },
+      reports: { period: reportsPeriod, count: rep.length, keys: rep },
+    };
+  } catch (e) {
+    console.error("Usage lookup failed (allowing):", e.message);
+    return null;
+  }
+}
+
+// Records one report run against the month's free allowance. Idempotent by
+// primary key, so a re-run of the same report is a conflict swallowed on
+// purpose. Never throws: a failed write costs us one uncounted report, never
+// the visitor their result.
+async function recordReportRun(userId, reportKey, now) {
+  if (!userId || !DB_CONFIGURED || !reportKey) return false;
+  try {
+    await sbRequest("POST", "export_usage",
+      [{ user_id: userId, period: ENT.reportUsagePeriod(now), report_key: reportKey }],
+      { prefer: "resolution=ignore-duplicates,return=minimal" });
+    return true;
+  } catch (e) {
+    console.error("Report usage write failed (report still served):", e.message);
+    return false;
   }
 }
 
@@ -2959,11 +3201,13 @@ async function getEntitlements(user, reportId, admin = false) {
   // costs no more than it did before the tier existed.
   if (!proEnabledFor(user)) return ENT.computeEntitlements({ user, enabled: false });
   const now = Date.now();
-  const [subscription, purchase, usage] = await Promise.all([
+  const [subscription, purchase, tallies] = await Promise.all([
     findSubscription(user && user.id),
     findReportPurchase(user && user.id, reportId),
-    getExportUsage(user && user.id, ENT.usagePeriod(now)),
+    getUsage(user && user.id, now),
   ]);
+  const usage = tallies ? tallies.exports : null;
+  const reportUsage = tallies ? tallies.reports : null;
   // Deliberately NOT a short-circuit above the DB reads, unlike the admin
   // branch: a tester may also be a paying subscriber, and entitlements.js
   // resolves the comped branch only when there is no live subscription to
@@ -2972,8 +3216,12 @@ async function getEntitlements(user, reportId, admin = false) {
   // Per-account vault grant (migration 023) — the broker-onboarding door.
   // Reads as undefined until the column exists, which Boolean()s to false.
   const vaultBeta = Boolean(user && user.vault_beta);
+  // The new-account Pro trial (2026-09-25): a date, derived from created_at
+  // and the two PRO_TRIAL_* settings. entitlements.js decides what it grants.
+  const trialUntil = trialUntilFor(user);
   const own = ENT.computeEntitlements({
-    user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta,
+    user, subscription, purchase, usage, reportId, now, enabled: true, tester, vaultBeta, trialUntil,
+    reportUsage, freeReportsPerMonth: FREE_REPORTS_CAP,
   });
   // The firm's seat, as a FALLBACK (migration 033). Their own plan always
   // wins; the firm is consulted only when nothing else already grants Pro, so
@@ -2987,12 +3235,18 @@ async function getEntitlements(user, reportId, admin = false) {
   // the rules that then apply to it (lapse, grace, the 24h renewal slack) are
   // the same ones a personal subscription gets, which is exactly what should
   // be true of it.
-  if (own.pro) return own;
+  //
+  // A TRIAL does not stop the look (2026-09-25): a colleague whose firm pays
+  // for their seat is a paying customer, and reading them as "on a trial"
+  // would hide their firm and tell them to upgrade. So the seat is checked,
+  // and the trial is what they keep only when there is no seat. The firm read
+  // below deliberately passes no trialUntil, so `viaFirm.pro` means the SEAT.
+  if (own.pro && !own.trial) return own;
   const seat = await firmSeatSubscriptionFor(user);
   if (!seat) return own;
   const viaFirm = ENT.computeEntitlements({
     user, subscription: seat.subscription, purchase, usage, reportId, now,
-    enabled: true, tester, vaultBeta,
+    enabled: true, tester, vaultBeta, reportUsage, freeReportsPerMonth: FREE_REPORTS_CAP,
   });
   if (!viaFirm.pro) return own;
   // `viaFirm` is presentation only and the reason it exists is one concrete
@@ -3333,7 +3587,7 @@ async function handleStripeEvent(evt) {
         await applyOrgSubscription(sub, { orgId, label: "✅ Firm subscription active" });
         return;
       }
-      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICE_IDS, { userId, graceDays: ENT.GRACE_DAYS });
       if (!row) return console.error(`Checkout ${obj.id} completed for a price we don't sell — ignored.`);
       await upsertSubscription(row);
       console.log(`✅ Subscription active: ${row.plan} for user ${userId}`);
@@ -3381,7 +3635,7 @@ async function handleStripeEvent(evt) {
       // card the whole retry schedule. subscriptionRowFrom keeps the window
       // it is shown; reading the stored row is how it gets shown one.
       const priorGrace = await findSubscription(userId);
-      const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, {
+      const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICE_IDS, {
         userId, graceDays: ENT.GRACE_DAYS,
         existingGraceUntil: priorGrace && priorGrace.grace_until,
       });
@@ -3407,7 +3661,7 @@ async function handleStripeEvent(evt) {
       }
       const userId = (sub.metadata && sub.metadata.user_id) || await userIdForStripeCustomer(sub.customer);
       if (!userId) return;
-      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICES, { userId, graceDays: ENT.GRACE_DAYS });
+      const row = STRIPE.subscriptionRowFrom(sub, STRIPE_PRICE_IDS, { userId, graceDays: ENT.GRACE_DAYS });
       if (row) {
         await upsertSubscription(row);
         console.log(`💳 Payment succeeded — ${row.plan} renewed to ${row.current_period_end} (user ${userId})`);
@@ -3443,7 +3697,7 @@ async function handleStripeEvent(evt) {
       // must not buy another 7 days. The rule itself is subscriptionRowFrom's
       // (it was re-applied here by hand until 2026-08-29, which is exactly why
       // the subscription.updated handler beside this one could go without it).
-      const row = STRIPE.subscriptionRowFrom({ ...sub, status: "past_due" }, STRIPE_PRICES,
+      const row = STRIPE.subscriptionRowFrom({ ...sub, status: "past_due" }, STRIPE_PRICE_IDS,
         { userId, graceDays: ENT.GRACE_DAYS, existingGraceUntil: existing && existing.grace_until });
       if (!row) return;
       await upsertSubscription(row);
@@ -4794,7 +5048,7 @@ async function setOrgSeats(orgId, seats) {
 async function applyOrgSubscription(sub, { orgId, statusOverride, label }) {
   const source = statusOverride ? { ...sub, status: statusOverride } : sub;
   const priorFirm = await findOrgSubscription(orgId);
-  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICES, {
+  const row = STRIPE.subscriptionRowFrom(source, STRIPE_PRICE_IDS, {
     graceDays: ENT.GRACE_DAYS,
     existingGraceUntil: priorFirm && priorFirm.grace_until,
   });
@@ -10536,7 +10790,9 @@ const ACCOUNT_NAV_JS =
   // account resolves, which is why the rail is a fixed width — an item
   // arriving after paint must not reflow the page around it.
   `show($("navBulk"),Boolean(pro.canBulkValue));` +
-  `show($("navUpgrade"),live&&!isPro);` +
+  // A Pro TRIAL keeps the upgrade (2026-09-25): it is Pro in every capability
+  // and still somebody to sell to. index.html's offerUpgrade, restated.
+  `show($("navUpgrade"),live&&(!isPro||Boolean(pro.trial)));` +
     // ⚠ This is index.html's hasBillingHistory(), restated. Keep the two in
   // step: the app hid this button for a colleague on a FIRM seat and this
   // copy did not, so every server-rendered page offered them a portal that
@@ -10545,7 +10801,7 @@ const ACCOUNT_NAV_JS =
   // deployment with no Stripe keys 503s the portal, and a button that can
   // only fail is worse than no button. test/routes.test.js pins both.
   `show($("navBilling"),live&&Boolean(pro.status)&&pro.status!=="none"` +
-  `&&!pro.admin&&!pro.tester&&!(pro.viaFirm&&pro.viaFirm.id));` +
+  `&&!pro.admin&&!pro.tester&&!pro.trial&&!(pro.viaFirm&&pro.viaFirm.id));` +
   `});` +
   `var up=$("navUpgrade");if(up)up.addEventListener("click",function(){location.href="/?pricing=1";});` +
   `var bill=$("navBilling");if(bill)bill.addEventListener("click",function(){` +
@@ -14366,6 +14622,8 @@ function renderPricingPageHTML(signedIn) {
     signedIn,
     pricing: PRICING,
     billingLive: STRIPE_CONFIGURED,
+    annualLive: STRIPE_CONFIGURED && Boolean(STRIPE_PRICES.annual),
+    trialDays: PRO_TRIAL_DAYS,
   });
 
   return marketShell({ title, description, canonical, body, jsonLd, signedIn, current: "/pricing" });
@@ -18550,6 +18808,26 @@ const server = http.createServer((req, res) =>
         const consumeGuestSearch = (headersOpen) =>
           consumeGuestSearchFor(guestGate, req, res, headersOpen);
 
+        // The free report allowance (2026-09-25): three reports a month on the
+        // free plan. Checked here, beside the guest gate and for its reasons —
+        // before anything is billed, and plain JSON with a real status so the
+        // client can open the pricing window rather than an error card. A
+        // re-run of a report already counted this month passes (reportCounted),
+        // and nothing is SPENT until a report is actually served (below).
+        if (!internal && !ENT.canRunReport(ent)) {
+          logEvent("report_limit", { prop_type: typeOk, market: marketOf(addressOk) });
+          const next = new Date(Date.now());
+          const resets = new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 1));
+          const resetsOn = resets.toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" });
+          return sendJson(res, 403, {
+            error: `You've run your ${FREE_REPORTS_CAP} free reports this month. Pro runs unlimited reports; your free ones start again on ${resetsOn}.`,
+            code: "report_limit",
+            upgrade: true,
+            resetsOn: resets.toISOString(),
+          });
+        }
+        const reportKey = reportIdFor({ address, type });
+
         if (!internal && CORPUS_RADIUS) {
           corpusRadiusRows = await corpusRowsForType(typeOk, 2000);
         }
@@ -18570,7 +18848,11 @@ const server = http.createServer((req, res) =>
             // The cap is a scraper backstop, not a product limit: a paying
             // subscriber must never be told the site is out of searches for
             // the day, and neither must an internal caller.
-            countsDailyCap: !ent.pro && !internal,
+            // A Pro TRIAL is not exempt (2026-09-25): an account costs nothing
+            // to create, so a rotating-address scraper could otherwise sign up
+            // for a trial per burst and walk straight past the one backstop
+            // this cap exists to be.
+            countsDailyCap: (!ent.pro || ent.trial === true) && !internal,
             // The stream opens HERE and nowhere earlier. Everything the
             // pipeline answers before this point — the cache hit that matters
             // most, at 43ms — is plain JSON with a real status code, and the
@@ -18610,6 +18892,17 @@ const server = http.createServer((req, res) =>
         // only on a published 200); this is the same rule at the sibling exit.
         const served = await gate(searched.report);
         consumeGuestSearch(Boolean(sse));
+        // Spend the allowance only now, with a report in hand, and only for a
+        // limited account running a report not already counted this month.
+        // reports_remaining rides on the report like exports_remaining does,
+        // so the page can say what is left without another round trip.
+        if (!internal && typeof ent.reportsRemaining === "number") {
+          const u = await getSessionUser(req);
+          let left = ent.reportsRemaining;
+          if (!ent.reportCounted && u && await recordReportRun(u.id, reportKey, Date.now())) left = Math.max(0, left - 1);
+          served.reports_remaining = left;
+          served.reports_cap = FREE_REPORTS_CAP;
+        }
         if (sse) return sse.finish("result", served);
         return sendJson(res, 200, served);
       } catch (err) {
@@ -19923,6 +20216,90 @@ const server = http.createServer((req, res) =>
   //            advance every high-water mark and DELETE a digest nobody got.
   //            This is the only caller for which that no-op is destructive,
   //            which is why it is checked here and not there.
+  // --- The Pro trial's emails (2026-09-25) --------------------------------------
+  //
+  // Mails each account on a trial the email it is due, if any: "you have Pro
+  // until <date>" once, and "your trial ends on <date>" once, three days out.
+  // The rules are in trial-notices.js; this route owns who is on a trial and
+  // the ledger (trial_notices, migration 053).
+  //
+  // The watchlist digest's design, rule for rule, because it is the same kind
+  // of thing — mail the product sends on its own initiative:
+  //   - ADMIN_KEY-gated and triggered from OUTSIDE (the daily workflow,
+  //     .github/workflows/trial-notices.yml), never a timer in this process.
+  //   - Refuses without a database (nothing would record who was mailed) and
+  //     without outbound mail (sendOutboundEmail no-ops silently, and marking
+  //     the ledger over a send that never happened would lose the email for
+  //     good). { dryRun: true } builds every email, sends none, marks nothing.
+  //   - Marks AFTER the send, so a failed write costs one duplicate at worst.
+  //   - One bad account never stops the run.
+  //   - An account that turned CompNinja emails off (digest_optout) gets none.
+  if (req.method === "POST" && req.url.split("?")[0] === "/api/trial/notices") {
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
+    let body = "";
+    req.on("data", (c) => { body += c; if (body.length > 1e4) req.destroy(); });
+    req.on("end", async () => {
+      try {
+        if (!DB_CONFIGURED) {
+          return sendJson(res, 503, { error: "The trial emails need a database: without one, nothing records who has already been mailed." });
+        }
+        const opts = JSON.parse(body || "{}");
+        const dryRun = opts.dryRun === true;
+        if (!dryRun && !(EMAIL_FROM && RESEND_API_KEY)) {
+          return sendJson(res, 503, {
+            error: "Outbound email is not configured (EMAIL_FROM + RESEND_API_KEY). " +
+              "Refusing rather than marking everyone as mailed. Use { dryRun: true } to see the copy.",
+          });
+        }
+        const now = Date.now();
+        const accounts = await trialNoticeCandidates(now);
+        const sentBefore = await trialNoticesSentFor(accounts.map((a) => a.id));
+        const summary = {
+          candidates: accounts.length, onTrial: 0, sent: { start: 0, ending: 0 },
+          nothingDue: 0, optedOut: 0, failed: 0, previews: [],
+        };
+        for (const account of accounts) {
+          try {
+            const ent = await getEntitlements(account, undefined, false);
+            if (!ent.trial) continue;
+            summary.onTrial += 1;
+            const kind = TRIALMAIL.noticeDue({ trialEndsAt: ent.trialEndsAt, now, sent: sentBefore.get(account.id) || [] });
+            if (!kind) { summary.nothingDue += 1; continue; }
+            if (account.digest_optout) { summary.optedOut += 1; continue; }
+            const mail = TRIALMAIL.buildNotice(kind, {
+              name: account.name, trialEndsAt: ent.trialEndsAt,
+              monthly: PRICING.monthly,
+              annual: STRIPE_PRICES.annual ? PRICING.annual : 0,
+              freeReports: FREE_REPORTS_CAP,
+              deskUrl: `${SITE_URL}/desk`, pricingUrl: `${SITE_URL}/pricing`,
+            });
+            if (!mail) { summary.nothingDue += 1; continue; }
+            if (dryRun) {
+              summary.previews.push({ to: account.email, kind, subject: mail.subject, text: mail.text });
+              continue;
+            }
+            sendOutboundEmail(account.email, mail.subject, mail.text);
+            await markTrialNoticeSent(account.id, kind);
+            summary.sent[kind] += 1;
+          } catch (err) {
+            console.error(`Trial email failed for ${account.id}:`, err.message);
+            summary.failed += 1;
+          }
+        }
+        logEvent("trial_notices", { source: dryRun ? `dry:${summary.previews.length}` : `sent:${summary.sent.start + summary.sent.ending}` });
+        console.log(`🎁 Trial emails${dryRun ? " (dry run)" : ""}: ${summary.sent.start} start, ${summary.sent.ending} ending, ` +
+          `${summary.onTrial} on a trial of ${summary.candidates} checked, ${summary.optedOut} opted out, ${summary.failed} failed`);
+        return sendJson(res, 200, summary);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("trial notices error:", err);
+        return sendJson(res, 500, { error: "The trial email run failed: " + String(err && err.message || err).slice(0, 200) });
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url.split("?")[0] === "/api/watchlist/digest") {
     if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
     if (!isAdminRequest(req)) return sendJson(res, 401, { error: "Unauthorized." });
@@ -23761,7 +24138,14 @@ const server = http.createServer((req, res) =>
         // one-off. An unknown plan is now a 400, not a charge.
         const PLANS = {
           pro_monthly:         { price: STRIPE_PRICES.monthly,        mode: "subscription" },
-          pro_annual_founding: { price: STRIPE_PRICES.annualFounding, mode: "subscription" },
+          // The standing annual plan (2026-09-25).
+          pro_annual:          { price: STRIPE_PRICES.annual,         mode: "subscription" },
+          // NO pro_annual_founding. It stopped being SOLD on 2026-09-25, when
+          // the monthly price fell to $49 and made the founding rate ($840 a
+          // year) the worse deal. Buying it now answers the same 400 as any
+          // unknown plan — the single_report retirement's shape, for its
+          // reason. Founding members keep their subscriptions: the webhook
+          // still recognises the price (STRIPE_PRICE_IDS.annualFounding).
           // NO single_report plan. RETIRED 2026-08-21: once the free tier
           // itemized every comp, the one-off was left selling only the
           // ten-year window and rarely surfaced. Buying it now answers the
@@ -23781,7 +24165,16 @@ const server = http.createServer((req, res) =>
         const chosen = PLANS[plan];
         if (!chosen) return sendJson(res, 400, { error: "Unknown plan." });
         if (!chosen.price) return sendJson(res, 503, { error: "That plan isn't configured." });
-        const wantsFounding = plan === "pro_annual_founding";
+        // The price the site shows and the price Stripe charges must agree
+        // before anybody is sent to pay (see PRICE_CHECK). Only a CONFIRMED
+        // mismatch pauses; an unreadable price leaves checkout open.
+        const checkKey = { pro_monthly: "monthly", pro_annual: "annual", firm_monthly: "firmMonthly" }[plan];
+        if (checkKey && PRICE_CHECK[checkKey] === "mismatch") {
+          return sendJson(res, 503, {
+            error: "Checkout for this plan is paused for a few minutes while its price is updated. Please try again shortly.",
+            code: "price_mismatch",
+          });
+        }
         const priceId = chosen.price;
 
         // --- firm specifics -------------------------------------------------
@@ -23833,22 +24226,6 @@ const server = http.createServer((req, res) =>
           firmSeats = asked;
           const existingOrgSub = await findOrgSubscription(String(orgId));
           firmCustomer = (existingOrgSub && existingOrgSub.stripe_customer_id) || null;
-        }
-
-        // Seat check at checkout CREATION. There is a small race here — two
-        // people can pass the check within the same second and both reach 51 —
-        // so the webhook re-checks and logs loudly. Deliberate: a hard
-        // reservation would need a lock, and honouring one extra founder is a
-        // cheaper failure than a checkout that dies mid-payment.
-        if (wantsFounding) {
-          const left = await foundingSlotsLeft();
-          if (left === null || left <= 0) {
-            return sendJson(res, 409, {
-              error: "The founding-member offer has closed.",
-              code: "founding_closed",
-              fallbackPlan: "pro_monthly",
-            });
-          }
         }
 
         const existing = await findSubscription(user.id);
@@ -24108,6 +24485,16 @@ const server = http.createServer((req, res) =>
           // the routes re-resolve entitlements server-side, so editing this
           // response relabels a plan card and unlocks nothing.
           tester: ent.tester === true,
+          // The new-account Pro trial (2026-09-25). `isPro` is true during it,
+          // so without this the UI would do two wrong things at once: stop
+          // offering the upgrade to the one person it most needs to reach,
+          // and offer a billing portal to an account with no Stripe customer.
+          // Presentation only, like every field here.
+          trial: ent.trial === true,
+          trialEndsAt: ent.trialEndsAt || null,
+          // Whether the standing annual plan can be bought here, so its tile
+          // renders only where checkout can succeed (the Buy-button rule).
+          annual: on && STRIPE_CONFIGURED && Boolean(STRIPE_PRICES.annual),
           // Pro that arrives through a firm's seat (migration 033). The plan
           // card reads it to say "Pro — through Colliers Boise" and, more
           // importantly, to keep the personal "Manage billing" button away
@@ -24129,6 +24516,11 @@ const server = http.createServer((req, res) =>
           maxComps: ent.maxComps,
           maxLookbackMonths: ent.maxLookbackMonths,
           exportsRemaining: ent.exportsRemaining,
+          // The free report allowance (2026-09-25): a number for a free
+          // account, "unlimited" for everyone else, and the cap it counts
+          // against. Presentation only — /api/comps re-checks.
+          reportsRemaining: ent.reportsRemaining,
+          freeReportsPerMonth: FREE_REPORTS_CAP,
           canExploreAddresses: ent.canExploreAddresses,
           // Broker tier. Presentation only, exactly like every other field in
           // this block: the vault routes re-resolve entitlements server-side,
@@ -24208,19 +24600,18 @@ const server = http.createServer((req, res) =>
     if (rateLimited("pricing:" + clientIp(req), 60)) {
       return sendJson(res, 429, { error: "Too many requests. Please wait a moment." });
     }
-    const closed = { billing: false, foundingLeft: null, foundingLimit: FOUNDING_MEMBER_LIMIT };
-    // Audience-scoped like checkout: outside it there is nothing on sale, so
-    // don't hand back a seat count that implies otherwise.
+    // What is on sale to THIS caller. It used to carry the founding counter,
+    // a database read, which is why it lived apart from /api/config. The
+    // founding offer is no longer sold (2026-09-25; the standing annual plan
+    // replaced it), so nothing here reads the database any more: whether the
+    // annual plan can be bought is a fact about this deployment's env.
+    // foundingLeft is gone rather than null: null meant "unknown, keep the
+    // band up", and there is no band to keep up.
+    const closed = { billing: false, annual: false };
+    // Audience-scoped like checkout: outside it there is nothing on sale.
     getSessionUser(req).then((user) => {
       if (!proEnabledFor(user) || !STRIPE_CONFIGURED) return sendJson(res, 200, closed);
-      // 60s memo so a burst of modal opens can't turn into a burst of queries.
-      if (foundingCountCache && Date.now() - foundingCountCache.at < 60_000) {
-        return sendJson(res, 200, { billing: true, foundingLeft: foundingCountCache.left, foundingLimit: FOUNDING_MEMBER_LIMIT });
-      }
-      return foundingSlotsLeft().then((left) => {
-        foundingCountCache = { at: Date.now(), left };
-        sendJson(res, 200, { billing: true, foundingLeft: left, foundingLimit: FOUNDING_MEMBER_LIMIT });
-      });
+      sendJson(res, 200, { billing: true, annual: Boolean(STRIPE_PRICES.annual) });
     }).catch(() => sendJson(res, 200, closed));
     return;
   }
@@ -29241,6 +29632,9 @@ const server = http.createServer((req, res) =>
 }));
 
 server.listen(PORT, () => {
+  // Does Stripe charge what the pages say? Off the request path, after the
+  // port is bound, so a slow Stripe never delays boot or the health check.
+  verifyStripePrices().catch((e) => console.error("Stripe price check failed:", e.message));
   console.log(`Market Comp Puller running at http://localhost:${PORT}`);
   if (process.env.MODEL) console.log(`🤖 Model overridden by MODEL: ${MODEL}`);
   console.log(`🔀 Search provider: ${PROVIDER.name} (model ${MODEL}${PROVIDER.capabilities.searchBudget ? "" : ", no search-budget cap"})`);
@@ -29312,6 +29706,16 @@ server.listen(PORT, () => {
   // Loud on purpose, same reason as the PRO_AUDIENCE line above: a passkey set
   // with migration 022 not yet run looks like a working deployment until a
   // real tester's redemption 500s.
+  // The new-account Pro trial (2026-09-25). Said loudly either way: it hands
+  // out Pro, so "is it on here?" should never need a code read to answer.
+  console.log(PRO_TRIAL_DAYS > 0
+    ? `🎁 Pro trial ON — ${PRO_TRIAL_DAYS} days of Pro for every account, counted from signup` +
+      (PRO_TRIAL_START ? ` or from ${PRO_TRIAL_START.slice(0, 10)} for accounts made before it` : "") +
+      (PRO_ENABLED ? "." : " (inert: PRO_ENABLED is off).")
+    : "🎁 Pro trial off (PRO_TRIAL_DAYS=0).");
+  if (STRIPE_CONFIGURED && !STRIPE_PRICES.annual) {
+    console.log("🗓  No STRIPE_PRICE_PRO_ANNUAL set — the yearly plan is hidden and its checkout answers 503.");
+  }
   console.log(TESTER_PASSKEY
     ? "🔑 Tester passkey ENABLED — signed-in redemption at POST /api/redeem-passkey requires the users.pro_tester column (migrations/022-tester-passkey.sql)."
     : "🔑 Tester passkey not set (set TESTER_PASSKEY to let signed-in testers redeem comped Pro).");

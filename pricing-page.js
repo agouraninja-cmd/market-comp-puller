@@ -83,12 +83,12 @@ const PRICING_CSS = `
   font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   padding:3px 8px;border-radius:3px}
 
-/* --- The founding band ----------------------------------------------------
-   Replaces the .disc footnote this page carried, and sits directly under the
-   tiles. It is a SLAB, not a fourth column: founding is the same Pro plan at
-   an annual rate while seats remain, and giving a closing offer its own tile
-   would misrepresent both it and the standing tiers.
-   Text colours are literal for the reason given above the stylesheet. */
+/* --- The annual band -------------------------------------------------------
+   Sits directly under the tiles. It is a SLAB, not a fourth column: annual is
+   the same Pro plan paid yearly, and giving it its own tile would read as a
+   fourth product. (This stylesheet ships in the page, so the history of what
+   the band used to sell lives in the JS comment below it, not here.) Text
+   colours are literal for the reason given above the stylesheet. */
 .prc-fm{background:var(--slab);border-radius:6px;padding:22px 26px;margin:20px 0 0;
   display:flex;flex-wrap:wrap;gap:22px;align-items:center;justify-content:space-between}
 .prc-fm-lab{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#F87171}
@@ -96,9 +96,6 @@ const PRICING_CSS = `
   color:#fff;margin:8px 0 6px;font-variant-numeric:tabular-nums}
 .prc-fm-sub{font-size:13px;line-height:1.5;color:#B6C1CF;margin:0}
 .prc-fm-right{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
-.prc-fm-count{font-size:12.5px;color:#B6C1CF;line-height:1.3}
-.prc-fm-n{font-family:Georgia,'Times New Roman',serif;font-weight:500;font-size:28px;color:#fff;
-  display:block;font-variant-numeric:tabular-nums}
 .prc-fm-btn{display:inline-block;background:#DC2626;color:#fff;text-decoration:none;
   border-radius:4px;padding:10px 18px;font-size:14px;font-weight:600;white-space:nowrap}
 .prc-fm-btn:hover{background:#B91C1C;color:#fff}
@@ -126,63 +123,31 @@ const PRICING_CSS = `
   .prc-fm{flex-direction:column;align-items:flex-start}
 }`;
 
-// The founding counter, filled in AFTER paint and never server-rendered.
-//
-// This is the one thing on this page that needs care, and the reason is the
-// caching. `foundingLeft` comes from GET /api/pricing, which is deliberately
-// kept OUT of the server-rendered payload: it is a database read, it is
-// memoized 60 seconds, and this page is served from an hour-long public cache
-// to anonymous visitors. A number rendered into those bytes would be stale for
-// up to an hour on a page whose whole claim is scarcity — it would still be
-// saying "12 seats left" after the last one sold.
-//
-// Three states, and they are NOT the same:
-//   - billing false, or foundingLeft 0  -> HIDE THE BAND. There is nothing on
-//     sale for this visitor (PRO_ENABLED off, or they are outside
-//     PRO_AUDIENCE, or the seats are gone), and checkout would refuse the
-//     click. Never advertise a seat a checkout will 409.
-//   - foundingLeft null                 -> band WITHOUT the counter. null means
-//     "unknown" (the database is down or unconfigured), and checkout treats
-//     unknown as closed for the CHECKOUT — but the offer itself is still real,
-//     so the band stands and simply makes no claim about how many are left.
-//     Saying nothing is the only honest option; a guess here is a lie.
-//   - a positive number                 -> reveal the counter and fill it in.
-//
-// No backticks anywhere in this string: it is interpolated into a template
-// literal, and one would close it and emit broken JavaScript into the page.
-const FOUNDING_JS = `
-(function(){
-  var band=document.getElementById("prcFm");
-  if(!band||!window.fetch)return;
-  fetch("/api/pricing",{headers:{accept:"application/json"}})
-    .then(function(r){return r.ok?r.json():null})
-    .then(function(d){
-      if(!d||d.billing===false){band.hidden=true;return;}
-      var left=d.foundingLeft;
-      if(left===0){band.hidden=true;return;}
-      if(typeof left!=="number"||!(left>0))return;
-      var n=document.getElementById("prcFmN");
-      var lim=document.getElementById("prcFmLimit");
-      var box=document.getElementById("prcFmCount");
-      if(!n||!box)return;
-      n.textContent=String(left);
-      if(lim&&typeof d.foundingLimit==="number")lim.textContent=String(d.foundingLimit);
-      box.hidden=false;
-    })
-    .catch(function(){});
-})();`;
+// No script on this page any more. The founding band carried a seat counter
+// fetched after paint, because a count baked into an hour-cached page would
+// have gone on claiming seats after the last one sold. The annual band that
+// replaced it (2026-09-25) states only facts fixed at deploy time — the price,
+// and whether Stripe can sell it — so it is server-rendered whole.
 
 /**
  * The body of /pricing.
  *
  * @param {object} opts
  * @param {boolean} opts.signedIn   cookie presence — decides the CTA door only.
- * @param {object} opts.pricing     PRICING: monthly, foundingAnnual, firmSeat, minSeats.
+ * @param {object} opts.pricing     PRICING: monthly, annual, firmSeat, minSeats.
  * @param {boolean} opts.billingLive  whether Stripe is configured at all.
+ * @param {boolean} opts.annualLive   whether the annual plan can be bought here.
+ * @param {number}  opts.trialDays    the new-account Pro trial's length (0 = none).
  * @returns {string} HTML for marketShell's <main class="wrap">.
  */
-function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = true } = {}) {
-  const { monthly = 0, foundingAnnual = 0, firmSeat = 0, minSeats = 2 } = pricing;
+function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = true, annualLive = false, trialDays = 0 } = {}) {
+  const { monthly = 0, annual = 0, firmSeat = 0, minSeats = 2, freeReports = null } = pricing;
+  // The free report allowance (2026-09-25), in words like the tile's other
+  // figures. null means the deployment runs no cap (FREE_REPORTS_PER_MONTH=off),
+  // and then the page says nothing about one rather than invent a number.
+  const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+  const reportsWord = Number.isInteger(freeReports) && freeReports > 0
+    ? (WORDS[freeReports] || String(freeReports)) : "";
 
   // One door, chosen once. A member already has an account, so sending them to
   // a signup is the bug public-pages.test.js exists to catch; they go to the
@@ -193,7 +158,14 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
   // word "free" is not lost: the Free tile's own figure is $0 and its CTA says
   // "No card" directly above it, which is the same promise made by the thing
   // that proves it rather than by a button label.
-  const buyLabel = signedIn ? "Upgrade to Pro" : "Create an account";
+  //
+  // The trial (2026-09-25) changes what a stranger is being offered: every new
+  // account starts on Pro, so the honest button is the trial, not "an
+  // account". It is worded from trialDays, never typed, so PRO_TRIAL_DAYS=0
+  // takes the promise down with the trial.
+  const buyLabel = signedIn
+    ? "Upgrade to Pro"
+    : (trialDays > 0 ? `Try Pro free for ${trialDays} days` : "Create an account");
 
   // Written as words rather than a numeral because it reads as a sentence in
   // the tile ("minimum two seats"), and matches the FAQ's own phrasing.
@@ -222,14 +194,16 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     lab: "Free",
     fig: "$0",
     per: "forever",
-    sum: "Every comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
+    sum: (reportsWord ? `${reportsWord[0].toUpperCase()}${reportsWord.slice(1)} reports a month, every` : "Every") +
+      " comparable itemized, the same value range Pro sees, a three-year window, five exports a month.",
     cta: `<p style="font-size:13px;margin:0">No card. ${signedIn ? "Your account starts here." : `<a href="/?auth=signup">Create an account &rarr;</a>`}</p>`,
   });
 
   const proTile = tile({
     lab: "Pro",
     fig: `$${money(monthly)}`,
-    per: "per month &middot; cancel any time",
+    per: "per month &middot; cancel any time" +
+      (trialDays > 0 ? ` &middot; ${trialDays}-day free trial` : ""),
     mid: true,
     sum: "Everything free, plus the ten-year window, unlimited exports, the private comp vault, comp reports on a whole list of addresses, the Address Explorer, and your own branding on every report.",
     cta: billingLive
@@ -256,35 +230,25 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     cta: `<p style="margin:0"><a href="/brokers-firms">How a firm works &rarr;</a></p>`,
   });
 
-  // The saving is COMPUTED. It read "$360 per year" in the design, which is
-  // right at $100/mo against $840/yr and wrong the moment either figure moves.
-  const foundingSaving = monthly * 12 - foundingAnnual;
+  // The saving is COMPUTED, never typed: "$360 per year" was right at $100/mo
+  // against the old $840 founding rate and wrong the moment either moved.
+  const annualSaving = monthly * 12 - annual;
 
-  // The band is server-rendered only when there is an offer to make at all:
-  // no annual rate configured, or no Stripe, and it is not drawn. Everything
-  // else — whether seats remain, and how many — is decided after paint by
-  // FOUNDING_JS, which can also take the whole band back down.
-  const foundingBand = (foundingAnnual && billingLive)
+  // Drawn only where it can be bought (the Buy-button rule): no annual price
+  // in PRICING, no Stripe, or no annual price id configured, and it is absent.
+  const annualBand = (annual && billingLive && annualLive)
     ? `<div class="prc-fm" id="prcFm">` +
       `<div>` +
-      `<div class="prc-fm-lab">Founding member &middot; while seats remain</div>` +
-      `<div class="prc-fm-h">Pro at $${money(foundingAnnual)} a year, held for as long as you stay subscribed.</div>` +
-      (foundingSaving > 0
-        ? `<p class="prc-fm-sub">Saves you $${money(foundingSaving)} per year. Same Pro plan, same features.</p>`
+      `<div class="prc-fm-lab">Pay yearly</div>` +
+      `<div class="prc-fm-h">Pro at $${money(annual)} a year.</div>` +
+      (annualSaving > 0
+        ? `<p class="prc-fm-sub">Saves you $${money(annualSaving)} a year against paying monthly. Same Pro plan, same features.</p>`
         : `<p class="prc-fm-sub">Same Pro plan, same features.</p>`) +
       `</div>` +
       `<div class="prc-fm-right">` +
-      // Ships hidden and is revealed only once a real count comes back. The
-      // limit is a placeholder until then for the same reason the count is:
-      // FOUNDING_MEMBER_LIMIT is an env var, so it is the server's to state
-      // and this page's to be told.
-      `<div class="prc-fm-count" id="prcFmCount" hidden>` +
-      `<span class="prc-fm-n" id="prcFmN"></span>of <span id="prcFmLimit"></span> seats left` +
+      `<a class="prc-fm-btn" href="${signedIn ? "/?pricing=1" : "/?auth=signup"}">Choose yearly &rarr;</a>` +
       `</div>` +
-      `<a class="prc-fm-btn" href="${signedIn ? "/?pricing=1" : "/?auth=signup"}">Claim a seat &rarr;</a>` +
-      `</div>` +
-      `</div>` +
-      `<script>${FOUNDING_JS}</script>`
+      `</div>`
     : "";
 
   // The honest answer to "is $X a month worth it". The free column is kept
@@ -298,7 +262,9 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
     `<div class="prc-wc prc-wc-pro">` +
     `<h2>Upgrade to Pro if</h2>` +
     `<ul class="prc-wl">` +
-    worthRow("01", "You price more than one building a month.") +
+    worthRow("01", reportsWord
+      ? `You price more than ${reportsWord} building${freeReports === 1 ? "" : "s"} a month.`
+      : "You price more than one building a month.") +
     worthRow("02", "You keep a comp book. The vault puts it in every report.") +
     worthRow("03", "You send work out under your own branding.") +
     `</ul></div>` +
@@ -324,7 +290,7 @@ function renderPricingPageBody({ signedIn = false, pricing = {}, billingLive = t
 
     `<div class="tiles prc-tiles">${freeTile}${proTile}${firmTile}</div>` +
 
-    foundingBand +
+    annualBand +
     worth +
 
     `<p class="disc">Prices in US dollars, billed through Stripe; cancel any time from your own ` +

@@ -966,31 +966,15 @@ test("a pending landing address keeps a member on the home view, where the form 
   assert.match(block, /location\.pathname === "\/desk"\n/, "/desk itself is unconditional — asking for the desk is asking for the desk");
 });
 
-test("the workspace header's red door is a link to Bulk valuation, labelled like the CTA", () => {
-  const at = html.indexOf('id="deskRunReport"');
-  assert.ok(at > -1, "the workspace header offers the door");
-  const tag = html.slice(html.lastIndexOf("<", at), html.indexOf(">", at) + 1);
-  assert.match(tag, /^<a\b/, "a real link, so middle-click and Ctrl-click work");
-  assert.match(tag, /href="\/bulk"/, "it leads to Bulk valuation, the comp-report tool since 2026-09-04");
-  // "Run a report" names /bulk everywhere now — the red CTA on every
-  // server-rendered bar points there and the /run-report Tools row is gone —
-  // so this door uses the same label for the same destination. One label,
-  // one place; the day it said "Bulk valuation →" was the day the phrase
-  // named a different row.
-  const label = html.slice(html.indexOf(">", at) + 1, html.indexOf("</a>", at));
-  assert.equal(label.trim(), "Run a report →");
+test("the workspace header carries no Run a report door", () => {
+  // Owner's call, 2026-09-24: the red #deskRunReport link to /bulk repeated
+  // the rail's Comp report row and the CTA, so the header is the heading
+  // alone. The comp-report tool stays reachable from the rail.
+  assert.ok(!html.includes('id="deskRunReport"'), "the workspace header offers no report door");
+  const at = html.indexOf('<section id="deskView"');
+  const head = html.slice(at, html.indexOf("</h2>", at) + 900);
+  assert.doesNotMatch(head.replace(/<!--[\s\S]*?-->/g, ""), /Run a report/, "no Run a report control in the workspace header");
   assert.ok(!/<a href="\/run-report"/.test(html), "no nav row points at /run-report any more");
-  assert.ok(!html.includes('deskRunReport").addEventListener'), "no click handler: the chamber it used to scroll to is off this view");
-  // Red, on the owner's call (2026-08-29): it is the only control on that
-  // row. The classes have to be ones the file already uses somewhere else --
-  // tailwind.css is a purged vendored build, so a colour that appears only
-  // here would silently not paint.
-  assert.match(tag, /bg-brand-600/, "the workspace door is red");
-  assert.match(tag, /hover:bg-brand-700/, "and it has the matching hover");
-  for (const cls of ["bg-brand-600", "hover:bg-brand-700"]) {
-    const uses = html.split(cls).length - 1;
-    assert.ok(uses > 1, cls + " must be used elsewhere too, or the purge drops it");
-  }
 });
 
 test("a fresh sign-in lands on the workspace, and only where that is the answer", () => {

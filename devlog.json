@@ -4237,5 +4237,11 @@
     "type": "improvement",
     "title": "Home page: a cleaner, calmer version of the same page",
     "details": "The owner picked Draft 1 from a Claude Design canvas: same sections, same order, same words, with the polish changed. The intro now has its own Create a free account button (the first sign-up door used to be a whole band further down), the two product columns sit under ink rules, the red eyebrows went from 18px to a quieter 15px, the address field, type and button became one search bar, the source legend gained its fifth label (News), and the sample report shows its working beside the median (x 21,600 SF, approximately $4,730,000). The em dashes in the page copy were rewritten as colons and commas; the promise about what leaves the vault keeps its exact wording."
+  },
+  {
+    "date": "2026-09-24",
+    "type": "improvement",
+    "title": "Workspace header drops its Run a report button",
+    "details": "The red Run a report button in the top right of the workspace is gone. It led to the same place as the Comp report row in the sidebar and the red button on every other page, so the workspace header is now just its heading."
   }
 ]

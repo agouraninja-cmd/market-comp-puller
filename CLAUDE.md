@@ -4397,10 +4397,11 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     address field. Two things changed the answer: the finder got a URL of its
     own the same day (`/run-report`, PR #291), and the owner wants the
     workspace to be the firm's record with **Bulk valuation as the
-    comp-report tool** — the workspace header's one red control,
-    `#deskRunReport`, is a plain `<a href="/bulk">` labelled "Run a report
-    →", the same label and destination as the red CTA on every
-    server-rendered bar. **`/run-report` is in NO nav** (owner's call, the
+    comp-report tool** — reached from the rail's Comp report row
+    and the red CTA on every server-rendered bar. (The workspace header
+    carried its own red `#deskRunReport` link to /bulk from 2026-09-04; it
+    came off on 2026-09-24, owner's call, as a third door to one place, so
+    the header is the heading alone.) **`/run-report` is in NO nav** (owner's call, the
     same evening): it was a Tools row for one day, and a second "run a
     report" door was two doors to one act. The route still answers but is
     linked from nowhere: `bulk-page.js` linked it from its foot for a few

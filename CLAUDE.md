@@ -411,10 +411,13 @@ nothing.
 
 ### The nightly shipped post (Google Chat)
 
-`.github/workflows/ship-chat.yml` posts a card to the team's Google Chat
-space at midnight Boise time: Jacob's, Owen's and Chuck's commits for the day
-that just ended, over a line chart of the current 14-day period (fixed periods
-anchored on Monday 2026-09-14, so it starts over every other Monday). Rules in
+`.github/workflows/ship-chat.yml` posts a card to the **Developer thread** of
+the team's CompNinja Chat space at midnight Boise time: Jacob's, Owen's and
+Chuck's commits for the day that just ended, over a line chart of the current
+14-day period (fixed periods from Thursday 2026-09-24, the first post's day, so
+it starts over every other Thursday). Every post replies into that one thread
+via `THREAD_KEY`; the thread's opening message was posted once with the
+workflow's `start_thread` switch, which must not be pressed again. Rules in
 **`scripts/ship-chat.js`**, tested in `test/ship-chat.test.js`; `node
 scripts/ship-chat.js build --out DIR --day YYYY-MM-DD` renders any day's card
 locally with the `gh` sign-in you already have. Three counting rules, each

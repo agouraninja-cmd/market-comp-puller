@@ -55,19 +55,19 @@ test("the workflow's crons are exactly the ones the script knows", () => {
   assert.deepStrictEqual(crons, Object.keys(S.SCHEDULE_OFFSETS).sort());
 });
 
-test("the chart covers fixed 14-day periods that restart every other Monday", () => {
-  assert.strictEqual(S.PERIOD_ANCHOR, "2026-09-14");
-  let p = S.periodFor("2026-09-14");
-  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-09-14", "2026-09-27", 1]);
-  p = S.periodFor("2026-09-24");
-  assert.deepStrictEqual([p.start, p.index], ["2026-09-14", 11]);
-  assert.strictEqual(S.periodFor("2026-09-27").index, 14);
-  p = S.periodFor("2026-09-28");
-  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-09-28", "2026-10-11", 1]);
-  p = S.periodFor("2026-09-13"); // before the anchor still lands in a whole period
-  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-08-31", "2026-09-13", 14]);
+test("the chart starts with the first post's day and restarts every two weeks after", () => {
+  assert.strictEqual(S.PERIOD_ANCHOR, "2026-09-24");
+  let p = S.periodFor("2026-09-24"); // the first post
+  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-09-24", "2026-10-07", 1]);
+  assert.strictEqual(S.periodFor("2026-09-25").index, 2); // the first midnight post
+  assert.strictEqual(S.periodFor("2026-10-07").index, 14);
+  p = S.periodFor("2026-10-08");
+  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-10-08", "2026-10-21", 1]);
+  p = S.periodFor("2026-09-23"); // before the anchor still lands in a whole period
+  assert.deepStrictEqual([p.start, p.end, p.index], ["2026-09-10", "2026-09-23", 14]);
   assert.strictEqual(p.days.length, 14);
-  assert.strictEqual(new Date(`${S.periodFor("2027-02-01").start}T00:00:00Z`).getUTCDay(), 1);
+  // Every period starts on a Thursday, the weekday of the first one.
+  assert.strictEqual(new Date(`${S.periodFor("2027-02-01").start}T00:00:00Z`).getUTCDay(), 4);
 });
 
 const pr = (login, mergedAt, parents) => ({
@@ -93,16 +93,18 @@ test("credit goes to the PR's author and merges from main count for nothing", ()
 
 test("the lines stop at tonight and the period total counts only days that happened", () => {
   const m = S.buildModel([
-    pr("agouraninja-cmd", "2026-09-16T18:00:00Z", [1, 1]),
-    pr("agouraninja-cmd", "2026-09-24T18:00:00Z", [1, 1, 1]),
-  ], "2026-09-24");
+    pr("agouraninja-cmd", "2026-09-20T18:00:00Z", [1]),        // the period before
+    pr("agouraninja-cmd", "2026-09-26T18:00:00Z", [1, 1]),
+    pr("agouraninja-cmd", "2026-10-02T18:00:00Z", [1, 1, 1]),
+  ], "2026-10-02");
   const jacob = m.series.find((s) => s.name === "Jacob");
+  assert.strictEqual(m.period.index, 9);
   assert.strictEqual(jacob.points.length, 14);
-  assert.deepStrictEqual(jacob.points.slice(10), [3, null, null, null]);
+  assert.deepStrictEqual(jacob.points.slice(8), [3, null, null, null, null, null]);
   assert.strictEqual(jacob.points[2], 2);
   assert.strictEqual(jacob.periodTotal, 5);
   assert.deepStrictEqual(jacob.today, { commits: 3, prs: 1 });
-  assert.strictEqual(m.resetsOn, "2026-09-28");
+  assert.strictEqual(m.resetsOn, "2026-10-08");
   assert.deepStrictEqual(m.series.map((s) => s.name), ["Jacob", "Owen", "Chuck"]);
 });
 
@@ -128,12 +130,12 @@ test("the card names everyone, escapes what it prints, and plots no future day",
     { login: "a", name: "Jacob <b>", color: "#B91C1C" },
     { login: "b", name: "Owen", color: "#2A78D6" },
   ];
-  const m = S.buildModel([pr("a", "2026-09-24T18:00:00Z", [1])], "2026-09-24", people);
+  const m = S.buildModel([pr("a", "2026-10-04T18:00:00Z", [1])], "2026-10-04", people);
   const html = S.renderCardHtml(m);
   assert.ok(html.includes("Jacob &lt;b&gt;") && !html.includes("Jacob <b>"));
-  assert.ok(html.includes("Thursday, September 24"));
+  assert.ok(html.includes("Sunday, October 4"));
   assert.ok(html.includes("Day 11 of 14"));
-  assert.ok(html.includes("chart resets Mon, Sep 28"));
+  assert.ok(html.includes("chart resets Thu, Oct 8"));
   assert.strictEqual((html.match(/<circle /g) || []).length, 11 * people.length);
 });
 
@@ -159,6 +161,38 @@ test("See the PRs asks GitHub for that Boise day, including the night the clocks
   assert.match(url("2026-11-01"), /merged:2026-11-01T06:00:00Z\.\.2026-11-02T06:59:59Z/);
   assert.match(url("2027-03-14"), /merged:2027-03-14T07:00:00Z\.\.2027-03-15T05:59:59Z/);
   assert.match(url("2026-09-24"), /base:main/);
+});
+
+test("every post goes to the Developer thread, beside the webhook's own key and token", () => {
+  assert.strictEqual(S.THREAD_KEY, "developer-thread");
+  const u = new URL(S.threadedUrl("https://chat.googleapis.com/v1/spaces/AAQ/messages?key=K&token=T"));
+  assert.strictEqual(u.searchParams.get("key"), "K");
+  assert.strictEqual(u.searchParams.get("token"), "T");
+  assert.strictEqual(u.searchParams.get("threadKey"), "developer-thread");
+  assert.strictEqual(u.searchParams.get("messageReplyOption"), "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
+  assert.strictEqual(u.pathname, "/v1/spaces/AAQ/messages");
+  // Setting, not appending: a URL that already names the thread is not doubled.
+  const again = new URL(S.threadedUrl(u.toString()));
+  assert.deepStrictEqual(again.searchParams.getAll("threadKey"), ["developer-thread"]);
+  assert.throws(() => S.threadedUrl("not a url ?key=SECRET"), (err) => !/SECRET/.test(err.message));
+});
+
+test("the thread opens by saying what it is for", () => {
+  assert.match(S.THREAD_INTRO, /^\*Developer thread\*\n/);
+  assert.match(S.THREAD_INTRO, /development/);
+  const yml = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "ship-chat.yml"), "utf8");
+  assert.match(yml, /start_thread:[\s\S]*default: false/, "opening the thread is opt-in, never nightly");
+  assert.match(yml, /"\$START_THREAD" = "true" \]; then args\+=\(--intro\)/);
+});
+
+test("a post really reaches the thread URL", async (t) => {
+  let seen = null;
+  const server = http.createServer((req, res) => { seen = req.url; res.writeHead(200); res.end("{}"); });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  t.after(() => server.close());
+  await S.postToChat({ text: "x" }, `http://127.0.0.1:${server.address().port}/v1/spaces/X/messages?key=K&token=T`);
+  const q = new URL(seen, "http://x").searchParams;
+  assert.deepStrictEqual([q.get("key"), q.get("token"), q.get("threadKey")], ["K", "T", "developer-thread"]);
 });
 
 test("a failed post never prints the webhook URL, whose query string is the key", async (t) => {

@@ -25,8 +25,14 @@
 # Never merge it. If hosting fails, the post still goes out with the numbers
 # as text.
 #
-# "Run workflow" takes a day to post and a dry-run switch that builds the
-# card and keeps it as a run artifact without hosting or posting anything.
+# Every post lands in ONE thread of the CompNinja space, the "Developer
+# thread" (THREAD_KEY in the script), not a new thread a night.
+#
+# "Run workflow" takes a day to post, a dry-run switch that builds the card
+# and keeps it as a run artifact without hosting or posting anything, and a
+# start-thread switch that posts the thread's opening message first. That one
+# is for the first post only — pressed again it would repeat the opening
+# message inside the thread.
 name: Ship chat
 
 on:
@@ -41,6 +47,10 @@ on:
         default: ""
       dry_run:
         description: "Build the card only: no hosting, no post"
+        type: boolean
+        default: false
+      start_thread:
+        description: "Open the Developer thread first (first post only)"
         type: boolean
         default: false
 
@@ -138,9 +148,9 @@ jobs:
         env:
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
           IMAGE_URL: ${{ steps.host.outputs.url }}
+          START_THREAD: ${{ inputs.start_thread }}
         run: |
-          if [ -n "$IMAGE_URL" ]; then
-            node scripts/ship-chat.js post --out out --image-url "$IMAGE_URL"
-          else
-            node scripts/ship-chat.js post --out out
-          fi
+          args=(post --out out)
+          if [ -n "$IMAGE_URL" ]; then args+=(--image-url "$IMAGE_URL"); fi
+          if [ "$START_THREAD" = "true" ]; then args+=(--intro); fi
+          node scripts/ship-chat.js "${args[@]}"

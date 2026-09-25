@@ -4291,5 +4291,11 @@
     "type": "fix",
     "title": "The vault's hidden controls stay hidden: the add-a-property form ships closed again",
     "details": "On /vault, the “Your properties” add form sat open on every page load, above the table, instead of waiting behind “+ Add a property”. The same styling mistake showed three more things that should have been hidden: a Firm filter for brokers in no firm, a Clear button with no filter set, and an empty outlined box beside “Publish comps”. All four are hidden again, and a test now checks every element on the page that can be hidden, so a new style can't quietly bring one back."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The shipped card is a page now: compninja.co/dev/shipped",
+    "details": "The nightly post in the Developer thread carried the card as a picture, and Chat shrank it until it was unreadable. The post is now plain Chat text — each person's commits and PRs for the day — with an \"Open the board\" button to one team-only page that updates every night: the day's numbers, the 14-day chart at full size, and every PR merged that day. Behind the same key as /admin and /dev, sharp on a phone, and linked from the Dev hub."
   }
 ]

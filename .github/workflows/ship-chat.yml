@@ -1,8 +1,10 @@
-# The nightly "who shipped what" post to the team's Google Chat space: a card
-# with Jacob's, Owen's and Chuck's commits for the day that just ended and a
-# line chart of the current 14-day period. The rules (who gets credit, which
-# day a merge belongs to, when the chart resets) live in scripts/ship-chat.js
-# and are tested in test/ship-chat.test.js.
+# The nightly "who shipped what" post to the team's Google Chat space, and the
+# numbers behind the shipped board at compninja.co/dev/shipped. The post is a
+# card with Jacob's, Owen's and Chuck's commits for the day that just ended,
+# as Chat text, and a button to the board, which draws the 14-day chart and
+# the day's PRs at full size. The rules (who gets credit, which day a merge
+# belongs to, when the chart resets) live in ship-board.js, shared by
+# scripts/ship-chat.js and server.js, and are tested in test/ship-chat.test.js.
 #
 # Midnight in Boise, every night. GitHub cron is UTC and Boise moves an hour
 # twice a year, so this fires at BOTH candidate hours and the script posts
@@ -18,21 +20,24 @@
 # silently stopped. The PR counts need nothing extra; the job's own token
 # reads them.
 #
-# A Chat card can only show a picture that lives at a public https URL, so
-# the PNG is pushed to the `ship-charts` branch and linked from there. That
-# branch is ONE parentless commit, force-pushed every night, holding the
-# newest 60 pictures — so it never grows history and never bloats a clone.
-# Never merge it. If hosting fails, the post still goes out with the numbers
-# as text.
+# The board reads each day from the `ship-charts` branch, where this saves it
+# as days/<YYYY-MM-DD>.json. That branch is ONE parentless commit, force-pushed
+# every night, holding the newest 120 days — so it never grows history and
+# never bloats a clone. Never merge it. The day is saved BEFORE the post, so
+# the post's button never leads to yesterday's board; if saving fails the
+# post still goes out and the job then fails, so somebody hears about it.
+# (Until 2026-09-25 this branch held a PNG of the card, posted as a picture;
+# Chat shrank it until it was unreadable, and the board replaced it.)
 #
 # Every post lands in ONE thread of the CompNinja space, the "Developer
 # thread" (THREAD_KEY in the script), not a new thread a night.
 #
-# "Run workflow" takes a day to post, a dry-run switch that builds the card
-# and keeps it as a run artifact without hosting or posting anything, and a
-# start-thread switch that posts the thread's opening message first. That one
-# is for the first post only — pressed again it would repeat the opening
-# message inside the thread.
+# "Run workflow" takes a day to post, a dry-run switch that counts the day and
+# keeps it (and a copy of the board page) as a run artifact without saving or
+# posting anything, and a start-thread switch that posts the thread's opening
+# message first. That one is for the first post only — pressed again it would
+# repeat the opening message inside the thread. skip_post saves the day for
+# the board without posting, for putting a past day on the board quietly.
 name: Ship chat
 
 on:
@@ -46,16 +51,20 @@ on:
         required: false
         default: ""
       dry_run:
-        description: "Build the card only: no hosting, no post"
+        description: "Count the day only: no saving, no post"
         type: boolean
         default: false
       start_thread:
         description: "Open the Developer thread first (first post only)"
         type: boolean
         default: false
+      skip_post:
+        description: "Save the day for the board but post nothing"
+        type: boolean
+        default: false
 
 permissions:
-  contents: write # push the picture to the ship-charts branch
+  contents: write # save the day to the ship-charts branch
   pull-requests: read
 
 concurrency:
@@ -72,7 +81,7 @@ jobs:
         with:
           node-version: 24
 
-      - name: Count the day and draw the card
+      - name: Count the day
         id: build
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -85,16 +94,16 @@ jobs:
             node scripts/ship-chat.js build --out out
           fi
 
-      - name: Keep the card with the run
+      - name: Keep the day with the run
         if: steps.build.outputs.post == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: ship-card
+          name: ship-day
           path: out/
           retention-days: 14
 
       - name: Check the webhook secret
-        if: steps.build.outputs.post == 'true' && !inputs.dry_run
+        if: steps.build.outputs.post == 'true' && !inputs.dry_run && !inputs.skip_post
         env:
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
         run: |
@@ -103,8 +112,8 @@ jobs:
             exit 1
           fi
 
-      - name: Host the picture on the ship-charts branch
-        id: host
+      - name: Save the day for the board
+        id: save
         if: steps.build.outputs.post == 'true' && !inputs.dry_run
         continue-on-error: true
         env:
@@ -116,7 +125,6 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
-          name="${DAY_OUT}-${GITHUB_RUN_ID}.png"
           remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           dir="$(mktemp -d)"
           if git ls-remote --exit-code --heads "$remote" ship-charts >/dev/null 2>&1; then
@@ -124,33 +132,31 @@ jobs:
           else
             git init -q "$dir"
           fi
-          cp out/card.png "$dir/$name"
+          mkdir -p "$dir/days"
+          cp out/model.json "$dir/days/${DAY_OUT}.json"
           cd "$dir"
-          ls -1 -- *.png | sort | head -n -60 | xargs -r rm -f --
+          rm -f -- *.png
+          ls -1 days/*.json | sort | head -n -120 | xargs -r rm -f --
           printf '%s\n' "# ship-charts" "" \
-            "Pictures for the nightly Google Chat post (.github/workflows/ship-chat.yml on main)." \
-            "Force-pushed as one parentless commit every night, keeping the newest 60. Never merge this branch." > README.md
+            "The shipped board's data: one days/YYYY-MM-DD.json per day, written by .github/workflows/ship-chat.yml on main and read by compninja.co/dev/shipped." \
+            "Force-pushed as one parentless commit every night, keeping the newest 120 days. Never merge this branch." > README.md
           git add -A
-          commit="$(git commit-tree "$(git write-tree)" -m "Ship charts through ${DAY_OUT}")"
+          commit="$(git commit-tree "$(git write-tree)" -m "Shipped board through ${DAY_OUT}")"
           git push -q -f "$remote" "${commit}:refs/heads/ship-charts"
-          url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/ship-charts/${name}"
-          for i in $(seq 1 12); do
-            if curl -fsI "$url" >/dev/null; then
-              echo "url=$url" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::The picture never appeared at $url; posting the numbers as text instead."
+          echo "Saved days/${DAY_OUT}.json"
 
       - name: Post to Google Chat
-        if: steps.build.outputs.post == 'true' && !inputs.dry_run
+        if: steps.build.outputs.post == 'true' && !inputs.dry_run && !inputs.skip_post
         env:
           GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
-          IMAGE_URL: ${{ steps.host.outputs.url }}
           START_THREAD: ${{ inputs.start_thread }}
         run: |
           args=(post --out out)
-          if [ -n "$IMAGE_URL" ]; then args+=(--image-url "$IMAGE_URL"); fi
           if [ "$START_THREAD" = "true" ]; then args+=(--intro); fi
           node scripts/ship-chat.js "${args[@]}"
+
+      - name: Fail if the board was not saved
+        if: steps.save.outcome == 'failure'
+        run: |
+          echo "::error::The post went out, but the day was not saved to the ship-charts branch, so the board still shows an earlier day. See the 'Save the day for the board' step."
+          exit 1

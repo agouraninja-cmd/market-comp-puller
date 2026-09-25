@@ -87,6 +87,21 @@ test("Escape steps back from the vault, as it does from every other page", async
     "vault-page.js still carries its own truncated Escape script");
 });
 
+test("the book's map loads Leaflet and the tiles through the shared constants", async (t) => {
+  // The map view (2026-09-25) is drawn by the page's own script, but Leaflet
+  // and CNBASE arrive through marketShell's head from server.js's LEAFLET_HEAD
+  // and BASEMAP_JS, so the vault cannot load a different Leaflet or a
+  // different tile source from the market pages.
+  const srv = await boot({});
+  t.after(() => srv.stop());
+  const html = await (await fetch(srv.base + "/vault", { headers: SESSION })).text();
+  assert.match(html, /unpkg\.com\/leaflet@1\.9\.4\/dist\/leaflet\.js/, "/vault does not load Leaflet");
+  assert.match(html, /var CNBASE = \(function/, "/vault does not carry the shared basemap");
+  assert.match(SERVER_JS, /head: INTER_FONT_HEAD \+ LEAFLET_HEAD \+ `<script>\$\{BASEMAP_JS\}<\/script>\\n`/,
+    "the route should hand the shared constants to marketShell, not a copy");
+  assert.ok(!/arcgisonline/.test(VAULT_JS), "vault-page.js carries its own tile URL");
+});
+
 test("the vault keeps Inter, which no other marketShell page loads", async (t) => {
   // MARKET_CSS names Inter in body{} and NO server-rendered page fetches it —
   // they were all designed against the system fallback. /vault was its own

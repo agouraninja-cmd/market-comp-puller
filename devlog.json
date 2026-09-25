@@ -2,6 +2,12 @@
   {
     "date": "2026-09-25",
     "type": "feature",
+    "title": "The Vault opens on what needs you this week, and your book gets a map and a comp set",
+    "details": "The owner’s pick of the vault redesign drafts: Draft C with Draft B’s map and comp set. The Vault now opens on This week: owners asking for a value in your markets, leases in your own book ending within a year (soonest first, the notice date when there is one), and BOVs delivered with no answer yet. The pipeline moved from the bottom of the page (17,500 pixels down a busy book) to second, and opens as a board with a column per stage; each card says how many of your own sales fit it, and clicking that opens them in your book. The old table is one click away as List. The book opens as a list beside a map of your buildings: tick comps into a set, and the set keeps its own median and range (sales and leases apart, never across property types) and prints as a comp sheet on your letterhead, downloads as a CSV, or publishes and shares through the same confirms as before. Pins come only from coordinates the book already holds, so no address is sent anywhere new. The editable table is one click away as Table. A busy vault page went from 24,757 to 6,770 pixels tall."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
     "title": "Workspace banner: your firm’s skyline",
     "details": "The banner behind “Good morning” now draws the firm itself: every building on the board is a tower. Height is its size, lit windows are recent work (a report on the shelf, the building added, or a lease date due, in the last 30 days), a red light is a lease date inside 90 days, and a crane marks a building added this month. New buildings rise on the right, so the skyline grows with the firm, and the sky follows the time of day. Hover a tower for what is due and a link to its building sheet. Replaces the aerial-photo banner shipped an hour earlier (Draft C); the owner meant Draft B."
   },

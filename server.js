@@ -29487,7 +29487,13 @@ const server = http.createServer((req, res) =>
         // regression the fold could have shipped. `head` is emitted BEFORE
         // MARKET_CSS, which is exactly right for a font: it must be fetched
         // early, and it is not competing with anything.
-        head: INTER_FONT_HEAD,
+        // + Leaflet and the tiles since 2026-09-25: the book's map view.
+        // LEAFLET_HEAD is the one const the market pages load Leaflet through
+        // and BASEMAP_JS (CNBASE) the one tile source, handed over here rather
+        // than copied into vault-page.js, so the vault cannot drift onto
+        // another version of either. Without them the map says it could not
+        // load and every comp is still in the list.
+        head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
         body: renderVaultBody(boot),
       }));

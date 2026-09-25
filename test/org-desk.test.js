@@ -1706,9 +1706,32 @@ test("the empty state is wired: first in the deck, drawn after the firm read, hi
 // ---------------------------------------------------------------------------
 const DATE_HELPERS_RE = /  function fmtDeskDay\(iso, withYear\) \{[\s\S]*?\n  function leaseWhat\(c\) \{[\s\S]*?\n  \}/;
 const DATES_RE = /  const AGENDA_DAYS = 90;[\s\S]*?\n  function drawDeskHead\(\) \{[\s\S]*?\n  \}/;
+// A test clock for the slice: `new Date()` reads `clock.now`, and timers are
+// RECORDED, never scheduled. drawDeskHead arms a timer for the next change
+// of greeting (2026-09-25), and a real one aimed at noon would hold this
+// file's `node --test` process open for hours.
+function fakeClock(ms) {
+  const clock = { now: ms, timers: [] };
+  clock.Date = class extends Date {
+    constructor(...a) { if (a.length) super(...a); else super(clock.now); }
+  };
+  clock.setTimeout = (fn, delay) => { clock.timers.push({ fn, delay, live: true }); return clock.timers.length; };
+  clock.clearTimeout = (id) => { if (clock.timers[id - 1]) clock.timers[id - 1].live = false; };
+  clock.armed = () => clock.timers.filter((t) => t.live);
+  // Move the clock to when the one armed timer is due, and run it.
+  clock.fire = () => {
+    const [t] = clock.armed();
+    assert.ok(t, "a timer is armed");
+    t.live = false;
+    clock.now += t.delay;
+    t.fn();
+  };
+  return clock;
+}
 function loadDates(o) {
   const opts = o || {};
   const fetch = makeFetch([]);
+  const clock = fakeClock(Date.now());
   const ctx = load(DATES_RE,
     "this.draw = drawDeskDates; this.head = drawDeskHead; this.closed = () => __closed;",
     "let currentUser = __user; function myFirm() { return __firm; }\n" +
@@ -1717,7 +1740,8 @@ function loadDates(o) {
     "function decorateBuildingRows() {} function closeDeskFind() { __closed++; }\n" +
     "function shopCopy(kind) { return kind === 'development' ? { label: 'Development shop' } : { label: 'Broker shop' }; }\n" +
     html.match(DATE_HELPERS_RE)[0],
-    { fetch, __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
+    { fetch, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+      __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
       __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial", kind: "broker" } : opts.firm,
       __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads,
       __buildings: opts.buildings || [{ id: "b3", address: "3100 S Federal Way, Boise, ID" }] });
@@ -1990,13 +2014,14 @@ test("the empty board's own button opens the add form and never closes it", asyn
   assert.equal(ctx.dom.hidden("buildingAddForm"), false, "a second click must not close what the first opened");
 });
 
-function loadGreeting(user) {
+function loadGreeting(user, clock) {
+  const c = clock || fakeClock(Date.now());
   return load(DATES_RE, "this.greet = deskGreetingFor; this.head = drawDeskHead;",
     "let currentUser = __user; function myFirm() { return null; }\n" +
     "let deskCritical = null; let deskThreadsStat = null; const DESK_DUE_DAYS = 90; let firmBuildings = [];\n" +
     "function decorateBuildingRows() {} function closeDeskFind() {}\n" +
     "function shopCopy() { return { label: 'Broker shop' }; }\n" + html.match(DATE_HELPERS_RE)[0],
-    { fetch: makeFetch([]), __user: user });
+    { fetch: makeFetch([]), __user: user, Date: c.Date, setTimeout: c.setTimeout, clearTimeout: c.clearTimeout });
 }
 
 test("the banner greets a member by first name, on this browser's clock, and says Workspace to nobody", () => {
@@ -2015,12 +2040,42 @@ test("the banner greets a member by first name, on this browser's clock, and say
   assert.equal(out.dom.text("deskGreeting"), "Workspace");
 });
 
+test("a workspace left open turns to Good afternoon at noon, Good evening at 5, and a new day at midnight", () => {
+  // Owner, 2026-09-25: a workspace opened before noon still said "Good
+  // morning" in the afternoon, because the greeting was written once, at
+  // paint. This runs the real timer path on a clock the test moves.
+  const clock = fakeClock(new Date(2026, 8, 25, 11, 50).getTime());
+  const ctx = loadGreeting({ email: "brad@colliers.com", name: "Brad Keller" }, clock);
+  ctx.head();
+  assert.equal(ctx.dom.text("deskGreeting"), "Good morning, Brad");
+  assert.equal(clock.armed().length, 1, "one timer");
+  assert.equal(clock.armed()[0].delay, 10 * 60 * 1000 + 250, "aimed just past noon, not polled");
+  clock.fire();
+  assert.equal(ctx.dom.text("deskGreeting"), "Good afternoon, Brad", "noon itself is afternoon");
+  assert.equal(clock.armed().length, 1, "re-armed for 5pm, never stacked");
+  clock.fire();
+  assert.equal(ctx.dom.text("deskGreeting"), "Good evening, Brad");
+  assert.equal(ctx.dom.text("deskToday"), "Friday, September 25");
+  clock.fire();
+  assert.equal(ctx.dom.text("deskGreeting"), "Good morning, Brad");
+  assert.equal(ctx.dom.text("deskToday"), "Saturday, September 26", "midnight moves the day line too");
+  ctx.head(); ctx.head();
+  assert.equal(clock.armed().length, 1, "every draw re-arms the SAME one timer");
+  const nobody = fakeClock(new Date(2026, 8, 25, 11, 50).getTime());
+  loadGreeting(null, nobody).head();
+  assert.equal(nobody.armed().length, 0, "a signed-out banner says Workspace and arms nothing");
+});
+
 test("a sign-out puts the banner back: no name, no status line, no city", () => {
   const at = html.indexOf("async function renderShares()");
   const fn = html.slice(at, html.indexOf("\n  }\n", at));
   assert.ok(fn.includes("resetDeskHero();"), "hideAll resets the banner with the rest of the firm surfaces");
   const reset = html.slice(html.indexOf("  function resetDeskHero() {"), html.indexOf("\n  }\n", html.indexOf("  function resetDeskHero() {")));
   assert.ok(reset.includes('getElementById("deskGreeting").textContent = "Workspace"'));
+  assert.ok(reset.includes("clearTimeout(deskClockTimer);"),
+    "and stops the greeting's timer, or it would greet the signed-out banner at the next hour mark");
+  assert.ok(html.includes('if (!document.hidden && deskClockTimer) drawDeskClock();'),
+    "a tab coming back re-reads the clock, only while a greeting is live");
   assert.ok(reset.includes('heroSub("")'));
   assert.ok(reset.includes("drawDeskHome(null)"));
 });

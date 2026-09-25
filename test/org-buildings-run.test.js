@@ -189,6 +189,27 @@ test("the firm's buildings, end to end", async (t) => {
     assert.equal(tables.org_buildings.some((b) => b.id === firstId), false);
   });
 
+  await t.test("the list carries the firm's home market and its photograph, and only a photograph (Draft C)", async () => {
+    // One building is left on the board, in Boise, whose market page opens
+    // on a credited photograph: the Workspace banner gets the same file.
+    let body = await (await fetch(url(ORG_ID), as(MIKE))).json();
+    assert.equal(body.home.market, "Boise, ID");
+    assert.ok(body.home.photo, "Boise has a market-page photograph");
+    assert.match(body.home.photo.src, /^\/market-heroes\/[a-z0-9-]+\.jpg$/, "one of our own files, never a hotlink");
+    assert.ok(body.home.photo.credit, "a photograph is never sent without its credit");
+    assert.match(body.home.photo.commonsUrl, /^https:\/\/commons\.wikimedia\.org\//);
+    // Two buildings in Nampa make Nampa the home market. Nampa's market page
+    // opens on a SATELLITE tile (it has coordinates and no photograph); the
+    // banner takes photographs only, so the answer is no photo at all.
+    for (const address of ["12 Main St, Nampa, ID", "900 Garrity Blvd, Nampa, ID"]) {
+      const r = await fetch(url(ORG_ID), as(BRAD, { method: "POST", body: JSON.stringify({ address, propertyType: "Industrial" }) }));
+      assert.equal(r.status, 200, await r.text());
+    }
+    body = await (await fetch(url(ORG_ID), as(MIKE))).json();
+    assert.equal(body.home.market, "Nampa, ID", "the market most of the board is in");
+    assert.equal(body.home.photo, null, "a satellite tile is a market page's fallback, not the banner's");
+  });
+
   await t.test("the fake refused nothing", () => {
     assert.deepEqual(db.unparsed, [], "server.js sent a filter the fake could not parse; teach it deliberately");
   });

@@ -184,6 +184,28 @@ function summarize(rows) {
   return { count, byType: types, line };
 }
 
+// The firm's HOME market: the market most of its buildings are in. It picks
+// the photograph that heads the Workspace (Draft C, 2026-09-25). A tie goes
+// to the market that reached the top count first in the list it is handed,
+// which is the server's order (most recent activity first), so the answer
+// is stable for one list. "" for a board with no market on it.
+//
+// Read, never stored: a board that moves cities moves its picture with it,
+// and a column holding this would be a second answer that could disagree
+// with the list. Rows or wire buildings both work (market is `market` on
+// each), so the desk and the route cannot count differently.
+function homeMarket(rows) {
+  const counts = new Map();
+  let best = "";
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const m = str(r && r.market).trim();
+    if (!m) continue;
+    counts.set(m, (counts.get(m) || 0) + 1);
+    if (!best || counts.get(m) > counts.get(best)) best = m;
+  }
+  return best;
+}
+
 // The wire shape, as an ALLOWLIST — vault-api.js's rule. A new storage
 // column cannot reach the browser by default. `addressKey` and `verifiedKey`
 // ARE sent, unlike the vault's plumbing: they are the firm's own index, derived
@@ -389,6 +411,7 @@ function composeSheet(parts) {
 module.exports = {
   normalizeBuilding,
   summarize,
+  homeMarket,
   toBuilding,
   findBuilding,
   validateBuildingEdit,

@@ -1402,10 +1402,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        the top row, then two columns) so the page does not jump when the
        real one replaces it; .skeleton is the report's own loading
        treatment, reused rather than copied. */
-    .dk-skel { margin-top: 20px; }
-    .dk-skel-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; }
-    .dk-skel-agenda { height: 150px; margin-top: 0; }
-    .dk-skel-top .dk-skel-strip { height: 150px; margin-top: 0; }
+    .dk-skel { margin-top: 16px; }
+    .dk-skel-top { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: -58px 22px 0; }
+    .dk-skel-top .dk-skel-strip { height: 70px; margin-top: 0; border-radius: 11px; }
+    .dk-skel-agenda { height: 150px; margin-top: 24px; }
     .dk-skel-cols { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 28px; margin-top: 32px; }
     .dk-skel-lab { display: inline-block; width: 128px; height: 20px; }
     .dk-skel-card { height: 72px; margin-top: 16px; }
@@ -1418,7 +1418,42 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        Buildings as a table whose one destructive verb sits behind ⋯.
        Tokens only, never new Tailwind utilities (the vendored build is
        purged against this file and drops a class it has not seen). */
-    .dk-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    /* The banner (Draft C, "your city, pictured" — the owner's pick,
+       2026-09-25). The firm's home city's photograph when it has one (the
+       same licensed, credited file its market page opens on, sent by the
+       buildings route as `home.photo`), and a drawn contour map when it does
+       not — never another city's skyline (market-hero.js's rule). The
+       banner sits on --slab, which is dark in BOTH themes, so its text is
+       literal white the way the footer's is (FOOTER_DARK_CSS's reason).
+       The picture lives in its own clipped layer (.dk-hero-bg) rather than
+       clipping the banner, because the find box's results drop out of it.
+       No z-index on the banner itself: the figure cards (z 2) rest on its
+       lower edge, and the find results (z 40) must still open over them. */
+    .dk-hero { position: relative; min-height: 214px; padding: 26px 30px 66px; border-radius: 14px; color: #fff; box-shadow: 0 18px 40px -26px rgba(15,23,42,.6); }
+    .dk-hero-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: inherit; background: var(--slab) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 300' preserveAspectRatio='xMidYMid slice'%3E%3Cg fill='none' stroke='white'%3E%3Cpath d='M1028 60L1031 65L1031 71L1027 76L1020 79L1011 81L1003 82L997 82L992 84L986 87L980 89L973 90L966 90L959 88L952 85L946 83L940 79L935 75L933 70L934 65L938 60L942 56L946 53L947 49L947 44L948 38L951 33L956 29L964 27L972 27L980 29L987 31L993 33L1000 34L1005 37L1010 40L1013 44L1016 48L1019 52L1023 55Z' stroke-opacity='.09'/%3E%3Cpath d='M1077 60L1080 71L1078 81L1069 90L1055 96L1039 99L1024 101L1013 103L1003 108L993 115L980 122L964 126L948 125L934 120L923 112L914 104L906 96L900 87L895 78L894 69L897 60L902 52L907 44L909 36L909 26L912 14L918 4L931 -4L948 -7L965 -4L980 2L993 7L1004 11L1016 13L1029 15L1041 19L1052 25L1060 33L1066 41L1072 50Z' stroke-opacity='.09'/%3E%3Cpath d='M1121 60L1119 75L1113 89L1102 102L1086 111L1066 117L1047 122L1031 127L1017 136L1001 147L980 158L955 164L930 162L910 152L896 137L888 122L881 108L873 96L864 85L855 73L851 60L852 47L857 33L862 20L867 5L875 -10L889 -24L909 -33L933 -36L958 -31L980 -22L997 -13L1014 -9L1032 -8L1055 -8L1078 -6L1099 2L1114 15L1120 30L1122 45Z' stroke-opacity='.09'/%3E%3Cpath d='M1155 60L1146 78L1138 94L1130 111L1117 126L1099 139L1078 150L1056 159L1034 170L1009 183L980 194L947 199L915 194L889 179L874 158L866 136L860 118L848 105L831 92L810 78L795 60L790 40L796 20L809 2L826 -15L844 -30L866 -45L892 -55L923 -58L953 -54L980 -46L1003 -38L1026 -34L1052 -35L1085 -37L1120 -34L1151 -23L1169 -4L1173 18L1166 40Z' stroke-opacity='.2'/%3E%3Cpath d='M1180 60L1166 80L1161 99L1160 121L1155 145L1141 167L1117 186L1086 199L1053 209L1017 218L980 224L941 225L904 217L874 199L855 175L844 151L833 131L815 116L788 102L756 84L730 60L722 33L733 6L759 -15L791 -32L823 -45L852 -57L882 -68L914 -76L947 -79L980 -76L1011 -72L1043 -69L1078 -68L1119 -68L1162 -61L1197 -45L1216 -20L1216 9L1200 37Z' stroke-opacity='.09'/%3E%3Cpath d='M1207 60L1193 83L1193 106L1200 135L1203 168L1191 201L1161 226L1118 240L1070 245L1024 245L980 242L938 238L897 230L861 215L833 195L812 172L793 151L767 132L733 114L695 90L667 60L660 26L680 -5L719 -29L766 -44L809 -54L843 -65L873 -80L903 -97L939 -111L980 -118L1022 -117L1064 -112L1107 -106L1151 -97L1194 -83L1230 -61L1248 -31L1246 2L1228 34Z' stroke-opacity='.09'/%3E%3Cpath d='M1247 60L1239 87L1243 117L1253 153L1257 194L1241 234L1201 263L1145 276L1084 273L1028 262L980 251L936 245L892 241L847 235L804 222L767 202L735 179L705 153L672 127L639 96L617 60L617 22L644 -13L692 -38L747 -53L795 -63L831 -77L859 -99L889 -127L929 -153L980 -169L1035 -170L1087 -159L1133 -140L1174 -118L1212 -95L1245 -68L1266 -37L1271 -3L1262 30Z' stroke-opacity='.09'/%3E%3Cpath d='M1312 60L1309 95L1310 131L1312 173L1305 218L1279 260L1229 289L1163 299L1092 291L1031 274L980 259L934 255L883 259L825 263L764 259L709 241L667 212L638 176L617 139L601 100L592 60L598 20L625 -17L670 -45L723 -65L770 -80L806 -99L836 -129L870 -166L918 -201L980 -221L1046 -220L1106 -198L1152 -165L1187 -130L1218 -99L1250 -71L1280 -42L1302 -10L1312 25Z' stroke-opacity='.2'/%3E%3Cpath d='M1398 60L1395 104L1382 147L1363 190L1338 233L1299 272L1242 300L1172 311L1099 305L1035 290L980 278L928 278L868 290L795 302L717 301L648 281L601 243L581 196L579 147L584 102L588 60L595 19L612 -20L642 -55L682 -84L726 -109L766 -136L804 -170L849 -209L908 -244L980 -262L1055 -255L1118 -224L1163 -180L1193 -135L1221 -100L1257 -74L1303 -50L1349 -20L1384 17Z' stroke-opacity='.09'/%3E%3Cpath d='M1492 60L1480 113L1444 160L1397 202L1349 239L1299 273L1243 301L1178 319L1109 324L1042 320L980 317L918 321L847 333L763 344L674 341L598 314L553 267L544 208L559 151L581 102L592 60L591 19L588 -25L595 -71L621 -114L663 -151L714 -184L770 -215L831 -246L901 -272L980 -283L1059 -271L1125 -237L1171 -190L1203 -145L1235 -110L1281 -86L1345 -64L1415 -34L1470 8Z' stroke-opacity='.09'/%3E%3Cpath d='M1572 60L1545 120L1484 169L1411 206L1345 237L1292 268L1243 302L1190 334L1125 358L1054 372L980 376L904 379L823 382L735 381L645 367L571 332L529 278L525 215L547 154L573 103L582 60L567 16L542 -35L529 -93L545 -151L592 -199L662 -232L740 -254L820 -269L899 -280L980 -284L1059 -273L1129 -246L1184 -207L1227 -167L1271 -134L1330 -110L1407 -85L1489 -50L1551 0Z' stroke-opacity='.09'/%3E%3Cpath d='M610 250L610 255L608 260L603 265L595 267L588 268L581 270L577 272L572 275L567 279L560 282L552 284L544 283L537 280L532 276L528 272L524 268L520 263L518 259L518 254L520 250L521 246L523 242L523 237L523 232L524 226L528 221L536 218L544 218L553 220L560 222L566 224L572 226L578 226L585 227L591 229L597 232L601 236L604 240L607 245Z' stroke-opacity='.09'/%3E%3Cpath d='M653 250L652 260L648 269L639 277L628 283L615 287L604 291L595 296L586 303L575 312L560 319L543 321L527 317L515 309L507 299L501 289L496 281L489 274L481 267L476 259L473 250L474 241L476 232L479 222L482 212L488 202L499 194L513 189L530 189L547 193L560 199L571 202L583 203L597 202L613 202L628 204L641 211L649 220L652 230L653 240Z' stroke-opacity='.09'/%3E%3Cpath d='M687 250L682 263L679 276L673 288L663 300L649 309L634 318L618 326L602 336L583 346L560 354L535 355L512 348L495 335L485 318L479 304L471 293L459 284L442 276L427 264L417 250L416 235L422 220L432 207L444 194L458 182L475 172L496 166L519 165L541 169L560 174L577 177L596 177L618 174L644 173L670 177L690 187L699 203L699 220L693 236Z' stroke-opacity='.09'/%3E%3Cpath d='M713 250L708 266L709 282L710 301L705 320L692 338L671 352L646 362L619 370L590 378L560 382L529 381L501 372L479 356L465 337L455 320L442 307L422 297L395 286L369 270L353 250L352 228L366 208L389 192L414 179L437 168L459 157L482 148L507 142L534 141L560 142L585 144L612 143L643 142L677 143L710 150L734 166L743 188L738 211L725 233Z' stroke-opacity='.2'/%3E%3Cpath d='M742 250L740 269L747 291L756 317L756 345L741 371L711 389L673 398L633 401L596 401L560 400L525 397L492 389L464 376L441 359L422 342L401 327L374 313L341 297L310 276L292 250L295 222L319 198L355 180L392 169L423 158L446 146L469 130L494 115L525 104L560 100L596 101L631 104L668 109L706 116L740 130L766 150L775 177L769 205L754 229Z' stroke-opacity='.09'/%3E%3Cpath d='M786 250L788 274L799 302L810 335L809 371L788 402L747 422L696 428L644 423L599 415L560 410L522 408L483 407L444 402L407 390L376 373L347 353L317 332L286 309L259 282L246 250L255 218L285 190L329 171L372 159L406 147L430 131L451 107L477 80L515 59L560 50L607 53L650 65L689 81L725 99L758 118L784 142L799 169L800 198L793 225Z' stroke-opacity='.09'/%3E%3Cpath d='M852 250L855 281L860 315L864 353L854 392L823 426L773 445L711 448L652 439L602 427L560 421L519 424L471 432L418 436L364 430L319 411L286 383L262 351L242 319L228 285L222 250L233 215L261 185L302 162L344 145L378 129L403 105L425 74L457 39L503 12L560 1L617 9L666 33L704 62L735 90L765 114L795 136L823 161L842 189L850 219Z' stroke-opacity='.09'/%3E%3C/g%3E%3C/svg%3E") center / cover no-repeat; }
+    .dk-hero-bg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 58%; }
+    .dk-hero-bg::after { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 140% at 88% 20%, rgba(220,38,38,.28) 0%, rgba(220,38,38,0) 45%); }
+    .dk-hero.has-photo .dk-hero-bg::after { background: linear-gradient(90deg, rgba(15,23,42,.86) 0%, rgba(15,23,42,.62) 42%, rgba(15,23,42,.12) 100%); }
+    .dk-hero-in { position: relative; }
+    .dk-hero-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px; }
+    .dk-hero-kick { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.72); }
+    .dk-hero-kick #deskToday:not(:empty) + #deskFirmLine:not(.hidden)::before { content: "\00b7"; margin: 0 .5em; }
+    .dk-hero .dk-title { margin-top: 14px; font-size: 38px; line-height: 1.06; color: #fff; text-shadow: 0 1px 18px rgba(0,0,0,.25); }
+    .dk-hero-sub { margin: 9px 0 0; max-width: 60ch; font-size: 14.5px; line-height: 1.5; color: rgba(255,255,255,.84); }
+    .dk-hero-where { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 5px 11px 5px 9px; border-radius: 99px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); font-size: 12px; font-weight: 500; color: #fff; }
+    .dk-hero-where.hidden { display: none; }
+    .dk-hero-credit { position: absolute; right: 16px; bottom: 50px; margin: 0; font-size: 10.5px; color: rgba(255,255,255,.72); }
+    .dk-hero-credit a { color: inherit; text-decoration: none; }
+    .dk-hero-credit a:hover { color: #fff; text-decoration: underline; }
+    .dk-hero .dk-find input { background: rgba(15,23,42,.42); border-color: rgba(255,255,255,.28); color: #fff; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+    .dk-hero .dk-find input::placeholder { color: rgba(255,255,255,.75); }
+    .dk-hero .dk-find input:focus { border-color: rgba(255,255,255,.55); box-shadow: 0 0 0 3px rgba(255,255,255,.12); }
+    .dk-hero .dk-find-ico { color: rgba(255,255,255,.85); z-index: 1; }
+    @media (max-width: 760px) {
+      .dk-hero { padding: 22px 18px 62px; }
+      .dk-hero .dk-title { font-size: 30px; }
+      .dk-hero-credit { right: 12px; }
+    }
     .dk-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
     .dk-title { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 28px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); }
     .dk-find { position: relative; display: flex; align-items: center; width: 320px; max-width: 100%; }
@@ -1435,11 +1470,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-find-more { padding: 3px 14px 6px; font-size: 11.5px; color: var(--ink-3); }
     .dk-find-none { padding: 10px 14px; font-size: 12.5px; color: var(--ink-mute); }
 
-    .dk-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; margin-top: 20px; align-items: stretch; }
-    .dk-top .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
-    .dk-top .dk-scell { border-left: 1px solid var(--hair); }
-    .dk-top .dk-scell:nth-child(odd) { border-left: 0; }
-    .dk-top .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
+    /* Since Draft C the top row holds "Needs you" alone, full width, under
+       the figure cards; it hides when nothing needs you (the banner's line
+       says so) and stays up to name a read that failed. */
+    .dk-top { display: grid; grid-template-columns: minmax(0, 1fr); margin-top: 24px; }
     /* (0,2,0): .dk-card sets padding later in this block and would win. */
     .dk-card.dk-agenda { padding: 0; overflow: hidden; box-shadow: var(--lift); }
     .dk-ag-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px 9px; border-bottom: 1px solid var(--hair); }
@@ -1455,7 +1489,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-ag-detail { display: block; font-size: 12px; color: var(--ink-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dk-ag-act { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--red); text-decoration: none; white-space: nowrap; }
     .dk-ag-act:hover { text-decoration: underline; text-underline-offset: 2px; }
-    .dk-agenda > .dk-empty, .dk-agenda > .dk-copy { margin: 0; padding: 12px 16px; }
+    .dk-agenda > .dk-copy { margin: 0; padding: 12px 16px; }
 
     .dk-cols { display: flex; align-items: flex-start; gap: 28px; margin-top: 32px; }
     .dk-main { flex: 1.6 1 0; min-width: 0; }
@@ -1528,19 +1562,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     }
     @media (max-width: 1179px) {
       .dk-cols { display: block; }
-      .dk-top { grid-template-columns: minmax(0, 1fr); }
-      .dk-top .dk-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-      .dk-top .dk-scell:nth-child(odd) { border-left: 1px solid var(--hair); }
-      .dk-top .dk-scell:first-child { border-left: 0; }
-      .dk-top .dk-scell:nth-child(n+3) { border-top: 0; }
-      .dk-skel-top, .dk-skel-cols { grid-template-columns: minmax(0, 1fr); }
+      .dk-skel-cols { grid-template-columns: minmax(0, 1fr); }
+      .dk-skel-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
       .dk-head-tools { width: 100%; }
       .dk-find { width: 100%; flex: 1 1 auto; }
-      .dk-top .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .dk-top .dk-scell:nth-child(3) { border-left: 0; }
-      .dk-top .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
       .dk-ag-detail { white-space: normal; }
     }
     /* The workspace ledger, promoted a full step (2026-08-29): with the
@@ -1604,13 +1631,15 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-fold > summary::-webkit-details-marker { display: none; }
     .dk-fold > summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--ink); border-bottom: 1.5px solid var(--ink); transform: rotate(-45deg) translateY(-1px); }
     .dk-fold[open] > summary::before { transform: rotate(45deg) translateY(-2px); }
-    /* The firm strip (2026-09-04) — bulk-page.js's .cap, four cells wide,
-       with the vault's .strip as its other sibling: the same 10.5px label
-       over a Georgia figure. It is the workspace's opening statement, the
-       "firm-level strip" the 2026-09-01 comments left room for. Every cell
-       is a LINK to the section it counts. Critical dates go red only when
-       there is one — the one figure here somebody has to act on. */
-    .dk-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--edge); border-radius: 6px; background: var(--card); overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04); margin-top: 20px; }
+    /* The firm strip (2026-09-04), drawn as four cards since Draft C
+       (2026-09-25): each cell is a card with a tinted icon, resting on the
+       banner's lower edge (the negative top margin; #myDesk's own mt-4 is
+       part of the sum). Every cell is still a LINK to the section it
+       counts, and drawFirmStrip is still its one writer. Critical dates go
+       red only when there is one — the one figure here somebody has to act
+       on — and a zero steps back to --ink-4, so an empty firm reads as
+       "not started" rather than as four loud zeros. */
+    .dk-strip { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: -58px 22px 0; }
     /* Tailwind's .hidden is (0,1,0) and lives in tailwind.css, which loads
        BEFORE this block, so .dk-strip { display: grid } above beat it on
        source order and the strip could never be hidden: a member in no firm
@@ -1618,19 +1647,96 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        2026-09-16). A firm member never saw it because theirs was filled.
        Same trap as .deck.hide in vault-page.js and .ap-stmt tbody.hidden. */
     .dk-strip.hidden { display: none; }
-    .dk-scell { display: block; padding: 12px 16px; border-left: 1px solid var(--hair); color: var(--ink); min-width: 0; text-decoration: none; }
-    .dk-scell:first-child { border-left: 0; }
-    .dk-scell:hover { background: var(--wash); color: var(--ink); }
-    .dk-slab { display: block; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink); font-weight: 600; margin-bottom: 4px; }
-    .dk-sfig { display: block; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 22px; line-height: 1.15; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+    /* A checkout notice sits between the banner and the desk; the cards
+       must not ride up over it. */
+    #checkoutNotice:not(.hidden) ~ #myDesk > .dk-strip { margin-top: 0; }
+    .dk-scell { display: flex; align-items: center; gap: 13px; min-width: 0; padding: 14px 16px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); box-shadow: 0 10px 26px -14px rgba(15,23,42,.35); color: var(--ink); text-decoration: none; }
+    .dk-scell:hover { border-color: var(--ink-4); color: var(--ink); }
+    .dk-sico { flex: 0 0 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .dk-sbody { min-width: 0; }
+    .dk-sfig { display: block; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 27px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
     .dk-sfig small { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; letter-spacing: 0; font-weight: 400; }
     .dk-sfig.due { color: var(--red); }
-    .dk-ssub { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 4px; line-height: 1.4; }
-    .dk-skel-strip { height: 74px; margin-top: 20px; }
-    @media (max-width: 640px) {
+    .dk-sfig.zero { color: var(--ink-4); }
+    .dk-slab { display: block; margin-top: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
+    .dk-ssub { display: block; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (max-width: 1179px) {
       .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .dk-scell:nth-child(3) { border-left: 0; }
-      .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
+    }
+    @media (max-width: 760px) {
+      .dk-strip { gap: 10px; margin: -54px 10px 0; }
+      .dk-scell { padding: 12px; gap: 10px; }
+      .dk-sico { flex-basis: 34px; height: 34px; }
+      .dk-sfig { font-size: 23px; }
+    }
+    /* The tints Draft C colours by — status and badge tokens, each already
+       defined in both themes, so dark mode needs nothing of its own. One
+       set for the strip's icons, the side cards' heads, the empty states'
+       icons and the buildings' type tags. */
+    .dk-tone-ink { background: var(--wash); color: var(--ink); }
+    .dk-tone-bv { background: var(--bv-bg); color: var(--bv-text); }
+    .dk-tone-ok { background: var(--ok-bg); color: var(--ok-text); }
+    .dk-tone-red { background: var(--err-bg); color: var(--err-text); }
+    .dk-tone-warn { background: var(--warn-bg); color: var(--warn-text); }
+    .dk-tone-est { background: var(--est-bg); color: var(--est-text); }
+    .dk-pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11.5px; font-weight: 600; line-height: 1.5; }
+    .dk-hico { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px; width: 22px; height: 22px; border-radius: 6px; margin-right: 8px; }
+    .dk-side .dk-rule > .rd-lab { display: inline-flex; align-items: center; }
+    /* Empty sections show a faint preview of the rows they will hold, with
+       the one next step on a card over it. The rows are drawn with
+       gradients, not text: nothing here can be read as data. Rows and card
+       share one grid cell, so the section is as tall as whichever is taller
+       and a wrapped card is never clipped. In a side card the preview is
+       dropped and the card lies flat. */
+    .dk-ghost { position: relative; display: grid; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--card); }
+    .dk-ghost.hidden { display: none; }
+    .dk-ghost > * { grid-area: 1 / 1; }
+    .dk-ghost-rows > i { display: block; height: 50px; border-bottom: 1px solid var(--hair);
+      background:
+        linear-gradient(var(--wash), var(--wash)) 16px 12px / 26px 26px no-repeat,
+        linear-gradient(var(--hair), var(--hair)) 56px 15px / 44% 8px no-repeat,
+        linear-gradient(var(--hair), var(--hair)) 56px 30px / 28% 6px no-repeat,
+        linear-gradient(var(--hair), var(--hair)) right 16px center / 64px 8px no-repeat; }
+    .dk-ghost-rows > i:nth-child(2) { background-size: 26px 26px, 36% 8px, 22% 6px, 48px 8px; }
+    .dk-ghost-rows > i:nth-child(3) { background-size: 26px 26px, 52% 8px, 30% 6px, 56px 8px; }
+    .dk-ghost-rows > i:last-child { border-bottom: 0; }
+    .dk-ghost-cta { display: flex; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(180deg, rgba(255,255,255,0) 0%, var(--card) 88%); }
+    .dk-ghost-card { display: flex; align-items: center; gap: 13px; max-width: 470px; padding: 13px 16px; border: 1px solid var(--edge); border-radius: 11px; background: var(--card); box-shadow: 0 12px 28px -14px rgba(15,23,42,.35); }
+    .dk-gico { flex: 0 0 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .dk-gtxt { flex: 1 1 auto; min-width: 0; }
+    .dk-gt { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 15.5px; color: var(--ink); }
+    .dk-gx { display: block; margin-top: 1px; font-size: 12.5px; line-height: 1.45; color: var(--ink-3); }
+    .dk-gx a { color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    .dk-gbtn { flex: 0 0 auto; font: inherit; font-size: 12.5px; font-weight: 600; color: #fff; background: var(--red-fill); border: 0; border-radius: 7px; padding: 8px 12px; cursor: pointer; white-space: nowrap; }
+    .dk-gbtn:hover { background: var(--red-fill-hover); }
+    .dk-side .dk-ghost { border: 0; background: none; margin: 10px 0 2px; overflow: visible; }
+    .dk-side .dk-ghost-rows { display: none; }
+    .dk-side .dk-ghost-cta { justify-content: flex-start; padding: 0; background: none; }
+    .dk-side .dk-ghost-card { align-items: flex-start; max-width: none; padding: 2px 0; border: 0; background: none; box-shadow: none; }
+    @media (max-width: 640px) {
+      .dk-ghost-card { flex-wrap: wrap; }
+      .dk-gbtn { margin-left: 51px; }
+    }
+    /* A member in no firm: three cards to start from (Draft C). The third is
+       the firm door renderFirmEmpty has always written — its label, copy and
+       button keep their ids; the first two are the places a member can go
+       today, and renderFirmEmpty picks the second by plan. */
+    .dk-start { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .dk-start.hidden { display: none; }
+    .dk-sc { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--edge); border-radius: 12px; background: var(--card); box-shadow: var(--lift); color: inherit; text-decoration: none; }
+    a.dk-sc:hover { border-color: var(--ink-4); }
+    .dk-sc-art { position: relative; display: flex; align-items: center; justify-content: center; height: 104px; overflow: hidden; }
+    .dk-sc-art img { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; display: block; }
+    .dk-sc-cap { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-around; padding: 4px 0 5px; font-size: 10.5px; font-weight: 600; color: #fff; background: linear-gradient(0deg, rgba(15,23,42,.72), rgba(15,23,42,0)); }
+    .dk-sc-b { flex: 1 1 auto; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 14px 16px 16px; }
+    .dk-sc-t { font-size: 15px; font-weight: 600; color: var(--ink); }
+    .dk-sc-x { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-3); }
+    .dk-sc-go { margin-top: auto; padding: 6px 0 0; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--red); background: none; border: 0; cursor: pointer; text-align: left; }
+    button.dk-sc-go::after { content: " \2192"; }
+    .dk-sc-go:hover { text-decoration: underline; text-underline-offset: 3px; }
+    @media (max-width: 900px) {
+      .dk-start { grid-template-columns: minmax(0, 1fr); }
+      .dk-sc-art { height: 84px; }
     }
     .dk-person { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--hair); font-size: 13px; color: var(--ink-body); }
     .dk-person:last-child { border-bottom: 0; }
@@ -2924,18 +3030,25 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            the first control on the right had nothing holding them apart and
            ran together as "WORKSPACERun a report". Caught in a phone capture,
            not by reading. -->
-      <!-- Draft 1 (2026-09-24): the firm's name over a Georgia title, and the
-           workspace's one search box. #deskFirmLine and #deskFindWrap are
-           drawn by drawDeskHead() once the membership is known and hidden
-           with the firm sections, so a member in no firm reads the title
-           alone. The find box searches what the desk ALREADY READ — the
-           board, the shelf, the contact list — in the browser, the shelf's
-           own rule; it never asks the server anything (renderDeskFind). -->
-      <div class="dk-head">
-        <div>
-          <div id="deskFirmLine" class="hidden dk-kicker"></div>
-          <h2 class="dk-title">Workspace</h2>
-        </div>
+      <!-- The banner (Draft C, 2026-09-25 — the owner's pick from three
+           drafts). The day and the firm's name over a greeting, one line on
+           what needs this member, the markets on the board, and the
+           workspace's one search box — over a photograph of the firm's home
+           city when that city has one (drawDeskHome, off the buildings
+           read's `home.photo`), and a drawn contour map when it does not.
+           Writers: drawDeskHead (the day, the greeting, the firm line and
+           whether the find box shows), drawAgenda (#deskHeroSub — it is the
+           one place that knows whether its reads came back), drawDeskHome
+           (the picture, its credit and the markets). resetDeskHero puts all
+           of it back on a sign-out, so no name outlives its session. The
+           find box searches what the desk ALREADY READ — the board, the
+           shelf, the contact list — in the browser, the shelf's own rule;
+           it never asks the server anything (renderDeskFind). -->
+      <div id="deskHero" class="dk-hero">
+        <div class="dk-hero-bg" aria-hidden="true"><img id="deskHeroImg" class="hidden" alt="" decoding="async" /></div>
+        <div class="dk-hero-in">
+        <div class="dk-hero-top">
+          <div class="dk-hero-kick"><span id="deskToday"></span><span id="deskFirmLine" class="hidden"></span></div>
         <div class="dk-head-tools flex items-center gap-3">
           <!-- No "Run a report" door here (owner's call, 2026-09-24). From
                2026-09-04 a red #deskRunReport link to /bulk sat on this row;
@@ -2973,6 +3086,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           </div>
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
+        </div>
+        <h2 id="deskGreeting" class="dk-title">Workspace</h2>
+        <p id="deskHeroSub" class="hidden dk-hero-sub"></p>
+        <span id="deskHeroWhereWrap" class="hidden dk-hero-where"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.2s-5-4.6-5-8.7a5 5 0 0 1 10 0c0 4.1-5 8.7-5 8.7z"/><circle cx="10" cy="8.5" r="1.8"/></svg><span id="deskHeroWhere"></span></span>
+        </div>
+        <p id="deskHeroCredit" class="hidden dk-hero-credit"></p>
       </div>
       <!-- There is no subtitle under the header any more (2026-09-04). The
            line here was rewritten four times as decks came and went, and by
@@ -2980,7 +3099,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            book lives in the Vault; comp reports run from the Comp report
            tool") — the navigation, restated in prose, above an empty form.
            The firm strip inside #myDesk is the page's opening statement now,
-           and the rail says where the Vault and the Comp report tool are. -->
+           and the rail says where the Vault and the Comp report tool are.
+           Draft C's line under the greeting (#deskHeroSub) is not that
+           subtitle come back: it is drawAgenda's one sentence of STATUS —
+           what is due, or that nothing is — never a description of the
+           page. -->
 
       <!-- Where Stripe Checkout returns to (?checkout=success|cancelled).
            Success can land BEFORE the webhook does, so the copy is written to
@@ -3026,9 +3149,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            reveal one section per fetch, ten fetches deep, which read as the
            page inserting parts. aria-hidden: it says nothing a reader needs. -->
       <div id="deskLoading" class="hidden dk-skel" aria-hidden="true">
-        <!-- Shaped like the desk it stands in for (Draft 1): the top row, then
-             a wide column of rows beside a column of cards. -->
-        <div class="dk-skel-top"><div class="skeleton dk-skel-card dk-skel-agenda"></div><div class="skeleton dk-skel-strip"></div></div>
+        <!-- Shaped like the desk it stands in for (Draft C): four figure cards
+             on the banner's edge, the agenda, then a wide column of rows
+             beside a column of cards. -->
+        <div class="dk-skel-top"><div class="skeleton dk-skel-strip"></div><div class="skeleton dk-skel-strip"></div><div class="skeleton dk-skel-strip"></div><div class="skeleton dk-skel-strip"></div></div>
+        <div class="skeleton dk-skel-card dk-skel-agenda"></div>
         <div class="dk-skel-cols">
           <div><span class="skeleton dk-skel-lab"></span><div class="skeleton dk-skel-card"></div><div class="skeleton dk-skel-card"></div></div>
           <div><div class="skeleton dk-skel-card"></div><div class="skeleton dk-skel-card"></div></div>
@@ -3047,26 +3172,34 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            parsed plus one read of its own (the leases), and a figure whose
            read failed shows a dash rather than a zero — the shelf's own rule,
            that "we could not read it" must never look like "there is none". -->
-      <!-- The top row (2026-09-24, Draft 1 of the workspace canvas): what
-           needs this member, beside the firm strip. #deskAgenda is the
+      <!-- The figure cards (Draft C): the firm strip, moved out of the top row
+           to rest on the banner's lower edge. Same four cells, same ids, same
+           one writer (drawFirmStrip); each gained a tinted icon, and the
+           figure now reads above its label. It is still the first thing in
+           #myDesk and still outside every deck. -->
+      <div id="deskStrip" class="hidden dk-strip" aria-label="Your firm at a glance">
+        <a class="dk-scell" href="#deskBuildings"><span class="dk-sico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-sbody"><span id="stripBuildingsFig" class="dk-sfig"></span><span class="dk-slab">Buildings</span><span id="stripBuildingsSub" class="dk-ssub"></span></span></a>
+        <a class="dk-scell" href="#deskSharedWithFirm"><span class="dk-sico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-sbody"><span id="stripShelfFig" class="dk-sfig"></span><span class="dk-slab">Shelf</span><span id="stripShelfSub" class="dk-ssub"></span></span></a>
+        <a class="dk-scell" href="/messages"><span class="dk-sico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg></span><span class="dk-sbody"><span id="stripUnreadFig" class="dk-sfig"></span><span class="dk-slab">Unread</span><span id="stripUnreadSub" class="dk-ssub"></span></span></a>
+        <a class="dk-scell" href="#deskCritical"><span class="dk-sico dk-tone-red"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="1.3"/><path d="M3 8h14M7 3v3M13 3v3"/><path d="M6.5 11h2M11.5 11h2M6.5 13.6h2"/></svg></span><span class="dk-sbody"><span id="stripCriticalFig" class="dk-sfig"></span><span class="dk-slab">Critical dates</span><span id="stripCriticalSub" class="dk-ssub"></span></span></a>
+      </div>
+      <!-- The top row: what needs this member (Draft 1, 2026-09-24; full
+           width under the figure cards since Draft C). #deskAgenda is the
            lease dates in the next ninety days and the unread conversations,
            each with its one next step; drawAgenda() is its one writer and
            reads only what the strip already read (the leases) and what
            renderDeskThreads parsed — no route of its own. It hides with the
-           strip, and it never claims "nothing needs you" off a read that
-           failed. The wrapper is not a deck and never carries data-deck. -->
+           strip. When BOTH of its reads came back and nothing is due, it
+           hides and the banner's line says "Nothing needs you right now";
+           when a read failed it stays up to name the read, because an empty
+           agenda built on a read that did not happen is the shelf's
+           outage-as-absence trap. The wrapper is not a deck and never
+           carries data-deck. -->
       <div class="dk-top">
         <div id="deskAgenda" class="hidden dk-card dk-agenda" aria-labelledby="deskAgendaTitle">
           <div class="dk-ag-h"><h3 id="deskAgendaTitle" class="dk-ag-t">Needs you</h3><span id="deskAgendaStats" class="dk-note"></span></div>
           <div id="deskAgendaRows"></div>
-          <p id="deskAgendaEmpty" class="hidden dk-empty"></p>
           <p id="deskAgendaNote" class="hidden dk-copy"></p>
-        </div>
-        <div id="deskStrip" class="hidden dk-strip" aria-label="Your firm at a glance">
-          <a class="dk-scell" href="#deskBuildings"><span class="dk-slab">Buildings</span><span id="stripBuildingsFig" class="dk-sfig"></span><span id="stripBuildingsSub" class="dk-ssub"></span></a>
-          <a class="dk-scell" href="#deskSharedWithFirm"><span class="dk-slab">Shelf</span><span id="stripShelfFig" class="dk-sfig"></span><span id="stripShelfSub" class="dk-ssub"></span></a>
-          <a class="dk-scell" href="/messages"><span class="dk-slab">Unread</span><span id="stripUnreadFig" class="dk-sfig"></span><span id="stripUnreadSub" class="dk-ssub"></span></a>
-          <a class="dk-scell" href="#deskCritical"><span class="dk-slab">Critical dates</span><span id="stripCriticalFig" class="dk-sfig"></span><span id="stripCriticalSub" class="dk-ssub"></span></a>
         </div>
       </div>
       <!-- Two columns (2026-09-24, Draft 1). The firm's RECORD on the left —
@@ -3090,12 +3223,33 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            renderFirmEmpty() is its single writer; it reads the membership
            renderFirm() already loaded and never fetches. Hidden the moment a
            firm exists, and hidden with the rest of the deck by hideAll(). -->
-      <div id="deskFirmEmpty" class="hidden mt-4">
-        <div class="dk-rule">
-          <span id="deskFirmEmptyLab" class="rd-lab">Not in a firm yet</span>
-          <button type="button" id="deskFirmEmptyBtn" class="dk-toggle">Create a firm</button>
+      <!-- Draft C (2026-09-25): the no-firm body as three cards to start from.
+           The first is the market pages, open to every account. The second is
+           picked by plan in renderFirmEmpty: the Comp report tool for a
+           member who has Pro, the Permit tracker for one who does not (the
+           Comp report tool is Pro, and a card that can only answer "part of
+           Pro" is the Buy-button rule's control that can only fail). The
+           third is the firm door this section has always been — label, copy
+           and button keep their ids and their one writer. The city pictures
+           are the /markets directory's own thumbnails, decorative there and
+           here (alt=""), with the names in text beneath them. -->
+      <div id="deskFirmEmpty" class="hidden dk-start">
+        <a class="dk-sc" href="/markets">
+          <span class="dk-sc-art"><img src="/market-heroes/boise-id-768.jpg" alt="" loading="lazy" decoding="async" /><img src="/market-heroes/austin-tx-768.jpg" alt="" loading="lazy" decoding="async" /><img src="/market-heroes/atlanta-ga-768.jpg" alt="" loading="lazy" decoding="async" /><span class="dk-sc-cap"><span>Boise</span><span>Austin</span><span>Atlanta</span></span></span>
+          <span class="dk-sc-b"><span class="dk-sc-t">Explore a market</span><span class="dk-sc-x">Median $/SF, cap rates and recent comps for a city and property type.</span><span class="dk-sc-go">Open Market explorer →</span></span>
+        </a>
+        <a id="deskStart2" class="dk-sc" href="/permits">
+          <span id="deskStart2Art" class="dk-sc-art dk-tone-est"><span id="deskStart2IcoPermit"><svg viewBox="0 0 20 20" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg></span><span id="deskStart2IcoReport" class="hidden"><svg viewBox="0 0 20 20" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span></span>
+          <span class="dk-sc-b"><span id="deskStart2T" class="dk-sc-t">Watch new permits</span><span id="deskStart2X" class="dk-sc-x">New commercial building permits, as the cities post them.</span><span id="deskStart2Go" class="dk-sc-go">Open Permit tracker →</span></span>
+        </a>
+        <div class="dk-sc">
+          <span class="dk-sc-art dk-tone-bv"><svg viewBox="0 0 20 20" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span>
+          <div class="dk-sc-b">
+            <span id="deskFirmEmptyLab" class="dk-sc-t">Not in a firm yet</span>
+            <p id="deskFirmEmptyCopy" class="dk-sc-x"></p>
+            <button type="button" id="deskFirmEmptyBtn" class="dk-sc-go">Create a firm</button>
+          </div>
         </div>
-        <p id="deskFirmEmptyCopy" class="dk-copy"></p>
       </div>
       <!-- The firm's buildings (migration 046; Three Spaces, slice 3). FIRST in
            the deck on purpose: buildings are the firm's index and the shelf
@@ -3156,7 +3310,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              only past eight — one control to the whole list. Under it the
              control does not render at all, the Buy-button rule. -->
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
-        <p id="buildingsEmpty" class="hidden dk-empty">No buildings yet. Add one from a report on the shelf, from a property in your Vault, or with + Add by address above.</p>
+        <div id="buildingsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17V5.5L10 3l6 2.5V17"/><path d="M2.5 17h15"/><path d="M7.5 8h1M11.5 8h1M7.5 11h1M11.5 11h1M9 17v-3h2v3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Your board starts here</span><span class="dk-gx">No buildings yet. Add one by address, from a report on the shelf, or from a property in your Vault.</span></span><button type="button" id="buildingsEmptyAdd" class="dk-gbtn">+ Add a building</button></div></div></div>
       </div>
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
@@ -3169,7 +3323,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span id="deskFirmSharesLabel" class="rd-lab">Shared with your firm</span>
           <span id="firmShelfStats" class="dk-note"></span>
         </div>
-        <p id="deskSharedWithFirmEmpty" class="hidden dk-empty">Nobody at your firm has shared a report yet. Open a report and use Share → My firm.</p>
+        <div id="deskSharedWithFirmEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3" width="10" height="13" rx="1.2"/><path d="M6.5 16.9V17h9.2a1 1 0 0 0 1-1V6.5"/><path d="M6.5 7h4.5M6.5 9.8h4.5M6.5 12.6h3"/></svg></span><span class="dk-gtxt"><span class="dk-gt">The firm&#39;s shelf</span><span class="dk-gx">Nobody at your firm has shared a report yet. Open a report and use Share → My firm, and it lands here for everyone.</span></span></div></div></div>
         <!-- The search box appears only once there is enough on the shelf to
              need one. A filter over three rows is furniture. -->
         <div id="firmShelfSearchWrap" class="hidden mt-2 flex flex-wrap items-center gap-4 text-sm">
@@ -3232,7 +3386,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span class="rd-lab">Shared reports</span>
           <span id="deskSharesStats" class="dk-note"></span>
         </div>
-        <p id="deskSharesEmpty" class="hidden dk-empty">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="deskSharesEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"><i></i><i></i></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-bv"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h7l3.5 3.5V17.2H5z"/><path d="M12 2.8v3.5h3.5"/><path d="M7.5 14v-2.5M10 14V9M12.5 14v-4"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing shared yet</span><span class="dk-gx">You haven&#39;t shared a report, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</span></span></div></div></div>
         <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
       </div>
 
@@ -3262,11 +3416,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            member of a firm, the shelf's rule; a failed read hides it. -->
       <div id="deskThreads" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Conversations</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-ok"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg></span>Conversations</span>
           <span id="deskThreadsStats" class="dk-note"></span>
         </div>
         <div id="deskThreadRows" class="mt-1"></div>
-        <p id="deskThreadsEmpty" class="hidden dk-empty">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
+        <div id="deskThreadsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ok"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 4.5h13v8.5h-7L5.5 16v-3h-2z"/><path d="M7 8.2h6M7 10.6h3.5"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No conversations yet</span><span class="dk-gx"><a href="/messages">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</span></span></div></div></div>
         <p><a href="/messages" class="dk-more">All conversations →</a></p>
       </div>
 
@@ -3278,11 +3432,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            "Couldn't read leases"); an empty read says so in words. -->
       <div id="deskCritical" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Critical dates</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-red"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="1.3"/><path d="M3 8h14M7 3v3M13 3v3"/><path d="M6.5 11h2M11.5 11h2M6.5 13.6h2"/></svg></span>Critical dates</span>
           <span id="deskCriticalStats" class="dk-note"></span>
         </div>
         <div id="deskCriticalRows" class="mt-1"></div>
-        <p id="deskCriticalEmpty" class="hidden dk-empty">Nothing due in the next 12 months.</p>
+        <div id="deskCriticalEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-red"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="1.3"/><path d="M3 8h14M7 3v3M13 3v3"/><path d="M6.5 11h2M11.5 11h2M6.5 13.6h2"/></svg></span><span class="dk-gtxt"><span class="dk-gt">Nothing due</span><span class="dk-gx">No lease notice or expiry in the next 12 months. Dates appear here once a lease is filed on a building.</span></span></div></div></div>
         <p><a id="deskCriticalMore" href="/buildings" class="dk-more">All lease dates →</a></p>
       </div>
       <!-- The deal board (O3): who shared what to the firm, by member, by
@@ -3292,7 +3446,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            empty state above already says what to do about that, and better. -->
       <div id="deskDealBoard" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Deal board</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-warn"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2.5l1.6 4.7 4.9.1-3.9 3 1.4 4.7-4-2.8-4 2.8 1.4-4.7-3.9-3 4.9-.1z"/></svg></span>Deal board</span>
           <span id="dealBoardStats" class="dk-note"></span>
         </div>
         <!-- Said on the panel, not only in the code. The wishlist asked to see
@@ -3350,7 +3504,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Public record; nothing here mails. -->
       <div id="deskPermits" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Your permits</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-est"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 2.8h10v14.4H5z"/><path d="M7.5 6h5M7.5 8.6h5"/><circle cx="10" cy="13" r="1.8"/></svg></span>Your permits</span>
           <span id="deskPermitsStats" class="dk-note"></span>
         </div>
         <p id="deskPermitsCopy" class="dk-copy"></p>
@@ -3380,7 +3534,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            Workspace should be handed its list, not a form. -->
       <div id="deskContacts" class="hidden mt-8">
         <div class="dk-rule">
-          <span class="rd-lab">Contacts</span>
+          <span class="rd-lab"><span class="dk-hico dk-tone-ink"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span>Contacts</span>
           <div class="flex items-center gap-3">
             <span id="contactsStats" class="dk-note"></span>
             <button type="button" id="contactAddToggle" aria-expanded="false" aria-controls="contactAddForm"
@@ -3420,7 +3574,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="contactsTruncated" class="hidden dk-copy">Showing the most recent 2,000 contacts. Older ones are not in this list.</p>
 
         <div id="contactRows" class="mt-1"></div>
-        <p id="contactsEmpty" class="hidden dk-empty">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
+        <div id="contactsEmpty" class="hidden dk-ghost"><div class="dk-ghost-rows" aria-hidden="true"></div><div class="dk-ghost-cta"><div class="dk-ghost-card"><span class="dk-gico dk-tone-ink"><svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="7" r="2.6"/><path d="M2.8 16c.5-2.7 2.4-4.2 4.7-4.2s4.2 1.5 4.7 4.2"/><circle cx="13.6" cy="7.6" r="2"/><path d="M13.4 11.8c1.9.1 3.4 1.4 3.8 3.6"/></svg></span><span class="dk-gtxt"><span class="dk-gt">No contacts yet</span><span class="dk-gx">Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</span></span></div></div></div>
       </div>
       </div><!-- /deckSide -->
       </div><!-- /dk-cols -->
@@ -14136,6 +14290,9 @@ async function renderMyDesk() {
       document.getElementById("deskFirmLine").classList.add("hidden");
       document.getElementById("deskFindWrap").classList.add("hidden");
       closeDeskFind();
+      // Draft C's banner names the member, the firm's cities and what needs
+      // them — all of it goes on the same signal.
+      resetDeskHero();
     };
     if (!currentUser) { hideAll(); return; }
     // The membership read starts NOW, beside the shares read, not after it
@@ -14554,6 +14711,12 @@ async function renderMyDesk() {
     setBuildingAddOpen(!buildingAddOpen);
     if (buildingAddOpen) document.getElementById("buildingAddress").focus();
   });
+  // The empty board's own door (Draft C) opens the same form — it never
+  // closes it, since the only way to see this button is an empty list.
+  document.getElementById("buildingsEmptyAdd").addEventListener("click", () => {
+    setBuildingAddOpen(true);
+    document.getElementById("buildingAddress").focus();
+  });
 
   // Is this address already on the board? Verified key first (one building
   // typed two ways), then the exact address. Both are read off the SERVER's
@@ -14574,7 +14737,7 @@ async function renderMyDesk() {
     // and its reason: a failed /api/org read leaves the LAST firm in memory,
     // and the one state where acting on that is wrong is a signed-out page.
     const firm = currentUser ? myFirm() : null;
-    if (!firm) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); return; }
+    if (!firm) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); drawDeskHome(null); return; }
     let data = null;
     try {
       const res = await bootFetch(`/api/org/buildings?id=${encodeURIComponent(firm.id)}`);
@@ -14583,10 +14746,11 @@ async function renderMyDesk() {
     // A failed read hides the section rather than rendering an empty list:
     // "no buildings" and "we could not reach the database" must never look
     // the same, because the first invites somebody to retype a list.
-    if (!data) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); return; }
+    if (!data) { box.classList.add("hidden"); firmBuildings = []; syncBuildingDoors(); drawDeskHome(null); return; }
     box.classList.remove("hidden");
     firmBuildings = Array.isArray(data.buildings) ? data.buildings : [];
     syncBuildingDoors();
+    drawDeskHome(data.home);
     // The whole set's line, computed by the server so this and the subpage
     // (slice 4) can never disagree about the count.
     document.getElementById("buildingsStats").textContent = data.summary || "";
@@ -14639,7 +14803,16 @@ async function renderMyDesk() {
         row.appendChild(c);
         return c;
       };
-      cell("type", b.type || "");
+      // The type as a tinted tag (Draft C). Its text is the same word, so the
+      // narrow reflow and every reader of the cell's text see no change.
+      const typeCell = cell("type", b.type || "");
+      if (b.type) {
+        typeCell.textContent = "";
+        const tag = document.createElement("span");
+        tag.className = "dk-pill " + (TYPE_TONES[b.type] || "dk-tone-ink");
+        tag.textContent = b.type;
+        typeCell.appendChild(tag);
+      }
       cell("size", b.sizeSqft ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : "", true);
       cell("built", b.yearBuilt ? String(b.yearBuilt) : "", true);
       // Filled by decorateBuildingRows from what the shelf and the leases
@@ -14693,6 +14866,59 @@ async function renderMyDesk() {
     // hand already; the first render does not, and renderShares fills the
     // two columns once they land (drawDeskDates).
     decorateBuildingRows();
+  }
+
+  // A tint per property type for the buildings' type tags (Draft C). Two
+  // types may share a tint; none of them is a status colour's meaning — the
+  // red of a due date stays the only red in the row.
+  const TYPE_TONES = {
+    Industrial: "dk-tone-est", Office: "dk-tone-bv", Retail: "dk-tone-ok",
+    Multifamily: "dk-tone-warn", Residential: "dk-tone-warn", Land: "dk-tone-ink",
+  };
+
+  // The banner's picture and the markets chip (Draft C, 2026-09-25), from
+  // the buildings read — the route sends `home` beside the list, so this
+  // costs no read of its own. Photographs only, and only from our own
+  // /market-heroes/ files: anything else in the answer is refused, not
+  // shown, and the banner keeps its drawn contour map. The credit is
+  // rendered on the picture, as on the market pages, and links to the
+  // photograph's Commons page. A null home (no firm, a failed read, a
+  // sign-out) takes the picture down.
+  function drawDeskHome(home) {
+    const photo = home && home.photo && typeof home.photo.src === "string" &&
+      home.photo.src.indexOf("/market-heroes/") === 0 ? home.photo : null;
+    const img = document.getElementById("deskHeroImg");
+    const credit = document.getElementById("deskHeroCredit");
+    credit.textContent = "";
+    if (photo) {
+      img.setAttribute("src", photo.src);
+      const set = String(photo.srcset || "");
+      if (set && set.split(",").every((part) => part.trim().indexOf("/market-heroes/") === 0)) {
+        img.setAttribute("srcset", set);
+        img.setAttribute("sizes", "(min-width: 1180px) 1100px, 100vw");
+      }
+      const words = "Photo: " + [photo.credit, photo.license].filter(Boolean).join(" · ");
+      const link = /^https:\/\/commons\.wikimedia\.org\//.test(String(photo.commonsUrl || ""));
+      const a = document.createElement(link ? "a" : "span");
+      if (link) { a.href = photo.commonsUrl; a.target = "_blank"; a.rel = "noopener noreferrer"; }
+      a.textContent = words;
+      credit.appendChild(a);
+    }
+    img.classList.toggle("hidden", !photo);
+    credit.classList.toggle("hidden", !photo);
+    document.getElementById("deskHero").classList.toggle("has-photo", Boolean(photo));
+    // The markets on the board, most-held first: the home market leads,
+    // because the photograph is of it.
+    const counts = new Map();
+    (home ? firmBuildings : []).forEach((b) => { if (b.market) counts.set(b.market, (counts.get(b.market) || 0) + 1); });
+    const markets = [...counts.entries()].sort((x, y) => y[1] - x[1]).map((e) => e[0]);
+    if (home && home.market && markets.indexOf(home.market) > 0) {
+      markets.splice(markets.indexOf(home.market), 1);
+      markets.unshift(home.market);
+    }
+    document.getElementById("deskHeroWhere").textContent =
+      markets.slice(0, 3).join(" · ") + (markets.length > 3 ? ` · +${markets.length - 3} more` : "");
+    document.getElementById("deskHeroWhereWrap").classList.toggle("hidden", !markets.length);
   }
 
   // The two columns Buildings cannot fill from its own read (Draft 1): how
@@ -14925,6 +15151,9 @@ async function renderMyDesk() {
         f.textContent = fig;
       }
       f.classList.toggle("due", Boolean(due));
+      // A zero steps back (Draft C): an empty firm reads as not started yet
+      // rather than as four loud zeros. A dash is not a zero and keeps ink.
+      f.classList.toggle("zero", String(fig && typeof fig === "object" ? fig.n : fig) === "0");
       document.getElementById(`strip${key}Sub`).textContent = sub;
     };
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -14993,16 +15222,34 @@ async function renderMyDesk() {
 
   // "Needs you": lease dates in the next ninety days, soonest first, then
   // the unread conversations, each with its one next step. It is shown
-  // exactly when the strip is (a firm, and a board that could be read), and
-  // it says "nothing needs you" ONLY when both of its reads came back — a
+  // only when the strip is (a firm, and a board that could be read), and
+  // "nothing needs you" is said ONLY when both of its reads came back — a
   // failed read is named instead, because an empty agenda built on a read
   // that did not happen is the shelf's outage-as-absence trap with a
   // reassuring headline on it.
+  //
+  // Since Draft C (2026-09-25) it also writes the banner's one line
+  // (#deskHeroSub), because it is the one place that knows whether its
+  // reads came back: the counts when something is due, "Nothing needs you
+  // right now" when both reads came back empty (and the card itself then
+  // hides — a box whose only sentence is "nothing" is the bland page this
+  // draft replaced), and no line at all when a read failed, since the card
+  // below then says which one.
+  function heroSub(text) {
+    const sub = document.getElementById("deskHeroSub");
+    sub.textContent = text || "";
+    sub.classList.toggle("hidden", !text);
+  }
   function drawAgenda() {
     const box = document.getElementById("deskAgenda");
     const firm = currentUser ? myFirm() : null;
     if (!firm || document.getElementById("deskStrip").classList.contains("hidden")) {
       box.classList.add("hidden");
+      // A member in no firm is looking at the three start cards; one who is
+      // in a firm whose board could not be read gets no line at all.
+      const starting = Boolean(currentUser) && !firm &&
+        !document.getElementById("deskFirmEmpty").classList.contains("hidden");
+      heroSub(starting ? "Pick a place to start below." : "");
       return;
     }
     const crit = deskCritical;
@@ -15069,16 +15316,27 @@ async function renderMyDesk() {
       ? (items.length > AGENDA_MAX ? `${AGENDA_MAX} of ${items.length}` : `${items.length} ${items.length === 1 ? "item" : "items"}`)
       : "";
     const bothRead = Array.isArray(crit) && Boolean(deskThreadsStat);
-    const empty = document.getElementById("deskAgendaEmpty");
-    empty.textContent = "Nothing needs you right now — no lease dates in the next 90 days and no unread conversations.";
-    empty.classList.toggle("hidden", !(bothRead && !items.length));
+    const due = (crit || []).filter((c) => c.days <= AGENDA_DAYS).length;
+    if (items.length) {
+      heroSub([
+        due ? `${due} ${due === 1 ? "date" : "dates"} in the next ${AGENDA_DAYS} days` : "",
+        threads.length ? `${threads.length} unread ${threads.length === 1 ? "conversation" : "conversations"}` : "",
+      ].filter(Boolean).join(" and ") + ".");
+    } else if (bothRead) {
+      // An empty board has nothing to be due yet; say where to start rather
+      // than reassure somebody about a firm that has no record in it.
+      heroSub(firmBuildings.length ? "Nothing needs you right now."
+        : `${firm.name} is ready. Put your first building on the board to begin.`);
+    } else {
+      heroSub("");
+    }
     const gaps = [];
     if (!Array.isArray(crit)) gaps.push("lease dates");
     if (!deskThreadsStat) gaps.push("conversations");
     const note = document.getElementById("deskAgendaNote");
     note.textContent = gaps.length ? `Couldn't read ${gaps.join(" or ")} just now, so this list may be missing something.` : "";
     note.classList.toggle("hidden", !gaps.length);
-    box.classList.remove("hidden");
+    box.classList.toggle("hidden", bothRead && !items.length);
   }
 
   // The dates card: every lease on the board with a date in the next twelve
@@ -15127,15 +15385,40 @@ async function renderMyDesk() {
     box.classList.remove("hidden");
   }
 
-  // The head's firm line and whether the find box shows — off the
-  // membership renderShares has just loaded, fetching nothing.
+  // The banner's greeting (Draft C, 2026-09-25): the part of the day on this
+  // browser's own clock, and the member's FIRST name when the account has
+  // one. Nothing else about who you are: the account circle stays in the
+  // rail, where the 2026-08-29 decision put it. textContent only — a name is
+  // text a person typed.
+  function deskGreetingFor(now, user) {
+    const h = now.getHours();
+    const part = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+    const first = String((user && user.name) || "").trim().split(/\s+/)[0].slice(0, 40);
+    return first ? `${part}, ${first}` : part;
+  }
+
+  // The head's day, greeting, firm line and whether the find box shows —
+  // off the membership renderShares has just loaded, fetching nothing.
   function drawDeskHead() {
     const firm = currentUser ? myFirm() : null;
+    const now = new Date();
+    document.getElementById("deskToday").textContent =
+      now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+    document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Workspace";
     const line = document.getElementById("deskFirmLine");
     line.textContent = firm ? [firm.name, shopCopy(firm.kind).label].filter(Boolean).join(" · ") : "";
     line.classList.toggle("hidden", !firm);
     document.getElementById("deskFindWrap").classList.toggle("hidden", !firm);
     if (!firm) closeDeskFind();
+  }
+
+  // Everything the banner says about a person or a firm, put back to the
+  // plain heading — hideAll's call on a sign-out (or a desk that could not
+  // be read), so no name, city or status line outlives its session.
+  function resetDeskHero() {
+    document.getElementById("deskGreeting").textContent = "Workspace";
+    heroSub("");
+    drawDeskHome(null);
   }
 
   async function addBuildingToFirm(input) {
@@ -15744,7 +16027,31 @@ async function renderMyDesk() {
       btn.textContent = "How a firm works";
       copy.textContent = gives + " Ask a colleague to invite you; starting one is part of Pro.";
     }
+    syncStartCards();
     box.classList.remove("hidden");
+  }
+
+  // The second start card (Draft C), decided on canBulkValue — the one
+  // answer /api/bulk re-checks and the rail's Comp report row already reads
+  // — so the card never opens onto the Pro gate. NOT firmState.canCreate:
+  // that is canUseOrg, which a vault-only beta grant also carries without
+  // the Comp report tool. Two callers: renderFirmEmpty, and refreshBillingUI
+  // beside the rail row, because /api/config can answer after the desk has
+  // drawn and the card must follow it rather than the default config.
+  // proConfig is read inside try: it is declared far below this function,
+  // and a call before that line runs must fall back, not throw.
+  function syncStartCards() {
+    let canBulk = false;
+    try { canBulk = Boolean(proConfig && proConfig.canBulkValue); } catch (_) { canBulk = false; }
+    document.getElementById("deskStart2").href = canBulk ? "/bulk" : "/permits";
+    document.getElementById("deskStart2T").textContent = canBulk ? "Run a comp report" : "Watch new permits";
+    document.getElementById("deskStart2X").textContent = canBulk
+      ? "One address or fifty, about a minute each."
+      : "New commercial building permits, as the cities post them.";
+    document.getElementById("deskStart2Go").textContent = canBulk ? "Open Comp report →" : "Open Permit tracker →";
+    document.getElementById("deskStart2Art").className = "dk-sc-art " + (canBulk ? "dk-tone-ok" : "dk-tone-est");
+    document.getElementById("deskStart2IcoReport").classList.toggle("hidden", !canBulk);
+    document.getElementById("deskStart2IcoPermit").classList.toggle("hidden", canBulk);
   }
   document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {
     if (typeof openFirmModal === "function") openFirmModal();
@@ -18512,6 +18819,9 @@ async function renderMyDesk() {
     // Stripe keys gets both tools rather than one.
     document.getElementById("menuBulkLink")
       .classList.toggle("hidden", !(proConfig && proConfig.canBulkValue));
+    // The no-firm start card that points at the same tool follows the same
+    // answer (Draft C) — see syncStartCards.
+    syncStartCards();
     // /api/config already carries this visitor's remaining exports, so the
     // counter can be right on first paint instead of only after an export.
     if (proConfig && proConfig.exportsRemaining !== undefined) {

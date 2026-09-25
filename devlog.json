@@ -4267,5 +4267,11 @@
     "type": "improvement",
     "title": "The Workspace opens on a picture of your firm's city",
     "details": "The owner's pick (Draft C) from three redesign drafts, because the Workspace read as bland and worst when empty. It now opens on a banner: your firm's home city's photograph when it has one (the same licensed, credited photos the market pages use) and a drawn contour map when it does not, with a greeting by first name, one line on what needs you, and the markets on your board. The four figures sit as cards on the banner's edge, with icons, and zeros fade back. Empty sections show a faint preview of the rows they will hold with the one next step on top, property types are coloured tags, and a member in no firm gets three start cards. Same sections and links; dark mode and phone included."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "fix",
+    "title": "The Workspace greeting changes at noon without a refresh",
+    "details": "The banner greeting was written once, when the Workspace loaded, so a tab opened in the morning still said “Good morning” all afternoon. It now switches to “Good afternoon” at noon and “Good evening” at 5pm on its own, and the date line rolls over at midnight. A tab you come back to after it sat in the background, or a laptop waking from sleep, catches up the moment it is on screen again."
   }
 ]

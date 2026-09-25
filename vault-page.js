@@ -1272,7 +1272,9 @@ a.btn.ghost:hover{color:var(--ink)}
   //      being shown half their vault, and the trust line said 200 with no
   //      hint that anything was missing. Asking for the server's own maximum
   //      fixes that up to 1000; past it, the #trunc line in apply() says so
-  //      out loud rather than quietly under-reporting someone's book.
+  //      out loud rather than quietly under-reporting someone's book. The
+  //      server-side boot (__VAULT_BOOT__) must ask the same -- it asked with
+  //      no limit until 2026-09-25 and brought the 200 cut back on first paint.
   //   3. Filtering is now instant and costs no round trip.
   // Every term must appear somewhere in the row, in any order and any field:
   // a broker types "fairview industrial" or "8400 mission" and means both

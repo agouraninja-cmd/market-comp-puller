@@ -341,6 +341,19 @@ here would change.)
   are covered; only genuinely new utilities need a regen. Commit the updated
   `tailwind.css` alongside the HTML change.
 
+### Design drafts: one format (standing rule)
+
+**When the owner asks for a draft of a design** (drafts, options, mockups, a
+redesign of any page), the answer is a published Artifact page in the format
+of the Workspace drafts page (https://claude.ai/artifact/CqHmNs3iL5JWFDVmUJKT3c,
+owner's call 2026-09-25). It has draft cards A/B/C with a trade-off each, a
+viewer of real screenshots (situations × desktop/dark/phone, next to today),
+"Found while making these", and "How to pick". The `design-drafts` skill
+(`.claude/skills/design-drafts/`) holds the checklist and a `template.html` of
+that page. Start from the template rather than designing a new wrapper. Drafts
+come before building; the before-and-after rule below applies once a draft is
+picked and built.
+
 ### Design changes: before and after (standing rule)
 
 **Every time you change how something LOOKS, show the owner a before and an

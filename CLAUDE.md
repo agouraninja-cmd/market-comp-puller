@@ -1681,6 +1681,40 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     `.dk-copy`/`.dk-empty`/`.dk-msg` (token colours — the hexes were those
     tokens' exact light values, so light mode did not move).
   The rail's 224px sidebar and the phone bar are unchanged.
+  **Draft 1: two columns (2026-09-24; the owner's pick from the workspace
+  redesign canvas).** The single 3,300px column became a top row and two
+  columns; every section kept its id and its own writer. Test-pinned in
+  `test/org-desk.test.js`'s last block:
+  - **The top row** is `#deskAgenda` ("Needs you": lease dates inside
+    `AGENDA_DAYS` = 90, then unread conversations, each with one next step)
+    beside `#deskStrip`, reflowed 2×2. `drawDeskDates(critical)` runs after
+    `drawFirmStrip` with the SAME leases answer and draws the agenda, the
+    new `#deskCritical` side card and the buildings' Next-date column — four
+    readings of one read, and no route of their own (bootFetch hands each
+    embedded answer to its first caller). The agenda hides with the strip,
+    and says "Nothing needs you" ONLY when both the leases and the threads
+    read came back; a failed read is named in `#deskAgendaNote` instead.
+    `.dk-top` is not a deck and must never carry `data-deck`.
+  - **Two columns, each a `[data-deck]`**: `.dk-main` holds `#deckFirm`
+    (no-firm body, Buildings, the shelf) and `#deckSharing`; `#deckSide`
+    holds Conversations, Critical dates, the deal board, Your permits and
+    Contacts as cards. The "Your firm"/"Sharing" deck headings are gone —
+    the columns are the grouping — and `refreshDeckVisibility` is unchanged:
+    an all-hidden side deck hides and the main column takes the width.
+    Spacing is a BOTTOM margin set in the style block, so a hidden first
+    section leaves no gap. Below 1180px the columns stack.
+  - **Buildings is a table** (`.dk-row.dk-brow`, still flat: name, meta,
+    five `.dk-bc` cells, the ⋯ `<details class="dk-menu">` holding "Open the
+    building sheet" and Remove). The Shelf and Next-date cells are filled by
+    `decorateBuildingRows()` from `firmShelfItems` (exact address, any case —
+    it can under-count, never over-count) and `deskCritical`. `.dk-btable` is
+    a size-query container: under 520px the same children reflow to an
+    address line over one line of figures.
+  - **The head** carries the firm and shop (`#deskFirmLine`) and one find box
+    (`#deskFind`) that searches `firmBuildings` (the whole board, not the
+    eight shown), `firmShelfItems` and `firmContacts` in the browser, terms
+    ANDed. It asks the server nothing. Everything new hides in
+    `renderShares`' `hideAll`.
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

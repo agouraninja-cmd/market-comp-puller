@@ -15397,14 +15397,40 @@ async function renderMyDesk() {
     return first ? `${part}, ${first}` : part;
   }
 
-  // The head's day, greeting, firm line and whether the find box shows —
-  // off the membership renderShares has just loaded, fetching nothing.
-  function drawDeskHead() {
-    const firm = currentUser ? myFirm() : null;
+  // How long until the banner's words next change: noon and 5pm move the
+  // greeting, midnight moves the day. setHours(24) is tomorrow's midnight in
+  // local time, DST days included. The quarter second lands the redraw just
+  // past the boundary rather than a hair before it.
+  function msToNextDeskBoundary(now) {
+    const h = now.getHours();
+    const next = new Date(now.getTime());
+    next.setHours(h < 12 ? 12 : h < 17 ? 17 : 24, 0, 0, 0);
+    return next.getTime() - now.getTime() + 250;
+  }
+
+  // The day and the greeting, and a timer for the next time either changes
+  // (owner, 2026-09-25: a workspace opened in the morning still said "Good
+  // morning" after noon, because both were written once, at paint). ONE
+  // timer, re-armed on every draw, and none while the banner says
+  // "Workspace" — resetDeskHero clears it, so a sign-out cannot be greeted
+  // back by a timer left over from the session. A throttled background tab
+  // or a sleeping laptop fires late; the visibilitychange redraw (beside the
+  // desk's outside-click closer, further down) covers that.
+  let deskClockTimer = null;
+  function drawDeskClock() {
     const now = new Date();
     document.getElementById("deskToday").textContent =
       now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
     document.getElementById("deskGreeting").textContent = currentUser ? deskGreetingFor(now, currentUser) : "Workspace";
+    clearTimeout(deskClockTimer);
+    deskClockTimer = currentUser ? setTimeout(drawDeskClock, msToNextDeskBoundary(now)) : null;
+  }
+
+  // The head's day, greeting, firm line and whether the find box shows —
+  // off the membership renderShares has just loaded, fetching nothing.
+  function drawDeskHead() {
+    const firm = currentUser ? myFirm() : null;
+    drawDeskClock();
     const line = document.getElementById("deskFirmLine");
     line.textContent = firm ? [firm.name, shopCopy(firm.kind).label].filter(Boolean).join(" · ") : "";
     line.classList.toggle("hidden", !firm);
@@ -15416,6 +15442,8 @@ async function renderMyDesk() {
   // plain heading — hideAll's call on a sign-out (or a desk that could not
   // be read), so no name, city or status line outlives its session.
   function resetDeskHero() {
+    clearTimeout(deskClockTimer);
+    deskClockTimer = null;
     document.getElementById("deskGreeting").textContent = "Workspace";
     heroSub("");
     drawDeskHome(null);
@@ -15901,6 +15929,13 @@ async function renderMyDesk() {
     document.querySelectorAll("#buildingRows details.dk-menu[open]").forEach((d) => {
       if (!d.contains(e.target)) d.open = false;
     });
+  });
+  // The banner's clock (drawDeskClock): a tab coming back into view re-reads
+  // it, because a background tab's timers are throttled and a sleeping
+  // laptop's fire late. Only while a greeting is live (the timer is armed): a
+  // banner reset to "Workspace" stays that way until drawDeskHead runs again.
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && deskClockTimer) drawDeskClock();
   });
 
   // ---------------------------------------------------------------------------

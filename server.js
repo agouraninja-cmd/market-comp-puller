@@ -199,6 +199,9 @@ const AUDIT = require("./corpus-audit");
 const { parseDealDate } = require("./deal-date");
 const HARVEST = require("./corpus-harvest");
 const { isAggregateAddress } = AUDIT;
+// The team's shipped board at /dev/shipped, shared with the nightly Ship chat
+// job (scripts/ship-chat.js) so the page and the Chat post count one way.
+const SHIPBOARD = require("./ship-board.js");
 const EXPLOREADDR = require("./explore-addresses");
 // Dead-at-birth source-link check rules. Pure and tested, like the modules
 // above; server.js owns the network half (checkSourceLinks below).
@@ -1322,6 +1325,47 @@ function setAdminCookie(res, req, value, maxAgeSec) {
   const prior = res.getHeader("set-cookie");
   const cookie = `${ADMIN_COOKIE}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAgeSec}${secure}`;
   res.setHeader("set-cookie", prior ? [].concat(prior, cookie) : cookie);
+}
+
+// ---------------------------------------------------------------------------
+// The shipped board (GET /dev/shipped): who merged how many commits each day.
+// The nightly Ship chat workflow counts the day and saves it as
+// days/<YYYY-MM-DD>.json on the repo's `ship-charts` branch; this reads it
+// back from there, so the page and the Google Chat post always show the same
+// numbers and the server never needs a GitHub token (the repo is public).
+// Rules and markup live in ship-board.js.
+// ---------------------------------------------------------------------------
+// SHIP_BOARD_BASE is test-only (RESEND_API_URL's precedent): it moves where
+// the day files are read from, so test/ship-board-route.test.js can serve them.
+const SHIP_BOARD_BASE = process.env.SHIP_BOARD_BASE ||
+  `https://raw.githubusercontent.com/${SHIPBOARD.REPO}/ship-charts/days/`;
+const SHIP_BOARD_TTL_MS = 10 * 60 * 1000;
+const shipBoardCache = new Map(); // day -> { model, at }
+
+// The newest saved day, starting from the one that ended at the last Boise
+// midnight and stepping back a week. A missing file is a normal state (the
+// job runs a few minutes after midnight) and moves on to the day before; any
+// other failure answers null, which the page says in words rather than
+// drawing a board of zeros that would read as nobody shipping anything.
+async function readShipBoard(now = Date.now()) {
+  let day = SHIPBOARD.addDays(SHIPBOARD.boiseDate(now), -1);
+  for (let i = 0; i < 7; i++, day = SHIPBOARD.addDays(day, -1)) {
+    const hit = shipBoardCache.get(day);
+    if (hit && now - hit.at < SHIP_BOARD_TTL_MS) return hit.model;
+    try {
+      const res = await fetch(`${SHIP_BOARD_BASE}${day}.json`, { signal: AbortSignal.timeout(5000) });
+      if (res.status === 404) continue;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const model = SHIPBOARD.sanitizeModel(await res.json());
+      if (!model || model.day !== day) throw new Error("malformed day file");
+      shipBoardCache.set(day, { model, at: now });
+      return model;
+    } catch (err) {
+      console.error(`Shipped board: could not read ${day}:`, err.message);
+      return null;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -16256,6 +16300,7 @@ footer a{color:var(--foot-link);text-decoration:none}footer a:hover{color:#fff}
       <a href="/hq">HQ</a>
       <a href="/admin">Analytics</a>
       <a href="/contacts">Contacts</a>
+      <a href="/dev/shipped">Shipped</a>
       <a href="/">Run a report</a>
     </nav>
   </div>
@@ -28495,6 +28540,30 @@ const server = http.createServer((req, res) =>
         console.error("dev-ideas save failed:", err.message);
         return sendJson(res, 400, { error: "Invalid JSON body." });
       }
+    });
+    return;
+  }
+  if (req.method === "GET" && pagePath === SHIPBOARD.BOARD_PATH) {
+    // Team-only, like the dashboards: without the admin key or its cookie the
+    // page is the key door, and it never reads the day. Same triple-noindex
+    // treatment as /dev (the robots.txt `Disallow: /dev` covers it by prefix).
+    if (!ADMIN_KEY) { res.writeHead(404, { "content-type": "text/plain" }); return res.end("Not found"); }
+    const headers = {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-robots-tag": "noindex, nofollow",
+    };
+    if (!isAdminRequest(req)) {
+      res.writeHead(200, headers);
+      return res.end(SHIPBOARD.renderBoardGate());
+    }
+    readShipBoard().then((model) => {
+      res.writeHead(200, headers);
+      res.end(SHIPBOARD.renderBoardPage(model));
+    }).catch((err) => {
+      console.error("Shipped board failed:", err.message);
+      if (!res.headersSent) res.writeHead(200, headers);
+      res.end(SHIPBOARD.renderBoardPage(null));
     });
     return;
   }

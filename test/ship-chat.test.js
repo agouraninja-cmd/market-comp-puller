@@ -1,8 +1,9 @@
-// The nightly shipped post (scripts/ship-chat.js): who gets credit, which day
-// a merge belongs to, which of the two cron fires posts, and what the card
-// and the Chat message say. Nothing here touches the network except one test
-// that stands up its own local server to prove a failed post never prints the
-// webhook URL.
+// The nightly shipped post (scripts/ship-chat.js) and the board it links to
+// (ship-board.js, served at /dev/shipped): who gets credit, which day a merge
+// belongs to, which of the two cron fires posts, what the board draws, and
+// what the Chat message says. Nothing here touches the network except two
+// tests that stand up their own local server for the webhook. The page's
+// route is proven against a real server in test/ship-board-route.test.js.
 
 const test = require("node:test");
 const assert = require("node:assert");
@@ -125,33 +126,86 @@ test("the y axis rounds up to a readable ceiling and never draws a quiet period 
   assert.strictEqual(S.niceMax(130), 150);
 });
 
-test("the card names everyone, escapes what it prints, and plots no future day", () => {
+const OCT4 = utc("2026-10-05T18:00:00Z"); // a "now" the day after Oct 4
+
+test("the board names everyone, escapes what it prints, and plots no future day", () => {
   const people = [
     { login: "a", name: "Jacob <b>", color: "#B91C1C" },
     { login: "b", name: "Owen", color: "#2A78D6" },
   ];
-  const m = S.buildModel([pr("a", "2026-10-04T18:00:00Z", [1])], "2026-10-04", people);
-  const html = S.renderCardHtml(m);
+  const m = S.buildModel([pr("a", "2026-10-04T18:00:00Z", [1])], "2026-10-04", people, OCT4);
+  const html = S.renderBoardPage(m, OCT4);
   assert.ok(html.includes("Jacob &lt;b&gt;") && !html.includes("Jacob <b>"));
   assert.ok(html.includes("Sunday, October 4"));
   assert.ok(html.includes("Day 11 of 14"));
   assert.ok(html.includes("chart resets Thu, Oct 8"));
   assert.strictEqual((html.match(/<circle /g) || []).length, 11 * people.length);
+  assert.match(html, /<meta name="robots" content="noindex, nofollow">/);
+  assert.match(html, /name="viewport"/, "it is opened from a phone as often as a desk");
+  assert.ok(!/Last night's update/.test(html), "a current board says nothing about being behind");
 });
 
-test("the Chat message carries the picture, or the numbers when the picture failed", () => {
-  const m = S.buildModel([pr("owenbarnes5", "2026-09-24T18:00:00Z", [1, 1])], "2026-09-24");
-  const withImage = S.chatPayload(m, "https://example.com/c.png");
-  assert.strictEqual(withImage.text, "*Shipped Thu, Sep 24* — Jacob 0 · Owen 2 · Chuck 0 commits");
-  const card = withImage.cardsV2[0].card;
-  assert.strictEqual(withImage.cardsV2[0].cardId, "shipped-2026-09-24");
-  assert.strictEqual(card.header, undefined, "the picture opens with the date already");
-  assert.strictEqual(card.sections[0].widgets[0].image.imageUrl, "https://example.com/c.png");
-  assert.match(card.sections[0].widgets[0].image.altText, /Owen 2/);
+test("the board lists the day's PRs, titles escaped and credited to the opener", () => {
+  const prs = [
+    { ...pr("owenbarnes5", "2026-10-04T20:00:00Z", [1, 2, 1]), number: 330, title: "Fix <script> in titles" },
+    { ...pr("agouraninja-cmd", "2026-10-04T15:00:00Z", [1]), number: 329, title: "Earlier one" },
+    { ...pr("agouraninja-cmd", "2026-10-03T15:00:00Z", [1]), number: 328, title: "The day before" },
+  ];
+  const m = S.buildModel(prs, "2026-10-04", S.PEOPLE, OCT4);
+  assert.deepStrictEqual(m.merged.map((x) => x.number), [329, 330], "that day only, oldest first");
+  assert.strictEqual(m.merged[1].commits, 2);
+  const html = S.renderBoardPage(m, OCT4);
+  assert.ok(html.includes("Fix &lt;script&gt; in titles") && !html.includes("<script> in"));
+  assert.match(html, /pull\/330">Fix &lt;script&gt; in titles<\/a><span class="by">Owen · 2 commits/);
+  assert.match(S.renderBoardPage(S.buildModel([], "2026-10-04", S.PEOPLE, OCT4), OCT4), /Nothing was merged to main that day/);
+});
 
-  const noImage = S.chatPayload(m, undefined).cardsV2[0].card;
-  assert.match(noImage.header.title, /Thursday, September 24/);
-  assert.match(noImage.sections[0].widgets[0].textParagraph.text, /<b>Owen<\/b> 2 commits · 1 PR · 2 this period/);
+test("a board that is behind says so, and a missing board is never drawn as zeros", () => {
+  const m = S.buildModel([], "2026-10-02", S.PEOPLE, OCT4);
+  assert.match(S.renderBoardPage(m, OCT4), /Last night's update has not arrived yet, so this is Friday, October 2/);
+  const none = S.renderBoardPage(null, OCT4);
+  assert.match(none, /The board is unavailable right now/);
+  assert.ok(!/<circle /.test(none) && !/class="v"/.test(none));
+});
+
+test("a day read back from storage is rebuilt, never trusted", () => {
+  const m = S.buildModel([{ ...pr("owenbarnes5", "2026-10-04T18:00:00Z", [1, 1]), number: 331, title: "A PR" }],
+    "2026-10-04", S.PEOPLE, OCT4);
+  const round = S.sanitizeModel(JSON.parse(JSON.stringify(m)));
+  assert.deepStrictEqual(round, m, "an honest file survives the trip unchanged");
+
+  const evil = JSON.parse(JSON.stringify(m));
+  evil.series[1].name = "<img src=x onerror=alert(1)>";
+  evil.series[1].color = "red;background:url(//x)";
+  evil.series[1].today.commits = "9; drop";
+  evil.series[1].points[0] = -5;
+  const clean = S.sanitizeModel(evil);
+  assert.strictEqual(clean.series[1].name, "Owen", "names come from the code, not the file");
+  assert.strictEqual(clean.series[1].color, "#2A78D6");
+  assert.strictEqual(clean.series[1].today.commits, 0);
+  assert.strictEqual(clean.series[1].points[0], 0);
+  assert.strictEqual(clean.series[1].points[13], null, "future days stay empty whatever the file says");
+  assert.strictEqual(S.sanitizeModel({ day: "2026-02-30" }), null);
+  assert.strictEqual(S.sanitizeModel(null), null);
+});
+
+test("the Chat post is sharp text and a button to the board, never a picture", () => {
+  const m = S.buildModel([pr("owenbarnes5", "2026-09-24T18:00:00Z", [1, 1])], "2026-09-24");
+  const post = S.chatPayload(m);
+  assert.strictEqual(post.text, "*Shipped Thu, Sep 24* — Jacob 0 · Owen 2 · Chuck 0 commits");
+  assert.strictEqual(post.cardsV2[0].cardId, "shipped-2026-09-24");
+  const card = post.cardsV2[0].card;
+  assert.match(card.header.title, /Thursday, September 24/);
+  assert.match(card.header.subtitle, /Day 1 of 14 · the chart resets Thu, Oct 8/);
+  const widgets = card.sections[0].widgets;
+  assert.ok(!JSON.stringify(post).includes("imageUrl"), "Chat shrinks pictures until they are unreadable");
+  const owen = widgets.find((w) => w.decoratedText && w.decoratedText.topLabel === "Owen").decoratedText;
+  assert.match(owen.text, /<b>2 commits<\/b> · 1 PR merged/);
+  assert.strictEqual(owen.bottomLabel, "2 commits this period");
+  const buttons = widgets.find((w) => w.buttonList).buttonList.buttons;
+  assert.deepStrictEqual(buttons.map((b) => b.text), ["Open the board", "See the PRs"]);
+  assert.strictEqual(buttons[0].onClick.openLink.url, "https://compninja.co/dev/shipped");
+  assert.strictEqual(S.BOARD_URL, `https://compninja.co${S.BOARD_PATH}`);
 });
 
 test("See the PRs asks GitHub for that Boise day, including the night the clocks change", () => {
@@ -183,6 +237,18 @@ test("the thread opens by saying what it is for", () => {
   const yml = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "ship-chat.yml"), "utf8");
   assert.match(yml, /start_thread:[\s\S]*default: false/, "opening the thread is opt-in, never nightly");
   assert.match(yml, /"\$START_THREAD" = "true" \]; then args\+=\(--intro\)/);
+});
+
+test("the workflow saves the day before it posts, so the button never opens yesterday", () => {
+  const yml = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "ship-chat.yml"), "utf8");
+  const save = yml.indexOf("- name: Save the day for the board");
+  const post = yml.indexOf("- name: Post to Google Chat");
+  assert.ok(save > 0 && post > save, "save, then post");
+  assert.match(yml, /cp out\/model\.json "\$dir\/days\/\$\{DAY_OUT\}\.json"/, "where server.js reads it");
+  assert.match(yml, /skip_post:[\s\S]*?default: false/, "posting is the default");
+  assert.match(yml.slice(post), /^\s*if: .*!inputs\.skip_post/m);
+  assert.match(yml, /- name: Fail if the board was not saved\n\s*if: steps\.save\.outcome == 'failure'/);
+  assert.ok(!/imageUrl|image-url|card\.png/.test(yml), "no picture any more");
 });
 
 test("a post really reaches the thread URL", async (t) => {

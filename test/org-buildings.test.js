@@ -285,3 +285,40 @@ test("homeMarket is the market most of the board is in, stable on a tie, empty f
   // Storage rows and wire buildings both carry `market`.
   assert.equal(B.homeMarket([{ market: " Boise, ID " }]), "Boise, ID", "trimmed, like every other string here");
 });
+
+// ---------------------------------------------------------------------------
+// Locating a building for the Workspace banner (2026-09-25)
+// ---------------------------------------------------------------------------
+test("only unlocated rows that name a street number are asked about, newest first, up to the cap", () => {
+  const rows = [
+    { id: "1", address: "2900 E Overland Rd, Meridian, ID", lat: null, lng: null },
+    { id: "2", address: "450 W Main St, Boise, ID", lat: 43.6, lng: -116.2 },
+    { id: "3", address: "Boise, ID", lat: null, lng: null },
+    { id: "4", address: "120 N Milwaukee St, Boise, ID", lat: 43.6, lng: null },
+    { id: "5", address: "1210 N 17th St, Boise, ID" },
+    { id: "", address: "9 Nowhere St, Boise, ID" },
+  ];
+  assert.deepEqual(B.buildingsNeedingGeocode(rows, 8).map((r) => r.id), ["1", "5"],
+    "a located row, a city, a half-located row and a row with no id are all skipped");
+  assert.deepEqual(B.buildingsNeedingGeocode(rows, 1).map((r) => r.id), ["1"]);
+  assert.deepEqual(B.buildingsNeedingGeocode(rows, 0), []);
+  assert.deepEqual(B.buildingsNeedingGeocode(null, 8), []);
+});
+
+test("a Census answer is kept only when it is the street that was typed", () => {
+  // The two misses found on the first test board.
+  assert.equal(B.censusMatchAgrees("560 S Eagle Rd, Meridian, ID", "560 N EAGLE RD, MERIDIAN, ID, 83642"), false, "the other side of town");
+  assert.equal(B.censusMatchAgrees("16100 N Franklin Blvd, Nampa, ID", "16100 FRANKLIN RD, NAMPA, ID, 83687"), false, "a different street type");
+  // What it must keep.
+  assert.equal(B.censusMatchAgrees("450 W Main St, Boise, ID", "450 MAIN ST, BOISE, ID, 83702"), true, "Census drops the W, and is right to");
+  assert.equal(B.censusMatchAgrees("3275 S Federal Way, Boise, ID", "3275 S FEDERAL WAY, BOISE, ID, 83705"), true);
+  assert.equal(B.censusMatchAgrees("1211 1st St S, Nampa, ID", "1211 1ST ST S, NAMPA, ID, 83651"), true, "a trailing direction");
+  assert.equal(B.censusMatchAgrees("777 East Parkcenter Boulevard, Boise, ID", "777 E PARKCENTER BLVD, BOISE, ID, 83706"), true, "words and abbreviations agree");
+  assert.equal(B.censusMatchAgrees("1210 N 17th St, Boise, ID", "1210 N 17TH ST, BOISE, ID, 83702"), true);
+  // And what it must refuse.
+  assert.equal(B.censusMatchAgrees("450 W Main St, Boise, ID", "452 MAIN ST, BOISE, ID"), false, "another number");
+  assert.equal(B.censusMatchAgrees("450 W Main St, Boise, ID", "450 W IDAHO ST, BOISE, ID"), false, "another street");
+  assert.equal(B.censusMatchAgrees("450 W Main St, Boise, ID", ""), false, "nothing to check is a miss");
+  assert.equal(B.censusMatchAgrees("450 W Main St, Boise, ID", undefined), false);
+  assert.equal(B.censusMatchAgrees("Main St, Boise, ID", "MAIN ST, BOISE, ID"), false, "no number, no building");
+});

@@ -161,6 +161,15 @@ async function bootOnce(env) {
       // "nothing delivered" instead, which is the failure direction to want;
       // a suite that means to assert on recipients sets them explicitly.
       TESTER_FEEDBACK_EMAIL: "",
+      // The Census geocoder, pointed at a closed local port. Two fire-and-
+      // forget lookups send real street addresses to it — the Vault's import
+      // geocode and, since 2026-09-25, the firm's buildings (so the
+      // Workspace banner can picture them) — and unset they reached the live
+      // government service from any suite that stored an address, which
+      // "nothing calls anything external" rules out. A refused connection is
+      // an outage to both callers, so they skip and nothing else changes; a
+      // suite that means to assert on a lookup passes its own stub.
+      CENSUS_API_URL: "http://127.0.0.1:9/census-unset",
       ...env,
     },
     // stderr is piped (stdout stays ignored: the startup banner is noise)

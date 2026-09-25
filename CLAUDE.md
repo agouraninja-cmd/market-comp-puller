@@ -58,7 +58,9 @@ Active / Listed sentinels) and **`corpus-harvest.js`** (what gets stored, and
 the usable-vs-listed split) and **`building-facts.js`** (what a broker's own
 deals on one building agree on and what an empty cell may inherit from that,
 read-time only — dual-exported like `valuation.js`, since `/vault` prefills
-from the same rule the server fills with) — plus **`report-access.js`** (the ONLY function that
+from the same rule the server fills with) and **`building-day.js`** (which of
+the firm's buildings opens the Workspace banner each morning, and the reason
+on it — dual-exported, since the page draws what it decides) — plus **`report-access.js`** (the ONLY function that
 decides who may read a shared report: an unrecognized `visibility` is
 treated as invited, never public) and **`org-buildings.js`** (what may be put on a firm's board and how the list is
 summarized: the two keys are the vault's `addressKey` and the portfolio's
@@ -1826,6 +1828,54 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
   strip's icons, the side cards' head icons, the previews and the
   buildings' type tags, `TYPE_TONES`), so dark mode needed nothing of its
   own. No new Tailwind utility — everything is in the style block.
+  **A building a day (2026-09-25 evening; the owner's pick, Draft C of the
+  banner drafts at https://claude.ai/artifact/Ef7zJpN17C3wXg5xaakWCZ).** The
+  city photograph was the same picture every day, and only ~30 cities have
+  one, so most firms got the drawn map. Now the banner shows one of the
+  firm's OWN buildings from above each morning, with the reason it was
+  picked on a card (`#deskDay`) that opens the building sheet, and arrows
+  that flip through the rest of the board. Rules, all tested
+  (`test/building-day.test.js`, `test/org-desk.test.js`'s last block,
+  `test/org-buildings.test.js`, `test/org-buildings-geocode-run.test.js`):
+  - **The pick is the pure, dual-exported `building-day.js`** (browser
+    global `BUILDINGDAY`, `max-age: 0`, guarded with `typeof` — a missing
+    file leaves the city photograph, never a broken page). In order: the
+    nearest lease date inside 90 days, then the newest building of the last
+    14 days, then the most shelf reports in 30 days (the exact-address rule
+    the Shelf column uses), then the next in line by the viewer's day of
+    the year. It reads ONLY what the desk parsed — `firmBuildings`,
+    `deskCritical`, `firmShelfItems` — so it has no route (bootFetch's
+    rule), and `renderShares` calls `drawDeskDay()` once, after
+    `drawDeskDates`.
+  - **Only a building with coordinates is ever shown.** The aerial is an
+    Esri World Imagery export framed in Web Mercator (`aerialUrl`, never
+    stretched), the source the market pages already fall back to, credited
+    "Imagery: Esri, Maxar". It sits OVER the city photograph (`has-day`
+    hides that credit), so taking it down restores the old banner with no
+    redraw. With no located building the city photograph stays; an empty
+    board gets `#deskDayEmpty`, saying what will appear.
+  - **The pin is a claim, so it needs proof.** A looked-up point sits on the
+    street (measured ~140 m off a roof), so the picture is framed on it with
+    NO mark. The pin appears only on an OSM outline that proves the address
+    — `estimateSizeFromFootprint`'s house-number + street filter, within
+    180 m, largest proving outline as the main mass (the photos' rule) —
+    and never for an address naming a unit. Answers are remembered in
+    localStorage `roofCache.v1` (a miss as `null`); an Overpass outage is
+    NOT remembered.
+  - **Buildings are located by the server, in the background**
+    (`scheduleOrgBuildingGeocode`, beside `orgBuildingRows` because
+    `test/org-routes.test.js` allows the table only there and in the route
+    block): on add, and up to 8 per board read as a backfill. Our own Census
+    call only, and `BUILDINGS.censusMatchAgrees` refuses an answer on a
+    different street (a direction or street type may be MISSING, never
+    DIFFERENT — "560 S Eagle Rd" came back as "560 N EAGLE RD"). The PATCH
+    is org-scoped, fills only when both coordinates are null (a member's
+    door-supplied point wins), writes lat/lng and nothing else (being
+    located is not activity: `updated_at` stays).
+  - **`test/helpers/boot.js` now points `CENSUS_API_URL` at a closed local
+    port by default**, because this and the Vault's import geocode both
+    sent real addresses to the live service from any suite that stored one.
+    A suite asserting on a lookup passes its own stub.
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

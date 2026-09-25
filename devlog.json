@@ -1,5 +1,11 @@
 [
   {
+    "date": "2026-09-25",
+    "type": "feature",
+    "title": "Workspace banner: one of your own buildings, from above, each morning",
+    "details": "The banner behind “Good morning” now shows an aerial photo of one of the firm’s own buildings, picked for a reason and saying so on the picture: the nearest lease date inside 90 days, else the newest building, else the one with the most recent reports, else the next in line. The card opens the building sheet and arrows flip through the rest of the board. Works in every city (Nampa gets a real picture where it had the drawn map). A pin appears only on a roof the map proves is that address. Buildings added by address are now located in the background with our own Census lookup, which refuses an answer on a different street. Owner’s pick: Draft C of the banner drafts."
+  },
+  {
     "date": "2026-09-24",
     "type": "improvement",
     "title": "The Workspace's New filings is now Your permits",

@@ -2314,6 +2314,41 @@ test("the sky turns with the greeting's clock", () => {
     "the greeting's timer turns the sky too, guarded so a page without the skyline still greets");
 });
 
+test("the towers stand on the sky's horizon at any banner height, and the ground runs only under them", () => {
+  // The owner's screenshot, 2026-09-25: a 312px banner put the horizon at
+  // 246px and the ground at 250px (H - 62), two lines four pixels apart, and
+  // the ground ran from beside a lone tower to the banner's corner.
+  const share = Number(html.match(/const DESK_SKY_HORIZON = ([\d.]+);/)[1]);
+  const pct = +(share * 100).toFixed(2);
+  for (const part of ["dawn", "day", "dusk"]) {
+    const rule = html.match(new RegExp(`\\.dk-hero\\.has-sky\\.sky-${part} \\.dk-hero-bg \\{ background:[^}]*\\}`))[0];
+    assert.ok(rule.includes(` ${pct}%,`), `the ${part} sky's horizon is at ${pct}%, the share the towers stand at`);
+  }
+  for (const H of [292, 312, 360]) {
+    const ctx = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
+    ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: H });
+    ctx.draw();
+    const ground = ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ground");
+    assert.equal(ground.length, 1);
+    assert.equal(Number(ground[0].attrs.y1), +(H * share).toFixed(1), `a ${H}px banner's ground is its horizon`);
+    const body = partsOf(skyTowers(ctx)[0], "sky-body")[0].attrs;
+    assert.ok(Math.abs(Number(body.y) + Number(body.height) - H * share) < 0.01, "the tower stands on it");
+    const left = Number(body.x), right = left + Number(body.width);
+    assert.ok(Number(ground[0].attrs.x1) >= left - 26.01 && Number(ground[0].attrs.x2) <= right + 26.01,
+      "the ground is only as wide as what stands on it");
+    assert.ok(Number(ground[0].attrs.x2) < 1000, "and never runs to the banner's edge");
+  }
+  assert.match(html, /\.dk-sky \.sky-ground \{ stroke: url\(#deskSkyGround\);/, "its ends fade out");
+});
+
+test("a tower the callout describes is only outlined; a hover or keyboard focus lights it", () => {
+  const on = html.match(/\.dk-sky a\.on \.sky-body \{[^}]*\}/);
+  assert.ok(on, "a lone building is always the callout's tower, so .on is what a new firm sees all day");
+  assert.doesNotMatch(on[0], /fill:/, ".on keeps the resting glass");
+  const lit = html.indexOf(".dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body {");
+  assert.ok(lit > html.indexOf(on[0]), "the hover rule comes after .on, so it wins on equal weight");
+});
+
 test("on a phone the towers stay behind the words and take no pointer or tab stop", () => {
   const ctx = loadSky({ buildings: BOARD(), width: 390, critical: [{ buildingId: "due", kind: "notice", days: 10 }] });
   ctx.draw();

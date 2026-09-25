@@ -1462,10 +1462,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        these colours are literal rgba like the rest of it (FOOTER_DARK_CSS's
        reason) — and they live HERE, as classes, rather than in the SVG the
        script builds, so no colour ever rides in generated markup.
-       The horizon sits at 79% of the banner's height, where the towers
-       stand: layoutDeskSky puts the ground 62px above the bottom edge, and
-       the banner is at least 292px tall (the page's stylesheet takes no
-       variables of its own, so the stop is a fixed share, not computed). */
+       The horizon sits at 79% of the banner's height, and the towers stand
+       on it: layoutDeskSky puts the ground at the same share
+       (DESK_SKY_HORIZON), whatever the banner's height, so the two can never
+       draw as two lines. Change one, change both — a test holds them
+       together (the page's stylesheet takes no variables of its own, so the
+       stop cannot be computed here). */
     .dk-hero.has-sky { min-height: 292px; }
     .dk-hero.has-sky #deskHeroImg, .dk-hero.has-sky #deskHeroCredit { display: none; }
     .dk-hero.has-sky .dk-hero-bg::after { background: linear-gradient(90deg, rgba(10,17,30,.82) 0%, rgba(10,17,30,.5) 36%, rgba(10,17,30,0) 62%); }
@@ -1481,19 +1483,29 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; pointer-events: none; }
     .dk-sky.hidden { display: none; }
     .dk-sky a { pointer-events: auto; cursor: pointer; outline: none; }
-    .dk-sky .sky-g0 { stop-color: rgba(226,232,240,.30); }
-    .dk-sky .sky-g1 { stop-color: rgba(148,163,184,.14); }
-    .dk-sky .sky-g-on0 { stop-color: rgba(248,250,252,.50); }
-    .dk-sky .sky-g-on1 { stop-color: rgba(203,213,225,.26); }
-    .dk-sky .sky-body { fill: url(#deskSkyBody); stroke: rgba(255,255,255,.22); stroke-width: .8; }
-    .dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body, .dk-sky a.on .sky-body { fill: url(#deskSkyBodyOn); stroke: rgba(255,255,255,.85); stroke-width: 1.4; }
-    .dk-sky .sky-roof { stroke: rgba(255,255,255,.55); stroke-width: 1; }
+    /* Glass, not paint: the sky shows through every tower and fades to
+       almost nothing at its foot, so the lit windows are the brightest thing
+       on it. Three states, deliberately apart (2026-09-25): at rest; `.on`,
+       the tower the callout is describing, which is only outlined a little
+       brighter (a lone building is always that tower, so this is what a new
+       firm sees all day); and a real hover or keyboard focus, which lights
+       it up. The hover rule comes after `.on` so it wins on equal weight. */
+    .dk-sky .sky-g0 { stop-color: rgba(226,232,240,.18); }
+    .dk-sky .sky-g1 { stop-color: rgba(148,163,184,.04); }
+    .dk-sky .sky-g-on0 { stop-color: rgba(241,245,249,.28); }
+    .dk-sky .sky-g-on1 { stop-color: rgba(203,213,225,.07); }
+    .dk-sky .sky-body { fill: url(#deskSkyBody); stroke: rgba(255,255,255,.2); stroke-width: .8; }
+    .dk-sky a.on .sky-body { stroke: rgba(255,255,255,.42); stroke-width: 1; }
+    .dk-sky a:hover .sky-body, .dk-sky a:focus-visible .sky-body { fill: url(#deskSkyBodyOn); stroke: rgba(255,255,255,.78); stroke-width: 1.2; }
+    .dk-sky .sky-roof { stroke: rgba(255,255,255,.45); stroke-width: 1; }
     .dk-sky .sky-win { fill: rgba(255,255,255,.07); }
     .dk-sky .sky-win.lit { fill: rgba(252,214,138,.92); }
     .dk-sky .sky-mast, .dk-sky .sky-crane { stroke: rgba(255,255,255,.62); stroke-width: 1.1; fill: none; }
     .dk-sky .sky-glow { fill: rgba(239,68,68,.32); }
     .dk-sky .sky-red { fill: rgba(248,113,113,1); }
-    .dk-sky .sky-ground { stroke: rgba(255,255,255,.28); stroke-width: 1; }
+    .dk-sky .sky-ground { stroke: url(#deskSkyGround); stroke-width: 1; }
+    .dk-sky .sky-gr0 { stop-color: rgba(255,255,255,0); }
+    .dk-sky .sky-gr1 { stop-color: rgba(255,255,255,.3); }
     .dk-sky .sky-leader { stroke: rgba(255,255,255,.55); stroke-width: 1; stroke-dasharray: 3 3; }
     .dk-sky .sky-ghost { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.4); stroke-width: 1; stroke-dasharray: 4 3; }
     .dk-sky-cap { margin-top: 14px; width: fit-content; max-width: 100%; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.8); }
@@ -15672,6 +15684,12 @@ async function renderMyDesk() {
   let deskSky = null; // { towers, focus, pos, links, ... } while the skyline is up
   const DESK_SKY_NS = "http://www.w3.org/2000/svg";
   const DESK_SKY_CALL_W = 304;
+  // Where the towers stand, as a share of the banner's height: the sky
+  // gradients' hard edge in the style block (78.5% → 79%). A share and never
+  // a fixed distance from the bottom, because the banner is only 292px at
+  // its floor. A long status line or a phone makes it taller, and a ground
+  // at H - 62 then sat a few pixels under the horizon as a second line.
+  const DESK_SKY_HORIZON = 0.79;
 
   function deskSkyNode(tag, attrs) {
     const n = document.createElementNS(DESK_SKY_NS, tag);
@@ -15741,6 +15759,25 @@ async function renderMyDesk() {
     return right;
   }
 
+  // The street the towers stand on: only as wide as what stands on it, with
+  // both ends faded out, so a lone tower is not left beside a line running
+  // off the banner's corner. The fade is a gradient in user space, because a
+  // horizontal line has no height and an objectBoundingBox gradient on it
+  // draws nothing. Its colours are classes, like every colour here.
+  function deskSkyGround(sky, defs, left, right, y, W) {
+    const from = Math.max(0, left - 26);
+    const to = Math.min(W - 4, right + 26);
+    if (!(to > from)) return;
+    const g = deskSkyNode("linearGradient", { id: "deskSkyGround", gradientUnits: "userSpaceOnUse",
+      x1: from.toFixed(1), y1: y.toFixed(1), x2: to.toFixed(1), y2: y.toFixed(1) });
+    const fade = Math.min(0.45, 26 / (to - from));
+    [[0, "sky-gr0"], [fade, "sky-gr1"], [1 - fade, "sky-gr1"], [1, "sky-gr0"]].forEach(([offset, cls]) =>
+      g.appendChild(deskSkyNode("stop", { offset: offset.toFixed(3), class: cls })));
+    defs.appendChild(g);
+    sky.appendChild(deskSkyNode("line", { class: "sky-ground",
+      x1: from.toFixed(1), y1: y.toFixed(1), x2: to.toFixed(1), y2: y.toFixed(1) }));
+  }
+
   function layoutDeskSky() {
     if (!deskSky) return;
     const hero = document.getElementById("deskHero");
@@ -15750,7 +15787,7 @@ async function renderMyDesk() {
     const W = Math.round((box && box.width) || 1000);
     const H = Math.round((box && box.height) || 292);
     const phone = typeof window !== "undefined" && window.innerWidth < 760;
-    const ground = H - 62;
+    const ground = H * DESK_SKY_HORIZON;
     sky.setAttribute("viewBox", `0 0 ${W} ${H}`);
     const x1 = W - (phone ? 12 : 28);
     let x0 = phone ? W * 0.34 : Math.max(W * 0.44, deskSkyTextRight(box) + 24);
@@ -15772,7 +15809,7 @@ async function renderMyDesk() {
       const widths = [30, 38, 26], heights = [58, 86, 40];
       let x = x1 - (widths.reduce((s, w) => s + w, 0) + 18);
       const gx = x;
-      sky.appendChild(deskSkyNode("line", { class: "sky-ground", x1: x - 24, y1: ground, x2: W, y2: ground }));
+      deskSkyGround(sky, defs, gx, x1, ground, W);
       widths.forEach((w, i) => {
         sky.appendChild(deskSkyNode("rect", { class: "sky-ghost", x, y: ground - heights[i], width: w, height: heights[i] }));
         x += w + 9;
@@ -15787,7 +15824,8 @@ async function renderMyDesk() {
       x0, x1, ground, gap: phone ? 6 : 9,
       maxHeight: phone ? 96 : Math.max(40, ground - 146),
     });
-    sky.appendChild(deskSkyNode("line", { class: "sky-ground", x1: layout[0].x - 24, y1: ground, x2: W, y2: ground }));
+    const last = layout[layout.length - 1];
+    deskSkyGround(sky, defs, layout[0].x, last.x + last.width, ground, W);
     const row = deskSkyNode("g", { class: "sky-towers" });
     deskSky.towers.forEach((tw, i) => {
       const p = layout[i];

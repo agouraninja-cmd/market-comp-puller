@@ -57,10 +57,16 @@ function renderVaultBody(boot) {
   --s1:2px;--s2:4px;--s3:8px;--s4:12px;--s5:16px;--s6:24px;--s7:32px;--s8:48px;--s9:80px;
   --shadow:0 1px 2px rgba(26,36,51,.04),0 8px 24px rgba(26,36,51,.04);
 }
-/* .hide must sit above every later rule that sets display, or a more
-   specific display:flex/grid on .deck/.strip/.ledger beats it and a hidden
-   block still paints. .deck.hide and .strip.hide restated below are the
-   cascade trap Direction U documented. */
+/* .hide is the FIRST rule, so every later rule that sets display on an
+   element carrying it -- a single class like .form or .btn at equal
+   specificity, or anything more specific like ".row label" -- beats it, and a
+   hidden block still paints. Each such class restates its own .x.hide
+   directly under its display rule: .btn, .form, the form labels, .deck and
+   .strip below. That is the cascade trap Direction U documented, and it
+   shipped a second time on 2026-09-25 (the properties add form, the filter
+   row's Clear, empty publish buttons and the Firm filter all painted while
+   "hidden"). test/vault-page.test.js now computes it: a class that can carry
+   .hide and sets display without restating it fails the build. */
 .hide{display:none}
 body{margin:0;background:var(--paper);color:var(--ink);line-height:1.6;min-height:100vh;
   display:flex;flex-direction:column;font-size:var(--t4);
@@ -158,8 +164,15 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .btn[disabled]{background:var(--ink-4);cursor:default}
 .btn.ghost{background:var(--card);color:var(--ink-2);border:1px solid var(--edge)}
 .btn.ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--ink-4)}
+/* The display above beats .hide (see the note on .hide), which left the
+   filter row's Clear showing with no filter set and #pubAll/#firmAll as empty
+   outlined boxes. Also outranks a.btn's display further down. */
+.btn.hide{display:none}
 .row{display:flex;flex-wrap:wrap;gap:12px 14px;align-items:flex-end}
 .form{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px 16px;align-items:end}
+/* Without this the properties deck's #propAddForm, which ships "form hide"
+   behind + Add a property, rendered OPEN on every load. */
+.form.hide{display:none}
 .form .span2{grid-column:1/-1}
 .form .span-all{grid-column:1/-1}
 .formact{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -171,6 +184,9 @@ section > .sub{margin-top:0;margin-bottom:var(--s5)}
 .addpanel .tw,.mappanel .tw{box-shadow:none}
 .row label,.form label{display:flex;flex-direction:column;gap:5px;font-size:var(--t6);letter-spacing:.08em;
   text-transform:uppercase;color:var(--ink-3);font-weight:600}
+/* Outranks .hide by specificity, not order (0,1,1 against 0,1,0): the Firm
+   filter (#fFirmLab) showed for a broker in no firm until this line. */
+.row label.hide,.form label.hide{display:none}
 select,input[type=text],input[type=date]{padding:8px 10px;border:1px solid var(--edge);border-radius:var(--r);
   font-family:inherit;font-size:16px;background:var(--card);color:var(--ink);min-height:40px}
 select:focus,input[type=text]:focus,input[type=date]:focus{outline:none;border-color:var(--ink);

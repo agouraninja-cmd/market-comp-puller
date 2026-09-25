@@ -2794,26 +2794,11 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b rd-hairline pb-2">
         <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
         <div class="flex items-center gap-3">
-          <!-- The workspace's one door to a comp report, and it leads OFF the
-               page (owner's call, 2026-09-04): the search chamber and the
-               recent-searches deck came off the workspace, and Bulk valuation
-               is the comp-report tool — one address or fifty, the same run.
-               Until then this was a scroll-to shortcut ("Run a report ↓") to
-               the chamber at the foot of the page. It said "Bulk valuation →"
-               for the day /run-report was a Tools row, because "Run a report"
-               then named that row on every bar; that row is gone and the red
-               CTA on every server-rendered bar points at /bulk too, so the
-               phrase names one place again and this door can use it — the
-               same label as the CTA, for the same destination.
-               A real link, not a button with a location.href handler,
-               so middle-click and Ctrl-click open it where the browser is
-               told to. Red as of 2026-08-29, on the owner's call: it is the
-               only control left on this row. Utility classes are the ones
-               #watchAddBtn already uses — the vendored tailwind.css is purged
-               and a class that appears nowhere else in this file styles
-               nothing. -->
-          <a id="deskRunReport" href="/bulk"
-            class="btn-live text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">Run a report →</a>
+          <!-- No "Run a report" door here (owner's call, 2026-09-24). From
+               2026-09-04 a red #deskRunReport link to /bulk sat on this row;
+               it repeated the red CTA and the Comp report row the rail
+               already carries, so the workspace header is the heading alone.
+               The comp-report tool (/bulk) is one click away in the rail. -->
           <!-- The photo pipeline's one entry, and all that is left of the
                profile cluster that used to sit here — circle, greeting, Add a
                photo / Remove.
@@ -13756,8 +13741,8 @@ async function renderMyDesk() {
     // (owner's call, 2026-09-04). From 2026-08-28 they showed here, under the
     // firm decks, so a member could start a report without leaving the page;
     // the owner wants the workspace to be the firm's record and Bulk valuation
-    // to be the comp-report tool, and #deskRunReport in the header points
-    // there. The form is not gone — it is the REAL #compForm, read by
+    // to be the comp-report tool, which the rail links to. The form is not
+    // gone — it is the REAL #compForm, read by
     // targetRange(), the footprint estimate, every report restore and the
     // confirm dialog — it shows on the home view, which every report door
     // (openPortfolioItem, openHistoryReport, rerunHistory) enters through
@@ -13874,8 +13859,6 @@ async function renderMyDesk() {
     enterDesk({ markSeen: true });
   });
   document.getElementById("deskSignInBtn").addEventListener("click", () => openAcctModal("signin"));
-  // #deskRunReport is a plain link to /bulk since 2026-09-04 and has no
-  // handler: the chamber it used to scroll to is no longer on this view.
 
   // ----------------------------------------------------------------------------
   // renderWatchFeed and the watch-market form moved to /vault on 2026-09-01

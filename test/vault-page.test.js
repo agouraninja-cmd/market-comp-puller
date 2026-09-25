@@ -348,7 +348,10 @@ test("the body renders no chrome of its own", () => {
 test("add-comp and BOV use a form grid rather than a wrapping row", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
   assert.match(html, /<div class="form" style="margin-top:var\(--s4\)">[\s\S]*id="addComp_address"/);
-  assert.match(html, /<div class="form" style="margin-top:var\(--s4\)">[\s\S]*id="bovMarket"/);
+  // The BOV form is checked inside its own panel: the pipeline deck moved
+  // above the book on 2026-09-25, so "a form grid somewhere before bovMarket"
+  // no longer has the add-comp grid to lean on.
+  assert.match(html, /<div id="bovAddSec" class="addpanel hide">\s*<div class="form">[\s\S]*?id="bovMarket"/);
 });
 
 // ---------------------------------------------------------------------------
@@ -4661,4 +4664,209 @@ test("the deck ships hidden and says the three review words; the switch posts th
   assert.match(html, /<a class="dact" href="\/\?submit=comp">/);
   // Fresh JS still compiles with the additions.
   assert.doesNotThrow(() => new Function(js));
+});
+
+// ----------------------------------------------------------------------------
+// The deal desk (2026-09-25): the owner's pick of the vault redesign drafts,
+// Draft C (This week, the pipeline as a board) with Draft B's map and comp
+// set as the book view. Everything below is drawing over reads the page
+// already made; these tests hold that, and the honesty rules the drawing
+// inherits from the rest of the page.
+// ----------------------------------------------------------------------------
+const isoIn = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
+const deskLeads = (leads, coverage) => () => Promise.resolve(jsonResponse(200, {
+  coverage: coverage || [{ id: "cv1", market: "Boise, ID", property_type: "Industrial", source: "manual" }],
+  leads,
+}));
+const deskBovs = (bovs) => () => Promise.resolve(jsonResponse(200, { bovs, rollup: null }));
+const LEAD = (o) => Object.assign({ id: "L1", market: "Boise, ID", type: "Industrial", size_sqft: 42000,
+  ts: new Date().toISOString(), is_1031: false, intro_requested: false }, o);
+const BOV = (o) => Object.assign({ id: "B1", market: "Meridian, ID", property_type: "Industrial", status: "open",
+  source: "referral", size_sqft: 31000, received_on: isoIn(-30), address: null, notes: null }, o);
+
+test("This week and the board are part of the vault lock, and the pipeline sits above the book", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const decks = pageScript(html).match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
+  assert.ok(decks, "VAULT_DECKS is gone");
+  for (const id of ["deckWeek", "weekSec", "deckPipe", "pipeSec", "deckBook", "compsSec"]) {
+    assert.ok(decks[1].includes('"' + id + '"'), id + " is not locked with the rest of the vault");
+  }
+  const at = (id) => html.indexOf('id="' + id + '"');
+  assert.ok(at("deckWeek") < at("deckPipe") && at("deckPipe") < at("deckBook") && at("deckBook") < at("trustLine"),
+    "the order is This week, the pipeline, then the book with its ledger under its rule");
+  assert.ok(at("trustLine") < at("compsSec"), "the privacy ledger opens the book, above the comps");
+});
+
+test("This week draws the three cards from the reads the page already makes", async () => {
+  const comps = [
+    comp({ id: "s1", deal_date: isoIn(-60) }),
+    comp({ id: "l1", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5, lease_expiry: isoIn(60), address: "5 Soon St, Boise, ID" }),
+    comp({ id: "l2", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(200), address: "6 Later Rd, Boise, ID" }),
+    comp({ id: "l3", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(-10), address: "7 Gone Ave, Boise, ID" }),
+    comp({ id: "l4", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(500), address: "8 Far Way, Boise, ID" }),
+  ];
+  const { doc, calls } = await runPage(comps, null, {
+    leads: deskLeads([LEAD({}), LEAD({ id: "L2", intro_requested: true })]),
+    bovs: deskBovs([BOV({ id: "B1", status: "delivered" }), BOV({ id: "B2", status: "open" })]),
+  });
+  // No read of its own: the cards are drawing.
+  assert.ok(!calls.some((c) => /\/api\/(week|desk)/.test(c.url)), "This week grew a route");
+
+  const leads = doc.getElementById("wkLeads").innerHTML;
+  assert.equal(String(doc.getElementById("wkLeadsN").textContent), "1", "a lead already introduced is not waiting on anyone");
+  assert.match(leads, /data-intro="L1"/, "the card's button is the table's own intro control");
+  assert.doesNotMatch(leads, /data-intro="L2"/);
+  assert.match(leads, /1 of your sales fit/, "the Boise industrial sale in the book answers the Boise industrial request");
+
+  const leases = doc.getElementById("wkLeases").innerHTML;
+  assert.equal(String(doc.getElementById("wkLeasesN").textContent), "2", "only leases deciding inside a year count");
+  assert.ok(leases.indexOf("5 Soon St") >= 0 && leases.indexOf("5 Soon St") < leases.indexOf("6 Later Rd"), "soonest first");
+  assert.doesNotMatch(leases, /7 Gone Ave|8 Far Way/, "an expired lease and one years out are not this week's business");
+  assert.match(leases, /class="vd-soon"/, "a lease inside 120 days is marked");
+
+  const bovs = doc.getElementById("wkBovs").innerHTML;
+  assert.equal(String(doc.getElementById("wkBovsN").textContent), "1");
+  assert.match(bovs, /data-bov="B1"/, "a delivered BOV carries the stage select, so its answer can be recorded here");
+  assert.match(bovs, /1 open BOV on the board below/);
+});
+
+test("a failed read shows as a failure on This week, never as zero", async () => {
+  const { doc } = await runPage([comp({})], null, {
+    leads: () => Promise.resolve(jsonResponse(503, { error: "The lead inbox is unavailable right now." })),
+    bovs: () => Promise.resolve(jsonResponse(503, { error: "down" })),
+  });
+  assert.equal(String(doc.getElementById("wkLeadsN").textContent), "—");
+  assert.match(doc.getElementById("wkLeads").innerHTML, /unavailable right now/);
+  assert.doesNotMatch(doc.getElementById("wkLeads").innerHTML, /No new requests/);
+  assert.equal(String(doc.getElementById("wkBovsN").textContent), "—");
+  assert.doesNotMatch(doc.getElementById("wkBovs").innerHTML, /Nothing waiting/);
+});
+
+test("a broker watching no markets is asked to pick some; a lease-less book is told what fills the card", async () => {
+  const { doc } = await runPage([comp({})], null, { leads: deskLeads([], []) });
+  assert.match(doc.getElementById("wkLeads").innerHTML, /id="wkPickMarkets"/);
+  assert.match(doc.getElementById("wkLeases").innerHTML, /Add lease end dates/);
+  assert.match(doc.getElementById("wkBovs").innerHTML, /id="wkLogBov"/, "no BOVs at all: the card offers the log");
+});
+
+test("the board draws every stage from the table's rows, with the table's own controls", async () => {
+  const { doc } = await runPage([comp({})], null, {
+    leads: deskLeads([LEAD({})]),
+    bovs: deskBovs([BOV({ id: "B1", status: "open", notes: "Family trust" }), BOV({ id: "B2", status: "won" }),
+      BOV({ id: "B3", status: "open" }), BOV({ id: "B4", status: "open" }), BOV({ id: "B5", status: "open" }), BOV({ id: "B6", status: "open" })]),
+  });
+  const board = doc.getElementById("pipeBoard");
+  assert.equal(board.className, "vd-board");
+  const html = board.innerHTML;
+  for (const s of ["new", "open", "delivered", "won", "lost"]) {
+    assert.ok(html.includes("vd-col-" + s), "the board lost its " + s + " column");
+  }
+  assert.match(html, /data-intro="L1"/, "a lead card requests an introduction through the existing handler");
+  assert.match(html, /data-bov="B1"/, "a BOV card moves stages through the existing select");
+  assert.match(html, /data-bovdel="B1"/, "and is removed through the existing Remove");
+  assert.match(html, /Family trust/);
+  assert.match(html, /data-stagelist="open"[^>]*>\+ 1 more/, "past four, a column says how many more and opens the list on that stage");
+  assert.equal(doc.getElementById("pipeViewSeg").className, "vd-pv", "the Board/List switch shows once there are rows");
+});
+
+test("an empty pipeline has no board and no Board/List switch", async () => {
+  const { doc } = await runPage([comp({})], null, { leads: deskLeads([]), bovs: deskBovs([]) });
+  assert.match(doc.getElementById("pipeBoard").className, /\bhide\b/);
+  assert.match(doc.getElementById("pipeViewSeg").className, /\bhide\b/);
+});
+
+test("the map view lists the filtered book and says which comps it cannot pin", async () => {
+  const comps = [
+    comp({ id: "a", address: "1 Pinned St, Boise, ID", lat: 43.6, lng: -116.2 }),
+    comp({ id: "b", address: "2 Nowhere Rd, Boise, ID" }),
+  ];
+  const { doc, calls } = await runPage(comps, null, {});
+  const rows = doc.getElementById("bmRows").innerHTML;
+  assert.match(rows, /data-bm="a"/);
+  assert.match(rows, /data-bm="b"/, "a comp with no location is still in the list");
+  assert.match(doc.getElementById("bmNoLoc").textContent, /^1 of these has no map location yet/);
+  assert.equal(doc.getElementById("bmCount").textContent, "2 comps");
+  // No Leaflet in this harness: the map says so, and the list above stands.
+  assert.match(doc.getElementById("bmMapErr").textContent, /could not load/);
+  // GUARD 2 of the private-comp contract: nothing on this page asks anyone
+  // where an address is.
+  assert.ok(!calls.some((c) => /geocode|nominatim/i.test(c.url)), "the vault map geocoded an address");
+});
+
+test("the map never geocodes: pins come only from coordinates the book holds", () => {
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  assert.ok(!/nominatim/i.test(js), "the vault page names a third-party geocoder");
+  assert.ok(!/\/api\/geocode/.test(js), "the vault page calls the geocode proxy");
+  assert.match(js, /if\(!hasLoc\(c\)\)return;/, "drawPins must skip a comp with no stored coordinates");
+});
+
+// Fires the list's change handler the way a checkbox would.
+const tick_ = (doc, id, on) => doc.getElementById("bmRows").fire("change", {
+  target: { checked: on, getAttribute: (a) => (a === "data-set" ? id : null) },
+});
+
+test("the comp set summarises honestly: sales and leases apart, and never across property types", async () => {
+  const comps = [
+    comp({ id: "s1", price_per_sqft: 100 }),
+    comp({ id: "s2", price_per_sqft: 140, address: "2 Two St, Boise, ID" }),
+    comp({ id: "r1", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5, address: "3 Rent Rd, Boise, ID" }),
+    comp({ id: "o1", property_type: "Office", price_per_sqft: 250, address: "4 Office Ave, Boise, ID" }),
+  ];
+  const { doc } = await runPage(comps, null, {});
+  const tray = () => doc.getElementById("setTray");
+  assert.match(tray().innerHTML, /Build a comp set/, "an empty set says how to fill it");
+  assert.equal(tray().className, "vd-tray");
+
+  tick_(doc, "s1", true); tick_(doc, "s2", true);
+  assert.equal(tray().className, "vd-tray on");
+  assert.match(tray().innerHTML, /2 comps in your set/);
+  assert.match(tray().innerHTML, /sales median \$120\/SF \(range \$100–\$140\)/);
+
+  tick_(doc, "r1", true);
+  assert.match(tray().innerHTML, /sales median \$120\/SF/, "a lease joining the set does not move the sales median");
+  assert.match(tray().innerHTML, /lease median \$9\.50\/SF\/yr/, "and is summarised on its own line");
+
+  tick_(doc, "o1", true);
+  assert.match(tray().innerHTML, /across 2 property types, so no single \$\/SF/, "office and industrial are not one median");
+
+  tick_(doc, "o1", false); tick_(doc, "r1", false); tick_(doc, "s2", false); tick_(doc, "s1", false);
+  assert.match(tray().innerHTML, /Build a comp set/);
+});
+
+test("the comp set's Publish and Share go through the same confirm as the filter row's", () => {
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  assert.match(js, /\$\("pubAll"\)\.addEventListener\("click",function\(\)\{ publishList\(pubCandidates,\$\("pubAll"\)\); \}\);/);
+  assert.match(js, /function shareAllWithFirm\(\)\{ shareListWithFirm\(firmCandidates,\$\("firmAll"\)\); \}/);
+  assert.match(js, /if\(b\.id==="setPub"\)\{ publishList\(/, "the set publishes through publishList");
+  assert.match(js, /if\(b\.id==="setFirm"\)\{ shareListWithFirm\(/, "the set shares through shareListWithFirm");
+  // One confirm each, and neither route is called from anywhere else.
+  assert.equal((js.match(/"\/api\/vault\/publish-many"/g) || []).length, 1);
+  assert.equal((js.match(/"\/api\/vault\/firm-many"/g) || []).length, 1);
+});
+
+test("the comp sheet is the set on the broker's letterhead, without their notes", async () => {
+  const comps = [comp({ id: "s1", notes: "Buyer was the tenant, do not share", address: "9 Sheet St, Boise, ID" })];
+  const { doc } = await runPage(comps, null, {});
+  tick_(doc, "s1", true);
+  doc.getElementById("setTray").fire("click", { target: { closest: () => ({ id: "setSheet" }) } });
+  await tick();
+  const sheet = doc.getElementById("compSheet").innerHTML;
+  assert.match(sheet, /9 Sheet St/);
+  assert.match(sheet, /Comparable transactions/);
+  assert.match(sheet, /not an appraisal/, "the sheet carries the automated-estimate rule's line");
+  assert.match(sheet, /Prepared with CompNinja/, "co-branded, never white-label");
+  assert.doesNotMatch(sheet, /do not share/, "a note is written for the broker, not for the client the sheet goes to");
+});
+
+test("the set's CSV writes a would-be formula as text", () => {
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  const src = js.match(/function setCsvCell\(v\)\{[\s\S]*?\n  \}/);
+  assert.ok(src, "setCsvCell moved");
+  const cell = new Function(src[0] + "; return setCsvCell;")();
+  assert.equal(cell("=HYPERLINK(1)"), "'=HYPERLINK(1)");
+  assert.equal(cell("+1"), "'+1");
+  assert.equal(cell("12 Main St, Boise"), '"12 Main St, Boise"');
+  assert.equal(cell('say "hi"'), '"say ""hi"""');
+  assert.equal(cell(1250000), "1250000");
+  assert.equal(cell(null), "");
 });

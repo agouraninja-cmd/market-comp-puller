@@ -4067,6 +4067,49 @@ Browser (index.html)  --POST /api/comps-->  server.js  -->  Anthropic Messages A
     alone: `MARKET_CSS` names Inter in `body{}` and no server-rendered page
     fetches it, so without that link the fold would silently have restyled
     the page brokers use daily.
+  - **The deal desk (2026-09-25; the owner's pick of the redesign drafts at
+    https://claude.ai/artifact/Mw9KrzNpaLygnJ3azF1cYK: Draft C with Draft B's
+    map and comp set).** The page now reads This week → Your pipeline → Your
+    book (the privacy ledger under its rule) → properties, watchlist,
+    contributions. Everything added is DRAWING over reads the page already
+    made, and every control that changes something is an existing one — hold
+    both. Six rules, all in `test/vault-page.test.js`'s last block:
+    - **This week (`#weekSec`, in `VAULT_DECKS`) has no route.** Owner
+      requests come from `/api/broker/leads`, delivered BOVs from
+      `/api/broker/bovs`, and leases ending within a year from the book
+      (`leaseKey`: the option notice date when it is still ahead of the
+      expiry, else the expiry). A read that failed shows a dash and its
+      error, never a zero — the pipeline's own rule.
+    - **The board and the list are one section's two views** (`#pipeSec`
+      carries `vd-list`; `renderPipeline` draws both from the same rows).
+      Every card control is the table's own — `data-intro`, the stage select
+      built by `bovSelect`, `data-bovdel` — caught by the same
+      document-level handlers, so the two views cannot act differently.
+    - **The book's Map and Table draw the same `view()`**: `render()` calls
+      `renderBookMap(rows)` beside the table, so the filter row scopes both
+      identically. The view class lives on `#bookViews`, because
+      `applyFirstRun` writes `#compsSec`'s whole className. The spreadsheet
+      belongs to Table: `render()` moves there whenever `sheetMode` is on.
+    - **The map never geocodes.** Pins come only from `lat`/`lng` the book
+      already holds (`hasLoc`); a comp without them stays in the list and
+      `#bmNoLoc` says how many. Leaflet and CNBASE arrive through
+      marketShell's `head` from `LEAFLET_HEAD` and `BASEMAP_JS` in the /vault
+      route, never a copy in this file (`test/vault-shell.test.js`).
+    - **The comp set is memory only** and summarises by the book's rules:
+      sales and leases apart, no single figure across property types
+      (`setSummary` over `psfStats`/`rentStats`). Its Publish and Share are
+      `publishList` and `shareListWithFirm` — the filter row's buttons call
+      the same two functions, so there is still one confirm per route.
+    - **The comp sheet and the set's CSV are files for the broker**, the
+      whole-book CSV's class of exit. The sheet (printed through
+      `body.vd-printing`, which only matters in print media) carries the
+      saved report branding (own, else the firm's), the "not an appraisal"
+      line and "Prepared with CompNinja", and **never the notes** — a note is
+      written for the broker, and the sheet is what they hand a client. The
+      CSV guards formula cells like the server's export.
+    Not built from Draft C: the properties and watchlist side by side (the
+    properties table needs its full width), and saving a comp set onto a BOV
+    (that would be a migration).
   - **TWO DECKS, not ten peer sections** (Vault Direction U, approved and
     shipped 2026-08-10; card `vault/direction-u-two-decks.html`). The page is
     two products sharing one scroll, so it carries exactly two deck rules —

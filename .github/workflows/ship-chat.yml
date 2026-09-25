@@ -1,0 +1,146 @@
+# The nightly "who shipped what" post to the team's Google Chat space: a card
+# with Jacob's, Owen's and Chuck's commits for the day that just ended and a
+# line chart of the current 14-day period. The rules (who gets credit, which
+# day a merge belongs to, when the chart resets) live in scripts/ship-chat.js
+# and are tested in test/ship-chat.test.js.
+#
+# Midnight in Boise, every night. GitHub cron is UTC and Boise moves an hour
+# twice a year, so this fires at BOTH candidate hours and the script posts
+# from the one that matches the season — one post a night, all year, which
+# the test suite checks for every night of two years. Scheduled Actions are
+# often late; the script reports "the Boise day it was six hours ago", so a
+# late start still reports the right day.
+#
+# NEEDS ONE REPOSITORY SECRET, GOOGLE_CHAT_WEBHOOK_URL — the incoming webhook
+# made in the Chat space (space name > Apps & integrations > Webhooks). It
+# fails loudly without it rather than skipping quietly, the permit sweep's
+# rule: a scheduled job that passes while doing nothing is a post that
+# silently stopped. The PR counts need nothing extra; the job's own token
+# reads them.
+#
+# A Chat card can only show a picture that lives at a public https URL, so
+# the PNG is pushed to the `ship-charts` branch and linked from there. That
+# branch is ONE parentless commit, force-pushed every night, holding the
+# newest 60 pictures — so it never grows history and never bloats a clone.
+# Never merge it. If hosting fails, the post still goes out with the numbers
+# as text.
+#
+# "Run workflow" takes a day to post and a dry-run switch that builds the
+# card and keeps it as a run artifact without hosting or posting anything.
+name: Ship chat
+
+on:
+  schedule:
+    - cron: "7 6 * * *" # 00:07 in Boise on daylight time (MDT)
+    - cron: "7 7 * * *" # 00:07 in Boise on standard time (MST)
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "Day to post, YYYY-MM-DD (blank = the day that just ended)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build the card only: no hosting, no post"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write # push the picture to the ship-charts branch
+  pull-requests: read
+
+concurrency:
+  group: ship-chat
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Count the day and draw the card
+        id: build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SHIP_SCHEDULE: ${{ github.event.schedule }}
+          DAY: ${{ inputs.day }}
+        run: |
+          if [ -n "$DAY" ]; then
+            node scripts/ship-chat.js build --out out --day "$DAY"
+          else
+            node scripts/ship-chat.js build --out out
+          fi
+
+      - name: Keep the card with the run
+        if: steps.build.outputs.post == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ship-card
+          path: out/
+          retention-days: 14
+
+      - name: Check the webhook secret
+        if: steps.build.outputs.post == 'true' && !inputs.dry_run
+        env:
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+        run: |
+          if [ -z "$GOOGLE_CHAT_WEBHOOK_URL" ]; then
+            echo "::error::The GOOGLE_CHAT_WEBHOOK_URL repository secret is not set, so there is nowhere to post. Make an incoming webhook in the Chat space and add it under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Host the picture on the ship-charts branch
+        id: host
+        if: steps.build.outputs.post == 'true' && !inputs.dry_run
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAY_OUT: ${{ steps.build.outputs.day }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          name="${DAY_OUT}-${GITHUB_RUN_ID}.png"
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          dir="$(mktemp -d)"
+          if git ls-remote --exit-code --heads "$remote" ship-charts >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch ship-charts "$remote" "$dir"
+          else
+            git init -q "$dir"
+          fi
+          cp out/card.png "$dir/$name"
+          cd "$dir"
+          ls -1 -- *.png | sort | head -n -60 | xargs -r rm -f --
+          printf '%s\n' "# ship-charts" "" \
+            "Pictures for the nightly Google Chat post (.github/workflows/ship-chat.yml on main)." \
+            "Force-pushed as one parentless commit every night, keeping the newest 60. Never merge this branch." > README.md
+          git add -A
+          commit="$(git commit-tree "$(git write-tree)" -m "Ship charts through ${DAY_OUT}")"
+          git push -q -f "$remote" "${commit}:refs/heads/ship-charts"
+          url="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/ship-charts/${name}"
+          for i in $(seq 1 12); do
+            if curl -fsI "$url" >/dev/null; then
+              echo "url=$url" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::The picture never appeared at $url; posting the numbers as text instead."
+
+      - name: Post to Google Chat
+        if: steps.build.outputs.post == 'true' && !inputs.dry_run
+        env:
+          GOOGLE_CHAT_WEBHOOK_URL: ${{ secrets.GOOGLE_CHAT_WEBHOOK_URL }}
+          IMAGE_URL: ${{ steps.host.outputs.url }}
+        run: |
+          if [ -n "$IMAGE_URL" ]; then
+            node scripts/ship-chat.js post --out out --image-url "$IMAGE_URL"
+          else
+            node scripts/ship-chat.js post --out out
+          fi

@@ -4273,5 +4273,11 @@
     "type": "fix",
     "title": "The Workspace greeting changes at noon without a refresh",
     "details": "The banner greeting was written once, when the Workspace loaded, so a tab opened in the morning still said “Good morning” all afternoon. It now switches to “Good afternoon” at noon and “Good evening” at 5pm on its own, and the date line rolls over at midnight. A tab you come back to after it sat in the background, or a laptop waking from sleep, catches up the moment it is on screen again."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
+    "title": "A nightly “who shipped what” card in the team's Google Chat",
+    "details": "Every night at midnight Boise time, a GitHub Action posts a card to the team's Google Chat space: Jacob's, Owen's and Chuck's commits for the day that just ended, and a line chart of each person's commits per day across a 14-day period that starts over every other Monday. Credit goes to whoever opened the PR (each of us commits under several names), merges from main count for nothing, and a merge belongs to the Boise day it happened on. It needs one repository secret, GOOGLE_CHAT_WEBHOOK_URL."
   }
 ]

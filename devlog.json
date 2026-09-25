@@ -4249,5 +4249,11 @@
     "type": "improvement",
     "title": "Workspace header drops its Run a report button",
     "details": "The red Run a report button in the top right of the workspace is gone. It led to the same place as the Comp report row in the sidebar and the red button on every other page, so the workspace header is now just its heading."
+  },
+  {
+    "date": "2026-09-24",
+    "type": "improvement",
+    "title": "Home page: plain wording instead of \"comp book\" talk",
+    "details": "The owner found the book language on the home page quirky. The Data storage column, the For firms heading and paragraph, and the first two steps now say what the vault does in plain words: keep your firm’s closed deals in one private vault, import the comps you already have, stored in a private vault, and your firm’s closed deals included in every report. The \"not eleven spreadsheets\" line and \"214 deals are in\" went with it."
   }
 ]

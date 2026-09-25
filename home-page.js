@@ -330,12 +330,12 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmdrv"><span class="${cls}">${mark}</span><span>${esc(text)}</span></div>`).join("");
 
   const steps = [
-    ["I. Upload", "The book you already keep",
-     "A CSV out of your own system, a comp sheet as a PDF, or a screenshot. Confirm the column " +
-     "mapping once and 214 deals are in."],
-    ["II. Store", "It becomes your vault",
-     "Your closed deals appear in your own reports, badged as yours, beside public records and " +
-     "verified submissions. Nobody else sees them."],
+    ["I. Upload", "Import the comps you already have",
+     "Upload a CSV or Excel file from your own system, a PDF comp sheet, or a screenshot. Match " +
+     "the columns once and your deals are imported."],
+    ["II. Store", "Stored in a private vault",
+     "Your closed deals appear in your own reports, labeled as yours, alongside public records " +
+     "and verified submissions. No one else can see them."],
     ["III. Share", "Ask a colleague directly",
      "Message anyone at the firm from inside a report: request a comp on an address, answer with " +
      "one from your vault, and the thread stays attached to that property. Sharing is per comp, " +
@@ -372,9 +372,8 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<div class="hmcol">` +
     `<div class="hmeye">Enterprise software for commercial real estate</div>` +
     `<div class="hmtwo">` +
-    `<div><h1>Data storage</h1><p>Your firm’s comp book in one private vault, not eleven ` +
-    `spreadsheets. Upload once and your closed deals sit inside every report you run, badged ` +
-    `as yours.</p></div>` +
+    `<div><h1>Data storage</h1><p>Keep all of your firm’s closed deals in one private vault. ` +
+    `Upload them once and they appear in every report you run, labeled as yours.</p></div>` +
     `<div><h2>Research</h2><p>A cited comp report on any commercial address in about a minute. ` +
     `Public records, listings and verified broker submissions, with the source disclosed on ` +
     `every line.</p></div>` +
@@ -451,9 +450,10 @@ function renderHomePageBody({ signedIn = false, pricing = {}, photo = "", photoA
     `<section class="hmband wash hmfirms"><div class="hmcol">` +
     `<div class="hmfhead">` +
     `<div class="hmeye">For firms &middot; Pro version</div>` +
-    `<h2 class="hmh">Your shop’s comp book, working inside every report.</h2>` +
-    `<p>Brokerage and development shops run on deals they closed themselves. Upload that book ` +
-    `once and it becomes a private vault: yours on every report, shared only where you say so.</p>` +
+    `<h2 class="hmh">Your firm’s closed deals, included in every report.</h2>` +
+    `<p>Brokerage and development firms rely on the deals they have closed. Upload them once ` +
+    `and they are stored in a private vault that appears in your reports and is shared only when ` +
+    `you choose.</p>` +
     `</div>` +
     `<div class="hmmesh hmsteps">${steps}</div>` +
     `<div class="hmvault">` +

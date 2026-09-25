@@ -409,6 +409,27 @@ editing it or trusting its output:
 Pure helpers are tested in `test/shot.test.js`; requiring the module starts
 nothing.
 
+### The nightly shipped post (Google Chat)
+
+`.github/workflows/ship-chat.yml` posts a card to the team's Google Chat
+space at midnight Boise time: Jacob's, Owen's and Chuck's commits for the day
+that just ended, over a line chart of the current 14-day period (fixed periods
+anchored on Monday 2026-09-14, so it starts over every other Monday). Rules in
+**`scripts/ship-chat.js`**, tested in `test/ship-chat.test.js`; `node
+scripts/ship-chat.js build --out DIR --day YYYY-MM-DD` renders any day's card
+locally with the `gh` sign-in you already have. Three counting rules, each
+there because the obvious version is wrong: credit goes to the **PR's author
+login** (every one of us commits under several names, and cloud sessions
+commit as "Claude"); a person's count is their PRs' **non-merge commits**, never
+commits on main (Owen squash-merges, the owner merge-commits); and a day is a
+**Boise day** (most merges land 01:00–06:00 UTC). The cron fires at both
+candidate UTC hours and the script posts from the one matching the season; the
+test walks two years of nights to hold that to one post each. Needs the
+`GOOGLE_CHAT_WEBHOOK_URL` repository secret and fails loudly without it. The
+PNG is hosted on the **`ship-charts` branch** — one parentless commit,
+force-pushed nightly, newest 60 pictures. Never merge that branch. Adding a
+person is one row in `PEOPLE`.
+
 ## Configuration (environment / `.env`)
 
 `server.js` has a tiny built-in `.env` loader, so a local `.env` works without any

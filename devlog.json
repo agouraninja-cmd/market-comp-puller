@@ -4267,5 +4267,11 @@
     "type": "improvement",
     "title": "The Workspace opens on a picture of your firm's city",
     "details": "The owner's pick (Draft C) from three redesign drafts, because the Workspace read as bland and worst when empty. It now opens on a banner: your firm's home city's photograph when it has one (the same licensed, credited photos the market pages use) and a drawn contour map when it does not, with a greeting by first name, one line on what needs you, and the markets on your board. The four figures sit as cards on the banner's edge, with icons, and zeros fade back. Empty sections show a faint preview of the rows they will hold with the one next step on top, property types are coloured tags, and a member in no firm gets three start cards. Same sections and links; dark mode and phone included."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "feature",
+    "title": "A nightly “who shipped what” card in the team's Google Chat",
+    "details": "Every night at midnight Boise time, a GitHub Action posts a card to the team's Google Chat space: Jacob's, Owen's and Chuck's commits for the day that just ended, and a line chart of each person's commits per day across a 14-day period that starts over every other Monday. Credit goes to whoever opened the PR (each of us commits under several names), merges from main count for nothing, and a merge belongs to the Boise day it happened on. It needs one repository secret, GOOGLE_CHAT_WEBHOOK_URL."
   }
 ]

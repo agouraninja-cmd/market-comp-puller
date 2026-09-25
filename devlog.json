@@ -4255,5 +4255,11 @@
     "type": "improvement",
     "title": "Home page: plain wording instead of \"comp book\" talk",
     "details": "The owner found the book language on the home page quirky. The Data storage column, the For firms heading and paragraph, and the first two steps now say what the vault does in plain words: keep your firm’s closed deals in one private vault, import the comps you already have, stored in a private vault, and your firm’s closed deals included in every report. The \"not eleven spreadsheets\" line and \"214 deals are in\" went with it."
+  },
+  {
+    "date": "2026-09-24",
+    "type": "improvement",
+    "title": "The Workspace is two columns, and opens on what needs you",
+    "details": "The owner's pick (Draft 1) from the workspace redesign canvas. The Workspace was one 3,300-pixel column where every section had the same weight. It now opens with a Needs you card — lease notices and expiries in the next 90 days and unread conversations, each with its next step (Open lease, Reply) — beside the four-figure strip, then two columns: the firm's record on the left (Buildings, the firm shelf, your shared reports) and what moves day to day on the right as cards (Conversations, a new Critical dates card, the deal board, your permits, contacts). Buildings is a table with Type, Size, Built, Shelf (how many shelf reports name the building) and Next date columns, and Remove moved behind each row's ⋯ menu instead of being the row's only visible action. The header names your firm and shop and has one search box that finds buildings, shelf reports and contacts from what the page already loaded. Below 1180px the columns stack; on a phone each building row reads as its address over one line of figures. The page is about 29% shorter on a seeded firm."
   }
 ]

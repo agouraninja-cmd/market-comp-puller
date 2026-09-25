@@ -556,15 +556,20 @@ function loadBuildings(opts) {
   const ctx = load(BUILDINGS_RE,
     "this.render = renderBuildings; this.door = buildingDoor; this.onBoard = buildingOnBoard;" +
     " this.list = () => firmBuildings; this.setFirmKnown = (v) => { __firmKnown = v; };" +
-    " this.setOpen = setBuildingAddOpen;",
+    " this.setOpen = setBuildingAddOpen;" +
+    // The table's two borrowed columns (Draft 1): the shelf count and the
+    // next lease date, read from state other sections parsed.
+    " this.setCritical = (c) => { deskCritical = c; }; this.decorate = decorateBuildingRows;",
     // myFirm() answers null until renderFirm has resolved the membership on a
     // real page; __firmKnown lets a test model that cold-load beat.
     // COLLAPSE_AT is the desk's own threshold (index.html:~11860), stubbed
-    // at the value the source pins below.
+    // at the value the source pins below. firmShelfItems is the shelf's own
+    // module-level list, declared above this slice on the real page.
     "let currentUser = __user; let __firmKnown = true; function myFirm() { return __firmKnown ? __firm : null; }\n" +
-    "const COLLAPSE_AT = 8;",
+    "const COLLAPSE_AT = 8; let firmShelfItems = __shelf;",
     { fetch, __user: o.user === undefined ? { email: "brad@colliers.com" } : o.user,
-      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm });
+      __firm: o.firm === undefined ? { id: "o1", name: "Colliers Boise" } : o.firm,
+      __shelf: o.shelf || [] });
   ctx.fetchLog = fetch.log;
   return ctx;
 }
@@ -586,11 +591,63 @@ test("the buildings section states the server's count for the whole set and attr
   assert.equal(ctx.dom.hidden("buildingsTruncated"), true);
   const text = ctx.dom.text("buildingRows");
   assert.match(text, /500 Warehouse Way, Boise, ID/);
-  assert.match(text, /Industrial · 40,000 SF · built 1994 · added by Mike/);
   assert.match(text, /7 Linder Rd, Meridian, ID/);
   assert.match(text, /added by you/, "your own row reads 'you', the shelf's rule");
   assert.doesNotMatch(text, /added by Brad/);
+  // A table since Draft 1: each figure is its own cell, in column order.
+  const cells = (row) => row.children.filter((c) => /\bdk-bc\b/.test(c.className)).map((c) => c.textContent);
+  const [first, second] = ctx.dom.el("buildingRows").children;
+  assert.equal(first.children[1].textContent, "added by Mike");
+  assert.deepEqual(cells(first), ["Industrial", "40,000 SF", "1994", "—", "—"]);
+  assert.deepEqual(cells(second), ["Industrial", "—", "—", "—", "—"], "a blank figure is a dash, never a zero");
+  assert.equal(ctx.dom.hidden("buildingsHead"), false, "the column header shows with the rows");
   assert.equal(buttons(ctx.dom.el("buildingRows")).length, 2, "a Remove per row");
+});
+
+// Draft 1 (2026-09-24): the one destructive verb moved behind ⋯, and the
+// two columns Buildings cannot fill itself come from state other sections
+// already parsed — never a fetch of their own.
+test("Remove sits in the row's menu, beside a way to the sheet, not on the row", async () => {
+  const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
+  await ctx.render();
+  const row = ctx.dom.el("buildingRows").children[0];
+  const menu = row.children[row.children.length - 1];
+  assert.equal(menu.tagName, "DETAILS", "the last cell is the ⋯ menu");
+  assert.equal(menu.className, "dk-menu");
+  assert.match(menu.children[0].getAttribute("aria-label"), /^More for 500 Warehouse Way/, "the knob names its row for a screen reader");
+  const pop = menu.children[1];
+  assert.equal(pop.children[0].href, "/building/b1");
+  assert.equal(pop.children[1].tagName, "BUTTON");
+  assert.equal(pop.children[1].textContent, "Remove from the board");
+  assert.ok(!row.children.some((c) => c.tagName === "BUTTON"), "no button sits on the row itself");
+});
+
+test("the shelf and next-date columns are read from the shelf and the leases, and can only under-count", async () => {
+  const ctx = loadBuildings({
+    body: { summary: "2 buildings", truncated: false, buildings: [
+      BLDG({}), BLDG({ id: "b2", address: "7 Linder Rd, Meridian, ID" })] },
+    shelf: [
+      { address: "500 WAREHOUSE WAY, Boise, ID " }, { address: "500 Warehouse Way, Boise, ID" },
+      { address: "500 Warehouse Way Boise ID" },   // typed another way: missed, never guessed
+    ],
+  });
+  await ctx.render();
+  const cell = (i, cls) => ctx.dom.el("buildingRows").children[i].children.find((c) => c.className.includes("dk-bc-" + cls));
+  assert.equal(cell(0, "shelf").textContent, "2 reports", "the exact address, whatever its case or padding");
+  assert.equal(cell(1, "shelf").textContent, "—");
+  assert.equal(cell(0, "next").textContent, "—", "no leases read yet");
+  ctx.setCritical([
+    { buildingId: "b2", kind: "notice", date: "2026-11-04", days: 41, tenant: "Acme" },
+    { buildingId: "b2", kind: "expiry", date: "2027-02-01", days: 130, tenant: "Acme" },
+    { buildingId: "b1", kind: "expiry", date: "2027-07-21", days: 300, tenant: "Dental" },
+  ]);
+  ctx.decorate();
+  assert.match(cell(1, "next").textContent, /^Notice Nov 4/, "the soonest date is the next date");
+  assert.ok(cell(1, "next").classList.contains("due"), "inside ninety days it is the red figure");
+  assert.match(cell(0, "next").textContent, new RegExp("^Expires Jul 21" + (new Date().getUTCFullYear() === 2027 ? "$" : ", 2027$")),
+    "a date in another year says the year");
+  assert.ok(!cell(0, "next").classList.contains("due"));
+  assert.equal(ctx.fetchLog.length, 1, "one read of its own route, and nothing else");
 });
 
 // The owner's overflow rule (slice 4): eight rows, then one control.
@@ -641,10 +698,11 @@ test("buildings, conversations, the shelf and contacts draw one row family", asy
   const ctx = loadBuildings({ body: { summary: "1 building", truncated: false, buildings: [BLDG({})] } });
   await ctx.render();
   const row = ctx.dom.el("buildingRows").children[0];
-  assert.equal(row.className, "dk-row");
+  // Buildings is a table since Draft 1 (2026-09-24), but still one of the
+  // family: a .dk-row, flat, the Georgia address first and the meta second.
+  assert.equal(row.className, "dk-row dk-brow");
   assert.equal(row.children[0].className, "dk-row-name dk-addr", "the address is the name line, in Georgia");
-  assert.equal(row.children[1].className, "dk-row-meta", "the meta drops under the name by flex order");
-  assert.equal(row.children[2].className, "dk-row-act", "Remove is a quiet word, not an underlined link");
+  assert.equal(row.children[1].className, "dk-row-meta", "the meta sits under the name");
   // The shelf and the contacts, by source: same three classes.
   for (const fn of ["applyFirmShelfFilter", "contactRow"]) {
     const at = html.indexOf(`function ${fn}(`);
@@ -1636,4 +1694,183 @@ test("the empty state is wired: first in the deck, drawn after the firm read, hi
   assert.ok(fn.includes('getElementById("deskFirmEmpty").classList.add("hidden")'), "hideAll hides it with the rest of the firm surfaces");
   assert.ok(html.includes('document.getElementById("deskFirmEmptyBtn").addEventListener("click", () => {\n    if (typeof openFirmModal === "function") openFirmModal();'),
     "the one door is the Firm & branding panel, which already knows which state it is showing");
+});
+
+// ---------------------------------------------------------------------------
+// Draft 1 (2026-09-24): the "Needs you" agenda, the dates card, the head's
+// firm line and the find box. All four draw from state other sections have
+// already parsed; none of them fetches.
+// ---------------------------------------------------------------------------
+const DATE_HELPERS_RE = /  function fmtDeskDay\(iso, withYear\) \{[\s\S]*?\n  function leaseWhat\(c\) \{[\s\S]*?\n  \}/;
+const DATES_RE = /  const AGENDA_DAYS = 90;[\s\S]*?\n  function drawDeskHead\(\) \{[\s\S]*?\n  \}/;
+function loadDates(o) {
+  const opts = o || {};
+  const fetch = makeFetch([]);
+  const ctx = load(DATES_RE,
+    "this.draw = drawDeskDates; this.head = drawDeskHead; this.closed = () => __closed;",
+    "let currentUser = __user; function myFirm() { return __firm; }\n" +
+    "let deskCritical = null; let deskThreadsStat = __threads; const DESK_DUE_DAYS = 90; let __closed = 0;\n" +
+    "function decorateBuildingRows() {} function closeDeskFind() { __closed++; }\n" +
+    "function shopCopy(kind) { return kind === 'development' ? { label: 'Development shop' } : { label: 'Broker shop' }; }\n" +
+    html.match(DATE_HELPERS_RE)[0],
+    { fetch, __user: opts.user === undefined ? { email: "brad@colliers.com" } : opts.user,
+      __firm: opts.firm === undefined ? { id: "o1", name: "Foothill Commercial", kind: "broker" } : opts.firm,
+      __threads: opts.threads === undefined ? { total: 0, unread: 0, unreadList: [] } : opts.threads });
+  ctx.fetchLog = fetch.log;
+  // The strip is what the agenda follows; a populated desk has shown it.
+  if (!opts.stripHidden) ctx.dom.el("deskStrip").classList.remove("hidden");
+  return ctx;
+}
+const LEASE = (o) => Object.assign({ buildingId: "b3", address: "3100 S Federal Way, Boise, ID", tenant: "Acme Logistics",
+  suite: "", kind: "notice", date: "2026-11-04", days: 41, leaseExpiry: "2027-02-01" }, o);
+
+test("Needs you lists the lease dates inside ninety days, then the unread conversations, each with its next step", () => {
+  const ctx = loadDates({ threads: { total: 3, unread: 1, unreadList: [{ id: "t9", label: "Mike Tran", unread: 2, preview: "Rent roll is in" }] } });
+  ctx.draw([LEASE({}), LEASE({ buildingId: "b6", tenant: "Treasure Valley Dental", kind: "expiry", date: "2027-07-21", days: 300 })]);
+  assert.equal(ctx.dom.hidden("deskAgenda"), false);
+  const rows = ctx.dom.el("deskAgendaRows").children;
+  assert.equal(rows.length, 2, "the 300-day expiry is a critical date, not something that needs you this quarter");
+  assert.match(rows[0].textContent, /Option notice · Acme Logistics/);
+  assert.match(rows[0].textContent, /in 41 days/);
+  assert.match(rows[0].textContent, /lease expires Feb 1, 2027/, "a notice names the expiry it protects");
+  assert.equal(rows[0].children[2].href, "/building/b3", "the lease lives on the building's sheet");
+  assert.match(rows[1].textContent, /2 new.*Mike Tran.*Rent roll is in/);
+  assert.equal(rows[1].children[2].href, "/messages?t=t9");
+  assert.equal(ctx.dom.text("deskAgendaStats"), "2 items");
+  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true);
+  assert.equal(ctx.dom.hidden("deskAgendaNote"), true);
+  assert.equal(ctx.fetchLog.length, 0, "no read of its own");
+});
+
+test("Needs you says 'nothing' only when both of its reads came back", () => {
+  let ctx = loadDates({});
+  ctx.draw([]);
+  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), false, "both read, nothing due, nothing unread: say so");
+  assert.match(ctx.dom.text("deskAgendaEmpty"), /^Nothing needs you right now/);
+  ctx = loadDates({});
+  ctx.draw(null);
+  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true, "a failed leases read must not read as 'nothing is due'");
+  assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read lease dates/);
+  ctx = loadDates({ threads: null });
+  ctx.draw([]);
+  assert.equal(ctx.dom.hidden("deskAgendaEmpty"), true);
+  assert.match(ctx.dom.text("deskAgendaNote"), /Couldn't read conversations/);
+});
+
+test("Needs you follows the strip: no firm, a signed-out page or a hidden strip means no agenda", () => {
+  for (const o of [{ firm: null }, { user: null }, { stripHidden: true }]) {
+    const ctx = loadDates(o);
+    ctx.dom.el("deskAgenda").classList.remove("hidden"); // a stale reveal
+    ctx.draw([LEASE({})]);
+    assert.equal(ctx.dom.hidden("deskAgenda"), true, JSON.stringify(o));
+  }
+});
+
+test("the dates card lists the next twelve months, hides on a failed read, and says so when there are none", () => {
+  let ctx = loadDates({});
+  ctx.draw([LEASE({}), LEASE({ buildingId: "", tenant: "", kind: "expiry", date: "2027-07-21", days: 300 })]);
+  assert.equal(ctx.dom.hidden("deskCritical"), false);
+  const rows = ctx.dom.el("deskCriticalRows").children;
+  assert.equal(rows.length, 2);
+  assert.match(rows[0].textContent, /Nov 4.*2026.*Option notice · Acme Logistics/);
+  assert.ok(rows[0].children[0].className.includes("due"), "inside ninety days it is red");
+  assert.equal(rows[1].children[1].children[0].tagName, "SPAN", "no building to name, no broken link");
+  assert.match(rows[1].textContent, /Lease expires · A lease/);
+  ctx = loadDates({});
+  ctx.draw(null);
+  assert.equal(ctx.dom.hidden("deskCritical"), true, "'could not read' is not 'nothing due'");
+  ctx = loadDates({});
+  ctx.draw([]);
+  assert.equal(ctx.dom.hidden("deskCritical"), false);
+  assert.equal(ctx.dom.hidden("deskCriticalEmpty"), false);
+});
+
+test("the head names the firm and its shop, and shows the find box only for a member of a firm", () => {
+  let ctx = loadDates({ firm: { id: "o1", name: "Foothill Commercial", kind: "development" } });
+  ctx.head();
+  assert.equal(ctx.dom.text("deskFirmLine"), "Foothill Commercial · Development shop");
+  assert.equal(ctx.dom.hidden("deskFirmLine"), false);
+  assert.equal(ctx.dom.hidden("deskFindWrap"), false);
+  ctx = loadDates({ firm: null });
+  ctx.head();
+  assert.equal(ctx.dom.hidden("deskFirmLine"), true);
+  assert.equal(ctx.dom.hidden("deskFindWrap"), true);
+  assert.equal(ctx.closed(), 1, "a find box that goes away takes its open results with it");
+});
+
+const FIND_RE = /  const DESK_FIND_EACH = 5;[\s\S]*?\n  function renderDeskFind\(\) \{[\s\S]*?\n  \}/;
+function loadFind(o) {
+  return load(FIND_RE,
+    "this.find = renderDeskFind; this.match = deskFindMatches;",
+    "let firmBuildings = __b; let firmShelfItems = __s; let firmContacts = __c; let contactsExpanded = false;",
+    { fetch: makeFetch([]), __b: o.buildings || [], __s: o.shelf || [], __c: o.contacts || [] });
+}
+
+test("the find box searches the whole board, shelf and contact list in the browser, all terms together", () => {
+  const buildings = Array.from({ length: 12 }, (_, i) => BLDG({ id: "b" + i, address: `${(i + 1) * 100} Federal Way, Boise, ID` }));
+  const ctx = loadFind({
+    buildings,
+    shelf: [ITEM({ address: "3100 S Federal Way, Boise, ID", sharedBy: "Mike Tran", url: "/r/x1" })],
+    contacts: [{ id: "c1", name: "Dana Wu", company: "Acme Logistics", email: "dana@acme.com" },
+               { id: "c2", name: "Sam Ortiz", company: "Idaho Cold Storage", buildingId: "b2" }],
+  });
+  assert.equal(ctx.match("f"), null, "one character is not a search");
+  const m = ctx.match("federal way");
+  assert.equal(m.buildings.length, 12, "the whole board, not the eight on screen");
+  assert.equal(m.reports.length, 1);
+  assert.equal(ctx.match("acme dana").contacts.length, 1, "terms AND together");
+  assert.equal(ctx.match("acme sam").contacts.length, 0);
+  ctx.dom.el("deskFind").value = "federal";
+  ctx.find();
+  assert.equal(ctx.dom.hidden("deskFindResults"), false);
+  assert.equal(ctx.dom.el("deskFind").getAttribute("aria-expanded"), "true");
+  const text = ctx.dom.text("deskFindResults");
+  assert.match(text, /Buildings/);
+  assert.match(text, /and 7 more/, "five of each, and the rest counted rather than dropped silently");
+  assert.match(text, /Reports on the shelf/);
+  ctx.dom.el("deskFind").value = "cold storage";
+  ctx.find();
+  const hit = ctx.dom.el("deskFindResults").children.find((c) => c.className === "dk-find-hit");
+  assert.equal(hit.href, "/building/b2", "a contact attached to a building opens that building's sheet");
+  ctx.dom.el("deskFind").value = "zzzz";
+  ctx.find();
+  assert.match(ctx.dom.text("deskFindResults"), /Nothing in your workspace matches/);
+});
+
+test("the new desk pieces reach only ids that exist, and are hidden with the firm sections", () => {
+  const asked = new Set();
+  const dates = loadDates({ threads: { total: 1, unread: 1, unreadList: [{ id: "t", label: "M", unread: 1, preview: "p" }] } });
+  dates.draw([LEASE({})]);
+  dates.head();
+  dates.dom.asked.forEach((id) => asked.add(id));
+  const find = loadFind({ buildings: [BLDG({})] });
+  find.dom.el("deskFind").value = "warehouse";
+  find.find();
+  find.dom.asked.forEach((id) => asked.add(id));
+  for (const id of asked) assert.ok(html.includes(`id="${id}"`), `the desk reads #${id}, which is not in index.html's markup`);
+  const at = html.indexOf("async function renderShares()");
+  const fn = html.slice(at, html.indexOf("\n  }\n", at));
+  for (const id of ["deskAgenda", "deskCritical", "deskFirmLine", "deskFindWrap"]) {
+    assert.ok(fn.includes(`getElementById("${id}").classList.add("hidden")`), `hideAll hides #${id}`);
+  }
+  assert.ok(fn.indexOf("drawDeskDates(await critical)") > fn.indexOf("drawFirmStrip(await critical)"),
+    "the agenda is drawn after the strip, whose verdict it follows");
+});
+
+test("the workspace is two columns of decks, and the top row is not a deck", () => {
+  const main = html.indexOf('class="dk-col dk-main"');
+  const side = html.indexOf('id="deckSide"');
+  assert.ok(main > 0 && side > main, "the record column, then the side column");
+  for (const id of ["deckFirm", "deckSharing"]) {
+    const at = html.indexOf(`id="${id}"`);
+    assert.ok(at > main && at < side, `#${id} sits in the main column`);
+  }
+  for (const id of ["deskThreads", "deskCritical", "deskDealBoard", "deskPermits", "deskContacts"]) {
+    assert.ok(html.indexOf(`id="${id}"`) > side, `#${id} is a card in the side column`);
+  }
+  assert.match(html, /<div class="dk-col dk-side dk-deck" data-deck id="deckSide">/,
+    "the side column is itself a deck, so it hides when every card in it is hidden");
+  const top = html.slice(html.indexOf('<div class="dk-top">'), html.indexOf('id="deskStrip"'));
+  assert.ok(!top.includes("data-deck"), "the top row must never hold a deck open");
+  assert.ok(html.indexOf('id="deskAgenda"') < html.indexOf('id="deskStrip"'), "Needs you reads first");
 });

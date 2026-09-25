@@ -1388,28 +1388,161 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        hardcoded white label on it is white on white. The pair is the same one
        the primary button uses. */
     .db-tab[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-    /* Desk decks (2026-08-21): the vault's Direction-U grouping applied to My
-       Desk — a serif label on a heavy ink rule per product area, so the dozen
-       dk-rule sections read as five shelves instead of one flat stack. A deck
-       whose sections are all hidden is hidden too (refreshDeckVisibility in
-       the script below) — a deck heading over nothing is the stray-rule trap
-       /vault's .deck.hide exists for. */
-    .dk-deck { margin-top: 48px; }
-    .dk-deck-h { display: flex; align-items: baseline; gap: 12px; }
-    .dk-deck-lab { font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 19px; letter-spacing: -.015em; color: var(--ink); white-space: nowrap; }
-    .dk-deck-ln { flex: 1; height: 0; border-top: 2px solid var(--ink); transform: translateY(-5px); }
-    /* First section under a deck heading sits closer than the mt-8 the
-       sections carry between themselves — the heading already separates. */
-    .dk-deck > .dk-deck-h + * { margin-top: 18px; }
+    /* Desk decks (2026-08-21, the vault's Direction-U grouping) carried a
+       serif label on a heavy ink rule each. Since Draft 1 (2026-09-24) they
+       carry no heading of their own: the two columns are the grouping, and
+       each column is a deck. The class stays because refreshDeckVisibility
+       keys on [data-deck] — a deck whose sections are all hidden hides too,
+       which is what lets the main column take the width when the side one
+       has nothing to show. */
+    .dk-deck { margin-top: 0; }
     /* The workspace's stand-in (2026-09-03). Shown ONLY while the first fill
        for an identity is in flight — see renderMyDesk — and swapped for the
-       whole desk in one paint when it lands. Shaped like a deck so the page
-       does not jump when the real one replaces it; .skeleton is the report's
-       own loading treatment, reused rather than copied. */
-    .dk-skel { margin-top: 48px; }
-    .dk-skel .dk-deck-ln { opacity: .25; }
+       whole desk in one paint when it lands. Shaped like the desk (Draft 1:
+       the top row, then two columns) so the page does not jump when the
+       real one replaces it; .skeleton is the report's own loading
+       treatment, reused rather than copied. */
+    .dk-skel { margin-top: 20px; }
+    .dk-skel-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; }
+    .dk-skel-agenda { height: 150px; margin-top: 0; }
+    .dk-skel-top .dk-skel-strip { height: 150px; margin-top: 0; }
+    .dk-skel-cols { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 28px; margin-top: 32px; }
     .dk-skel-lab { display: inline-block; width: 128px; height: 20px; }
     .dk-skel-card { height: 72px; margin-top: 16px; }
+
+    /* ---- The desk, Draft 1 (2026-09-24, the owner's pick from the
+       workspace redesign canvas). Three moves: a top row that says what
+       needs this member beside the firm strip; two columns — the firm's
+       record on the left, what moves day to day as cards on the right —
+       where one 3,300px column gave every section the same weight; and
+       Buildings as a table whose one destructive verb sits behind ⋯.
+       Tokens only, never new Tailwind utilities (the vendored build is
+       purged against this file and drops a class it has not seen). */
+    .dk-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+    .dk-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
+    .dk-title { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 28px; line-height: 1.1; letter-spacing: -.02em; color: var(--ink); }
+    .dk-find { position: relative; display: flex; align-items: center; width: 320px; max-width: 100%; }
+    .dk-find.hidden { display: none; }
+    .dk-find-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+    .dk-find input { width: 100%; height: 38px; box-sizing: border-box; padding: 0 12px 0 33px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); font: inherit; font-size: 13.5px; color: var(--ink); outline: none; }
+    .dk-find input:focus { border-color: var(--ink-3); box-shadow: 0 0 0 3px var(--hair); }
+    .dk-find-res { position: absolute; top: calc(100% + 6px); right: 0; width: 380px; max-width: calc(100vw - 32px); max-height: 440px; overflow-y: auto; z-index: 40; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); box-shadow: 0 14px 30px -10px rgba(15,23,42,.22); padding: 4px 0 6px; text-align: left; }
+    .dk-find-grp { padding: 9px 14px 3px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+    .dk-find-hit { display: block; padding: 7px 14px; color: var(--ink); text-decoration: none; }
+    .dk-find-hit:hover, .dk-find-hit:focus { background: var(--wash); outline: none; }
+    .dk-find-name { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+    .dk-find-meta { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 1px; }
+    .dk-find-more { padding: 3px 14px 6px; font-size: 11.5px; color: var(--ink-3); }
+    .dk-find-none { padding: 10px 14px; font-size: 12.5px; color: var(--ink-mute); }
+
+    .dk-top { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; margin-top: 20px; align-items: stretch; }
+    .dk-top .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+    .dk-top .dk-scell { border-left: 1px solid var(--hair); }
+    .dk-top .dk-scell:nth-child(odd) { border-left: 0; }
+    .dk-top .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
+    /* (0,2,0): .dk-card sets padding later in this block and would win. */
+    .dk-card.dk-agenda { padding: 0; overflow: hidden; box-shadow: var(--lift); }
+    .dk-ag-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px 9px; border-bottom: 1px solid var(--hair); }
+    .dk-ag-t { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 17px; color: var(--ink); }
+    .dk-ag-row { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--hair); }
+    .dk-ag-row:last-child { border-bottom: 0; }
+    .dk-ag-when { flex: 0 0 66px; min-width: 0; }
+    .dk-ag-date { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 16px; line-height: 1.15; color: var(--ink); font-variant-numeric: tabular-nums; }
+    .dk-ag-date.due { color: var(--red); }
+    .dk-ag-sub { display: block; font-size: 11px; color: var(--ink-3); margin-top: 2px; }
+    .dk-ag-body { flex: 1 1 auto; min-width: 0; }
+    .dk-ag-title { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+    .dk-ag-detail { display: block; font-size: 12px; color: var(--ink-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dk-ag-act { flex: 0 0 auto; font-size: 12.5px; font-weight: 600; color: var(--red); text-decoration: none; white-space: nowrap; }
+    .dk-ag-act:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .dk-agenda > .dk-empty, .dk-agenda > .dk-copy { margin: 0; padding: 12px 16px; }
+
+    .dk-cols { display: flex; align-items: flex-start; gap: 28px; margin-top: 32px; }
+    .dk-main { flex: 1.6 1 0; min-width: 0; }
+    .dk-side { flex: 1 1 0; min-width: 0; }
+    /* Sections carry mt-4/mt-8 from before the columns; spacing is set here,
+       as a BOTTOM margin, so a hidden first section leaves no gap above the
+       first one showing. (0,3,0)/(0,2,0) beat the utilities' (0,1,0). */
+    .dk-main .dk-deck > [id] { margin-top: 0; margin-bottom: 36px; }
+    .dk-main .dk-rule { padding-bottom: 6px; }
+    .dk-main .dk-rule > .rd-lab { font-family: Georgia, 'Times New Roman', serif; font-size: 19px; font-weight: 500; letter-spacing: -.01em; text-transform: none; color: var(--ink); }
+    .dk-side > [id] { margin: 0 0 18px; padding: 12px 16px; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); box-shadow: var(--lift); }
+    .dk-side .dk-rule { border-bottom: 1px solid var(--hair); padding-bottom: 8px; margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+    .dk-side .dk-fold .dk-rule { margin: 0; padding-left: 0; padding-right: 0; }
+    .dk-db-split { display: grid; gap: 18px; }
+
+    .dk-crit-row { display: flex; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--hair); }
+    .dk-crit-row:last-child { border-bottom: 0; }
+    .dk-crit-date { flex: 0 0 54px; font-family: Georgia, 'Times New Roman', serif; font-size: 14px; line-height: 1.2; color: var(--ink); }
+    .dk-crit-date.due { color: var(--red); }
+    .dk-crit-year { display: block; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 11px; color: var(--ink-3); }
+    .dk-crit-body { flex: 1 1 auto; min-width: 0; }
+    .dk-crit-what { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+    a.dk-crit-what:hover { text-decoration: underline; text-underline-offset: 2px; }
+    .dk-crit-where { display: block; font-size: 11.5px; color: var(--ink-3); margin-top: 1px; overflow-wrap: anywhere; }
+
+    /* Buildings as a table. The row is still a .dk-row (the family's
+       hairline and hover live there) and still FLAT — name, meta, five
+       cells, the menu — so the tests can index it; the grid places the meta
+       under the name and lets every other cell span both lines. */
+    .dk-btable { container-type: inline-size; }
+    .dk-bhead, .dk-row.dk-brow { display: grid; grid-template-columns: minmax(0, 2.7fr) minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .5fr) minmax(0, .75fr) minmax(0, 1.2fr) 28px; column-gap: 10px; align-items: center; }
+    .dk-bhead.hidden { display: none; }
+    .dk-bhead { padding: 0 0 6px; border-bottom: 1px solid var(--line); font-size: 10px; letter-spacing: .09em; text-transform: uppercase; font-weight: 600; color: var(--ink-3); }
+    .dk-bhead .num { text-align: right; }
+    .dk-row.dk-brow { row-gap: 2px; padding: 9px 0; }
+    .dk-brow > .dk-row-name { grid-column: 1; grid-row: 1; }
+    .dk-brow > .dk-row-meta { grid-column: 1; grid-row: 2; margin-top: 0; }
+    .dk-brow > .dk-bc { grid-row: 1 / span 2; min-width: 0; font-size: 12.5px; color: var(--ink-body); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .dk-brow > .dk-bc.num { text-align: right; }
+    .dk-brow > .dk-bc.empty { color: var(--ink-faint); }
+    .dk-brow > .dk-bc.due { color: var(--red); font-weight: 600; }
+    .dk-brow > .dk-bc-type { grid-column: 2; }
+    .dk-brow > .dk-bc-size { grid-column: 3; }
+    .dk-brow > .dk-bc-built { grid-column: 4; }
+    .dk-brow > .dk-bc-shelf { grid-column: 5; }
+    .dk-brow > .dk-bc-next { grid-column: 6; }
+    .dk-brow > .dk-menu { grid-column: 7; grid-row: 1 / span 2; justify-self: end; }
+    .dk-menu { position: relative; }
+    .dk-menu > summary { list-style: none; cursor: pointer; width: 30px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: var(--ink-3); font-size: 16px; line-height: 1; }
+    .dk-menu > summary::-webkit-details-marker { display: none; }
+    .dk-menu > summary:hover, .dk-menu[open] > summary { background: var(--wash); color: var(--ink); }
+    .dk-menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 176px; padding: 4px 0; border: 1px solid var(--edge); border-radius: 8px; background: var(--card); box-shadow: 0 12px 26px -8px rgba(15,23,42,.22); }
+    .dk-menu-pop > a, .dk-menu-pop > button { display: block; width: 100%; box-sizing: border-box; text-align: left; padding: 7px 12px; font: inherit; font-size: 12.5px; color: var(--ink); background: none; border: 0; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .dk-menu-pop > a:hover, .dk-menu-pop > button:hover { background: var(--wash); color: var(--red); }
+    /* A narrow column (a phone, or a tablet with the rail): the same row as
+       a name line, then the figures as one quiet line, then who added it —
+       what the old row family read, with nothing lost. */
+    @container (max-width: 520px) {
+      .dk-bhead { display: none; }
+      .dk-row.dk-brow { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 0; }
+      .dk-brow > .dk-row-name { order: 1; flex: 1 1 calc(100% - 40px); }
+      .dk-brow > .dk-menu { order: 2; flex: 0 0 auto; align-self: flex-start; }
+      .dk-brow > .dk-bc { order: 3; flex: 0 0 auto; font-size: 11.5px; color: var(--ink-3); text-align: left; }
+      .dk-brow > .dk-bc.num { text-align: left; }
+      .dk-brow > .dk-bc.empty { display: none; }
+      .dk-brow > .dk-bc:not(.empty) ~ .dk-bc:not(.empty)::before { content: "\00a0\00b7\00a0"; color: var(--ink-3); font-weight: 400; }
+      .dk-brow > .dk-bc-built:not(.empty)::before { content: "built "; }
+      .dk-brow > .dk-bc:not(.empty) ~ .dk-bc-built:not(.empty)::before { content: "\00a0\00b7\00a0 built "; }
+      .dk-brow > .dk-row-meta { order: 4; flex-basis: 100%; }
+    }
+    @media (max-width: 1179px) {
+      .dk-cols { display: block; }
+      .dk-top { grid-template-columns: minmax(0, 1fr); }
+      .dk-top .dk-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .dk-top .dk-scell:nth-child(odd) { border-left: 1px solid var(--hair); }
+      .dk-top .dk-scell:first-child { border-left: 0; }
+      .dk-top .dk-scell:nth-child(n+3) { border-top: 0; }
+      .dk-skel-top, .dk-skel-cols { grid-template-columns: minmax(0, 1fr); }
+    }
+    @media (max-width: 640px) {
+      .dk-head-tools { width: 100%; }
+      .dk-find { width: 100%; flex: 1 1 auto; }
+      .dk-top .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dk-top .dk-scell:nth-child(3) { border-left: 0; }
+      .dk-top .dk-scell:nth-child(n+3) { border-top: 1px solid var(--hair); }
+      .dk-ag-detail { white-space: normal; }
+    }
     /* The workspace ledger, promoted a full step (2026-08-29): with the
        workspace leading the page, this strip was its opening statement.
        It went to /vault on 2026-09-01 ("Three Spaces") with the portfolio it
@@ -2791,9 +2924,19 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            the first control on the right had nothing holding them apart and
            ran together as "WORKSPACERun a report". Caught in a phone capture,
            not by reading. -->
-      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b rd-hairline pb-2">
-        <h2 class="font-brand uppercase tracking-wide text-base font-semibold text-[#1A2433]">Workspace</h2>
-        <div class="flex items-center gap-3">
+      <!-- Draft 1 (2026-09-24): the firm's name over a Georgia title, and the
+           workspace's one search box. #deskFirmLine and #deskFindWrap are
+           drawn by drawDeskHead() once the membership is known and hidden
+           with the firm sections, so a member in no firm reads the title
+           alone. The find box searches what the desk ALREADY READ — the
+           board, the shelf, the contact list — in the browser, the shelf's
+           own rule; it never asks the server anything (renderDeskFind). -->
+      <div class="dk-head">
+        <div>
+          <div id="deskFirmLine" class="hidden dk-kicker"></div>
+          <h2 class="dk-title">Workspace</h2>
+        </div>
+        <div class="dk-head-tools flex items-center gap-3">
           <!-- No "Run a report" door here (owner's call, 2026-09-24). From
                2026-09-04 a red #deskRunReport link to /bulk sat on this row;
                it repeated the red CTA and the Comp report row the rail
@@ -2821,6 +2964,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
                works from a hidden container (the panel already opened it from
                the home view). -->
 
+          <div id="deskFindWrap" class="hidden dk-find" role="search">
+            <svg class="dk-find-ico" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="M13 13l4.5 4.5"></path></svg>
+            <input id="deskFind" type="search" autocomplete="off" spellcheck="false" maxlength="120"
+              placeholder="Find a building, report or contact" aria-label="Find a building, report or contact in your workspace"
+              aria-controls="deskFindResults" aria-expanded="false" />
+            <div id="deskFindResults" class="hidden dk-find-res"></div>
+          </div>
           <input type="file" accept="image/png,image/jpeg" class="hidden" id="deskAvatarFile" />
         </div>
       </div>
@@ -2876,10 +3026,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            reveal one section per fetch, ten fetches deep, which read as the
            page inserting parts. aria-hidden: it says nothing a reader needs. -->
       <div id="deskLoading" class="hidden dk-skel" aria-hidden="true">
-        <div class="skeleton dk-skel-strip"></div>
-        <div class="dk-deck-h"><span class="skeleton dk-skel-lab"></span><span class="dk-deck-ln"></span></div>
-        <div class="skeleton dk-skel-card"></div>
-        <div class="skeleton dk-skel-card"></div>
+        <!-- Shaped like the desk it stands in for (Draft 1): the top row, then
+             a wide column of rows beside a column of cards. -->
+        <div class="dk-skel-top"><div class="skeleton dk-skel-card dk-skel-agenda"></div><div class="skeleton dk-skel-strip"></div></div>
+        <div class="dk-skel-cols">
+          <div><span class="skeleton dk-skel-lab"></span><div class="skeleton dk-skel-card"></div><div class="skeleton dk-skel-card"></div></div>
+          <div><div class="skeleton dk-skel-card"></div><div class="skeleton dk-skel-card"></div></div>
+        </div>
       </div>
       <section id="myDesk" class="hidden mt-4">
       <!-- The firm strip (2026-09-04): four figures a member glances at
@@ -2894,14 +3047,39 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
            parsed plus one read of its own (the leases), and a figure whose
            read failed shows a dash rather than a zero — the shelf's own rule,
            that "we could not read it" must never look like "there is none". -->
-      <div id="deskStrip" class="hidden dk-strip" aria-label="Your firm at a glance">
-        <a class="dk-scell" href="#deskBuildings"><span class="dk-slab">Buildings</span><span id="stripBuildingsFig" class="dk-sfig"></span><span id="stripBuildingsSub" class="dk-ssub"></span></a>
-        <a class="dk-scell" href="#deskSharedWithFirm"><span class="dk-slab">Shelf</span><span id="stripShelfFig" class="dk-sfig"></span><span id="stripShelfSub" class="dk-ssub"></span></a>
-        <a class="dk-scell" href="/messages"><span class="dk-slab">Unread</span><span id="stripUnreadFig" class="dk-sfig"></span><span id="stripUnreadSub" class="dk-ssub"></span></a>
-        <a class="dk-scell" href="/buildings"><span class="dk-slab">Critical dates</span><span id="stripCriticalFig" class="dk-sfig"></span><span id="stripCriticalSub" class="dk-ssub"></span></a>
+      <!-- The top row (2026-09-24, Draft 1 of the workspace canvas): what
+           needs this member, beside the firm strip. #deskAgenda is the
+           lease dates in the next ninety days and the unread conversations,
+           each with its one next step; drawAgenda() is its one writer and
+           reads only what the strip already read (the leases) and what
+           renderDeskThreads parsed — no route of its own. It hides with the
+           strip, and it never claims "nothing needs you" off a read that
+           failed. The wrapper is not a deck and never carries data-deck. -->
+      <div class="dk-top">
+        <div id="deskAgenda" class="hidden dk-card dk-agenda" aria-labelledby="deskAgendaTitle">
+          <div class="dk-ag-h"><h3 id="deskAgendaTitle" class="dk-ag-t">Needs you</h3><span id="deskAgendaStats" class="dk-note"></span></div>
+          <div id="deskAgendaRows"></div>
+          <p id="deskAgendaEmpty" class="hidden dk-empty"></p>
+          <p id="deskAgendaNote" class="hidden dk-copy"></p>
+        </div>
+        <div id="deskStrip" class="hidden dk-strip" aria-label="Your firm at a glance">
+          <a class="dk-scell" href="#deskBuildings"><span class="dk-slab">Buildings</span><span id="stripBuildingsFig" class="dk-sfig"></span><span id="stripBuildingsSub" class="dk-ssub"></span></a>
+          <a class="dk-scell" href="#deskSharedWithFirm"><span class="dk-slab">Shelf</span><span id="stripShelfFig" class="dk-sfig"></span><span id="stripShelfSub" class="dk-ssub"></span></a>
+          <a class="dk-scell" href="/messages"><span class="dk-slab">Unread</span><span id="stripUnreadFig" class="dk-sfig"></span><span id="stripUnreadSub" class="dk-ssub"></span></a>
+          <a class="dk-scell" href="#deskCritical"><span class="dk-slab">Critical dates</span><span id="stripCriticalFig" class="dk-sfig"></span><span id="stripCriticalSub" class="dk-ssub"></span></a>
+        </div>
       </div>
+      <!-- Two columns (2026-09-24, Draft 1). The firm's RECORD on the left —
+           its buildings, its shelf, what this member has shared — and what
+           moves day to day on the right, as cards. The "Your firm" and
+           "Sharing" deck headings went: the two columns are the grouping
+           now. Each column is still a [data-deck], so refreshDeckVisibility
+           hides one whose sections are all hidden and the other takes the
+           width (a member in no firm reads one column). Below 1180px the
+           two stack. Every section keeps its id and its own writer. -->
+      <div class="dk-cols">
+      <div class="dk-col dk-main">
       <div class="dk-deck" data-deck id="deckFirm">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Your firm</span><span class="dk-deck-ln"></span></div>
       <!-- The no-firm state (2026-09-16). Every section in this deck renders
            only for a member of a firm, and creating one lives in the account
            menu's Firm & branding panel (2026-09-03) — so a member in no firm
@@ -2939,7 +3117,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <button type="button" id="buildingAddToggle" aria-expanded="false" aria-controls="buildingAddForm" class="dk-toggle">+ Add by address</button>
           </div>
         </div>
-        <p class="dk-copy">The buildings your firm works on, shared with everyone in it. Add one from a report on the shelf, from a property in your Vault, or by address.</p>
         <form id="buildingAddForm" class="hidden mt-3 flex flex-wrap items-end gap-2">
           <label class="flex-1 min-w-[10rem]">
             <span class="rd-lab">Address</span>
@@ -2964,48 +3141,23 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </form>
         <p id="buildingMsg" class="hidden dk-msg"></p>
         <p id="buildingsTruncated" class="hidden dk-copy">Showing the 1,000 most recently touched buildings. Older ones are not in this list.</p>
-        <div id="buildingRows" class="mt-1"></div>
+        <!-- A table since 2026-09-24 (Draft 1): the figures a broker scans
+             down a column — type, size, year, what is on the shelf, the next
+             lease date — get columns, and the one destructive act (Remove)
+             moves behind the row's ⋯ menu instead of being its only visible
+             verb. .dk-btable is a size-query container: in a narrow column the
+             same row reflows to a name line over a meta line, so a phone reads
+             what the old row family read. The header hides with the list. -->
+        <div class="dk-btable mt-2">
+          <div id="buildingsHead" class="hidden dk-bhead"><span>Building</span><span>Type</span><span class="num">Size</span><span class="num">Built</span><span>Shelf</span><span>Next date</span><span></span></div>
+          <div id="buildingRows"></div>
+        </div>
         <!-- The owner's overflow rule (slice 4): past eight buildings — and
              only past eight — one control to the whole list. Under it the
              control does not render at all, the Buy-button rule. -->
         <p id="buildingsMore" class="hidden"><a id="buildingsMoreLink" href="/buildings" class="dk-more"></a></p>
         <p id="buildingsEmpty" class="hidden dk-empty">No buildings yet. Add one from a report on the shelf, from a property in your Vault, or with + Add by address above.</p>
       </div>
-      <!-- Your permits (2026-09-24; it replaced the development shop's New
-           filings, whose market-wide list now lives on /permits for every
-           account). Permits filed, or whose status moved, at the firm's OWN
-           buildings in the last thirty days — the /buildings strip's rows,
-           for any shop kind, each address the door to its building's sheet.
-           /api/org/permits answers permits: null when no building on the
-           board sits in a swept city, and then nothing renders: an empty
-           "Your permits" on a Dallas board would claim we looked (§7).
-           Public record; nothing here mails. -->
-      <div id="deskPermits" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Your permits</span>
-          <span id="deskPermitsStats" class="dk-note"></span>
-        </div>
-        <p id="deskPermitsCopy" class="dk-copy"></p>
-        <div id="deskPermitRows" class="mt-1"></div>
-        <p id="deskPermitsEmpty" class="hidden dk-empty"></p>
-        <!-- `hidden` on the <p>, never on the link: .dk-more sets display
-             later in the cascade and would win (the buildingsMore shape). -->
-        <p id="deskPermitsOverflow" class="hidden"><a id="deskPermitsOverflowLink" href="/buildings" class="dk-more"></a></p>
-        <p><a id="deskPermitsTracker" href="/permits" class="dk-more">Every filing in the city →</a></p>
-      </div>
-      <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
-           first, from the same list /messages reads. Rendered only for a
-           member of a firm, the shelf's rule; a failed read hides it. -->
-      <div id="deskThreads" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Conversations</span>
-          <span id="deskThreadsStats" class="dk-note"></span>
-        </div>
-        <div id="deskThreadRows" class="mt-1"></div>
-        <p id="deskThreadsEmpty" class="hidden dk-empty">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
-        <p><a href="/messages" class="dk-more">All conversations →</a></p>
-      </div>
-
       <!-- Reports a colleague shared with the whole firm (migration 030).
            Rendered ONLY for a member of a firm — the same rule the hub list
            below follows, and the opposite of the two lists above: those teach
@@ -3044,6 +3196,95 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <p id="firmShelfNoMatch" class="hidden dk-empty">Nothing on the shelf matches that.</p>
       </div>
 
+      </div><!-- /deckFirm -->
+
+      <!-- "Your properties" and "Your watchlist" used to be a deck here.
+           They moved to /vault on 2026-09-01 ("Three Spaces"): this page is
+           the FIRM's record now -- its shelf, its deal board, its contacts -- and a portfolio and a watchlist are one member's own.
+           Nothing about the data moved. portfolio_items and watchlist_items
+           are still user-scoped and still read through the same routes; only
+           the surface did. renderMyDesk still READS the portfolio, because
+           portfolioKeys is what tells a report whether it is already saved.
+           -->
+
+
+      <div class="dk-deck" data-deck id="deckSharing">
+      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
+           stacked lists merged). One GET (/api/shares) still covers both. A
+           401 (signed out) hides it silently, since the sign-in card above
+           already covers that case; a 503 shows the one error line instead
+           and leaves the rest of the desk working. See renderShares() /
+           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
+           it is a firm-level record with its own rules (whole-shelf count,
+           1000-row truncation notice, its own search) and lives in the firm
+           deck below. -->
+      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
+           only "Couldn't load your shared reports", which is the failure
+           without the reassurance — and this line covers the sections that
+           name COLLEAGUES and their work, so it is the one where a bare
+           "couldn't load" is likeliest to read as somebody's shared reports
+           having been lost. It already hides the sections rather than
+           fabricating a "0 shares" empty state; this only finishes the
+           sentence. -->
+      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
+      <div id="deskShares" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Shared reports</span>
+          <span id="deskSharesStats" class="dk-note"></span>
+        </div>
+        <p id="deskSharesEmpty" class="hidden dk-empty">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
+        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
+      </div>
+
+      <!-- Hubs someone has invited this member into. The TENANT side only —
+           a broker's own hubs live on /vault beside the pipeline deck (the
+           owner's answer, 2026-08-13), because creating one is a broker
+           surface gated on canUseVault and this page is seen by every free
+           account. Spec:
+           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
+           NOT the connection hub at /brokers.
+
+           Rendered ONLY when there is something in it: a member who has
+           never been invited into a hub should not be shown an empty
+           section for a feature they have no way to start. That is the
+           opposite of the shared-reports table above, which teaches a
+           feature this member can use themselves. -->
+      <div id="deskHubs" class="hidden mt-8">
+        <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
+        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
+      </div>
+      </div><!-- /deckSharing -->
+      </div><!-- /dk-main -->
+
+      <div class="dk-col dk-side dk-deck" data-deck id="deckSide">
+      <!-- Conversations (Three Spaces, slice 8): the five most recent, unread
+           first, from the same list /messages reads. Rendered only for a
+           member of a firm, the shelf's rule; a failed read hides it. -->
+      <div id="deskThreads" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Conversations</span>
+          <span id="deskThreadsStats" class="dk-note"></span>
+        </div>
+        <div id="deskThreadRows" class="mt-1"></div>
+        <p id="deskThreadsEmpty" class="hidden dk-empty">No conversations yet. <a href="/messages" class="underline">Start one</a> with a colleague, or use Discuss on a building, a report or a contact.</p>
+        <p><a href="/messages" class="dk-more">All conversations →</a></p>
+      </div>
+
+      <!-- Critical dates (2026-09-24, Draft 1): every lease on the firm's
+           board with a notice or expiry in the next twelve months, soonest
+           first — the same /api/org/leases answer the strip counts, so the
+           card and the figure can never disagree. drawCriticalCard() is its
+           one writer. A failed read hides it (the strip already says
+           "Couldn't read leases"); an empty read says so in words. -->
+      <div id="deskCritical" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Critical dates</span>
+          <span id="deskCriticalStats" class="dk-note"></span>
+        </div>
+        <div id="deskCriticalRows" class="mt-1"></div>
+        <p id="deskCriticalEmpty" class="hidden dk-empty">Nothing due in the next 12 months.</p>
+        <p><a id="deskCriticalMore" href="/buildings" class="dk-more">All lease dates →</a></p>
+      </div>
       <!-- The deal board (O3): who shared what to the firm, by member, by
            market and by month. Presentation over the shelf and the firm's
            shared comps — no new tables, and nothing here reads a colleague's
@@ -3077,7 +3318,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              thin at any real firm's size. The leaderboard above stays out. -->
         <details id="dealBoardMore" class="dk-fold">
           <summary>By market and month</summary>
-          <div class="grid sm:grid-cols-2 gap-6">
+          <div class="dk-db-split">
             <div>
               <div class="dk-rule"><span class="rd-lab">By market</span></div>
               <div id="dealBoardMarkets" class="mt-1"></div>
@@ -3098,6 +3339,28 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         </details>
       </div>
 
+      <!-- Your permits (2026-09-24; it replaced the development shop's New
+           filings, whose market-wide list now lives on /permits for every
+           account). Permits filed, or whose status moved, at the firm's OWN
+           buildings in the last thirty days — the /buildings strip's rows,
+           for any shop kind, each address the door to its building's sheet.
+           /api/org/permits answers permits: null when no building on the
+           board sits in a swept city, and then nothing renders: an empty
+           "Your permits" on a Dallas board would claim we looked (§7).
+           Public record; nothing here mails. -->
+      <div id="deskPermits" class="hidden mt-8">
+        <div class="dk-rule">
+          <span class="rd-lab">Your permits</span>
+          <span id="deskPermitsStats" class="dk-note"></span>
+        </div>
+        <p id="deskPermitsCopy" class="dk-copy"></p>
+        <div id="deskPermitRows" class="mt-1"></div>
+        <p id="deskPermitsEmpty" class="hidden dk-empty"></p>
+        <!-- `hidden` on the <p>, never on the link: .dk-more sets display
+             later in the cascade and would win (the buildingsMore shape). -->
+        <p id="deskPermitsOverflow" class="hidden"><a id="deskPermitsOverflowLink" href="/buildings" class="dk-more"></a></p>
+        <p><a id="deskPermitsTracker" href="/permits" class="dk-more">Every filing in the city →</a></p>
+      </div>
       <!-- The firm's own contacts (039). Typed or imported, NEVER collected:
            nothing on this panel is populated from a CompNinja lead or a hub
            participant, which the plan made a condition of building it — see
@@ -3159,64 +3422,8 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <div id="contactRows" class="mt-1"></div>
         <p id="contactsEmpty" class="hidden dk-empty">No contacts yet. Use Add or import above to type one in, or bring a spreadsheet — Excel (.xlsx) or CSV — with a name column.</p>
       </div>
-      </div><!-- /deckFirm -->
-
-      <!-- "Your properties" and "Your watchlist" used to be a deck here.
-           They moved to /vault on 2026-09-01 ("Three Spaces"): this page is
-           the FIRM's record now -- its shelf, its deal board, its contacts -- and a portfolio and a watchlist are one member's own.
-           Nothing about the data moved. portfolio_items and watchlist_items
-           are still user-scoped and still read through the same routes; only
-           the surface did. renderMyDesk still READS the portfolio, because
-           portfolioKeys is what tells a report whether it is already saved.
-           -->
-
-      <div class="dk-deck" data-deck id="deckSharing">
-        <div class="dk-deck-h"><span class="dk-deck-lab">Sharing</span><span class="dk-deck-ln"></span></div>
-      <!-- Client sharing — ONE table for both directions (2026-08-21; the two
-           stacked lists merged). One GET (/api/shares) still covers both. A
-           401 (signed out) hides it silently, since the sign-in card above
-           already covers that case; a 503 shows the one error line instead
-           and leaves the rest of the desk working. See renderShares() /
-           renderSharesTable(). The firm SHELF is deliberately NOT merged in:
-           it is a firm-level record with its own rules (whole-shelf count,
-           1000-row truncation notice, its own search) and lives in the firm
-           deck below. -->
-      <!-- Matched to #deskLoadError's two-sentence shape (2026-08-22). It said
-           only "Couldn't load your shared reports", which is the failure
-           without the reassurance — and this line covers the sections that
-           name COLLEAGUES and their work, so it is the one where a bare
-           "couldn't load" is likeliest to read as somebody's shared reports
-           having been lost. It already hides the sections rather than
-           fabricating a "0 shares" empty state; this only finishes the
-           sentence. -->
-      <p id="deskSharesLoadError" class="hidden text-sm text-red-600 mt-8">Couldn't load your shared reports just now. Nothing has been lost. Refresh in a moment.</p>
-      <div id="deskShares" class="hidden mt-8">
-        <div class="dk-rule">
-          <span class="rd-lab">Shared reports</span>
-          <span id="deskSharesStats" class="dk-note"></span>
-        </div>
-        <p id="deskSharesEmpty" class="hidden dk-empty">You haven't shared any reports yet, and nobody has shared one with you. Open a report and use Share to invite someone or copy a link.</p>
-        <div id="sharesRows" class="mt-2 overflow-x-auto no-scrollbar"></div>
-      </div>
-
-      <!-- Hubs someone has invited this member into. The TENANT side only —
-           a broker's own hubs live on /vault beside the pipeline deck (the
-           owner's answer, 2026-08-13), because creating one is a broker
-           surface gated on canUseVault and this page is seen by every free
-           account. Spec:
-           docs/superpowers/specs/2026-08-13-messaging-hub-design.md
-           NOT the connection hub at /brokers.
-
-           Rendered ONLY when there is something in it: a member who has
-           never been invited into a hub should not be shown an empty
-           section for a feature they have no way to start. That is the
-           opposite of the shared-reports table above, which teaches a
-           feature this member can use themselves. -->
-      <div id="deskHubs" class="hidden mt-8">
-        <div class="dk-rule"><span class="rd-lab">Shared with you</span></div>
-        <div id="deskHubRows" class="mt-2 space-y-1.5"></div>
-      </div>
-      </div><!-- /deckSharing -->
+      </div><!-- /deckSide -->
+      </div><!-- /dk-cols -->
 
       </section>
     </section>
@@ -13920,6 +14127,15 @@ async function renderMyDesk() {
       document.getElementById("deskFirmEmpty").classList.add("hidden");
       // The strip sums the sections above; it goes with them.
       document.getElementById("deskStrip").classList.add("hidden");
+      // Draft 1's top row and head (2026-09-24): the agenda names colleagues'
+      // messages and the firm's tenants, the dates card the same leases, and
+      // the find box searches the firm's lists — all of them go on the same
+      // signal as the sections they read.
+      document.getElementById("deskAgenda").classList.add("hidden");
+      document.getElementById("deskCritical").classList.add("hidden");
+      document.getElementById("deskFirmLine").classList.add("hidden");
+      document.getElementById("deskFindWrap").classList.add("hidden");
+      closeDeskFind();
     };
     if (!currentUser) { hideAll(); return; }
     // The membership read starts NOW, beside the shares read, not after it
@@ -13959,6 +14175,9 @@ async function renderMyDesk() {
     // The no-firm body of the firm deck: decided off the membership just
     // loaded, fetching nothing, so it lands in the same paint as the rest.
     renderFirmEmpty();
+    // The firm's name over the title, and whether the find box shows — the
+    // same membership, the same paint.
+    drawDeskHead();
     // The firm-scoped reads run TOGETHER (2026-09-03); each needs only the
     // membership just loaded. Two exceptions, and only these two: the shelf's
     // rows offer "Add to firm" only for addresses not already listed, and the
@@ -13978,6 +14197,10 @@ async function renderMyDesk() {
       buildings.then(() => Promise.all([renderFirmShelf(), renderContacts()])),
     ]);
     drawFirmStrip(await critical);
+    // The agenda, the dates card and the buildings' Next-date column read the
+    // same leases answer the strip just drew, after it (the agenda hides with
+    // the strip, so it needs the strip's verdict first).
+    drawDeskDates(await critical);
   }
 
   // ---------------------------------------------------------------------------
@@ -14385,12 +14608,15 @@ async function renderMyDesk() {
       document.getElementById("buildingsMoreLink").textContent =
         `See all ${firmBuildings.length} buildings \u2192`;
     }
+    document.getElementById("buildingsHead").classList.toggle("hidden", !firmBuildings.length);
+    buildingCells = [];
     firmBuildings.slice(0, COLLAPSE_AT).forEach((b) => {
-      // One row family (.dk-row): the address on its own line in Georgia, the
-      // meta under it, Remove at the right. FLAT — name, meta and the button
-      // are direct children; test/org-desk.test.js counts the buttons.
+      // A table row since Draft 1 (2026-09-24), still one .dk-row and still
+      // FLAT: the address, who added it, five cells, then the ⋯ menu. The
+      // grid in the style block puts the meta under the address; the
+      // container query reflows the same children for a narrow column.
       const row = document.createElement("div");
-      row.className = "dk-row";
+      row.className = "dk-row dk-brow";
       // The address is the door to the building's sheet (slice 5). An <a>,
       // so a middle click and a copied link both work; textContent throughout,
       // since every address here is text a person typed.
@@ -14401,18 +14627,49 @@ async function renderMyDesk() {
       row.appendChild(name);
       const meta = document.createElement("span");
       meta.className = "dk-row-meta";
-      const bits = [];
-      if (b.type) bits.push(b.type);
-      if (b.sizeSqft) bits.push(`${Number(b.sizeSqft).toLocaleString("en-US")} SF`);
-      if (b.yearBuilt) bits.push(`built ${b.yearBuilt}`);
       // "you" rather than the reader's own name — the shelf's rule.
-      bits.push(b.mine ? "added by you" : (b.addedBy ? "added by " + b.addedBy : "added by a colleague"));
-      meta.textContent = bits.join(" · ");
+      meta.textContent = b.mine ? "added by you" : (b.addedBy ? "added by " + b.addedBy : "added by a colleague");
       row.appendChild(meta);
+      // A blank figure is an em dash in a column and nothing at all in the
+      // narrow reflow (.empty), where "—" between two dots reads as a typo.
+      const cell = (cls, text, num) => {
+        const c = document.createElement("span");
+        c.className = `dk-bc dk-bc-${cls}` + (num ? " num" : "") + (text ? "" : " empty");
+        c.textContent = text || "—";
+        row.appendChild(c);
+        return c;
+      };
+      cell("type", b.type || "");
+      cell("size", b.sizeSqft ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : "", true);
+      cell("built", b.yearBuilt ? String(b.yearBuilt) : "", true);
+      // Filled by decorateBuildingRows from what the shelf and the leases
+      // reads found; both land later in the same paint (renderShares).
+      const shelfCell = cell("shelf", "");
+      const nextCell = cell("next", "");
+      buildingCells.push({ b, shelfCell, nextCell });
+
+      // The ⋯ menu: the sheet (the address already opens it — said again in
+      // words for anybody who did not guess that) and Remove, which was the
+      // row's ONLY visible verb before. A <details>, so it opens from the
+      // keyboard with no script of its own; closed by any click elsewhere.
+      const menu = document.createElement("details");
+      menu.className = "dk-menu";
+      const knob = document.createElement("summary");
+      knob.setAttribute("aria-label", "More for " + b.address);
+      knob.textContent = "⋯";
+      menu.appendChild(knob);
+      const pop = document.createElement("div");
+      pop.className = "dk-menu-pop";
+      const open = document.createElement("a");
+      open.href = "/building/" + encodeURIComponent(b.id);
+      open.textContent = "Open the building sheet";
+      pop.appendChild(open);
       const del = document.createElement("button");
       del.type = "button";
       del.className = "dk-row-act";
-      del.textContent = "Remove";
+      del.textContent = "Remove from the board";
+      pop.appendChild(del);
+      menu.appendChild(pop);
       del.addEventListener("click", async () => {
         // No confirm: removing a building from the index is undone by adding
         // it again, and nothing hangs off it yet (slices 5 and 6 revisit this
@@ -14429,8 +14686,57 @@ async function renderMyDesk() {
           buildingMsg(err.message || "That didn't go through.", true);
         }
       });
-      row.appendChild(del);
+      row.appendChild(menu);
       wrap.appendChild(row);
+    });
+    // A re-render after an add or a remove has the shelf and the leases in
+    // hand already; the first render does not, and renderShares fills the
+    // two columns once they land (drawDeskDates).
+    decorateBuildingRows();
+  }
+
+  // The two columns Buildings cannot fill from its own read (Draft 1): how
+  // many reports on the firm's shelf name the building, and its next lease
+  // date. Both are READ from state other sections parsed — firmShelfItems
+  // and deskCritical — never a fetch of their own. The shelf match is the
+  // door's rule (buildingOnBoard): the exact address, whatever its case.
+  // It misses a report typed another way rather than guessing, so the count
+  // can be low and never high.
+  let buildingCells = [];
+  let deskCritical = null;   // the leases read's `critical`, or null: unread/failed
+  const DESK_DUE_DAYS = 90;  // a date this close is the one red figure in a row
+
+  // "2026-11-04" -> "Nov 4" (or "Nov 4, 2027" off this year). Parsed as UTC
+  // midnight and FORMATTED in UTC, dbMonthLabel's reason: a bare date read
+  // as local time lands on the day before anywhere west of Greenwich.
+  function fmtDeskDay(iso, withYear) {
+    const d = new Date(String(iso || "").slice(0, 10) + "T00:00:00Z");
+    if (isNaN(d)) return "";
+    const opts = { month: "short", day: "numeric", timeZone: "UTC" };
+    if (withYear || d.getUTCFullYear() !== new Date().getUTCFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString("en-US", opts);
+  }
+  function deskDaysLabel(days) {
+    return days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  }
+  function leaseWhat(c) {
+    return c.kind === "notice" ? "Option notice" : "Lease expires";
+  }
+
+  function decorateBuildingRows() {
+    const shelf = Array.isArray(firmShelfItems) ? firmShelfItems : [];
+    const crit = Array.isArray(deskCritical) ? deskCritical : [];
+    buildingCells.forEach(({ b, shelfCell, nextCell }) => {
+      const addr = String(b.address || "").trim().toLowerCase();
+      const n = addr ? shelf.filter((i) => String(i.address || "").trim().toLowerCase() === addr).length : 0;
+      shelfCell.textContent = n ? `${n} ${n === 1 ? "report" : "reports"}` : "—";
+      shelfCell.classList.toggle("empty", !n);
+      // critical is sorted soonest first, so the first match is the next date.
+      const c = crit.find((x) => String(x.buildingId) === String(b.id));
+      const text = c ? `${c.kind === "notice" ? "Notice" : "Expires"} ${fmtDeskDay(c.date)}` : "";
+      nextCell.textContent = text || "—";
+      nextCell.classList.toggle("empty", !text);
+      nextCell.classList.toggle("due", Boolean(c && c.days <= DESK_DUE_DAYS));
     });
   }
 
@@ -14461,7 +14767,10 @@ async function renderMyDesk() {
       return String(b.lastMessageAt || "").localeCompare(String(a.lastMessageAt || ""));
     });
     const unread = threads.filter((t) => t.unread).length;
-    deskThreadsStat = { total: threads.length, unread };
+    // The unread threads themselves ride along for the "Needs you" agenda
+    // (Draft 1), already in this list's order — unread first, newest first —
+    // so the agenda never sorts them a second way.
+    deskThreadsStat = { total: threads.length, unread, unreadList: threads.filter((t) => t.unread) };
     document.getElementById("deskThreadsStats").textContent = threads.length
       ? `${threads.length} ${threads.length === 1 ? "conversation" : "conversations"}` + (unread ? ` \u00b7 ${unread} unread` : "")
       : "";
@@ -14661,6 +14970,174 @@ async function renderMyDesk() {
     strip.classList.remove("hidden");
   }
 
+  // ---------------------------------------------------------------------------
+  // The top row's other half and the dates card (Draft 1, 2026-09-24).
+  //
+  // Called once per fill, after drawFirmStrip, with the SAME leases answer —
+  // so the agenda, the dates card, the strip's Critical cell and the
+  // buildings' Next-date column are four readings of one read, and cannot
+  // disagree. No route of its own: bootFetch hands each embedded answer to
+  // its FIRST caller, so a second reader of /api/org/leases would cost a
+  // live round trip on every first paint.
+  // ---------------------------------------------------------------------------
+  const AGENDA_DAYS = 90;   // a lease date inside this window "needs you"
+  const AGENDA_MAX = 5;     // the card is a list of next steps, not a feed
+  const CRITICAL_SHOWN = 6; // the dates card; the rest are on /buildings
+
+  function drawDeskDates(critical) {
+    deskCritical = Array.isArray(critical) ? critical : null;
+    decorateBuildingRows();
+    drawAgenda();
+    drawCriticalCard();
+  }
+
+  // "Needs you": lease dates in the next ninety days, soonest first, then
+  // the unread conversations, each with its one next step. It is shown
+  // exactly when the strip is (a firm, and a board that could be read), and
+  // it says "nothing needs you" ONLY when both of its reads came back — a
+  // failed read is named instead, because an empty agenda built on a read
+  // that did not happen is the shelf's outage-as-absence trap with a
+  // reassuring headline on it.
+  function drawAgenda() {
+    const box = document.getElementById("deskAgenda");
+    const firm = currentUser ? myFirm() : null;
+    if (!firm || document.getElementById("deskStrip").classList.contains("hidden")) {
+      box.classList.add("hidden");
+      return;
+    }
+    const crit = deskCritical;
+    const threads = deskThreadsStat && Array.isArray(deskThreadsStat.unreadList) ? deskThreadsStat.unreadList : [];
+    const items = [];
+    (crit || []).filter((c) => c.days <= AGENDA_DAYS).forEach((c) => items.push({ c }));
+    threads.forEach((t) => items.push({ t }));
+
+    const rows = document.getElementById("deskAgendaRows");
+    rows.innerHTML = "";
+    items.slice(0, AGENDA_MAX).forEach(({ c, t }) => {
+      const row = document.createElement("div");
+      row.className = "dk-ag-row";
+      const when = document.createElement("span");
+      when.className = "dk-ag-when";
+      const big = document.createElement("span");
+      const small = document.createElement("span");
+      small.className = "dk-ag-sub";
+      const body = document.createElement("span");
+      body.className = "dk-ag-body";
+      const title = document.createElement("span");
+      title.className = "dk-ag-title";
+      const detail = document.createElement("span");
+      detail.className = "dk-ag-detail";
+      const act = document.createElement("a");
+      act.className = "dk-ag-act";
+      // textContent throughout: tenants, addresses, names and message
+      // previews are all text a person typed.
+      if (c) {
+        big.className = "dk-ag-date due";
+        big.textContent = fmtDeskDay(c.date);
+        small.textContent = deskDaysLabel(c.days);
+        title.textContent = `${leaseWhat(c)} · ${c.tenant || "A lease"}`;
+        detail.textContent = [
+          c.address,
+          c.suite ? `suite ${c.suite}` : "",
+          c.kind === "notice" && c.leaseExpiry ? `lease expires ${fmtDeskDay(c.leaseExpiry, true)}` : "",
+        ].filter(Boolean).join(" · ");
+        // The sheet is where the lease lives (slice 6); the whole list is
+        // on /buildings for a date whose building we cannot name.
+        act.href = c.buildingId ? "/building/" + encodeURIComponent(c.buildingId) : "/buildings";
+        act.textContent = "Open lease →";
+      } else {
+        big.className = "dk-ag-date";
+        big.textContent = `${t.unread} new`;
+        small.textContent = "unread";
+        title.textContent = t.label || "A conversation";
+        detail.textContent = t.preview || "";
+        act.href = "/messages?t=" + encodeURIComponent(t.id);
+        act.textContent = "Reply →";
+      }
+      when.appendChild(big);
+      when.appendChild(small);
+      body.appendChild(title);
+      if (detail.textContent) body.appendChild(detail);
+      row.appendChild(when);
+      row.appendChild(body);
+      row.appendChild(act);
+      rows.appendChild(row);
+    });
+
+    const stats = document.getElementById("deskAgendaStats");
+    stats.textContent = items.length
+      ? (items.length > AGENDA_MAX ? `${AGENDA_MAX} of ${items.length}` : `${items.length} ${items.length === 1 ? "item" : "items"}`)
+      : "";
+    const bothRead = Array.isArray(crit) && Boolean(deskThreadsStat);
+    const empty = document.getElementById("deskAgendaEmpty");
+    empty.textContent = "Nothing needs you right now — no lease dates in the next 90 days and no unread conversations.";
+    empty.classList.toggle("hidden", !(bothRead && !items.length));
+    const gaps = [];
+    if (!Array.isArray(crit)) gaps.push("lease dates");
+    if (!deskThreadsStat) gaps.push("conversations");
+    const note = document.getElementById("deskAgendaNote");
+    note.textContent = gaps.length ? `Couldn't read ${gaps.join(" or ")} just now, so this list may be missing something.` : "";
+    note.classList.toggle("hidden", !gaps.length);
+    box.classList.remove("hidden");
+  }
+
+  // The dates card: every lease on the board with a date in the next twelve
+  // months, soonest first. Hidden on a failed read — the strip's Critical
+  // cell already says "Couldn't read leases" — and told apart from an empty
+  // read, which says so in words.
+  function drawCriticalCard() {
+    const box = document.getElementById("deskCritical");
+    const firm = currentUser ? myFirm() : null;
+    if (!firm || !Array.isArray(deskCritical)) { box.classList.add("hidden"); return; }
+    const list = deskCritical;
+    document.getElementById("deskCriticalStats").textContent = list.length ? "next 12 months" : "";
+    document.getElementById("deskCriticalEmpty").classList.toggle("hidden", list.length > 0);
+    document.getElementById("deskCriticalMore").textContent = list.length > CRITICAL_SHOWN
+      ? `See all ${list.length} on Buildings →` : "All lease dates →";
+    const wrap = document.getElementById("deskCriticalRows");
+    wrap.innerHTML = "";
+    list.slice(0, CRITICAL_SHOWN).forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "dk-crit-row";
+      const date = document.createElement("span");
+      date.className = "dk-crit-date" + (c.days <= DESK_DUE_DAYS ? " due" : "");
+      const d = new Date(String(c.date || "").slice(0, 10) + "T00:00:00Z");
+      date.textContent = fmtDeskDay(c.date).replace(/,\s*\d{4}$/, "");
+      if (!isNaN(d)) {
+        const y = document.createElement("span");
+        y.className = "dk-crit-year";
+        y.textContent = String(d.getUTCFullYear());
+        date.appendChild(y);
+      }
+      const body = document.createElement("span");
+      body.className = "dk-crit-body";
+      const what = document.createElement(c.buildingId ? "a" : "span");
+      what.className = "dk-crit-what";
+      if (c.buildingId) what.href = "/building/" + encodeURIComponent(c.buildingId);
+      what.textContent = `${leaseWhat(c)} · ${c.tenant || "A lease"}`;
+      const where = document.createElement("span");
+      where.className = "dk-crit-where";
+      where.textContent = [c.suite ? `suite ${c.suite}` : "", c.address, deskDaysLabel(c.days)].filter(Boolean).join(" · ");
+      body.appendChild(what);
+      body.appendChild(where);
+      row.appendChild(date);
+      row.appendChild(body);
+      wrap.appendChild(row);
+    });
+    box.classList.remove("hidden");
+  }
+
+  // The head's firm line and whether the find box shows — off the
+  // membership renderShares has just loaded, fetching nothing.
+  function drawDeskHead() {
+    const firm = currentUser ? myFirm() : null;
+    const line = document.getElementById("deskFirmLine");
+    line.textContent = firm ? [firm.name, shopCopy(firm.kind).label].filter(Boolean).join(" · ") : "";
+    line.classList.toggle("hidden", !firm);
+    document.getElementById("deskFindWrap").classList.toggle("hidden", !firm);
+    if (!firm) closeDeskFind();
+  }
+
   async function addBuildingToFirm(input) {
     const firm = myFirm();
     if (!firm) return null;
@@ -14778,6 +15255,10 @@ async function renderMyDesk() {
   // The fold's open state survives a re-render — renderHistory's rule: a
   // contact added or removed must not snap the list shut again.
   let contactsExpanded = false;
+  // What the last contacts read found, for the head's find box (Draft 1).
+  // Emptied, never kept, on no firm or a failed read — the find box must not
+  // offer a previous identity's or a previous firm's people.
+  let firmContacts = [];
 
   // The add/import panel ships CLOSED and this is the ONE writer of its
   // visibility (the vault's #addSec rule, 2026-08-10: "a broker with 200
@@ -14866,7 +15347,7 @@ async function renderMyDesk() {
     // a failed /api/org read leaves the LAST firm in memory, and the one
     // state where acting on that is wrong is a signed-out page.
     const firm = currentUser ? myFirm() : null;
-    if (!firm) { box.classList.add("hidden"); return; }
+    if (!firm) { box.classList.add("hidden"); firmContacts = []; return; }
     let data = null;
     try {
       const res = await bootFetch(`/api/org/contacts?id=${encodeURIComponent(firm.id)}`);
@@ -14876,10 +15357,11 @@ async function renderMyDesk() {
     // shelf's rule, and the reason is the same one: "no contacts" and "we
     // could not reach the database" must never look identical, because the
     // first invites somebody to retype a list they already have.
-    if (!data) { box.classList.add("hidden"); return; }
+    if (!data) { box.classList.add("hidden"); firmContacts = []; return; }
     box.classList.remove("hidden");
 
     const rows = Array.isArray(data.contacts) ? data.contacts : [];
+    firmContacts = rows;
     // The count describes the WHOLE list, whatever the fold below shows.
     document.getElementById("contactsStats").textContent =
       rows.length ? `${rows.length} ${rows.length === 1 ? "contact" : "contacts"}` : "";
@@ -15011,6 +15493,132 @@ async function renderMyDesk() {
     }
     return btoa(binary);
   }
+
+  // ---------------------------------------------------------------------------
+  // The workspace's find box (Draft 1, 2026-09-24).
+  //
+  // Searches what the desk ALREADY READ — the firm's board (firmBuildings,
+  // the whole set, not the eight on screen), its shelf (firmShelfItems) and
+  // its contacts (firmContacts) — in the browser, which is the shelf's rule
+  // for the shelf's reason: a box that asks the server per keystroke is a
+  // request per keystroke, and every list here is already fetched whole.
+  // Terms AND together, the vault's Find rule, so "federal acme" means both.
+  // textContent throughout — every string is something a person typed.
+  // ---------------------------------------------------------------------------
+  const DESK_FIND_EACH = 5;
+
+  function deskFindMatches(query) {
+    const terms = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length || terms.join("").length < 2) return null;
+    const hit = (...parts) => {
+      const hay = parts.filter(Boolean).join(" ").toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    };
+    return {
+      buildings: firmBuildings.filter((b) => hit(b.address, b.type, b.market)),
+      reports: firmShelfItems.filter((r) => hit(r.address, r.type, r.market, r.sharedBy)),
+      contacts: firmContacts.filter((c) => hit(c.name, c.company, c.email)),
+    };
+  }
+
+  function closeDeskFind() {
+    const res = document.getElementById("deskFindResults");
+    res.classList.add("hidden");
+    res.innerHTML = "";
+    document.getElementById("deskFind").setAttribute("aria-expanded", "false");
+  }
+
+  function renderDeskFind() {
+    const input = document.getElementById("deskFind");
+    const res = document.getElementById("deskFindResults");
+    const m = deskFindMatches(input.value);
+    if (!m) { closeDeskFind(); return; }
+    res.innerHTML = "";
+    const group = (label, list, toHit) => {
+      if (!list.length) return;
+      const h = document.createElement("div");
+      h.className = "dk-find-grp";
+      h.textContent = label;
+      res.appendChild(h);
+      list.slice(0, DESK_FIND_EACH).forEach((item) => {
+        const x = toHit(item);
+        const a = document.createElement("a");
+        a.className = "dk-find-hit";
+        a.href = x.href;
+        if (x.newTab) { a.target = "_blank"; a.rel = "noopener noreferrer"; }
+        if (x.onClick) a.addEventListener("click", x.onClick);
+        const n = document.createElement("span");
+        n.className = "dk-find-name";
+        n.textContent = x.name;
+        a.appendChild(n);
+        if (x.meta) {
+          const s = document.createElement("span");
+          s.className = "dk-find-meta";
+          s.textContent = x.meta;
+          a.appendChild(s);
+        }
+        res.appendChild(a);
+      });
+      if (list.length > DESK_FIND_EACH) {
+        const more = document.createElement("div");
+        more.className = "dk-find-more";
+        more.textContent = `and ${list.length - DESK_FIND_EACH} more`;
+        res.appendChild(more);
+      }
+    };
+    group("Buildings", m.buildings, (b) => ({
+      href: "/building/" + encodeURIComponent(b.id),
+      name: b.address,
+      meta: [b.type, b.sizeSqft ? `${Number(b.sizeSqft).toLocaleString("en-US")} SF` : ""].filter(Boolean).join(" · "),
+    }));
+    group("Reports on the shelf", m.reports, (r) => ({
+      href: r.url, newTab: true, name: r.address,
+      meta: [r.type, r.mine ? "shared by you" : (r.sharedBy ? `shared by ${r.sharedBy}` : "")].filter(Boolean).join(" · "),
+    }));
+    group("Contacts", m.contacts, (c) => {
+      // A contact has no page of its own. Attached to a building, the hit is
+      // that building's sheet; otherwise it scrolls to the list and opens
+      // its fold, so the row is on screen whichever eight are showing.
+      const at = c.buildingId ? firmBuildings.find((b) => String(b.id) === String(c.buildingId)) : null;
+      return {
+        href: at ? "/building/" + encodeURIComponent(at.id) : "#deskContacts",
+        name: c.name,
+        meta: [c.company, at ? `at ${at.address}` : ""].filter(Boolean).join(" · "),
+        onClick: at ? null : () => {
+          // The fold is built at runtime (renderContacts), so it is found under
+          // the list rather than by an id the static markup does not carry.
+          const more = document.querySelector("#contactRows details");
+          if (more) { more.open = true; contactsExpanded = true; }
+          closeDeskFind();
+        },
+      };
+    });
+    if (!m.buildings.length && !m.reports.length && !m.contacts.length) {
+      const none = document.createElement("div");
+      none.className = "dk-find-none";
+      none.textContent = `Nothing in your workspace matches “${input.value.trim()}”.`;
+      res.appendChild(none);
+    }
+    res.classList.remove("hidden");
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  document.getElementById("deskFind").addEventListener("input", renderDeskFind);
+  document.getElementById("deskFind").addEventListener("focus", () => {
+    if (document.getElementById("deskFind").value.trim()) renderDeskFind();
+  });
+  document.getElementById("deskFind").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.target.value = ""; closeDeskFind(); }
+  });
+  // One outside-click closer for the two popovers the desk draws: the find
+  // results and a building row's ⋯ menu (a <details> stays open until told).
+  document.addEventListener("click", (e) => {
+    const wrap = document.getElementById("deskFindWrap");
+    if (wrap && !wrap.contains(e.target)) closeDeskFind();
+    document.querySelectorAll("#buildingRows details.dk-menu[open]").forEach((d) => {
+      if (!d.contains(e.target)) d.open = false;
+    });
+  });
 
   // ---------------------------------------------------------------------------
   // The firm section — create one, accept an invitation, manage the roster.

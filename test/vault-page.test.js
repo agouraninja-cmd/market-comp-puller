@@ -129,6 +129,184 @@ test("the boot payload stays valid JSON through escaping", () => {
 });
 
 // ---------------------------------------------------------------------------
+// .hide actually hides — the cascade trap, computed rather than remembered
+// ---------------------------------------------------------------------------
+//
+// .hide is the FIRST rule in the page's stylesheet, so any later rule of equal
+// specificity that sets display on the same element beats it, and so does any
+// more specific rule wherever it sits. The class list then says "hide" and the
+// element paints anyway. .deck.hide and .strip.hide were that trap found once
+// each by eye; on 2026-09-25 it had shipped four more times at once: the
+// properties deck's add form (".form" — open on every load, while the
+// add-a-property test further down stayed green because it only reads the
+// CLASS), the filter row's Clear and two empty publish buttons (".btn"), and
+// the Firm filter for a broker in no firm (".row label", which outranks .hide
+// on specificity alone). A browser confirmed all four; this finds the next one.
+//
+// "Can carry .hide" means: a class attribute in the markup that holds it; an
+// element the script hides by id (classList, or a className string holding
+// it), its tag and classes read from the markup; any string literal in the
+// script holding it (a class list assigned through a variable, tag unknown, so
+// it is only checked against rules that name no tag); and the VAULT_DECKS
+// lock, which appends hide to whatever an element already carries. Ancestors
+// in a selector are assumed to match, so ".row label" is checked against every
+// label that can be hidden. Conservative on purpose: a false alarm costs one
+// more ".x.hide" line, a miss costs a control on screen that should not be.
+
+// A selector's compounds, split on combinators outside [] and ().
+function cssCompounds(sel) {
+  const out = [];
+  let cur = "", depth = 0;
+  for (const ch of sel.trim()) {
+    if (ch === "[" || ch === "(") depth++;
+    if (ch === "]" || ch === ")") depth--;
+    if (depth === 0 && /[\s>+~]/.test(ch)) { if (cur) out.push(cur); cur = ""; continue; }
+    cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+function cssCompound(c) {
+  const bare = c.replace(/\[[^\]]*\]/g, "").replace(/::?[\w-]+(\([^)]*\))?/g, "");
+  const tag = (bare.match(/^[a-zA-Z][\w-]*/) || [null])[0];
+  return {
+    tag: tag && tag.toLowerCase(),
+    ids: [...bare.matchAll(/#([\w-]+)/g)].map((m) => m[1]),
+    classes: [...bare.matchAll(/\.([\w-]+)/g)].map((m) => m[1]),
+    pseudoElement: c.includes("::"),
+  };
+}
+function cssSpecificity(sel) {
+  let a = 0, b = 0, c = 0;
+  for (const comp of cssCompounds(sel)) {
+    let s = comp.replace(/\[[^\]]*\]/g, () => { b++; return ""; });
+    s = s.replace(/::[\w-]+/g, () => { c++; return ""; });
+    s = s.replace(/:[\w-]+(\([^)]*\))?/g, () => { b++; return ""; });
+    a += (s.match(/#[\w-]+/g) || []).length;
+    b += (s.match(/\.[\w-]+/g) || []).length;
+    if (/^[a-zA-Z]/.test(s)) c++;
+  }
+  return [a, b, c];
+}
+// Every selector that sets display, in document order, @media flattened (a
+// query that is false on this screen is true on another).
+function displayRules(css) {
+  const out = [];
+  (function walk(src) {
+    let pos = 0;
+    for (;;) {
+      const open = src.indexOf("{", pos);
+      if (open < 0) return;
+      let depth = 1, j = open + 1;
+      for (; j < src.length && depth; j++) {
+        if (src[j] === "{") depth++; else if (src[j] === "}") depth--;
+      }
+      const head = src.slice(pos, open).trim(), body = src.slice(open + 1, j - 1);
+      pos = j;
+      if (head.startsWith("@")) { if (/^@(media|supports)\b/.test(head)) walk(body); continue; }
+      let display = null, important = false;
+      for (const d of body.split(";")) {
+        const k = d.indexOf(":");
+        if (k < 0 || d.slice(0, k).trim().toLowerCase() !== "display") continue;
+        const v = d.slice(k + 1).trim();
+        important = /!\s*important$/i.test(v);
+        display = v.replace(/!\s*important$/i, "").trim().toLowerCase();
+      }
+      if (display === null) continue;
+      for (const sel of head.split(",").map((x) => x.trim()).filter(Boolean)) {
+        out.push({ sel, display, rank: [important ? 1 : 0, ...cssSpecificity(sel), out.length] });
+      }
+    }
+  })(css.replace(/\/\*[\s\S]*?\*\//g, ""));
+  return out;
+}
+const outranks = (x, y) => {
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] > y[i];
+  return false;
+};
+function ruleMatches(rule, shape) {
+  const parts = cssCompounds(rule.sel);
+  const c = cssCompound(parts[parts.length - 1]);
+  if (c.pseudoElement) return false;          // styles ::placeholder, not the element
+  if (c.tag && c.tag !== shape.tag) return false;
+  if (c.ids.some((id) => id !== shape.id)) return false;
+  return c.classes.every((k) => shape.classes.has(k));
+}
+// Every element shape that can carry .hide, from the markup and the script.
+function hideableShapes(html) {
+  const script = pageScript(html);
+  const markup = html.slice(html.indexOf("</style>"), html.indexOf(script));
+  const byId = {}, shapes = new Map();
+  const add = (tag, id, classes, from) => {
+    const set = new Set([...classes, "hide"]);
+    const key = (tag || "*") + (id ? "#" + id : "") + "." + [...set].sort().join(".");
+    if (!shapes.has(key)) shapes.set(key, { key, tag, id, classes: set, from });
+  };
+  for (const m of markup.matchAll(/<([a-zA-Z][\w-]*)\b([^>]*)>/g)) {
+    const id = (m[2].match(/(?:^|\s)id="([^"]*)"/) || [])[1] || null;
+    const classes = ((m[2].match(/(?:^|\s)class="([^"]*)"/) || [])[1] || "").split(/\s+/).filter(Boolean);
+    const el = { tag: m[1].toLowerCase(), id, classes };
+    if (id) byId[id] = el;
+    if (classes.includes("hide")) add(el.tag, id, classes, "markup");
+  }
+  const lists = (src) => [...src.matchAll(/"([\w -]*)"|'([\w -]*)'/g)]
+    .map((m) => (m[1] !== undefined ? m[1] : m[2]).split(/\s+/).filter(Boolean))
+    .filter((cls) => cls.includes("hide"));
+  for (const m of script.matchAll(/\$\("([\w-]+)"\)\.classList\.(?:add|toggle)\("hide"/g)) {
+    const el = byId[m[1]];
+    assert.ok(el, "the script hides #" + m[1] + ", which the markup does not have");
+    add(el.tag, el.id, el.classes, "classList");
+  }
+  for (const m of script.matchAll(/\$\("([\w-]+)"\)\.className\s*=([^;]*)/g)) {
+    const el = byId[m[1]];
+    if (el) for (const cls of lists(m[2])) add(el.tag, el.id, cls, "className");
+  }
+  for (const cls of lists(script)) add(null, null, cls, "a script string");
+  const decks = script.match(/VAULT_DECKS=\[([^\]]*)\]/);
+  assert.ok(decks, "VAULT_DECKS moved: teach this test where the deck lock appends hide now");
+  for (const q of decks[1].matchAll(/"([\w-]+)"/g)) {
+    const el = byId[q[1]];
+    assert.ok(el, "VAULT_DECKS names #" + q[1] + ", which the markup does not have");
+    add(el.tag, el.id, el.classes, "VAULT_DECKS");
+  }
+  return [...shapes.values()];
+}
+
+test("every element the page hides with .hide is actually hidden", () => {
+  const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const css = html.slice(html.indexOf("<style>") + 7, html.indexOf("</style>"));
+  const rules = displayRules(css);
+  const shapes = hideableShapes(html);
+  const hiders = rules.filter((r) => {
+    const parts = cssCompounds(r.sel);
+    return r.display === "none" && cssCompound(parts[parts.length - 1]).classes.includes("hide");
+  });
+
+  const failures = [], held = new Set();
+  for (const shape of shapes) {
+    const mine = hiders.filter((h) => ruleMatches(h, shape));
+    for (const r of rules) {
+      if (r.display === "none" || !ruleMatches(r, shape)) continue;
+      if (mine.some((h) => outranks(h.rank, r.rank))) { held.add(r.sel); continue; }
+      failures.push(shape.key.replace(/^\*/, "") + " (" + shape.from + ") still paints: \""
+        + r.sel + "{display:" + r.display + "}\" outranks .hide. Restate it directly under "
+        + "that rule: " + r.sel + ".hide{display:none}");
+    }
+  }
+  assert.deepEqual(failures, [], failures.join("\n"));
+
+  // Not vacuous: the scan still sees the elements and rules that bit before.
+  assert.ok(shapes.some((s) => s.id === "propAddForm" && s.classes.has("form")),
+    "the scan no longer sees #propAddForm as a hideable .form");
+  assert.ok(shapes.some((s) => s.id === "fFirmLab" && s.tag === "label"),
+    "the scan no longer sees the Firm filter's label");
+  for (const sel of [".form", ".btn", ".row label", ".deck", ".strip"]) {
+    assert.ok(held.has(sel), sel + " no longer reaches a hideable element in this scan, "
+      + "so the test has stopped checking the case it was written for");
+  }
+});
+
+// ---------------------------------------------------------------------------
 // The empty vault
 // ---------------------------------------------------------------------------
 

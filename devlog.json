@@ -4375,5 +4375,11 @@
     "type": "feature",
     "title": "Every property type gets its own building on the Workspace skyline",
     "details": "The firm’s skyline drew every building as the same glass tower. Now each property type has its own shape: a residential property is a house with a pitched roof, chimney and front door; an office is a tower with a stepped crown; industrial is a long warehouse with a sawtooth roof and loading doors; retail is a storefront with a striped awning; multifamily is an apartment block with balconies and a water tank; and land is an open lot with a fence, a sign and a tree. The legend behind the ⓘ shows all six. A big parcel of land no longer shrinks every other building, since a lot’s square footage is ground, not floor area. Also fixed: on a board of a few houses, the hover card could run off the edge of the banner."
+  },
+  {
+    "date": "2026-09-26",
+    "type": "improvement",
+    "title": "Switching tabs is instant",
+    "details": "Moving between Workspace, Vault, Messages, Market explorer, Comp report and Permit tracker used to be a full page load every time, waiting on the server before anything appeared. Now the tab you are most likely to open next (the Vault from your Workspace, the Workspace from everywhere else) loads quietly in the background once the page settles, and any tab you point at starts loading the moment your pointer rests on it. The click then swaps in a page that is already there: about 20 ms instead of half a second to a second in testing. A page loaded in the background never saves anything or counts as a visit until you actually open it, and it is thrown away after a minute, after you save anything, or when you sign out, so what you see is never stale. Works in Chrome and Edge; other browsers load tabs as before."
   }
 ]

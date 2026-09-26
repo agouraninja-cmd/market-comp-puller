@@ -80,6 +80,13 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        FIRST frame instead of a beat after it. Empty for everybody else, and
        the page fetches as before for any URL not in it. -->
   <!--DESK_BOOT-->
+  <!-- Instant tab switching (2026-09-26). server.js replaces this with
+       INSTANT_NAV_APP for a member (instant-nav.js): pointing at a tab in the
+       rail prerenders it, so the click swaps in a page that has already
+       loaded. It must stay ABOVE every script that fetches, because it also
+       wraps fetch so a prerendered copy of this page writes nothing until it
+       is actually shown. Empty for everybody else. -->
+  <!--INSTANT_NAV-->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />

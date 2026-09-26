@@ -261,6 +261,9 @@ const { renderHomePageBody, HOME_SEARCH_JS } = require("./home-page");
 // landing page (design 3b). One array feeds the page and its FAQPage JSON-LD.
 const { faqEntries, renderFaqPageBody } = require("./faq-page");
 const PFMATCH = require("./portfolio-match");
+// Instant tab switching: the rail's tabs are prerendered on intent, and what a
+// prerendered page may do before anyone sees it (instant-nav.js explains).
+const INSTANTNAV = require("./instant-nav");
 
 // --- Tiny .env loader (so `npm start` works locally after copying .env.example) ---
 try {
@@ -10199,6 +10202,18 @@ const INAPP_BOOT =
   `}catch(e){}})();</script>\n`;
 const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 
+// Instant tab switching (2026-09-26): prerender the tab a member points at,
+// and keep the one they most likely want next warm, so the click swaps in a
+// page that has already loaded. Member pages only, and one script on both
+// shells — marketShell emits it, index.html receives it by marker, never a
+// hand-copy. The app's copy skips "/" and "/desk" because its own Workspace
+// row swaps views in place and a prerender of either would be thrown away,
+// and it keeps the vault warm; every other page keeps the workspace warm,
+// since that is home. instant-nav.js has the rules.
+const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"] });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"] });
+const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
+
 // Bulk valuation's run view, injected into index.html so a list pasted into
 // the main search renders its run inline. Same one-source rule as the two
 // markers above and for a sharper reason: /bulk draws the same table from the
@@ -13301,6 +13316,7 @@ function marketShell({ title, description, canonical, body, jsonLd, noindex, hea
     `<style>${MARKET_CSS}</style>\n` +
     THEME_BOOT +
     INAPP_BOOT +
+    (signedIn ? INSTANT_NAV_SHELL : "") +
     `</head>\n<body${hero ? ' class="has-hero"' : ""}>\n${marketBar(signedIn, current || "")}\n${hero || ""}<main class="wrap">\n${body}\n</main>\n${MARKET_FOOTER}\n` +
     // Opt-in, never on every page: this is a WORK surface affordance, and a
     // marketing page read by a stranger is not that. The block ships hidden
@@ -15148,6 +15164,27 @@ function logEvent(kind, dims) {
   // Analytics must never delay or break a real request.
   storeRow("analytics_events", ANALYTICS_FILE, row).catch((e) =>
     console.error("Analytics log failed:", e.message));
+}
+
+// A page visit, counted when somebody SEES the page (2026-09-26). The member
+// pages log `<page>_visit` on GET, and since instant tab switching a GET can
+// be the browser prerendering a tab the pointer merely rested on. Such a
+// request carries Sec-Purpose: prefetch, and its event is parked under a
+// one-time token instead; the returned tag (append it to the page body) posts
+// that token to /api/visit once the page is actually shown, and a hover that
+// never became a click logs nothing. Everything the event says — kind,
+// dimensions, visitor, user — is what THIS request resolved; the browser only
+// says when. For an ordinary GET this is logEvent and an empty string.
+const VISIT_DEFERRALS = INSTANTNAV.createVisitDeferrals();
+function logPageVisit(req, kind, dims) {
+  if (!INSTANTNAV.isSpeculative(req.headers)) {
+    logEvent(kind, dims);
+    return "";
+  }
+  const ctx = REQUEST_CONTEXT.getStore() || {};
+  return INSTANTNAV.visitTag(VISIT_DEFERRALS.defer({
+    kind, dims, visitor: ctx.visitor || "", userId: ctx.userId || "",
+  }));
 }
 
 function aggregateStats(rows) {
@@ -17822,7 +17859,8 @@ async function vaultReadPayload(req, params) {
   // another deal at that address, named in `inherited` so the page can say
   // so. Stored rows are untouched. attachPropertyCoords never throws, so a
   // failed stitch costs the inheritance and never the vault.
-  const applied = (await attachPropertyCoords(user.id, rows))
+  const applied = (await attachPropertyCoords(user.id, rows,
+    { backfill: !INSTANTNAV.isSpeculative(req.headers) }))
     .map((c) => BFACTS.applyFacts(c, c && c.facts));
 
   return { status: 200, body: {
@@ -18150,7 +18188,13 @@ async function orgCompsForReport(ent, user, { market, type, months }) {
 // costs privacy on that one comp, which is bad — but failing here would cost
 // the broker the blended comps entirely, which is worse and is also the stance
 // vaultCompsForReport already takes about its own failures.
-async function attachPropertyCoords(userId, comps) {
+// `backfill: false` skips the two fire-and-forget backfills below and changes
+// nothing about what is returned. A speculative render of /vault passes it
+// (instant tab switching warms the vault on every workspace view, and a page
+// nobody may open should not geocode or derive on their behalf — a building
+// the Census cannot place stays unlocated and would be retried on every one of
+// those warm-ups). Any real read still backfills, so the data still converges.
+async function attachPropertyCoords(userId, comps, { backfill = true } = {}) {
   try {
     const ids = [...new Set(comps.map((c) => c && c.property_id).filter(Boolean))];
     // Comps whose property link has not been backfilled yet (property_id is
@@ -18170,7 +18214,7 @@ async function attachPropertyCoords(userId, comps) {
     // derive now, fire-and-forget, the same way the unlocated ones geocode
     // below. A building with nothing derivable still gets an empty object,
     // so this never re-runs for it.
-    scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
+    if (backfill) scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
       .filter((p) => p && p.facts == null && p.address_key)
       .map((p) => p.address_key).slice(0, VAULT_FACTS_BACKFILL_CAP));
 
@@ -18179,7 +18223,7 @@ async function attachPropertyCoords(userId, comps) {
     // holds the rows, so the backfill rides it — scheduleCorpusLocate's
     // pattern with scheduleCorpusLocate's cap, fire-and-forget so the blend
     // never waits a millisecond on a geocoder.
-    Promise.resolve().then(() => geocodeVaultPropertyRows(
+    if (backfill) Promise.resolve().then(() => geocodeVaultPropertyRows(
       userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_BACKFILL_CAP)
     )).catch(() => {});
 
@@ -20643,6 +20687,26 @@ const server = http.createServer((req, res) =>
         console.error("permit sweep error:", err);
         return sendJson(res, 500, { error: "The permit sweep failed." });
       }
+    });
+    return;
+  }
+
+  // A prerendered page, now shown: log the visit its GET held back (see
+  // logPageVisit). Answers 204 whatever it is sent — an unknown, expired or
+  // replayed token logs nothing — and runs the event under the context the
+  // ORIGINAL request resolved, so it is attributed exactly as it would have
+  // been had it been logged then.
+  if (req.method === "POST" && req.url === "/api/visit") {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 256) req.destroy();
+    });
+    req.on("end", () => {
+      const v = VISIT_DEFERRALS.take(body);
+      if (v) REQUEST_CONTEXT.run({ visitor: v.visitor, userId: v.userId }, () => logEvent(v.kind, v.dims));
+      res.writeHead(204, { "cache-control": "no-store" });
+      res.end();
     });
     return;
   }
@@ -28400,6 +28464,10 @@ const server = http.createServer((req, res) =>
         // same reason: a member's first frame should be their desk, not a
         // page that fetches one. Empty for everybody else.
         .replace(DESK_BOOT_MARKER, deskBootScript(deskBoot))
+        // Instant tab switching, for a member only (cookie presence, the rail's
+        // own rule). Before any of the page's own scripts, because it wraps
+        // fetch: a prerendered copy of this page must not write until seen.
+        .replace(INSTANT_NAV_MARKER, parseCookies(req)[SESSION_COOKIE] ? INSTANT_NAV_APP : "")
         // Fourth: the bulk run view (markup + its own CSS + BULKRUN), so a
         // pasted list can render its run where a report would go. It carries
         // its own <style> because index.html never receives MARKET_CSS.
@@ -29233,7 +29301,7 @@ const server = http.createServer((req, res) =>
       // member's own address list is their business. `source` is the boot
       // outcome, which is the only way to see whether people reach this page
       // and what stops them.
-      logEvent("bulk_visit", { source:
+      const visitTag = logPageVisit(req, "bulk_visit", { source:
         boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "locked" : "nodb" });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
@@ -29259,7 +29327,7 @@ const server = http.createServer((req, res) =>
         // A tester filing a bug about bulk valuation should not have to go
         // back to the app to report it.
         testerBadge: true,
-        body: renderBulkPageBody(boot),
+        body: renderBulkPageBody(boot) + visitTag,
       }));
     })();
     return;
@@ -29301,7 +29369,7 @@ const server = http.createServer((req, res) =>
       }
       // PII-free AND market-free, the vault_visit precedent: a firm's markets
       // are their private book. `source` is the boot outcome.
-      logEvent("messages_visit", { source:
+      const visitTag = logPageVisit(req, "messages_visit", { source:
         !boot ? "error"
         : boot.s === 200 ? "ok"
         : boot.s === 401 ? "signin"
@@ -29325,7 +29393,7 @@ const server = http.createServer((req, res) =>
         // silently falls back to system-ui.
         head: INTER_FONT_HEAD,
         testerBadge: true,
-        body: renderMessagesBody(boot),
+        body: renderMessagesBody(boot) + visitTag,
       }));
     })();
     return;
@@ -29366,7 +29434,7 @@ const server = http.createServer((req, res) =>
       } catch (err) {
         console.error("building sheet boot failed:", err.message);
       }
-      logEvent("building_visit", { source:
+      const visitTag = logPageVisit(req, "building_visit", { source:
         !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : boot.s === 403 ? "nofirm" : boot.s === 404 ? "gone" : "nodb" });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
@@ -29384,7 +29452,7 @@ const server = http.createServer((req, res) =>
         current: "/building",
         head: INTER_FONT_HEAD,
         testerBadge: true,
-        body: renderBuildingSheetBody(boot),
+        body: renderBuildingSheetBody(boot) + visitTag,
       }));
     })();
     return;
@@ -29406,7 +29474,7 @@ const server = http.createServer((req, res) =>
       } catch (err) {
         console.error("permit tracker boot failed:", err.message);
       }
-      logEvent("permits_visit", { source:
+      const visitTag = logPageVisit(req, "permits_visit", { source:
         !boot ? "error" : boot.s === 200 ? "ok" : boot.s === 401 ? "signin" : "nodb" });
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",
@@ -29423,7 +29491,7 @@ const server = http.createServer((req, res) =>
         current: "/permits",
         head: INTER_FONT_HEAD,
         testerBadge: true,
-        body: renderPermitsBody(boot),
+        body: renderPermitsBody(boot) + visitTag,
       }));
     })();
     return;
@@ -29469,7 +29537,7 @@ const server = http.createServer((req, res) =>
       }
       // PII-free and market-free, the vault_visit precedent: a firm's
       // buildings are their private record. `source` is the boot outcome.
-      logEvent("buildings_visit", { source:
+      const visitTag = logPageVisit(req, "buildings_visit", { source:
         !boot ? "error"
         : boot.s === 200 ? "ok"
         : boot.s === 401 ? "signin"
@@ -29490,7 +29558,7 @@ const server = http.createServer((req, res) =>
         current: "/buildings",
         head: INTER_FONT_HEAD,
         testerBadge: true,
-        body: renderBuildingsBody(boot),
+        body: renderBuildingsBody(boot) + visitTag,
       }));
     })();
     return;
@@ -29520,7 +29588,7 @@ const server = http.createServer((req, res) =>
       // market-free — a broker's markets are their private book, so unlike
       // search events nothing here may carry one. `source` is the boot
       // outcome: ok / signin (401) / locked (the Pro 403) / nodb / error.
-      logEvent("vault_visit", { source:
+      const visitTag = logPageVisit(req, "vault_visit", { source:
         !boot ? "error"
         : boot.s === 200 ? "ok"
         : boot.s === 401 ? "signin"
@@ -29562,7 +29630,7 @@ const server = http.createServer((req, res) =>
         // load and every comp is still in the list.
         head: INTER_FONT_HEAD + LEAFLET_HEAD + `<script>${BASEMAP_JS}</script>\n`,
         testerBadge: true,
-        body: renderVaultBody(boot),
+        body: renderVaultBody(boot) + visitTag,
       }));
     })();
     return;

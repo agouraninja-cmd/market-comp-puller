@@ -1,8 +1,10 @@
 ---
 paths:
   - "theme.js"
+  - "instant-nav.js"
   - "test/nav-*.test.js"
   - "test/theme.test.js"
+  - "test/instant-nav.test.js"
 ---
 # Navigation and the signed-in header
 
@@ -175,3 +177,81 @@ paths:
   index.html (its auth chrome, account menu and pricing button are SPA
   behavior owned by `refreshBillingUI()`); what is single-sourced is the
   markup every header shares.
+
+## Instant tab switching (2026-09-26)
+
+The owner's ask: "make switching between tabs instantaneous — e.g. Workspace
+to Vault." Every rail tab is its own document and each waits on the database
+before it sends a byte (the workspace is also 1.38 MB of no-store HTML), so a
+click was a blank wait of half a second to a second. `instant-nav.js` has the
+whole design in its header; the load-bearing parts:
+
+- **Chrome speculation rules, one-URL `prerender` list rules, inserted and
+  removed by a script** (`instantNavBoot`, served inline via `bootScript`).
+  Two triggers: INTENT (a pointer resting 65 ms on a tab, key focus, or the
+  press itself) and WARM (after `load` + 1.5 s, the likely next tab — the
+  vault from the app, the workspace from every marketShell page — if its
+  link is actually rendered, so a member without the vault never costs a
+  vault render). Measured in Chromium against a seeded local server:
+  Workspace -> Vault 450-580 ms before, 16-34 ms after on a quick 150 ms
+  hover-and-click; Vault -> Workspace 740-850 ms before, 16-24 ms after.
+  Browsers without speculation rules get the write guard below and nothing
+  else.
+- **Member pages only, one source.** `marketShell` emits `INSTANT_NAV_SHELL`
+  when `signedIn`; index.html's `<!--INSTANT_NAV-->` marker (above every
+  `<script src>`, because the script wraps fetch) becomes `INSTANT_NAV_APP`
+  on a cookie. The app's copy skips `/` and `/desk` (its Workspace row swaps
+  views in place, so a prerender of either would be thrown away).
+- **A prerendered page writes nothing until it is shown.** The script wraps
+  `fetch`: a non-GET made while `document.prerendering` waits for
+  `prerenderingchange`. This is not hygiene: the warm tab is prerendered on
+  EVERY page view, and the vault stamps the watchlist feed seen on load —
+  `last_seen_at` is a digest cutoff, so without the guard every workspace
+  visit would have silenced the member's digest. Hence the pinned rule:
+  **pages write through fetch only** — `test/instant-nav.test.js` fails the
+  build on a `sendBeacon` or `XMLHttpRequest` anywhere, since those slip past
+  the guard. **A GET that writes is held too, by name** (`HOLD_PATHS`,
+  from an audit of every GET route on 2026-09-26, after the Cursor security
+  review on PR #340 caught the first): `/api/messages/thread` and `/api/hub`
+  stamp read/seen on every read and so cut off follow-up mail — the Messages
+  page opens its newest conversation on load, so a hover on that tab would
+  have marked it read — and `/api/broker/me`, `/api/broker/leads`,
+  `/api/broker/bovs` and `/api/bulk` seed, adopt or repair on read. A new GET
+  that writes goes on that list; the test pins each entry to its route AND
+  its write. **A write a page's SERVER render makes cannot be held from the
+  browser**, so it checks `INSTANTNAV.isSpeculative(req.headers)` instead:
+  `/vault`'s geocode and building-facts backfills skip on a speculative
+  render (`attachPropertyCoords(…, { backfill })`) — a building the Census
+  cannot place stays unlocated and would otherwise be retried on every
+  workspace view's warm-up; any real read still backfills. The other page
+  renders were audited read-only except `/bulk`'s stalled-job reap, which is
+  left on purpose: it makes the page show the job's true state.
+- **A visit is counted when it is seen.** The six `*_visit` events go through
+  `logPageVisit(req, kind, dims)`: on a speculative GET (`Sec-Purpose:
+  prefetch…`) the event is parked under a one-time in-memory token and the
+  returned tag, appended to the body, posts it to `POST /api/visit` on
+  activation, where it is logged under the ORIGINAL request's visitor and
+  user. A new page visit event must use it (a test fails any
+  `logEvent("…_visit"`). Events an API GET logs are NOT deferred: a
+  prerendered vault reads `/api/watchlist/feed`, which logs `feed_view`, so
+  that count includes warm-ups nobody opened. Nothing reports it today; a
+  future report on a GET-logged event must account for that first.
+- **A prerender never outlives what it shows**: dropped after 30 s (intent)
+  or 60 s (warm), FIFO past two intent ones (the warm one is outside that
+  count), when the page is hidden, and after ANY non-GET from the holding
+  page lands — sign-out is a POST, so a vault rendered with the old session
+  is never one click away. An expired warm tab is re-armed only by the
+  pointer entering the `<nav>`, never by a timer: the cost is one background
+  render per page view plus at most one a minute while a member is reaching
+  for a tab.
+- **A new rail tab** must be added to `TAB_PATHS` or it simply loads the old
+  way (the test pins the current rows).
+- **Testing it: Chrome refuses every prerender while any DevTools client is
+  attached** (`PrerenderingDisabledByDevTools`, whatever domains are enabled
+  and even with `Page.setPrerenderingAllowed`), so Playwright, Puppeteer and
+  `scripts/shot.js` can never show it working. It also cancels a prerender
+  whose page hits a certificate error on any subresource, which a
+  TLS-intercepting proxy in front of Google Fonts or unpkg causes (the cloud
+  sandbox has one). The measurement above launched Chromium with no DevTools
+  at all, behind a small proxy that injected the member's cookie and a
+  harness that hovered, clicked and reported `activationStart`.

@@ -251,6 +251,9 @@ async function bootOnce(env) {
           everHealthy = true;
           return {
             base,
+            // The child's private DATA_DIR, for a suite that asserts on a file
+            // fallback (analytics.jsonl with no database). Removed by stop().
+            dataDir,
             // Is this child still there? The ⛔ above names a death in the run
             // that suffered it, but only in the log — a suite whose next
             // assertion is "and then nobody was mailed" still reports that as

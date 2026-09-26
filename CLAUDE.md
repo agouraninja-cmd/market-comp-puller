@@ -113,6 +113,11 @@ session that never reads it.
     `single_report` stays retired (a source-scan test pins it). [billing.md]
 14. **Page routes match on the path without its query string** (`pagePath`);
     API routes keep their exact `req.url` matches. [workspace.md]
+15. **Member pages are prerendered before anyone sees them** (instant tab
+    switching — the likely next tab on every page view). A page writes only
+    through `fetch`, which holds a non-GET until the page is shown; never a
+    `sendBeacon` or `XMLHttpRequest`, which slip past it. A page visit event
+    goes through `logPageVisit`, never a bare `logEvent`. [app-shell.md]
 
 ## Tests and CI
 
@@ -387,7 +392,7 @@ gone. Document a new feature in its area's file, not here.
 | `vault.md` | the broker vault (import, mapper, editing, publishing, dashboard, gut check, BOV, building facts), comp submissions, the lead inbox | `vault-*.js`, `broker-*.js`, `building-facts.js`, `gut-check.js`, `bov-log.js`, `blend-comps.js`, `xlsx.js` |
 | `firms.md` | firms: membership, shelf, buildings, sheets, leases, contacts, messaging doors, auto-share, the shared vault, seats, shop kinds | `org-*.js`, `buildings-page.js`, `messaging.js` |
 | `workspace.md` | the signed-in `/` workspace: layout drafts, figure strip, skyline, one-paint fill, `DESK_BOOT`, `AUTH_BOOT`, `pagePath` | `index.html`, `firm-skyline.js`, desk tests |
-| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html` | `theme.js`, nav tests |
+| `app-shell.md` | the `NAV_SHELL` rail, the signed-in header on server-rendered pages, nav parity with `index.html`, instant tab switching (prerendered tabs, `/api/visit`) | `theme.js`, `instant-nav.js`, nav tests |
 | `sharing.md` | `POST /api/share`, `/api/shared`, `/r/<id>`, permissioned sharing | `report-access.js` |
 | `accounts.md` | account wall, guest limit, Google sign-in, accounts and portfolio, profile photo | `google-auth.js`, `account-avatar.js`, `portfolio-*.js` |
 | `public-pages.md` | home, FAQ, how-it-works, brokers-firms, the brand entity, `SITE_URL`, Search Console | `home-page.js`, `faq-page.js`, `brokers-firms-page.js` |

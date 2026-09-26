@@ -300,6 +300,38 @@ paths:
     share of the height, so a height read before the banner finished growing
     left the ground floating above the horizon, measured at 80px for the
     empty board on a phone, whose note sits in the flow.
+  - **Each property type is its own building** (the owner, 2026-09-26: "for
+    residential make it a house, and a different type of building for each
+    property type"). `SKYLINE.shapeFor` maps the vault's PROPERTY_TYPES:
+    Office → a tower with a stepped crown, Industrial → a sawtooth-roofed
+    warehouse with loading doors, Retail → a storefront (false front, sign,
+    striped awning, display windows), Multifamily → an apartment block with
+    balcony rails and a water tank, Residential → a house (pitched roof,
+    chimney, door, two windows and a gable window), Land → an open lot
+    (fence, a sign board that lights with work, a tree). No type, or one
+    the map has not met, is the plain tower. A test fails the build if a
+    type is added to PROPERTY_TYPES without a shape here. `PROPORTIONS`
+    says how each carries its size (towers grow up, warehouses and stores
+    grow out, a house stays house-sized), so size still decides every one.
+    **Lots stay out of the size scale** (their SF is ground, not floor
+    area, and a ten-acre parcel would otherwise shrink every building)
+    unless the board is all lots. `SKYLINE.lightsFor` replaces a raw
+    `windowPattern` read: a building with fewer than `FEW_WINDOWS` (8) is
+    dark when quiet and always shows one lit window when worked on.
+    `deskSkyBuilding` draws each shape and returns where the red light's
+    mast and the crane stand (a house's ridge; a lot's sign board, and its
+    crane on the ground). Every shape stands ONE `sky-body` rect on the
+    ground across its slot, FIRST, unrounded: the callout, the ground line
+    and the tests measure every shape by it. Roofs, crowns and parapets are
+    `sky-cap`, a shade more solid than the glass; the lot lights its fence
+    and tree on hover, over a clear `sky-hit` rect. The legend's key shows
+    the six shapes.
+  - **A squeezed callout may pass the first tower** (2026-09-26). A few
+    narrow buildings (a board of houses) stand together at the right edge,
+    leaving neither side room for even the 220px card, and it ran off the
+    banner. When neither side fits, `placeDeskSkyCall` lets it go left as
+    far as `x0`, lifted 34px above the ground so it clears the ⓘ, and the
+    leader's card end stays on the card.
   - **The sky turns with the greeting**: `drawDeskClock`'s timer (noon, five,
     midnight) calls `paintDeskSky`, guarded with `typeof`.
   - **`test/helpers/boot.js` points `CENSUS_API_URL` at a closed local port by

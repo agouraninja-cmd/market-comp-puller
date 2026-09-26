@@ -1519,6 +1519,30 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     /* A board of one or two: outlines of the towers still to come, fainter
        than the empty board's, so they never compete with the real tower. */
     .dk-sky .sky-ghost.sky-soon { fill: rgba(255,255,255,.015); stroke: rgba(255,255,255,.2); }
+    /* Each property type is its own building (2026-09-26; see
+       deskSkyBuilding). Roofs, crowns and parapets are `sky-cap`: a shade
+       more solid than the glass walls under them, so a house's roof reads
+       as a roof, and they light with the walls on hover. A lot has no
+       walls, so its fence and tree light instead, and a clear `sky-hit`
+       rect gives its thin lines a whole slot to hover. */
+    .dk-sky .sky-cap { fill: rgba(226,232,240,.16); stroke: rgba(255,255,255,.3); stroke-width: .8; stroke-linejoin: round; }
+    .dk-sky a.on .sky-cap { stroke: rgba(255,255,255,.5); stroke-width: 1; }
+    .dk-sky a:hover .sky-cap, .dk-sky a:focus-visible .sky-cap { fill: rgba(241,245,249,.3); stroke: rgba(255,255,255,.78); stroke-width: 1.2; }
+    .dk-sky .sky-door { fill: rgba(255,255,255,.16); }
+    .dk-sky .sky-dock { fill: rgba(255,255,255,.1); stroke: rgba(255,255,255,.3); stroke-width: .6; }
+    .dk-sky .sky-rail { stroke: rgba(255,255,255,.36); stroke-width: .8; fill: none; }
+    .dk-sky .sky-tank { fill: rgba(255,255,255,.08); stroke: rgba(255,255,255,.5); stroke-width: .9; stroke-linejoin: round; }
+    .dk-sky .sky-sign { fill: rgba(255,255,255,.32); }
+    .dk-sky .sky-awn { fill: rgba(255,255,255,.18); stroke: rgba(255,255,255,.42); stroke-width: .6; stroke-linejoin: round; }
+    .dk-sky .sky-awn-s { fill: rgba(255,255,255,.46); }
+    .dk-sky .sky-fence { stroke: rgba(255,255,255,.48); stroke-width: 1; fill: none; }
+    .dk-sky .sky-trunk { stroke: rgba(255,255,255,.48); stroke-width: 1.4; stroke-linecap: round; }
+    .dk-sky .sky-tree { fill: rgba(226,232,240,.14); stroke: rgba(255,255,255,.42); stroke-width: .9; }
+    .dk-sky .sky-hit { fill: transparent; }
+    .dk-sky a[data-shape="lot"] .sky-body { fill: rgba(255,255,255,.07); stroke: none; }
+    .dk-sky a[data-shape="lot"]:hover .sky-fence, .dk-sky a[data-shape="lot"]:focus-visible .sky-fence,
+    .dk-sky a[data-shape="lot"]:hover .sky-trunk, .dk-sky a[data-shape="lot"]:focus-visible .sky-trunk { stroke: rgba(255,255,255,.85); }
+    .dk-sky a[data-shape="lot"]:hover .sky-tree, .dk-sky a[data-shape="lot"]:focus-visible .sky-tree { fill: rgba(241,245,249,.3); stroke: rgba(255,255,255,.8); }
     /* The legend behind the ⓘ (see #deskSkyInfo). Hover or keyboard focus
        opens it; a click pins it open for a touch screen. The card's ::after
        bridges the gap down to the button, so moving the pointer up into the
@@ -1536,6 +1560,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky-key > .dk-sky-k-note { display: block; margin-top: 2px; font-size: 11.5px; color: rgba(255,255,255,.6); }
     .dk-sky-k-win { display: inline-block; width: 6px; height: 8px; border-radius: 1px; background: rgba(252,214,138,.92); }
     .dk-sky-k-red { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: rgba(248,113,113,1); box-shadow: 0 0 6px 2px rgba(239,68,68,.55); }
+    .dk-sky-key > .dk-sky-k-types { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 5px 12px; margin-top: 2px; }
+    .dk-sky-k-types > span { display: flex; align-items: center; gap: 5px; font-size: 11.5px; color: rgba(255,255,255,.78); }
+    .dk-sky-k-types svg { flex: none; }
     .dk-sky-call { position: absolute; z-index: 3; top: 76px; width: 304px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(15,23,42,.84); border: 1px solid rgba(255,255,255,.26); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); }
     .dk-sky-call.hidden { display: none; }
     .dk-sky-call-name { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 15px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
@@ -3241,7 +3268,18 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <span title="A report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>Lit windows: recent work on the building</span>
             <span title="An option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>Red light: a lease date within 90 days</span>
             <span><svg viewBox="0 0 17 14" width="17" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14V1.5M15.5 4.5H1.5M11 1.5L1.5 4.5M11 1.5l4.5 3M4 4.5v4.5"/><rect x="13.2" y="4.5" width="2.3" height="2" fill="currentColor" stroke="none"/><rect x="3" y="9" width="2" height="1.8" fill="currentColor" stroke="none"/></svg>Crane: added to the board this month</span>
-            <span class="dk-sky-k-note">A tower's height is the building's size. The newest stand on the right.</span>
+            <!-- One shape per property type (2026-09-26), the same shapes
+                 deskSkyBuilding draws. A building with no type is a plain
+                 tower. -->
+            <span class="dk-sky-k-types">
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M4 13V5.5h1.8V2.5h4.4v3H12V13"/></svg>Office</span>
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M1.8 13V7.5L5.4 5v2.5L9 5v2.5L12.6 5v2.5h1.6V13M6 13v-2.5h4V13"/></svg>Industrial</span>
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M2.8 13V7.2h10.4V13M1.8 7.2l1.2-2.4h10l1.2 2.4zM7 13V9.5h2V13"/></svg>Retail</span>
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M3.8 13V2.5h8.4V13M5.4 5.5h1.8M8.8 5.5h1.8M5.4 8.5h1.8M8.8 8.5h1.8"/></svg>Multifamily</span>
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M2.2 7.2L8 2.4l5.8 4.8M3.8 6v7h8.4V6M7 13v-3h2v3"/></svg>Residential</span>
+              <span><svg viewBox="0 0 16 14" width="16" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" aria-hidden="true"><path d="M1 13h14M2 13V9.6M4.6 13V9.6M7.2 13V9.6M1.6 10.6h6.2M11.6 13V9.2"/><circle cx="11.6" cy="6.6" r="2.6"/></svg>Land</span>
+            </span>
+            <span class="dk-sky-k-note">Each property type has its own shape, and a bigger building stands bigger. The newest are on the right.</span>
           </div>
         </div>
         <div id="deskSkyEmpty" class="hidden dk-sky-empty"><b>Your skyline starts here.</b>Each building you put on the board rises as a tower, and it lights up when your firm works on it.<br><button id="deskSkyAdd" type="button" class="dk-sky-add">+ Add a building</button></div>
@@ -15819,6 +15857,162 @@ async function renderMyDesk() {
       x1: from.toFixed(1), y1: y.toFixed(1), x2: to.toFixed(1), y2: y.toFixed(1) }));
   }
 
+  const deskSkyN = (n) => Number(Number(n).toFixed(1));
+
+  // Each property type is its own building (the owner, 2026-09-26: "for
+  // residential make it a house, and a different type of building for each
+  // property type"). SKYLINE.shapeFor names the shape and the layout sizes
+  // its slot; this draws the building inside the slot. Every shape stands
+  // one `sky-body` rect on the ground across the slot's full width, first,
+  // so the callout, the ground line and the tests measure all of them the
+  // same way; roofs, crowns and parapets are `sky-cap` pieces above it.
+  // Windows are `sky-win` / `sky-win lit` whatever their size, lit by
+  // SKYLINE.lightsFor. Returns where the red light's mast and the crane
+  // stand, since a house's highest point is its ridge and a lot has no roof.
+  function deskSkyBuilding(a, tw, p) {
+    const N = deskSkyN;
+    const add = (tag, attrs) => a.appendChild(deskSkyNode(tag, attrs));
+    const x = p.x, w = p.width, h = p.height, top = p.top, g = p.top + p.height, cx = x + w / 2;
+    const win = (on, wx, wy, ww, wh) => add("rect", { class: on ? "sky-win lit" : "sky-win",
+      x: N(wx), y: N(wy), width: N(ww), height: N(wh), rx: 0.5 });
+    // Unrounded, like the ground's share: it must stand exactly on the horizon.
+    const body = (y) => add("rect", { class: "sky-body", x, y, width: w, height: g - y });
+    // A grid of windows, a row every `py` from y0 while a row fits before
+    // y1, centred across the slot inside `inset` at each side.
+    const grid = (y0, y1, ww, wh, px, py, inset) => {
+      const cols = Math.max(1, Math.floor((w - inset * 2) / px));
+      const rows = Math.max(1, Math.floor((y1 - y0) / py));
+      const lit = SKYLINE.lightsFor(tw, cols * rows);
+      const ox = x + (w - (cols * px - (px - ww))) / 2;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) win(lit[r * cols + c], ox + c * px, y0 + r * py, ww, wh);
+      return { cols, rows, ox };
+    };
+
+    if (tw.shape === "house") {
+      // Walls, a pitched roof with eaves, a chimney on the left slope, a
+      // door, two windows and one in the gable.
+      const rise = Math.max(11, Math.min(h * 0.46, h - 14));
+      const eave = top + rise;
+      const slope = (px) => (px <= cx ? eave - (px - (x - 2.5)) * rise / (cx - x + 2.5)
+        : eave - (x + w + 2.5 - px) * rise / (x + w + 2.5 - cx));
+      body(eave);
+      const chx = x + w * 0.24;
+      add("path", { class: "sky-cap", d: `M${N(chx)} ${N(slope(chx))}V${N(slope(chx + 4) - 4)}H${N(chx + 4)}V${N(slope(chx + 4))}Z` });
+      add("path", { class: "sky-cap", d: `M${N(x - 2.5)} ${N(eave)}L${N(cx)} ${N(top)}L${N(x + w + 2.5)} ${N(eave)}Z` });
+      const wall = g - eave;
+      const dh = Math.max(5, Math.min(9, wall - 4));
+      add("rect", { class: "sky-door", x: N(cx - 2.5), y: N(g - dh), width: 5, height: N(dh) });
+      const ws = w >= 44 ? 7 : 5;
+      const wy = eave + Math.max(3, (wall - ws) / 2 - 1);
+      const lit = SKYLINE.lightsFor(tw, rise >= 13 ? 3 : 2);
+      win(lit[0], x + w * 0.22 - ws / 2, wy, ws, ws);
+      win(lit[1], x + w * 0.78 - ws / 2, wy, ws, ws);
+      if (lit.length > 2) win(lit[2], cx - 1.5, eave - rise * 0.42 - 1.5, 3, 3);
+      return { mast: { x: cx, y: top }, crane: { x: x + w - 6, y: slope(x + w - 6) } };
+    }
+
+    if (tw.shape === "warehouse") {
+      // Long and low under a sawtooth roof, a band of high windows, and
+      // loading doors along the foot.
+      const st = Math.max(4, Math.min(8, h * 0.22));
+      const teeth = Math.max(2, Math.round(w / 13));
+      const tooth = w / teeth;
+      const roof = (px) => top + st - st * (((px - x) % tooth) / tooth);
+      body(top + st);
+      let d = `M${N(x)} ${N(top + st)}`;
+      for (let i = 1; i <= teeth; i++) d += `L${N(x + i * tooth)} ${N(top)}V${N(top + st)}`;
+      add("path", { class: "sky-cap", d: d + "Z" });
+      const wall = g - (top + st);
+      const dock = Math.min(8, wall * 0.34);
+      const bands = wall >= 26 ? 2 : 1;
+      grid(top + st + 4, top + st + 4 + bands * 6, 3, 3, 6, 6, 4);
+      const doors = Math.max(1, Math.min(9, Math.floor((w - 10) / 11)));
+      const dx = x + (w - (doors * 11 - 5)) / 2;
+      for (let i = 0; i < doors; i++) add("rect", { class: "sky-dock", x: N(dx + i * 11), y: N(g - dock), width: 6, height: N(dock) });
+      return { mast: { x: cx, y: roof(cx) }, crane: { x: x + w - 6, y: roof(x + w - 6) } };
+    }
+
+    if (tw.shape === "store") {
+      // A storefront: a raised false front, a sign, a striped awning, two
+      // display windows and a door.
+      const pp = Math.max(3, Math.min(5, h * 0.16));
+      const bt = top + pp;
+      body(bt);
+      add("rect", { class: "sky-cap", x: N(x + w * 0.2), y: N(top), width: N(w * 0.6), height: N(pp) });
+      add("rect", { class: "sky-sign", x: N(x + w * 0.2), y: N(bt + 2.5), width: N(w * 0.6), height: 3 });
+      const at = bt + 7.5, ab = at + 4;
+      add("path", { class: "sky-awn", d: `M${N(x - 2)} ${N(ab)}L${N(x + 0.5)} ${N(at)}H${N(x + w - 0.5)}L${N(x + w + 2)} ${N(ab)}Z` });
+      let stripes = "";
+      for (let sx = x + 1.5; sx + 2 <= x + w - 0.5; sx += 4) stripes += `M${N(sx)} ${N(at)}h2v4h-2Z`;
+      if (stripes) add("path", { class: "sky-awn-s", d: stripes });
+      const lit = SKYLINE.lightsFor(tw, 2);
+      const py = ab + 2, ph = Math.max(4, g - 2 - py);
+      win(lit[0], x + 3, py, Math.max(3, cx - 4 - (x + 3)), ph);
+      win(lit[1], cx + 4, py, Math.max(3, x + w - 3 - (cx + 4)), ph);
+      add("rect", { class: "sky-door", x: N(cx - 2.5), y: N(py), width: 5, height: N(g - py) });
+      return { mast: { x: cx, y: top }, crane: { x: x + w - 6, y: bt } };
+    }
+
+    if (tw.shape === "apartments") {
+      // A block of flats: a balcony rail under every window, a water tank on
+      // the roof and a front door.
+      body(top);
+      add("line", { class: "sky-roof", x1: N(x), y1: N(top), x2: N(x + w), y2: N(top) });
+      const tx = x + Math.max(6, w * 0.26);
+      add("path", { class: "sky-tank",
+        d: `M${N(tx - 3)} ${N(top)}V${N(top - 3)}M${N(tx + 3)} ${N(top)}V${N(top - 3)}` +
+          `M${N(tx - 4)} ${N(top - 3)}h8v-5h-8ZM${N(tx - 4)} ${N(top - 8)}L${N(tx)} ${N(top - 10.5)}L${N(tx + 4)} ${N(top - 8)}` });
+      const { cols, rows, ox } = grid(top + 6, g - 11, 4, 5, 7, 10, 3);
+      let rails = "";
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) rails += `M${N(ox + c * 7 - 1)} ${N(top + 6 + r * 10 + 6.5)}h6`;
+      add("path", { class: "sky-rail", d: rails });
+      add("rect", { class: "sky-door", x: N(cx - 3), y: N(g - 7), width: 6, height: 7 });
+      return { mast: { x: cx, y: top }, crane: { x: x + w - 6, y: top } };
+    }
+
+    if (tw.shape === "lot") {
+      // Land: no building, so an open lot — the parcel's ground, a fence, a
+      // sign board (lit when the firm worked on it) and a tree. The crane,
+      // for land added this month, stands on the ground: breaking ground.
+      add("rect", { class: "sky-hit", x: N(x), y: N(top), width: N(w), height: N(h) });
+      body(g - 3);
+      const posts = Math.max(3, Math.round(w / 6));
+      let fence = `M${N(x)} ${N(g - 6)}H${N(x + w)}M${N(x)} ${N(g - 3)}H${N(x + w)}`;
+      for (let i = 0; i <= posts; i++) fence += `M${N(x + i * w / posts)} ${N(g)}V${N(g - 7.5)}`;
+      add("path", { class: "sky-fence", d: fence });
+      const r = Math.max(5, Math.min(9, w * 0.14));
+      const tx = x + w * 0.7, trunk = g - Math.max(8, h * 0.36);
+      add("line", { class: "sky-trunk", x1: N(tx), y1: N(g), x2: N(tx), y2: N(trunk) });
+      add("circle", { class: "sky-tree", cx: N(tx), cy: N(trunk - r * 0.7), r: N(r) });
+      if (w >= 48) {
+        const t2 = x + w * 0.88;
+        add("line", { class: "sky-trunk", x1: N(t2), y1: N(g), x2: N(t2), y2: N(g - 7) });
+        add("circle", { class: "sky-tree", cx: N(t2), cy: N(g - 7 - r * 0.45), r: N(r * 0.65) });
+      }
+      const sx = x + w * 0.26;
+      add("path", { class: "sky-fence", d: `M${N(sx - 4)} ${N(g)}V${N(g - 13)}M${N(sx + 4)} ${N(g)}V${N(g - 13)}` });
+      win(SKYLINE.lightsFor(tw, 1)[0], sx - 6.5, g - 19, 13, 7);
+      return { mast: { x: sx, y: g - 19 }, crane: { x: x + w - 6, y: g } };
+    }
+
+    if (tw.shape === "office") {
+      // An office tower: a stepped crown above a grid of windows.
+      const ch = Math.max(6, Math.min(16, h * 0.2));
+      const cw = Math.max(10, w * 0.62);
+      body(top + ch);
+      add("rect", { class: "sky-cap", x: N(cx - cw / 2), y: N(top), width: N(cw), height: N(ch) });
+      add("line", { class: "sky-roof", x1: N(cx - cw / 2), y1: N(top), x2: N(cx + cw / 2), y2: N(top) });
+      grid(top + ch + 6, g - 5, 3, 4, 6, 9, 3);
+      return { mast: { x: cx, y: top }, crane: { x: cx + cw / 2 - 4, y: top } };
+    }
+
+    // No type: the plain glass tower the skyline has always drawn.
+    body(top);
+    add("line", { class: "sky-roof", x1: N(x), y1: N(top), x2: N(x + w), y2: N(top) });
+    grid(top + 7, g - 5, 3, 4, 6, 9, 3);
+    return { mast: { x: cx, y: top }, crane: { x: x + w - 6, y: top } };
+  }
+
   function layoutDeskSky() {
     if (!deskSky) return;
     const hero = document.getElementById("deskHero");
@@ -15885,33 +16079,26 @@ async function renderMyDesk() {
       const b = tw.building;
       deskSky.pos.set(b.id, p);
       const a = deskSkyNode("a", { class: "sky-t", href: "/building/" + encodeURIComponent(b.id),
-        "aria-label": SKYLINE.labelFor(tw) });
+        "aria-label": SKYLINE.labelFor(tw), "data-shape": tw.shape || "tower" });
       a.setAttribute("tabindex", phone ? "-1" : "0");
-      a.appendChild(deskSkyNode("rect", { class: "sky-body", x: p.x, y: p.top, width: p.width, height: p.height }));
-      a.appendChild(deskSkyNode("line", { class: "sky-roof", x1: p.x, y1: p.top, x2: p.x + p.width, y2: p.top }));
-      const cols = Math.max(1, Math.floor((p.width - 6) / 6));
-      const rows = Math.max(1, Math.floor((p.height - 12) / 9));
-      const lit = SKYLINE.windowPattern(b.id, tw.lit, cols * rows);
-      const ox = p.x + (p.width - (cols * 6 - 3)) / 2;
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-        a.appendChild(deskSkyNode("rect", { class: lit[r * cols + c] ? "sky-win lit" : "sky-win",
-          x: (ox + c * 6).toFixed(1), y: (p.top + 7 + r * 9).toFixed(1), width: 3, height: 4, rx: 0.5 }));
-      }
-      const cx = p.x + p.width / 2;
+      const marks = deskSkyBuilding(a, tw, p);
       if (tw.due) {
-        a.appendChild(deskSkyNode("line", { class: "sky-mast", x1: cx, y1: p.top, x2: cx, y2: p.top - 9 }));
-        a.appendChild(deskSkyNode("circle", { class: "sky-glow", cx, cy: p.top - 11, r: 9 }));
-        a.appendChild(deskSkyNode("circle", { class: "sky-red", cx, cy: p.top - 11, r: 3.6 }));
+        // The red light on a mast, on the building's highest point.
+        const { x: cx, y: base } = marks.mast;
+        a.appendChild(deskSkyNode("line", { class: "sky-mast", x1: cx, y1: base, x2: cx, y2: base - 9 }));
+        a.appendChild(deskSkyNode("circle", { class: "sky-glow", cx, cy: base - 11, r: 9 }));
+        a.appendChild(deskSkyNode("circle", { class: "sky-red", cx, cy: base - 11, r: 3.6 }));
       }
       if (tw.isNew) {
         // A tower crane, drawn to be read at this size (the owner,
         // 2026-09-25: in 1.1px hairlines it looked like a stray mark). A mast
-        // on the roof rising to a peak, the jib out over the roof with its
-        // counter-jib and weight, pendant lines from the peak, and a hook.
-        const mx = p.x + p.width - 6;
+        // standing on the roof (on the ground, on an open lot) rising to a
+        // peak, the jib out over the building with its counter-jib and
+        // weight, pendant lines from the peak, and a hook.
+        const { x: mx, y: base } = marks.crane;
         const jy = p.top - 19;
         a.appendChild(deskSkyNode("path", { class: "sky-crane",
-          d: `M${mx} ${p.top}V${jy - 6}M${mx + 8} ${jy}H${mx - 25}` +
+          d: `M${mx} ${deskSkyN(base)}V${jy - 6}M${mx + 8} ${jy}H${mx - 25}` +
             `M${mx} ${jy - 6}L${mx - 25} ${jy}M${mx} ${jy - 6}L${mx + 8} ${jy}M${mx - 19} ${jy}V${jy + 8}` }));
         a.appendChild(deskSkyNode("rect", { class: "sky-crane-wt", x: mx + 4, y: jy, width: 4, height: 3 }));
         a.appendChild(deskSkyNode("rect", { class: "sky-crane-wt", x: mx - 20.5, y: jy + 8, width: 3, height: 2.5 }));
@@ -15947,12 +16134,20 @@ async function renderMyDesk() {
   // tower (the ⓘ stands there) or past the banner's edge, and it narrows
   // rather than cover the tower it describes. It covers the neighbours if it
   // has to, which reads as a card in front of a skyline.
+  //
+  // A few narrow buildings (a board of houses) sit together at the right
+  // edge, where neither side has room even for the narrowest card, and the
+  // card used to run off the banner (2026-09-26). Then it may pass the first
+  // tower to the left, as far as the skyline's own left edge. It is lifted
+  // clear of the ⓘ as it goes, so the ⓘ stays uncovered.
   const DESK_SKY_CALL_MIN_W = 220;
   function placeDeskSkyCall(call, p) {
     const gap = 14;
-    const minLeft = Math.max(deskSky.x0 - 12, (deskSky.firstX || 0) - 6);
     const maxRight = deskSky.W - 22;
     const rightRoom = maxRight - (p.x + p.width + gap);
+    let minLeft = Math.max(deskSky.x0 - 12, (deskSky.firstX || 0) - 6);
+    const squeezed = Math.max(rightRoom, p.x - gap - minLeft) < DESK_SKY_CALL_MIN_W;
+    if (squeezed) minLeft = deskSky.x0 - 12;
     const leftRoom = p.x - gap - minLeft;
     const right = rightRoom >= DESK_SKY_CALL_W || (leftRoom < DESK_SKY_CALL_W && rightRoom >= leftRoom);
     const width = Math.round(Math.max(DESK_SKY_CALL_MIN_W, Math.min(DESK_SKY_CALL_W, right ? rightRoom : leftRoom)));
@@ -15961,7 +16156,7 @@ async function renderMyDesk() {
     call.classList.remove("hidden");
     // Measured after the width is set, since a narrower card wraps taller.
     const h = call.offsetHeight || 80;
-    const top = Math.max(76, deskSky.ground - h - 6);
+    const top = Math.max(76, deskSky.ground - h - (squeezed && !right ? 34 : 6));
     call.setAttribute("style", `left:${Math.round(left)}px;top:${Math.round(top)}px;width:${width}px`);
     return { left, top, width, h, right };
   }
@@ -15988,10 +16183,12 @@ async function renderMyDesk() {
     const at = placeDeskSkyCall(call, p);
     if (deskSky.leader) {
       // A short dashed tie from the card's near edge to the tower's side,
-      // at a height the tower actually has.
+      // at a height the tower actually has. A card lifted over the ⓘ can end
+      // above a short building, so the card's end stays on the card.
       const y = Math.max(p.top + 8, Math.min(at.top + at.h / 2, deskSky.ground - 8));
+      const y1 = Math.min(Math.max(y, at.top + 8), at.top + at.h - 8);
       deskSky.leader.setAttribute("x1", (at.right ? at.left : at.left + at.width).toFixed(1));
-      deskSky.leader.setAttribute("y1", y.toFixed(1));
+      deskSky.leader.setAttribute("y1", y1.toFixed(1));
       deskSky.leader.setAttribute("x2", (at.right ? p.x + p.width + 2 : p.x - 2).toFixed(1));
       deskSky.leader.setAttribute("y2", y.toFixed(1));
       deskSky.leader.classList.remove("hidden");

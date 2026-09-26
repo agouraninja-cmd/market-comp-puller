@@ -165,6 +165,79 @@ function memberRowOf(rows, userId) {
 }
 
 // ---------------------------------------------------------------------------
+// Deleting a conversation — for the person who deletes it, and nobody else
+// ---------------------------------------------------------------------------
+
+// WHAT "DELETE" MEANS HERE (owner's ask, 2026-09-26): the conversation leaves
+// YOUR list and its history is cleared FOR YOU. Everybody else in it keeps
+// their copy, and if one of them writes again it comes back to you holding
+// only what was said after you deleted it — the iMessage and WhatsApp
+// contract, which is the one a person pressing Delete on a chat expects.
+//
+// Never delete-for-everyone. A message is a RECORD OF WHAT WAS SAID (044's
+// header, and the reason msg_comps.source_comp_id is not a foreign key), and a
+// colleague's copy of a conversation is not the deleter's to destroy.
+//
+// NO MIGRATION, on purpose. The column is msg_thread_members.added_at, read
+// as "where this member's copy of the conversation begins": the moment they
+// were added, moved forward to the moment they deleted it. Deleting sets it
+// (and last_read_at) to now. Everybody's row is written in the request that
+// makes the thread, stamped with the thread's own created_at — a conversation
+// is identified by exactly who is in it (participantKey), so nobody joins one
+// later — which is what lets "added_at later than the thread" mean "they
+// deleted it" without a new column. The one exception is a row a later open
+// repairs after a failed insert, and that person could not read the thread
+// before it existed anyway.
+//
+// NOT left_at. Leaving is a different act with a different audience: a
+// leaver is shown as gone to everybody else (threadLabel drops them, the
+// payload marks them `left`) and canReadThread refuses them. Deleting your
+// copy of a DM must not rename it "A colleague" on the other person's screen.
+
+// The moment this member's copy of the conversation begins, or "" when it
+// begins with the thread itself.
+function historyStart(thread, memberRow) {
+  if (!thread || !memberRow) return "";
+  const start = Date.parse(str(memberRow.added_at));
+  const made = Date.parse(str(thread.created_at));
+  if (!Number.isFinite(start) || !Number.isFinite(made)) return "";
+  return start > made ? str(memberRow.added_at) : "";
+}
+
+// Has this member deleted the conversation at some point?
+function isCleared(thread, memberRow) {
+  return Boolean(historyStart(thread, memberRow));
+}
+
+// The poll cursor, never earlier than the member's history start. A browser
+// that sends no cursor (the first read) or an old one still cannot read what
+// the member deleted.
+function readCursor(since, start) {
+  const s = Date.parse(str(since));
+  const h = Date.parse(str(start));
+  if (!Number.isFinite(h)) return Number.isFinite(s) ? str(since) : "";
+  if (!Number.isFinite(s) || s < h) return str(start);
+  return str(since);
+}
+
+// Is this row something this member may see? A message or a comp said at or
+// before their history start is not.
+function afterHistoryStart(row, start) {
+  const h = Date.parse(str(start));
+  if (!Number.isFinite(h)) return true;
+  const t = Date.parse(str(row && row.created_at));
+  return Number.isFinite(t) && t > h;
+}
+
+// Does the conversation belong in this member's list? A brand-new one with
+// nothing said yet does ("No messages yet"), because somebody just made it on
+// purpose. A deleted one does not, until somebody writes in it again.
+function listedFor(thread, memberRow, visibleCount) {
+  if (!isCleared(thread, memberRow)) return true;
+  return (Number(visibleCount) || 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Access
 // ---------------------------------------------------------------------------
 
@@ -392,6 +465,7 @@ module.exports = {
   normalizeEmail, cleanText, kindOf, displayName,
   participantKey,
   inThread, activeMembers, memberRowOf,
+  historyStart, isCleared, readCursor, afterHistoryStart, listedFor,
   canReadThread, canPostToThread,
   validateMessage, validateThread,
   compRowFrom,

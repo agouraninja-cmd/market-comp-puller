@@ -322,3 +322,69 @@ test("kind is presentation, so an unrecognized one costs a label and no access",
   assert.equal(MSG.kindOf({ kind: "broadcast" }), "dm");
   assert.equal(MSG.kindOf(null), "dm");
 });
+
+// ---------------------------------------------------------------------------
+// Deleting a conversation — for the person who deletes it (2026-09-26)
+// ---------------------------------------------------------------------------
+
+const MADE = { id: "t1", org_id: "org-1", kind: "dm", created_at: "2026-09-01T10:00:00.000Z" };
+
+test("a member added with the thread has no history start of their own", () => {
+  // Every row is written in the request that makes the thread, stamped with
+  // the same instant — so an untouched copy begins with the thread itself.
+  const row = { user_id: "u1", added_at: "2026-09-01T10:00:00.000Z" };
+  assert.equal(MSG.historyStart(MADE, row), "");
+  assert.equal(MSG.isCleared(MADE, row), false);
+  // A different spelling of the same instant (PostgREST answers +00:00) is
+  // still the same instant, not a delete.
+  assert.equal(MSG.historyStart(MADE, { added_at: "2026-09-01T10:00:00+00:00" }), "");
+});
+
+test("deleting moves the member's copy to start at the moment they deleted it", () => {
+  const row = { user_id: "u1", added_at: "2026-09-10T12:00:00.000Z" };
+  assert.equal(MSG.historyStart(MADE, row), "2026-09-10T12:00:00.000Z");
+  assert.equal(MSG.isCleared(MADE, row), true);
+});
+
+test("an unreadable timestamp clears nothing rather than hiding a conversation", () => {
+  // The failure that matters is a conversation vanishing that nobody deleted.
+  assert.equal(MSG.historyStart(MADE, { added_at: "" }), "");
+  assert.equal(MSG.historyStart(MADE, { added_at: "not a date" }), "");
+  assert.equal(MSG.historyStart({ created_at: "" }, { added_at: "2026-09-10T12:00:00.000Z" }), "");
+  assert.equal(MSG.historyStart(null, { added_at: "2026-09-10T12:00:00.000Z" }), "");
+  assert.equal(MSG.historyStart(MADE, null), "");
+});
+
+test("the read cursor is never earlier than the member's history start", () => {
+  const start = "2026-09-10T12:00:00.000Z";
+  // A first read (no cursor) starts at the delete, not at the beginning.
+  assert.equal(MSG.readCursor("", start), start);
+  // An old cursor a browser held from before the delete buys nothing.
+  assert.equal(MSG.readCursor("2026-09-05T00:00:00.000Z", start), start);
+  // A later cursor is the poll working normally.
+  assert.equal(MSG.readCursor("2026-09-11T00:00:00.000Z", start), "2026-09-11T00:00:00.000Z");
+  // No history start: the cursor is whatever the browser sent, or nothing.
+  assert.equal(MSG.readCursor("2026-09-11T00:00:00.000Z", ""), "2026-09-11T00:00:00.000Z");
+  assert.equal(MSG.readCursor("", ""), "");
+  assert.equal(MSG.readCursor("garbage", ""), "");
+  assert.equal(MSG.readCursor("garbage", start), start);
+});
+
+test("what was said at or before the delete is not the member's any more", () => {
+  const start = "2026-09-10T12:00:00.000Z";
+  assert.equal(MSG.afterHistoryStart({ created_at: "2026-09-09T00:00:00.000Z" }, start), false);
+  assert.equal(MSG.afterHistoryStart({ created_at: start }, start), false);
+  assert.equal(MSG.afterHistoryStart({ created_at: "2026-09-10T12:00:01.000Z" }, start), true);
+  // Nothing deleted: everything is visible.
+  assert.equal(MSG.afterHistoryStart({ created_at: "2026-09-09T00:00:00.000Z" }, ""), true);
+});
+
+test("a deleted conversation leaves the list until somebody writes again", () => {
+  const cleared = { user_id: "u1", added_at: "2026-09-10T12:00:00.000Z" };
+  const fresh = { user_id: "u1", added_at: MADE.created_at };
+  assert.equal(MSG.listedFor(MADE, cleared, 0), false, "a deleted conversation stayed on the list");
+  assert.equal(MSG.listedFor(MADE, cleared, 1), true, "a new message did not bring it back");
+  // A conversation somebody just started, with nothing said yet, is listed:
+  // it was made on purpose a moment ago.
+  assert.equal(MSG.listedFor(MADE, fresh, 0), true, "a brand-new conversation vanished");
+});

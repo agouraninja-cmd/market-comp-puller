@@ -26836,16 +26836,23 @@ const server = http.createServer((req, res) =>
           const verdict = MSG.canReadThread({ thread: t, orgId: g.orgId, memberRow: mineRow });
           return verdict.ok ? { t, rows, mineRow } : null;
         }).filter(Boolean);
-        const recents = await Promise.all(readable.map(({ t }) => msgMessageRows(t.id, "")));
+        // Each read starts where the READER'S copy starts: a conversation
+        // they deleted previews, counts and lists only what was said after
+        // (messaging.js, "Deleting a conversation").
+        const recents = await Promise.all(readable.map(({ t, mineRow }) =>
+          msgMessageRows(t.id, MSG.historyStart(t, mineRow))));
         const out = readable.map(({ t, rows, mineRow }, i) => {
           const recent = recents[i];
+          // Deleted, and nobody has written since: off this reader's list,
+          // and off the Workspace's, which reads this same route.
+          if (!MSG.listedFor(t, mineRow, recent.filter((m) => !m.deleted_at).length)) return null;
           const latest = recent.length ? recent[recent.length - 1] : null;
           const unread = MSG.unreadCount(recent, {
             lastReadAt: mineRow && mineRow.last_read_at,
             userId: g.user.id,
           });
           return threadPayload(t, rows, g.user.id, latest, unread, names);
-        });
+        }).filter(Boolean);
         // The deal rooms this member owns, as External conversations. Its own
         // try: a hub read failing must cost the External section and never
         // the firm's own messages.
@@ -27023,7 +27030,10 @@ const server = http.createServer((req, res) =>
           { last_read_at: new Date().toISOString() }, { prefer: "return=minimal" }
         ).catch((err) => console.error("Read stamp failed (the thread is fine):", err.message));
 
-        const since = q.get("since") || "";
+        // Never earlier than where this reader's copy starts, whatever cursor
+        // the browser sent: a conversation they deleted reads from the moment
+        // they deleted it, on the first read and on every poll.
+        const since = MSG.readCursor(q.get("since") || "", MSG.historyStart(thread, mineRow));
         const messages = await msgMessageRows(id, since);
         const comps = await msgCompRowsForMessages(messages.map((m) => m.id));
         const saved = await msgCompSaveIdsFor(g.user.id, comps.map((c) => c.id));
@@ -27088,11 +27098,13 @@ const server = http.createServer((req, res) =>
         if (!id) return sendJson(res, 400, { error: "Which conversation?" });
         const thread = await msgThreadRow(id, g.orgId);
         const rows = await msgThreadMemberRows([id]);
-        const verdict = MSG.canReadThread({
-          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
-        });
+        const mineRow = MSG.memberRowOf(rows, g.user.id);
+        const verdict = MSG.canReadThread({ thread, orgId: g.orgId, memberRow: mineRow });
         if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
-        const comps = await msgCompRowsForThread(id);
+        // "Kept here for good" is a promise about the conversation, and a
+        // reader who deleted theirs has a conversation that starts later.
+        const start = MSG.historyStart(thread, mineRow);
+        const comps = (await msgCompRowsForThread(id)).filter((c) => MSG.afterHistoryStart(c, start));
         const saved = await msgCompSaveIdsFor(g.user.id, comps.map((c) => c.id));
         return sendJson(res, 200, {
           ok: true,
@@ -27311,6 +27323,49 @@ const server = http.createServer((req, res) =>
       return;
     }
 
+    // --- POST /api/messages/delete — delete a conversation FOR ME -----------
+    //
+    // The rules are messaging.js's ("Deleting a conversation"): it leaves the
+    // caller's list and its history is cleared for the caller, and nobody
+    // else's copy changes. Written as the caller's own member row, scoped by
+    // their own user_id as well as the thread — /api/messages/read's rule, and
+    // for its reason: this is a statement about one person's copy, and nobody
+    // may make it for somebody else.
+    //
+    // It moves added_at (where their copy begins) and last_read_at together,
+    // so the conversation cannot come back as unread on the strength of what
+    // they just deleted. Nothing is removed from msg_messages or msg_comps.
+    //
+    // Idempotent: deleting twice moves the start to the later press, which is
+    // what the second press meant.
+    if (req.method === "POST" && msgPath === "/api/messages/delete") {
+      (async () => {
+        const g = await openMessaging();
+        if (!g) return;
+        const body = await readMsgBody(2e3);
+        const id = String((body && body.threadId) || "").trim();
+        if (!id) return sendJson(res, 400, { error: "Which conversation?" });
+        const thread = await msgThreadRow(id, g.orgId);
+        const rows = await msgThreadMemberRows([id]);
+        const verdict = MSG.canReadThread({
+          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
+        });
+        if (!verdict.ok) return sendJson(res, 404, { error: "That conversation isn't yours." });
+        const now = new Date().toISOString();
+        await sbRequest("PATCH",
+          `msg_thread_members?thread_id=eq.${encodeURIComponent(id)}` +
+          `&user_id=eq.${encodeURIComponent(g.user.id)}`,
+          { added_at: now, last_read_at: now }, { prefer: "return=minimal" });
+        logEvent("message_thread_deleted", { source: MSG.kindOf(thread) });
+        return sendJson(res, 200, { ok: true });
+      })().catch((err) => {
+        if (err instanceof SyntaxError) return sendJson(res, 400, { error: "Bad request." });
+        console.error("Message thread delete failed:", err.message);
+        return sendJson(res, 503, { error: "Couldn't delete that conversation. Please try again in a minute." });
+      });
+      return;
+    }
+
     // --- POST /api/messages/comp/save — put a received comp in my vault -----
     //
     // Goes through VAULT.normalizeRow, the SAME function every imported and
@@ -27335,15 +27390,19 @@ const server = http.createServer((req, res) =>
         const found = await sbRequest("GET",
           `msg_comps?id=eq.${encodeURIComponent(compId)}` +
           `&org_id=eq.${encodeURIComponent(g.orgId)}` +
-          `&select=id,thread_id,snapshot,address&limit=1`);
+          `&select=id,thread_id,snapshot,address,created_at&limit=1`);
         const shared = (found && found[0]) || null;
         if (!shared) return sendJson(res, 404, { error: "That comp isn't in your messages." });
         const thread = await msgThreadRow(shared.thread_id, g.orgId);
         const rows = await msgThreadMemberRows([shared.thread_id]);
-        const verdict = MSG.canReadThread({
-          thread, orgId: g.orgId, memberRow: MSG.memberRowOf(rows, g.user.id),
-        });
+        const mineRow = MSG.memberRowOf(rows, g.user.id);
+        const verdict = MSG.canReadThread({ thread, orgId: g.orgId, memberRow: mineRow });
         if (!verdict.ok) return sendJson(res, 404, { error: "That comp isn't in your messages." });
+        // Sent before this reader deleted the conversation: no longer in
+        // THEIR messages, whatever id the browser remembered.
+        if (!MSG.afterHistoryStart(shared, MSG.historyStart(thread, mineRow))) {
+          return sendJson(res, 404, { error: "That comp isn't in your messages." });
+        }
 
         const snap = shared.snapshot || {};
         const result = VAULT.normalizeRow({

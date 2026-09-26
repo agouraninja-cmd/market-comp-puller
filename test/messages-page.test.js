@@ -287,3 +287,44 @@ test("the emitted script carries no collapsed backslash escape", () => {
   assert.ok(!/\[\^s@\]/.test(script),
     "[^s@] in the emitted script means a \\s collapsed — double the backslash in the source");
 });
+
+// ---------------------------------------------------------------------------
+// Deleting a conversation (2026-09-26)
+// ---------------------------------------------------------------------------
+
+test("delete asks first, on firm conversations only, and Escape backs out without leaving the page", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  // ONE caller of the route, reached only from the question's own Delete
+  // button — neither door deletes on its first press.
+  assert.equal((script.match(/\/api\/messages\/delete/g) || []).length, 1,
+    "the delete route is called from more than one place");
+  const fn = script.slice(script.indexOf("function deleteThread("));
+  assert.ok(fn.indexOf('api("POST", "/api/messages/delete"') > 0);
+  assert.equal((script.match(/deleteThread\(yes\.getAttribute\("data-del-yes"\)\)/g) || []).length, 2,
+    "the row and the header must both delete only from the question's Delete button");
+  assert.doesNotMatch(fn.slice(0, fn.indexOf("function externalMatches(")), /window\.confirm/,
+    "the delete question is a browser dialog again, which covers the chat on a phone");
+  // Deal rooms never get a bin: their row is built by threadRowHtml alone.
+  assert.match(script, /threadRowHtml\(x, "data-external"/,
+    "an External row is built through something that may now carry a bin");
+  // The shared header's Escape listener goes BACK a page. The page's own
+  // listener must run first (capture) and stop it, or cancelling the question
+  // also leaves Messages.
+  assert.match(script,
+    /addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape" \|\| !state\.confirmId\) return;[\s\S]{0,120}e\.stopPropagation\(\);[\s\S]{0,80}\}, true\);/,
+    "Escape on the delete question is no longer caught before the header's go-back listener");
+});
+
+test("the header's question is asked once, and a list read from before a delete cannot undo it", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  // Bugbot, PR #339: the header bin set confirmId, and the row drew the same
+  // question too — twice on a desktop, where both panes show.
+  assert.match(script, /if \(state\.confirmId === t\.id && !state\.delBar\) return confirmHtml\(t, "row"\);/,
+    "a question asked from the header is drawn on the list row as well");
+  // Bugbot, PR #339: a poll sent before the delete finished landed after it
+  // and put the deleted conversation back.
+  assert.match(script, /var seq = \+\+state\.listSeq;\s*return api\("GET", "\/api\/messages"\)\.then\(function\(o\)\{\s*if \(seq <= state\.staleBefore\) return;/,
+    "a list read issued before a delete finished is applied after it");
+  const del = script.slice(script.indexOf("function deleteThread("), script.indexOf("function externalMatches("));
+  assert.match(del, /state\.staleBefore = state\.listSeq;/, "a finished delete no longer marks older list reads stale");
+});

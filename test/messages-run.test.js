@@ -674,3 +674,117 @@ test("the dot reaches a client who is in no firm at all", async (t) => {
     assert.equal((await r.json()).count, 0);
   } finally { await solo.stop(); }
 });
+
+// ---------------------------------------------------------------------------
+// Deleting a conversation (2026-09-26). "Delete" is gone from MY list and
+// cleared for ME; everybody else keeps their copy, and a new message brings
+// it back holding only what was said after. messaging.js has the rules; this
+// is the proof they are wired, including the half nobody on the deleting side
+// would ever see go wrong — the colleague's copy.
+// ---------------------------------------------------------------------------
+
+test("deleting a conversation is for the person who deletes it", async (t) => {
+  const ctx = await bootWithDb(seedTables());
+  t.after(() => ctx.stop());
+  const B = ctx.srv.base;
+  const tick = () => new Promise((r) => setTimeout(r, 15));
+  const get = async (user, url) => {
+    const r = await fetch(B + url, as(user));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const post = async (user, url, body) => {
+    const r = await fetch(B + url, as(user, { method: "POST", body: JSON.stringify(body || {}) }));
+    return { s: r.status, j: await r.json().catch(() => ({})) };
+  };
+  const listed = async (user, id) => (await get(user, "/api/messages")).j.threads.filter((x) => x.id === id)[0];
+
+  const opened = await post(BRAD, "/api/messages/thread", { memberIds: [MIKE.id] });
+  assert.equal(opened.s, 201);
+  const id = opened.j.thread.id;
+  assert.equal((await post(BRAD, "/api/messages/send", {
+    threadId: id, body: "Have a look at this one", compIds: [BRADS_COMP.id],
+  })).s, 201);
+  await tick();
+  assert.equal((await post(MIKE, "/api/messages/send", { threadId: id, body: "Looks cheap" })).s, 201);
+  await tick();
+  const compId = ctx.tables.msg_comps[0].id;
+
+  await t.test("a stranger to the conversation cannot delete it for anybody", async () => {
+    // Dana is at the same firm and not in this DM; Rival is at another shop.
+    // Both hold the real id. Neither may touch anybody's copy of it.
+    assert.equal((await post(DANA, "/api/messages/delete", { threadId: id })).s, 404);
+    assert.equal((await post(RIVAL, "/api/messages/delete", { threadId: id })).s, 404);
+    assert.ok(await listed(MIKE, id), "somebody outside the conversation removed it from Mike's list");
+    assert.equal((await post(MIKE, "/api/messages/delete", {})).s, 400);
+  });
+
+  await t.test("Mike deletes it, and it leaves his list and his unread count", async () => {
+    const before = ctx.tables.msg_messages.length;
+    const o = await post(MIKE, "/api/messages/delete", { threadId: id });
+    assert.equal(o.s, 200);
+    assert.equal(await listed(MIKE, id), undefined, "the deleted conversation is still on his list");
+    const unread = await get(MIKE, "/api/messages/unread");
+    assert.equal(unread.j.count, 0, "a deleted conversation still lights his dot");
+    // Nothing was removed from the conversation itself.
+    assert.equal(ctx.tables.msg_messages.length, before, "deleting removed messages");
+    assert.equal(ctx.tables.msg_comps.length, 1, "deleting removed a sent comp");
+    assert.equal(ctx.tables.msg_threads.filter((x) => x.id === id).length, 1, "deleting removed the thread");
+  });
+
+  await t.test("BRAD'S COPY IS UNTOUCHED — still listed, still named, still whole", async () => {
+    const row = await listed(BRAD, id);
+    assert.ok(row, "Mike deleting his copy took the conversation off Brad's list");
+    assert.equal(row.label, "Mike", "Mike deleting his copy renamed the DM on Brad's screen");
+    assert.equal(row.preview, "Looks cheap");
+    const read = await get(BRAD, "/api/messages/thread?id=" + encodeURIComponent(id));
+    assert.equal(read.s, 200);
+    assert.deepEqual(read.j.messages.map((m) => m.body), ["Have a look at this one", "Looks cheap"]);
+    assert.equal(read.j.thread.members.filter((m) => m.left).length, 0,
+      "deleting marked Mike as having LEFT, which is a different act");
+    const comps = await get(BRAD, "/api/messages/comps?thread=" + encodeURIComponent(id));
+    assert.equal(comps.j.comps.length, 1);
+  });
+
+  await t.test("Mike's copy is cleared: the thread, its comps and its old comp are gone for him", async () => {
+    const read = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(id));
+    assert.equal(read.s, 200, "a member who deleted his copy is still a member");
+    assert.deepEqual(read.j.messages, [], "what he deleted came back on a direct read");
+    // An old cursor from before the delete buys nothing either.
+    const old = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(id) +
+      "&since=" + encodeURIComponent("2000-01-01T00:00:00.000Z"));
+    assert.deepEqual(old.j.messages, [], "an old cursor read past the delete");
+    const comps = await get(MIKE, "/api/messages/comps?thread=" + encodeURIComponent(id));
+    assert.deepEqual(comps.j.comps, [], "the Comps tab still shows what he deleted");
+    const save = await post(MIKE, "/api/messages/comp/save", { compId });
+    assert.equal(save.s, 404, "a comp from the deleted part of the conversation was still savable");
+  });
+
+  await t.test("a new message brings it back, holding only what came after", async () => {
+    await tick();
+    assert.equal((await post(BRAD, "/api/messages/send", { threadId: id, body: "Still there?" })).s, 201);
+    const row = await listed(MIKE, id);
+    assert.ok(row, "a new message did not bring the conversation back");
+    assert.equal(row.preview, "Still there?");
+    assert.equal(row.unread, 1, "only the new message is unread");
+    const read = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(id));
+    assert.deepEqual(read.j.messages.map((m) => m.body), ["Still there?"]);
+  });
+
+  await t.test("reopening a deleted DM finds the same conversation, still cleared", async () => {
+    await tick();
+    assert.equal((await post(MIKE, "/api/messages/delete", { threadId: id })).s, 200);
+    assert.equal(await listed(MIKE, id), undefined);
+    const again = await post(MIKE, "/api/messages/thread", { memberIds: [BRAD.id] });
+    assert.equal(again.s, 201);
+    assert.equal(again.j.thread.id, id, "reopening made a second conversation with the same people");
+    const read = await get(MIKE, "/api/messages/thread?id=" + encodeURIComponent(id));
+    assert.equal(read.s, 200, "reopening a deleted conversation locked him out of it");
+    assert.deepEqual(read.j.messages, []);
+    // And writing in it is how it comes back.
+    await tick();
+    assert.equal((await post(MIKE, "/api/messages/send", { threadId: id, body: "Back again" })).s, 201);
+    const row = await listed(MIKE, id);
+    assert.ok(row);
+    assert.equal(row.unread, 0, "his own message counted as unread");
+  });
+});

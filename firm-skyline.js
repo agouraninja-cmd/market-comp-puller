@@ -19,6 +19,15 @@
 // stale copy against a newer index.html is the failure nobody detects. No
 // clock reads: the caller passes `now`.
 //
+// Each property type is its own kind of building (the owner, 2026-09-26: "for
+// residential make it a house, and a different type of building for each
+// property type"): an office is a tower with a stepped crown, industrial a
+// sawtooth-roofed warehouse, retail a storefront under an awning,
+// multifamily an apartment block with balconies, residential a house, and
+// land an open lot with a fence, a sign and a tree. A building with no type
+// is the plain tower it always was. shapeFor names the shape, PROPORTIONS
+// says how each carries its size, and index.html draws it.
+//
 // What "worked on lately" means is deliberately narrow, and the key on the
 // banner says so: a report on the firm's shelf naming the building in the
 // last 30 days, the building being added in the last 30 days, or a lease
@@ -36,6 +45,31 @@
   const SMALL_SF = 6000;     // the shortest tower
   const TALL_FLOOR_SF = 60000; // a board of small buildings is not drawn as towers
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // The vault's PROPERTY_TYPES, each drawn as its own building. Anything
+  // else — no type, or a type this list has not met — is the plain tower.
+  const SHAPE_OF = { office: "office", industrial: "warehouse", retail: "store",
+    multifamily: "apartments", residential: "house", land: "lot" };
+  function shapeFor(type) { return SHAPE_OF[str(type).trim().toLowerCase()] || "tower"; }
+
+  // How each shape carries its size. `floor` is the shortest it is drawn
+  // (px), `tall` the share of the room's height its largest reaches, and
+  // `wide` how much broader it stands than a tower of the same size. A tower
+  // grows up; a warehouse and a store grow out; a house stays house-sized.
+  // Size still decides every one of them — only the proportions differ —
+  // so a building is never drawn smaller than a smaller one of its own type
+  // (below SMALL_SF they are all the smallest, which is where most houses
+  // sit: a house stays a house).
+  const PROPORTIONS = {
+    tower: { floor: 34, tall: 1, wide: 1 },
+    office: { floor: 34, tall: 1, wide: 1 },
+    apartments: { floor: 34, tall: 0.8, wide: 1.2 },
+    warehouse: { floor: 24, tall: 0.42, wide: 1.9 },
+    store: { floor: 26, tall: 0.38, wide: 1.45 },
+    house: { floor: 30, tall: 0.46, wide: 1.1 },
+    lot: { floor: 24, tall: 0.32, wide: 1.5 },
+  };
+  function proportionsOf(tower) { return PROPORTIONS[tower && tower.shape] || PROPORTIONS.tower; }
 
   function str(v) { return v === null || v === undefined ? "" : String(v); }
   function msOf(iso) { const t = Date.parse(str(iso)); return Number.isFinite(t) ? t : NaN; }
@@ -88,9 +122,9 @@
   /**
    * One tower per building on the board, oldest on the left.
    * @param {object} input { buildings, critical, shelf, now }
-   * @returns {Array<object>} each: { building, t, w, lit, activity, reports,
-   *   due, isNew, sized } — t is the height (0..1), w the width (0..1), lit
-   *   the share of windows lit (0..1).
+   * @returns {Array<object>} each: { building, shape, t, w, lit, activity,
+   *   reports, due, isNew, sized } — shape is shapeFor's, t the size as a
+   *   height (0..1), w as a width (0..1), lit the share of windows lit (0..1).
    */
   function towersFor(input) {
     const src = input || {};
@@ -100,7 +134,11 @@
     if (!list.length) return [];
     const due = dueByBuilding(src.critical);
     const today = new Date(now);
-    const sizes = list.map(sizeOf).filter((n) => n !== null);
+    // A lot's size is ground, not floor area, and a ten-acre parcel would
+    // otherwise be the "largest building" every real one is measured
+    // against. So lots stay out of the scale unless the board is all lots.
+    const built = list.filter((b) => shapeFor(b.type) !== "lot").map(sizeOf).filter((n) => n !== null);
+    const sizes = built.length ? built : list.map(sizeOf).filter((n) => n !== null);
     const top = Math.max(TALL_FLOOR_SF, sizes.length ? Math.max.apply(null, sizes) : 0);
     // A building with no size stands at the board's middle height rather than
     // being guessed small or tall; `sized: false` lets the page say so.
@@ -121,7 +159,7 @@
         const dueNow = due.get(str(b.id)) || null;
         const activity = reports + (addedRecently ? 1 : 0) + (dueNow ? 1 : 0);
         const lit = activity === 0 ? 0.05 : Math.min(0.78, 0.2 * activity + 0.14);
-        return { building: b, t, w, lit, activity, reports, due: dueNow, isNew, sized: size !== null };
+        return { building: b, shape: shapeFor(b.type), t, w, lit, activity, reports, due: dueNow, isNew, sized: size !== null };
       });
   }
 
@@ -144,7 +182,8 @@
 
   // Positions, left to right between x0 and x1, standing on `ground`, never
   // taller than `maxHeight`. Widths shrink together when the board is wider
-  // than the room, so every building keeps a tower.
+  // than the room, so every building keeps a tower. Each shape keeps its own
+  // proportions (PROPORTIONS); a tower with no shape is the plain tower.
   function layout(towers, box) {
     const list = Array.isArray(towers) ? towers : [];
     const b = box || {};
@@ -153,8 +192,7 @@
     const maxHeight = Math.max(20, Number(b.maxHeight) || 0);
     const gap = Number.isFinite(Number(b.gap)) ? Number(b.gap) : 9;
     const minW = Number(b.minWidth) || 26, maxW = Number(b.maxWidth) || 52;
-    const minH = Math.min(34, maxHeight);
-    let widths = list.map((x) => minW + (maxW - minW) * x.w);
+    let widths = list.map((x) => (minW + (maxW - minW) * x.w) * proportionsOf(x).wide);
     const room = Math.max(0, x1 - x0);
     const gaps = gap * Math.max(0, list.length - 1);
     let total = widths.reduce((s, w) => s + w, 0) + gaps;
@@ -165,7 +203,10 @@
     }
     let x = x1 - total;
     return list.map((tw, i) => {
-      const height = minH + (maxHeight - minH) * Math.pow(tw.t, 0.8);
+      const pr = proportionsOf(tw);
+      const floor = Math.min(pr.floor, maxHeight);
+      const reach = Math.max(floor, maxHeight * pr.tall);
+      const height = floor + (reach - floor) * Math.pow(tw.t, 0.8);
       const out = { x, width: widths[i], height, top: ground - height };
       x += widths[i] + gap;
       return out;
@@ -231,6 +272,23 @@
     return out;
   }
 
+  // Which of a building's windows are lit: windowPattern, plus two rules for
+  // buildings with only a few windows (a house has three, a storefront two).
+  // One the firm has worked on always shows at least one lit window, since a
+  // dark house would say nobody touched it; and a quiet one with fewer than
+  // FEW_WINDOWS stays dark, since one stray light in three windows would read
+  // as work rather than as a city at night.
+  const FEW_WINDOWS = 8;
+  function lightsFor(tower, count) {
+    const x = tower || {};
+    const n = Math.max(0, count | 0);
+    const id = str(x.building && x.building.id);
+    if (!x.activity && n < FEW_WINDOWS) return new Array(n).fill(false);
+    const out = windowPattern(id, Number(x.lit) || 0, n);
+    if (x.activity && n && !out.some(Boolean)) out[0] = true;
+    return out;
+  }
+
   // The words for a tower: its name, what is due, whether it is new, and its
   // shelf. Plain strings for textContent — tenants and names are text a
   // person typed.
@@ -264,6 +322,6 @@
     return [c.name, c.facts, c.due, c.fresh, c.meta].filter(Boolean).join(". ") + ".";
   }
 
-  return { DUE_DAYS, ACTIVE_DAYS, SPARSE_BELOW, skyFor, towersFor, focusOf, captionFor, layout, isSparse, sparseLayout,
-    windowPattern, calloutFor, labelFor, shortDate };
+  return { DUE_DAYS, ACTIVE_DAYS, SPARSE_BELOW, FEW_WINDOWS, PROPORTIONS, skyFor, shapeFor, towersFor, focusOf, captionFor,
+    layout, isSparse, sparseLayout, windowPattern, lightsFor, calloutFor, labelFor, shortDate };
 });

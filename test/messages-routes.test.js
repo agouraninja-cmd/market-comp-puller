@@ -88,6 +88,7 @@ test("messaging routes on a bare server (no database)", async (t) => {
       ["POST", "/api/messages/send"],
       ["POST", "/api/messages/read"],
       ["POST", "/api/messages/comp/save"],
+      ["POST", "/api/messages/delete"],
           ["GET", "/api/messages/unread"],
     ];
     for (const [method, url] of calls) {
@@ -268,4 +269,27 @@ test("the author stamps their own cursor after posting, so a thread is never unr
   const block = SERVER_JS.slice(sendAt, SERVER_JS.indexOf('msgPath === "/api/messages/unread"', sendAt));
   assert.match(block, /touchMsgThread\(id, now\);[\s\S]{0,600}msg_thread_members\?thread_id=eq\.[\s\S]{0,120}\{ last_read_at: now \}/,
     "the send route no longer stamps the author's last_read_at");
+});
+
+// ---------------------------------------------------------------------------
+// Deleting a conversation (2026-09-26) — for the person who deletes it only
+// ---------------------------------------------------------------------------
+
+test("deleting a conversation writes the caller's own member row and nothing else", () => {
+  const SERVER_JS = read("server.js");
+  // Delete is "gone from MY list, cleared for ME" (messaging.js). The failure
+  // this guards is invisible from the deleter's side: a route that removed
+  // messages, or patched every member row of the thread, would still empty
+  // the deleter's list and would also erase a colleague's record of what was
+  // said.
+  const at = SERVER_JS.indexOf('msgPath === "/api/messages/delete"');
+  assert.notEqual(at, -1, "the delete route is gone");
+  const block = SERVER_JS.slice(at, SERVER_JS.indexOf("\n    }\n", at));
+  assert.match(block, /MSG\.canReadThread\(/, "the delete route skips the membership check");
+  assert.match(block,
+    /"PATCH",\s*`msg_thread_members\?thread_id=eq\.\$\{encodeURIComponent\(id\)\}` \+\s*`&user_id=eq\.\$\{encodeURIComponent\(g\.user\.id\)\}`/,
+    "the delete route's write is not scoped to the caller's own row");
+  assert.doesNotMatch(block, /"DELETE"/, "the delete route removes rows — a colleague's copy goes with them");
+  assert.doesNotMatch(block, /msg_(messages|threads|comps)\b[^_]/,
+    "the delete route touches the conversation itself, not the caller's copy of it");
 });

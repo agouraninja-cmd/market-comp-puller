@@ -4387,5 +4387,11 @@
     "type": "improvement",
     "title": "Faster tab switching in Safari and Firefox too",
     "details": "Instant tab switching relied on a Chrome feature, so Safari and Firefox still waited for every tab to load from scratch. Now, in those browsers, when your pointer rests on a tab (or the tab you’re likely to open next is due), the server builds that page for you in the background and holds it for up to a minute. When you click, the finished page comes straight back instead of waiting on the database. In testing that roughly halved the switch: Workspace to Vault from about 0.55 s to about 0.3 s, and Vault to Workspace from about 0.9 s to about 0.4 s. Chrome and Edge keep their near-instant switching. A page built ahead is only ever given back to the same signed-in browser, is used once, and is thrown away the moment you save anything or sign out."
+  },
+  {
+    "date": "2026-09-26",
+    "type": "improvement",
+    "title": "Instant tab switching in the desktop app",
+    "details": "The desktop app runs on Electron, which can’t pre-load pages the way Chrome does, so switching tabs there still took about half a second. The app now does it itself: it quietly loads the tab you’re likely to open next (and any tab you point at) in a hidden window, and swaps it in the moment you click. In testing, Workspace to Vault and back now takes about 15 ms instead of about 0.4 s. As in Chrome, a tab loaded in the background saves nothing and doesn’t count as a visit until you open it, and it’s thrown away when you save anything or sign out. This needs the new version of the app (1.1.0) — download it again from compninja.co/download."
   }
 ]

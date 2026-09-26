@@ -10210,8 +10210,11 @@ const INAPP_BOOT_MARKER = "<!--INAPP_BOOT-->";
 // row swaps views in place and a prerender of either would be thrown away,
 // and it keeps the vault warm; every other page keeps the workspace warm,
 // since that is home. instant-nav.js has the rules.
-const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"] });
-const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"] });
+// `desktopToken` is how the script recognises the desktop app, which must take
+// the warm path its shell turns into a real prerender (instant-nav.js, THE
+// DESKTOP APP) rather than insert speculation rules Electron never honours.
+const INSTANT_NAV_SHELL = INSTANTNAV.bootScript({ warm: ["/desk"], desktopToken: INAPP_UA_TOKEN });
+const INSTANT_NAV_APP = INSTANTNAV.bootScript({ skip: ["/", "/desk"], warm: ["/vault"], desktopToken: INAPP_UA_TOKEN });
 const INSTANT_NAV_MARKER = "<!--INSTANT_NAV-->";
 
 // Bulk valuation's run view, injected into index.html so a list pasted into
@@ -15254,6 +15257,10 @@ function startWarmRender(req, path, ttlMs) {
 function routeWarm(req, res, redispatch) {
   if (req.cnWarmSeen) return false;
   req.cnWarmSeen = true;
+  if (req.headers[INSTANTNAV.DESKTOP_PRELOAD_HEADER] && !req.headers[WARM_HEADER]) {
+    serveDesktopPreload(req, res);
+    return true;
+  }
   if (!req.headers.cookie || req.headers[WARM_HEADER]) return false;
   const path = req.url.split("?")[0];
   // A write — or one of the GETs that write (HOLD_PATHS) — from this cookie
@@ -15290,6 +15297,35 @@ function routeWarm(req, res, redispatch) {
     redispatch();
   });
   return true;
+}
+
+// The desktop app's hidden view asking for a tab (instant-nav.js, THE DESKTOP
+// APP). Answered ONLY as a speculative render from the warm store — joining
+// the one the page's own ask started, or starting it — with the "not shown
+// yet" script first in <head>. Everything else is an empty 204: a page that
+// runs in a hidden view without that script would write and log a visit as
+// though somebody had opened it, so there is no fallback to a normal render
+// here, unlike routeWarm's. The shell swaps in only a view whose page
+// defines window.__cnShow, so a 204 simply means no instant switch.
+function serveDesktopPreload(req, res) {
+  const path = req.url.split("?")[0];
+  const refuse = () => {
+    if (res.headersSent) return;
+    res.writeHead(204, { "cache-control": "no-store" });
+    res.end();
+  };
+  if (req.method !== "GET" || req.url !== path || !WARM_TAB_SET.has(path)
+      || !req.headers.cookie || !parseCookies(req)[SESSION_COOKIE]) return refuse();
+  const key = warmCookieKey(req) + path;
+  if (!WARM_CACHE.has(key)) startWarmRender(req, path, INSTANTNAV.TTL_MS);
+  const pending = WARM_CACHE.take(key);
+  if (!pending) return refuse();
+  pending.then((hit) => {
+    const html = hit && INSTANTNAV.injectFirstInHead(hit.body.toString("utf8"));
+    if (!html || res.headersSent) return refuse();
+    res.writeHead(200, { ...hit.headers, [WARM_HEADER]: "desktop" });
+    res.end(html);
+  }, refuse);
 }
 
 function aggregateStats(rows) {

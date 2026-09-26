@@ -115,7 +115,8 @@ session that never reads it.
     API routes keep their exact `req.url` matches. [workspace.md]
 15. **Member pages are built before anyone sees them** (instant tab
     switching — the likely next tab on every page view: prerendered in
-    Chrome, rendered ahead on the server for Safari/Firefox). A page writes
+    Chrome, rendered ahead on the server for Safari/Firefox, built in a
+    hidden view by the desktop app's shell). A page writes
     only through `fetch`, which holds a non-GET until the page is shown;
     never a `sendBeacon` or `XMLHttpRequest`, which slip past it. A page
     visit event goes through `logPageVisit`, never a bare `logEvent`, and a

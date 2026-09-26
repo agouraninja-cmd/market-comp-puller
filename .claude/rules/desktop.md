@@ -5,6 +5,7 @@ paths:
   - "manifest.webmanifest"
   - "scripts/install-desktop-shortcut.ps1"
   - "test/desktop.test.js"
+  - "test/desktop-app.test.js"
   - "test/inapp-nav.test.js"
   - "test/manifest.test.js"
   - "test/download-page.test.js"
@@ -63,6 +64,48 @@ step with the /download page). Cut a release:
 are **unsigned** until the owner buys a Windows code-signing cert and
 Apple notarization ($99/yr) — first-run SmartScreen/Gatekeeper warnings
 are expected and the /download page says so honestly.
+
+**Instant tabs in the app (1.1.0, 2026-09-26; `desktop-app/tab-pool.js`,
+`test/desktop-app.test.js`).** Electron has no prerendering: measured on
+Electron 43, a speculation rule makes it fetch the HTML and stop (never
+`prerendered`, even after a 1.5 s hover), so the site's instant tab
+switching gave the app only a head start (~370-465 ms a switch). The shell
+now prerenders by hand, and measured the same way a switch takes 12-18 ms.
+How it fits together (the site's half is instant-nav.js, THE DESKTOP APP):
+- **The window is a `BaseWindow` and every page a `WebContentsView`**, one
+  factory (`makeView`) so no view skips the lockdown. Still no preload and
+  no IPC. The default menu keeps working: its roles act on the focused web
+  contents (measured), and the view on screen always has focus.
+- **The page asks; the shell builds.** In the app the page takes the warm
+  path (its script sees the UA token), so pointing at a tab or the likely
+  next tab POSTs `{path, warm}` to `/api/warm`. The shell intercepts that
+  request (`webRequest.onBeforeRequest`, cancelled so the server never
+  builds an unused copy), loads the tab in a hidden view with
+  `x-cn-desktop-preload: 1`, and on `will-navigate` to that tab swaps the
+  view in. After a write the page sends `{"drop": true}` and the shell
+  throws every built view away; each also dies at the page's TTL; at most
+  `MAX_VIEWS` (3) are held, pointed-at tabs evicted before the warm one.
+- **A hidden view only ever holds the guarded page.** The site answers the
+  header only through its warm store, with a script first in `<head>` that
+  makes `document.prerendering` true until the shell calls
+  `window.__cnShow()` — so writes, read/seen stamps and the visit wait for
+  the swap exactly as in Chrome — and with an empty 204 otherwise. The shell
+  swaps in only a view whose page defines `__cnShow`.
+- **The swap happens only when the page on screen has an empty
+  sessionStorage.** Each view is its own tab to Chromium, so a hidden page
+  booted with none; a page carrying something across the navigation (a
+  market page's pending address, an app password) gets an ordinary
+  navigation instead. A click on a tab still loading keeps the old page up
+  (as any navigation would) and swaps when it is ready, or navigates
+  normally after 5 s.
+- **Hidden views build unthrottled** (`backgroundThrottling: false`, back on
+  once shown): throttled, the workspace did its deferred drawing at the
+  moment of the swap (13-80 ms instead of 12-18).
+- **Testing it:** `npx electron desktop-app/main.js` with `COMPNINJA_URL` at a
+  local server works under `xvfb-run`; as with Chrome, measure with no
+  DevTools attached. An installed copy only gets this from a new installer:
+  the app has no auto-update, and `desktop-v1.1.0` is the first release
+  with it.
 
 **A door you are already through is hidden** (2026-08-20; `INAPP_BOOT` /
 `INAPP_UA_TOKEN` in server.js, `test/inapp-nav.test.js`). Inside the desktop

@@ -417,7 +417,13 @@ function renderMessagesBody(boot) {
     // the list while it is open even when the list read leaves it out — a
     // conversation you deleted and then reopened has nothing in it yet, and
     // is off the list until somebody writes.
-    openRow: null
+    openRow: null,
+    // Every list read is numbered as it is SENT. A read sent before a delete
+    // finished can land after it holding the deleted conversation, and would
+    // put it straight back on the list; staleBefore is the last number that
+    // can have done that, and such an answer is dropped (the next poll is
+    // already correct).
+    listSeq: 0, staleBefore: 0
   };
   var BIN = ${JSON.stringify(BIN_SVG)};
 
@@ -810,7 +816,10 @@ function renderMessagesBody(boot) {
   // A firm row: the row itself, and the bin beside it. Deal rooms never get
   // one (see the header button's comment).
   function internalRowHtml(t, current){
-    if (state.confirmId === t.id) return confirmHtml(t, "row");
+    // Only when the question came from THIS row's bin. Asked from the header,
+    // it lives under the header alone; drawn here too it would be the same
+    // question twice on a desktop, where both panes show.
+    if (state.confirmId === t.id && !state.delBar) return confirmHtml(t, "row");
     return '<div class="msg-rowwrap">' +
       threadRowHtml(t, "data-thread", current, t.preview || "No messages yet") +
       '<button class="msg-del" type="button" data-del="' + esc(t.id) + '"' +
@@ -869,6 +878,7 @@ function renderMessagesBody(boot) {
   }
   function cancelDelete(){
     var id = state.confirmId;
+    var fromBar = state.delBar;
     state.confirmId = "";
     state.delBar = false;
     state.delErr = "";
@@ -876,7 +886,7 @@ function renderMessagesBody(boot) {
     renderDelBar();
     // Focus goes back to the door it came from, so a keyboard user is not
     // dropped at the top of the page.
-    var back = id ? document.querySelector('[data-del="' + id.replace(/"/g, "") + '"]') : null;
+    var back = id && !fromBar ? document.querySelector('[data-del="' + id.replace(/"/g, "") + '"]') : null;
     try { (back || $("msgDelBtn")).focus(); } catch (e) {}
   }
   function deleteThread(id){
@@ -895,6 +905,7 @@ function renderMessagesBody(boot) {
       }
       state.confirmId = "";
       state.delBar = false;
+      state.staleBefore = state.listSeq;
       state.threads = state.threads.filter(function(t){ return t.id !== id; });
       if (state.openKind === "internal" && state.openId === id) {
         // The open conversation went, so the pane goes back to empty and a
@@ -1238,7 +1249,9 @@ function renderMessagesBody(boot) {
 
   // --- the list read ------------------------------------------------------
   function refreshList(quiet){
+    var seq = ++state.listSeq;
     return api("GET", "/api/messages").then(function(o){
+      if (seq <= state.staleBefore) return;
       if (o.s === 401) { gate('<h3>Please sign in</h3><p>Messages are part of your firm\\'s workspace.</p>' +
         '<p><a class="msg-btn" href="/?auth=signin">Sign in</a></p>'); return; }
       if (o.s === 403) { gate('<h3>Messages are for your firm</h3><p>' + esc((o.j && o.j.error) || "") + '</p>' +

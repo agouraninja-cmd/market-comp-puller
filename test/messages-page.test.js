@@ -314,3 +314,17 @@ test("delete asks first, on firm conversations only, and Escape backs out withou
     /addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape" \|\| !state\.confirmId\) return;[\s\S]{0,120}e\.stopPropagation\(\);[\s\S]{0,80}\}, true\);/,
     "Escape on the delete question is no longer caught before the header's go-back listener");
 });
+
+test("the header's question is asked once, and a list read from before a delete cannot undo it", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  // Bugbot, PR #339: the header bin set confirmId, and the row drew the same
+  // question too — twice on a desktop, where both panes show.
+  assert.match(script, /if \(state\.confirmId === t\.id && !state\.delBar\) return confirmHtml\(t, "row"\);/,
+    "a question asked from the header is drawn on the list row as well");
+  // Bugbot, PR #339: a poll sent before the delete finished landed after it
+  // and put the deleted conversation back.
+  assert.match(script, /var seq = \+\+state\.listSeq;\s*return api\("GET", "\/api\/messages"\)\.then\(function\(o\)\{\s*if \(seq <= state\.staleBefore\) return;/,
+    "a list read issued before a delete finished is applied after it");
+  const del = script.slice(script.indexOf("function deleteThread("), script.indexOf("function externalMatches("));
+  assert.match(del, /state\.staleBefore = state\.listSeq;/, "a finished delete no longer marks older list reads stale");
+});

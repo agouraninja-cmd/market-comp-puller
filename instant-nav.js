@@ -250,6 +250,63 @@ function createWarmCache(opts) {
   };
 }
 
+// THE DESKTOP APP (2026-09-26, the owner's "make it instant for the desktop
+// app too"). desktop-app/ is Electron, and Electron has no prerendering at
+// all: measured on Electron 43, a speculation rule makes it fetch the HTML
+// and nothing more (never `prerendered`, even after a 1.5 s hover), so the
+// app got a head start and never the instant switch. There is no switch to
+// turn it on, so the shell does it itself: when the page asks for a tab (the
+// warm path above, which the app always takes) the shell loads that tab in a
+// hidden view, and when the page navigates there it swaps the hidden view in.
+//
+// The hidden view's request carries DESKTOP_PRELOAD_HEADER. The server answers
+// it ONLY through the warm store (a speculative render, so the visit is parked
+// and /vault skips its backfills) with desktopPreloadScript() injected first
+// in <head>, and with an empty 204 for anything it cannot answer that way —
+// a hidden page without the script would run unguarded. The script is the
+// one piece of Chrome's prerender the page needs: `document.prerendering` is
+// true until the shell calls window.__cnShow(), which fires
+// `prerenderingchange`. So the fetch guard, the held reads and the visit tag
+// all work in the hidden view exactly as they do in a Chrome prerender, with
+// no preload script and no IPC in the app (its security posture stands).
+// Nothing but the shell sends the header, and a page that sends it for
+// itself only makes its own tab wait for a show that never comes.
+const DESKTOP_PRELOAD_HEADER = "x-cn-desktop-preload";
+
+function desktopPreloadBoot() {
+  var unseen = true;
+  try {
+    Object.defineProperty(Document.prototype, "prerendering", {
+      configurable: true, get: function () { return unseen; },
+    });
+  } catch (e) {}
+  try {
+    Object.defineProperty(window, "__cnShow", {
+      value: function () {
+        if (!unseen) return false;
+        unseen = false;
+        window.__cnShown = true;
+        document.dispatchEvent(new Event("prerenderingchange"));
+        return true;
+      },
+    });
+  } catch (e) {}
+}
+function desktopPreloadScript() {
+  return `<script>(${desktopPreloadBoot.toString()})();</script>`;
+}
+// The script goes FIRST in <head>: before THEME_BOOT, before the instant-nav
+// boot and every page script, because each of them reads
+// `document.prerendering` at the moment it runs. Null when there is no <head>
+// to put it in — the caller then refuses to serve the page at all.
+function injectFirstInHead(html) {
+  const s = String(html);
+  const m = /<head[^>]*>/i.exec(s);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  return s.slice(0, at) + desktopPreloadScript() + s.slice(at);
+}
+
 // The tag a deferred visit rides down in: posts its token once the page is
 // actually shown. Self-contained (it does not lean on the boot script below),
 // because Chrome also prerenders from its own address bar, on pages and for
@@ -281,8 +338,14 @@ function visitTag(token) {
 //     server threw away would never ask for it again (Cursor Bugbot,
 //     PR #342: the Messages page polls a thread every 15 s). The next reach
 //     for the nav asks again, so this is never a standing rebuild;
+//   - isDesktop: the desktop app (its UA token, cfg.desktopToken). Electron
+//     parses speculation rules and has `document.prerendering`, yet never
+//     prerenders — it fetches the HTML and stops — so it takes the warm path,
+//     which the app's own shell turns into a real prerender (DESKTOP APP
+//     below). After a write it also tells the shell to throw away what it
+//     built ({"drop":true} to cfg.warmPath: the one signal the shell can see);
 //   - canPrerender: Chrome/Edge (`document.prerendering` exists AND speculation
-//     rules parse). Everything below then runs the same for every browser
+//     rules parse, and not the desktop app). Everything below then runs the same for every browser
 //     except prerender()'s one action: a speculation rule where it can,
 //     otherwise warmOnServer() — a POST to cfg.warmPath with the ORIGINAL
 //     fetch, so asking for a page is not a write and drops nothing, and
@@ -320,6 +383,18 @@ function instantNavBoot(cfg, win) {
     if (entry.el && entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
   }
   function dropAll() { while (live.length) drop(live[0]); }
+  var isDesktop = !!cfg.desktopToken && String((w.navigator && w.navigator.userAgent) || "").indexOf(cfg.desktopToken) >= 0;
+  function afterWrite() {
+    dropAll();
+    if (isDesktop) {
+      try {
+        F.call(w, cfg.warmPath, {
+          method: "POST", credentials: "same-origin", keepalive: true,
+          headers: { "content-type": "application/json" }, body: "{\"drop\":true}",
+        }).catch(function () {});
+      } catch (e) {}
+    }
+  }
 
   var F = w.fetch;
   if (typeof F === "function") {
@@ -339,13 +414,13 @@ function instantNavBoot(cfg, win) {
         ? new Promise(function (resolve) { d.addEventListener("prerenderingchange", function () { resolve(); }, { once: true }); })
             .then(function () { return F.apply(w, args); })
         : F.apply(w, args);
-      p.then(dropAll, dropAll);
+      p.then(afterWrite, afterWrite);
       return p;
     };
   }
 
   var S = w.HTMLScriptElement;
-  var canPrerender = "prerendering" in d && !!S && typeof S.supports === "function" && S.supports("speculationrules");
+  var canPrerender = !isDesktop && "prerendering" in d && !!S && typeof S.supports === "function" && S.supports("speculationrules");
   if (!canPrerender && typeof F !== "function") return;
 
   function target(el) {
@@ -454,6 +529,7 @@ function bootScript(opts) {
     warmTtlMs: WARM_TTL_MS,
     warmDelayMs: WARM_DELAY_MS,
     warmPath: WARM_PATH,
+    desktopToken: (opts && opts.desktopToken) || "",
   };
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c");
   return `<script>try{(${instantNavBoot.toString()})(${json});}catch(e){}</script>\n`;
@@ -461,6 +537,7 @@ function bootScript(opts) {
 
 module.exports = {
   TAB_PATHS, HOLD_PATHS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
-  WARM_PATH, WARM_MAX_BYTES,
+  WARM_PATH, WARM_MAX_BYTES, DESKTOP_PRELOAD_HEADER,
+  desktopPreloadBoot, desktopPreloadScript, injectFirstInHead,
   isSpeculative, createVisitDeferrals, createWarmCache, visitTag, instantNavBoot, bootScript,
 };

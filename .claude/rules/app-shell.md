@@ -228,7 +228,18 @@ whole design in its header; the load-bearing parts:
     per IP, at most `WARM_MAX_IN_FLIGHT` (8) renders nobody has opened yet.
   Chrome and Edge never call it: `canPrerender` picks one mechanism per
   browser, and a second render of a page Chrome is already prerendering
-  would be pure cost. Tested in `test/instant-nav.test.js` against a real
+  would be pure cost.
+- **The desktop app is instant too, through its shell (1.1.0).** Electron
+  has no prerendering, so the page there takes the warm path whatever it
+  parses (`isDesktop`, the UA token passed in as `desktopToken`), and the
+  app's shell intercepts the ask and builds the tab in a hidden view it
+  swaps in on click. The site's half: `serveDesktopPreload` answers
+  `x-cn-desktop-preload` only from the warm store with
+  `desktopPreloadScript()` first in `<head>` (a `document.prerendering`
+  polyfill ended by `window.__cnShow()`), and an empty 204 otherwise —
+  never a normal render, which would run unguarded in a hidden view; and
+  after a write the page sends `{"drop": true}` so the shell drops what it
+  built. `.claude/rules/desktop.md` has the shell's half. Tested in `test/instant-nav.test.js` against a real
   server (served once, to the same cookie, never after a write, the visit
   logged only when the page is shown).
 - **Member pages only, one source.** `marketShell` emits `INSTANT_NAV_SHELL`

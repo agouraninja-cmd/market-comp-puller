@@ -35,8 +35,10 @@ const CFG = {
 // records its calls.
 // `safari: true` is a browser with no prerendering at all: no speculation
 // rules and no `document.prerendering` property (WebKit, Gecko).
+// `desktop: true` is the desktop app: an Electron that parses speculation
+// rules and has `document.prerendering`, and says so in its user agent.
 function stage({ path: at = "/vault", supports = true, prerendering = false, skip = [], warm = [],
-  links = [], readyState = "complete", hidden = false, safari = false } = {}) {
+  links = [], readyState = "complete", hidden = false, safari = false, desktop = false } = {}) {
   if (safari) supports = false;
   const listeners = {};
   const winListeners = {};
@@ -62,6 +64,7 @@ function stage({ path: at = "/vault", supports = true, prerendering = false, ski
   const calls = [];
   const win = {
     document,
+    navigator: { userAgent: "Mozilla/5.0 Chrome/146 Electron/43" + (desktop ? " CompNinjaDesktop/1" : "") },
     location: new URL(ORIGIN + at),
     URL,
     HTMLScriptElement: supports ? { supports: (t) => t === "speculationrules" } : undefined,
@@ -70,7 +73,7 @@ function stage({ path: at = "/vault", supports = true, prerendering = false, ski
     clearTimeout(id) { const i = timers.findIndex((t) => t.id === id); if (i >= 0) timers.splice(i, 1); },
     addEventListener(type, fn) { (winListeners[type] = winListeners[type] || []).push(fn); },
   };
-  NAV.instantNavBoot({ ...CFG, skip, warm }, win);
+  NAV.instantNavBoot({ ...CFG, skip, warm, desktopToken: "CompNinjaDesktop/" }, win);
   return {
     win, document, calls, listeners,
     fire(type, ev) {
@@ -454,6 +457,82 @@ test("without prerendering, a held read forgets what was asked, as the server do
   assert.deepEqual(warmPosts(s)[1], { path: "/desk", warm: true }, "the next reach for the nav asks again");
 });
 
+// --- The desktop app: its shell builds the tab --------------------------------
+
+test("the desktop app asks its shell even though Electron parses speculation rules", () => {
+  // Measured on Electron 43: a speculation rule fetches the HTML and never
+  // prerenders, so the rule path gave the app a head start at best.
+  const s = stage({ desktop: true });
+  s.fire("pointerover", mouse(link("/desk")));
+  s.tick(NAV.DWELL_MS);
+  assert.deepEqual(s.urls(), [], "no speculation rule in the app");
+  assert.deepEqual(warmPosts(s), [{ path: "/desk", warm: false }]);
+  const chrome = stage({});
+  chrome.fire("pointerdown", mouse(link("/desk")));
+  assert.deepEqual(warmPosts(chrome), [], "Chrome itself keeps its prerender");
+});
+
+test("after a write the desktop app tells its shell to throw its built tabs away", async () => {
+  const s = stage({ desktop: true });
+  await s.win.fetch("/api/logout", { method: "POST" });
+  await flush();
+  assert.deepEqual(warmPosts(s), [{ drop: true }], "even with nothing asked for: the shell may hold tabs an earlier page built");
+  await s.win.fetch("/api/messages/thread?id=t1");
+  await flush();
+  assert.equal(warmPosts(s).length, 2, "a held read wrote too");
+  await s.win.fetch("/api/messages");
+  await flush();
+  assert.equal(warmPosts(s).length, 2, "a plain read is not a write");
+  const safari = stage({ safari: true });
+  await safari.win.fetch("/api/logout", { method: "POST" });
+  await flush();
+  assert.deepEqual(warmPosts(safari), [], "only the app has a shell to tell");
+});
+
+test("the hidden view's script is Chrome's prerender, as far as the page can tell", () => {
+  const vm = require("vm");
+  class Event { constructor(type) { this.type = type; } }
+  class Document {
+    constructor() { this.l = []; }
+    addEventListener(type, fn) { this.l.push([type, fn]); }
+    dispatchEvent(e) { this.l.filter(([t]) => t === e.type).forEach(([, fn]) => fn(e)); }
+  }
+  Object.defineProperty(Document.prototype, "prerendering", { configurable: true, get() { return false; } });
+  const document = new Document();
+  const ctx = vm.createContext({ Document, Event, document });
+  ctx.window = ctx;
+  const html = NAV.desktopPreloadScript();
+  vm.runInContext(html.replace(/^<script>/, "").replace(/<\/script>$/, ""), ctx);
+  assert.equal(document.prerendering, true, "unseen until the shell says otherwise");
+  let fired = 0;
+  document.addEventListener("prerenderingchange", () => { fired++; });
+  assert.equal(ctx.window.__cnShow(), true);
+  assert.equal(document.prerendering, false);
+  assert.equal(fired, 1, "the event every held write and the visit tag wait on");
+  assert.equal(ctx.window.__cnShow(), false, "shown once");
+  assert.equal(fired, 1);
+});
+
+test("the script goes first in <head>, or the page is not served at all", () => {
+  const page = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8"/><script>theme()</script>';
+  const out = NAV.injectFirstInHead(page);
+  assert.ok(out.startsWith('<!DOCTYPE html>\n<html lang="en">\n<head><script>(function desktopPreloadBoot'));
+  assert.ok(out.indexOf("desktopPreloadBoot") < out.indexOf("theme()"));
+  assert.equal(NAV.injectFirstInHead("<p>no head</p>"), null);
+  assert.ok(!/<\/script/i.test(NAV.desktopPreloadScript().slice(8, -9)));
+});
+
+test("the desktop header is answered before anything else, and never by a normal render", () => {
+  const route = serverSrc.slice(serverSrc.indexOf("function routeWarm("));
+  assert.ok(route.indexOf("DESKTOP_PRELOAD_HEADER") < route.indexOf("if (!req.headers.cookie"),
+    "a cookie-less request with the header must still be refused, not rendered");
+  const fn = serverSrc.slice(serverSrc.indexOf("function serveDesktopPreload("),
+    serverSrc.indexOf("function aggregateStats("));
+  assert.ok(!/redispatch|server\.emit/.test(fn), "no fallback to an unguarded render");
+  assert.match(serverSrc, /bootScript\(\{ warm: \["\/desk"\], desktopToken: INAPP_UA_TOKEN \}\)/);
+  assert.match(serverSrc, /bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/vault"\], desktopToken: INAPP_UA_TOKEN \}\)/);
+});
+
 test("the served script carries the warm path", () => {
   assert.ok(NAV.bootScript({}).includes(`"warmPath":"${NAV.WARM_PATH}"`));
   assert.equal(NAV.WARM_PATH, "/api/warm");
@@ -608,9 +687,9 @@ test("both shells carry the script for a member, from one source", () => {
   const firstSrc = indexSrc.indexOf("<script src=");
   assert.ok(marker > 0 && marker < firstSrc, "the marker must precede the page's scripts");
   assert.match(serverSrc,
-    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/vault"\] \}\)/,
+    /const INSTANT_NAV_APP = INSTANTNAV\.bootScript\(\{ skip: \["\/", "\/desk"\], warm: \["\/vault"\],/,
     "the app handles / and /desk in place (a prerender of either is thrown away) and keeps the vault warm");
-  assert.match(serverSrc, /const INSTANT_NAV_SHELL = INSTANTNAV\.bootScript\(\{ warm: \["\/desk"\] \}\)/,
+  assert.match(serverSrc, /const INSTANT_NAV_SHELL = INSTANTNAV\.bootScript\(\{ warm: \["\/desk"\],/,
     "every other page keeps the workspace warm: it is home");
 });
 
@@ -772,3 +851,46 @@ test("Safari and Firefox: a tab built ahead is served once, to the same cookie, 
     assert.equal(visits(), before + 1);
   });
 });
+
+test("the desktop app's hidden view gets the guarded page or nothing, on a real server", async (t) => {
+  const srv = await shared.boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const C = "cn_session=x; cn_vid=0123456789abcdef0123456789abcdef";
+  const hidden = async (p, cookie = C) => {
+    const r = await fetch(srv.base + p, { headers: { cookie, [NAV.DESKTOP_PRELOAD_HEADER]: "1" } });
+    return { status: r.status, via: r.headers.get("x-cn-warm"), html: await r.text() };
+  };
+
+  await t.test("a tab comes back guarded: the script first in <head>, the visit parked", async () => {
+    const logFile = path.join(srv.dataDir, "analytics.jsonl");
+    const visits = () => {
+      try {
+        return fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean)
+          .map((l) => JSON.parse(l)).filter((r) => r.kind === "vault_visit").length;
+      } catch (_) { return 0; }
+    };
+    for (const p of ["/vault", "/desk"]) {
+      const r = await hidden(p);
+      assert.equal(r.status, 200, p);
+      assert.equal(r.via, "desktop");
+      assert.match(r.html, /^<!DOCTYPE html>\s*<html[^>]*>\s*<head[^>]*><script>\(function desktopPreloadBoot/i,
+        `${p}: nothing may run before the script`);
+    }
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(visits(), 0, "built in a hidden view is not a visit");
+  });
+
+  await t.test("anything it cannot answer that way is an empty 204, never a normal page", async () => {
+    for (const [why, p, cookie] of [
+      ["no session", "/vault", "cn_vid=0123456789abcdef0123456789abcdef"],
+      ["no cookie at all", "/vault", ""],
+      ["not a tab", "/market/boise-id", C],
+      ["a query string", "/vault?x=1", C],
+    ]) {
+      const r = await hidden(p, cookie);
+      assert.equal(r.status, 204, why);
+      assert.equal(r.html, "", why);
+    }
+  });
+});
+

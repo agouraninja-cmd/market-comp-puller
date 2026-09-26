@@ -1,7 +1,7 @@
 {
   "name": "compninja-desktop",
   "productName": "CompNinja",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "private": true,
   "description": "CompNinja desktop app — a standalone shell around compninja.co.",
   "author": "CompNinja LLC <info@compninja.co>",
@@ -18,7 +18,7 @@
   "build": {
     "appId": "co.compninja.desktop",
     "productName": "CompNinja",
-    "files": ["main.js", "offline.html", "build/icon.png"],
+    "files": ["main.js", "tab-pool.js", "offline.html", "build/icon.png"],
     "directories": { "buildResources": "build", "output": "dist" },
     "win": { "target": "nsis" },
     "nsis": {

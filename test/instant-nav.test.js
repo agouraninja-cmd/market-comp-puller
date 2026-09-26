@@ -228,6 +228,21 @@ test("a sweep of hovers cannot evict the warm tab", () => {
   assert.equal(s.urls().filter((u) => u === ORIGIN + "/desk").length, 1);
 });
 
+test("warming a tab already prerendered for a hover promotes it out of the FIFO", () => {
+  // Cursor Bugbot, PR #340: the member rests on Workspace before the warm-up
+  // fires, the warm-up finds that entry and must make it the warm one — or two
+  // more hovers evict the tab that was meant to stay ready.
+  const s = stage({ path: "/markets", warm: ["/desk"], links: [link("/desk")] });
+  s.fire("pointerdown", mouse(link("/desk")));
+  s.tick(NAV.WARM_DELAY_MS);
+  for (const p of ["/vault", "/messages", "/permits"]) s.fire("pointerdown", mouse(link(p)));
+  assert.deepEqual(s.urls(), [ORIGIN + "/desk", ORIGIN + "/messages", ORIGIN + "/permits"]);
+  s.tick(NAV.TTL_MS);
+  assert.ok(s.urls().includes(ORIGIN + "/desk"), "and it lives the warm TTL, not the hover one");
+  s.tick(NAV.WARM_TTL_MS);
+  assert.ok(!s.urls().includes(ORIGIN + "/desk"));
+});
+
 test("the warm tab expires, and only a pointer reaching for the nav re-arms it", () => {
   const s = stage({ path: "/vault", warm: ["/desk"], links: [link("/desk")] });
   s.tick(NAV.WARM_DELAY_MS);

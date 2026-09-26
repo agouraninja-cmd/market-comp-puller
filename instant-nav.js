@@ -164,7 +164,10 @@ function visitTag(token) {
 //     (/desk?settings=1 opens a panel), never one that opens elsewhere;
 //   - prerender(): one list rule per URL, deduplicated, dropped after its TTL;
 //     intent ones FIFO past maxLive, the warm one outside that count so a
-//     sweep of hovers cannot evict it. No `eagerness` key — a list rule
+//     sweep of hovers cannot evict it. Warming a URL already held for intent
+//     PROMOTES that entry (warm flag, warm TTL) rather than adopting it as
+//     is, or it would still sit in the FIFO (Cursor Bugbot, PR #340). No
+//     `eagerness` key — a list rule
 //     already defaults to immediate, and a browser that predates the key
 //     would discard the whole rule over it;
 //   - warm(): the first of cfg.warm with a link on the page that is actually
@@ -218,15 +221,23 @@ function instantNavBoot(cfg, win) {
     return u.href;
   }
 
+  function expire(entry, ms) {
+    w.clearTimeout(entry.timer);
+    entry.timer = w.setTimeout(function () { drop(entry); }, ms);
+  }
   function prerender(url, isWarm) {
     if (!url) return null;
-    for (var i = 0; i < live.length; i++) if (live[i].url === url) return live[i];
+    for (var i = 0; i < live.length; i++) {
+      if (live[i].url !== url) continue;
+      if (isWarm && !live[i].warm) { live[i].warm = true; expire(live[i], cfg.warmTtlMs); }
+      return live[i];
+    }
     var s = d.createElement("script");
     s.type = "speculationrules";
     s.textContent = JSON.stringify({ prerender: [{ source: "list", urls: [url] }] });
     d.head.appendChild(s);
     var entry = { url: url, el: s, timer: 0, warm: Boolean(isWarm) };
-    entry.timer = w.setTimeout(function () { drop(entry); }, isWarm ? cfg.warmTtlMs : cfg.ttlMs);
+    expire(entry, isWarm ? cfg.warmTtlMs : cfg.ttlMs);
     live.push(entry);
     var intent = [];
     for (var j = 0; j < live.length; j++) if (!live[j].warm) intent.push(live[j]);

@@ -2231,6 +2231,18 @@ test("a red light marks only a date inside 90 days, a crane only a building adde
   assert.ok(lit(due) > lit(quiet), "a building the firm worked on is brighter than a quiet one");
 });
 
+test("the crane is drawn at a weight it can be read at, and the city line is not a pill that looks like a button", () => {
+  const ctx = loadSky({ buildings: BOARD() });
+  ctx.draw();
+  const fresh = skyTowers(ctx)[2];
+  assert.equal(partsOf(fresh, "sky-crane").length, 1);
+  assert.equal(partsOf(fresh, "sky-crane-wt").length, 2, "a filled weight and hook block, not hairlines alone");
+  const crane = html.match(/\.dk-sky \.sky-crane \{[^}]*\}/)[0];
+  assert.ok(Number(/stroke-width: ([\d.]+)/.exec(crane)[1]) >= 1.5, "the owner read the 1.1px crane as a stray mark");
+  const where = html.match(/\.dk-hero-where \{[^}]*\}/)[0];
+  assert.doesNotMatch(where, /border|background|padding/, "it does nothing when clicked, so it must not look clickable");
+});
+
 test("at rest the callout names the tower that needs the firm most; hovering another moves it, leaving brings it back", () => {
   const ctx = loadSky({ buildings: BOARD(), critical: [{ buildingId: "due", kind: "notice", tenant: "Acme Logistics", days: 41 }],
     shelf: [{ address: "3275 S Federal Way, Boise, ID", createdAt: skyDaysAgo(2) }] });

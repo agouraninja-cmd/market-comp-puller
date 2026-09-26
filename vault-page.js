@@ -576,33 +576,33 @@ a.btn.ghost:hover{color:var(--ink)}
    footer -- and the four-lines-and-no-links dead end it had been -- is gone.
    Its privacy sentence stayed, as the page's own closing line. */
 .vfoot{color:var(--ink-3);font-size:var(--t5);margin:var(--s8) 0 0;max-width:62ch}
-/* ---- The deal desk (2026-09-25) ---------------------------------------------
-   The owner's pick of the vault redesign drafts: Draft C (This week, the
-   pipeline as a board) with Draft B's map and comp set as the book view.
-   Every class is prefixed vd- so none can share a name with MARKET_CSS (the
-   leak test in test/vault-shell.test.js computes that set), and each one
-   that can carry .hide restates it under its own display rule. */
-.vd-week{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--s4);margin-top:var(--s5)}
-.vd-week.hide{display:none}
-.vd-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--edge);
-  border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow),var(--lift)}
-.vd-c-lead{border-top:3px solid var(--red-fill)}
-.vd-c-exp{border-top:3px solid var(--warn-text)}
-.vd-c-del{border-top:3px solid var(--ink)}
-.vd-ctop{display:flex;align-items:baseline;gap:10px}
-.vd-n{font-family:var(--serif);font-size:34px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
-.vd-c-lead .vd-n{color:var(--red)}
-.vd-ctop h3{margin:0;font-size:13.5px;font-weight:600;color:var(--ink-2);line-height:1.3}
-.vd-cbody{flex:1;margin-top:10px}
-.vd-cbody ul{list-style:none;margin:0;padding:0}
-.vd-cbody li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--hair)}
-.vd-cbody li b{display:block;font-size:13px;font-weight:600;color:var(--ink)}
-.vd-cbody li span{display:block;font-size:12px;color:var(--ink-3)}
-.vd-cbody select{min-height:32px;font-size:13px;padding:4px 8px}
-.vd-cbody em{font-style:normal}
-.vd-soon{color:var(--red);font-weight:600}
-.vd-e{margin:0 0 10px;color:var(--ink-2);font-size:13.5px}
-.vd-cfoot{margin:10px 0 0;font-size:12px;color:var(--ink-3)}
+/* ---- The vault, Draft B (2026-09-25) ---------------------------------------
+   The owner's pick of the vault redesign drafts: Draft B, "Find it, use it".
+   Every class is prefixed vd- or vt- so none can share a name with MARKET_CSS
+   (the leak test in test/vault-shell.test.js computes that set), and any that
+   can carry .hide restates it under its own display rule. */
+.vt-wrap{position:relative;margin-top:var(--s6)}
+.vt-tabs{display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid var(--edge);padding-right:200px}
+.vt-tab{font:inherit;font-size:14px;color:var(--ink-2);background:none;border:0;border-bottom:2px solid transparent;
+  margin-bottom:-1px;padding:10px 14px;cursor:pointer;white-space:nowrap}
+.vt-tab b{font-weight:600;color:var(--ink-3);margin-left:3px}
+.vt-tab b.hot{color:var(--red)}
+.vt-tab:hover{color:var(--ink)}
+.vt-tab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--red)}
+.vt-tab.on b{color:var(--ink)}
+.vt-tab.on b.hot{color:var(--red)}
+.vt-tab:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
+.vt-tab.vt-off{display:none}
+.vt-panel{display:none}
+.vt-panel.on{display:block}
+.vt-panel>section{margin-top:var(--s5)}
+#compsSec>h2{display:none}
+/* Each panel's deck rule is that part's one action, laid over the right end
+   of the tab bar: the label and rule give way to the tab, the action stays. */
+.vt-panel.on>.deck{position:absolute;top:0;right:0;margin:0;height:43px;align-items:center}
+.vt-panel>.deck .dlab,.vt-panel>.deck .dln{display:none}
+.vt-panel>.deck .dact{background:var(--red-fill);color:#fff;border-color:var(--red-fill);font-weight:600}
+.vt-panel>.deck .dact:hover{background:var(--red-fill-hover);border-color:var(--red-fill-hover);color:#fff}
 .vd-pv{display:inline-flex;border:1px solid var(--edge);border-radius:var(--r);overflow:hidden;background:var(--card);align-self:center}
 .vd-pv.hide{display:none}
 .vd-pv button{font:inherit;font-size:12.5px;color:var(--ink-2);background:none;border:0;border-left:1px solid var(--edge);
@@ -612,35 +612,40 @@ a.btn.ghost:hover{color:var(--ink)}
 .vd-pv button:focus-visible{outline:2px solid var(--red);outline-offset:-2px}
 .filters .vd-bv{align-self:flex-end}
 .filters .vd-bv button{min-height:38px;padding:6px 14px;font-size:13px}
-/* The board and the list are one section's two views; which one shows is a
-   class on #pipeSec, so renderPipeline's own writes to the strip and the
-   table wrapper (it sets their className) never fight it. */
-#pipeSec:not(.vd-list) #pipeStrip,#pipeSec:not(.vd-list) #pipeTableWrap{display:none!important}
-#pipeSec.vd-list #pipeBoard{display:none!important}
-.vd-board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:var(--s4)}
-.vd-board.hide{display:none}
-.vd-col{background:var(--wash);border:1px solid var(--line);border-radius:var(--r);padding:10px;min-height:150px;min-width:0}
-.vd-colh{display:flex;justify-content:space-between;align-items:baseline;margin:0 2px 8px;font-size:10.5px;
-  letter-spacing:.1em;text-transform:uppercase;font-weight:600;color:var(--ink-3)}
-.vd-colh b{font-size:13px;color:var(--ink);letter-spacing:0}
-.vd-col-new .vd-colh b{color:var(--red)}
-.vd-bc{background:var(--card);border:1px solid var(--edge);border-radius:var(--r);padding:9px 10px;margin-bottom:8px}
-.vd-bc b{display:block;font-size:12.5px;font-weight:600;color:var(--ink)}
-.vd-bc span{display:block;font-size:11.5px;color:var(--ink-3)}
-.vd-bc i{display:block;font-size:11.5px;color:var(--ink-2);margin-top:3px;overflow-wrap:anywhere}
-.vd-bact{display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap}
-.vd-bact select{min-height:30px;font-size:12.5px;padding:3px 6px}
-.vd-fit{display:block;margin-top:6px;font:inherit;font-size:11px;font-weight:600;padding:3px 8px;border-radius:4px;
-  border:0;background:var(--ok-bg);color:var(--ok-text);cursor:pointer;text-align:left}
-.vd-fit:hover{text-decoration:underline}
-.vd-ghost{border:1.5px dashed var(--ink-4);border-radius:var(--r);padding:14px 10px;font-size:12px;color:var(--ink-3);text-align:center}
+/* In the map view the chips below stand in for the four dropdowns, and the
+   Find box takes the room they leave. */
+.filters.vb-chips>label{display:none}
+.filters.vb-chips>label.vb-find{display:flex;flex:1 1 280px}
+.filters.vb-chips>label.vb-find input{width:100%;min-width:0}
+.vd-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 12px}
+.vd-chip{font:inherit;font-size:12.5px;color:var(--ink-2);background:var(--card);border:1px solid var(--edge);
+  border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap}
+.vd-chip span{color:var(--ink-3);margin-left:2px}
+.vd-chip:hover{border-color:var(--ink-3);color:var(--ink)}
+.vd-chip.on{background:var(--slab);border-color:var(--slab);color:#fff}
+.vd-chip.on span{color:rgba(255,255,255,.72)}
+.vd-chip:focus-visible{outline:2px solid var(--red);outline-offset:2px}
+.vd-csep{display:inline-block;width:1px;height:18px;background:var(--edge);margin:0 4px}
 .vd-more{font-size:12px;margin:2px 0 0 2px}
+/* The empty book: the country on a map, with the way in laid over it. */
+#bookEmpty.invite{position:relative;max-width:none;height:520px;margin:var(--s5) 0 var(--s6);border:1px solid var(--edge);
+  border-radius:var(--r);overflow:hidden;background:var(--wash)}
+.vd-emap{position:absolute;inset:0;z-index:0}
+.vd-drop{position:absolute;z-index:600;left:50%;top:50%;transform:translate(-50%,-50%);width:min(560px,calc(100% - 32px));
+  background:var(--card);border:2px dashed var(--ink-4);border-radius:10px;padding:24px 26px;box-shadow:0 20px 50px -20px rgba(0,0,0,.35)}
+.vd-drop>p{margin:0 0 var(--s4);color:var(--ink-2)}
+.vd-drop>p.vd-drop-k{margin:0;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);font-weight:600}
+.vd-drop-h{margin:6px 0 8px;font-size:21px;line-height:1.25}
+.vd-drop .row{margin-top:var(--s4)}
 /* The book: Map or Table. The class lives on #bookViews because applyFirstRun
    writes #compsSec's whole className. */
 .vd-views{margin-top:var(--s4)}
 .vd-views.vd-map #bookTable{display:none}
 .vd-views:not(.vd-map) #bookMap{display:none}
 body.vd-mapview #rollupSec{display:none}
+/* ...and, hidden that way rather than by .hide, it would still hand #compsSec
+   the divider the rule above strips. */
+body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 .vd-split{display:grid;grid-template-columns:minmax(0,46fr) minmax(0,54fr);border:1px solid var(--edge);
   border-radius:var(--r);overflow:hidden;background:var(--card);height:640px;box-shadow:var(--shadow),var(--lift)}
 .vd-list{display:flex;flex-direction:column;border-right:1px solid var(--edge);min-height:0}
@@ -700,17 +705,16 @@ body.vd-mapview #rollupSec{display:none}
 .vd-tray.on .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
 .vd-tray.on .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
 .vd-tray.on .lnk{color:rgba(255,255,255,.8)}
-/* The pipeline's rule carries a title, the Board/List switch and its action;
-   on a phone the rule line gives way so all three fit. */
+/* On a phone the tabs scroll sideways and each part's action sits under
+   them on its own line, rather than over the tabs it would cover. */
 @media (max-width:640px){
-  #deckPipe{flex-wrap:wrap;row-gap:10px}
-  #deckPipe .dln{display:none}
-  #deckPipe .dact{margin-left:auto}
+  .vt-tabs{overflow-x:auto;scrollbar-width:none;padding-right:0}
+  .vt-panel.on>.deck{position:static;height:auto;margin:var(--s4) 0 0;justify-content:flex-end}
+  #bookEmpty.invite{height:620px}
+  .vd-legend{bottom:auto;top:10px;left:auto;right:10px}
+  .vd-drop{padding:18px 18px}
 }
 @media (max-width:900px){
-  .vd-week{grid-template-columns:minmax(0,1fr)}
-  .vd-board{display:flex;overflow-x:auto;padding-bottom:6px}
-  .vd-board .vd-col{flex:0 0 232px}
   .vd-split{display:flex;flex-direction:column-reverse;height:auto}
   .vd-mapwrap{flex:0 0 260px;height:260px}
   .vd-list{border-right:0;border-top:1px solid var(--edge)}
@@ -770,153 +774,36 @@ body.vd-mapview #rollupSec{display:none}
     <div id="vaultLocked" class="invite hide">
       <p><strong>Your book and your pipeline are part of Pro.</strong>
         Upload closed deals, keep them private, and see them inside your own reports.</p>
-      <p>Your properties and your watchlist are below either way &mdash; those are yours.</p>
+      <p>Your properties and your watchlist are in their own tabs either way &mdash; those are yours.</p>
       <p style="margin:0"><a class="btn" href="/desk">See your plan</a></p>
     </div>
     <!-- ------------------------------------------------------------------
-         This week (2026-09-25; the owner's pick of the vault redesign
-         drafts: Draft C with Draft B's map and comp set). The three things on
-         this page with a clock on them, drawn from data the page already
-         reads -- /api/broker/leads, /api/broker/bovs and the book itself --
-         so the deck has no route of its own. Each count comes from what
-         ARRIVED: a read that failed says so, and never reads as zero, the
-         pipeline's own rule. It is part of the vault (VAULT_DECKS), so the
-         Pro lock hides it with the book and the pipeline.
+         The tabs (2026-09-25; Draft B of the vault redesign, the owner's
+         pick at https://claude.ai/artifact/Mw9KrzNpaLygnJ3azF1cYK). The
+         vault's five parts were one scroll, and on a busy book the pipeline
+         sat 17,500 pixels down under every comp. Now each part is a tab and
+         the Book opens first, as a list beside a map with a comp set.
+
+         Every section inside a panel is the section it always was, with its
+         id, its deck rule and its handlers: a tab only decides which panel
+         shows (setTab is the one writer). The active panel's deck rule is
+         laid over the right end of the tab bar, so each part keeps its one
+         action (+ Add comps, + Log a BOV, + Add a property) where the tab
+         bar is. The Pro lock still hides the book and the pipeline decks
+         (VAULT_DECKS) and opens on Properties instead.
          ------------------------------------------------------------------ -->
-    <div class="deck" id="deckWeek">
-      <span class="dlab">This week</span><span class="dln"></span>
+    <div class="vt-wrap" id="vtWrap">
+    <div class="vt-tabs" id="vaultTabs" role="tablist" aria-label="Your vault">
+      <button type="button" role="tab" class="vt-tab on" id="tab-book" data-tab="book" aria-selected="true" aria-controls="panelBook">Book <b id="tabBookN"></b></button>
+      <button type="button" role="tab" class="vt-tab" id="tab-pipe" data-tab="pipe" aria-selected="false" aria-controls="panelPipe">Pipeline <b id="tabPipeN"></b></button>
+      <button type="button" role="tab" class="vt-tab" id="tab-props" data-tab="props" aria-selected="false" aria-controls="panelProps">Properties <b id="tabPropsN"></b></button>
+      <button type="button" role="tab" class="vt-tab" id="tab-watch" data-tab="watch" aria-selected="false" aria-controls="panelWatch">Watchlist <b id="tabWatchN"></b></button>
+      <button type="button" role="tab" class="vt-tab vt-off" id="tab-contrib" data-tab="contrib" aria-selected="false" aria-controls="panelContrib">Contributions <b id="tabContribN"></b></button>
     </div>
-    <div class="vd-week" id="weekSec">
-      <article class="vd-card vd-c-lead" aria-labelledby="wkLeadsH">
-        <div class="vd-ctop"><span class="vd-n" id="wkLeadsN">&mdash;</span><h3 id="wkLeadsH">Owners asking for a value</h3></div>
-        <div class="vd-cbody" id="wkLeads"><p class="vd-e">Loading&hellip;</p></div>
-      </article>
-      <article class="vd-card vd-c-exp" aria-labelledby="wkLeasesH">
-        <div class="vd-ctop"><span class="vd-n" id="wkLeasesN">&mdash;</span><h3 id="wkLeasesH">Leases in your book ending within a year</h3></div>
-        <div class="vd-cbody" id="wkLeases"></div>
-      </article>
-      <article class="vd-card vd-c-del" aria-labelledby="wkBovsH">
-        <div class="vd-ctop"><span class="vd-n" id="wkBovsN">&mdash;</span><h3 id="wkBovsH">BOVs waiting on an answer</h3></div>
-        <div class="vd-cbody" id="wkBovs"><p class="vd-e">Loading&hellip;</p></div>
-      </article>
-    </div>
-
+    <div class="vt-panel on" id="panelBook" data-panel="book" role="tabpanel" aria-labelledby="tab-book">
     <!-- ------------------------------------------------------------------
-         The pipeline deck: work coming IN, rather than work already done.
-         ONE table, from a lead nobody has claimed through to won or lost —
-         see docs/superpowers/specs/2026-08-13-vault-pipeline-deck-design.md.
-         It used to be two sections, "Leads in your markets" and "BOV
-         tracker", which described one flow with no shared structure: an
-         intro request auto-creates the BOV row, so the same engagement sat
-         in two tables 500px apart, repeating four columns, with nothing on
-         screen connecting them.
-
-         The rule now carries the deck's one action, like the book deck's
-         "+ Add comps". An empty pipeline is still this deck: #pipeEmpty
-         holds the watch-market form until a lead or BOV row arrives.
-
-         Since 2026-09-25 it sits second on the page, under This week, and
-         opens as a BOARD: one column per stage, the same rows the table
-         draws. The table is still here as the List view -- sort, the stage
-         strip, the full source and notes columns -- and every control on a
-         card is the table's own control (data-intro, data-bov, data-bovdel),
-         caught by the same document-level handlers, so the two views cannot
-         act differently on one row.
-         ------------------------------------------------------------------ -->
-    <div class="deck" id="deckPipe">
-      <span class="dlab">Your pipeline</span><span class="dln"></span>
-      <span class="vd-pv hide" id="pipeViewSeg" role="group" aria-label="Pipeline view"><button type="button" data-pv="board" aria-pressed="true">Board</button><button type="button" data-pv="list" aria-pressed="false">List</button></span>
-      <button class="dact" id="bovToggle" aria-expanded="false" aria-controls="bovAddSec">+ Log a BOV</button>
-    </div>
-
-    <!-- No h2: the deck rule above is the level ABOVE h2, and with one
-         section under it a heading would only restate the rule. -->
-    <section id="pipeSec">
-      <p class="sub hide" id="pipeIntro" style="margin-top:0">Every engagement, from a property owner
-        requesting a Broker Opinion of Value in a market you watch through to won or
-        lost. Only you can see this.</p>
-      <div class="strip s5 hide" id="pipeStrip"></div>
-      <p class="note hide" id="pipeNote"></p>
-      <div class="vd-board hide" id="pipeBoard"></div>
-
-      <!-- A panel, not a section, and it ships CLOSED — the same rule #addSec
-           carries. #bovMsg lives INSIDE it for the same reason #res lives
-           inside #addSec: a log that failed must not write its error into
-           something invisible. -->
-      <div id="bovAddSec" class="addpanel hide">
-        <div class="form">
-          <label>Market <input id="bovMarket" type="text" placeholder="City, ST" list="mktList"/></label>
-          <label>Type <select id="bovType"></select></label>
-          <label>Source <select id="bovSource">
-            <option value="referral">Referral</option>
-            <option value="repeat_client">Repeat client</option>
-            <option value="other" selected>Other</option>
-          </select></label>
-          <label>Size (SF) <input id="bovSize" type="text"/></label>
-          <label>Received <input id="bovDate" type="date"/></label>
-          <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
-          <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
-          <div class="formact span-all">
-            <button class="btn" id="bovAdd">Log a BOV</button>
-          </div>
-        </div>
-        <div id="bovMsg"></div>
-      </div>
-
-      <!-- Suggestions for both market inputs, from the markets this broker
-           already watches or already holds comps in. A list, never a
-           constraint: the next BOV may be in a market they have never
-           touched, so free text still submits and the server stays the gate. -->
-      <datalist id="mktList"></datalist>
-
-      <div id="pipeMsg"></div>
-      <div id="pipeEmpty" class="invite">
-        <p>Watch a market to see owners requesting valuations. Nothing to upload.</p>
-        <!-- The ONE market-adding form on the page. renderPipeline moves this
-             node into #covBox once a lead or BOV exists. One node, relocated
-             — never a second copy that would drift from the coverage rules. -->
-        <div id="covForm">
-          <div class="form">
-            <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
-            <label>Type <select id="covType"></select></label>
-            <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
-          </div>
-          <div class="row" id="covRow"></div>
-          <div id="leadMsg"></div>
-          <div id="covMsg"></div>
-          <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
-            where you have submitted a comp comes back on your next visit.</p>
-        </div>
-      </div>
-      <!-- Hidden while there are no rows: a header row with nothing under it is
-           the same "is this broken?" signal the empty comps table gave. -->
-      <div class="tw hide" id="pipeTableWrap"><table id="pipeTbl">
-        <thead><tr>
-          <th data-bk="stageRank">Stage</th><th data-bk="received">Received</th>
-          <th data-bk="market">Market</th><th data-bk="property_type">Type</th>
-          <th data-bk="size_sqft" class="num">Size</th><th data-bk="source">Source</th>
-          <th>Notes</th><th></th>
-        </tr></thead><tbody id="pipeRows"></tbody>
-      </table></div>
-      <!-- Said once, under the table, rather than in every unclaimed lead's
-           empty Market cell. A lead is anonymized to five facts by
-           broker-leads.js; the blank is the privacy wall, not missing data. -->
-      <p class="note hide" id="leadPrivacy">A lead&rsquo;s address and contact details stay
-        with CompNinja until an introduction is made.</p>
-
-      <!-- Choosing markets is setup, not the daily job, so it collapses once
-           there is a row. #covForm is still exactly ONE node, relocated here
-           by renderPipeline. Never add a second copy. -->
-      <details class="dbox hide" id="covBox">
-        <summary>Markets you watch</summary>
-      </details>
-    </section>
-
-
-
-    <!-- ------------------------------------------------------------------
-         The book deck. Everything from here to the pipeline rule is the
-         broker's own data: what they have, and where it came from.
+         The book deck. Everything in this tab is the broker's own data:
+         what they have, and where it came from.
 
          "Add comps" used to be a full section ABOVE the comps table, so a
          broker with 200 comps opened their book and was shown an uploader
@@ -928,62 +815,18 @@ body.vd-mapview #rollupSec{display:none}
       <span class="dlab">Your book</span><span class="dln"></span>
       <button class="dact" id="addToggle" aria-expanded="false" aria-controls="addSec">+ Add comps</button>
     </div>
-    <!-- The trust line's job is to prove a number stays at zero, including
-         on day one. Hidden until 2026-08-13 because a 0-0 scoreboard over
-         numbered onboarding cards read as broken; the empty vault is now
-         the real workspace, so the zeros are the honest empty state.
-         Privacy copy is restated here AND in #bookEmpty's disclosure AND
-         at publish. See applyFirstRun(). -->
-    <div class="trust" id="trustLine">
-      <div class="ledger">
-        <div class="lcell"><span class="llab">Comps</span>
-          <div class="lfig" id="cCount">0</div><div class="lsub" id="cImports"></div></div>
-        <div class="lcell"><span class="llab">Priced sales</span>
-          <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
-        <div class="lcell"><span class="llab">Median $/SF</span>
-          <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
-        <div class="lcell mid"><span class="llab">Published</span>
-          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
-      </div>
-      <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
-           firm (migration 032). The default text is the promise this whole
-           tier rests on, so it is in the markup rather than built in JS: a
-           page whose script failed must still make the true statement, not
-           no statement. -->
-      <p class="note" id="trustNote">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
-        public records, and nothing is published unless you choose it.</p>
-      <!-- The credit identity, stated once and shown BEFORE any publish.
-           It sits with the trust line because it answers the same question
-           that line does — what leaves here, and under whose name — and
-           because it is meaningless until there is a book to publish from.
-           #creditLine is written by renderIdentity() from the server's own
-           creditedTo, never assembled here, so the page cannot promise a
-           name the publish route would not actually use. -->
-      <p class="note" id="creditLine"></p>
-      <div id="idForm" class="hide">
-        <div class="form">
-          <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
-          <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
-          <label>License number <input id="idLicense" type="text" placeholder="01899123" maxlength="60"/></label>
-          <div class="formact">
-            <button class="btn" id="idSave">Save</button>
-            <button class="btn ghost" id="idCancel">Cancel</button>
-          </div>
-        </div>
-        <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
-          when you have one, otherwise to your name. This is not a public listing &mdash; it only
-          names the credit on comps you choose to publish.</p>
-        <p class="fine">Your license number is required to publish, because the Verified badge on a
-          published comp tells a reader that a licensed broker vouched for the deal. It is never
-          shown to anyone: it backs that badge rather than appearing beside it.</p>
-        <p class="msg bad hide" id="idMsg"></p>
-      </div>
-    </div>
-    <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
-      The figures below are drawn from those, so your full book may be larger.</p>
 
+    <!-- An empty book is its map with the way in laid over it (Draft B): the
+         deals land here as pins, so the first thing a broker sees is where
+         they will go. The map is a picture of the country until then, drawn
+         by initEmptyMap only while this is showing; with no Leaflet the card
+         stands on the plain ground. -->
     <div id="bookEmpty" class="invite">
-      <p>Upload closed deals. They appear in your reports and stay private.</p>
+      <div class="vd-emap" id="bmEmptyMap" aria-hidden="true"></div>
+      <div class="vd-drop">
+      <p class="vd-drop-k">Your book, on one map</p>
+      <h2 class="vd-drop-h">Drop a spreadsheet, PDF or screenshot anywhere on this page</h2>
+      <p>Upload closed deals. They appear in your reports and stay private, and they land here as pins you can search, filter and pull into a comp set.</p>
       <details>
         <summary>Required columns &amp; privacy details</summary>
         <p class="fine">Four columns are required: address, property type, sale or
@@ -995,8 +838,9 @@ body.vd-mapview #rollupSec{display:none}
         <p class="fine">A PDF or screenshot is sent to our extract vendor to read the table. CompNinja does not store the file. Rows land in your vault only after you confirm.</p>
       </details>
       <div class="row">
-        <a class="btn" href="/api/vault/template" id="frTpl">Download the template</a>
-        <button class="btn ghost" id="bookPick">Choose a spreadsheet, PDF or screenshot</button>
+        <button class="btn" id="bookPick">Choose a spreadsheet, PDF or screenshot</button>
+        <a class="btn ghost" href="/api/vault/template" id="frTpl">Download the template</a>
+      </div>
       </div>
     </div>
 
@@ -1186,7 +1030,7 @@ body.vd-mapview #rollupSec{display:none}
            not: it always exports everything. It is a plain href, not a
            fetch, so the session cookie rides along and the download still
            works even if the page's own script has failed. -->
-      <div class="row filters">
+      <div class="row filters vb-chips" id="filterRow">
         <span class="vd-pv vd-bv" id="bookViewSeg" role="group" aria-label="Show your book as"><button type="button" data-bv="map" aria-pressed="true">Map</button><button type="button" data-bv="table" aria-pressed="false">Table</button></span>
         <label>Market <select id="fMarket"><option value="">All</option></select></label>
         <label>Type <select id="fType"><option value="">All</option></select></label>
@@ -1210,7 +1054,7 @@ body.vd-mapview #rollupSec{display:none}
              exactly what they are trying to remember. Searches address and
              notes: the address is what they know, and notes is where the
              tenant name or the "sold with the adjacent parcel" detail lives. -->
-        <label>Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
+        <label class="vb-find">Find <input type="search" id="fText" placeholder="address or note" autocomplete="off"/></label>
         <button class="btn ghost hide" id="fClear">Clear</button>
         <span class="note" id="shown"></span>
         <button class="btn ghost" type="button" id="sheetToggle">Open spreadsheet</button>
@@ -1248,6 +1092,10 @@ body.vd-mapview #rollupSec{display:none}
            private-comp contract, which the report map keeps too. -->
       <div class="vd-views vd-map" id="bookViews">
         <div id="bookMap">
+          <!-- Draft B's chips: the Market, Type, Deal and Firm filters as one
+               row, each a toggle over the SAME select the Table view reads, so
+               the two views can never be filtered differently. -->
+          <div class="vd-chips" id="bmChips"></div>
           <div class="vd-split">
             <div class="vd-list">
               <div class="vd-lhead"><label class="vd-all"><input type="checkbox" id="bmAll"/> <span id="bmCount"></span></label><span class="note" id="bmSort">Newest first</span></div>
@@ -1309,6 +1157,166 @@ body.vd-mapview #rollupSec{display:none}
       </details>
     </section>
 
+    <!-- The trust line's job is to prove a number stays at zero, including
+         on day one. Hidden until 2026-08-13 because a 0-0 scoreboard over
+         numbered onboarding cards read as broken; the empty vault is now
+         the real workspace, so the zeros are the honest empty state.
+         Privacy copy is restated here AND in #bookEmpty's disclosure AND
+         at publish. See applyFirstRun(). -->
+    <div class="trust" id="trustLine">
+      <div class="ledger">
+        <div class="lcell"><span class="llab">Comps</span>
+          <div class="lfig" id="cCount">0</div><div class="lsub" id="cImports"></div></div>
+        <div class="lcell"><span class="llab">Priced sales</span>
+          <div class="lfig" id="cPriced">0</div><div class="lsub" id="cPricedPct"></div></div>
+        <div class="lcell"><span class="llab">Median $/SF</span>
+          <div class="lfig" id="cMed">&mdash;</div><div class="lsub" id="cMedSub">sales only</div></div>
+        <div class="lcell mid"><span class="llab">Published</span>
+          <div class="lfig" id="cPub">0</div><div class="lsub" id="cPubSub">only if you choose it</div></div>
+      </div>
+      <!-- Rewritten by renderFirmPrivacy() the moment a comp is shared with a
+           firm (migration 032). The default text is the promise this whole
+           tier rests on, so it is in the markup rather than built in JS: a
+           page whose script failed must still make the true statement, not
+           no statement. -->
+      <p class="note" id="trustNote">Visible only to you. Nothing here is ever read into CompNinja&rsquo;s
+        public records, and nothing is published unless you choose it.</p>
+      <!-- The credit identity, stated once and shown BEFORE any publish.
+           It sits with the trust line because it answers the same question
+           that line does — what leaves here, and under whose name — and
+           because it is meaningless until there is a book to publish from.
+           #creditLine is written by renderIdentity() from the server's own
+           creditedTo, never assembled here, so the page cannot promise a
+           name the publish route would not actually use. -->
+      <p class="note" id="creditLine"></p>
+      <div id="idForm" class="hide">
+        <div class="form">
+          <label>Firm <input id="idCompany" type="text" placeholder="Hawkins Ridge CRE" maxlength="60"/></label>
+          <label>Your name <input id="idName" type="text" placeholder="optional" maxlength="60"/></label>
+          <label>License number <input id="idLicense" type="text" placeholder="01899123" maxlength="60"/></label>
+          <div class="formact">
+            <button class="btn" id="idSave">Save</button>
+            <button class="btn ghost" id="idCancel">Cancel</button>
+          </div>
+        </div>
+        <p class="fine" style="margin-top:var(--s3)">Published comps are credited to your firm
+          when you have one, otherwise to your name. This is not a public listing &mdash; it only
+          names the credit on comps you choose to publish.</p>
+        <p class="fine">Your license number is required to publish, because the Verified badge on a
+          published comp tells a reader that a licensed broker vouched for the deal. It is never
+          shown to anyone: it backs that badge rather than appearing beside it.</p>
+        <p class="msg bad hide" id="idMsg"></p>
+      </div>
+    </div>
+    <p id="trunc" class="note hide" style="margin-top:var(--s3)">Showing the most recent 1,000 comps.
+      The figures below are drawn from those, so your full book may be larger.</p>
+    </div>
+    <div class="vt-panel" id="panelPipe" data-panel="pipe" role="tabpanel" aria-labelledby="tab-pipe">
+    <!-- ------------------------------------------------------------------
+         The pipeline deck: work coming IN, rather than work already done.
+         ONE table, from a lead nobody has claimed through to won or lost —
+         see docs/superpowers/specs/2026-08-13-vault-pipeline-deck-design.md.
+         It used to be two sections, "Leads in your markets" and "BOV
+         tracker", which described one flow with no shared structure: an
+         intro request auto-creates the BOV row, so the same engagement sat
+         in two tables 500px apart, repeating four columns, with nothing on
+         screen connecting them.
+
+         The rule now carries the deck's one action, like the book deck's
+         "+ Add comps". An empty pipeline is still this deck: #pipeEmpty
+         holds the watch-market form until a lead or BOV row arrives.
+
+         Since 2026-09-25 it is the Pipeline tab (Draft B of the vault
+         redesign), and the tab carries the count of new owner requests.
+         ------------------------------------------------------------------ -->
+    <div class="deck" id="deckPipe">
+      <span class="dlab">Your pipeline</span><span class="dln"></span>
+      <button class="dact" id="bovToggle" aria-expanded="false" aria-controls="bovAddSec">+ Log a BOV</button>
+    </div>
+
+    <!-- No h2: the deck rule above is the level ABOVE h2, and with one
+         section under it a heading would only restate the rule. -->
+    <section id="pipeSec">
+      <p class="sub hide" id="pipeIntro" style="margin-top:0">Every engagement, from a property owner
+        requesting a Broker Opinion of Value in a market you watch through to won or
+        lost. Only you can see this.</p>
+      <div class="strip s5 hide" id="pipeStrip"></div>
+      <p class="note hide" id="pipeNote"></p>
+
+      <!-- A panel, not a section, and it ships CLOSED — the same rule #addSec
+           carries. #bovMsg lives INSIDE it for the same reason #res lives
+           inside #addSec: a log that failed must not write its error into
+           something invisible. -->
+      <div id="bovAddSec" class="addpanel hide">
+        <div class="form">
+          <label>Market <input id="bovMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+          <label>Type <select id="bovType"></select></label>
+          <label>Source <select id="bovSource">
+            <option value="referral">Referral</option>
+            <option value="repeat_client">Repeat client</option>
+            <option value="other" selected>Other</option>
+          </select></label>
+          <label>Size (SF) <input id="bovSize" type="text"/></label>
+          <label>Received <input id="bovDate" type="date"/></label>
+          <label class="span2">Address <input id="bovAddr" type="text" placeholder="optional"/></label>
+          <label class="span2">Notes <input id="bovNotes" type="text" placeholder="optional"/></label>
+          <div class="formact span-all">
+            <button class="btn" id="bovAdd">Log a BOV</button>
+          </div>
+        </div>
+        <div id="bovMsg"></div>
+      </div>
+
+      <!-- Suggestions for both market inputs, from the markets this broker
+           already watches or already holds comps in. A list, never a
+           constraint: the next BOV may be in a market they have never
+           touched, so free text still submits and the server stays the gate. -->
+      <datalist id="mktList"></datalist>
+
+      <div id="pipeMsg"></div>
+      <div id="pipeEmpty" class="invite">
+        <p>Watch a market to see owners requesting valuations. Nothing to upload.</p>
+        <!-- The ONE market-adding form on the page. renderPipeline moves this
+             node into #covBox once a lead or BOV exists. One node, relocated
+             — never a second copy that would drift from the coverage rules. -->
+        <div id="covForm">
+          <div class="form">
+            <label class="span2">Market <input id="covMarket" type="text" placeholder="City, ST" list="mktList"/></label>
+            <label>Type <select id="covType"></select></label>
+            <div class="formact"><button class="btn" id="covAdd">Watch this market</button></div>
+          </div>
+          <div class="row" id="covRow"></div>
+          <div id="leadMsg"></div>
+          <div id="covMsg"></div>
+          <p class="fine" style="margin-top:var(--s3)">Remove all of them and any market
+            where you have submitted a comp comes back on your next visit.</p>
+        </div>
+      </div>
+      <!-- Hidden while there are no rows: a header row with nothing under it is
+           the same "is this broken?" signal the empty comps table gave. -->
+      <div class="tw hide" id="pipeTableWrap"><table id="pipeTbl">
+        <thead><tr>
+          <th data-bk="stageRank">Stage</th><th data-bk="received">Received</th>
+          <th data-bk="market">Market</th><th data-bk="property_type">Type</th>
+          <th data-bk="size_sqft" class="num">Size</th><th data-bk="source">Source</th>
+          <th>Notes</th><th></th>
+        </tr></thead><tbody id="pipeRows"></tbody>
+      </table></div>
+      <!-- Said once, under the table, rather than in every unclaimed lead's
+           empty Market cell. A lead is anonymized to five facts by
+           broker-leads.js; the blank is the privacy wall, not missing data. -->
+      <p class="note hide" id="leadPrivacy">A lead&rsquo;s address and contact details stay
+        with CompNinja until an introduction is made.</p>
+
+      <!-- Choosing markets is setup, not the daily job, so it collapses once
+           there is a row. #covForm is still exactly ONE node, relocated here
+           by renderPipeline. Never add a second copy. -->
+      <details class="dbox hide" id="covBox">
+        <summary>Markets you watch</summary>
+      </details>
+    </section>
+    </div>
+    <div class="vt-panel" id="panelProps" data-panel="props" role="tabpanel" aria-labelledby="tab-props">
     <!-- ------------------------------------------------------------------
          Your properties, and Your watchlist. Moved off /desk on 2026-09-01
          ("Three Spaces"): the workspace is the FIRM's record, and a
@@ -1377,7 +1385,8 @@ body.vd-mapview #rollupSec{display:none}
         <tbody id="propsRows"></tbody><tfoot id="propsFoot"></tfoot>
       </table></div>
     </section>
-
+    </div>
+    <div class="vt-panel" id="panelWatch" data-panel="watch" role="tabpanel" aria-labelledby="tab-watch">
     <!-- ------------------------------------------------------------------
          Your watchlist. Same move, same rules.
 
@@ -1416,7 +1425,8 @@ body.vd-mapview #rollupSec{display:none}
       </div>
       <div id="mktRows"></div>
     </section>
-
+    </div>
+    <div class="vt-panel" id="panelContrib" data-panel="contrib" role="tabpanel" aria-labelledby="tab-contrib">
     <!-- ------------------------------------------------------------------
          Your contributions (2026-09-04). The comps this member handed to the
          PUBLIC records through the Submit-a-comp modal, each with its review
@@ -1457,8 +1467,8 @@ body.vd-mapview #rollupSec{display:none}
         <div class="msg bad hide" id="contribErr"></div>
       </div>
     </section>
-
-
+    </div>
+    </div>
   </div>
   <!-- The privacy sentence the old footer carried. It is page CONTENT, not
        chrome -- the one promise this page exists to make -- so it stays with
@@ -1677,7 +1687,7 @@ body.vd-mapview #rollupSec{display:none}
   // 2026-09-04: the hubs deck came out, because every job it did had moved to
   // /messages (External conversations) and two doors onto one room is one
   // door too many. A broker's deal rooms are read through /api/messages now.
-  var VAULT_DECKS=["deckWeek","weekSec","trustLine","deckBook","bookEmpty","addSec","rollupSec","compsSec",
+  var VAULT_DECKS=["trustLine","deckBook","bookEmpty","addSec","rollupSec","compsSec",
     "deckPipe","pipeSec"];
 
   function lockVaultDecks(msg){
@@ -1689,6 +1699,9 @@ body.vd-mapview #rollupSec{display:none}
       if(el.className.indexOf("hide")<0) el.className=(el.className+" hide").trim();
     });
     $("vaultLocked").className="invite";
+    // Nothing in the Book or Pipeline tab can show, so the page opens on the
+    // first tab that is the member's either way.
+    if(curTab==="book"||curTab==="pipe")setTab("props",true);
     // The page subtitle describes the book and the pipeline. With both
     // locked it would be describing a page that is not on screen.
     $("deckSub").textContent="Your properties and your watchlist. Only you can see this.";
@@ -1726,6 +1739,7 @@ body.vd-mapview #rollupSec{display:none}
     $("vaultLocked").className="invite hide";
     comps=o.j.comps||[];
     $("cCount").textContent=(o.j.counts&&o.j.counts.returned)||0;
+    tabCount("tabBookN",comps.length?num(comps.length):"",false);
     $("cPub").textContent=(o.j.counts&&o.j.counts.published)||0;
     // What publishing gave back. Until now a broker published a comp, saw a
     // green chip, and learned nothing further — while the very same figure was
@@ -1816,9 +1830,6 @@ body.vd-mapview #rollupSec{display:none}
     // gut check looked like it was failing in thin markets when it was not.
     if(!benchLoaded && comps.length){ benchLoaded=true; loadBenchmarks(); }
     render();
-    // This week's lease card reads the book, so it is redrawn with it; the
-    // other two cards are redrawn by renderPipeline as their reads land.
-    renderWeek();
   }
 
   // No market/type params: the whole book comes down once and view() narrows
@@ -2713,6 +2724,7 @@ body.vd-mapview #rollupSec{display:none}
     firstRunCounts=[compCount,uploadCount];
     var first=compCount===0&&uploadCount===0;
     $("bookEmpty").className=first?"invite":"invite hide";
+    if(first)initEmptyMap();
     // The uploader is closed by default in BOTH cases and this only
     // re-asserts whatever the broker last chose. It deliberately does not
     // force it shut on an empty book: #res lives inside this panel, so an
@@ -3121,12 +3133,11 @@ body.vd-mapview #rollupSec{display:none}
     if(pipeInvite)$("pipeEmpty").appendChild($("covForm"));
     else $("covBox").appendChild($("covForm"));
     renderCoverage(coverage);
-    // The board draws the same rows (all of them, never the list's stage
-    // filter: on a board every stage is already its own column), and This
-    // week reads the same two reads, so both are redrawn from here.
-    $("pipeViewSeg").className=all.length?"vd-pv":"vd-pv hide";
-    renderBoard(all);
-    renderWeek();
+    // The Pipeline tab says what is new: owner requests nobody has asked to
+    // be introduced to yet, in red. Otherwise how many rows the pipeline
+    // holds, counted from what ARRIVED like the strip above.
+    var fresh=all.filter(function(r){return r.kind==="lead"&&!r.intro_requested}).length;
+    tabCount("tabPipeN",fresh?fresh+" new":(all.length||""),fresh>0);
   }
 
   function pipeRow(r){
@@ -3232,14 +3243,13 @@ body.vd-mapview #rollupSec{display:none}
       .catch(function(){ $("pipeMsg").innerHTML='<div class="msg bad">That didn\\'t reach the server. Nothing was changed.</div>'; });
   });
 
-  // ---- The deal desk (2026-09-25) ---------------------------------------------
+  // ---- The vault, Draft B (2026-09-25) ------------------------------------------
   //
-  // The owner's pick of the vault redesign drafts: Draft C (This week, and the
-  // pipeline as a board) with Draft B's map and comp set as the book view.
-  // Nothing here reads anything the page did not already hold -- the book,
-  // /api/broker/leads and /api/broker/bovs -- so the whole block is drawing,
-  // and every control that changes something is an existing one: the intro
-  // button, the BOV stage select and Remove, publishList and
+  // The owner's pick of the vault redesign drafts: Draft B, "Find it, use it".
+  // The five parts of the vault are tabs, and the Book opens as a list beside
+  // a map of the broker's own buildings, with a comp set they tick rows into.
+  // Nothing here reads anything the page did not already hold, and every
+  // control that changes something is an existing one: publishList and
   // shareListWithFirm, each with its own confirm. The one new way for a comp
   // to leave the page is the comp set's sheet and CSV, and both are files the
   // broker saves for themselves, like the whole-book CSV export beside them.
@@ -3256,17 +3266,6 @@ body.vd-mapview #rollupSec{display:none}
   }
   function dayLabel(d,withYear){ var p=isoParts(d); return p?MON[p.m-1]+" "+p.d+(withYear?", "+p.y:""):""; }
   function monthLabel(d){ var p=isoParts(d); return p?MON[p.m-1]+" "+p.y:"undated"; }
-  function daysUntil(d){
-    var p=isoParts(d); if(!p)return null;
-    var n=new Date();
-    return Math.round((Date.UTC(p.y,p.m-1,p.d)-Date.UTC(n.getFullYear(),n.getMonth(),n.getDate()))/864e5);
-  }
-  function isoDaysAgo(n){ return new Date(Date.now()-n*864e5).toISOString().slice(0,10); }
-  function agoLabel(d){
-    var n=daysUntil(d); if(n==null)return "";
-    n=-n;
-    return n<=0?"today":n===1?"yesterday":n<14?n+" days ago":n<60?Math.round(n/7)+" weeks ago":Math.round(n/30)+" months ago";
-  }
   function streetOf(a){ return String(a||"").split(",")[0]; }
   function cityOf(m){ return String(m||"").split(",")[0]; }
   function shortMoney(n){
@@ -3274,178 +3273,65 @@ body.vd-mapview #rollupSec{display:none}
     return n>=1e6?"$"+(n/1e6).toFixed(n>=1e7?0:1)+"M":"$"+Math.round(n/1e3)+"K";
   }
   function rentLabel(v){ return v==null?"":"$"+Number(v).toFixed(2)+"/SF/yr"; }
-
-  // What in the book answers a deal: the broker's own priced SALES in the same
-  // market and type from the last 24 months. Sales only, for psfOf's reason,
-  // and one type by construction, so the median names a real figure.
-  function fitsFor(market,type){
-    var cut=isoDaysAgo(730),vals=[];
-    comps.forEach(function(c){
-      if(c.market!==market||c.property_type!==type||c.transaction!=="sale")return;
-      if(!c.deal_date||String(c.deal_date)<cut)return;
-      var v=psfOf(c); if(v!=null)vals.push(v);
-    });
-    return {n:vals.length,med:median(vals)};
-  }
-  function fitsChip(market,type){
-    var f=fitsFor(market,type);
-    if(!f.n)return "";
-    return '<button type="button" class="vd-fit" data-fit-m="'+escA(market)+'" data-fit-t="'+escA(type)+
-      '" title="Show these sales in your book">'+f.n+" sale"+(f.n===1?"":"s")+" in your book &middot; "+psf0(f.med)+"/SF</button>";
-  }
-  // The stage select, shared by the list's rows, the board's cards and This
-  // week: one markup, so the document-level change handler reads all three.
+  // The pipeline row's stage select, as one function.
   function bovSelect(id,status,label){
     return '<select data-bov="'+escA(id)+'" data-prev="'+escA(status)+'"'+(label?' aria-label="'+escA(label)+'"':"")+">"+
       BOV_STATUSES.map(function(s){
         return '<option value="'+s+'"'+(status===s?" selected":"")+">"+s.charAt(0).toUpperCase()+s.slice(1)+"</option>";
       }).join("")+"</select>";
   }
-
-  // ---- This week ------------------------------------------------------------
-  // Leases whose deciding date is inside a year: the option notice deadline
-  // when there is one still ahead of the expiry (it is the date that matters,
-  // FIELD_HINTS says so), otherwise the expiry.
-  var wkLeasesAll=false;
-  function leaseKey(c){
-    var dExp=daysUntil(c.lease_expiry),dNote=daysUntil(c.option_notice_date);
-    if(dNote!=null&&dNote>=0&&(dExp==null||dNote<=dExp))return {d:dNote,label:"notice by "+dayLabel(c.option_notice_date,true)};
-    if(dExp!=null&&dExp>=0)return {d:dExp,label:"ends "+dayLabel(c.lease_expiry,true)};
-    return null;
-  }
-  function expiringLeases(){
-    var out=[];
-    comps.forEach(function(c){
-      if(c.transaction!=="lease")return;
-      var k=leaseKey(c);
-      if(k&&k.d<=365)out.push({c:c,k:k});
-    });
-    return out.sort(function(a,b){return a.k.d-b.k.d});
-  }
-  function renderWeek(){
-    // Owners asking for a value. A read that failed says so and shows a dash:
-    // "none in your markets" is a claim only an answer can make.
-    var lb=$("wkLeads");
-    if(leadsOk){
-      var fresh=leads.filter(function(l){return !l.intro_requested});
-      $("wkLeadsN").textContent=fresh.length;
-      if(fresh.length){
-        lb.innerHTML="<ul>"+fresh.slice(0,3).map(function(l){
-          var f=fitsFor(l.market,l.type);
-          return "<li><div><b>"+esc(cityOf(l.market))+" &middot; "+esc(l.type)+(l.size_sqft?" &middot; "+num(l.size_sqft)+" SF":"")+"</b>"+
-            "<span>asked "+esc(agoLabel(l.ts))+(f.n?" &middot; "+f.n+" of your sales fit":"")+"</span></div>"+
-            '<button class="pubbtn" type="button" data-intro="'+escA(l.id)+'">Request introduction</button></li>';
-        }).join("")+"</ul>"+
-          '<p class="vd-cfoot">'+(fresh.length>3?(fresh.length-3)+" more on the board below. ":"")+
-          "An owner&rsquo;s address and contact details stay with CompNinja until an introduction is made.</p>";
-      } else if(!coverage.length){
-        lb.innerHTML='<p class="vd-e">Pick the markets you take owner requests from. When an owner there asks CompNinja for a value, the request lands here.</p>'+
-          '<button type="button" class="btn ghost" id="wkPickMarkets">Choose markets</button>';
-      } else {
-        lb.innerHTML='<p class="vd-e">No new requests in the '+coverage.length+" market"+(coverage.length===1?"":"s")+" you watch.</p>";
-      }
-    } else {
-      $("wkLeadsN").textContent="\\u2014";
-      lb.innerHTML='<p class="vd-e">'+(leadsErr?esc(leadsErr):"Loading&hellip;")+"</p>";
-    }
-
-    // Leases in the book. Read from the book itself, so it needs no route.
-    var ex=expiringLeases(),eb=$("wkLeases");
-    $("wkLeasesN").textContent=ex.length;
-    if(ex.length){
-      eb.innerHTML="<ul>"+(wkLeasesAll?ex:ex.slice(0,3)).map(function(x){
-        var c=x.c,bits=[];
-        if(c.size_sqft)bits.push(num(c.size_sqft)+" SF");
-        if(c.lease_type)bits.push(esc(c.lease_type)+" lease");
-        bits.push('<em class="'+(x.k.d<120?"vd-soon":"vd-later")+'">'+esc(x.k.label)+"</em>");
-        return "<li><div><b>"+esc(streetOf(c.address))+", "+esc(cityOf(c.market))+"</b><span>"+bits.join(" &middot; ")+"</span></div>"+
-          '<button type="button" class="lnk" data-find="'+escA(streetOf(c.address))+'">Find</button></li>';
-      }).join("")+"</ul>"+
-        '<p class="vd-cfoot">Tenants about to decide are your next listings.'+
-        (ex.length>3?' <button type="button" class="lnk" id="wkLeasesMore">'+(wkLeasesAll?"Show fewer":"Show all "+ex.length)+"</button>":"")+"</p>";
-    } else {
-      var dated=comps.some(function(c){return c.transaction==="lease"&&(c.lease_expiry||c.option_notice_date)});
-      eb.innerHTML='<p class="vd-e">'+(dated
-        ? "No lease in your book ends in the next twelve months."
-        : "Add lease end dates to the leases in your book, and this card lists the tenants about to decide, soonest first.")+"</p>";
-    }
-
-    // BOVs delivered and waiting on an answer, each with the stage select,
-    // because the answer arriving is the one thing to do about them.
-    var bb=$("wkBovs");
-    if(bovsOk){
-      var del=bovs.filter(function(b){return b.status==="delivered"});
-      var open=bovs.filter(function(b){return b.status==="open"}).length;
-      var openLine=open?open+" open BOV"+(open===1?"":"s")+" on the board below.":"";
-      $("wkBovsN").textContent=del.length;
-      if(del.length){
-        bb.innerHTML="<ul>"+del.slice(0,3).map(function(b){
-          return "<li><div><b>"+esc(cityOf(b.market))+" &middot; "+esc(b.property_type)+(b.size_sqft?" &middot; "+num(b.size_sqft)+" SF":"")+"</b>"+
-            "<span>"+(b.address?esc(streetOf(b.address))+" &middot; ":"")+"received "+
-            esc(dayLabel(b.received_on||String(b.created_at||"").slice(0,10)))+"</span></div>"+
-            bovSelect(b.id,b.status,"Result for this BOV")+"</li>";
-        }).join("")+"</ul>"+
-          '<p class="vd-cfoot">'+(del.length>3?(del.length-3)+" more on the board. ":"")+openLine+"</p>";
-      } else {
-        bb.innerHTML='<p class="vd-e">Nothing waiting. A BOV you mark delivered shows here until it is won or lost.</p>'+
-          (openLine?'<p class="vd-cfoot">'+openLine+"</p>":'<button type="button" class="btn ghost" id="wkLogBov">+ Log a BOV</button>');
-      }
-    } else {
-      $("wkBovsN").textContent="\\u2014";
-      bb.innerHTML='<p class="vd-e">'+(bovsErr?esc(bovsErr):"Loading&hellip;")+"</p>";
-    }
-  }
-
-  // ---- The pipeline board ---------------------------------------------------
-  var BOARD_COLS=[["new","New requests"],["open","Open"],["delivered","Delivered"],["won","Won"],["lost","Lost"]];
-  var BOARD_MAX=4;
-  function renderBoard(all){
-    var el=$("pipeBoard");
-    if(!all.length){ el.className="vd-board hide"; el.innerHTML=""; return; }
-    el.className="vd-board";
-    el.innerHTML=BOARD_COLS.map(function(col){
-      var items=all.filter(function(r){return r.stage===col[0]})
-        .sort(function(a,b){return String(b.received).localeCompare(String(a.received))});
-      var shown=items.slice(0,BOARD_MAX),more=items.length-shown.length;
-      return '<div class="vd-col vd-col-'+col[0]+'"><div class="vd-colh"><span>'+col[1]+"</span><b>"+items.length+"</b></div>"+
-        (shown.length?shown.map(boardCard).join("")
-          :'<div class="vd-ghost">'+(col[0]==="new"?"Requests from owners in your markets land here":"Nothing here")+"</div>")+
-        (more>0?'<button type="button" class="lnk vd-more" data-stagelist="'+col[0]+'">+ '+more+" more</button>":"")+"</div>";
-    }).join("");
-  }
-  function boardCard(r){
-    var when=r.kind==="lead"?"asked "+agoLabel(r.received):dayLabel(r.received,true);
-    var h='<div class="vd-bc"><b>'+esc(cityOf(r.market))+" &middot; "+esc(r.property_type)+"</b>"+
-      "<span>"+(r.size_sqft?num(r.size_sqft)+" SF &middot; ":"")+esc(when)+"</span>";
-    if(r.kind==="lead"&&String(r.sourceLabel).indexOf("1031")>=0)h+="<i>1031 exchange</i>";
-    if(r.address)h+="<i>"+esc(streetOf(r.address))+"</i>";
-    if(r.notes)h+="<i>"+esc(r.notes)+"</i>";
-    if(r.stage!=="won"&&r.stage!=="lost")h+=fitsChip(r.market,r.property_type);
-    h+='<div class="vd-bact">';
-    if(r.kind==="lead"){
-      h+=r.intro_requested
-        ? '<button class="pubbtn on" disabled>Intro requested</button>'
-        : '<button class="pubbtn" type="button" data-intro="'+escA(r.id)+'">Request introduction</button>';
-    } else {
-      h+=bovSelect(r.id,r.status,"Stage")+' <button type="button" class="lnk" data-bovdel="'+escA(r.id)+'">Remove</button>';
-    }
-    return h+"</div></div>";
-  }
-  var pipeView="board";
-  try{ if(window.localStorage&&window.localStorage.getItem("vaultPipeView")==="list")pipeView="list"; }catch(e){}
   function pressSeg(seg,attr,val){
     var bs=$(seg).querySelectorAll("button");
     for(var i=0;i<bs.length;i++)bs[i].setAttribute("aria-pressed",bs[i].getAttribute(attr)===val?"true":"false");
   }
-  function setPipeView(v){
-    pipeView=v==="list"?"list":"board";
-    $("pipeSec").classList.toggle("vd-list",pipeView==="list");
-    pressSeg("pipeViewSeg","data-pv",pipeView);
-    try{ window.localStorage.setItem("vaultPipeView",pipeView); }catch(e){}
+
+  // ---- The tabs ---------------------------------------------------------------
+  // setTab is the one writer of which panel shows. A tab's address is a plain
+  // hash (#pipeline, #properties...), so a link can open the vault on one;
+  // the old section ids are read too, since that is what a link would have
+  // named before there were tabs.
+  var TABS=["book","pipe","props","watch","contrib"];
+  var PANEL={book:"panelBook",pipe:"panelPipe",props:"panelProps",watch:"panelWatch",contrib:"panelContrib"};
+  var HASH_OF_TAB={book:"book",pipe:"pipeline",props:"properties",watch:"watchlist",contrib:"contributions"};
+  var TAB_OF_HASH={book:"book",pipeline:"pipe",properties:"props",watchlist:"watch",contributions:"contrib",
+    compsSec:"book",pipeSec:"pipe",propsSec:"props",mktSec:"watch",contribSec:"contrib"};
+  var curTab="book";
+  function tabCount(id,text,hot){
+    var el=$(id);
+    el.textContent=text==null?"":String(text);
+    el.className=hot?"hot":"";
   }
-  $("pipeViewSeg").addEventListener("click",function(e){
-    var b=e.target&&e.target.closest?e.target.closest("button[data-pv]"):null; if(!b)return;
-    setPipeView(b.getAttribute("data-pv"));
+  function setTab(t,quiet){
+    if(!PANEL[t])t="book";
+    curTab=t;
+    TABS.forEach(function(k){
+      var on=k===t,b=$("tab-"+k);
+      $(PANEL[k]).className=on?"vt-panel on":"vt-panel";
+      b.classList.toggle("on",on);
+      b.setAttribute("aria-selected",on?"true":"false");
+      b.tabIndex=on?0:-1;
+    });
+    // A map drawn while its panel was hidden has no size yet.
+    if(t==="book"){
+      if(bookView==="map")drawPins(bmRows,true);
+      if(emptyMap)emptyMap.invalidateSize();
+    }
+    if(!quiet&&window.history&&window.history.replaceState&&window.location){
+      try{ window.history.replaceState(null,"",t==="book"?window.location.pathname:"#"+HASH_OF_TAB[t]); }catch(e){}
+    }
+  }
+  $("vaultTabs").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("[data-tab]"):null;
+    if(b)setTab(b.getAttribute("data-tab"));
+  });
+  // Arrow keys move between the tabs that are showing, the tablist pattern.
+  $("vaultTabs").addEventListener("keydown",function(e){
+    if(e.key!=="ArrowRight"&&e.key!=="ArrowLeft")return;
+    var live=TABS.filter(function(k){return !$("tab-"+k).classList.contains("vt-off")});
+    var i=live.indexOf(curTab); if(i<0)return;
+    var next=live[(i+(e.key==="ArrowRight"?1:live.length-1))%live.length];
+    setTab(next); $("tab-"+next).focus();
+    e.preventDefault();
   });
 
   // ---- The book, as a list beside a map, with a comp set ---------------------
@@ -3456,6 +3342,9 @@ body.vd-mapview #rollupSec{display:none}
   function setBookView(v){
     bookView=v==="table"?"table":"map";
     $("bookViews").className=bookView==="map"?"vd-views vd-map":"vd-views";
+    // In the map view the chips stand in for the four dropdowns, which stay
+    // in the DOM (hidden) as the one place the filter values live.
+    $("filterRow").classList.toggle("vb-chips",bookView==="map");
     pressSeg("bookViewSeg","data-bv",bookView);
     if(document.body&&document.body.classList)document.body.classList.toggle("vd-mapview",bookView==="map");
     try{ window.localStorage.setItem("vaultBookView",bookView); }catch(e){}
@@ -3534,6 +3423,7 @@ body.vd-mapview #rollupSec{display:none}
   }
   function renderBookMap(rows){
     bmRows=rows;
+    renderChips();
     renderBmList();
     var noLoc=0; rows.forEach(function(c){ if(!hasLoc(c))noLoc++; });
     $("bmNoLoc").textContent=!noLoc||!rows.length?""
@@ -3770,37 +3660,63 @@ body.vd-mapview #rollupSec{display:none}
       });
   }
 
-  // ---- Doors between the three --------------------------------------------------
-  // A fit chip, a lease's Find, This week's links: each one sets the book's
-  // own filter row and shows the map, so what it opens is an ordinary view a
-  // broker can clear the ordinary way.
-  function showInBook(o){
-    $("fMarket").value=o.market||""; $("fType").value=o.type||""; $("fTrans").value=o.trans||"";
-    $("fFirm").value=""; $("fText").value=o.text||"";
-    sheetMode=false; sheetUploadId=null;
-    setBookView("map");
-    redraw();
-    var d=$("deckBook"); if(d&&d.scrollIntoView)d.scrollIntoView({behavior:"smooth",block:"start"});
+  // ---- Draft B's chips ---------------------------------------------------------
+  // One row of toggles over the Market, Type, Deal and Firm selects. Counted
+  // over the whole book, so a chip never says 0 because another chip is on.
+  function chipBtn(field,val,label,on){
+    return '<button type="button" class="vd-chip'+(on?" on":"")+'" data-cf="'+field+'" data-cv="'+escA(val)+
+      '" aria-pressed="'+(on?"true":"false")+'">'+label+"</button>";
   }
-  document.addEventListener("click",function(e){
-    var t=e.target; if(!t||!t.getAttribute)return;
-    var fitM=t.getAttribute("data-fit-m");
-    if(fitM){ showInBook({market:fitM,type:t.getAttribute("data-fit-t"),trans:"sale"}); return; }
-    var find=t.getAttribute("data-find");
-    if(find){ showInBook({text:find}); return; }
-    var sl=t.getAttribute("data-stagelist");
-    if(sl){ pipeStage=sl; setPipeView("list"); renderPipeline(); return; }
-    if(t.id==="wkLeasesMore"){ wkLeasesAll=!wkLeasesAll; renderWeek(); return; }
-    if(t.id==="wkPickMarkets"){
-      var box=$("covBox"); if(box&&box.className.indexOf("hide")<0)box.open=true;
-      $("covForm").scrollIntoView({behavior:"smooth",block:"center"});
-      $("covMarket").focus();
-      return;
-    }
-    if(t.id==="wkLogBov"){ setBovOpen(true); $("deckPipe").scrollIntoView({behavior:"smooth",block:"start"}); return; }
+  function renderChips(){
+    var el=$("bmChips");
+    if(!comps.length){ el.innerHTML=""; return; }
+    var m=$("fMarket").value,t=$("fType").value,x=$("fTrans").value,f=$("fFirm").value;
+    var mk={},ty={},city={};
+    comps.forEach(function(c){
+      if(c.market)mk[c.market]=(mk[c.market]||0)+1;
+      if(c.property_type)ty[c.property_type]=(ty[c.property_type]||0)+1;
+    });
+    var mks=Object.keys(mk).sort(function(a,b){return (mk[b]-mk[a])||a.localeCompare(b)});
+    var tys=Object.keys(ty).sort(function(a,b){return (ty[b]-ty[a])||a.localeCompare(b)});
+    // A city name alone is the label unless two markets share it.
+    mks.forEach(function(k){ var n=cityOf(k); city[n]=(city[n]||0)+1; });
+    var sep='<i class="vd-csep" aria-hidden="true"></i>';
+    var h=chipBtn("fMarket","","All markets",!m)+mks.map(function(k){
+      var name=city[cityOf(k)]>1?k:cityOf(k);
+      return chipBtn("fMarket",k,esc(name)+" <span>"+num(mk[k])+"</span>",m===k);
+    }).join("");
+    if(tys.length>1)h+=sep+tys.map(function(k){return chipBtn("fType",k,esc(k),t===k)}).join("");
+    h+=sep+chipBtn("fTrans","sale","Sales",x==="sale")+chipBtn("fTrans","lease","Leases",x==="lease");
+    if(myFirm)h+=sep+chipBtn("fFirm","shared","Shared with "+esc(myFirm.name),f==="shared")+
+      chipBtn("fFirm","unshared","Not shared",f==="unshared");
+    el.innerHTML=h;
+  }
+  $("bmChips").addEventListener("click",function(e){
+    var b=e.target&&e.target.closest?e.target.closest("button[data-cf]"):null; if(!b)return;
+    var sel=$(b.getAttribute("data-cf")),v=b.getAttribute("data-cv");
+    sel.value=(v===""||sel.value===v)?"":v;
+    redraw();
   });
-  setPipeView(pipeView);
+
+  // The empty book's map: the country, until the first import puts pins on
+  // the book's own map. Never a pin and never an address here.
+  var emptyMap=null;
+  function initEmptyMap(){
+    if(emptyMap||!window.L||!window.CNBASE)return;
+    try{
+      emptyMap=window.L.map("bmEmptyMap",{zoomControl:false,scrollWheelZoom:false,dragging:false,
+        doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false});
+      window.CNBASE.add(emptyMap);
+      emptyMap.setView([39.5,-98.5],4);
+    }catch(e){ emptyMap=null; }
+  }
+
   setBookView(bookView);
+  (function(){
+    var h="";
+    try{ h=String((window.location&&window.location.hash)||"").replace("#",""); }catch(e){}
+    setTab(TAB_OF_HASH[h]||"book",true);
+  })();
 
   var pending = null;   // {name, csv} held while the broker maps
   var pdfPending = null; // extract result held while the broker confirms
@@ -5836,6 +5752,7 @@ body.vd-mapview #rollupSec{display:none}
       return;
     }
     var items=propItems;
+    tabCount("tabPropsN",items.length||"",false);
     intro.className=items.length?"sub":"sub hide";
     empty.className=items.length?"invite hide":"invite";
     wrap.className=items.length?"tw":"tw hide";
@@ -6120,6 +6037,7 @@ body.vd-mapview #rollupSec{display:none}
     $("mktErr").className=mktOk?"msg bad hide":"msg bad";
     if(!mktOk){$("mktEmpty").className="invite hide";return;}
     var items=mktItems;
+    tabCount("tabWatchN",items.length||"",false);
     $("mktIntro").className=items.length?"sub":"sub hide";
     $("mktEmpty").className=items.length?"invite hide":"invite";
     $("mktRows").innerHTML=items.map(function(it){
@@ -6198,8 +6116,11 @@ body.vd-mapview #rollupSec{display:none}
     var show=Boolean(d&&d.isBroker);
     $("deckContribs").className=show?"deck":"deck hide";
     $("contribSec").className=show?"":"hide";
-    if(!show) return;
+    // The tab exists only for a member who has contributed, like the deck.
+    $("tab-contrib").classList.toggle("vt-off",!show);
+    if(!show){ if(curTab==="contrib")setTab("book"); return; }
     var st=d.stats||{};
+    tabCount("tabContribN",st.total||"",false);
     $("contribStats").textContent=(st.approved||0)+" approved of "+(st.total||0)+
       " submitted · "+(st.citations||0)+" report citation"+((st.citations||0)===1?"":"s");
     var subs=d.submissions||[];

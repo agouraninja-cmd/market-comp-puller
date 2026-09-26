@@ -4667,11 +4667,11 @@ test("the deck ships hidden and says the three review words; the switch posts th
 });
 
 // ----------------------------------------------------------------------------
-// The deal desk (2026-09-25): the owner's pick of the vault redesign drafts,
-// Draft C (This week, the pipeline as a board) with Draft B's map and comp
-// set as the book view. Everything below is drawing over reads the page
-// already made; these tests hold that, and the honesty rules the drawing
-// inherits from the rest of the page.
+// The vault, Draft B (2026-09-25): the owner's pick of the vault redesign
+// drafts. The five parts are tabs, and the Book opens as a list beside a map
+// with a comp set. Everything below is drawing over reads the page already
+// made; these tests hold that, and the honesty rules the drawing inherits
+// from the rest of the page.
 // ----------------------------------------------------------------------------
 const isoIn = (days) => new Date(Date.now() + days * 864e5).toISOString().slice(0, 10);
 const deskLeads = (leads, coverage) => () => Promise.resolve(jsonResponse(200, {
@@ -4684,95 +4684,100 @@ const LEAD = (o) => Object.assign({ id: "L1", market: "Boise, ID", type: "Indust
 const BOV = (o) => Object.assign({ id: "B1", market: "Meridian, ID", property_type: "Industrial", status: "open",
   source: "referral", size_sqft: 31000, received_on: isoIn(-30), address: null, notes: null }, o);
 
-test("This week and the board are part of the vault lock, and the pipeline sits above the book", () => {
+test("the vault's five parts are tabs, and each panel holds its own sections", () => {
   const html = renderVaultHTML(boot([comp({})]), CHROME);
+  const panel = (id) => {
+    const a = html.indexOf('id="' + id + '"');
+    assert.ok(a >= 0, "#" + id + " is missing");
+    const b = html.indexOf('class="vt-panel', a + 1);
+    return html.slice(a, b > a ? b : html.indexOf("</main>") > 0 ? html.indexOf("</main>") : undefined);
+  };
+  for (const [tab, pid] of [["book", "panelBook"], ["pipe", "panelPipe"], ["props", "panelProps"],
+    ["watch", "panelWatch"], ["contrib", "panelContrib"]]) {
+    assert.match(html, new RegExp('id="tab-' + tab + '" data-tab="' + tab + '"[^>]*aria-controls="' + pid + '"'),
+      "the " + tab + " tab does not control #" + pid);
+  }
+  const book = panel("panelBook");
+  for (const id of ["deckBook", "bookEmpty", "addSec", "compsSec", "trustLine", "bookMap", "setTray"]) {
+    assert.ok(book.includes('id="' + id + '"'), "#" + id + " left the Book tab");
+  }
+  assert.ok(panel("panelPipe").includes('id="pipeSec"') && panel("panelPipe").includes('id="deckPipe"'));
+  assert.ok(panel("panelProps").includes('id="propsSec"'));
+  assert.ok(panel("panelWatch").includes('id="mktSec"'));
+  assert.ok(panel("panelContrib").includes('id="contribSec"'));
+  // The Book opens first, and Contributions ships hidden with its deck.
+  assert.match(html, /<div class="vt-panel on" id="panelBook"/);
+  assert.match(html, /class="vt-tab vt-off" id="tab-contrib"/);
+  // Draft C is gone, not merely hidden.
+  for (const id of ["deckWeek", "weekSec", "pipeBoard", "pipeViewSeg"]) {
+    assert.ok(!html.includes('id="' + id + '"'), "#" + id + " (Draft C) is still in the page");
+  }
   const decks = pageScript(html).match(/var VAULT_DECKS=\[([\s\S]*?)\];/);
-  assert.ok(decks, "VAULT_DECKS is gone");
-  for (const id of ["deckWeek", "weekSec", "deckPipe", "pipeSec", "deckBook", "compsSec"]) {
+  for (const id of ["deckPipe", "pipeSec", "deckBook", "compsSec", "trustLine"]) {
     assert.ok(decks[1].includes('"' + id + '"'), id + " is not locked with the rest of the vault");
   }
-  const at = (id) => html.indexOf('id="' + id + '"');
-  assert.ok(at("deckWeek") < at("deckPipe") && at("deckPipe") < at("deckBook") && at("deckBook") < at("trustLine"),
-    "the order is This week, the pipeline, then the book with its ledger under its rule");
-  assert.ok(at("trustLine") < at("compsSec"), "the privacy ledger opens the book, above the comps");
 });
 
-test("This week draws the three cards from the reads the page already makes", async () => {
-  const comps = [
-    comp({ id: "s1", deal_date: isoIn(-60) }),
-    comp({ id: "l1", transaction: "lease", price: null, price_per_sqft: null, rent_psf_yr: 9.5, lease_expiry: isoIn(60), address: "5 Soon St, Boise, ID" }),
-    comp({ id: "l2", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(200), address: "6 Later Rd, Boise, ID" }),
-    comp({ id: "l3", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(-10), address: "7 Gone Ave, Boise, ID" }),
-    comp({ id: "l4", transaction: "lease", price: null, price_per_sqft: null, lease_expiry: isoIn(500), address: "8 Far Way, Boise, ID" }),
-  ];
-  const { doc, calls } = await runPage(comps, null, {
-    leads: deskLeads([LEAD({}), LEAD({ id: "L2", intro_requested: true })]),
-    bovs: deskBovs([BOV({ id: "B1", status: "delivered" }), BOV({ id: "B2", status: "open" })]),
-  });
-  // No read of its own: the cards are drawing.
-  assert.ok(!calls.some((c) => /\/api\/(week|desk)/.test(c.url)), "This week grew a route");
-
-  const leads = doc.getElementById("wkLeads").innerHTML;
-  assert.equal(String(doc.getElementById("wkLeadsN").textContent), "1", "a lead already introduced is not waiting on anyone");
-  assert.match(leads, /data-intro="L1"/, "the card's button is the table's own intro control");
-  assert.doesNotMatch(leads, /data-intro="L2"/);
-  assert.match(leads, /1 of your sales fit/, "the Boise industrial sale in the book answers the Boise industrial request");
-
-  const leases = doc.getElementById("wkLeases").innerHTML;
-  assert.equal(String(doc.getElementById("wkLeasesN").textContent), "2", "only leases deciding inside a year count");
-  assert.ok(leases.indexOf("5 Soon St") >= 0 && leases.indexOf("5 Soon St") < leases.indexOf("6 Later Rd"), "soonest first");
-  assert.doesNotMatch(leases, /7 Gone Ave|8 Far Way/, "an expired lease and one years out are not this week's business");
-  assert.match(leases, /class="vd-soon"/, "a lease inside 120 days is marked");
-
-  const bovs = doc.getElementById("wkBovs").innerHTML;
-  assert.equal(String(doc.getElementById("wkBovsN").textContent), "1");
-  assert.match(bovs, /data-bov="B1"/, "a delivered BOV carries the stage select, so its answer can be recorded here");
-  assert.match(bovs, /1 open BOV on the board below/);
-});
-
-test("a failed read shows as a failure on This week, never as zero", async () => {
-  const { doc } = await runPage([comp({})], null, {
-    leads: () => Promise.resolve(jsonResponse(503, { error: "The lead inbox is unavailable right now." })),
-    bovs: () => Promise.resolve(jsonResponse(503, { error: "down" })),
-  });
-  assert.equal(String(doc.getElementById("wkLeadsN").textContent), "—");
-  assert.match(doc.getElementById("wkLeads").innerHTML, /unavailable right now/);
-  assert.doesNotMatch(doc.getElementById("wkLeads").innerHTML, /No new requests/);
-  assert.equal(String(doc.getElementById("wkBovsN").textContent), "—");
-  assert.doesNotMatch(doc.getElementById("wkBovs").innerHTML, /Nothing waiting/);
-});
-
-test("a broker watching no markets is asked to pick some; a lease-less book is told what fills the card", async () => {
-  const { doc } = await runPage([comp({})], null, { leads: deskLeads([], []) });
-  assert.match(doc.getElementById("wkLeads").innerHTML, /id="wkPickMarkets"/);
-  assert.match(doc.getElementById("wkLeases").innerHTML, /Add lease end dates/);
-  assert.match(doc.getElementById("wkBovs").innerHTML, /id="wkLogBov"/, "no BOVs at all: the card offers the log");
-});
-
-test("the board draws every stage from the table's rows, with the table's own controls", async () => {
-  const { doc } = await runPage([comp({})], null, {
-    leads: deskLeads([LEAD({})]),
-    bovs: deskBovs([BOV({ id: "B1", status: "open", notes: "Family trust" }), BOV({ id: "B2", status: "won" }),
-      BOV({ id: "B3", status: "open" }), BOV({ id: "B4", status: "open" }), BOV({ id: "B5", status: "open" }), BOV({ id: "B6", status: "open" })]),
-  });
-  const board = doc.getElementById("pipeBoard");
-  assert.equal(board.className, "vd-board");
-  const html = board.innerHTML;
-  for (const s of ["new", "open", "delivered", "won", "lost"]) {
-    assert.ok(html.includes("vd-col-" + s), "the board lost its " + s + " column");
+test("setTab is the one writer of which panel shows, and the locked vault opens on Properties", async () => {
+  const { doc } = await runPage([comp({})], null, {});
+  assert.equal(doc.getElementById("panelBook").className, "vt-panel on");
+  for (const id of ["panelPipe", "panelProps", "panelWatch", "panelContrib"]) {
+    assert.equal(doc.getElementById(id).className, "vt-panel", "#" + id + " is showing on first paint");
   }
-  assert.match(html, /data-intro="L1"/, "a lead card requests an introduction through the existing handler");
-  assert.match(html, /data-bov="B1"/, "a BOV card moves stages through the existing select");
-  assert.match(html, /data-bovdel="B1"/, "and is removed through the existing Remove");
-  assert.match(html, /Family trust/);
-  assert.match(html, /data-stagelist="open"[^>]*>\+ 1 more/, "past four, a column says how many more and opens the list on that stage");
-  assert.equal(doc.getElementById("pipeViewSeg").className, "vd-pv", "the Board/List switch shows once there are rows");
+  const js = pageScript(renderVaultHTML(boot([comp({})]), CHROME));
+  assert.equal((js.match(/\.className=on\?"vt-panel on":"vt-panel"/g) || []).length, 1, "a second writer of the panels");
+  assert.match(js, /if\(curTab==="book"\|\|curTab==="pipe"\)setTab\("props",true\);/,
+    "a Pro-locked vault must open on a tab that is the member's either way");
 });
 
-test("an empty pipeline has no board and no Board/List switch", async () => {
-  const { doc } = await runPage([comp({})], null, { leads: deskLeads([]), bovs: deskBovs([]) });
-  assert.match(doc.getElementById("pipeBoard").className, /\bhide\b/);
-  assert.match(doc.getElementById("pipeViewSeg").className, /\bhide\b/);
+test("the tabs count what is in them, and new owner requests are red", async () => {
+  const comps = [comp({ id: "a" }), comp({ id: "b", address: "2 B St, Boise, ID" }), comp({ id: "c", address: "3 C St, Boise, ID" })];
+  const { doc } = await runPage(comps, null, {
+    leads: deskLeads([LEAD({}), LEAD({ id: "L2" }), LEAD({ id: "L3", intro_requested: true })]),
+    bovs: deskBovs([BOV({})]),
+  });
+  assert.equal(String(doc.getElementById("tabBookN").textContent), "3");
+  assert.equal(String(doc.getElementById("tabPipeN").textContent), "2 new", "two requests nobody has asked about");
+  assert.equal(doc.getElementById("tabPipeN").className, "hot");
+  const quiet = await runPage(comps, null, { leads: deskLeads([]), bovs: deskBovs([BOV({}), BOV({ id: "B2" })]) });
+  assert.equal(String(quiet.doc.getElementById("tabPipeN").textContent), "2", "no new requests: the rows the pipeline holds");
+  assert.equal(quiet.doc.getElementById("tabPipeN").className, "");
+});
+
+test("the chips are toggles over the same selects the table reads", async () => {
+  const comps = [
+    comp({ id: "a" }),
+    comp({ id: "b", market: "Meridian, ID", address: "2 B St, Meridian, ID" }),
+    comp({ id: "c", property_type: "Office", address: "3 C St, Boise, ID" }),
+  ];
+  const { doc } = await runPage(comps, null, {});
+  const chips = doc.getElementById("bmChips").innerHTML;
+  assert.match(chips, /data-cf="fMarket" data-cv="Boise, ID"/);
+  assert.match(chips, /data-cf="fMarket" data-cv="Meridian, ID"/);
+  assert.match(chips, /data-cf="fType" data-cv="Office"/, "two types in the book: the type chips show");
+  assert.match(chips, /data-cf="fTrans" data-cv="lease"/);
+  const press = (cf, cv) => doc.getElementById("bmChips").fire("click", { target: { closest: () => ({
+    getAttribute: (a) => (a === "data-cf" ? cf : a === "data-cv" ? cv : null) }) } });
+  press("fMarket", "Boise, ID");
+  assert.equal(doc.getElementById("fMarket").value, "Boise, ID", "the chip sets the Market select itself");
+  assert.equal(doc.getElementById("bmCount").textContent, "2 of 3 comps");
+  press("fMarket", "Boise, ID");
+  assert.equal(doc.getElementById("fMarket").value, "", "pressing an on chip turns it off");
+  assert.equal(doc.getElementById("bmCount").textContent, "3 comps");
+});
+
+test("an empty book is its map with the way in laid over it", () => {
+  const html = renderVaultHTML(boot([]), CHROME);
+  const start = html.indexOf('id="bookEmpty"');
+  const block = html.slice(start, html.indexOf('id="addSec"', start));
+  assert.match(block, /id="bmEmptyMap"/);
+  assert.match(block, /class="vd-drop"/);
+  assert.match(block, /id="bookPick"/, "the one file input's door is on the card");
+  const js = pageScript(html);
+  assert.match(js, /if\(first\)initEmptyMap\(\);/, "applyFirstRun draws the map only for an empty book");
+  // The empty map carries no pin and no address: it is the country.
+  const fn = js.slice(js.indexOf("function initEmptyMap(){"), js.indexOf("function initEmptyMap(){") + 500);
+  assert.ok(!/circleMarker|address/.test(fn), "the empty map is drawing something about the book");
 });
 
 test("the map view lists the filtered book and says which comps it cannot pin", async () => {

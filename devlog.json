@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The Vault is tabs, and your book opens as a map (Draft B)",
+    "details": "The owner switched the vault redesign to Draft B the same evening the Draft C mix shipped. This week and the pipeline board are gone. The Vault is now five tabs: Book, Pipeline (new owner requests counted in red), Properties, Watchlist and Contributions, and each keeps its one action at the end of the tab bar. The Book opens first as a list beside a map of your buildings, filtered by one row of market, type, sale/lease and firm chips, with the comp set, comp sheet and CSV from before; the editable table is one click away as Table. An empty vault is the map with the way in laid over it. A busy test vault’s Book tab is 1,994 pixels tall, against 24,757 for the whole page this morning."
+  },
+  {
+    "date": "2026-09-25",
     "type": "feature",
     "title": "The Vault opens on what needs you this week, and your book gets a map and a comp set",
     "details": "The owner’s pick of the vault redesign drafts: Draft C with Draft B’s map and comp set. The Vault now opens on This week: owners asking for a value in your markets, leases in your own book ending within a year (soonest first, the notice date when there is one), and BOVs delivered with no answer yet. The pipeline moved from the bottom of the page (17,500 pixels down a busy book) to second, and opens as a board with a column per stage; each card says how many of your own sales fit it, and clicking that opens them in your book. The old table is one click away as List. The book opens as a list beside a map of your buildings: tick comps into a set, and the set keeps its own median and range (sales and leases apart, never across property types) and prints as a comp sheet on your letterhead, downloads as a CSV, or publishes and shares through the same confirms as before. Pins come only from coordinates the book already holds, so no address is sent anywhere new. The editable table is one click away as Table. A busy vault page went from 24,757 to 6,770 pixels tall."

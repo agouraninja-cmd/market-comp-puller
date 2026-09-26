@@ -26,15 +26,18 @@ const indexSrc = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 const ORIGIN = "https://compninja.co";
 const CFG = {
-  tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, skip: [], warm: [], dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
+  tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, skip: [], warm: [], warmPath: NAV.WARM_PATH, dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
   ttlMs: NAV.TTL_MS, warmTtlMs: NAV.WARM_TTL_MS, warmDelayMs: NAV.WARM_DELAY_MS,
 };
 
 // A window with just enough of a DOM for instantNavBoot: listeners, a <head>
 // that holds scripts, the page's links, manual timers, and a fetch that
 // records its calls.
+// `safari: true` is a browser with no prerendering at all: no speculation
+// rules and no `document.prerendering` property (WebKit, Gecko).
 function stage({ path: at = "/vault", supports = true, prerendering = false, skip = [], warm = [],
-  links = [], readyState = "complete", hidden = false } = {}) {
+  links = [], readyState = "complete", hidden = false, safari = false } = {}) {
+  if (safari) supports = false;
   const listeners = {};
   const winListeners = {};
   const timers = [];
@@ -55,6 +58,7 @@ function stage({ path: at = "/vault", supports = true, prerendering = false, ski
       (listeners[type] = listeners[type] || []).push({ fn, once: Boolean(opts && opts.once) });
     },
   };
+  if (safari) delete document.prerendering;
   const calls = [];
   const win = {
     document,
@@ -370,16 +374,136 @@ test("a speculative /vault render does not run the vault's backfills", () => {
   assert.match(serverSrc, /attachPropertyCoords\(user\.id, rows,\s*\{ backfill: !INSTANTNAV\.isSpeculative\(req\.headers\) \}\)/);
 });
 
-test("without speculation rules only the write guard is installed", async () => {
+test("the write guard holds wherever prerendering happens, with or without our rules", async () => {
+  // Chrome also prerenders from its own address bar, on pages whose rules we
+  // never wrote: the guard is installed first and for every browser.
   const s = stage({ supports: false, prerendering: true });
-  assert.deepEqual(Object.keys(s.listeners), [], "Safari/Firefox: no pointer listeners at all");
   const p = s.win.fetch("/api/x", { method: "POST" });
   await flush();
-  assert.equal(s.calls.length, 0, "a browser prerendering by other means still gets the guard");
+  assert.equal(s.calls.length, 0);
   s.document.prerendering = false;
   s.fire("prerenderingchange");
   await p;
   assert.equal(s.calls.length, 1);
+});
+
+// --- Safari and Firefox: the server builds the tab ahead -------------------
+
+const warmPosts = (s) => s.calls.filter((c) => c.input === NAV.WARM_PATH).map((c) => {
+  assert.equal(c.init.method, "POST");
+  assert.equal(c.init.keepalive, true, "it must survive the click's own navigation starting");
+  assert.equal(c.init.credentials, "same-origin");
+  return JSON.parse(c.init.body);
+});
+
+test("without prerendering, a resting pointer asks the server to build the tab", () => {
+  const s = stage({ safari: true });
+  s.fire("pointerover", mouse(link("/desk")));
+  assert.deepEqual(warmPosts(s), [], "not before the dwell");
+  s.tick(NAV.DWELL_MS);
+  assert.deepEqual(warmPosts(s), [{ path: "/desk", warm: false }]);
+  assert.deepEqual(s.urls(), [], "and no speculation rule: this browser would ignore it");
+  s.fire("pointerover", mouse(NOT_A_LINK));
+  s.fire("pointerover", mouse(link("/desk")));
+  s.tick(NAV.DWELL_MS);
+  assert.equal(warmPosts(s).length, 1, "one render per tab while it lives");
+  s.fire("pointerdown", { target: link("/messages"), pointerType: "touch" });
+  assert.deepEqual(warmPosts(s)[1], { path: "/messages", warm: false }, "a tap asks at once");
+});
+
+test("without prerendering, the likely next tab is built after load, and a hovered one is promoted", () => {
+  const s = stage({ safari: true, path: "/markets", warm: ["/desk"], links: [link("/desk")] });
+  s.tick(NAV.WARM_DELAY_MS);
+  assert.deepEqual(warmPosts(s), [{ path: "/desk", warm: true }]);
+  const t = stage({ safari: true, path: "/markets", warm: ["/desk"], links: [link("/desk")] });
+  t.fire("pointerdown", mouse(link("/desk")));
+  t.tick(NAV.WARM_DELAY_MS);
+  assert.deepEqual(warmPosts(t), [{ path: "/desk", warm: false }, { path: "/desk", warm: true }],
+    "the server's copy must live the warm TTL too, so it is told");
+});
+
+test("without prerendering, asking the server is not a write, but a write forgets what was asked", async () => {
+  const s = stage({ safari: true });
+  s.fire("pointerdown", mouse(link("/desk")));
+  await flush();
+  s.fire("pointerdown", mouse(link("/desk")));
+  assert.equal(warmPosts(s).length, 1, "the request for a page must not throw that page away");
+  await s.win.fetch("/api/logout", { method: "POST" });
+  await flush();
+  s.fire("pointerdown", mouse(link("/desk")));
+  assert.equal(warmPosts(s).length, 2, "after a write the next reach asks again (the server dropped its copy)");
+});
+
+test("the served script carries the warm path", () => {
+  assert.ok(NAV.bootScript({}).includes(`"warmPath":"${NAV.WARM_PATH}"`));
+  assert.equal(NAV.WARM_PATH, "/api/warm");
+});
+
+// --- The server's store for pages built ahead -----------------------------
+
+test("a page built ahead is handed over once, and only before it expires", async () => {
+  let now = 0;
+  const c = NAV.createWarmCache({ now: () => now });
+  const page = { status: 200, headers: {}, body: Buffer.from("<p>vault</p>") };
+  let made = 0;
+  assert.equal(c.start("k|/vault", () => { made++; return page; }, 30000), true);
+  assert.equal(c.start("k|/vault", () => { made++; return page; }, 30000), false, "a second ask joins the first");
+  await flush();
+  assert.equal(made, 1, "…and never starts a second render");
+  assert.equal(c.bytes, page.body.length);
+  assert.equal(await c.take("k|/vault"), page);
+  assert.equal(c.take("k|/vault"), null, "single use: the next visit renders fresh");
+  assert.equal(c.bytes, 0);
+  c.start("k|/desk", () => page, 30000);
+  now = 30000;
+  assert.equal(c.take("k|/desk"), null, "expired");
+  assert.equal(c.size, 0);
+});
+
+test("a render still under way is joined, and a failed one is forgotten", async () => {
+  const c = NAV.createWarmCache();
+  let finish;
+  c.start("k|/desk", () => new Promise((r) => { finish = r; }), 30000);
+  await flush();
+  const joined = c.take("k|/desk");
+  assert.ok(joined, "a click during the render gets the render");
+  finish({ status: 200, headers: {}, body: Buffer.from("x") });
+  assert.equal((await joined).body.toString(), "x");
+  c.start("k|/vault", () => null, 30000);
+  await flush();
+  assert.equal(c.has("k|/vault"), false, "an unusable render leaves nothing to hand over");
+  c.start("k|/bulk", () => { throw new Error("boom"); }, 30000);
+  await flush();
+  assert.equal(c.has("k|/bulk"), false);
+});
+
+test("a hover that becomes the warm tab lives the warm TTL", async () => {
+  let now = 0;
+  const c = NAV.createWarmCache({ now: () => now });
+  c.start("k|/desk", () => ({ status: 200, headers: {}, body: Buffer.from("x") }), NAV.TTL_MS);
+  c.start("k|/desk", () => null, NAV.WARM_TTL_MS);
+  now = NAV.TTL_MS + 1;
+  assert.equal(c.has("k|/desk"), true);
+  now = NAV.WARM_TTL_MS;
+  assert.equal(c.has("k|/desk"), false);
+});
+
+test("the store drops one cookie's pages on a write, and stays inside its bytes", async () => {
+  const c = NAV.createWarmCache({ maxBytes: 10 });
+  const page = (n) => ({ status: 200, headers: {}, body: Buffer.alloc(n) });
+  c.start("a|/desk", () => page(4), 30000);
+  c.start("a|/vault", () => page(4), 30000);
+  c.start("b|/desk", () => page(1), 30000);
+  await flush();
+  c.dropPrefix("a|");
+  assert.equal(c.has("a|/desk") || c.has("a|/vault"), false);
+  assert.equal(c.has("b|/desk"), true, "another visitor's page is theirs");
+  c.start("c|/desk", () => page(6), 30000);
+  c.start("c|/vault", () => page(6), 30000);
+  await flush();
+  assert.ok(c.bytes <= 10, `holding ${c.bytes} bytes`);
+  assert.equal(c.has("c|/vault"), true, "the newest survives; the oldest go first");
+  assert.equal(c.has("b|/desk"), false);
 });
 
 test("the served script compiles, runs first, and cannot end its own tag", () => {
@@ -534,5 +658,81 @@ test("a prerendered page's visit counts on activation, once, on a real server", 
     const memberApp = await (await fetch(srv.base + "/", { headers: { cookie: "cn_session=x" } })).text();
     assert.ok(memberApp.includes("speculationrules"));
     assert.ok(memberApp.indexOf("speculationrules") < memberApp.indexOf('<script src="/valuation.js">'));
+  });
+});
+
+test("routeWarm runs before every route, and its render can never wait on itself", () => {
+  const at = serverSrc.indexOf("const server = http.createServer(");
+  const warm = serverSrc.indexOf("if (routeWarm(req, res,", at);
+  const bind = serverSrc.indexOf("bindRequestListeners(req);", at);
+  assert.ok(at > 0 && warm > at && warm < bind, "routeWarm must be the first thing a request meets");
+  assert.match(serverSrc, /if \(!req\.headers\.cookie \|\| req\.headers\[WARM_HEADER\]\) return false;/,
+    "the loopback render is marked, and a marked request is never served from (or joined to) the store");
+  assert.match(serverSrc, /\[WARM_HEADER\]: "1",/);
+  assert.match(serverSrc, /purpose: "prefetch",/, "the render is speculative: visit parked, /vault backfills skipped");
+});
+
+test("Safari and Firefox: a tab built ahead is served once, to the same cookie, until a write", async (t) => {
+  const srv = await shared.boot({ ACCOUNT_WALL: "on" });
+  t.after(() => srv.stop());
+  const C = "cn_session=x; cn_vid=0123456789abcdef0123456789abcdef";
+  const warm = (path, cookie = C) => fetch(srv.base + NAV.WARM_PATH, {
+    method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ path }),
+  }).then((r) => assert.equal(r.status, 204));
+  const get = async (path, cookie = C) => {
+    const r = await fetch(srv.base + path, { headers: { cookie } });
+    return { hit: r.headers.get("x-cn-warm") === "hit", status: r.status, html: await r.text() };
+  };
+
+  await t.test("the click gets the page built for it, once", async () => {
+    await warm("/markets");
+    const first = await get("/markets");
+    assert.equal(first.hit, true, "served from the store (joining the render if it is still running)");
+    assert.equal(first.status, 200);
+    assert.match(first.html, /<\/html>/);
+    assert.equal((await get("/markets")).hit, false, "single use: the next visit renders fresh");
+  });
+
+  await t.test("never to another cookie, a query string or a path that is not a tab", async () => {
+    await warm("/markets");
+    assert.equal((await get("/markets", "cn_session=y; cn_vid=0123456789abcdef0123456789abcdef")).hit, false);
+    assert.equal((await get("/markets?x=1")).hit, false);
+    assert.equal((await get("/markets")).hit, true, "and those misses did not use it up");
+    await warm("/market/boise-id");
+    assert.equal((await get("/market/boise-id")).hit, false);
+    await warm("/markets", "cn_vid=0123456789abcdef0123456789abcdef");
+    assert.equal((await get("/markets", "cn_vid=0123456789abcdef0123456789abcdef")).hit, false,
+      "member tabs only: no session, nothing built");
+  });
+
+  await t.test("a write from the same cookie throws it away; asking for a page does not", async () => {
+    await warm("/desk");
+    await fetch(srv.base + "/api/visit", { method: "POST", headers: { cookie: C }, body: "x" });
+    await warm("/desk");
+    assert.equal((await get("/desk")).hit, true, "/api/warm and /api/visit change no data");
+    await warm("/desk");
+    await fetch(srv.base + "/api/anything", { method: "POST", headers: { cookie: C }, body: "{}" });
+    assert.equal((await get("/desk")).hit, false, "a page built before a save is never shown after it");
+  });
+
+  await t.test("the built page's visit counts when it is shown, not when it is built", async () => {
+    const logFile = path.join(srv.dataDir, "analytics.jsonl");
+    const visits = () => {
+      try {
+        return fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean)
+          .map((l) => JSON.parse(l)).filter((r) => r.kind === "vault_visit").length;
+      } catch (_) { return 0; }
+    };
+    const before = visits();
+    await warm("/vault");
+    const page = await get("/vault");
+    assert.equal(page.hit, true);
+    const m = page.html.match(/\}\)\("([0-9a-f]{32})"\);<\/script>/);
+    assert.ok(m, "the page carries its visit tag");
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(visits(), before, "building it logged nothing");
+    await fetch(srv.base + "/api/visit", { method: "POST", headers: { cookie: C }, body: m[1] });
+    for (let i = 0; i < 40 && visits() === before; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(visits(), before + 1);
   });
 });

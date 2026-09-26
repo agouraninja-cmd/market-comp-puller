@@ -171,6 +171,52 @@
     });
   }
 
+  // A board of one or two buildings is not a skyline yet. Drawn the ordinary
+  // way, it was one thin tower pinned to the banner's right edge in a wide
+  // empty sky, which read as a rendering glitch rather than a start (the
+  // owner, 2026-09-25). So below SPARSE_BELOW the real towers are drawn a
+  // size up, beside faint dashed outlines of towers still to come (the empty
+  // board's ghosts), and the group stands in the middle of its room instead
+  // of against the edge. Heights still mean size. The outlines are the only
+  // shapes not drawn to scale, and they are not buildings.
+  const SPARSE_BELOW = 3;
+  const GHOST_SHAPES = [{ w: 30, h: 0.62 }, { w: 38, h: 0.9 }, { w: 26, h: 0.45 }]; // px wide, share of maxHeight tall
+
+  function isSparse(towers) {
+    const n = Array.isArray(towers) ? towers.length : 0;
+    return n > 0 && n < SPARSE_BELOW;
+  }
+
+  // { towers, ghosts }: towers are layout()'s positions, moved so the whole
+  // group (towers, then ghosts to their right, where the skyline grows) is
+  // centred between x0 and x1 — or, with box.align "end", set against x1 (a
+  // phone, where the words fill the banner and the middle is under the
+  // greeting). Ghosts are { x, width, height, top }.
+  function sparseLayout(towers, box) {
+    const list = Array.isArray(towers) ? towers : [];
+    const b = box || {};
+    const x0 = Number(b.x0) || 0, x1 = Number(b.x1) || 0;
+    const ground = Number(b.ground) || 0;
+    const maxHeight = Math.max(20, Number(b.maxHeight) || 0);
+    const gap = Number.isFinite(Number(b.gap)) ? Number(b.gap) : 9;
+    const real = layout(list, Object.assign({}, b, { minWidth: 34, maxWidth: 60 }));
+    const shapes = list.length ? GHOST_SHAPES.slice(0, Math.max(0, SPARSE_BELOW + 1 - list.length)) : [];
+    const ghosts = shapes.map((s) => ({ width: s.w, height: Math.max(20, maxHeight * s.h) }));
+    const realW = real.length ? real[real.length - 1].x + real[real.length - 1].width - real[0].x : 0;
+    const total = realW + ghosts.reduce((sum, g) => sum + g.width + gap, 0);
+    const spare = Math.max(0, x1 - x0 - total);
+    const start = x0 + (b.align === "end" ? spare : spare / 2);
+    const shift = real.length ? start - real[0].x : 0;
+    for (const p of real) p.x += shift;
+    let x = start + realW + gap;
+    for (const g of ghosts) {
+      g.x = x;
+      g.top = ground - g.height;
+      x += g.width + gap;
+    }
+    return { towers: real, ghosts };
+  }
+
   // Which windows are lit: a fixed pattern per building, so a tower does not
   // flicker between paints, with about `lit` of them on.
   function windowPattern(id, lit, count) {
@@ -217,5 +263,6 @@
     return [c.name, c.facts, c.due, c.fresh, c.meta].filter(Boolean).join(". ") + ".";
   }
 
-  return { DUE_DAYS, ACTIVE_DAYS, skyFor, towersFor, focusOf, captionFor, layout, windowPattern, calloutFor, labelFor, shortDate };
+  return { DUE_DAYS, ACTIVE_DAYS, SPARSE_BELOW, skyFor, towersFor, focusOf, captionFor, layout, isSparse, sparseLayout,
+    windowPattern, calloutFor, labelFor, shortDate };
 });

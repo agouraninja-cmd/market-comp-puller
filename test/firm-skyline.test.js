@@ -124,6 +124,33 @@ test("the layout keeps every building on the skyline, standing on the ground, in
   assert.ok(few.every((p) => p.width >= 26 && p.width <= 52));
 });
 
+test("one or two buildings stand a size up, mid-room, beside outlines of towers to come", () => {
+  const one = SKY.towersFor({ now: NOW, buildings: [B({ sizeSqft: null, createdAt: daysAgo(1) })] });
+  assert.ok(SKY.isSparse(one), "a skyline of one is sparse");
+  const box = { x0: 400, x1: 960, ground: 230, maxHeight: 90, gap: 9 };
+  const { towers, ghosts } = SKY.sparseLayout(one, box);
+  assert.equal(towers.length, 1);
+  assert.equal(ghosts.length, 3, "one building gets three outlines beside it");
+  const plain = SKY.layout(one, box)[0];
+  assert.ok(towers[0].width > plain.width, "drawn a size up");
+  assert.ok(Math.abs(towers[0].height - plain.height) < 1e-9, "height still means size; only the width grows");
+  const left = towers[0].x, right = ghosts[ghosts.length - 1].x + ghosts[ghosts.length - 1].width;
+  assert.ok(Math.abs((left - 400) - (960 - right)) < 1e-6, "the group is centred in its room, not pinned to the edge");
+  assert.ok(ghosts.every((g) => g.x > towers[0].x), "outlines stand to the right, where the skyline grows");
+  for (const g of ghosts) {
+    assert.ok(Math.abs(g.top + g.height - 230) < 1e-9, "outlines stand on the ground too");
+    assert.ok(g.height <= 90);
+  }
+  const end = SKY.sparseLayout(one, Object.assign({}, box, { align: "end" }));
+  const endGhost = end.ghosts[end.ghosts.length - 1];
+  assert.ok(Math.abs(endGhost.x + endGhost.width - 960) < 1e-6, "a phone sets the group against the right, away from the words");
+  const two = SKY.towersFor({ now: NOW, buildings: [B({ id: "a" }), B({ id: "b", createdAt: daysAgo(3) })] });
+  assert.equal(SKY.sparseLayout(two, box).ghosts.length, 2, "two buildings get two");
+  const three = SKY.towersFor({ now: NOW, buildings: ["a", "b", "c"].map((id) => B({ id })) });
+  assert.equal(SKY.isSparse(three), false, "three is a skyline, drawn the ordinary way");
+  assert.equal(SKY.isSparse([]), false, "an empty board has its own drawing");
+});
+
 test("a tower's lit windows are a fixed pattern, so it does not flicker between paints", () => {
   const a = SKY.windowPattern("b1", 0.4, 60);
   assert.deepEqual(a, SKY.windowPattern("b1", 0.4, 60));

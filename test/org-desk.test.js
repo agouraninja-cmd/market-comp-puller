@@ -2213,8 +2213,7 @@ test("the skyline draws one tower per building, oldest first, each a link to its
     "oldest on the left, so the skyline grows to the right");
   assert.match(towers[1].attrs["aria-label"], /^3275 S Federal Way\. Industrial · 24,000 SF .*Option notice for Acme Logistics in 41 days\./);
   assert.equal(ctx.dom.text("deskSkyCap"), "Your firm's skyline · 3 buildings · +1 this month");
-  assert.equal(ctx.dom.hidden("deskSkyCap"), false);
-  assert.equal(ctx.dom.hidden("deskSkyKey"), false);
+  assert.equal(ctx.dom.hidden("deskSkyInfo"), false, "the count and the key are behind the ⓘ, not under the greeting");
   assert.equal(ctx.dom.hidden("deskSkyEmpty"), true);
 });
 
@@ -2272,8 +2271,7 @@ test("an empty board shows where the skyline will stand, and its button opens th
   assert.ok(ctx.dom.el("deskHero").classList.contains("has-sky"));
   assert.equal(ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ghost").length, 3);
   assert.equal(ctx.dom.hidden("deskSkyEmpty"), false);
-  assert.equal(ctx.dom.hidden("deskSkyCap"), true, "no count of nothing");
-  assert.equal(ctx.dom.hidden("deskSkyKey"), true);
+  assert.equal(ctx.dom.hidden("deskSkyInfo"), true, "no legend for nothing");
   assert.equal(ctx.dom.hidden("deskSkyCall"), true);
   ctx.dom.el("deskSkyAdd").fire("click");
   assert.equal(opened, 1);
@@ -2289,11 +2287,11 @@ test("no firm, a failed board read, a missing rule or a sign-out leaves the old 
   for (const [why, o] of cases) {
     const ctx = loadSky(o);
     ["has-sky", "sky-dawn"].forEach((c) => ctx.dom.el("deskHero").classList.add(c)); // a stale skyline
-    ["deskSky", "deskSkyCap", "deskSkyKey", "deskSkyCall", "deskSkyEmpty"].forEach((id) => ctx.dom.el(id).classList.remove("hidden"));
+    ["deskSky", "deskSkyInfo", "deskSkyCall", "deskSkyEmpty"].forEach((id) => ctx.dom.el(id).classList.remove("hidden"));
     ctx.draw();
     assert.ok(!ctx.dom.el("deskHero").classList.contains("has-sky"), why + ": the city photograph shows again");
     assert.ok(!ctx.dom.el("deskHero").classList.contains("sky-dawn"), why);
-    for (const id of ["deskSky", "deskSkyCap", "deskSkyKey", "deskSkyCall", "deskSkyEmpty"]) {
+    for (const id of ["deskSky", "deskSkyInfo", "deskSkyCall", "deskSkyEmpty"]) {
       assert.equal(ctx.dom.hidden(id), true, `${why}: #${id}`);
     }
   }
@@ -2333,12 +2331,52 @@ test("the towers stand on the sky's horizon at any banner height, and the ground
     assert.equal(Number(ground[0].attrs.y1), +(H * share).toFixed(1), `a ${H}px banner's ground is its horizon`);
     const body = partsOf(skyTowers(ctx)[0], "sky-body")[0].attrs;
     assert.ok(Math.abs(Number(body.y) + Number(body.height) - H * share) < 0.01, "the tower stands on it");
-    const left = Number(body.x), right = left + Number(body.width);
+    // What stands on it: the tower, and a lone tower's outlines of towers to come.
+    const ghosts = ctx.dom.el("deskSky").children.filter((c) => c.attrs && /sky-ghost/.test(c.attrs.class || ""));
+    const edge = ghosts.length ? ghosts[ghosts.length - 1].attrs : body;
+    const left = Number(body.x), right = Number(edge.x) + Number(edge.width);
     assert.ok(Number(ground[0].attrs.x1) >= left - 26.01 && Number(ground[0].attrs.x2) <= right + 26.01,
       "the ground is only as wide as what stands on it");
     assert.ok(Number(ground[0].attrs.x2) < 1000, "and never runs to the banner's edge");
   }
   assert.match(html, /\.dk-sky \.sky-ground \{ stroke: url\(#deskSkyGround\);/, "its ends fade out");
+  assert.match(html, /new ResizeObserver\(\(\) => \{\s*if \(!deskSky\) return;[\s\S]{0,200}?layoutDeskSky\(\)[\s\S]{0,80}?\.observe\(document\.getElementById\("deskHero"\)\)/,
+    "a banner that grows after it was drawn is laid out again, or the ground floats above the horizon");
+});
+
+test("one building stands mid-room beside outlines of towers to come; three are an ordinary skyline", () => {
+  const soon = (ctx) => ctx.dom.el("deskSky").children.filter((c) => c.attrs && c.attrs.class === "sky-ghost sky-soon");
+  const one = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
+  one.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
+  one.draw();
+  assert.equal(skyTowers(one).length, 1);
+  assert.equal(soon(one).length, 3, "three faint outlines beside a lone tower");
+  assert.ok(soon(one).every((g) => g.attrs["aria-hidden"] === "true"), "outlines are not buildings, so a screen reader skips them");
+  const body = partsOf(skyTowers(one)[0], "sky-body")[0].attrs;
+  assert.ok(Number(body.x) < 1000 - 28 - 150, "not pinned to the banner's right edge");
+  const three = loadSky({ buildings: BOARD() });
+  three.draw();
+  assert.equal(soon(three).length, 0);
+  assert.match(html, /\.dk-sky \.sky-ghost\.sky-soon \{[^}]*stroke: rgba\(255,255,255,\.2\)/, "fainter than the empty board's outlines");
+});
+
+test("the skyline's count and key sit behind an ⓘ beside the towers, which a click pins open", () => {
+  const ctx = loadSky({ buildings: BOARD() });
+  ctx.draw();
+  const info = ctx.dom.el("deskSkyInfo");
+  assert.match(info.getAttribute("style"), /^left:\d+px;top:\d+px$/, "layoutDeskSky stands it on the ground");
+  const btn = ctx.dom.el("deskSkyInfoBtn");
+  btn.fire("click");
+  assert.ok(info.classList.contains("open"));
+  assert.equal(btn.getAttribute("aria-expanded"), "true");
+  btn.fire("keydown", { key: "Escape" });
+  assert.ok(!info.classList.contains("open"), "Escape closes it");
+  btn.fire("click");
+  ctx.clear();
+  assert.ok(!info.classList.contains("open") && btn.getAttribute("aria-expanded") === "false", "a sign-out does not leave it pinned");
+  const hero = html.slice(html.indexOf('<h2 id="deskGreeting"'), html.indexOf('<div id="deskSkyCall"'));
+  assert.doesNotMatch(hero, /deskSkyCap|deskSkyKey/, "nothing explains the chart under the greeting");
+  assert.match(html, /\.dk-sky-info:hover \.dk-sky-key, \.dk-sky-info:focus-within \.dk-sky-key, \.dk-sky-info\.open \.dk-sky-key \{ display: flex; \}/);
 });
 
 test("a tower the callout describes is only outlined; a hover or keyboard focus lights it", () => {

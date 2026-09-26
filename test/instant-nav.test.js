@@ -339,7 +339,9 @@ test("while prerendering, a read that stamps read/seen waits like a write", asyn
   await thread; await room; await list;
   assert.deepEqual(s.calls.map((c) => c.input),
     ["/api/messages", "/api/messages/thread?id=t1&after=", ORIGIN + "/api/hub?id=abcdef"]);
-  assert.equal(s.urls().length, 1, "a held READ is not a write: it drops nothing once it lands");
+  await flush();
+  assert.deepEqual(s.urls(), [],
+    "a held read WROTE (it stamped read/seen), so once it lands it drops what was built before it");
   // Once shown, those reads are what they always were.
   await s.win.fetch("/api/messages/thread?id=t2");
   assert.equal(s.calls.length, 4);
@@ -434,6 +436,24 @@ test("without prerendering, asking the server is not a write, but a write forget
   assert.equal(warmPosts(s).length, 2, "after a write the next reach asks again (the server dropped its copy)");
 });
 
+test("without prerendering, a held read forgets what was asked, as the server does", async () => {
+  // Cursor Bugbot, PR #342: routeWarm drops a cookie's pages on a HOLD_PATHS
+  // GET (the Messages page polls one every 15 s), so the browser must forget
+  // too — or it believes in a copy the server threw away and never asks again.
+  const s = stage({ safari: true, path: "/messages", warm: ["/desk"], links: [link("/desk")] });
+  s.tick(NAV.WARM_DELAY_MS);
+  assert.equal(warmPosts(s).length, 1);
+  await s.win.fetch("/api/messages");
+  await flush();
+  s.fire("pointerover", mouse(NAV_GAP));
+  assert.equal(warmPosts(s).length, 1, "a plain read changes nothing");
+  await s.win.fetch("/api/messages/thread?id=t1");
+  await flush();
+  assert.equal(warmPosts(s).length, 1, "no rebuild on the poll itself: never a standing loop");
+  s.fire("pointerover", mouse(NAV_GAP));
+  assert.deepEqual(warmPosts(s)[1], { path: "/desk", warm: true }, "the next reach for the nav asks again");
+});
+
 test("the served script carries the warm path", () => {
   assert.ok(NAV.bootScript({}).includes(`"warmPath":"${NAV.WARM_PATH}"`));
   assert.equal(NAV.WARM_PATH, "/api/warm");
@@ -475,6 +495,22 @@ test("a render still under way is joined, and a failed one is forgotten", async 
   c.start("k|/bulk", () => { throw new Error("boom"); }, 30000);
   await flush();
   assert.equal(c.has("k|/bulk"), false);
+});
+
+test("an old render failing late never removes the newer entry for its key", async () => {
+  // Cursor Bugbot, PR #342: the rejection path removed by KEY, so a render
+  // handed over (or dropped by a write) and then failing deleted whatever
+  // had since been started under the same key.
+  const c = NAV.createWarmCache();
+  let failOld;
+  c.start("k|/desk", () => new Promise((_, reject) => { failOld = reject; }), 30000);
+  await flush();
+  c.dropPrefix("k|");
+  c.start("k|/desk", () => ({ status: 200, headers: {}, body: Buffer.from("new") }), 30000);
+  failOld(new Error("late"));
+  await flush();
+  assert.equal(c.has("k|/desk"), true);
+  assert.equal((await c.take("k|/desk")).body.toString(), "new");
 });
 
 test("a hover that becomes the warm tab lives the warm TTL", async () => {

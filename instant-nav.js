@@ -228,7 +228,7 @@ function createWarmCache(opts) {
           if (k !== key && e.bytes > 0) remove(k);
         }
         if (total > maxBytes) remove(key);
-      }, () => remove(key));
+      }, () => { if (held.get(key) === entry) remove(key); });
       return true;
     },
     // The held promise for `key`, removed as it is handed over; null if there
@@ -274,8 +274,13 @@ function visitTag(token) {
 // In order:
 //   - the fetch wrapper, on EVERY page (rule 1, and the write half of rule 3):
 //     a non-GET made while unseen waits for `prerenderingchange`, and so
-//     does a GET to one of cfg.hold (the GETs that write); any
-//     non-GET that lands drops every prerender this page is holding;
+//     does a GET to one of cfg.hold (the GETs that write); any of those
+//     that LANDS drops every tab this page is holding — a held GET too,
+//     because it wrote, and because the server's routeWarm drops its copies
+//     on exactly the same requests: a browser still believing in a copy the
+//     server threw away would never ask for it again (Cursor Bugbot,
+//     PR #342: the Messages page polls a thread every 15 s). The next reach
+//     for the nav asks again, so this is never a standing rebuild;
 //   - canPrerender: Chrome/Edge (`document.prerendering` exists AND speculation
 //     rules parse). Everything below then runs the same for every browser
 //     except prerender()'s one action: a speculation rule where it can,
@@ -323,7 +328,7 @@ function instantNavBoot(cfg, win) {
       var m = String((init && init.method) || (input && typeof input === "object" && input.method) || "GET").toUpperCase();
       var write = m !== "GET" && m !== "HEAD";
       var held = false;
-      if (d.prerendering && !write) {
+      if (!write) {
         try {
           var path = new w.URL(typeof input === "string" ? input : (input && input.url) || String(input), w.location.href).pathname;
           held = cfg.hold.indexOf(path) >= 0;
@@ -334,7 +339,7 @@ function instantNavBoot(cfg, win) {
         ? new Promise(function (resolve) { d.addEventListener("prerenderingchange", function () { resolve(); }, { once: true }); })
             .then(function () { return F.apply(w, args); })
         : F.apply(w, args);
-      if (write) p.then(dropAll, dropAll);
+      p.then(dropAll, dropAll);
       return p;
     };
   }

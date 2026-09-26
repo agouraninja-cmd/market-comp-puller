@@ -1508,10 +1508,24 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky .sky-gr1 { stop-color: rgba(255,255,255,.3); }
     .dk-sky .sky-leader { stroke: rgba(255,255,255,.55); stroke-width: 1; stroke-dasharray: 3 3; }
     .dk-sky .sky-ghost { fill: rgba(255,255,255,.03); stroke: rgba(255,255,255,.4); stroke-width: 1; stroke-dasharray: 4 3; }
-    .dk-sky-cap { margin-top: 14px; width: fit-content; max-width: 100%; font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: rgba(255,255,255,.8); }
-    .dk-sky-cap.hidden, .dk-sky-key.hidden { display: none; }
-    .dk-sky-key { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px 14px; width: fit-content; max-width: 100%; font-size: 11.5px; color: rgba(255,255,255,.74); }
-    .dk-sky-key > span { display: inline-flex; align-items: center; gap: 5px; }
+    /* A board of one or two: outlines of the towers still to come, fainter
+       than the empty board's, so they never compete with the real tower. */
+    .dk-sky .sky-ghost.sky-soon { fill: rgba(255,255,255,.015); stroke: rgba(255,255,255,.2); }
+    /* The legend behind the ⓘ (see #deskSkyInfo). Hover or keyboard focus
+       opens it; a click pins it open for a touch screen. The card's ::after
+       bridges the gap down to the button, so moving the pointer up into the
+       card does not close it on the way. */
+    .dk-sky-info { position: absolute; z-index: 3; }
+    .dk-sky-info.hidden { display: none; }
+    .dk-sky-info-btn { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 1px solid rgba(255,255,255,.32); border-radius: 50%; background: rgba(15,23,42,.45); color: rgba(255,255,255,.78); cursor: pointer; }
+    .dk-sky-info-btn:hover, .dk-sky-info.open .dk-sky-info-btn { color: #fff; border-color: rgba(255,255,255,.7); }
+    .dk-sky-info-btn:focus-visible { outline: 2px solid rgba(255,255,255,.95); outline-offset: 2px; }
+    .dk-sky-key { position: absolute; left: 0; bottom: calc(100% + 10px); display: none; flex-direction: column; gap: 6px; width: 300px; padding: 11px 13px; border-radius: 10px; background: rgba(15,23,42,.9); border: 1px solid rgba(255,255,255,.24); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); font-size: 12px; line-height: 1.35; color: rgba(255,255,255,.84); }
+    .dk-sky-key::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 12px; }
+    .dk-sky-info:hover .dk-sky-key, .dk-sky-info:focus-within .dk-sky-key, .dk-sky-info.open .dk-sky-key { display: flex; }
+    .dk-sky-cap { display: block; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600; color: #fff; }
+    .dk-sky-key > span { display: flex; align-items: center; gap: 7px; }
+    .dk-sky-key > .dk-sky-k-note { display: block; margin-top: 2px; font-size: 11.5px; color: rgba(255,255,255,.6); }
     .dk-sky-k-win { display: inline-block; width: 6px; height: 8px; border-radius: 1px; background: rgba(252,214,138,.92); }
     .dk-sky-k-red { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: rgba(248,113,113,1); box-shadow: 0 0 6px 2px rgba(239,68,68,.55); }
     .dk-sky-call { position: absolute; z-index: 3; top: 72px; width: 304px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(15,23,42,.84); border: 1px solid rgba(255,255,255,.26); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); }
@@ -1541,7 +1555,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
       .dk-sky { z-index: 0; }
       .dk-sky a { pointer-events: none; }
       .dk-sky .sky-towers { opacity: .62; }
-      .dk-sky-key, .dk-sky-call { display: none; }
+      .dk-sky-info, .dk-sky-call { display: none; }
       .dk-sky-empty { position: relative; text-align: left; max-width: none; margin-top: 12px; }
     }
     .dk-kicker { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; margin-bottom: 5px; }
@@ -1727,8 +1741,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
        part of the sum). Every cell is still a LINK to the section it
        counts, and drawFirmStrip is still its one writer. Critical dates go
        red only when there is one — the one figure here somebody has to act
-       on — and a zero steps back to --ink-4, so an empty firm reads as
-       "not started" rather than as four loud zeros. */
+       on — and a zero steps back a shade, to --ink-2, so an empty firm reads
+       as "not started" rather than as four loud zeros. It was --ink-4 until
+       2026-09-25, and at that shade a zero looked disabled rather than empty
+       (the owner). The sub-line wraps to a second line rather than ending in
+       an ellipsis: a card cut off mid-sentence was the least finished thing
+       on the page. */
     .dk-strip { position: relative; z-index: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: -58px 22px 0; }
     /* Tailwind's .hidden is (0,1,0) and lives in tailwind.css, which loads
        BEFORE this block, so .dk-strip { display: grid } above beat it on
@@ -1747,9 +1765,9 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sfig { display: block; font-family: Georgia, 'Times New Roman', serif; font-weight: 500; font-size: 27px; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
     .dk-sfig small { font-family: ui-sans-serif, system-ui, sans-serif; font-size: 13px; letter-spacing: 0; font-weight: 400; }
     .dk-sfig.due { color: var(--red); }
-    .dk-sfig.zero { color: var(--ink-4); }
+    .dk-sfig.zero { color: var(--ink-2); }
     .dk-slab { display: block; margin-top: 5px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
-    .dk-ssub { display: block; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dk-ssub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-size: 11.5px; line-height: 1.4; color: var(--ink-3); }
     @media (max-width: 1179px) {
       .dk-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -3193,8 +3211,6 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
         <h2 id="deskGreeting" class="dk-title">Workspace</h2>
         <p id="deskHeroSub" class="hidden dk-hero-sub"></p>
         <span id="deskHeroWhereWrap" class="hidden dk-hero-where"><svg viewBox="0 0 20 20" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17.2s-5-4.6-5-8.7a5 5 0 0 1 10 0c0 4.1-5 8.7-5 8.7z"/><circle cx="10" cy="8.5" r="1.8"/></svg><span id="deskHeroWhere"></span></span>
-        <div id="deskSkyCap" class="hidden dk-sky-cap"></div>
-        <div id="deskSkyKey" class="hidden dk-sky-key"><span title="Lit windows: a report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>lit = recent work</span><span title="A red light: an option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>date due in 90 days</span><span title="A crane: a building added to the board this month"><svg viewBox="0 0 16 12" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><path d="M12 12V1M15 2H1M12 0L2 2.4M3 2v4"/></svg>new this month</span></div>
         </div>
         <!-- The skyline's callout: one tower's name, what is due, whether it
              is new, and its shelf. drawDeskSky / showDeskSkyCall are the one
@@ -3204,6 +3220,21 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
           <span id="deskSkyCallDue" class="dk-sky-call-due"></span>
           <span id="deskSkyCallFresh" class="dk-sky-call-fresh"></span>
           <span class="dk-sky-call-meta"><span id="deskSkyCallMeta"></span> · <a id="deskSkyCallOpen" href="/buildings">Open the sheet →</a></span>
+        </div>
+        <!-- The skyline's legend, behind a small ⓘ that stands on the ground
+             just left of the towers (the owner, 2026-09-25). As two lines of
+             caption and key under the greeting it read as a chart's legend,
+             not a welcome. layoutDeskSky places it, drawDeskSky writes the
+             count, clearDeskSky takes it down. -->
+        <div id="deskSkyInfo" class="hidden dk-sky-info">
+          <button id="deskSkyInfoBtn" type="button" class="dk-sky-info-btn" aria-label="What the skyline shows" aria-expanded="false" aria-controls="deskSkyKey"><svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M10 9.2v5.2"/><path d="M10 5.7v.1"/></svg></button>
+          <div id="deskSkyKey" class="dk-sky-key" role="note">
+            <b id="deskSkyCap" class="dk-sky-cap"></b>
+            <span title="A report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>Lit windows: recent work on the building</span>
+            <span title="An option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>Red light: a lease date within 90 days</span>
+            <span><svg viewBox="0 0 16 12" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><path d="M12 12V1M15 2H1M12 0L2 2.4M3 2v4"/></svg>Crane: added to the board this month</span>
+            <span class="dk-sky-k-note">A tower's height is the building's size. The newest stand on the right.</span>
+          </div>
         </div>
         <div id="deskSkyEmpty" class="hidden dk-sky-empty"><b>Your skyline starts here.</b>Each building you put on the board rises as a tower, and it lights up when your firm works on it.<br><button id="deskSkyAdd" type="button" class="dk-sky-add">+ Add a building</button></div>
         <p id="deskHeroCredit" class="hidden dk-hero-credit"></p>
@@ -15305,12 +15336,12 @@ async function renderMyDesk() {
     // Unread: what renderDeskThreads found, or a dash when it found nothing.
     if (!deskThreadsStat) cell("Unread", "\u2014", "Couldn't read conversations");
     else cell("Unread", String(deskThreadsStat.unread),
-      deskThreadsStat.total ? `of ${plural(deskThreadsStat.total, "conversation", "conversations")}` : "No conversations yet");
+      deskThreadsStat.total ? `of ${plural(deskThreadsStat.total, "conversation", "conversations")}` : "Nothing to read yet");
 
     // Critical dates: the next twelve months, soonest named. Red when there
     // is one \u2014 the one figure here somebody has to act on.
     if (!Array.isArray(critical)) cell("Critical", "\u2014", "Couldn't read leases");
-    else if (!critical.length) cell("Critical", "0", "Nothing due in the next 12 months");
+    else if (!critical.length) cell("Critical", "0", "Nothing due in 12 months");
     else {
       const c = critical[0];
       const who = c.tenant || c.address || "A lease";
@@ -15704,8 +15735,10 @@ async function renderMyDesk() {
     const sky = document.getElementById("deskSky");
     sky.textContent = "";
     sky.classList.add("hidden");
-    ["deskSkyCap", "deskSkyKey", "deskSkyCall", "deskSkyEmpty"].forEach((id) =>
+    ["deskSkyInfo", "deskSkyCall", "deskSkyEmpty"].forEach((id) =>
       document.getElementById(id).classList.add("hidden"));
+    document.getElementById("deskSkyInfo").classList.remove("open");
+    document.getElementById("deskSkyInfoBtn").setAttribute("aria-expanded", "false");
   }
 
   // The sky's part of the day. drawDeskClock calls this at the greeting's
@@ -15733,11 +15766,10 @@ async function renderMyDesk() {
     paintDeskSky();
     if (towers.length) {
       const c = SKYLINE.captionFor(towers);
-      const cap = document.getElementById("deskSkyCap");
-      cap.textContent = `Your firm's skyline · ${c.count} ${c.count === 1 ? "building" : "buildings"}` +
+      document.getElementById("deskSkyCap").textContent =
+        `Your firm's skyline · ${c.count} ${c.count === 1 ? "building" : "buildings"}` +
         (c.addedThisMonth ? ` · +${c.addedThisMonth} this month` : "");
-      cap.classList.remove("hidden");
-      document.getElementById("deskSkyKey").classList.remove("hidden");
+      document.getElementById("deskSkyInfo").classList.remove("hidden");
     }
     layoutDeskSky();
   }
@@ -15748,7 +15780,7 @@ async function renderMyDesk() {
   function deskSkyTextRight(heroBox) {
     if (!heroBox || typeof document.createRange !== "function") return 0;
     let right = 0;
-    for (const id of ["deskGreeting", "deskHeroSub", "deskHeroWhereWrap", "deskSkyCap", "deskSkyKey"]) {
+    for (const id of ["deskGreeting", "deskHeroSub", "deskHeroWhereWrap"]) {
       const el = document.getElementById(id);
       if (!el || el.classList.contains("hidden")) continue;
       const range = document.createRange();
@@ -15820,12 +15852,23 @@ async function renderMyDesk() {
       return;
     }
 
-    const layout = SKYLINE.layout(deskSky.towers, {
-      x0, x1, ground, gap: phone ? 6 : 9,
-      maxHeight: phone ? 96 : Math.max(40, ground - 146),
-    });
-    const last = layout[layout.length - 1];
+    // One or two buildings are drawn a size up, mid-room, beside faint
+    // outlines of the towers still to come (SKYLINE.sparseLayout says why).
+    const room = { x0, x1, ground, gap: phone ? 6 : 9, maxHeight: phone ? 96 : Math.max(40, ground - 146),
+      align: phone ? "end" : "center" };
+    const drawn = SKYLINE.isSparse(deskSky.towers)
+      ? SKYLINE.sparseLayout(deskSky.towers, room)
+      : { towers: SKYLINE.layout(deskSky.towers, room), ghosts: [] };
+    const layout = drawn.towers;
+    const last = drawn.ghosts.length ? drawn.ghosts[drawn.ghosts.length - 1] : layout[layout.length - 1];
     deskSkyGround(sky, defs, layout[0].x, last.x + last.width, ground, W);
+    for (const g of drawn.ghosts) {
+      sky.appendChild(deskSkyNode("rect", { class: "sky-ghost sky-soon", "aria-hidden": "true",
+        x: g.x.toFixed(1), y: g.top.toFixed(1), width: g.width, height: g.height.toFixed(1) }));
+    }
+    // The legend's ⓘ stands on the ground just left of the first tower.
+    document.getElementById("deskSkyInfo").setAttribute("style",
+      `left:${Math.round(Math.max(8, layout[0].x - 38))}px;top:${Math.round(ground - 28)}px`);
     const row = deskSkyNode("g", { class: "sky-towers" });
     deskSky.towers.forEach((tw, i) => {
       const p = layout[i];
@@ -15915,6 +15958,36 @@ async function renderMyDesk() {
     const section = document.getElementById("deskBuildings");
     if (section && typeof section.scrollIntoView === "function") section.scrollIntoView({ behavior: "smooth", block: "start" });
   });
+  // The legend's button. Hover and keyboard focus open it in CSS; a click
+  // pins it open (a touch screen has no hover), and Escape or focus leaving
+  // it closes it again.
+  const deskSkyInfo = document.getElementById("deskSkyInfo");
+  const deskSkyInfoBtn = document.getElementById("deskSkyInfoBtn");
+  function setDeskSkyInfo(open) {
+    deskSkyInfo.classList.toggle("open", open);
+    deskSkyInfoBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  deskSkyInfoBtn.addEventListener("click", () => setDeskSkyInfo(!deskSkyInfo.classList.contains("open")));
+  deskSkyInfoBtn.addEventListener("keydown", (e) => { if (e && e.key === "Escape") setDeskSkyInfo(false); });
+  deskSkyInfo.addEventListener("focusout", (e) => {
+    const next = e && e.relatedTarget;
+    if (!next || typeof deskSkyInfo.contains !== "function" || !deskSkyInfo.contains(next)) setDeskSkyInfo(false);
+  });
+  // The banner can also change height AFTER the skyline was drawn: on a
+  // phone the empty board's note sits in the flow and is shown by the layout
+  // itself, and a status line or a web font can arrive late. The towers stand
+  // at a share of the height, so a stale height left the ground floating
+  // well above the horizon (measured at 80px on a phone, 2026-09-25). Lay it
+  // out again whenever the banner's size moves. It cannot loop: the second
+  // pass shows the same things, so the size stops moving.
+  if (typeof ResizeObserver === "function") {
+    let deskSkyFrame = 0;
+    new ResizeObserver(() => {
+      if (!deskSky) return;
+      cancelAnimationFrame(deskSkyFrame);
+      deskSkyFrame = requestAnimationFrame(() => { if (deskSky) layoutDeskSky(); });
+    }).observe(document.getElementById("deskHero"));
+  }
   // The skyline is laid out at the banner's own width, so a window that
   // changes shape lays it out again rather than stretching it.
   let deskSkyResize = null;

@@ -4339,5 +4339,11 @@
     "type": "improvement",
     "title": "The Workspace skyline: towers stand on the horizon, and they are glass",
     "details": "The banner drew the towers’ ground a few pixels below the sky’s horizon whenever the banner was taller than its minimum, so two lines sat on top of each other. A white line also ran from beside a lone tower to the banner’s edge. The towers now stand exactly on the horizon at any height, including on a phone. The ground line now runs only under the towers and fades out at both ends. The towers are see-through. The tower the callout describes, which is every firm’s only building when it has one, is no longer drawn in its hover style all the time. Hover or keyboard focus still lights a tower up."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The Workspace banner looks finished for a new firm",
+    "details": "A firm with one or two buildings no longer gets a single thin tower pinned to the edge of an empty sky. Its buildings are drawn larger in the middle of the banner, beside faint outlines of the towers still to come. The two lines explaining the skyline (the count and the key) are gone from under the greeting. They now open from a small ⓘ button beside the towers. The figure cards’ zeros no longer fade to a disabled-looking grey, and no card line is cut off with “…”: lines wrap instead, and the empty wording is shorter. The skyline also redraws when the banner changes size, which fixed outlines floating in mid-sky on a phone."
   }
 ]

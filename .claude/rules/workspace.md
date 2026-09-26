@@ -172,8 +172,12 @@ paths:
     in `#myDesk`, outside every deck, a negative top margin resting them on
     the banner (reset when `#checkoutNotice` shows, so they never ride over
     it). Same ids, same one writer; `drawFirmStrip` also marks a literal zero
-    `.zero` (it steps back to --ink-4) and never a dash, which is a failed
-    read and keeps its ink.
+    `.zero` and never a dash, which is a failed read and keeps its ink. A
+    zero steps back only a shade, to --ink-2: at --ink-4 it looked disabled
+    rather than empty (the owner, 2026-09-25). The sub-line wraps to a
+    second line (a line clamp) rather than ending in an ellipsis, and the
+    empty copy is kept short enough to fit a phone's two lines ("Nothing due
+    in 12 months", "Nothing to read yet").
   - **Empty sections are `.dk-ghost` previews**: faint rows drawn with
     gradients (no text anywhere in them — a preview must never read as
     data; `aria-hidden`) under one card with the next step. The ids are the
@@ -229,7 +233,7 @@ paths:
     on the towers**, so the greeting and the find box stay clickable and a
     tower stays hoverable; that is why the skyline starts right of the
     widest line of text, measured with a Range (the heading and status line
-    are banner-wide block boxes), and why the key is kept short. Each tower
+    are banner-wide block boxes). Each tower
     is an SVG link to its building sheet with a spoken label; hover or focus
     moves the callout (`#deskSkyCall`), leaving returns it to `focusOf` (the
     soonest date, else the newest building, else nothing). On a phone the
@@ -254,6 +258,26 @@ paths:
     only brightens the outline, and the lit-up fill belongs to a real
     `:hover`/`:focus-visible`. Sharing one rule made a new firm's only
     building sit in its hover state all day, as a solid block.
+  - **A skyline of one or two is drawn as a start** (`SKYLINE.isSparse` /
+    `sparseLayout`, below `SPARSE_BELOW` = 3). Drawn the ordinary way it was
+    one thin tower pinned to the right edge in an empty sky, which read as a
+    glitch. Now the real towers are drawn wider (heights still mean size),
+    beside faint dashed outlines of towers to come (`sky-ghost sky-soon`,
+    `aria-hidden`, fainter than the empty board's), and the group is centred
+    in its room. On a phone it is set against the right instead, since the
+    middle is under the greeting there.
+  - **No legend under the greeting** (2026-09-25). The count caption and the
+    key read as a chart's legend, not a welcome, so both live in a popover
+    (`#deskSkyKey`) behind a small ⓘ (`#deskSkyInfo`) that layoutDeskSky
+    stands on the ground just left of the first tower. Hover or focus opens
+    it in CSS, and a click pins it (`.open` + `aria-expanded`, the one writer
+    `setDeskSkyInfo`) for touch; Escape or focus leaving closes it. Hidden on
+    a phone and on an empty board.
+  - **A banner that changes size is laid out again** (a `ResizeObserver` on
+    `#deskHero`, beside the window-resize listener). The towers stand at a
+    share of the height, so a height read before the banner finished growing
+    left the ground floating above the horizon, measured at 80px for the
+    empty board on a phone, whose note sits in the flow.
   - **The sky turns with the greeting**: `drawDeskClock`'s timer (noon, five,
     midnight) calls `paintDeskSky`, guarded with `typeof`.
   - **`test/helpers/boot.js` points `CENSUS_API_URL` at a closed local port by

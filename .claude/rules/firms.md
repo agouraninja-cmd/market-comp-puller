@@ -194,6 +194,33 @@ paths:
   contact door composes name and company and **never the email** (039), and
   the shelf door sends a report as its `/r/<id>` link, never a snapshot, so
   `report-access.js` stays the sole decider.
+  **Deleting a conversation** (2026-09-26, no migration; owner's ask, Draft
+  C of the drafts at https://claude.ai/artifact/2yqGKYAyv4n8mrFD5ZtHHF).
+  `POST /api/messages/delete {threadId}` deletes a FIRM conversation **for the
+  caller only**: it leaves their list and its history is cleared for them,
+  everybody else keeps their copy, and a new message brings it back holding
+  only what came after (the iMessage/WhatsApp contract). Never
+  delete-for-everyone — a message is a record of what was said (044). The
+  write is the caller's own `msg_thread_members` row, `added_at` and
+  `last_read_at` set to now; nothing in `msg_messages`/`msg_comps` changes.
+  `added_at` now means "where this member's copy begins", and "later than
+  the thread's `created_at`" means "deleted" — sound because every member row
+  is written in the request that makes the thread. Rules in `messaging.js`
+  (`historyStart`, `readCursor`, `afterHistoryStart`, `listedFor`); the list,
+  the thread read (whatever cursor the browser sends), the Comps tab and the
+  comp save all start at it, and the list drops a deleted thread until it has
+  a visible message (the Workspace's `#deskThreads` reads the same route).
+  **Not `left_at`**: a leaver is shown as gone to everybody else and refused
+  by `canReadThread`, so deleting your copy of a DM would rename it "A
+  colleague" on the other person's screen. On the page: a bin on each firm
+  row (hover/focus on a mouse, always drawn under `(hover:none)`) and one in
+  the open chat's header; both open the same in-place question, never a
+  browser dialog. Deal rooms (External) get no bin — they have Close
+  conversation, and hiding one per person would need a column. The page's
+  Escape listener runs in the CAPTURE phase and stops propagation while the
+  question is open, because the shared header's Escape goes back a page.
+  Proven in `test/messages-run.test.js` ("deleting a conversation is for the
+  person who deletes it").
   **Contacts attach to buildings (2026-09-02).** The write half of
   `org_contacts.building_id`: slice 5 shipped the sheet's read
   (`buildingContacts`) with nothing filling it, so every sheet's Contacts

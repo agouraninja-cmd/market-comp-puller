@@ -2326,6 +2326,111 @@ test("the callout stands beside the tower it describes, never over it, and never
   }
 });
 
+test("each property type is drawn as its own building, and a residential one is a house", () => {
+  // The owner, 2026-09-26: "for residential make it a house, and a different
+  // type of building for each property type".
+  const TYPES = { "": "tower", Office: "office", Industrial: "warehouse", Retail: "store",
+    Multifamily: "apartments", Residential: "house", Land: "lot" };
+  const buildings = Object.keys(TYPES).map((type, i) => SKYB({ id: "t" + i, type, address: `${i + 1} Main St, Boise, ID`,
+    sizeSqft: type === "Residential" ? 2400 : 60000 + i * 9000, createdAt: skyDaysAgo(90 - i) }));
+  const ctx = loadSky({ buildings });
+  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1200, height: 292 });
+  ctx.draw();
+  const towers = skyTowers(ctx);
+  assert.deepEqual(towers.map((a) => a.attrs["data-shape"]), Object.values(TYPES));
+  const by = Object.fromEntries(towers.map((a) => [a.attrs["data-shape"], a]));
+  const has = (shape, cls) => partsOf(by[shape], cls).length;
+  const ground = 292 * 0.79;
+  for (const a of towers) {
+    const body = partsOf(a, "sky-body")[0];
+    assert.ok(body, a.attrs["data-shape"] + ": every shape stands a body on the ground, which the callout measures");
+    assert.ok(Math.abs(Number(body.attrs.y) + Number(body.attrs.height) - ground) < 0.01, a.attrs["data-shape"] + " stands on the horizon");
+    assert.ok(partsOf(a, "sky-win").length + partsOf(a, "sky-win lit").length > 0, a.attrs["data-shape"] + " has windows to light");
+  }
+  // The house: walls, then a pitched roof whose ridge is the top of its slot.
+  const roof = partsOf(by.house, "sky-cap").find((c) => /L[\d.]+ [\d.]+L/.test(c.attrs.d));
+  assert.ok(roof, "a pitched roof");
+  const [, ridgeX, ridgeY] = /L([\d.]+) ([\d.]+)L/.exec(roof.attrs.d).map(Number);
+  const walls = partsOf(by.house, "sky-body")[0].attrs;
+  assert.ok(ridgeY < Number(walls.y) - 10, "the ridge rises above the walls");
+  assert.ok(Math.abs(ridgeX - (Number(walls.x) + Number(walls.width) / 2)) < 0.1, "over the middle of the house");
+  assert.equal(has("house", "sky-cap"), 2, "the roof and a chimney");
+  assert.equal(has("house", "sky-door"), 1, "a front door");
+  assert.equal(partsOf(by.house, "sky-win").length + partsOf(by.house, "sky-win lit").length, 3, "two windows and one in the gable");
+  assert.ok(has("warehouse", "sky-dock") >= 1 && has("warehouse", "sky-cap") === 1, "loading doors under a sawtooth roof");
+  assert.ok(has("store", "sky-awn") === 1 && has("store", "sky-awn-s") === 1 && has("store", "sky-sign") === 1, "an awning and a sign");
+  assert.ok(has("apartments", "sky-rail") === 1 && has("apartments", "sky-tank") === 1, "balconies and a water tank");
+  assert.equal(has("office", "sky-cap"), 1, "a stepped crown");
+  assert.ok(has("lot", "sky-fence") >= 1 && has("lot", "sky-tree") >= 1 && has("lot", "sky-hit") === 1,
+    "land is an open lot, with a clear rect that makes its thin lines hoverable");
+  assert.equal(has("tower", "sky-cap"), 0, "no type is the plain tower");
+  for (const shape of ["house", "warehouse", "store", "apartments", "office", "lot"]) {
+    assert.match(html, new RegExp(`id="deskSkyKey"[\\s\\S]*?<\\/svg>${{ house: "Residential", warehouse: "Industrial", store: "Retail",
+      apartments: "Multifamily", office: "Office", lot: "Land" }[shape]}</span>`), "the legend shows the " + shape);
+  }
+  for (const cls of ["sky-cap", "sky-door", "sky-dock", "sky-rail", "sky-tank", "sky-sign", "sky-awn", "sky-awn-s", "sky-fence", "sky-trunk", "sky-tree", "sky-hit"]) {
+    assert.match(html, new RegExp(`\\.dk-sky \\.${cls} \\{`), `.${cls} is coloured in the style block, not in the markup`);
+  }
+});
+
+test("a red light stands on a house's ridge, and land added this month gets its crane on the ground", () => {
+  const ctx = loadSky({ buildings: [
+    SKYB({ id: "home", type: "Residential", sizeSqft: 2400, createdAt: skyDaysAgo(120) }),
+    SKYB({ id: "shed", type: "Industrial", sizeSqft: 90000, createdAt: skyDaysAgo(100) }),
+    SKYB({ id: "lot", type: "Land", sizeSqft: 200000, createdAt: skyDaysAgo(1), address: "9000 W Ustick Rd, Boise, ID" }),
+  ], critical: [{ buildingId: "home", kind: "notice", tenant: "Acme", days: 12 }] });
+  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
+  ctx.draw();
+  const [home, , lot] = skyTowers(ctx);
+  const roof = partsOf(home, "sky-cap").find((c) => /L[\d.]+ [\d.]+L/.test(c.attrs.d));
+  const [, ridgeX, ridgeY] = /L([\d.]+) ([\d.]+)L/.exec(roof.attrs.d).map(Number);
+  const mast = partsOf(home, "sky-mast")[0].attrs;
+  assert.ok(Math.abs(Number(mast.x1) - ridgeX) < 0.1 && Math.abs(Number(mast.y1) - ridgeY) < 0.1, "the mast starts at the ridge");
+  assert.equal(partsOf(home, "sky-red").length, 1);
+  const crane = partsOf(lot, "sky-crane")[0].attrs.d;
+  const [, mastX, base] = /^M([\d.]+) ([\d.]+)V/.exec(crane).map(Number);
+  assert.ok(Math.abs(base - 292 * 0.79) < 0.1, "an open lot has no roof, so its crane stands on the ground: breaking ground");
+  assert.equal(partsOf(lot, "sky-tree").length + partsOf(lot, "sky-trunk").length, 0,
+    "a lot added this month is cleared for building; with its trees left in, the mast ran through a canopy (Cursor Bugbot, PR #338)");
+  assert.ok(partsOf(lot, "sky-fence").length >= 1 && Number.isFinite(mastX), "it is still a fenced lot");
+  // A lot that is not new keeps its trees, however wide.
+  for (const sizeSqft of [20000, 400000]) {
+    const old = loadSky({ buildings: [SKYB({ id: "o", type: "Office", sizeSqft: 90000 }), SKYB({ id: "p", type: "Office", sizeSqft: 30000 }),
+      SKYB({ id: "l", type: "Land", sizeSqft, createdAt: skyDaysAgo(80) })] });
+    old.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
+    old.draw();
+    assert.ok(partsOf(skyTowers(old)[2], "sky-tree").length >= 1, "an older lot has its tree");
+  }
+});
+
+test("on a board of a few houses the callout stays inside the banner and off the ⓘ", () => {
+  // Found 2026-09-26: four houses stand together at the right edge, too
+  // narrow to leave either side room for the card, and it ran off the banner.
+  const W = 1000, H = 292, ground = H * 0.79;
+  const box = (el) => {
+    const m = /^left:(-?\d+)px;top:(-?\d+)px;width:(\d+)px$/.exec(el.getAttribute("style") || "");
+    return { left: Number(m[1]), top: Number(m[2]), width: Number(m[3]) };
+  };
+  const ctx = loadSky({ buildings: ["1412 W Idaho St", "1715 N 10th St", "22 E Warm Springs Ave", "88 N Harrison Blvd"].map((address, i) =>
+    SKYB({ id: "h" + i, type: "Residential", sizeSqft: 2400 + i * 900, address: address + ", Boise, ID", createdAt: skyDaysAgo(200 - i * 40) })) });
+  ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: W, height: H });
+  ctx.draw();
+  const info = /^left:(\d+)px;top:(\d+)px$/.exec(ctx.dom.el("deskSkyInfo").getAttribute("style"));
+  const infoLeft = Number(info[1]), infoTop = Number(info[2]);
+  for (const a of skyTowers(ctx)) {
+    a.fire("mouseenter");
+    const body = partsOf(a, "sky-body")[0].attrs;
+    const tx = Number(body.x), tr = tx + Number(body.width);
+    const c = box(ctx.dom.el("deskSkyCall"));
+    assert.ok(c.left + c.width <= W - 22 && c.left >= 0, "inside the banner: " + JSON.stringify(c));
+    assert.ok(c.left >= tr + 10 || c.left + c.width <= tx - 10, "beside its house, not over it");
+    const overInfo = c.left < infoLeft + 24 && c.left + c.width > infoLeft;
+    if (overInfo) assert.ok(c.top + 80 <= infoTop, "lifted clear of the ⓘ where it passes it");
+    assert.ok(c.top >= 76 && c.top + 80 <= ground, "below the find box, above the ground");
+    a.fire("mouseleave");
+  }
+});
+
 test("an empty board shows where the skyline will stand, and its button opens the add form", () => {
   const ctx = loadSky({ buildings: [] });
   let opened = 0;

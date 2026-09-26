@@ -4357,5 +4357,11 @@
     "type": "improvement",
     "title": "A crane you can see, and a city line that doesn’t look like a button",
     "details": "The crane that marks a building added this month was drawn in hairlines and looked like a stray mark on the Workspace banner. It is now a proper tower crane, with a mast, a jib, a weight and a hook, drawn heavier, and the legend’s icon matches. The firm’s city line under the greeting (“Boise, ID”) was a bordered pill that looked clickable but did nothing. It is now a plain line with a pin."
+  },
+  {
+    "date": "2026-09-26",
+    "type": "feature",
+    "title": "Every property type gets its own building on the Workspace skyline",
+    "details": "The firm’s skyline drew every building as the same glass tower. Now each property type has its own shape: a residential property is a house with a pitched roof, chimney and front door; an office is a tower with a stepped crown; industrial is a long warehouse with a sawtooth roof and loading doors; retail is a storefront with a striped awning; multifamily is an apartment block with balconies and a water tank; and land is an open lot with a fence, a sign and a tree. The legend behind the ⓘ shows all six. A big parcel of land no longer shrinks every other building, since a lot’s square footage is ground, not floor area. Also fixed: on a board of a few houses, the hover card could run off the edge of the banner."
   }
 ]

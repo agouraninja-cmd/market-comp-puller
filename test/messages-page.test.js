@@ -287,3 +287,30 @@ test("the emitted script carries no collapsed backslash escape", () => {
   assert.ok(!/\[\^s@\]/.test(script),
     "[^s@] in the emitted script means a \\s collapsed — double the backslash in the source");
 });
+
+// ---------------------------------------------------------------------------
+// Deleting a conversation (2026-09-26)
+// ---------------------------------------------------------------------------
+
+test("delete asks first, on firm conversations only, and Escape backs out without leaving the page", () => {
+  const script = scriptOf(renderMessagesBody(null));
+  // ONE caller of the route, reached only from the question's own Delete
+  // button — neither door deletes on its first press.
+  assert.equal((script.match(/\/api\/messages\/delete/g) || []).length, 1,
+    "the delete route is called from more than one place");
+  const fn = script.slice(script.indexOf("function deleteThread("));
+  assert.ok(fn.indexOf('api("POST", "/api/messages/delete"') > 0);
+  assert.equal((script.match(/deleteThread\(yes\.getAttribute\("data-del-yes"\)\)/g) || []).length, 2,
+    "the row and the header must both delete only from the question's Delete button");
+  assert.doesNotMatch(fn.slice(0, fn.indexOf("function externalMatches(")), /window\.confirm/,
+    "the delete question is a browser dialog again, which covers the chat on a phone");
+  // Deal rooms never get a bin: their row is built by threadRowHtml alone.
+  assert.match(script, /threadRowHtml\(x, "data-external"/,
+    "an External row is built through something that may now carry a bin");
+  // The shared header's Escape listener goes BACK a page. The page's own
+  // listener must run first (capture) and stop it, or cancelling the question
+  // also leaves Messages.
+  assert.match(script,
+    /addEventListener\("keydown", function\(e\)\{\s*if \(e\.key !== "Escape" \|\| !state\.confirmId\) return;[\s\S]{0,120}e\.stopPropagation\(\);[\s\S]{0,80}\}, true\);/,
+    "Escape on the delete question is no longer caught before the header's go-back listener");
+});

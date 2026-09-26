@@ -38,6 +38,13 @@ function esc(s) {
   });
 }
 
+// The bin on a firm row and in a conversation's header. One copy: the
+// stylesheet's markup and the client script's row builder both draw it.
+const BIN_SVG = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M3.5 5.5h13"/><path d="M8 5.5V4h4v1.5"/><path d="M5.5 5.5l.8 10.5h7.4l.8-10.5"/>' +
+  '<path d="M8.5 8.5v5M11.5 8.5v5"/></svg>';
+
 function renderMessagesBody(boot) {
   // </script> can never appear in the payload: every "<" is escaped, which is
   // also what keeps a comp note like "<img onerror=…>" inert inside the tag.
@@ -119,6 +126,42 @@ function renderMessagesBody(boot) {
   color:#fff;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center}
 .msg-row.is-unread .msg-name{font-weight:700}
 .msg-row.is-unread .msg-prev{color:var(--ink-body)}
+
+/* --- deleting a conversation (2026-09-26) -------------------------------- */
+/* Two doors to one question: a bin on each firm row, and one in the open
+   conversation's header. The row is a <button>, and a button cannot hold
+   another, so the bin is the row's SIBLING inside a wrapper and sits over its
+   right edge. On a mouse it appears on hover, where the time was; keyboard
+   focus shows it too, so Tab reaches it. A touch screen has no hover, so there
+   it is always drawn and the row keeps room for it. */
+.msg-rowwrap{position:relative}
+.msg-sect+.msg-rowwrap>.msg-row,.msg-sect+.msg-confirm{border-top:1px solid var(--hair)}
+.msg-del{position:absolute;right:10px;top:50%;margin-top:-15px;width:30px;height:30px;
+  display:flex;align-items:center;justify-content:center;padding:0;border:1px solid transparent;
+  border-radius:6px;background:transparent;color:var(--ink-3);cursor:pointer;
+  opacity:0;pointer-events:none}
+.msg-del svg,.msg-btn.icon svg{display:block}
+.msg-del:hover{color:var(--red);border-color:var(--edge);background:var(--card)}
+.msg-rowwrap:hover .msg-del,.msg-row:focus-visible+.msg-del,.msg-del:focus-visible{opacity:1;pointer-events:auto}
+.msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread,
+.msg-rowwrap:has(:focus-visible) .msg-when,.msg-rowwrap:has(:focus-visible) .msg-unread{visibility:hidden}
+@media (hover:none){
+  .msg-del{opacity:1;pointer-events:auto}
+  .msg-rowwrap .msg-row{padding-right:48px}
+  .msg-rowwrap:hover .msg-when,.msg-rowwrap:hover .msg-unread{visibility:visible}
+}
+.msg-btn.icon{display:inline-flex;align-items:center;justify-content:center;padding:4px 6px;color:var(--ink-3)}
+.msg-btn.icon:hover{color:var(--red)}
+/* The question, asked where it was raised: in place of the row, or under the
+   header. Never a browser dialog, which on a phone covers the very thing it
+   is asking about. */
+.msg-confirm{padding:11px 14px 12px;border-bottom:1px solid var(--hair);background:var(--wash);
+  box-shadow:inset 3px 0 0 var(--red)}
+.msg-delbar{padding:11px 16px 12px;border-bottom:1px solid var(--line);background:var(--wash)}
+.msg-confirm-q{font-size:13.5px;font-weight:600;color:var(--ink)}
+.msg-confirm-sub{font-size:12px;color:var(--ink-3);line-height:1.5;margin:2px 0 9px}
+.msg-confirm-go{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.msg-confirm-go .msg-hint{color:var(--red)}
 
 /* --- the stream --------------------------------------------------------- */
 .msg-stream{flex:1;overflow-y:auto;min-height:0;padding:16px;display:flex;flex-direction:column;gap:2px}
@@ -306,7 +349,13 @@ function renderMessagesBody(boot) {
       <button class="msg-btn sm" id="msgTabChat" type="button" aria-pressed="true">Conversation</button>
       <button class="msg-btn sm" id="msgTabComps" type="button" aria-pressed="false">Comps</button>
       <button class="msg-btn sm msg-hide" id="msgPeopleBtn" type="button">People</button>
+      <!-- Firm conversations only. A deal room is a client relationship with
+           its own ending (Close conversation, in its People panel) and is not
+           the reader's to delete. -->
+      <button class="msg-btn sm icon msg-hide" id="msgDelBtn" type="button"
+        aria-label="Delete this conversation" title="Delete conversation">${BIN_SVG}</button>
     </div>
+    <div class="msg-delbar msg-hide" id="msgDelBar" role="group" aria-label="Delete this conversation"></div>
     <div class="msg-note msg-hide" id="msgNote"></div>
     <div class="msg-stream" id="msgStream"></div>
     <!-- The guest list of an EXTERNAL conversation: who is in it, whether
@@ -360,8 +409,17 @@ function renderMessagesBody(boot) {
     openId: "", openKind: "internal", cursor: "", messages: [], tab: "chat", picked: [],
     external: [], extItems: [], extPeopleList: [], canWriteExt: false,
     pickedExt: [], extLinks: null,
-    attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false
+    attach: [], vault: null, poll: null, lastActive: Date.now(), sending: false,
+    // Deleting (2026-09-26): which row is asking "Delete this conversation?",
+    // which delete is in flight, and what went wrong with the last one.
+    confirmId: "", deleting: "", delErr: "",
+    // The open firm conversation as its own read described it, so it stays on
+    // the list while it is open even when the list read leaves it out — a
+    // conversation you deleted and then reopened has nothing in it yet, and
+    // is off the list until somebody writes.
+    openRow: null
   };
+  var BIN = ${JSON.stringify(BIN_SVG)};
 
   // --- small helpers ------------------------------------------------------
   function esc(s){
@@ -456,6 +514,7 @@ function renderMessagesBody(boot) {
     return e.split("@")[0] || "Someone";
   }
   function openExternal(id, push, jump){
+    closeDelBar();
     state.openKind = "external";
     state.openId = id;
     state.cursor = "";
@@ -728,6 +787,7 @@ function renderMessagesBody(boot) {
     // the room are the broker's client relationships and none of theirs: the
     // same wall GET /api/hub draws, which simply sends them no people.
     $("msgPeopleBtn").className = mine ? "msg-btn sm" : "msg-btn sm msg-hide";
+    $("msgDelBtn").className = !external && state.openId ? "msg-btn sm icon" : "msg-btn sm icon msg-hide";
     if (!mine) $("msgPeoplePanel").className = "msg-panel msg-hide";
     if (closed) { $("msgPicker").className = "msg-panel msg-hide"; }
   }
@@ -747,6 +807,114 @@ function renderMessagesBody(boot) {
       (t.unread ? '<span class="msg-unread">' + (t.unread > 99 ? "99+" : t.unread) + '</span>' : "") +
       '</button>';
   }
+  // A firm row: the row itself, and the bin beside it. Deal rooms never get
+  // one (see the header button's comment).
+  function internalRowHtml(t, current){
+    if (state.confirmId === t.id) return confirmHtml(t, "row");
+    return '<div class="msg-rowwrap">' +
+      threadRowHtml(t, "data-thread", current, t.preview || "No messages yet") +
+      '<button class="msg-del" type="button" data-del="' + esc(t.id) + '"' +
+        ' aria-label="Delete conversation with ' + esc(t.label) + '" title="Delete">' + BIN + '</button>' +
+      '</div>';
+  }
+  // The one question both doors ask. It says whose copy goes, because that
+  // is the thing a person pressing Delete on a shared conversation cannot
+  // otherwise know: only theirs.
+  function confirmHtml(t, where){
+    var busy = state.deleting === t.id;
+    var others = t.kind === "channel"
+      ? "Everyone else still has it, and a new message brings it back."
+      : esc(t.label) + " still has it, and a new message from them brings it back.";
+    return '<div class="' + (where === "row" ? "msg-confirm" : "") + '"' +
+        (where === "row" ? ' role="group" aria-label="Delete conversation with ' + esc(t.label) + '"' : "") + '>' +
+      '<div class="msg-confirm-q">Delete this conversation?</div>' +
+      '<div class="msg-confirm-sub">It\\'s deleted for you only. ' + others + '</div>' +
+      '<div class="msg-confirm-go">' +
+        '<button class="msg-btn primary sm" type="button" data-del-yes="' + esc(t.id) + '"' + (busy ? " disabled" : "") + '>' +
+          (busy ? "Deleting\\u2026" : "Delete") + '</button>' +
+        '<button class="msg-btn sm" type="button" data-del-no="1"' + (busy ? " disabled" : "") + '>Cancel</button>' +
+        (state.delErr && state.confirmId === t.id ? '<span class="msg-hint">' + esc(state.delErr) + '</span>' : "") +
+      '</div>' +
+    '</div>';
+  }
+  function findThread(id){
+    for (var i = 0; i < state.threads.length; i++) if (state.threads[i].id === id) return state.threads[i];
+    return state.openRow && state.openRow.id === id ? state.openRow : null;
+  }
+  // The header's door. The question opens UNDER the header, where the eye
+  // already is, rather than over in the list — which a phone is not showing.
+  function renderDelBar(){
+    var bar = $("msgDelBar");
+    var t = state.confirmId && state.confirmId === state.openId && state.openKind === "internal"
+      ? findThread(state.openId) : null;
+    if (!t || !state.delBar) { bar.className = "msg-delbar msg-hide"; bar.innerHTML = ""; return; }
+    bar.innerHTML = confirmHtml(t, "bar");
+    bar.className = "msg-delbar";
+  }
+  function closeDelBar(){
+    if (!state.delBar) return;
+    state.delBar = false;
+    state.confirmId = "";
+    state.delErr = "";
+    renderDelBar();
+  }
+  function askDelete(id, fromBar){
+    state.confirmId = id;
+    state.delBar = !!fromBar;
+    state.delErr = "";
+    renderThreads();
+    renderDelBar();
+    var yes = document.querySelector((fromBar ? "#msgDelBar" : "#msgThreads") + ' [data-del-yes]');
+    try { if (yes) yes.focus(); } catch (e) {}
+  }
+  function cancelDelete(){
+    var id = state.confirmId;
+    state.confirmId = "";
+    state.delBar = false;
+    state.delErr = "";
+    renderThreads();
+    renderDelBar();
+    // Focus goes back to the door it came from, so a keyboard user is not
+    // dropped at the top of the page.
+    var back = id ? document.querySelector('[data-del="' + id.replace(/"/g, "") + '"]') : null;
+    try { (back || $("msgDelBtn")).focus(); } catch (e) {}
+  }
+  function deleteThread(id){
+    if (state.deleting) return;
+    state.deleting = id;
+    state.delErr = "";
+    renderThreads();
+    renderDelBar();
+    api("POST", "/api/messages/delete", { threadId: id }).then(function(o){
+      state.deleting = "";
+      if (o.s !== 200) {
+        state.delErr = (o.j && o.j.error) || "Couldn't delete that. Please try again.";
+        renderThreads();
+        renderDelBar();
+        return;
+      }
+      state.confirmId = "";
+      state.delBar = false;
+      state.threads = state.threads.filter(function(t){ return t.id !== id; });
+      if (state.openKind === "internal" && state.openId === id) {
+        // The open conversation went, so the pane goes back to empty and a
+        // phone goes back to the list, exactly as the Back button does.
+        state.openId = "";
+        state.openRow = null;
+        state.messages = [];
+        state.attach = [];
+        renderTray();
+        $("msgPage").className = "msg-page";
+        $("msgTitle").textContent = "Select a conversation";
+        $("msgSub").textContent = "";
+        setTab("chat");
+        applyComposerMode();
+        try { history.replaceState({}, "", "/messages"); } catch (e) {}
+      }
+      renderThreads();
+      renderDelBar();
+    });
+  }
   function externalMatches(t, q){
     if (!q) return true;
     q = q.toLowerCase();
@@ -759,9 +927,12 @@ function renderMessagesBody(boot) {
   }
   function renderThreads(){
     var q = ($("msgFilter").value || "").trim();
-    var list = state.threads.filter(function(t){ return threadMatches(t, q); });
+    var all = state.threads.slice();
+    if (state.openKind === "internal" && state.openRow && state.openRow.id === state.openId &&
+        !all.some(function(t){ return t.id === state.openId; })) all.unshift(state.openRow);
+    var list = all.filter(function(t){ return threadMatches(t, q); });
     var ext = state.external.filter(function(t){ return externalMatches(t, q); });
-    if (!state.threads.length && !state.external.length) {
+    if (!all.length && !state.external.length) {
       $("msgThreads").innerHTML =
         '<div class="msg-empty"><h3>No conversations yet</h3>' +
         '<p>' + (state.firm
@@ -787,9 +958,7 @@ function renderMessagesBody(boot) {
     if (both) html += '<div class="msg-sect">Internal</div>';
     for (var i = 0; i < list.length; i++) {
       var t = list[i];
-      html += threadRowHtml(t, "data-thread",
-        state.openKind === "internal" && t.id === state.openId,
-        t.preview || "No messages yet");
+      html += internalRowHtml(t, state.openKind === "internal" && t.id === state.openId);
     }
     if (both) html += '<div class="msg-sect">External</div>';
     for (var k = 0; k < ext.length; k++) {
@@ -973,6 +1142,8 @@ function renderMessagesBody(boot) {
     }
   }
   function openThread(id, push, jump){
+    if (state.openId !== id) closeDelBar();
+    if (!state.openRow || state.openRow.id !== id) state.openRow = null;
     state.openKind = "internal";
     state.openId = id;
     state.cursor = "";
@@ -1007,6 +1178,7 @@ function renderMessagesBody(boot) {
       note("");
       var j = o.j || {};
       if (first) {
+        if (j.thread && j.thread.id === state.openId) { state.openRow = j.thread; renderThreads(); }
         $("msgTitle").textContent = (j.thread && j.thread.label) || "Conversation";
         var members = ((j.thread && j.thread.members) || []).filter(function(m){ return !m.left; });
         $("msgSub").textContent = j.thread && j.thread.kind === "channel"
@@ -1418,12 +1590,23 @@ function renderMessagesBody(boot) {
       if (o.s !== 201) { $("msgNewMsg").textContent = (o.j && o.j.error) || "Couldn't start that."; return; }
       $("msgNewPanel").className = "msg-panel msg-hide";
       state.picked = [];
+      // Seeded so a conversation reopened after being deleted is on the list
+      // from the moment it opens (see openRow).
+      state.openRow = o.j.thread;
       refreshList(true).then(function(){ openThread(o.j.thread.id, true); });
     });
   }
 
   // --- wiring -------------------------------------------------------------
   $("msgThreads").addEventListener("click", function(e){
+    var del = e.target.closest("[data-del]");
+    if (del) { askDelete(del.getAttribute("data-del"), false); return; }
+    var yes = e.target.closest("[data-del-yes]");
+    if (yes) { deleteThread(yes.getAttribute("data-del-yes")); return; }
+    if (e.target.closest("[data-del-no]")) { cancelDelete(); return; }
+    // A click anywhere else inside an open question does nothing, rather than
+    // falling through to "open this conversation" underneath it.
+    if (e.target.closest(".msg-confirm")) return;
     var ext = e.target.closest("[data-external]");
     if (ext) { openExternal(ext.getAttribute("data-external"), true); return; }
     var row = e.target.closest("[data-thread]");
@@ -1477,6 +1660,26 @@ function renderMessagesBody(boot) {
     openPeoplePanel();
   });
   $("msgPeopleDone").addEventListener("click", function(){ $("msgPeoplePanel").className = "msg-panel msg-hide"; });
+  $("msgDelBtn").addEventListener("click", function(){
+    if (!state.openId || state.openKind !== "internal") return;
+    if (state.delBar) { cancelDelete(); return; }
+    askDelete(state.openId, true);
+  });
+  $("msgDelBar").addEventListener("click", function(e){
+    var yes = e.target.closest("[data-del-yes]");
+    if (yes) { deleteThread(yes.getAttribute("data-del-yes")); return; }
+    if (e.target.closest("[data-del-no]")) cancelDelete();
+  });
+  // Escape backs out of the question. In the CAPTURE phase and stopped there,
+  // because the shared header's own Escape listener (server.js) goes back to
+  // the previous page: without this, dismissing the question would also leave
+  // Messages altogether.
+  document.addEventListener("keydown", function(e){
+    if (e.key !== "Escape" || !state.confirmId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!state.deleting) cancelDelete();
+  }, true);
   $("msgPeopleGo").addEventListener("click", invitePerson);
   $("msgPeopleAdd").addEventListener("keydown", function(e){
     if (e.key === "Enter") { e.preventDefault(); invitePerson(); }
@@ -1515,6 +1718,7 @@ function renderMessagesBody(boot) {
   $("msgTabChat").addEventListener("click", function(){ setTab("chat"); });
   $("msgTabComps").addEventListener("click", function(){ if (state.openId) setTab("comps"); });
   $("msgBack").addEventListener("click", function(){
+    closeDelBar();
     $("msgPage").className = "msg-page";
     state.openId = "";
     state.openKind = "internal";

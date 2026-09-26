@@ -11946,6 +11946,14 @@ const marketBar = (signedIn = false, current = "") =>
   `location.href="/";}` +
   `document.addEventListener("keydown",function(e){` +
   `if(e.key!=="Escape")return;` +
+  // Never while somebody is TYPING, and never when the page already used the
+  // key (2026-09-26). Escape in the Messages composer went back a page and
+  // threw the unsent message away; the same was true of every box on every
+  // page this header sits on. A page's own Escape (closing its own panel,
+  // cancelling an inline edit) signals with preventDefault.
+  `if(e.defaultPrevented)return;` +
+  `var t=e.target;` +
+  `if(t&&t.closest&&t.closest("input,textarea,select,[contenteditable]"))return;` +
   `var dd=document.querySelector(".hdr nav details[open]");` +
   `if(dd){dd.open=false;return;}` +
   `goBack();});` +

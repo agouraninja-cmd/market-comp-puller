@@ -355,49 +355,59 @@ paths:
     alone: `MARKET_CSS` names Inter in `body{}` and no server-rendered page
     fetches it, so without that link the fold would silently have restyled
     the page brokers use daily.
-  - **The deal desk (2026-09-25; the owner's pick of the redesign drafts at
-    https://claude.ai/artifact/Mw9KrzNpaLygnJ3azF1cYK: Draft C with Draft B's
-    map and comp set).** The page now reads This week → Your pipeline → Your
-    book (the privacy ledger under its rule) → properties, watchlist,
-    contributions. Everything added is DRAWING over reads the page already
-    made, and every control that changes something is an existing one — hold
-    both. Six rules, all in `test/vault-page.test.js`'s last block:
-    - **This week (`#weekSec`, in `VAULT_DECKS`) has no route.** Owner
-      requests come from `/api/broker/leads`, delivered BOVs from
-      `/api/broker/bovs`, and leases ending within a year from the book
-      (`leaseKey`: the option notice date when it is still ahead of the
-      expiry, else the expiry). A read that failed shows a dash and its
-      error, never a zero — the pipeline's own rule.
-    - **The board and the list are one section's two views** (`#pipeSec`
-      carries `vd-list`; `renderPipeline` draws both from the same rows).
-      Every card control is the table's own — `data-intro`, the stage select
-      built by `bovSelect`, `data-bovdel` — caught by the same
-      document-level handlers, so the two views cannot act differently.
+  - **Draft B: the vault as tabs, the book as a map (2026-09-25; the owner's
+    pick of the redesign drafts at
+    https://claude.ai/artifact/Mw9KrzNpaLygnJ3azF1cYK).** Draft C with B's map
+    shipped first that evening (PR #331) and was replaced within the hour at
+    the owner's word ("Just B"): This week and the pipeline board are gone,
+    not hidden. The page is now five tabs, Book, Pipeline, Properties,
+    Watchlist and Contributions, and the Book opens first. Everything added is
+    DRAWING over reads the page already made, and every control that changes
+    something is an existing one — hold both. Seven rules, all in
+    `test/vault-page.test.js`'s last block:
+    - **`setTab` is the one writer of which panel shows** (`.vt-panel.on`).
+      Every section kept its id, its deck and its handlers; a panel only
+      wraps them. The active panel's deck rule is laid over the right end of
+      the tab bar (label and rule hidden), so each part keeps its one action
+      where the tabs are. A tab's address is a plain hash (#pipeline,
+      #properties, #watchlist, #contributions; the old section ids are read
+      too). The Pro lock (`lockVaultDecks`) opens on Properties, and the
+      Contributions tab exists only while its deck does.
+    - **The tabs count what they hold**, each from its own renderer: Book
+      from `apply`, Pipeline from `renderPipeline` (owner requests nobody
+      has asked about, "N new" in red, else the rows that ARRIVED), Properties
+      from `renderProps`, Watchlist from `renderMarkets`, Contributions from
+      `renderContribs`.
     - **The book's Map and Table draw the same `view()`**: `render()` calls
-      `renderBookMap(rows)` beside the table, so the filter row scopes both
-      identically. The view class lives on `#bookViews`, because
-      `applyFirstRun` writes `#compsSec`'s whole className. The spreadsheet
-      belongs to Table: `render()` moves there whenever `sheetMode` is on.
+      `renderBookMap(rows)` beside the table. The view class lives on
+      `#bookViews`, because `applyFirstRun` writes `#compsSec`'s whole
+      className. The spreadsheet belongs to Table: `render()` moves there
+      whenever `sheetMode` is on.
+    - **The chips are toggles over the Market, Type, Deal and Firm selects**,
+      which stay in the DOM (hidden in the map view by `.filters.vb-chips`)
+      as the one place filter values live, so the two views cannot filter
+      differently. Counted over the whole book.
     - **The map never geocodes.** Pins come only from `lat`/`lng` the book
       already holds (`hasLoc`); a comp without them stays in the list and
-      `#bmNoLoc` says how many. Leaflet and CNBASE arrive through
-      marketShell's `head` from `LEAFLET_HEAD` and `BASEMAP_JS` in the /vault
-      route, never a copy in this file (`test/vault-shell.test.js`).
+      `#bmNoLoc` says how many. The empty book's map (`initEmptyMap`) is the
+      country with no pin. Leaflet and CNBASE arrive through marketShell's
+      `head` from `LEAFLET_HEAD` and `BASEMAP_JS` in the /vault route,
+      never a copy in this file (`test/vault-shell.test.js`).
     - **The comp set is memory only** and summarises by the book's rules:
       sales and leases apart, no single figure across property types
       (`setSummary` over `psfStats`/`rentStats`). Its Publish and Share are
-      `publishList` and `shareListWithFirm` — the filter row's buttons call
-      the same two functions, so there is still one confirm per route.
+      `publishList` and `shareListWithFirm`, which the filter row's buttons
+      call too, so there is still one confirm per route.
     - **The comp sheet and the set's CSV are files for the broker**, the
       whole-book CSV's class of exit. The sheet (printed through
       `body.vd-printing`, which only matters in print media) carries the
       saved report branding (own, else the firm's), the "not an appraisal"
-      line and "Prepared with CompNinja", and **never the notes** — a note is
+      line and "Prepared with CompNinja", and **never the notes**: a note is
       written for the broker, and the sheet is what they hand a client. The
       CSV guards formula cells like the server's export.
-    Not built from Draft C: the properties and watchlist side by side (the
-    properties table needs its full width), and saving a comp set onto a BOV
-    (that would be a migration).
+    The privacy ledger (`#trustLine`) moved to the foot of the Book tab: B's
+    pictures dropped it, but it is the "0 published" proof and the home of
+    the credit identity form, so it stays on the page.
   - **TWO DECKS, not ten peer sections** (Vault Direction U, approved and
     shipped 2026-08-10; card `vault/direction-u-two-decks.html`). The page is
     two products sharing one scroll, so it carries exactly two deck rules —

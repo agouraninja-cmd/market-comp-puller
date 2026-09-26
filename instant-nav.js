@@ -15,8 +15,9 @@
 // then swaps the finished page in: no request, no parse, no paint wait.
 // Measured in Chromium against a local server with a seeded Pro member
 // (2026-09-26): Workspace -> Vault 450-530 ms before, ~20 ms prerendered;
-// Vault -> Workspace 740-850 ms before, ~20 ms prerendered. Browsers without
-// speculation rules (Safari, Firefox) skip all of it and behave as before.
+// Vault -> Workspace 740-850 ms before, ~20 ms prerendered. Browsers that
+// cannot prerender (Safari, Firefox) take the second half of this file
+// instead: the server builds the tab ahead (see SAFARI AND FIREFOX below).
 //
 // Two triggers, because a prerender only helps if it is FINISHED by the click,
 // and these pages take the server a moment to build:
@@ -100,6 +101,11 @@ const TTL_MS = 30 * 1000;
 const WARM_TTL_MS = 60 * 1000;
 // After `load`, so the warm-up never competes with the page being opened.
 const WARM_DELAY_MS = 1500;
+// Where a browser that cannot prerender asks for a page to be built early.
+const WARM_PATH = "/api/warm";
+// The server-side store for those pages. A workspace render is ~1.4 MB, so
+// this is ~20 of them at most; the oldest go first past it.
+const WARM_MAX_BYTES = 32 * 1024 * 1024;
 
 // Does this request come from a speculation (prefetch or prerender) rather
 // than a person? Chrome sends `Sec-Purpose: prefetch;prerender` for a
@@ -152,6 +158,98 @@ function createVisitDeferrals(opts) {
   };
 }
 
+// SAFARI AND FIREFOX (2026-09-26, the owner's "make it work in Safari too").
+// Neither can prerender: WebKit and Gecko implement no `document.prerendering`
+// and no prerender rule, so the browser half above has nothing to insert. What
+// they CAN be spared is the biggest part of the wait, the server building the
+// page from the database. So the same triggers (a resting pointer, focus, a
+// press, the warm tab after load) POST the path to WARM_PATH instead, the
+// server renders that page for that visitor in the background — over
+// loopback, as `Purpose: prefetch`, exactly what a prerender's own request
+// would be — and holds the finished response here. The click's navigation is
+// then answered from memory the moment it arrives, or joins the render still
+// in flight rather than starting a second (for at most WARM_JOIN_MAX_MS in
+// server.js, then it renders fresh). What is left is the network and the
+// browser's own parse, which no server can do for it — measured in Chromium
+// with prerendering switched off to stand in for Safari, against the same
+// seeded local server: Workspace -> Vault 515-613 ms before, 199-365 ms
+// after; Vault -> Workspace 800-1030 ms before, 380-500 ms after. Faster,
+// not instant: only a browser that can prerender gets instant.
+//
+// The store's rules, all tested (the I/O lives in server.js):
+//   - KEYED ON THE WHOLE COOKIE HEADER plus the path, so a response only ever
+//     goes back to a request carrying exactly the cookies it was rendered
+//     with (the session, and the admin unlock, which changes what renders).
+//     Anything different is a miss, and a miss is simply a normal render.
+//   - SINGLE USE, and short-lived: the hover TTL or the warm one, never more.
+//     A second navigation to the same tab renders fresh.
+//   - DROPPED BY ANY WRITE from the same cookie (server.js calls dropPrefix on
+//     every non-GET and every held GET), so a page built before a save is
+//     never shown after it — sign-out included.
+//   - A failed or unusable render (not a 200 HTML page, or one that sets a
+//     cookie) is forgotten, and the navigation renders normally.
+//   - Bounded by bytes, oldest first.
+function createWarmCache(opts) {
+  const o = opts || {};
+  const now = o.now || Date.now;
+  const maxBytes = o.maxBytes || WARM_MAX_BYTES;
+  const held = new Map(); // key -> { promise, exp, bytes }
+  let total = 0;
+  function remove(key) {
+    const e = held.get(key);
+    if (!e) return;
+    total -= e.bytes;
+    held.delete(key);
+  }
+  function sweep() {
+    const t = now();
+    for (const [k, e] of held) if (e.exp <= t) remove(k);
+  }
+  return {
+    // Holds the promise `make()` returns (a response or null) under `key`.
+    // An entry already held is kept — `make` is not called, so a second hover
+    // never starts a second render — and lives the longer of the two TTLs: a
+    // hover that becomes the warm tab must not expire on the hover's clock.
+    start(key, make, ttlMs) {
+      sweep();
+      const exp = now() + ttlMs;
+      const had = held.get(key);
+      if (had) { had.exp = Math.max(had.exp, exp); return false; }
+      const promise = Promise.resolve().then(make);
+      const entry = { promise, exp, bytes: 0 };
+      held.set(key, entry);
+      promise.then((hit) => {
+        if (held.get(key) !== entry) return;
+        if (!hit || !hit.body) { remove(key); return; }
+        entry.bytes = hit.body.length;
+        total += entry.bytes;
+        for (const [k, e] of held) {
+          if (total <= maxBytes) break;
+          if (k !== key && e.bytes > 0) remove(k);
+        }
+        if (total > maxBytes) remove(key);
+      }, () => { if (held.get(key) === entry) remove(key); });
+      return true;
+    },
+    // The held promise for `key`, removed as it is handed over; null if there
+    // is none or it has expired.
+    take(key) {
+      sweep();
+      const e = held.get(key);
+      if (!e) return null;
+      remove(key);
+      return e.promise;
+    },
+    has(key) { sweep(); return held.has(key); },
+    // Every entry for one cookie: `prefix` is the cookie part of the key.
+    dropPrefix(prefix) {
+      for (const k of [...held.keys()]) if (k.startsWith(prefix)) remove(k);
+    },
+    get size() { return held.size; },
+    get bytes() { return total; },
+  };
+}
+
 // The tag a deferred visit rides down in: posts its token once the page is
 // actually shown. Self-contained (it does not lean on the boot script below),
 // because Chrome also prerenders from its own address bar, on pages and for
@@ -176,9 +274,19 @@ function visitTag(token) {
 // In order:
 //   - the fetch wrapper, on EVERY page (rule 1, and the write half of rule 3):
 //     a non-GET made while unseen waits for `prerenderingchange`, and so
-//     does a GET to one of cfg.hold (the GETs that write); any
-//     non-GET that lands drops every prerender this page is holding;
-//   - nothing further without speculation rules (Safari, Firefox);
+//     does a GET to one of cfg.hold (the GETs that write); any of those
+//     that LANDS drops every tab this page is holding — a held GET too,
+//     because it wrote, and because the server's routeWarm drops its copies
+//     on exactly the same requests: a browser still believing in a copy the
+//     server threw away would never ask for it again (Cursor Bugbot,
+//     PR #342: the Messages page polls a thread every 15 s). The next reach
+//     for the nav asks again, so this is never a standing rebuild;
+//   - canPrerender: Chrome/Edge (`document.prerendering` exists AND speculation
+//     rules parse). Everything below then runs the same for every browser
+//     except prerender()'s one action: a speculation rule where it can,
+//     otherwise warmOnServer() — a POST to cfg.warmPath with the ORIGINAL
+//     fetch, so asking for a page is not a write and drops nothing, and
+//     `keepalive` so the ask survives the click's navigation starting;
 //   - target(): the URL worth prerendering for a link. Only a plain
 //     same-origin link to a tab — never the page already showing (by path, by
 //     aria-current, or a `skip` path the page handles in place: the app's own
@@ -209,7 +317,7 @@ function instantNavBoot(cfg, win) {
     w.clearTimeout(entry.timer);
     var i = live.indexOf(entry);
     if (i >= 0) live.splice(i, 1);
-    if (entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
+    if (entry.el && entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
   }
   function dropAll() { while (live.length) drop(live[0]); }
 
@@ -220,7 +328,7 @@ function instantNavBoot(cfg, win) {
       var m = String((init && init.method) || (input && typeof input === "object" && input.method) || "GET").toUpperCase();
       var write = m !== "GET" && m !== "HEAD";
       var held = false;
-      if (d.prerendering && !write) {
+      if (!write) {
         try {
           var path = new w.URL(typeof input === "string" ? input : (input && input.url) || String(input), w.location.href).pathname;
           held = cfg.hold.indexOf(path) >= 0;
@@ -231,13 +339,14 @@ function instantNavBoot(cfg, win) {
         ? new Promise(function (resolve) { d.addEventListener("prerenderingchange", function () { resolve(); }, { once: true }); })
             .then(function () { return F.apply(w, args); })
         : F.apply(w, args);
-      if (write) p.then(dropAll, dropAll);
+      p.then(dropAll, dropAll);
       return p;
     };
   }
 
   var S = w.HTMLScriptElement;
-  if (!S || typeof S.supports !== "function" || !S.supports("speculationrules")) return;
+  var canPrerender = "prerendering" in d && !!S && typeof S.supports === "function" && S.supports("speculationrules");
+  if (!canPrerender && typeof F !== "function") return;
 
   function target(el) {
     var a = el && el.closest ? el.closest("a[href]") : null;
@@ -255,17 +364,35 @@ function instantNavBoot(cfg, win) {
     w.clearTimeout(entry.timer);
     entry.timer = w.setTimeout(function () { drop(entry); }, ms);
   }
+  function warmOnServer(url, isWarm) {
+    try {
+      F.call(w, cfg.warmPath, {
+        method: "POST", credentials: "same-origin", keepalive: true,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: new w.URL(url).pathname, warm: Boolean(isWarm) }),
+      }).catch(function () {});
+    } catch (e) {}
+  }
   function prerender(url, isWarm) {
     if (!url) return null;
     for (var i = 0; i < live.length; i++) {
       if (live[i].url !== url) continue;
-      if (isWarm && !live[i].warm) { live[i].warm = true; expire(live[i], cfg.warmTtlMs); }
+      if (isWarm && !live[i].warm) {
+        live[i].warm = true;
+        expire(live[i], cfg.warmTtlMs);
+        if (!canPrerender) warmOnServer(url, true);
+      }
       return live[i];
     }
-    var s = d.createElement("script");
-    s.type = "speculationrules";
-    s.textContent = JSON.stringify({ prerender: [{ source: "list", urls: [url] }] });
-    d.head.appendChild(s);
+    var s = null;
+    if (canPrerender) {
+      s = d.createElement("script");
+      s.type = "speculationrules";
+      s.textContent = JSON.stringify({ prerender: [{ source: "list", urls: [url] }] });
+      d.head.appendChild(s);
+    } else {
+      warmOnServer(url, isWarm);
+    }
     var entry = { url: url, el: s, timer: 0, warm: Boolean(isWarm) };
     expire(entry, isWarm ? cfg.warmTtlMs : cfg.ttlMs);
     live.push(entry);
@@ -326,6 +453,7 @@ function bootScript(opts) {
     ttlMs: TTL_MS,
     warmTtlMs: WARM_TTL_MS,
     warmDelayMs: WARM_DELAY_MS,
+    warmPath: WARM_PATH,
   };
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c");
   return `<script>try{(${instantNavBoot.toString()})(${json});}catch(e){}</script>\n`;
@@ -333,5 +461,6 @@ function bootScript(opts) {
 
 module.exports = {
   TAB_PATHS, HOLD_PATHS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
-  isSpeculative, createVisitDeferrals, visitTag, instantNavBoot, bootScript,
+  WARM_PATH, WARM_MAX_BYTES,
+  isSpeculative, createVisitDeferrals, createWarmCache, visitTag, instantNavBoot, bootScript,
 };

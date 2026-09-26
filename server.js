@@ -15187,6 +15187,111 @@ function logPageVisit(req, kind, dims) {
   }));
 }
 
+// Instant tab switching for Safari and Firefox (2026-09-26): the page is
+// built on the server while the member is still reaching for the tab, and
+// the click is answered from memory. instant-nav.js explains the design and
+// holds the store's rules (createWarmCache); what follows is its I/O.
+//
+// The render is this server asking ITSELF for the page over loopback — the
+// deskBootPayload pattern — with the visitor's own cookie, so every rule the
+// route enforces applies because it is the route answering. It is sent as
+// `Purpose: prefetch`, which is what makes it count as speculative: the
+// page's visit event is parked (logPageVisit) and /vault skips its
+// backfills. WARM_HEADER marks it so it can never be answered from, or wait
+// on, the very entry it is filling.
+const WARM_CACHE = INSTANTNAV.createWarmCache();
+const WARM_TAB_SET = new Set(INSTANTNAV.TAB_PATHS);
+const WARM_HEADER = "x-cn-warm";
+const WARM_MAX_BODY = 4 * 1024 * 1024;
+const WARM_MAX_IN_FLIGHT = 8;
+// How long a click will wait on a render already under way before giving up
+// on it and rendering fresh: joining must never be slower than not joining
+// by more than this, however that render is faring.
+const WARM_JOIN_MAX_MS = 4000;
+// Headers the replay must not carry: framing is recomputed for the new
+// response, and a cookie-setting render is never held in the first place.
+const WARM_DROP_HEADERS = new Set([
+  "set-cookie", "content-length", "content-encoding", "transfer-encoding", "connection", "keep-alive", "date",
+]);
+let warmInFlight = 0;
+function warmCookieKey(req) {
+  return crypto.createHash("sha256").update(String(req.headers.cookie || "")).digest("hex") + "|";
+}
+function startWarmRender(req, path, ttlMs) {
+  const addr = server.address();
+  if (!addr || typeof addr.port !== "number") return;
+  const key = warmCookieKey(req) + path;
+  // A cap on renders nobody has asked to see yet: past it a hover simply
+  // gets a normal load, never a queue.
+  if (!WARM_CACHE.has(key) && warmInFlight >= WARM_MAX_IN_FLIGHT) return;
+  const headers = {
+    cookie: String(req.headers.cookie || ""),
+    accept: "text/html",
+    "x-forwarded-for": clientIp(req),
+    purpose: "prefetch",
+    [WARM_HEADER]: "1",
+  };
+  if (req.headers["user-agent"]) headers["user-agent"] = String(req.headers["user-agent"]);
+  if (req.headers["accept-language"]) headers["accept-language"] = String(req.headers["accept-language"]);
+  WARM_CACHE.start(key, () => {
+    warmInFlight += 1;
+    return (async () => {
+      const r = await fetch(`http://127.0.0.1:${addr.port}${path}`,
+        { headers, redirect: "manual", signal: AbortSignal.timeout(10000) });
+      if (r.status !== 200 || !/^text\/html/i.test(r.headers.get("content-type") || "")
+          || r.headers.get("set-cookie")) return null;
+      const body = Buffer.from(await r.arrayBuffer());
+      if (body.length > WARM_MAX_BODY) return null;
+      const kept = {};
+      r.headers.forEach((v, k) => { if (!WARM_DROP_HEADERS.has(k)) kept[k] = v; });
+      return { status: 200, headers: kept, body };
+    })().catch(() => null).finally(() => { warmInFlight -= 1; });
+  }, ttlMs);
+}
+// Runs first on every request. Returns true when it has taken the request
+// over (a held page, served now or once its render lands); `redispatch` hands
+// it back to the normal routes if that render comes to nothing.
+function routeWarm(req, res, redispatch) {
+  if (req.cnWarmSeen) return false;
+  req.cnWarmSeen = true;
+  if (!req.headers.cookie || req.headers[WARM_HEADER]) return false;
+  const path = req.url.split("?")[0];
+  // A write — or one of the GETs that write (HOLD_PATHS) — from this cookie
+  // makes everything built for it stale. /api/warm and /api/visit change no
+  // data and are exempt, or asking for a page would throw the last one away.
+  const writes = req.method === "GET" || req.method === "HEAD"
+    ? INSTANTNAV.HOLD_PATHS.includes(path)
+    : path !== INSTANTNAV.WARM_PATH && path !== "/api/visit";
+  if (writes) {
+    WARM_CACHE.dropPrefix(warmCookieKey(req));
+    return false;
+  }
+  if (req.method !== "GET" || req.url !== path || !WARM_TAB_SET.has(path)) return false;
+  if (!parseCookies(req)[SESSION_COOKIE]) return false;
+  const pending = WARM_CACHE.take(warmCookieKey(req) + path);
+  if (!pending) return false;
+  let settled = false;
+  const giveUp = setTimeout(() => {
+    if (settled) return;
+    settled = true;
+    redispatch();
+  }, WARM_JOIN_MAX_MS);
+  pending.then((hit) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(giveUp);
+    if (!hit || res.headersSent) return redispatch();
+    res.writeHead(hit.status, { ...hit.headers, [WARM_HEADER]: "hit" });
+    res.end(hit.body);
+  }, () => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(giveUp);
+    redispatch();
+  });
+  return true;
+}
+
 function aggregateStats(rows) {
   const searches = rows.filter((r) => r.kind === "search");
   const leads = rows.filter((r) => r.kind === "lead");
@@ -18667,6 +18772,11 @@ async function checkExploreCity(req, city, state) {
 // anything inside it, at any await depth, is attributed.
 const server = http.createServer((req, res) =>
   REQUEST_CONTEXT.run(newRequestContext(req, res), () => {
+  // A page built ahead for this visitor (instant tab switching, Safari and
+  // Firefox) — or the write that makes one stale. See routeWarm. Re-emitting
+  // is the way back in on a miss: routeWarm marks the request, so the second
+  // pass goes straight to the routes below.
+  if (routeWarm(req, res, () => server.emit("request", req, res))) return;
   // Must run INSIDE the store, and before any route registers a body
   // listener — see bindRequestListeners for why a plain run() is not enough.
   bindRequestListeners(req);
@@ -20696,6 +20806,29 @@ const server = http.createServer((req, res) =>
   // replayed token logs nothing — and runs the event under the context the
   // ORIGINAL request resolved, so it is attributed exactly as it would have
   // been had it been logged then.
+  // Build a tab ahead for a browser that cannot prerender (see routeWarm).
+  // Answered at once, whatever it is sent: the render runs in the background
+  // and is only ever handed back to a navigation with this exact cookie
+  // header. Member tabs only, one path, no query.
+  if (req.method === "POST" && req.url === INSTANTNAV.WARM_PATH) {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+      if (body.length > 512) req.destroy();
+    });
+    req.on("end", () => {
+      res.writeHead(204, { "cache-control": "no-store" });
+      res.end();
+      let o = null;
+      try { o = JSON.parse(body); } catch (_) { return; }
+      const path = String((o && o.path) || "");
+      if (!WARM_TAB_SET.has(path) || !parseCookies(req)[SESSION_COOKIE]) return;
+      if (rateLimited("warm:" + clientIp(req), 120, 60 * 1000)) return;
+      startWarmRender(req, path, o.warm ? INSTANTNAV.WARM_TTL_MS : INSTANTNAV.TTL_MS);
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/visit") {
     let body = "";
     req.on("data", (c) => {

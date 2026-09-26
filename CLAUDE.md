@@ -113,11 +113,14 @@ session that never reads it.
     `single_report` stays retired (a source-scan test pins it). [billing.md]
 14. **Page routes match on the path without its query string** (`pagePath`);
     API routes keep their exact `req.url` matches. [workspace.md]
-15. **Member pages are prerendered before anyone sees them** (instant tab
-    switching — the likely next tab on every page view). A page writes only
-    through `fetch`, which holds a non-GET until the page is shown; never a
-    `sendBeacon` or `XMLHttpRequest`, which slip past it. A page visit event
-    goes through `logPageVisit`, never a bare `logEvent`. [app-shell.md]
+15. **Member pages are built before anyone sees them** (instant tab
+    switching — the likely next tab on every page view: prerendered in
+    Chrome, rendered ahead on the server for Safari/Firefox). A page writes
+    only through `fetch`, which holds a non-GET until the page is shown;
+    never a `sendBeacon` or `XMLHttpRequest`, which slip past it. A page
+    visit event goes through `logPageVisit`, never a bare `logEvent`, and a
+    page's SERVER render that writes checks `INSTANTNAV.isSpeculative`.
+    [app-shell.md]
 
 ## Tests and CI
 

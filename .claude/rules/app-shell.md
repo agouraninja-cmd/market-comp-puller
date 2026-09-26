@@ -195,8 +195,42 @@ whole design in its header; the load-bearing parts:
   vault render). Measured in Chromium against a seeded local server:
   Workspace -> Vault 450-580 ms before, 16-34 ms after on a quick 150 ms
   hover-and-click; Vault -> Workspace 740-850 ms before, 16-24 ms after.
-  Browsers without speculation rules get the write guard below and nothing
-  else.
+- **Safari and Firefox get the server half (2026-09-26, "make it work in
+  Safari too").** Neither can prerender (no `document.prerendering`, no
+  prerender rule), so the SAME triggers `POST /api/warm {path, warm}`
+  instead, and the server builds that tab for that visitor in the background
+  and holds it (`createWarmCache` in instant-nav.js for the rules,
+  `startWarmRender` / `routeWarm` in server.js for the I/O). The click's
+  navigation is answered from memory, or joins the render still running for
+  up to `WARM_JOIN_MAX_MS` (4 s) and then renders fresh. It removes the
+  server's database wait, not the network or the browser's parse, so it is
+  faster rather than instant — the same local measurement with prerendering
+  switched off: Workspace -> Vault 515-613 ms before, 199-365 ms after;
+  Vault -> Workspace 800-1030 ms before, 380-500 ms after. Its rules:
+  - **The render is the route answering itself over loopback** (the
+    deskBootPayload pattern) with the visitor's own cookie, sent as
+    `Purpose: prefetch` — so it is speculative exactly like a Chrome
+    prerender: the visit is parked (`logPageVisit`), `/vault` skips its
+    backfills — and marked `x-cn-warm` so it is never answered from, or
+    joined to, the entry it is filling (that would deadlock).
+  - **Keyed on a hash of the WHOLE cookie header plus the path**, single use,
+    TTL the hover's 30 s or the warm tab's 60 s. A different cookie (another
+    account, the admin unlock, a rotated cookie) is a miss, and a miss is a
+    normal render. Only a 200 HTML page that sets no cookie is held, under
+    `WARM_MAX_BODY`, inside `WARM_MAX_BYTES` (32 MB, oldest first).
+  - **`routeWarm` runs before every route** and drops a cookie's pages on any
+    non-GET and on any `HOLD_PATHS` GET from that cookie — the server-side
+    twin of the browser's drop-after-write, so a page built before a save
+    (or a sign-out) is never shown after it. `/api/warm` and `/api/visit`
+    are exempt: they change no data, and asking for a page must not throw
+    the last one away.
+  - Member tabs only (`TAB_PATHS`, no query, a session cookie), rate-limited
+    per IP, at most `WARM_MAX_IN_FLIGHT` (8) renders nobody has opened yet.
+  Chrome and Edge never call it: `canPrerender` picks one mechanism per
+  browser, and a second render of a page Chrome is already prerendering
+  would be pure cost. Tested in `test/instant-nav.test.js` against a real
+  server (served once, to the same cookie, never after a write, the visit
+  logged only when the page is shown).
 - **Member pages only, one source.** `marketShell` emits `INSTANT_NAV_SHELL`
   when `signedIn`; index.html's `<!--INSTANT_NAV-->` marker (above every
   `<script src>`, because the script wraps fetch) becomes `INSTANT_NAV_APP`

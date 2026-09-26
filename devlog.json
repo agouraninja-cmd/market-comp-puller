@@ -4381,5 +4381,11 @@
     "type": "improvement",
     "title": "Switching tabs is instant",
     "details": "Moving between Workspace, Vault, Messages, Market explorer, Comp report and Permit tracker used to be a full page load every time, waiting on the server before anything appeared. Now the tab you are most likely to open next (the Vault from your Workspace, the Workspace from everywhere else) loads quietly in the background once the page settles, and any tab you point at starts loading the moment your pointer rests on it. The click then swaps in a page that is already there: about 20 ms instead of half a second to a second in testing. A page loaded in the background never saves anything or counts as a visit until you actually open it, and it is thrown away after a minute, after you save anything, or when you sign out, so what you see is never stale. Works in Chrome and Edge; other browsers load tabs as before."
+  },
+  {
+    "date": "2026-09-26",
+    "type": "improvement",
+    "title": "Faster tab switching in Safari and Firefox too",
+    "details": "Instant tab switching relied on a Chrome feature, so Safari and Firefox still waited for every tab to load from scratch. Now, in those browsers, when your pointer rests on a tab (or the tab you’re likely to open next is due), the server builds that page for you in the background and holds it for up to a minute. When you click, the finished page comes straight back instead of waiting on the database. In testing that roughly halved the switch: Workspace to Vault from about 0.55 s to about 0.3 s, and Vault to Workspace from about 0.9 s to about 0.4 s. Chrome and Edge keep their near-instant switching. A page built ahead is only ever given back to the same signed-in browser, is used once, and is thrown away the moment you save anything or sign out."
   }
 ]

@@ -1528,7 +1528,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky-key > .dk-sky-k-note { display: block; margin-top: 2px; font-size: 11.5px; color: rgba(255,255,255,.6); }
     .dk-sky-k-win { display: inline-block; width: 6px; height: 8px; border-radius: 1px; background: rgba(252,214,138,.92); }
     .dk-sky-k-red { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: rgba(248,113,113,1); box-shadow: 0 0 6px 2px rgba(239,68,68,.55); }
-    .dk-sky-call { position: absolute; z-index: 3; top: 72px; width: 304px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(15,23,42,.84); border: 1px solid rgba(255,255,255,.26); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); }
+    .dk-sky-call { position: absolute; z-index: 3; top: 76px; width: 304px; box-sizing: border-box; padding: 8px 12px; border-radius: 10px; background: rgba(15,23,42,.84); border: 1px solid rgba(255,255,255,.26); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); color: #fff; box-shadow: 0 12px 26px -12px rgba(0,0,0,.7); }
     .dk-sky-call.hidden { display: none; }
     .dk-sky-call-name { display: block; font-family: Georgia, 'Times New Roman', serif; font-size: 15px; color: #fff; text-decoration: none; overflow-wrap: anywhere; }
     .dk-sky-call-due, .dk-sky-call-fresh { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; }
@@ -15713,6 +15713,7 @@ async function renderMyDesk() {
   // and takes no pointer at all — the buildings list is right below it.
   // ---------------------------------------------------------------------------
   let deskSky = null; // { towers, focus, pos, links, ... } while the skyline is up
+  let deskSkyHoverId = null; // the tower under the pointer or focus, kept across a redraw
   const DESK_SKY_NS = "http://www.w3.org/2000/svg";
   const DESK_SKY_CALL_W = 304;
   // Where the towers stand, as a share of the banner's height: the sky
@@ -15860,6 +15861,7 @@ async function renderMyDesk() {
       ? SKYLINE.sparseLayout(deskSky.towers, room)
       : { towers: SKYLINE.layout(deskSky.towers, room), ghosts: [] };
     const layout = drawn.towers;
+    deskSky.firstX = layout[0].x; // the callout never goes left of it: the ⓘ stands there
     const last = drawn.ghosts.length ? drawn.ghosts[drawn.ghosts.length - 1] : layout[layout.length - 1];
     deskSkyGround(sky, defs, layout[0].x, last.x + last.width, ground, W);
     for (const g of drawn.ghosts) {
@@ -15898,8 +15900,8 @@ async function renderMyDesk() {
         a.appendChild(deskSkyNode("path", { class: "sky-crane",
           d: `M${mx} ${p.top}V${p.top - 20}M${mx + 5} ${p.top - 18}H${mx - 22}M${mx} ${p.top - 24}L${mx - 18} ${p.top - 18.5}M${mx - 16} ${p.top - 18}V${p.top - 10}` }));
       }
-      const show = () => showDeskSkyCall(tw);
-      const back = () => showDeskSkyCall(deskSky && deskSky.focus);
+      const show = () => { deskSkyHoverId = b.id; showDeskSkyCall(tw); };
+      const back = () => { deskSkyHoverId = null; showDeskSkyCall(deskSky && deskSky.focus); };
       a.addEventListener("mouseenter", show);
       a.addEventListener("focus", show);
       a.addEventListener("mouseleave", back);
@@ -15911,12 +15913,43 @@ async function renderMyDesk() {
     deskSky.leader = deskSkyNode("line", { class: "sky-leader hidden", x1: 0, y1: 0, x2: 0, y2: 0 });
     sky.appendChild(deskSky.leader);
     sky.classList.remove("hidden");
-    showDeskSkyCall(deskSky.focus);
+    // A redraw under the pointer (the desk re-rendering, the banner changing
+    // size) keeps the hovered tower’s card up rather than dropping it.
+    const held = deskSkyHoverId && deskSky.towers.find((t) => t.building.id === deskSkyHoverId);
+    showDeskSkyCall(held || deskSky.focus);
   }
 
-  // The callout above the skyline: one tower's name, what is due, whether it
-  // is new, and its shelf, with a dashed line down to its roof. textContent
-  // throughout — tenants, names and addresses are text a person typed.
+  // The callout: one tower's name, what is due, whether it is new, and its
+  // shelf. textContent throughout — tenants, names and addresses are text a
+  // person typed.
+  //
+  // It stands BESIDE its tower, on the ground, never over it (the owner,
+  // 2026-09-25). It used to sit above the skyline under the find box, and a
+  // banner 292px tall has no room for a card, a tower and the tower's crane
+  // or red light stacked in one column: the marks ran into the card's edge.
+  // It takes whichever side has more room. It never goes left of the first
+  // tower (the ⓘ stands there) or past the banner's edge, and it narrows
+  // rather than cover the tower it describes. It covers the neighbours if it
+  // has to, which reads as a card in front of a skyline.
+  const DESK_SKY_CALL_MIN_W = 220;
+  function placeDeskSkyCall(call, p) {
+    const gap = 14;
+    const minLeft = Math.max(deskSky.x0 - 12, (deskSky.firstX || 0) - 6);
+    const maxRight = deskSky.W - 22;
+    const rightRoom = maxRight - (p.x + p.width + gap);
+    const leftRoom = p.x - gap - minLeft;
+    const right = rightRoom >= DESK_SKY_CALL_W || (leftRoom < DESK_SKY_CALL_W && rightRoom >= leftRoom);
+    const width = Math.round(Math.max(DESK_SKY_CALL_MIN_W, Math.min(DESK_SKY_CALL_W, right ? rightRoom : leftRoom)));
+    const left = right ? p.x + p.width + gap : p.x - gap - width;
+    call.setAttribute("style", `left:${Math.round(left)}px;width:${width}px`);
+    call.classList.remove("hidden");
+    // Measured after the width is set, since a narrower card wraps taller.
+    const h = call.offsetHeight || 80;
+    const top = Math.max(76, deskSky.ground - h - 6);
+    call.setAttribute("style", `left:${Math.round(left)}px;top:${Math.round(top)}px;width:${width}px`);
+    return { left, top, width, h, right };
+  }
+
   function showDeskSkyCall(tower) {
     const call = document.getElementById("deskSkyCall");
     if (!deskSky) { call.classList.add("hidden"); return; }
@@ -15936,16 +15969,15 @@ async function renderMyDesk() {
     document.getElementById("deskSkyCallDue").textContent = words.due;
     document.getElementById("deskSkyCallFresh").textContent = words.fresh;
     document.getElementById("deskSkyCallMeta").textContent = words.meta;
-    const cx = p.x + p.width / 2;
-    const left = Math.max(deskSky.x0 - 60, Math.min(cx - DESK_SKY_CALL_W / 2, deskSky.W - 22 - DESK_SKY_CALL_W));
-    call.setAttribute("style", `left:${Math.round(left)}px`);
-    call.classList.remove("hidden");
+    const at = placeDeskSkyCall(call, p);
     if (deskSky.leader) {
-      const lx = Math.max(left + 14, Math.min(cx, left + DESK_SKY_CALL_W - 14));
-      deskSky.leader.setAttribute("x1", lx.toFixed(1));
-      deskSky.leader.setAttribute("y1", String(72 + (call.offsetHeight || 64)));
-      deskSky.leader.setAttribute("x2", cx.toFixed(1));
-      deskSky.leader.setAttribute("y2", (p.top - (tower.due ? 22 : tower.isNew ? 26 : 4)).toFixed(1));
+      // A short dashed tie from the card's near edge to the tower's side,
+      // at a height the tower actually has.
+      const y = Math.max(p.top + 8, Math.min(at.top + at.h / 2, deskSky.ground - 8));
+      deskSky.leader.setAttribute("x1", (at.right ? at.left : at.left + at.width).toFixed(1));
+      deskSky.leader.setAttribute("y1", y.toFixed(1));
+      deskSky.leader.setAttribute("x2", (at.right ? p.x + p.width + 2 : p.x - 2).toFixed(1));
+      deskSky.leader.setAttribute("y2", y.toFixed(1));
       deskSky.leader.classList.remove("hidden");
     }
   }

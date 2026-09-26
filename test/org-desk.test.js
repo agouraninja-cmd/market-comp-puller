@@ -2263,6 +2263,57 @@ test("with nothing due and nothing new, the callout waits for a hover", () => {
   assert.equal(ctx.dom.text("deskSkyCallMeta"), "No reports this month");
 });
 
+test("with nothing due, even a building added this month waits for a hover (the crane already says new)", () => {
+  const ctx = loadSky({ buildings: [SKYB({ createdAt: skyDaysAgo(1), mine: true })] });
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "a new firm's lone building no longer carries a card all day");
+  assert.ok(!skyTowers(ctx)[0].classList.contains("on"));
+  skyTowers(ctx)[0].fire("mouseenter");
+  assert.equal(ctx.dom.hidden("deskSkyCall"), false);
+  assert.equal(ctx.dom.text("deskSkyCallFresh"), "New this month, added by you");
+  ctx.draw(); // the desk re-renders while the pointer is still on the tower
+  assert.equal(ctx.dom.hidden("deskSkyCall"), false, "a redraw under the pointer keeps the card up");
+  assert.equal(ctx.dom.text("deskSkyCallFresh"), "New this month, added by you");
+  skyTowers(ctx)[0].fire("mouseleave");
+  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "and goes again when the pointer leaves");
+  ctx.draw();
+  assert.equal(ctx.dom.hidden("deskSkyCall"), true, "a redraw after leaving does not bring it back");
+});
+
+test("the callout stands beside the tower it describes, never over it, and never over the ⓘ", () => {
+  const W = 1000, H = 292;
+  const box = (el) => {
+    const m = /^left:(-?\d+)px;top:(-?\d+)px;width:(\d+)px$/.exec(el.getAttribute("style") || "");
+    assert.ok(m, "placed as left/top/width: " + el.getAttribute("style"));
+    return { left: Number(m[1]), top: Number(m[2]), width: Number(m[3]) };
+  };
+  const boards = {
+    "one building": [SKYB({ createdAt: skyDaysAgo(1) })],
+    "ten buildings": Array.from({ length: 10 }, (_, i) => SKYB({ id: "b" + i, address: `${i + 1} Main St, Boise, ID`,
+      sizeSqft: 8000 + i * 9000, createdAt: skyDaysAgo(80 - i * 8) })),
+  };
+  for (const [what, buildings] of Object.entries(boards)) {
+    const ctx = loadSky({ buildings });
+    ctx.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: W, height: H });
+    ctx.draw();
+    const info = /^left:(\d+)px/.exec(ctx.dom.el("deskSkyInfo").getAttribute("style"));
+    const infoRight = Number(info[1]) + 24;
+    for (const a of skyTowers(ctx)) {
+      a.fire("mouseenter");
+      const body = partsOf(a, "sky-body")[0].attrs;
+      const tx = Number(body.x), tr = tx + Number(body.width), ttop = Number(body.y);
+      const c = box(ctx.dom.el("deskSkyCall"));
+      assert.ok(c.left >= tr + 10 || c.left + c.width <= tx - 10, `${what}: the card is beside its tower, not over it`);
+      assert.ok(c.left >= infoRight, `${what}: the ⓘ stays uncovered`);
+      assert.ok(c.left + c.width <= W - 22, `${what}: inside the banner`);
+      assert.ok(c.top >= 76, `${what}: below the find box`);
+      assert.ok(c.top + 80 <= H * 0.79, `${what}: standing on the ground, not under it`);
+      assert.ok(ttop > 0);
+      a.fire("mouseleave");
+    }
+  }
+});
+
 test("an empty board shows where the skyline will stand, and its button opens the add form", () => {
   const ctx = loadSky({ buildings: [] });
   let opened = 0;

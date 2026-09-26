@@ -45,7 +45,7 @@
 //      about their own new comps. Deferring at fetch() covers every page's
 //      boot without auditing each one (and without the next page having to
 //      remember). The one thing it cannot see is a GET that writes, so those
-//      are named: HOLD_PATHS, the reads that stamp read/seen, wait too.
+//      are named: HOLD_PATHS wait too.
 //   2. A VISIT IS COUNTED WHEN IT IS SEEN. The page routes log vault_visit and
 //      friends on GET, and the funnel those feed is the question "does anyone
 //      reach this page". A speculative GET (Sec-Purpose: prefetch…) parks the
@@ -74,15 +74,26 @@
 // server six database-backed renders by sweeping a pointer across a header.
 
 const TAB_PATHS = ["/", "/desk", "/vault", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
-// GET routes that WRITE because a read is evidence somebody is looking:
+// GET routes that WRITE, which the fetch guard would otherwise wave through
+// from a page nobody has opened (audited 2026-09-26, every GET in server.js).
+// The two that matter most treat a read as evidence somebody is looking:
 // opening a thread stamps msg_thread_members.last_read_at ("READING A THREAD
-// IS READING IT", on every poll, since a poll only fires from a visible tab),
-// and opening a deal room runs stampHubSeen. Both cut off follow-up mail. A
-// prerendered page is not a visible tab, so while unseen these wait exactly as
-// a write does (Cursor security review, PR #340: the Messages page opens its
-// newest conversation on load). A new GET that writes on read belongs here;
-// test/instant-nav.test.js pins the two against their routes in server.js.
-const HOLD_PATHS = ["/api/messages/thread", "/api/hub"];
+// IS READING IT", on every poll, since a poll only fires from a visible tab)
+// and opening a deal room runs stampHubView/stampHubSeen — both cut off
+// follow-up mail, and the Messages page opens its newest conversation on load
+// (Cursor security review, PR #340). The rest are housekeeping the vault and
+// bulk pages trigger on load: /api/broker/me adopts a legacy profile,
+// /api/broker/leads and /api/broker/bovs seed coverage and the BOV log when
+// empty (coverage decides who gets lead-alert mail), and /api/bulk marks a
+// stalled job interrupted. While unseen all of them wait exactly as a write
+// does; once shown they are ordinary reads. A new GET that writes belongs
+// here — test/instant-nav.test.js pins each against its GET route in
+// server.js. (Writes a page's SERVER render makes cannot be held from the
+// browser: those check isSpeculative, as /vault's backfills do.)
+const HOLD_PATHS = [
+  "/api/messages/thread", "/api/hub",
+  "/api/broker/me", "/api/broker/leads", "/api/broker/bovs", "/api/bulk",
+];
 const DWELL_MS = 65;
 const MAX_LIVE = 2;
 const TTL_MS = 30 * 1000;
@@ -165,7 +176,7 @@ function visitTag(token) {
 // In order:
 //   - the fetch wrapper, on EVERY page (rule 1, and the write half of rule 3):
 //     a non-GET made while unseen waits for `prerenderingchange`, and so
-//     does a GET to one of cfg.hold (the reads that stamp read/seen); any
+//     does a GET to one of cfg.hold (the GETs that write); any
 //     non-GET that lands drops every prerender this page is holding;
 //   - nothing further without speculation rules (Safari, Firefox);
 //   - target(): the URL worth prerendering for a link. Only a plain

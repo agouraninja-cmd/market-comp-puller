@@ -341,15 +341,33 @@ test("while prerendering, a read that stamps read/seen waits like a write", asyn
   assert.equal(s.calls.length, 4);
 });
 
-test("every held read is a real GET route that stamps, in server.js", () => {
-  // If one of these routes moves, the hold silently stops holding it.
+test("every held read is a real GET route that writes, in server.js", () => {
+  // If one of these routes moves, the hold silently stops holding it. Each
+  // pattern is the route line AND the write it makes, so a route that stops
+  // writing can come off the list deliberately rather than by accident.
   const routes = {
-    "/api/messages/thread": /req\.method === "GET" && msgPath === "\/api\/messages\/thread"/,
-    "/api/hub": /req\.method === "GET" && hubPath === "\/api\/hub"\)/,
+    "/api/messages/thread": [/req\.method === "GET" && msgPath === "\/api\/messages\/thread"/, /READING A THREAD IS READING IT/],
+    "/api/hub": [/req\.method === "GET" && hubPath === "\/api\/hub"\)/, /stampHubSeen\(id,/],
+    "/api/broker/me": [/req\.method === "GET" && req\.url === "\/api\/broker\/me"/, /broker_profiles\?id=eq\./],
+    "/api/broker/leads": [/req\.method === "GET" && req\.url\.split\("\?"\)\[0\] === "\/api\/broker\/leads"/, /broker_coverage\?on_conflict=/],
+    "/api/broker/bovs": [/req\.url\.split\("\?"\)\[0\] === "\/api\/broker\/bovs"/, /broker_bovs\?on_conflict=/],
+    "/api/bulk": [/req\.method === "GET" && path === "\/api\/bulk"/, /function reapStalledBulkJob|reapStalledBulkJob\(/],
   };
   assert.deepEqual(Object.keys(routes).sort(), [...NAV.HOLD_PATHS].sort());
-  for (const [p, re] of Object.entries(routes)) assert.match(serverSrc, re, `${p} is no longer the GET route it was`);
-  assert.match(NAV.bootScript({}), /"hold":\["\/api\/messages\/thread","\/api\/hub"\]/);
+  for (const [p, res] of Object.entries(routes)) {
+    for (const re of res) assert.match(serverSrc, re, `${p}: ${re} no longer found`);
+  }
+  assert.ok(NAV.bootScript({}).includes(JSON.stringify(NAV.HOLD_PATHS)), "the served script carries the list");
+});
+
+test("a speculative /vault render does not run the vault's backfills", () => {
+  // The page's own server render writes (geocode + building facts), which no
+  // browser guard can hold. The workspace warms /vault on every view, and a
+  // building the Census cannot place would be retried on each of those.
+  assert.match(serverSrc, /async function attachPropertyCoords\(userId, comps, \{ backfill = true \} = \{\}\)/);
+  assert.match(serverSrc, /if \(backfill\) scheduleBuildingFacts\(/);
+  assert.match(serverSrc, /if \(backfill\) Promise\.resolve\(\)\.then\(\(\) => geocodeVaultPropertyRows\(/);
+  assert.match(serverSrc, /attachPropertyCoords\(user\.id, rows,\s*\{ backfill: !INSTANTNAV\.isSpeculative\(req\.headers\) \}\)/);
 });
 
 test("without speculation rules only the write guard is installed", async () => {

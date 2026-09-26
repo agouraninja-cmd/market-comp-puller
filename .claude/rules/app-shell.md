@@ -210,7 +210,22 @@ whole design in its header; the load-bearing parts:
   visit would have silenced the member's digest. Hence the pinned rule:
   **pages write through fetch only** — `test/instant-nav.test.js` fails the
   build on a `sendBeacon` or `XMLHttpRequest` anywhere, since those slip past
-  the guard.
+  the guard. **A GET that writes is held too, by name** (`HOLD_PATHS`,
+  from an audit of every GET route on 2026-09-26, after the Cursor security
+  review on PR #340 caught the first): `/api/messages/thread` and `/api/hub`
+  stamp read/seen on every read and so cut off follow-up mail — the Messages
+  page opens its newest conversation on load, so a hover on that tab would
+  have marked it read — and `/api/broker/me`, `/api/broker/leads`,
+  `/api/broker/bovs` and `/api/bulk` seed, adopt or repair on read. A new GET
+  that writes goes on that list; the test pins each entry to its route AND
+  its write. **A write a page's SERVER render makes cannot be held from the
+  browser**, so it checks `INSTANTNAV.isSpeculative(req.headers)` instead:
+  `/vault`'s geocode and building-facts backfills skip on a speculative
+  render (`attachPropertyCoords(…, { backfill })`) — a building the Census
+  cannot place stays unlocated and would otherwise be retried on every
+  workspace view's warm-up; any real read still backfills. The other page
+  renders were audited read-only except `/bulk`'s stalled-job reap, which is
+  left on purpose: it makes the page show the job's true state.
 - **A visit is counted when it is seen.** The six `*_visit` events go through
   `logPageVisit(req, kind, dims)`: on a speculative GET (`Sec-Purpose:
   prefetch…`) the event is parked under a one-time in-memory token and the

@@ -17851,7 +17851,8 @@ async function vaultReadPayload(req, params) {
   // another deal at that address, named in `inherited` so the page can say
   // so. Stored rows are untouched. attachPropertyCoords never throws, so a
   // failed stitch costs the inheritance and never the vault.
-  const applied = (await attachPropertyCoords(user.id, rows))
+  const applied = (await attachPropertyCoords(user.id, rows,
+    { backfill: !INSTANTNAV.isSpeculative(req.headers) }))
     .map((c) => BFACTS.applyFacts(c, c && c.facts));
 
   return { status: 200, body: {
@@ -18179,7 +18180,13 @@ async function orgCompsForReport(ent, user, { market, type, months }) {
 // costs privacy on that one comp, which is bad — but failing here would cost
 // the broker the blended comps entirely, which is worse and is also the stance
 // vaultCompsForReport already takes about its own failures.
-async function attachPropertyCoords(userId, comps) {
+// `backfill: false` skips the two fire-and-forget backfills below and changes
+// nothing about what is returned. A speculative render of /vault passes it
+// (instant tab switching warms the vault on every workspace view, and a page
+// nobody may open should not geocode or derive on their behalf — a building
+// the Census cannot place stays unlocated and would be retried on every one of
+// those warm-ups). Any real read still backfills, so the data still converges.
+async function attachPropertyCoords(userId, comps, { backfill = true } = {}) {
   try {
     const ids = [...new Set(comps.map((c) => c && c.property_id).filter(Boolean))];
     // Comps whose property link has not been backfilled yet (property_id is
@@ -18199,7 +18206,7 @@ async function attachPropertyCoords(userId, comps) {
     // derive now, fire-and-forget, the same way the unlocated ones geocode
     // below. A building with nothing derivable still gets an empty object,
     // so this never re-runs for it.
-    scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
+    if (backfill) scheduleBuildingFacts(userId, (Array.isArray(props) ? props : [])
       .filter((p) => p && p.facts == null && p.address_key)
       .map((p) => p.address_key).slice(0, VAULT_FACTS_BACKFILL_CAP));
 
@@ -18208,7 +18215,7 @@ async function attachPropertyCoords(userId, comps) {
     // holds the rows, so the backfill rides it — scheduleCorpusLocate's
     // pattern with scheduleCorpusLocate's cap, fire-and-forget so the blend
     // never waits a millisecond on a geocoder.
-    Promise.resolve().then(() => geocodeVaultPropertyRows(
+    if (backfill) Promise.resolve().then(() => geocodeVaultPropertyRows(
       userId, PROPS.propertiesNeedingGeocode(props, VAULT_GEOCODE_BACKFILL_CAP)
     )).catch(() => {});
 

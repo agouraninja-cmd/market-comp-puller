@@ -26,7 +26,7 @@ const indexSrc = fs.readFileSync(path.join(root, "index.html"), "utf8");
 
 const ORIGIN = "https://compninja.co";
 const CFG = {
-  tabs: NAV.TAB_PATHS, skip: [], warm: [], dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
+  tabs: NAV.TAB_PATHS, hold: NAV.HOLD_PATHS, skip: [], warm: [], dwellMs: NAV.DWELL_MS, maxLive: NAV.MAX_LIVE,
   ttlMs: NAV.TTL_MS, warmTtlMs: NAV.WARM_TTL_MS, warmDelayMs: NAV.WARM_DELAY_MS,
 };
 
@@ -316,6 +316,40 @@ test("while prerendering, reads go out and writes wait until the page is shown",
   assert.equal(s.calls.length, 3);
   assert.equal(s.calls[1].init.method, "POST");
   assert.equal(s.calls[2].input.method, "DELETE", "a Request-shaped input is a write too");
+});
+
+test("while prerendering, a read that stamps read/seen waits like a write", async () => {
+  // Cursor security review, PR #340: the Messages page opens its newest
+  // conversation on load, and GET /api/messages/thread stamps last_read_at —
+  // a hover on the Messages tab would have marked it read and cut off the
+  // follow-up mail. Same for a deal room (GET /api/hub, stampHubSeen).
+  const s = stage({ prerendering: true });
+  const thread = s.win.fetch("/api/messages/thread?id=t1&after=");
+  const room = s.win.fetch(ORIGIN + "/api/hub?id=abcdef");
+  const list = s.win.fetch("/api/messages");
+  await flush();
+  assert.deepEqual(s.calls.map((c) => c.input), ["/api/messages"], "the list is a plain read and goes out");
+  s.fire("pointerdown", mouse(link("/desk")));
+  s.document.prerendering = false;
+  s.fire("prerenderingchange");
+  await thread; await room; await list;
+  assert.deepEqual(s.calls.map((c) => c.input),
+    ["/api/messages", "/api/messages/thread?id=t1&after=", ORIGIN + "/api/hub?id=abcdef"]);
+  assert.equal(s.urls().length, 1, "a held READ is not a write: it drops nothing once it lands");
+  // Once shown, those reads are what they always were.
+  await s.win.fetch("/api/messages/thread?id=t2");
+  assert.equal(s.calls.length, 4);
+});
+
+test("every held read is a real GET route that stamps, in server.js", () => {
+  // If one of these routes moves, the hold silently stops holding it.
+  const routes = {
+    "/api/messages/thread": /req\.method === "GET" && msgPath === "\/api\/messages\/thread"/,
+    "/api/hub": /req\.method === "GET" && hubPath === "\/api\/hub"\)/,
+  };
+  assert.deepEqual(Object.keys(routes).sort(), [...NAV.HOLD_PATHS].sort());
+  for (const [p, re] of Object.entries(routes)) assert.match(serverSrc, re, `${p} is no longer the GET route it was`);
+  assert.match(NAV.bootScript({}), /"hold":\["\/api\/messages\/thread","\/api\/hub"\]/);
 });
 
 test("without speculation rules only the write guard is installed", async () => {

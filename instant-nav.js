@@ -44,7 +44,8 @@
 //      digest mails from, so a hover alone would have cost a member the email
 //      about their own new comps. Deferring at fetch() covers every page's
 //      boot without auditing each one (and without the next page having to
-//      remember).
+//      remember). The one thing it cannot see is a GET that writes, so those
+//      are named: HOLD_PATHS, the reads that stamp read/seen, wait too.
 //   2. A VISIT IS COUNTED WHEN IT IS SEEN. The page routes log vault_visit and
 //      friends on GET, and the funnel those feed is the question "does anyone
 //      reach this page". A speculative GET (Sec-Purpose: prefetch…) parks the
@@ -73,6 +74,15 @@
 // server six database-backed renders by sweeping a pointer across a header.
 
 const TAB_PATHS = ["/", "/desk", "/vault", "/messages", "/markets", "/bulk", "/permits", "/buildings"];
+// GET routes that WRITE because a read is evidence somebody is looking:
+// opening a thread stamps msg_thread_members.last_read_at ("READING A THREAD
+// IS READING IT", on every poll, since a poll only fires from a visible tab),
+// and opening a deal room runs stampHubSeen. Both cut off follow-up mail. A
+// prerendered page is not a visible tab, so while unseen these wait exactly as
+// a write does (Cursor security review, PR #340: the Messages page opens its
+// newest conversation on load). A new GET that writes on read belongs here;
+// test/instant-nav.test.js pins the two against their routes in server.js.
+const HOLD_PATHS = ["/api/messages/thread", "/api/hub"];
 const DWELL_MS = 65;
 const MAX_LIVE = 2;
 const TTL_MS = 30 * 1000;
@@ -154,7 +164,8 @@ function visitTag(token) {
 //
 // In order:
 //   - the fetch wrapper, on EVERY page (rule 1, and the write half of rule 3):
-//     a non-GET made while unseen waits for `prerenderingchange`, and any
+//     a non-GET made while unseen waits for `prerenderingchange`, and so
+//     does a GET to one of cfg.hold (the reads that stamp read/seen); any
 //     non-GET that lands drops every prerender this page is holding;
 //   - nothing further without speculation rules (Safari, Firefox);
 //   - target(): the URL worth prerendering for a link. Only a plain
@@ -196,12 +207,20 @@ function instantNavBoot(cfg, win) {
     w.fetch = function (input, init) {
       var args = arguments;
       var m = String((init && init.method) || (input && typeof input === "object" && input.method) || "GET").toUpperCase();
-      if (m === "GET" || m === "HEAD") return F.apply(w, args);
+      var write = m !== "GET" && m !== "HEAD";
+      var held = false;
+      if (d.prerendering && !write) {
+        try {
+          var path = new w.URL(typeof input === "string" ? input : (input && input.url) || String(input), w.location.href).pathname;
+          held = cfg.hold.indexOf(path) >= 0;
+        } catch (e) {}
+      }
+      if (!write && !held) return F.apply(w, args);
       var p = d.prerendering
         ? new Promise(function (resolve) { d.addEventListener("prerenderingchange", function () { resolve(); }, { once: true }); })
             .then(function () { return F.apply(w, args); })
         : F.apply(w, args);
-      p.then(dropAll, dropAll);
+      if (write) p.then(dropAll, dropAll);
       return p;
     };
   }
@@ -288,6 +307,7 @@ function instantNavBoot(cfg, win) {
 function bootScript(opts) {
   const cfg = {
     tabs: TAB_PATHS,
+    hold: HOLD_PATHS,
     skip: (opts && opts.skip) || [],
     warm: (opts && opts.warm) || [],
     dwellMs: DWELL_MS,
@@ -301,6 +321,6 @@ function bootScript(opts) {
 }
 
 module.exports = {
-  TAB_PATHS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
+  TAB_PATHS, HOLD_PATHS, DWELL_MS, MAX_LIVE, TTL_MS, WARM_TTL_MS, WARM_DELAY_MS,
   isSpeculative, createVisitDeferrals, visitTag, instantNavBoot, bootScript,
 };

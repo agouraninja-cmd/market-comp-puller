@@ -1445,7 +1445,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-hero-kick #deskToday:not(:empty) + #deskFirmLine:not(.hidden)::before { content: "\00b7"; margin: 0 .5em; }
     .dk-hero .dk-title { margin-top: 14px; font-size: 38px; line-height: 1.06; color: #fff; text-shadow: 0 1px 18px rgba(0,0,0,.25); }
     .dk-hero-sub { margin: 9px 0 0; max-width: 60ch; font-size: 14.5px; line-height: 1.5; color: rgba(255,255,255,.84); }
-    .dk-hero-where { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 5px 11px 5px 9px; border-radius: 99px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2); font-size: 12px; font-weight: 500; color: #fff; }
+    /* Where the firm works: a plain line with a pin, never a pill. As a pill
+       with a border and a fill it looked like a button, and it does nothing
+       (the owner, 2026-09-25). */
+    .dk-hero-where { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.8); }
     .dk-hero-where.hidden { display: none; }
     .dk-hero-credit { position: absolute; right: 16px; bottom: 50px; margin: 0; font-size: 10.5px; color: rgba(255,255,255,.72); }
     .dk-hero-credit a { color: inherit; text-decoration: none; }
@@ -1500,7 +1503,12 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
     .dk-sky .sky-roof { stroke: rgba(255,255,255,.45); stroke-width: 1; }
     .dk-sky .sky-win { fill: rgba(255,255,255,.07); }
     .dk-sky .sky-win.lit { fill: rgba(252,214,138,.92); }
-    .dk-sky .sky-mast, .dk-sky .sky-crane { stroke: rgba(255,255,255,.62); stroke-width: 1.1; fill: none; }
+    .dk-sky .sky-mast { stroke: rgba(255,255,255,.62); stroke-width: 1.1; fill: none; }
+    /* The crane (a building added this month). It shared the red light's
+       1.1px hairline and read as a stray mark at this size, so it is drawn at
+       a weight it can be seen at, with a filled weight and hook block. */
+    .dk-sky .sky-crane { stroke: rgba(255,255,255,.86); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .dk-sky .sky-crane-wt { fill: rgba(255,255,255,.86); }
     .dk-sky .sky-glow { fill: rgba(239,68,68,.32); }
     .dk-sky .sky-red { fill: rgba(248,113,113,1); }
     .dk-sky .sky-ground { stroke: url(#deskSkyGround); stroke-width: 1; }
@@ -3232,7 +3240,7 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
             <b id="deskSkyCap" class="dk-sky-cap"></b>
             <span title="A report on the firm's shelf, the building being added, or a lease date due, in the last 30 days"><i class="dk-sky-k-win" aria-hidden="true"></i>Lit windows: recent work on the building</span>
             <span title="An option notice or a lease expiry inside 90 days"><i class="dk-sky-k-red" aria-hidden="true"></i>Red light: a lease date within 90 days</span>
-            <span><svg viewBox="0 0 16 12" width="16" height="12" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true"><path d="M12 12V1M15 2H1M12 0L2 2.4M3 2v4"/></svg>Crane: added to the board this month</span>
+            <span><svg viewBox="0 0 17 14" width="17" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 14V1.5M15.5 4.5H1.5M11 1.5L1.5 4.5M11 1.5l4.5 3M4 4.5v4.5"/><rect x="13.2" y="4.5" width="2.3" height="2" fill="currentColor" stroke="none"/><rect x="3" y="9" width="2" height="1.8" fill="currentColor" stroke="none"/></svg>Crane: added to the board this month</span>
             <span class="dk-sky-k-note">A tower's height is the building's size. The newest stand on the right.</span>
           </div>
         </div>
@@ -15896,9 +15904,17 @@ async function renderMyDesk() {
         a.appendChild(deskSkyNode("circle", { class: "sky-red", cx, cy: p.top - 11, r: 3.6 }));
       }
       if (tw.isNew) {
-        const mx = p.x + p.width - 5;
+        // A tower crane, drawn to be read at this size (the owner,
+        // 2026-09-25: in 1.1px hairlines it looked like a stray mark). A mast
+        // on the roof rising to a peak, the jib out over the roof with its
+        // counter-jib and weight, pendant lines from the peak, and a hook.
+        const mx = p.x + p.width - 6;
+        const jy = p.top - 19;
         a.appendChild(deskSkyNode("path", { class: "sky-crane",
-          d: `M${mx} ${p.top}V${p.top - 20}M${mx + 5} ${p.top - 18}H${mx - 22}M${mx} ${p.top - 24}L${mx - 18} ${p.top - 18.5}M${mx - 16} ${p.top - 18}V${p.top - 10}` }));
+          d: `M${mx} ${p.top}V${jy - 6}M${mx + 8} ${jy}H${mx - 25}` +
+            `M${mx} ${jy - 6}L${mx - 25} ${jy}M${mx} ${jy - 6}L${mx + 8} ${jy}M${mx - 19} ${jy}V${jy + 8}` }));
+        a.appendChild(deskSkyNode("rect", { class: "sky-crane-wt", x: mx + 4, y: jy, width: 4, height: 3 }));
+        a.appendChild(deskSkyNode("rect", { class: "sky-crane-wt", x: mx - 20.5, y: jy + 8, width: 3, height: 2.5 }));
       }
       const show = () => { deskSkyHoverId = b.id; showDeskSkyCall(tw); };
       const back = () => { deskSkyHoverId = null; showDeskSkyCall(deskSky && deskSky.focus); };

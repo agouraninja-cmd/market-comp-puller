@@ -252,6 +252,14 @@ paths:
     dashed tie joins the card to the tower's side. `deskSkyHoverId` keeps a
     hovered tower's card up across a redraw (the desk re-rendering, the
     banner resizing), which otherwise dropped it under the pointer.
+  - **The crane is drawn to be read, and the city line is not a pill** (the
+    owner's #6, 2026-09-25). The crane shared the red light's 1.1px hairline
+    and read as a stray mark, so `.sky-crane` is 1.5px with round caps. It
+    is a real tower crane (mast to a peak, jib and counter-jib, pendants, a
+    hook) with a filled weight and hook block (`.sky-crane-wt`), and the
+    legend's icon is the same shape. `.dk-hero-where` lost its border, fill
+    and padding: a pill looks like a button, and this one does nothing. A
+    test fails the build if any of the three comes back.
   - **No colour rides in the markup the script builds.** The banner is dark
     in both themes, so its colours are literal `rgba()` like the rest of it,
     but they live in the style block as classes (`sky-win lit`, `sky-red`,

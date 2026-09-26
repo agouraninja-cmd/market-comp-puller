@@ -15972,8 +15972,11 @@ async function renderMyDesk() {
 
     if (tw.shape === "lot") {
       // Land: no building, so an open lot — the parcel's ground, a fence, a
-      // sign board (lit when the firm worked on it) and a tree. The crane,
-      // for land added this month, stands on the ground: breaking ground.
+      // sign board (lit when the firm worked on it) and a tree. Land added
+      // this month is drawn cleared for building: no trees, and the crane
+      // stands on the ground where they were (breaking ground). With trees
+      // left in, the mast ran through a canopy on every lot (Cursor Bugbot,
+      // 2026-09-26).
       add("rect", { class: "sky-hit", x: N(x), y: N(top), width: N(w), height: N(h) });
       body(g - 3);
       const posts = Math.max(3, Math.round(w / 6));
@@ -15982,9 +15985,11 @@ async function renderMyDesk() {
       add("path", { class: "sky-fence", d: fence });
       const r = Math.max(5, Math.min(9, w * 0.14));
       const tx = x + w * 0.7, trunk = g - Math.max(8, h * 0.36);
-      add("line", { class: "sky-trunk", x1: N(tx), y1: N(g), x2: N(tx), y2: N(trunk) });
-      add("circle", { class: "sky-tree", cx: N(tx), cy: N(trunk - r * 0.7), r: N(r) });
-      if (w >= 48) {
+      if (!tw.isNew) {
+        add("line", { class: "sky-trunk", x1: N(tx), y1: N(g), x2: N(tx), y2: N(trunk) });
+        add("circle", { class: "sky-tree", cx: N(tx), cy: N(trunk - r * 0.7), r: N(r) });
+      }
+      if (!tw.isNew && w >= 48) {
         const t2 = x + w * 0.88;
         add("line", { class: "sky-trunk", x1: N(t2), y1: N(g), x2: N(t2), y2: N(g - 7) });
         add("circle", { class: "sky-tree", cx: N(t2), cy: N(g - 7 - r * 0.45), r: N(r * 0.65) });

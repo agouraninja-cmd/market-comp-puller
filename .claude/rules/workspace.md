@@ -308,7 +308,9 @@ paths:
     striped awning, display windows), Multifamily → an apartment block with
     balcony rails and a water tank, Residential → a house (pitched roof,
     chimney, door, two windows and a gable window), Land → an open lot
-    (fence, a sign board that lights with work, a tree). No type, or one
+    (fence, a sign board that lights with work, a tree; land added this
+    month is drawn cleared, with no trees, so the crane's mast never runs
+    through a canopy — Cursor Bugbot on PR 338). No type, or one
     the map has not met, is the plain tower. A test fails the build if a
     type is added to PROPERTY_TYPES without a shape here. `PROPORTIONS`
     says how each carries its size (towers grow up, warehouses and stores

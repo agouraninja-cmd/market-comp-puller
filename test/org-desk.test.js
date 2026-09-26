@@ -2388,8 +2388,19 @@ test("a red light stands on a house's ridge, and land added this month gets its 
   assert.ok(Math.abs(Number(mast.x1) - ridgeX) < 0.1 && Math.abs(Number(mast.y1) - ridgeY) < 0.1, "the mast starts at the ridge");
   assert.equal(partsOf(home, "sky-red").length, 1);
   const crane = partsOf(lot, "sky-crane")[0].attrs.d;
-  const base = Number(/^M[\d.]+ ([\d.]+)V/.exec(crane)[1]);
+  const [, mastX, base] = /^M([\d.]+) ([\d.]+)V/.exec(crane).map(Number);
   assert.ok(Math.abs(base - 292 * 0.79) < 0.1, "an open lot has no roof, so its crane stands on the ground: breaking ground");
+  assert.equal(partsOf(lot, "sky-tree").length + partsOf(lot, "sky-trunk").length, 0,
+    "a lot added this month is cleared for building; with its trees left in, the mast ran through a canopy (Cursor Bugbot, PR #338)");
+  assert.ok(partsOf(lot, "sky-fence").length >= 1 && Number.isFinite(mastX), "it is still a fenced lot");
+  // A lot that is not new keeps its trees, however wide.
+  for (const sizeSqft of [20000, 400000]) {
+    const old = loadSky({ buildings: [SKYB({ id: "o", type: "Office", sizeSqft: 90000 }), SKYB({ id: "p", type: "Office", sizeSqft: 30000 }),
+      SKYB({ id: "l", type: "Land", sizeSqft, createdAt: skyDaysAgo(80) })] });
+    old.dom.el("deskHero").getBoundingClientRect = () => ({ left: 0, width: 1000, height: 292 });
+    old.draw();
+    assert.ok(partsOf(skyTowers(old)[2], "sky-tree").length >= 1, "an older lot has its tree");
+  }
 });
 
 test("on a board of a few houses the callout stays inside the banner and off the ⓘ", () => {

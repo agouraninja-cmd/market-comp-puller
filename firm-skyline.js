@@ -125,15 +125,16 @@
       });
   }
 
-  // The tower the banner speaks about at rest: the soonest lease date, else
-  // the newest building added this month, else none (the banner then says
-  // nothing until a tower is hovered).
+  // The tower the banner speaks about at rest: the soonest lease date, and
+  // otherwise none, so the callout waits for a hover. A building that is
+  // merely new used to be spoken about too, and a new firm's lone building
+  // always is new, so its card sat over the skyline all day saying what the
+  // crane already says (the owner, 2026-09-25). A date is the one thing on
+  // the banner somebody has to act on, so it is the one that speaks unasked.
   function focusOf(towers) {
     const list = Array.isArray(towers) ? towers : [];
     const due = list.filter((x) => x.due).sort((a, b) => a.due.days - b.due.days);
-    if (due.length) return due[0];
-    const fresh = list.filter((x) => x.isNew);
-    return fresh.length ? fresh[fresh.length - 1] : null;
+    return due.length ? due[0] : null;
   }
 
   function captionFor(towers) {

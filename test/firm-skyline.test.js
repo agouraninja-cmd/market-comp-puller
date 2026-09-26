@@ -97,12 +97,12 @@ test("a red light is a lease date inside 90 days; a crane is a building added th
   assert.equal(by.b.isNew, true);
 });
 
-test("at rest the banner speaks about the soonest date, else the newest building, else nothing", () => {
+test("at rest the banner speaks only about the soonest date; a new building waits for a hover", () => {
   const due = SKY.towersFor({ now: NOW, buildings: [B({ id: "a", createdAt: daysAgo(1) }), B({ id: "b" }), B({ id: "c" })],
     critical: [{ buildingId: "c", kind: "notice", days: 60 }, { buildingId: "b", kind: "expiry", days: 12 }] });
   assert.equal(SKY.focusOf(due).building.id, "b");
   const fresh = SKY.towersFor({ now: NOW, buildings: [B({ id: "a", createdAt: daysAgo(6) }), B({ id: "z", createdAt: daysAgo(2) }), B({ id: "q" })] });
-  assert.equal(SKY.focusOf(fresh).building.id, "z");
+  assert.equal(SKY.focusOf(fresh), null, "the crane already says new; the card over it said it twice, all day");
   assert.equal(SKY.focusOf(SKY.towersFor({ now: NOW, buildings: [B({})] })), null);
   assert.deepEqual(SKY.captionFor(fresh), { count: 3, addedThisMonth: 2 });
 });

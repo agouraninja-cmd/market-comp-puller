@@ -4345,5 +4345,11 @@
     "type": "improvement",
     "title": "The Workspace banner looks finished for a new firm",
     "details": "A firm with one or two buildings no longer gets a single thin tower pinned to the edge of an empty sky. Its buildings are drawn larger in the middle of the banner, beside faint outlines of the towers still to come. The two lines explaining the skyline (the count and the key) are gone from under the greeting. They now open from a small ⓘ button beside the towers. The figure cards’ zeros no longer fade to a disabled-looking grey, and no card line is cut off with “…”: lines wrap instead, and the empty wording is shorter. The skyline also redraws when the banner changes size, which fixed outlines floating in mid-sky on a phone."
+  },
+  {
+    "date": "2026-09-25",
+    "type": "improvement",
+    "title": "The skyline’s card sits beside its building, and only speaks up about a date",
+    "details": "The card naming a building used to sit above the skyline under the search box, where the building’s crane or red light ran into its bottom edge. It also showed all day for any building added this month, so a new firm’s only building always had a card over it. Now the card shows by itself only when a lease date is due, and otherwise appears when you hover or tab to a tower. It stands on the ground beside its building, on whichever side has room, and never covers the building it describes. A desk refresh no longer drops the card from under your pointer."
   }
 ]

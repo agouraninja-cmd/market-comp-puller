@@ -236,8 +236,22 @@ paths:
     are banner-wide block boxes). Each tower
     is an SVG link to its building sheet with a spoken label; hover or focus
     moves the callout (`#deskSkyCall`), leaving returns it to `focusOf` (the
-    soonest date, else the newest building, else nothing). On a phone the
-    layer drops behind the words, dims, and takes no pointer or tab stop.
+    soonest date, else nothing). On a phone the layer drops behind the
+    words, dims, and takes no pointer or tab stop.
+  - **The callout speaks unasked only about a date, and stands BESIDE its
+    tower** (the owner's #2, 2026-09-25). `focusOf` used to fall back to the
+    newest building, and a new firm's lone building always is new, so its
+    card sat over the skyline all day repeating what the crane says. It also
+    sat above the skyline under the find box, and a 292px banner has no
+    room for a card, a tower and its crane or red light in one column: the
+    marks ran into the card. `placeDeskSkyCall` now stands it on the ground
+    on whichever side of the tower has more room. It never goes left of the
+    first tower (the ⓘ) or past the edge, and it narrows (to 220px at the
+    least) rather than cover the tower it describes. Covering neighbours is
+    allowed, since that reads as a card in front of a skyline. A short
+    dashed tie joins the card to the tower's side. `deskSkyHoverId` keeps a
+    hovered tower's card up across a redraw (the desk re-rendering, the
+    banner resizing), which otherwise dropped it under the pointer.
   - **No colour rides in the markup the script builds.** The banner is dark
     in both themes, so its colours are literal `rgba()` like the rest of it,
     but they live in the style block as classes (`sky-win lit`, `sky-red`,

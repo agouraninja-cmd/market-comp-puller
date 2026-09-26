@@ -4357,5 +4357,11 @@
     "type": "improvement",
     "title": "A crane you can see, and a city line that doesn’t look like a button",
     "details": "The crane that marks a building added this month was drawn in hairlines and looked like a stray mark on the Workspace banner. It is now a proper tower crane, with a mast, a jib, a weight and a hook, drawn heavier, and the legend’s icon matches. The firm’s city line under the greeting (“Boise, ID”) was a bordered pill that looked clickable but did nothing. It is now a plain line with a pin."
+  },
+  {
+    "date": "2026-09-26",
+    "type": "improvement",
+    "title": "Switching tabs is instant",
+    "details": "Moving between Workspace, Vault, Messages, Market explorer, Comp report and Permit tracker used to be a full page load every time, waiting on the server before anything appeared. Now the tab you are most likely to open next (the Vault from your Workspace, the Workspace from everywhere else) loads quietly in the background once the page settles, and any tab you point at starts loading the moment your pointer rests on it. The click then swaps in a page that is already there: about 20 ms instead of half a second to a second in testing. A page loaded in the background never saves anything or counts as a visit until you actually open it, and it is thrown away after a minute, after you save anything, or when you sign out, so what you see is never stale. Works in Chrome and Edge; other browsers load tabs as before."
   }
 ]

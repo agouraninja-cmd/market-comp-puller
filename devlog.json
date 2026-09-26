@@ -1,6 +1,12 @@
 [
   {
     "date": "2026-09-26",
+    "type": "fix",
+    "title": "Esc no longer throws away what you’re typing",
+    "details": "Pressing Esc on any page with the site header went back a page, even while you were typing, so Esc in the Messages box lost your unsent message (and the same in search boxes and forms elsewhere). Esc now does nothing while you’re typing in a box, or when the page has already used it, and still goes back everywhere else."
+  },
+  {
+    "date": "2026-09-26",
     "type": "feature",
     "title": "Delete a chat in Messages",
     "details": "Every chat on /messages now has a bin: on the row itself (it appears when you point at a chat on a computer, and is always there on a phone) and in the open chat’s header. Pressing it asks “Delete this conversation?” right where you pressed, never as a pop-up. Deleting is for you only: the chat leaves your list and its history is cleared for you, the other people keep their copy, and a new message from them brings it back with just what was said after. Nobody is shown as having left. Deal rooms (External) keep their own Close conversation instead. No database change: it reuses the date Messages already keeps for when each person’s copy of a chat begins. Picked as Draft C of three drafts."

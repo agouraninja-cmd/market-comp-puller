@@ -293,3 +293,16 @@ test("deleting a conversation writes the caller's own member row and nothing els
   assert.doesNotMatch(block, /msg_(messages|threads|comps)\b[^_]/,
     "the delete route touches the conversation itself, not the caller's copy of it");
 });
+
+test("the header's Escape-goes-back shortcut never fires while somebody is typing", () => {
+  // Escape in the Messages composer went back a page and lost the unsent
+  // message (2026-09-26). The shortcut must stand down inside any editable
+  // field, and whenever the page has already handled the key itself.
+  const SERVER_JS = read("server.js");
+  const at = SERVER_JS.indexOf('`if(e.key!=="Escape")return;`');
+  assert.notEqual(at, -1, "the header's Escape shortcut has moved; this guard checks nothing");
+  const block = SERVER_JS.slice(at, SERVER_JS.indexOf("goBack();});", at));
+  assert.match(block, /if\(e\.defaultPrevented\)return;/, "Escape goes back even after the page handled it");
+  assert.match(block, /closest\("input,textarea,select,\[contenteditable\]"\)\)return;/,
+    "Escape inside a text box still leaves the page");
+});

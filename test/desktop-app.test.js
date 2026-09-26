@@ -107,9 +107,15 @@ test("a hidden view is only ever the guarded page, shown only when nothing rides
   assert.match(mainSrc, /typeof window\.__cnShow === 'function'/, "ready means the guarded page arrived");
   assert.match(mainSrc, /executeJavaScript\("window\.__cnShow && window\.__cnShow\(\)"\)/);
   assert.match(mainSrc, /executeJavaScript\("sessionStorage\.length"\)/);
-  assert.match(mainSrc, /if \(n !== 0 \|\| pool\.get\(tabPath\) !== entry\)/,
+  assert.match(mainSrc, /if \(from !== active \|\| n !== 0 \|\| pool\.get\(tabPath\) !== entry\)/,
     "a page carrying sessionStorage across the navigation gets an ordinary navigation");
   assert.match(mainSrc, /callback\(\{ cancel: true \}\)/, "the ask is the shell's; the server never builds an unused copy");
+  // Cursor Bugbot, PR #343: the newest navigation wins and is never dropped.
+  const swap0 = mainSrc.slice(mainSrc.indexOf("function trySwap("), mainSrc.indexOf("function navigatePendingNormally("));
+  assert.match(swap0, /const seq = \+\+navSeq;/);
+  assert.match(swap0, /if \(seq !== navSeq \|\| !active\) return;/, "a superseded check does nothing");
+  assert.match(swap0, /if \(from !== active \|\| n !== 0/, "a latest click whose page moved on is replayed, not dropped");
+  assert.match(swap0, /active\.webContents\.loadURL\(url/);
   assert.match(mainSrc, /if \(signal\.drop\) discardAll\(\);/, "a write on the page throws every built tab away");
   const swap = mainSrc.slice(mainSrc.indexOf("function swapTo("));
   assert.ok(swap.indexOf("active = view;") < swap.indexOf("__cnShow"),

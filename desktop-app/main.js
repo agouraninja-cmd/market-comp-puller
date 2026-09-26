@@ -99,6 +99,7 @@ function inAppHost(rawUrl) {
 let win = null;
 let active = null;  // the view on screen
 let pending = null; // { entry, url, timer }: a click waiting on a view still loading
+let navSeq = 0;     // bumped by every navigation the page on screen starts
 const pool = POOL.createPool({ max: POOL.MAX_VIEWS });
 
 function fullBounds() {
@@ -226,7 +227,13 @@ function build(tabPath, warm) {
 
 // --- The swap ----------------------------------------------------------------
 
+// The NEWEST navigation wins, as in any browser: every navigation bumps
+// navSeq, a check that finds itself superseded does nothing, and the latest
+// is never dropped — if the page it started on is no longer the one on
+// screen, it is replayed on the one that is. (Cursor Bugbot, PR #343: a
+// second tab click during the first one's sessionStorage read was lost.)
 function trySwap(event, url) {
+  const seq = ++navSeq;
   if (pending) { clearTimeout(pending.timer); pending = null; }
   const tabPath = POOL.swapPath(url, APP_ORIGIN);
   const entry = tabPath && pool.get(tabPath);
@@ -236,12 +243,12 @@ function trySwap(event, url) {
   from.webContents.executeJavaScript("sessionStorage.length")
     .catch(() => -1)
     .then((n) => {
-      if (from !== active) return;
-      if (n !== 0 || pool.get(tabPath) !== entry) {
+      if (seq !== navSeq || !active) return;
+      if (from !== active || n !== 0 || pool.get(tabPath) !== entry) {
         // Something rides this tab's sessionStorage into the next page, which
         // a hidden view never saw: keep it, with the navigation it asked for.
-        discard(entry);
-        from.webContents.loadURL(url, { httpReferrer: from.webContents.getURL() });
+        if (pool.get(tabPath) === entry) discard(entry);
+        active.webContents.loadURL(url, { httpReferrer: active.webContents.getURL() });
         return;
       }
       if (entry.ready) return swapTo(entry);

@@ -21,6 +21,16 @@
 // last ran, and says so when that run is more than a business day old. It
 // never implies a city it does not read was checked.
 //
+// YOUR PERMITS (2026-09-27, owner's call). Above the public feed, a member's
+// own tracked permits: add one by city and number (looked up on the city's
+// portal as it is added, so a typo is caught on the spot), pick which of the
+// five steps to hear about and how — email, CompNinja, or both — and read
+// each permit's steps, status and history. The rules live in permit-watch.js;
+// the boot carries them as `mine` beside the feed, read on its own so an
+// unavailable section never costs the list. The page CLEARS the unread count
+// with a POST once shown (a fetch, which instant-nav holds until the page is
+// visible — CLAUDE.md rule 15), never in the server render.
+//
 // The page literal below contains exactly ONE backtick, its own opener, and
 // interpolates the boot JSON alone; test/permits-page.test.js guards both.
 // ---------------------------------------------------------------------------
@@ -67,13 +77,91 @@ function renderPermitsBody(boot) {
 .pt-wall p{margin:0 0 8px;font-size:14px;color:var(--ink-body)}
 .pt-wall a{color:var(--red);text-decoration:underline}
 .pt-rm{appearance:none;border:0;background:none;padding:0;font:inherit;font-size:12px;color:var(--ink-3);text-decoration:underline;cursor:pointer}
-@media (max-width:640px){.pt-row{flex-wrap:wrap}.pt-date{flex:1 1 100%}.pt-strip{flex-wrap:wrap}.pt-cell{flex:1 1 45%}}
+.pt-head2{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:26px 0 6px}
+.pt-head2 h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:18px;color:var(--ink)}
+.pw{border:1px solid var(--edge);border-radius:8px;background:var(--card);padding:16px 18px;margin:0 0 8px}
+.pw-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.pw-head h2{margin:0;font-family:Georgia,"Times New Roman",serif;font-weight:400;font-size:18px;color:var(--ink)}
+.pw-sub{font-size:13px;color:var(--ink-2);margin:4px 0 12px}
+.pw-btn{appearance:none;font:inherit;font-size:13px;padding:7px 12px;border-radius:8px;border:1px solid var(--edge);
+  background:var(--card);color:var(--ink);cursor:pointer}
+.pw-btn:hover{border-color:var(--ink)}
+.pw-btn.pri{background:var(--red-fill);border-color:var(--red-fill);color:#fff}
+.pw-btn.pri:hover{background:var(--red-fill-hover)}
+.pw-btn[disabled]{opacity:.6;cursor:default}
+.pw-form{border-top:1px solid var(--hair);padding-top:12px;margin:0 0 12px}
+.pw-grid{display:flex;flex-wrap:wrap;gap:10px}
+.pw-grid label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink-2);flex:1 1 160px;min-width:0}
+.pw-grid input,.pw-grid select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--edge);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+.pw-grid .opt{color:var(--ink-3)}
+.pw-set{border:0;margin:12px 0 0;padding:0;min-width:0}
+.pw-set legend{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:0;margin:0 0 6px}
+.pw-opts{display:flex;flex-wrap:wrap;gap:6px 16px}
+.pw-set label.chk{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-body);cursor:pointer}
+.pw-fine{font-size:12px;color:var(--ink-3);margin:6px 0 0}
+.pw-actions{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:14px}
+.pw-msg{font-size:12.5px;color:var(--ink-2)}
+.pw-msg.bad{color:var(--err-text)}
+.pw-msg.ok{color:var(--ok-text)}
+.pw-card{border-top:1px solid var(--hair);padding:12px 0}
+.pw-card:first-child{border-top:0}
+.pw-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.pw-name{font-family:Georgia,"Times New Roman",serif;font-size:15px;color:var(--ink)}
+.pw-new{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:9px;background:var(--red-fill);color:#fff;font-size:10.5px;font-weight:600;letter-spacing:.04em;vertical-align:2px}
+.pw-meta{font-size:11.5px;color:var(--ink-3);margin-top:2px}
+.pw-meta a{color:var(--red);text-decoration:none}
+.pw-meta a:hover{text-decoration:underline}
+.pw-status{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.pw-status.attention{color:var(--warn-text)}
+.pw-status.ended{color:var(--err-text)}
+.pw-steps{display:flex;list-style:none;margin:10px 0 6px;padding:0;gap:4px}
+.pw-steps li{flex:1 1 0;min-width:0;font-size:11px;color:var(--ink-3);padding-top:8px;border-top:3px solid var(--hair);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pw-steps li.done{border-top-color:var(--ok-text);color:var(--ink-2)}
+.pw-steps li.now{color:var(--ink);font-weight:600}
+.pw-latest{font-size:12.5px;color:var(--ink-body);margin:6px 0 0}
+.pw-latest.unread{background:var(--ok-bg);border-radius:6px;padding:6px 9px}
+.pw-latest.unread.warn{background:var(--warn-bg)}
+.pw-latest b{font-weight:600}
+.pw-foot{font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.pw-foot .err{color:var(--warn-text)}
+.pw-hist{margin-top:6px;font-size:12px;color:var(--ink-2)}
+.pw-hist summary{cursor:pointer;color:var(--ink-3);font-size:11.5px}
+.pw-hist ul{margin:6px 0 0;padding-left:18px}
+.pw-hist li{margin:2px 0}
+.pw-hist li.unread{font-weight:600;color:var(--ink)}
+.pw-empty{font-size:13px;color:var(--ink-3);margin:0}
+@media (max-width:640px){.pt-row{flex-wrap:wrap}.pt-date{flex:1 1 100%}.pt-strip{flex-wrap:wrap}.pt-cell{flex:1 1 45%}
+  .pw-steps li{font-size:10px}}
 .hide{display:none}
 </style>
 <main class="wrap pt-page">
   <div class="kicker">Tools</div>
   <div class="pt-head">
     <h1>Permit tracker</h1>
+  </div>
+  <section class="pw hide" id="pwSec" aria-labelledby="pwTitle">
+    <div class="pw-head">
+      <h2 id="pwTitle">Your permits</h2>
+      <button type="button" class="pw-btn hide" id="pwAddBtn">Track a permit</button>
+    </div>
+    <p class="pw-sub" id="pwSub"></p>
+    <form class="pw-form hide" id="pwForm" novalidate>
+      <div class="pw-grid">
+        <label>City <select id="pwCity"></select></label>
+        <label>Permit number <input id="pwNum" maxlength="40" autocomplete="off" placeholder="e.g. BLD26-02789"/></label>
+        <label><span>Nickname <span class="opt">optional</span></span><input id="pwLabel" maxlength="80" autocomplete="off" placeholder="e.g. Federal Way warehouse"/></label>
+      </div>
+      <div id="pwFormNotify"></div>
+      <div class="pw-actions">
+        <button type="submit" class="pw-btn pri" id="pwSave">Track this permit</button>
+        <button type="button" class="pt-rm" id="pwCancel">Cancel</button>
+        <span class="pw-msg" id="pwMsg" role="status"></span>
+      </div>
+    </form>
+    <div id="pwList"></div>
+  </section>
+  <div class="pt-head2 hide" id="ptFeedHead">
+    <h2>Every commercial filing</h2>
     <span class="pt-count" id="ptCount"></span>
   </div>
   <p class="pt-sub" id="ptSub"></p>
@@ -100,7 +188,7 @@ function renderPermitsBody(boot) {
   function $(id){return document.getElementById(id)}
   function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   var items=[];
-  function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptBody").className="hide"; }
+  function wall(html){ var w=$("ptWall"); w.innerHTML=html; w.className="pt-wall"; $("ptBody").className="hide"; $("ptFeedHead").className="pt-head2 hide"; }
   function day(iso){
     if(!iso)return "";
     var m=/^(\\d{4})-(\\d{2})-(\\d{2})/.exec(String(iso));
@@ -130,6 +218,7 @@ function renderPermitsBody(boot) {
     $("ptSub").textContent=sub;
     $("ptSub").className="pt-sub"+(j.stale&&!j.never?" stale":"");
     $("ptBody").className="";
+    $("ptFeedHead").className="pt-head2";
     $("ptCount").textContent=items.length+(items.length===1?" permit":" permits");
     var ind=items.filter(function(f){return f.isIndustrial}).length;
     var mine=items.filter(function(f){return f.onBoard}).length;
@@ -177,12 +266,190 @@ function renderPermitsBody(boot) {
         '</div><span class="pt-num">'+num+"</span></div>";
     }).join("");
   }
+  // ---- Your permits (2026-09-27) ------------------------------------------
+  var MINE=null, watches=[];
+  function stepName(k){ var l=(MINE&&MINE.steps)||[]; for(var i=0;i<l.length;i++){ if(l[i].key===k)return l[i].label; } return k; }
+  function words(list){ if(list.length<=1)return list[0]||""; return list.slice(0,-1).join(", ")+" and "+list[list.length-1]; }
+  function notifyText(n){
+    var what=(n.steps||[]).map(stepName);
+    if(n.alerts)what.push("problems");
+    if(n.any)what.push("every other change");
+    var how=[n.email?"by email":"",n.app?"on CompNinja":""].filter(Boolean);
+    if(!what.length||!how.length)return "Notifications off";
+    return "Tells you about "+words(what)+", "+how.join(" and ");
+  }
+  // One builder for the add form and each permit's Change form, so the two
+  // cannot offer different choices.
+  function notifyFields(n){
+    var steps=(MINE.notifySteps||[]).map(function(k){
+      return '<label class="chk"><input type="checkbox" data-step="'+esc(k)+'"'+((n.steps||[]).indexOf(k)>-1?" checked":"")+"/> "+esc(stepName(k))+"</label>";
+    }).join("");
+    var mailOff=MINE.emailLive?"":'<p class="pw-fine">Email isn’t switched on for CompNinja yet, so for now updates show here on the Permit tracker.</p>';
+    return '<fieldset class="pw-set"><legend>Tell me when it reaches</legend><div class="pw-opts">'+steps+"</div>"+
+      '<div class="pw-opts" style="margin-top:6px"><label class="chk"><input type="checkbox" data-opt="alerts"'+(n.alerts?" checked":"")+"/> It needs attention or ends (returned for corrections, on hold, denied, expired)</label>"+
+      '<label class="chk"><input type="checkbox" data-opt="any"'+(n.any?" checked":"")+"/> Any other status change</label></div></fieldset>"+
+      '<fieldset class="pw-set"><legend>How</legend><div class="pw-opts">'+
+      '<label class="chk"><input type="checkbox" data-opt="email"'+(n.email?" checked":"")+"/> Email"+(MINE.email?" ("+esc(MINE.email)+")":"")+"</label>"+
+      '<label class="chk"><input type="checkbox" data-opt="app"'+(n.app?" checked":"")+"/> On CompNinja</label></div>"+mailOff+"</fieldset>";
+  }
+  function readNotify(root){
+    var n={steps:[]};
+    [].forEach.call(root.querySelectorAll("input[data-step]"),function(i){ if(i.checked)n.steps.push(i.getAttribute("data-step")); });
+    [].forEach.call(root.querySelectorAll("input[data-opt]"),function(i){ n[i.getAttribute("data-opt")]=!!i.checked; });
+    return n;
+  }
+  function watchName(w){ return w.label||(w.address?w.address.split(",")[0]:"")||w.permitNumber; }
+  function card(w){
+    var num=w.sourceUrl?'<a href="'+esc(w.sourceUrl)+'" target="_blank" rel="noopener noreferrer">'+esc(w.permitNumber)+"</a>":esc(w.permitNumber);
+    var meta=[esc(w.city),num];
+    if(w.label&&w.address)meta.push(esc(w.address));
+    var steps=w.steps.map(function(s){
+      return '<li class="'+(s.done?"done":"")+(s.key===w.step?" now":"")+'">'+esc(s.label)+"</li>";
+    }).join("");
+    var latest=w.history.filter(function(h){return h.notice})[0];
+    var warn=latest&&(latest.kind==="attention"||latest.kind==="ended");
+    var latestHtml=latest?'<p class="pw-latest'+(latest.unread?" unread":"")+(warn?" warn":"")+'"><b>'+esc(latest.notice)+"</b> — now “"+esc(latest.to)+"”"+(latest.from?", was “"+esc(latest.from)+"”":"")+" · "+esc(day(latest.at))+"</p>":"";
+    var checked=w.checkError?'<span class="err">'+esc(w.checkError)+"</span>":(w.lastCheckedAt?"Checked "+esc(ago(w.lastCheckedAt)):"Not checked yet");
+    var hist=w.history.length?'<details class="pw-hist"><summary>Status history ('+w.history.length+")</summary><ul>"+w.history.map(function(h){
+      return '<li class="'+(h.unread?"unread":"")+'">'+esc(day(h.at))+": "+(h.from?"“"+esc(h.from)+"” → ":"First read: ")+"“"+esc(h.to)+"”"+(h.notice?" — "+esc(h.notice):"")+"</li>";
+    }).join("")+"</ul></details>":"";
+    return '<div class="pw-card" data-id="'+esc(w.id)+'">'+
+      '<div class="pw-top"><div><span class="pw-name">'+esc(watchName(w))+"</span>"+(w.unread?'<span class="pw-new">New</span>':"")+
+      '<div class="pw-meta">'+meta.join(" · ")+"</div></div>"+
+      '<span class="pw-status'+(w.flag?" "+esc(w.flag):"")+'">'+(w.status?"“"+esc(w.status)+"”":"Status not read yet")+"</span></div>"+
+      '<ol class="pw-steps" aria-label="Permit steps">'+steps+"</ol>"+latestHtml+
+      '<div class="pw-foot">'+checked+" · "+esc(notifyText(w.notify))+
+      ' · <button type="button" class="pt-rm" data-edit="'+esc(w.id)+'">Change</button>'+
+      ' · <button type="button" class="pt-rm" data-rm="'+esc(w.id)+'">Stop tracking</button></div>'+
+      '<form class="pw-form hide" data-editform="'+esc(w.id)+'" style="margin-top:10px">'+
+      '<div class="pw-grid"><label><span>Nickname <span class="opt">optional</span></span><input data-label maxlength="80" value="'+esc(w.label)+'"/></label></div>'+
+      notifyFields(w.notify)+
+      '<div class="pw-actions"><button type="submit" class="pw-btn pri">Save</button> <button type="button" class="pt-rm" data-cancel>Cancel</button> <span class="pw-msg" role="status"></span></div></form>'+
+      hist+"</div>";
+  }
+  function renderMine(){
+    var list=$("pwList");
+    $("pwAddBtn").className=watches.length<(MINE.max||25)?"pw-btn":"pw-btn hide";
+    var cities=(MINE.cities||[]).map(function(c){return c.label});
+    $("pwSub").textContent=watches.length
+      ? "Read from each city’s own permit portal every weekday morning. You’re told when a permit reaches the steps you picked."
+      : "Filed a permit in "+words(cities)+"? Track it here: we read its status from the city’s portal every weekday morning and tell you — by email, here on CompNinja, or both — when it reaches the steps you pick.";
+    list.innerHTML=watches.length?watches.map(card).join(""):"";
+  }
+  function formMsg(el,text,kind){ el.textContent=text||""; el.className="pw-msg"+(kind?" "+kind:""); }
+  function openAdd(){
+    $("pwForm").className="pw-form";
+    $("pwAddBtn").className="pw-btn hide";
+    $("pwNum").focus();
+  }
+  function closeAdd(){
+    $("pwForm").className="pw-form hide";
+    formMsg($("pwMsg"),"");
+    renderMine();
+  }
+  function applyMine(o){
+    if(!o){ return; }
+    $("pwSec").className="pw";
+    if(o.s!==200||!o.j){
+      $("pwSub").textContent="Your tracked permits couldn’t be loaded just now. Refresh in a moment.";
+      return;
+    }
+    MINE=o.j;
+    watches=Array.isArray(MINE.watches)?MINE.watches:[];
+    var sel=$("pwCity");
+    (MINE.cities||[]).forEach(function(c){ var op=document.createElement("option"); op.value=c.key; op.textContent=c.label; sel.appendChild(op); });
+    $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
+    renderMine();
+    // Seen: clears the count on the nav dot. A fetch, so a prerendered copy
+    // of this page does not send it until the page is actually shown.
+    if(MINE.unread>0){
+      fetch("/api/permits/seen",{method:"POST",credentials:"same-origin"}).then(function(r){
+        if(r.ok){ var d=$("navPermitDot"); if(d)d.hidden=true; }
+      }).catch(function(){});
+    }
+  }
+  $("pwAddBtn").addEventListener("click",openAdd);
+  $("pwCancel").addEventListener("click",closeAdd);
+  $("pwForm").addEventListener("submit",function(e){
+    e.preventDefault();
+    var btn=$("pwSave"), msg=$("pwMsg");
+    var city=$("pwCity").value, cityLabel=$("pwCity").options[$("pwCity").selectedIndex]?$("pwCity").options[$("pwCity").selectedIndex].textContent:"the city";
+    var num=$("pwNum").value.trim();
+    if(!num){ formMsg(msg,"Enter the permit number exactly as the city prints it.","bad"); $("pwNum").focus(); return; }
+    btn.disabled=true;
+    formMsg(msg,"Looking it up on the "+cityLabel+" permit portal…");
+    fetch("/api/permits/watch",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},
+      body:JSON.stringify({jurisdiction:city,permitNumber:num,label:$("pwLabel").value,notify:readNotify($("pwForm"))})})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})})
+      .then(function(o){
+        btn.disabled=false;
+        if(o.s!==200||!o.j.watch){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t add that permit. Please try again.","bad"); return; }
+        var w=o.j.watch;
+        watches.unshift(w);
+        $("pwNum").value=""; $("pwLabel").value="";
+        $("pwFormNotify").innerHTML=notifyFields(MINE.defaults||{});
+        $("pwForm").className="pw-form hide";
+        renderMine();
+        var top=$("pwList").firstChild;
+        var note=document.createElement("p"); note.className="pw-msg ok";
+        note.textContent=o.j.checked
+          ? "Tracking "+w.permitNumber+". The portal reads “"+w.status+"” today."
+          : "Added "+w.permitNumber+". The "+cityLabel+" portal didn’t answer just now, so we’ll read it on the next weekday sweep.";
+        if(top)top.appendChild(note);
+      })
+      .catch(function(){ btn.disabled=false; formMsg(msg,"That didn’t reach the server. Nothing was added.","bad"); });
+  });
+  function watchIndex(id){ for(var i=0;i<watches.length;i++){ if(String(watches[i].id)===String(id))return i; } return -1; }
+  $("pwList").addEventListener("click",function(e){
+    var t=e.target;
+    if(!t||!t.getAttribute)return;
+    var ed=t.getAttribute("data-edit"), rm=t.getAttribute("data-rm");
+    if(ed){
+      var f=document.querySelector('form[data-editform="'+ed+'"]');
+      if(f)f.className=f.className.indexOf("hide")>-1?"pw-form":"pw-form hide";
+      return;
+    }
+    if(t.hasAttribute&&t.hasAttribute("data-cancel")){ renderMine(); return; }
+    if(rm){
+      var i=watchIndex(rm); if(i<0)return;
+      if(!confirm("Stop tracking "+watches[i].permitNumber+"? Its status history goes with it."))return;
+      fetch("/api/permits/watch?id="+encodeURIComponent(rm),{method:"DELETE",credentials:"same-origin"})
+        .then(function(r){
+          if(!r.ok)throw new Error("x");
+          var k=watchIndex(rm); if(k>-1)watches.splice(k,1);
+          renderMine();
+        })
+        .catch(function(){ alert("Couldn’t stop tracking that permit just now. Please try again."); });
+    }
+  });
+  $("pwList").addEventListener("submit",function(e){
+    var f=e.target;
+    if(!f||!f.getAttribute||!f.getAttribute("data-editform"))return;
+    e.preventDefault();
+    var id=f.getAttribute("data-editform"), msg=f.querySelector(".pw-msg");
+    var lab=f.querySelector("input[data-label]");
+    formMsg(msg,"Saving…");
+    fetch("/api/permits/watch?id="+encodeURIComponent(id),{method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},
+      body:JSON.stringify({label:lab?lab.value:"",notify:readNotify(f)})})
+      .then(function(r){return r.json().catch(function(){return {}}).then(function(j){return {s:r.status,j:j}})})
+      .then(function(o){
+        if(o.s!==200||!o.j.watch){ formMsg(msg,(o.j&&o.j.error)||"Couldn’t save that. Please try again.","bad"); return; }
+        var i=watchIndex(id);
+        // Keep this page view's "New" marks: the server's copy was read after
+        // the page cleared them.
+        if(i>-1){ o.j.watch.unread=watches[i].unread; o.j.watch.history=watches[i].history; watches[i]=o.j.watch; }
+        renderMine();
+      })
+      .catch(function(){ formMsg(msg,"That didn’t reach the server. Nothing was changed.","bad"); });
+  });
+
   $("ptSearch").addEventListener("input",render);
   $("ptCity").addEventListener("change",render);
   $("ptType").addEventListener("change",render);
   $("ptInd").addEventListener("change",render);
   $("ptClear").addEventListener("click",function(){ $("ptSearch").value=""; $("ptCity").value=""; $("ptType").value=""; $("ptInd").checked=false; render(); });
   apply(BOOT);
+  if(BOOT&&BOOT.s===200)applyMine(BOOT.mine);
 })();
 </script>`;
 }

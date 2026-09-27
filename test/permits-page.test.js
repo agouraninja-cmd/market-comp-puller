@@ -119,7 +119,11 @@ test("the /permits route, signed out and signed in", async (t) => {
     assert.equal(boot.j.inFirm, true);
     assert.equal(boot.j.cities, "Boise and Meridian");
     assert.equal(boot.j.stale, false);
-    assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker</a>'), "the Tools row marks the page");
+    assert.ok(html.includes('<a href="/permits" aria-current="page">Permit tracker<span id="navPermitDot" class="navdot" hidden'),
+      "the Tools row marks the page, and carries its unread dot hidden until asked");
+    assert.equal(boot.mine.s, 200, "Your permits rides the same boot");
+    assert.deepEqual(boot.mine.j.watches, []);
+    assert.deepEqual(boot.mine.j.cities, [{ key: "boise", label: "Boise" }, { key: "meridian", label: "Meridian" }]);
   });
 
   await t.test("a member with no firm still gets the list, with nothing marked", async () => {

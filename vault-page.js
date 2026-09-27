@@ -746,7 +746,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 }
 </style>
   <p class="kicker">Private workspace</p>
-  <h1 class="h">Broker Vault</h1>
+  <h1 class="h">Vault</h1>
   <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
@@ -1138,6 +1138,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
           <th data-k="property_type">Type</th><th data-k="transaction">Deal</th>
           <th data-k="deal_date">Date</th><th data-k="price" class="num">Price</th>
           <th data-k="size_sqft" class="num">Size</th><th data-k="price_per_sqft" class="num">$/SF</th>
+          <th data-k="cap_rate" class="num">Cap rate</th>
           <th data-k="published">Public</th><th></th>
         </tr></thead><tbody id="tbody"></tbody><tfoot id="tblFoot"></tfoot>
       </table></div>
@@ -1905,10 +1906,14 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
   // PATCH would reject the field it just offered.
   // The renewal watch's two dates (038) are deliberately NOT here. They are
   // spreadsheet-mode fields for the reason stated above: the compact table has
-  // six columns and a stated budget, they apply to leases only, and 029's rent
-  // fields took the same door. A broker fills them in through the spreadsheet,
-  // the CSV template, or the extract confirm table.
-  var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft"];
+  // a stated budget, they apply to leases only, and 029's rent fields took the
+  // same door. A broker fills them in through the spreadsheet, the CSV
+  // template, or the extract confirm table.
+  // cap_rate joined the six on 2026-09-27 (owner's call: "you should be able
+  // to change the cap rate" in the table itself). It is a stated figure, never
+  // derived, so it is a typed cell like price rather than a td.ro; the server
+  // parses it with parsePercent, which takes 5.75 and 5.75% alike.
+  var CELL_FIELDS=["address","property_type","transaction","deal_date","price","size_sqft","cap_rate"];
 
   // A cell shows the FORMATTED figure and holds the raw one, swapping to raw
   // on focus (cellFocus below). A book of business is read far more often than
@@ -1926,6 +1931,9 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     if(v==null||v==="")return "";
     if(k==="price")return money(v);
     if(k==="size_sqft")return num(v);
+    // Stored as the bare percentage (5.75); shown with its sign, and the raw
+    // number is what focus offers back, like a price.
+    if(k==="cap_rate")return String(v)+"%";
     return String(v);
   }
   // A table column used to size itself to the text in it, because a <td> of
@@ -2063,7 +2071,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
     var bar=$("sheetBar");
     bar.className="note";
     if(!sheetMode){
-      bar.textContent=CELL_HINT+" Open the spreadsheet for cap rate, tenancy, year built and notes.";
+      bar.textContent=CELL_HINT+" Open the spreadsheet for tenancy, year built and notes.";
       return;
     }
     var name=uploadName(sheetUploadId);
@@ -2157,6 +2165,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       headCell("property_type","Type")+headCell("transaction","Deal")+
       headCell("deal_date","Date")+headCell("price","Price",true)+
       headCell("size_sqft","Size",true)+headCell("price_per_sqft",rateHead,true)+
+      headCell("cap_rate","Cap rate",true)+
       headCell("published","Public")+(myFirm?"<th>Firm</th>":"")+"<th></th></tr>";
     $("tbody").innerHTML=rows.map(function(c){
       // Published state is a two-way toggle, never a checkbox that could be
@@ -2183,8 +2192,8 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
             '" title="Start a conversation about this comp, with it attached">Discuss</a></td>'
           : '<td><button class="pubbtn" data-firm="'+esc(c.id)+'">Share</button></td>';
       }
-      // Six typed cells, two derived ones, then the public toggle, the firm
-      // toggle and the trash. The transaction cell loses its .tag chip by
+      // Six typed cells, two derived ones, the typed cap rate, then the public
+      // toggle, the firm toggle and the trash. The transaction cell loses its .tag chip by
       // becoming an input: a chip a broker cannot correct in place was the
       // thing being fixed.
       return '<tr><td class="addr">'+cellInput(c,"address")+"</td>"+
@@ -2193,6 +2202,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
         "<td>"+cellInput(c,"deal_date")+'</td><td class="num">'+cellInput(c,"price")+
         '</td><td class="num">'+cellInput(c,"size_sqft")+"</td>"+
         roCell(c,"price_per_sqft",rateCell(c)+flag,true)+
+        '<td class="num">'+cellInput(c,"cap_rate")+"</td>"+
         "<td>"+pub+"</td>"+firm+'<td class="rowact">'+trashBtn(c.id)+"</td></tr>";
     }).join("");
     // The statement's closing rule: the median of the priced sales in the
@@ -2215,7 +2225,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
       '<tr><td class="lab" colspan="7">'+foot.label+
       (foot.value==null||rows.length===comps.length?"":" in this view")+
       '</td><td class="num">'+(foot.value==null?"\\u2014":psf(foot.value))+
-      "</td><td></td><td></td></tr>";
+      "</td><td></td><td></td><td></td></tr>";
   }
 
   // What seals the table, in one place, because the reading strip quotes the

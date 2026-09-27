@@ -1,5 +1,29 @@
 [
   {
+    "date": "2026-09-27",
+    "type": "feature",
+    "title": "Track your own permit, and hear when it reaches a step",
+    "details": "The Permit tracker has a new Your permits section at the top. Pick Boise or Meridian, type a permit number, and CompNinja looks it up on the city’s own portal right then, so a mistyped number is caught on the spot. Each permit shows five plain steps (Submitted, In review, Approved, Issued, Finaled) read from whatever the city prints, the current status word for word, and its history. You choose which steps you want to hear about, whether to be told when it needs attention or ends (returned for corrections, on hold, denied, expired) or on every change, and how: by email, here on CompNinja, or both. On CompNinja that is a red count on Permit tracker in the sidebar and a New mark on the permit. The weekday permit sweep re-reads every tracked permit, so there is no new timer. A step is announced once, ever: a permit that jumps two steps announces both in one message, a permit that drops back and returns is not announced twice, and adding a permit that is already issued announces nothing. An email is marked sent only after it actually goes, so if email is switched off the notice waits (for up to a week) instead of being lost. Needs the 054 migration run in Supabase before deploying."
+  },
+  {
+    "date": "2026-09-27",
+    "type": "improvement",
+    "title": "Market comps list the newest deal first",
+    "details": "The comps table on every market page (the Market explorer’s data) now arrives sorted by date, newest first, with undated comps last, and the Date header shows the arrow. Clicking Date flips it to oldest first. The CSV download follows the same order. Quarter and year dates (Q1 2025, 2025) now sort in their right place too; before, a click on Date pushed them to the bottom as if they had no date."
+  },
+  {
+    "date": "2026-09-27",
+    "type": "improvement",
+    "title": "Cap rate is editable right in the vault’s table",
+    "details": "The book’s table has a Cap rate column you can type into, like price and size: it shows 6.25% and gives you the bare number to edit, takes 5.75 or 5.75%, and saves when you leave the cell. Before, cap rate could only be changed by opening the spreadsheet view."
+  },
+  {
+    "date": "2026-09-27",
+    "type": "improvement",
+    "title": "Broker Vault is now just Vault",
+    "details": "The vault page’s heading and browser tab say Vault, matching the sidebar."
+  },
+  {
     "date": "2026-09-26",
     "type": "fix",
     "title": "Esc no longer throws away what you’re typing",

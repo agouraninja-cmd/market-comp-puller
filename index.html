@@ -3085,8 +3085,10 @@ if(t==="dark")document.documentElement.setAttribute("data-theme","dark");}catch(
              entitlements.js owns. Ships hidden, like the vault link. -->
         <a id="menuBulkLink" href="/bulk" class="hidden hover:text-[#1A2433] font-medium">Comp report</a>
         <!-- The Permit tracker (2026-09-24): the THIRD Tools row, after Comp
-             report (owner's order). marketBar carries the twin. -->
-        <a href="/permits" class="hover:text-[#1A2433]">Permit tracker</a>
+             report (owner's order). marketBar carries the twin. Its unread dot
+             (2026-09-27) is a tracked permit's step completing; filled by
+             refreshPermitsDot, the Messages dot's shape. -->
+        <a href="/permits" class="hover:text-[#1A2433]">Permit tracker<span id="navPermitDot" class="navdot" hidden aria-label="permit updates"></span></a>
         <button id="signInLink" type="button" class="hover:text-[#1A2433]">Sign in</button>
         <div id="acctMenuWrap" class="hidden relative">
           <button id="acctMenuBtn" type="button" aria-label="Account menu"
@@ -16270,6 +16272,23 @@ async function renderMyDesk() {
     } catch (_) { /* the dot stays as it was */ }
   }
 
+  // The Permit tracker's dot (2026-09-27): a tracked permit reached a step the
+  // member asked to hear about on CompNinja. refreshMessagesDot's rules: no
+  // member, no dot; a failed read leaves it as it was.
+  async function refreshPermitsDot() {
+    const dot = document.getElementById("navPermitDot");
+    if (!dot) return;
+    if (!currentUser) { dot.hidden = true; return; }
+    try {
+      const res = await bootFetch("/api/permits/unread", { credentials: "same-origin" });
+      if (!res.ok) { dot.hidden = true; return; }
+      const j = await res.json();
+      const n = Number(j && j.count) || 0;
+      dot.textContent = n > 9 ? "9+" : String(n);
+      dot.hidden = !(n > 0);
+    } catch (_) { /* the dot stays as it was */ }
+  }
+
   // "Discuss" from a contact row (slice 8): points at a person in the context
   // of a deal. NAME AND COMPANY ONLY — never the email. Migration 039's header
   // is a long argument that tenant PII must not spread by accident: a message
@@ -19592,6 +19611,7 @@ async function renderMyDesk() {
     // the same answer as nothing waiting. Never awaited: the rest of this
     // function must not wait on a count.
     refreshMessagesDot();
+    refreshPermitsDot();
     // Bulk valuation, off its OWN entitlement. Same shape and same reasons as
     // the vault link above it -- /api/bulk re-checks canBulkValue server-side,
     // so unhiding this by hand reveals a link and a 403 behind it -- and

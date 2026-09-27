@@ -1,6 +1,7 @@
 ---
 paths:
   - "permit-*.js"
+  - "migrations/054-permit-watches.sql"
   - "permits-page.js"
   - "scripts/capture-permit-fixtures.js"
   - ".github/workflows/permit-sweep.yml"
@@ -146,3 +147,81 @@ paths:
   a broker shop, a development shop and a board wholly outside the swept
   cities. Still not built: any email, the parcel number as a second match
   key.
+
+## Tracking your own permit (2026-09-27)
+
+Owner's call: "add a way to add your own permit into the tracker and have
+custom notifications that would notify you by email, and on compninja once
+that step in the permit is complete." Migration **`054-permit-watches.sql`**
+(`permit_watches`, `permit_watch_events`) — **run it before deploying**; the
+failure is contained (the /permits section says it is unavailable, the
+sweep's `summary.watches` carries a read error line) but the feature is dark
+until it runs. Rules in the pure **`permit-watch.js`**
+(`test/permit-watch.test.js`); the one-record read is permit-portals.js's
+**`lookupPermit`** (the old tracker's `fetchFilingStatus` search, read for
+the address and the record link too, `parseAccelaLookup` pinned against the
+captured pages); the routes and the sweep hook are in server.js beside the
+tracker's read; `test/permit-watch-run.test.js` runs all of it against the
+stand-in and a stub portal. Eight rules:
+
+- **Per member, not public record.** A watch carries `user_id`, and every
+  route reads and writes `user_id=eq.` the signed-in member (a second
+  member's PATCH/DELETE is a 404, pinned). The permit's own facts are copied
+  from the portal onto the watch, deliberately NOT joined to
+  `permit_filings`: a member's permit can be residential or older than the
+  sweep window, and the sweep never stored it.
+- **Only the cities the sweep reads** (`PERMIT_WATCH_CITIES`, from
+  `PERMIT_SWEPT`): a Nampa permit would sit in the list never checked, which
+  is §7's "claims we looked" per permit.
+- **Looked up at add time.** `POST /api/permits/watch` searches the portal by
+  number while the member is looking at the form: `found: false` is a 400
+  naming the city and number (`code: "not_found"`); a portal error is NOT a
+  refusal — the watch is stored with no status and a `check_error`, and the
+  sweep reads it first (stalest-first, nulls first). Rate-limited 20/hour per
+  account because each add is a live portal search; 25 watches per account.
+- **Five steps, under-claimed.** `classifyStatus` maps free portal text onto
+  Submitted / In review / Approved / Issued / Finaled, or onto NO step when
+  the words do not say (the badge rule: never tell somebody "issued" when it
+  is not). Order is the rule: "Ready to Issue"/"Prep for Issuance" are
+  approved, "Final Inspection Scheduled" is issued, "Review Complete" is
+  approved, "Incomplete" is attention. Flags: `attention` (returned,
+  corrections, on hold) and `ended` (expired, withdrawn, denied, void, not
+  approved). The raw status is always shown beside the steps.
+- **A step completes once, ever** — `passed_steps` is the ledger. A jump over
+  a step completes both (one notice names both), a drop back does not
+  un-complete anything, and the add-time read marks every step so far passed
+  WITHOUT a notice. A watch whose first status arrives on a sweep (portal was
+  down at add time) records a `first` event with no notice.
+- **The re-check rides `POST /api/permits/sweep`** (`checkPermitWatches`,
+  called at the end of `sweepPermitFilings`) — CLAUDE.md rule 12, the renewal
+  watch's "one trigger" argument. One lookup per (city, number) however many
+  members watch it, paused like the sweep, capped at `SWEEP_CHECK_CAP` (200)
+  per run. Its errors live in `summary.watches.errors`, NOT `summary.errors`,
+  because the latter fails the scheduled workflow; the workflow prints the
+  watch line and WARNS on its errors and on `mailOff`. The event row is
+  written BEFORE the watch's new status, so a failed second write costs a
+  duplicate next run, never a lost notice. `{ dryRun: true }` reads the
+  portals and writes and sends nothing.
+- **Marked after the send.** An event carries `email_due`;
+  `sendPermitNoticeEmails` sends one email per member for every due, unsent
+  event from the last `EMAIL_WINDOW_DAYS` (7), and stamps `emailed_at` only
+  when `sendOutboundEmail` returns true. With `EMAIL_FROM`/`RESEND_API_KEY`
+  unset nothing is marked (`mailOff: true`, `emailsPending`), the digest's
+  trap avoided; a member who has since switched email off is skipped and
+  the notice stays unsent. The email names the permit, the step, both
+  statuses, the portal link, and where to switch it off (/permits).
+- **"On CompNinja" is `app` + `seen_at`.** The unread count is `GET
+  /api/permits/unread` (in `DESK_BOOT_URLS`), shown as `#navPermitDot` inside
+  the Permit tracker row on BOTH nav authors (ACCOUNT_NAV_JS skips the fetch
+  on /permits itself; index.html's `refreshPermitsDot`). /permits boots the
+  member's watches as `mine` beside the feed (read in its own catch, so it
+  can never cost the list) and clears the count with **`POST
+  /api/permits/seen` from the page** once shown — never in the GET render,
+  which may be a prerender (rule 15). `GET /api/permits/mine` returns the
+  same payload. No file fallback (rule 4): every route is 503 without a
+  database.
+
+Not built: tracking a permit in a city the sweep does not read (it would need
+the member to mark steps by hand, and a notice about a step you marked
+yourself is no notice), a "check now" button (each is a live portal search),
+and the parcel number as a match to the member's board buildings.

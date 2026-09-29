@@ -4393,5 +4393,11 @@
     "type": "improvement",
     "title": "Instant tab switching in the desktop app",
     "details": "The desktop app runs on Electron, which can’t pre-load pages the way Chrome does, so switching tabs there still took about half a second. The app now does it itself: it quietly loads the tab you’re likely to open next (and any tab you point at) in a hidden window, and swaps it in the moment you click. In testing, Workspace to Vault and back now takes about 15 ms instead of about 0.4 s. As in Chrome, a tab loaded in the background saves nothing and doesn’t count as a visit until you open it, and it’s thrown away when you save anything or sign out. This needs the new version of the app (1.1.0) — download it again from compninja.co/download."
+  },
+  {
+    "date": "2026-09-28",
+    "type": "improvement",
+    "title": "The vault page now just says Vault",
+    "details": "The /vault page heading and browser tab read \"Broker Vault\". Both now read \"Vault\", with the Private workspace label and the description underneath unchanged."
   }
 ]

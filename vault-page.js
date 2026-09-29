@@ -746,7 +746,7 @@ body.vd-mapview #rollupSec + #compsSec{border-top:0;padding-top:0}
 }
 </style>
   <p class="kicker">Private workspace</p>
-  <h1 class="h">Broker Vault</h1>
+  <h1 class="h">Vault</h1>
   <p class="sub" id="deckSub">Closed deals, leads, and BOVs. Visible only to you.</p>
 
   <!-- Visible from the first paint. Everything below the title waits on
